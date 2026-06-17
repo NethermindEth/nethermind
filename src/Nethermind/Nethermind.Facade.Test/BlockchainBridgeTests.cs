@@ -717,6 +717,75 @@ public class BlockchainBridgeTests
     }
 
     [Test]
+    public void EstimateGas_tx_gas_limit_below_intrinsic_but_estimation_reverts_returns_revert()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        Transaction tx = new() { GasLimit = 1, SenderAddress = TestItem.AddressA };
+
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(callInfo =>
+            {
+                Transaction currentTx = callInfo.ArgAt<Transaction>(0);
+                ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
+
+                if (currentTx.GasLimit < Transaction.BaseTxGasCost)
+                {
+                    return TransactionResult.GasLimitBelowIntrinsicGas;
+                }
+
+                tracer.ReportAction(currentTx.GasLimit, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+                tracer.ReportActionError(EvmExceptionType.Revert);
+                tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(21000, 0), Array.Empty<byte>(), null);
+                return TransactionResult.Ok;
+            });
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutput.Error, Is.EqualTo("execution reverted"));
+            Assert.That(callOutput.ExecutionReverted, Is.True);
+            Assert.That(callOutput.InputError, Is.False);
+            Assert.That(callOutput.OutputData, Is.EqualTo(Array.Empty<byte>()));
+        }
+    }
+
+    [Test]
+    public void EstimateGas_tx_gas_limit_below_intrinsic_but_estimation_succeeds_returns_estimate()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        Transaction tx = new() { GasLimit = 1, SenderAddress = TestItem.AddressA, To = TestItem.AddressB };
+
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(callInfo =>
+            {
+                Transaction currentTx = callInfo.ArgAt<Transaction>(0);
+                ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
+
+                if (currentTx.GasLimit < Transaction.BaseTxGasCost)
+                {
+                    return TransactionResult.GasLimitBelowIntrinsicGas;
+                }
+
+                tracer.ReportAction(currentTx.GasLimit, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+                tracer.ReportActionEnd(currentTx.GasLimit - Transaction.BaseTxGasCost, ReadOnlyMemory<byte>.Empty);
+                tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(Transaction.BaseTxGasCost, 0), Array.Empty<byte>(), Array.Empty<LogEntry>());
+                return TransactionResult.Ok;
+            });
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutput.Error, Is.Null);
+            Assert.That(callOutput.ExecutionReverted, Is.False);
+            Assert.That(callOutput.InputError, Is.False);
+            Assert.That(callOutput.GasSpent, Is.EqualTo(Transaction.BaseTxGasCost));
+            Assert.That(callOutput.OutputData, Is.EqualTo(Array.Empty<byte>()));
+        }
+    }
+
+    [Test]
     public void EstimateGas_tx_returns_GasLimitOverCap()
     {
         BlockHeader header = Build.A.BlockHeader
@@ -739,7 +808,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance for gas * price + value"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for gas * price + value"));
     }
 
     [Test]
@@ -826,8 +895,15 @@ public class BlockchainBridgeTests
             TotalGasLeft = 100_000,
             BlockGasLeft = 80_000,
             Validate = true,
-            TxsWithExplicitGas = new[] { true }
         };
+        simulateRequestState.SetTxsWithExplicitGas(
+            [
+                new()
+                {
+                    HadGasLimitInRequest = true,
+                    Transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject
+                }
+            ]);
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
         processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())

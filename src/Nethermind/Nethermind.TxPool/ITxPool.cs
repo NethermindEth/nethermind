@@ -60,7 +60,7 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs);
         int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs);
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs);
         bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells);
         bool TryGetBlobCellsAndProofsV1(byte[] blobVersionedHash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells, [NotNullWhen(true)] out byte[][]? proofs);
         bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);

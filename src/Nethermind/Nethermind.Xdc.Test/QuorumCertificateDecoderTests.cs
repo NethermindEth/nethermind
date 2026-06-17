@@ -35,7 +35,7 @@ internal class QuorumCertificateDecoderTests
         Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
         QuorumCertificate decoded = decoder.Decode(ref ctx);
 
-        Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcProperties());
+        Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
     }
 
     [TestCase(true)]
@@ -58,7 +58,7 @@ internal class QuorumCertificateDecoderTests
             decoded = decoder.Decode(ref decoderContext);
         }
 
-        Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcProperties());
+        Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
     }
 
 }

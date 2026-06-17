@@ -19,7 +19,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -62,7 +61,6 @@ namespace Nethermind.Api
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree BlockTree => Context.Resolve<IBlockTree>();
-        public IBloomStorage? BloomStorage => Context.Resolve<IBloomStorage>();
         public IChainLevelInfoRepository? ChainLevelInfoRepository => Context.Resolve<IChainLevelInfoRepository>();
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
         public ICryptoRandom CryptoRandom => Context.Resolve<ICryptoRandom>();

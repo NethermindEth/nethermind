@@ -21,6 +21,7 @@ public class WorldStateModule : Module
                 $"No world state backend registered. Load {nameof(WorldStateDbDeciderModule)} together with {nameof(PruningTrieStoreModule)} and {nameof(FlatWorldStateModule)}."))
 
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
+            .Map<IStateBoundary, IWorldStateManager>((m) => m)
 
             .AddSingleton<PersistedStateWatcher>()
             .ResolveOnServiceActivation<PersistedStateWatcher, IWorldStateManager>()

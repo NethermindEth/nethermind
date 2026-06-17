@@ -16,15 +16,13 @@ namespace Nethermind.Evm.Test.Tracing
     public class CancellationTracerTests
     {
         [Test]
-        [Retry(3)]
-        public void Throw_operation_canceled_after_given_timeout()
+        public void Throws_operation_canceled_when_token_is_cancelled()
         {
-            TimeSpan timeout = TimeSpan.FromMilliseconds(10);
-            using CancellationTokenSource cancellationTokenSource = new(timeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationToken) { IsTracingActions = true };
+            using CancellationTokenSource cancellationTokenSource = new();
+            cancellationTokenSource.Cancel();
+            CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationTokenSource.Token) { IsTracingActions = true };
 
-            Assert.That(() => tracer.ReportActionError(EvmExceptionType.None), Throws.TypeOf<OperationCanceledException>().After(100, 10));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportActionError(EvmExceptionType.None));
         }
 
         [Test]

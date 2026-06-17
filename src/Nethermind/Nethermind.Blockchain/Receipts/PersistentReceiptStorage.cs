@@ -19,7 +19,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class PersistentReceiptStorage : IReceiptStorage
+    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
@@ -52,7 +52,6 @@ namespace Nethermind.Blockchain.Receipts
         {
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _defaultColumn = _database.GetColumnDb(ReceiptsColumns.Default);
-            long Get(Hash256 key, long defaultValue) => _defaultColumn.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
 
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
@@ -63,7 +62,7 @@ namespace Nethermind.Blockchain.Receipts
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
-            _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
+            _migratedBlockNumber = _defaultColumn.GetLongFromBigEndianByteArrayWithoutLeadingZeros(MigrationBlockNumberKey, long.MaxValue);
 
             KeyValuePair<byte[], byte[]>? firstValue = _receiptsDb.GetAll().FirstOrDefault();
             _legacyHashKey = firstValue.HasValue && firstValue.Value.Key is not null && firstValue.Value.Key.Length == Hash256.Size;
@@ -257,8 +256,21 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
             => Insert(block, txReceipts, _specProvider.GetSpec(block.Header), ensureCanonical, writeFlags, lastBlockNumber);
 
-        [SkipLocalsInit]
         public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+        {
+            InsertCore(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
+
+            if (block.Number < MigratedBlockNumber)
+            {
+                MigratedBlockNumber = block.Number;
+            }
+        }
+
+        void IReceiptMigrationStore.InsertForMigration(Block block, TxReceipt[] receipts)
+            => InsertCore(block, receipts, _specProvider.GetSpec(block.Header), ensureCanonical: true, WriteFlags.None, lastBlockNumber: null);
+
+        [SkipLocalsInit]
+        private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber)
         {
             txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
@@ -281,11 +293,6 @@ namespace Nethermind.Blockchain.Receipts
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
                 _receiptsDb.PutSpan(blockNumPrefixed, stream.AsSpan(), writeFlags);
-            }
-
-            if (blockNumber < MigratedBlockNumber)
-            {
-                MigratedBlockNumber = blockNumber;
             }
 
             _receiptsCache.Set(block.Hash, txReceipts);

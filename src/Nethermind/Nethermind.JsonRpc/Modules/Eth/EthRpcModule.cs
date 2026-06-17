@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -73,7 +72,8 @@ public partial class EthRpcModule(
     IForkInfo forkInfo,
     ILogIndexConfig? logIndexConfig,
     ulong? secondsPerSlot,
-    HeadBlockSignal headBlockSignal) : IEthRpcModule
+    HeadBlockSignal headBlockSignal,
+    IEthCapabilitiesProvider capabilitiesProvider) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -91,6 +91,7 @@ public partial class EthRpcModule(
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+    private readonly IEthCapabilitiesProvider _capabilitiesProvider = capabilitiesProvider ?? throw new ArgumentNullException(nameof(capabilitiesProvider));
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
@@ -215,7 +216,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<StorageValuesResult> eth_getStorageValues(
         StorageValuesRequest requests,
-        BlockParameter blockParameter)
+        BlockParameter? blockParameter = null)
     {
         if (requests.TooManySlots)
             return TooManySlotsError();
@@ -413,12 +414,9 @@ public partial class EthRpcModule(
     private static ResultWrapper<SignTransactionResult> BuildSignedResult(Transaction tx)
     {
         const RlpBehaviors encodeBehaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm;
-        int length = TxDecoder.Instance.GetLength(tx, encodeBehaviors);
-        ArrayPoolList<byte> buffer = new(length, length);
+        ArrayPoolList<byte> buffer = TxDecoder.Instance.EncodeToArrayPoolList(tx, encodeBehaviors);
         try
         {
-            RlpStream stream = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
-            TxDecoder.Instance.Encode(stream, tx, encodeBehaviors);
             return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
             {
                 Raw = buffer,
@@ -621,19 +619,17 @@ public partial class EthRpcModule(
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
-    public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash)
+    public ResultWrapper<ArrayPoolList<byte>?> eth_getRawTransactionByHash(Hash256 transactionHash)
     {
         if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
         {
-            return ResultWrapper<string?>.Success(null);
+            return ResultWrapper<ArrayPoolList<byte>?>.Success(null);
         }
 
         Transaction transaction = transactionResult.Value.Transaction;
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
-
-        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
+        return ResultWrapper<ArrayPoolList<byte>?>.Success(TxRlpDecoder.EncodeToArrayPoolList(transaction, encodingSettings));
     }
 
     public virtual ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
@@ -666,38 +662,37 @@ public partial class EthRpcModule(
         return result;
     }
 
-    public ResultWrapper<string?> eth_getRawTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
+    public ResultWrapper<ArrayPoolList<byte>?> eth_getRawTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
     {
-        ResultWrapper<string?> result = GetRawTransactionByBlockAndIndex(new BlockParameter(blockHash), positionIndex);
-        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getRawTransactionByBlockHashAndIndex request {blockHash}, index: {positionIndex}, result length: {result.Data?.Length ?? 0}");
+        ResultWrapper<ArrayPoolList<byte>?> result = GetRawTransactionByBlockAndIndex(new BlockParameter(blockHash), positionIndex);
+        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getRawTransactionByBlockHashAndIndex request {blockHash}, index: {positionIndex}, result length: {result.Data?.Count ?? 0}");
         return result;
     }
 
-    public ResultWrapper<string?> eth_getRawTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+    public ResultWrapper<ArrayPoolList<byte>?> eth_getRawTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
-        ResultWrapper<string?> result = GetRawTransactionByBlockAndIndex(blockParameter, positionIndex);
-        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getRawTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result length: {result.Data?.Length ?? 0}");
+        ResultWrapper<ArrayPoolList<byte>?> result = GetRawTransactionByBlockAndIndex(blockParameter, positionIndex);
+        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getRawTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result length: {result.Data?.Count ?? 0}");
         return result;
     }
 
-    private ResultWrapper<string?> GetRawTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+    private ResultWrapper<ArrayPoolList<byte>?> GetRawTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<string?>.Success(null);
+            return ResultWrapper<ArrayPoolList<byte>?>.Success(null);
         }
 
         Block block = searchResult.Object!;
         if (positionIndex >= block.Transactions.Length)
         {
-            return ResultWrapper<string?>.Success(null);
+            return ResultWrapper<ArrayPoolList<byte>?>.Success(null);
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
         // Block-stored txs never carry a sidecar (blob commitments live separately), so consensus form only.
-        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
+        return ResultWrapper<ArrayPoolList<byte>?>.Success(TxRlpDecoder.EncodeToArrayPoolList(transaction, RlpBehaviors.SkipTypedWrapping));
     }
 
     protected virtual ResultWrapper<TransactionForRpc?> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
@@ -1162,6 +1157,10 @@ public partial class EthRpcModule(
             ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<ReadOnlyBlockAccessList?>.Success(bal);
     }
+
+    public ResultWrapper<EthCapabilities> eth_capabilities() =>
+        ResultWrapper<EthCapabilities>.Success(_capabilitiesProvider.GetCapabilities());
+
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
 

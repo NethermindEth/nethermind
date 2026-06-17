@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
+using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 using NUnit.Framework;
 
 namespace Nethermind.Serialization.Ssz.Test;
@@ -22,24 +24,6 @@ public static class UInt256Extensions
 [TestFixture]
 public class MerkleTests
 {
-    [TestCase(uint.MinValue, 1U)]
-    [TestCase(1U, 1U)]
-    [TestCase(2U, 2U)]
-    [TestCase(3U, 4U)]
-    [TestCase(4U, 4U)]
-    [TestCase(uint.MaxValue / 2, 2147483648U)]
-    [TestCase(uint.MaxValue / 2 + 1, 2147483648U)]
-    public void Can_get_the_next_power_of_two_32(uint value, uint expectedResult) => Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
-
-    [TestCase(ulong.MinValue, 1UL)]
-    [TestCase(1UL, 1UL)]
-    [TestCase(2UL, 2UL)]
-    [TestCase(3UL, 4UL)]
-    [TestCase(4UL, 4UL)]
-    [TestCase(ulong.MaxValue / 2, 9223372036854775808UL)]
-    [TestCase(ulong.MaxValue / 2 + 1, 9223372036854775808UL)]
-    public void Can_get_the_next_power_of_two_64(ulong value, ulong expectedResult) => Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
-
     [TestCase(ulong.MinValue, 0UL)]
     [TestCase(1UL, 0UL)]
     [TestCase(2UL, 1UL)]
@@ -55,43 +39,57 @@ public class MerkleTests
     [Test]
     public void Can_merkleize_bool()
     {
-        Merkle.Merkleize(out UInt256 root, true);
+        UInt256 root = MerkleizeWithConverter(true, BooleanSszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x0100000000000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_byte()
     {
-        Merkle.Merkleize(out UInt256 root, (byte)34);
+        UInt256 root = MerkleizeWithConverter((byte)34, ByteSszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x2200000000000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_ushort()
     {
-        Merkle.Merkleize(out UInt256 root, (ushort)(34 + byte.MaxValue));
+        UInt256 root = MerkleizeWithConverter((ushort)(34 + byte.MaxValue), UInt16SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x2101000000000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_uint()
     {
-        Merkle.Merkleize(out UInt256 root, (uint)34 + byte.MaxValue + ushort.MaxValue);
+        UInt256 root = MerkleizeWithConverter((uint)34 + byte.MaxValue + ushort.MaxValue, UInt32SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x2001010000000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_int()
     {
-        Merkle.Merkleize(out UInt256 root, 34 + byte.MaxValue + ushort.MaxValue);
+        UInt256 root = MerkleizeWithConverter(34 + byte.MaxValue + ushort.MaxValue, Int32SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x2001010000000000000000000000000000000000000000000000000000000000"));
+    }
+
+    [Test]
+    public void Can_merkleize_negative_int()
+    {
+        UInt256 root = MerkleizeWithConverter(-1, Int32SszBasicTypeConverter.Feed);
+        Assert.That(root.ToHexString(true), Is.EqualTo("0xffffffff00000000000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
     public void Can_merkleize_ulong()
     {
-        Merkle.Merkleize(out UInt256 root, (ulong)34 + byte.MaxValue + ushort.MaxValue + uint.MaxValue);
+        UInt256 root = MerkleizeWithConverter((ulong)34 + byte.MaxValue + ushort.MaxValue + uint.MaxValue, UInt64SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x1f01010001000000000000000000000000000000000000000000000000000000"));
+    }
+
+    [Test]
+    public void Can_merkleize_negative_long()
+    {
+        UInt256 root = MerkleizeWithConverter(-1L, Int64SszBasicTypeConverter.Feed);
+        Assert.That(root.ToHexString(true), Is.EqualTo("0xffffffffffffffff000000000000000000000000000000000000000000000000"));
     }
 
     [Test]
@@ -104,7 +102,7 @@ public class MerkleTests
         input += uint.MaxValue;
         input += ulong.MaxValue;
 
-        Merkle.Merkleize(out UInt256 root, input);
+        UInt256 root = MerkleizeWithConverter(input, UInt128SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x1e01010001000000010000000000000000000000000000000000000000000000"));
     }
 
@@ -118,43 +116,8 @@ public class MerkleTests
         input += uint.MaxValue;
         input += ulong.MaxValue;
 
-        Merkle.Merkleize(out UInt256 root, input);
+        UInt256 root = MerkleizeWithConverter(input, UInt256SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x1e01010001000000010000000000000000000000000000000000000000000000"));
-    }
-
-    [Test]
-    public void Can_merkleize_bool_vector()
-    {
-        Merkle.Merkleize(out UInt256 root, new[] { true, false });
-        Assert.That(root.ToHexString(true), Is.EqualTo("0x0100000000000000000000000000000000000000000000000000000000000000"));
-    }
-
-    [Test]
-    public void Can_merkleize_ushort_vector()
-    {
-        Merkle.Merkleize(out UInt256 root, new[] { (ushort)1, (ushort)3 });
-        Assert.That(root.ToHexString(true), Is.EqualTo("0x0100030000000000000000000000000000000000000000000000000000000000"));
-    }
-
-    [Test]
-    public void Can_merkleize_uint_vector()
-    {
-        Merkle.Merkleize(out UInt256 root, new[] { 1U, 3U });
-        Assert.That(root.ToHexString(true), Is.EqualTo("0x0100000003000000000000000000000000000000000000000000000000000000"));
-    }
-
-    [Test]
-    public void Can_merkleize_ulong_vector()
-    {
-        Merkle.Merkleize(out UInt256 root, new[] { 1UL, 3UL });
-        Assert.That(root.ToHexString(true), Is.EqualTo("0x0100000000000000030000000000000000000000000000000000000000000000"));
-    }
-
-    [Test]
-    public void Can_merkleize_uint128_vector()
-    {
-        Merkle.Merkleize(out UInt256 root, new UInt128[] { 1, 3, 5 });
-        Assert.That(root.ToHexString(true), Is.EqualTo("0xf189891181de961f99a35c1aa21c0d909bf30bb8bebb760050f3d06dc56e488a"));
     }
 
     [Test]
@@ -172,67 +135,6 @@ public class MerkleTests
     }
 
     [Test]
-    public void Can_merkleize_uint128_vector_full()
-    {
-        Merkle.Merkleize(out UInt256 root, new UInt128[] { 1, 3 });
-        Assert.That(root.ToHexString(true), Is.EqualTo("0x0100000000000000000000000000000003000000000000000000000000000000"));
-    }
-
-    [Test]
-    public void Can_merkleize_bitlist()
-    {
-        Merkle.MerkleizeBits(out UInt256 root, new byte[] { 123 }, 0);
-        Assert.That(root.ToHexString(true), Is.EqualTo("0xe5e12694be373406e317c583b5fd9e7a642913dc20a5c4947edb202dafbbc0ee"));
-    }
-
-    [Test]
-    public void Can_merkleize_bitlist_with_limit()
-    {
-        Merkle.MerkleizeBits(out UInt256 root, new byte[] { 17 }, 2);
-        Assert.That(root.ToHexString(true), Is.EqualTo("0x60d461bd1cec1a858ba48a27799c9686c15ad1625743bafa70674afc530f981a"));
-    }
-
-    [Test]
-    public void Can_merkleize_bitlist_high_limit_and_null()
-    {
-        Merkle.MerkleizeBits(out UInt256 root, new byte[] { 0 }, 8);
-        Assert.That(root.ToHexString(true), Is.EqualTo("0x881690bb860e3a4f7681f51f1eccc59dac2718eeb0c0585cd698ad0650938b33"));
-    }
-
-    [Test]
-    public void Can_merkleize_bitlist_high_limit_and_small()
-    {
-        Merkle.MerkleizeBits(out UInt256 root, new byte[] { 3 }, 8);
-        Assert.That(root.ToHexString(true), Is.EqualTo("0x9e1ff035a32c3d3085074e676356984c077f70bed47814956a9ef8852dcb8161"));
-    }
-
-    [Test]
-    public void Merkleizer_Feed_list_produces_correct_root()
-    {
-        // List[uint8, 64] containing just [0xAB]
-        //   pack:        0xAB padded to 32 bytes = 1 chunk
-        //   chunk_limit: ceil(64 * 1 / 32) = 2
-        //   merkleize:   hash tree with 2 leaf slots (our chunk + 1 zero chunk)
-        //   mix_in:      SHA256(merkle_root || little_endian(actual_count = 1))
-        byte[] data = [0xAB];
-        int limit = 64;
-
-        // Manually compute expected root
-        // Step 1: merkleize(pack(data), chunk_limit=2)
-        ulong chunkCount = ((ulong)limit * sizeof(byte) + 31) / 32; // = 2
-        Merkle.Merkleize(out UInt256 expectedRoot, data, chunkCount);
-        // Step 2: mix_in_length(root, actual_count=1)
-        Merkle.MixIn(ref expectedRoot, data.Length);
-
-        // Compute via Merkleizer.Feed
-        Merkleizer merkleizer = new(0);
-        merkleizer.Feed((ReadOnlySpan<byte>)data, limit);
-        UInt256 actualRoot = merkleizer.CalculateRoot();
-
-        Assert.That(actualRoot, Is.EqualTo(expectedRoot));
-    }
-
-    [Test]
     public void Can_merkleize_bitvector()
     {
         Merkle.Merkleize(out UInt256 root, new byte[] { 123 });
@@ -240,26 +142,28 @@ public class MerkleTests
     }
 
     [Test]
-    public void Set_check()
+    public void Merkleize_byte_span_zero_pads_partial_chunk()
     {
-        Merkleizer context = new(1);
-        for (int i = 0; i < 64; i++)
-        {
-            context.SetKthBit(i);
-            Assert.That(context.IsKthBitSet(i), Is.True, i.ToString());
-            context.UnsetKthBit(i);
-            Assert.That(context.IsKthBitSet(i), Is.False, i.ToString());
-        }
+        byte[] data = [0xAB, 0xCD];
+        byte[] padded = new byte[32];
+        data.CopyTo(padded.AsSpan());
+
+        Merkle.Merkleize(out UInt256 actual, data);
+
+        Assert.That(actual, Is.EqualTo(new UInt256(padded)));
     }
 
     [Test]
-    public void Check_false()
+    public void MixInActiveFields_zero_pads_active_fields_chunk()
     {
-        Merkleizer context = new(1);
-        for (int i = 0; i < 64; i++)
-        {
-            Assert.That(context.IsKthBitSet(i), Is.False, i.ToString());
-        }
+        UInt256 baseRoot = new(123UL);
+        Merkle.Merkleize(out UInt256 activeFieldsRoot, new byte[] { 0x05 });
+        Merkle.Merkleize(out UInt256 expected, new UInt256[] { baseRoot, activeFieldsRoot });
+
+        UInt256 actual = baseRoot;
+        Merkle.MixInActiveFields(ref actual, [0x05]);
+
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [TestCase(2, 1)]
@@ -276,7 +180,9 @@ public class MerkleTests
             merkleizer.Feed(Merkle.ZeroHashes[0]);
         }
 
-        Assert.That(merkleizer.CalculateRoot(), Is.EqualTo(Merkle.ZeroHashes[depth]));
+        merkleizer.CalculateRoot(out UInt256 actual);
+
+        Assert.That(actual, Is.EqualTo(Merkle.ZeroHashes[depth]));
     }
 
     [TestCase(2, 1)]
@@ -296,7 +202,7 @@ public class MerkleTests
                 merkleizer.Feed(Merkle.ZeroHashes[0]);
             }
 
-            result = merkleizer.CalculateRoot();
+            merkleizer.CalculateRoot(out result);
         }
 
         Assert.That(result, Is.EqualTo(Merkle.ZeroHashes[depth]));
@@ -311,8 +217,18 @@ public class MerkleTests
             merkleizer.Feed(Merkle.ZeroHashes[0]);
         }
 
-        UInt256 result = merkleizer.CalculateRoot();
+        merkleizer.CalculateRoot(out UInt256 result);
 
         Assert.That(result, Is.EqualTo(Merkle.ZeroHashes[6]));
+    }
+
+    private delegate void FeedItem<T>(ref Merkleizer merkleizer, T value);
+
+    private static UInt256 MerkleizeWithConverter<T>(T value, FeedItem<T> feed)
+    {
+        Merkleizer merkleizer = new(0);
+        feed(ref merkleizer, value);
+        merkleizer.CalculateRoot(out UInt256 root);
+        return root;
     }
 }

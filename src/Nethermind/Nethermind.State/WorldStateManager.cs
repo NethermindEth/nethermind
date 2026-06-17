@@ -12,7 +12,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class WorldStateManager : IWorldStateManager
+public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
 {
     private readonly IWorldStateScopeProvider _worldState;
     private readonly IPruningTrieStore _trieStore;
@@ -20,6 +20,7 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
+    private readonly StateBoundaryStore _boundaryStore;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
@@ -28,6 +29,7 @@ public class WorldStateManager : IWorldStateManager
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
+        IPruningConfig pruningConfig,
         ILastNStateRootTracker lastNStateRootTracker = null
     )
     {
@@ -36,6 +38,7 @@ public class WorldStateManager : IWorldStateManager
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
+        _boundaryStore = new StateBoundaryStore(dbProvider.StateDb, _logManager);
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
@@ -45,6 +48,16 @@ public class WorldStateManager : IWorldStateManager
         SnapServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
             ? NoopSnapServer.Instance
             : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
+
+        RetentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null;
+    }
+
+    public long? RetentionWindowBlocks { get; }
+
+    public long? OldestStateBlock
+    {
+        get => _boundaryStore.OldestStateBlock;
+        set => _boundaryStore.OldestStateBlock = value;
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;

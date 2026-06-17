@@ -56,7 +56,6 @@ public class TxPriorityContractTests
     }
 
     [Test]
-    [Retry(3)]
     public async Task whitelist_should_return_correctly()
     {
         using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
@@ -87,7 +86,6 @@ public class TxPriorityContractTests
     }
 
     [Test]
-    [Retry(3)]
     public async Task mingas_should_return_correctly()
     {
         using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
@@ -107,7 +105,6 @@ public class TxPriorityContractTests
     }
 
     [Test]
-    [Retry(3)]
     [Explicit]
     public async Task whitelist_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
@@ -146,7 +143,6 @@ public class TxPriorityContractTests
     }
 
     [Test]
-    [Retry(3)]
     [Explicit]
     public async Task priority_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
@@ -192,7 +188,6 @@ public class TxPriorityContractTests
     }
 
     [Test]
-    [Retry(3)]
     [Explicit]
     public async Task mingas_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
@@ -317,8 +312,12 @@ public class TxPriorityContractTests
         {
             Block b = await base.AddBlock(transactions);
 
-            // ContractDataStore track item from block async.
-            await Task.Delay(100);
+            // ContractDataStore tracks items from blocks asynchronously off the NewHeadBlock event.
+            // Awaiting the latest refresh for each store eliminates the time-based race.
+            await Task.WhenAll(
+                Priorities.ContractDataStore.LatestRefreshTask,
+                MinGasPrices.ContractDataStore.LatestRefreshTask,
+                SendersWhitelist.LatestRefreshTask);
             return b;
         }
 

@@ -23,7 +23,7 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         int check = length + ctx.Position;
 
         UInt256 slot = ctx.DecodeUInt256();
-        StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _txLimit);
+        StorageChange[] changes = StorageChangeDecoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _txLimit);
 
         // EIP-7928: a slot in storage_changes must have at least one change.
         // A slot with zero changes belongs in storage_reads instead.

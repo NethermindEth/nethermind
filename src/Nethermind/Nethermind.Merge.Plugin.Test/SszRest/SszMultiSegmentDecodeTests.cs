@@ -4,13 +4,13 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
-using SszLib = Nethermind.Serialization.Ssz.Ssz;
 
 namespace Nethermind.Merge.Plugin.Test.SszRest;
 
@@ -18,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 /// Exercises the multi-segment branch of every <c>Decode(ReadOnlySequence&lt;byte&gt;, ...)</c>
 /// path. Production traffic from Kestrel arrives in 4 KB pooled blocks, so any blob-bearing
 /// NewPayload runs through the multi-segment consolidation in the generator's emit and the
-/// stack-copy fallback in <c>SszLib</c>'s primitive sequence decoders. Single-segment input
+/// converter-backed primitive decoders after consolidation. Single-segment input
 /// (covered by <see cref="SszCodecTests"/>) hits the zero-copy fast path; this fixture covers
 /// the path that gets pool-rented + copied.
 /// </summary>
@@ -101,8 +101,7 @@ public class SszMultiSegmentDecodeTests
     [TestCaseSource(nameof(SegmentSizes))]
     public void GetPayloadBodiesByRange_decodes_correctly_across_segments(int segSize)
     {
-        // Two ulongs back-to-back — tests the cross-segment 8-byte primitive read in
-        // SszLib.Decode(ReadOnlySequence<byte>, out ulong) when segSize < 8.
+        // Two ulongs back-to-back: exercises cross-segment consolidation before converter-backed primitive reads.
         const ulong startVal = 0x0102_0304_0506_0708ul;
         const ulong countVal = 0x1112_1314_1516_1718ul;
         byte[] encoded = new byte[16];
@@ -119,13 +118,11 @@ public class SszMultiSegmentDecodeTests
     public void NewPayloadV3RequestWire_decodes_correctly_across_segments(int segSize)
     {
         // The most schema-rich path: nested struct (SszExecutionPayloadV3 with
-        // variable transactions/withdrawals lists) + a list of fixed Hash256 + a
-        // trailing fixed Hash256. Exercises offset reads, recursive Decode, and
-        // multi-segment primitive reads in roughly that order.
+        // variable transactions/withdrawals lists) + a trailing fixed Hash256.
+        // Exercises offset reads, recursive Decode, and multi-segment primitive reads.
         NewPayloadV3RequestWire wire = new()
         {
             ExecutionPayload = new SszExecutionPayloadV3(SszTestData.MakeV3Payload()),
-            ExpectedBlobVersionedHashes = [TestItem.KeccakA, TestItem.KeccakB],
             ParentBeaconBlockRoot = TestItem.KeccakC,
         };
         byte[] encoded = NewPayloadV3RequestWire.Encode(wire);
@@ -133,10 +130,6 @@ public class SszMultiSegmentDecodeTests
         NewPayloadV3RequestWire.Decode(Multi(encoded, segSize), out NewPayloadV3RequestWire decoded);
 
         Assert.That(decoded.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakC));
-        Assert.That(decoded.ExpectedBlobVersionedHashes, Is.Not.Null);
-        Assert.That(decoded.ExpectedBlobVersionedHashes!.Length, Is.EqualTo(2));
-        Assert.That(decoded.ExpectedBlobVersionedHashes![0], Is.EqualTo(TestItem.KeccakA));
-        Assert.That(decoded.ExpectedBlobVersionedHashes[1], Is.EqualTo(TestItem.KeccakB));
         ExecutionPayloadV3 payload = decoded.ExecutionPayload.AsExecutionPayload();
         Assert.That(payload.BlockNumber, Is.EqualTo(100));
         Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
@@ -147,8 +140,7 @@ public class SszMultiSegmentDecodeTests
     /// <summary>
     /// Splits <paramref name="data"/> at <paramref name="splitAt"/>, asserts the resulting
     /// sequence is genuinely multi-segment, and verifies <paramref name="decode"/> recovers
-    /// <paramref name="expected"/>. Single helper for every <c>SszLib.Decode(seq, out X)</c>
-    /// primitive overload — they all share the stack-copy fallback in <c>ToContiguous</c>.
+    /// <paramref name="expected"/>.
     /// </summary>
     private static void AssertDecodesAcrossSegmentBoundary<T>(
         byte[] data, int splitAt, T expected, SequenceDecode<T> decode)
@@ -161,26 +153,20 @@ public class SszMultiSegmentDecodeTests
         Assert.That(value, Is.EqualTo(expected));
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    public void SszLib_uint_decodes_with_segment_boundary_inside_primitive(int splitAt) =>
-        AssertDecodesAcrossSegmentBoundary<uint>(
-            [0x78, 0x56, 0x34, 0x12], splitAt, 0x12345678u, SszLib.Decode);
-
-    [TestCase(1)]
-    [TestCase(7)]
-    public void SszLib_ulong_decodes_with_segment_boundary_inside_primitive(int splitAt) =>
-        AssertDecodesAcrossSegmentBoundary<ulong>(
-            [0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01], splitAt, 0x0102_0304_0506_0708ul, SszLib.Decode);
-
     [Test]
-    public void SszLib_UInt256_decodes_with_segments_at_every_byte_boundary()
+    public void UInt256_converter_decodes_with_segments_at_every_byte_boundary()
     {
         UInt256 expected = UInt256.Parse("0xdeadbeefcafebabe0000111122223333444455556666777788889999aaaabbbb");
         byte[] data = new byte[32];
         expected.ToLittleEndian(data);
 
-        AssertDecodesAcrossSegmentBoundary<UInt256>(data, splitAt: 1, expected, SszLib.Decode);
+        AssertDecodesAcrossSegmentBoundary<UInt256>(data, splitAt: 1, expected, DecodeUInt256);
+    }
+
+    private static void DecodeUInt256(ReadOnlySequence<byte> data, out UInt256 value)
+    {
+        Span<byte> buffer = stackalloc byte[UInt256SszBasicTypeConverter.Length];
+        data.CopyTo(buffer);
+        value = UInt256SszBasicTypeConverter.FromSpan(buffer);
     }
 }

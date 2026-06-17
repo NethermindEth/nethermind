@@ -50,9 +50,12 @@ public class VoteTests
             await votesManager.HandleVote(newVote);
         }
         // Check same values as before: qc has not yet been processed, so there should be no changes
-        Assert.That(ctx.LockQC, Is.EqualTo(initialLockQc).UsingXdcProperties());
-        Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
-        Assert.That(ctx.HighestQC, Is.EqualTo(initialHighestQc).UsingXdcProperties());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.LockQC, Is.EqualTo(initialLockQc).UsingXdcComparer());
+            Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
+            Assert.That(ctx.HighestQC, Is.EqualTo(initialHighestQc).UsingXdcComparer());
+        }
 
         // Create another vote which is signed by someone not from the master node list
         PrivateKey randomKey = blockchain.RandomKeys.First();
@@ -60,9 +63,12 @@ public class VoteTests
         await votesManager.HandleVote(randomVote);
 
         // Again same check: vote is not valid so threshold is not yet reached
-        Assert.That(ctx.LockQC, Is.EqualTo(initialLockQc).UsingXdcProperties());
-        Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
-        Assert.That(ctx.HighestQC, Is.EqualTo(initialHighestQc).UsingXdcProperties());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.LockQC, Is.EqualTo(initialLockQc).UsingXdcComparer());
+            Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
+            Assert.That(ctx.HighestQC, Is.EqualTo(initialHighestQc).UsingXdcComparer());
+        }
 
         // Create a vote message that should trigger qc processing and increment the round
         Vote lastVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, keys.Last());
@@ -73,7 +79,7 @@ public class VoteTests
         Assert.That(ctx.LockQC, Is.Not.Null);
         Assert.That(ctx.LockQC.ProposedBlockInfo.Round, Is.EqualTo(initialRound - 1));
         // The highestQC proposedBlockInfo shall be the same as the one from its votes
-        Assert.That(ctx.HighestQC.ProposedBlockInfo, Is.EqualTo(blockInfo).UsingXdcProperties());
+        Assert.That(ctx.HighestQC.ProposedBlockInfo, Is.EqualTo(blockInfo).UsingXdcComparer());
     }
 
     private VotesManager CreateVotesManager(XdcTestBlockchain blockchain) =>

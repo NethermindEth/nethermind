@@ -30,6 +30,19 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
+    public void IsCodeOverridable_Propagates_BaseRepository_Value()
+    {
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(FrozenDictionary<AddressAsKey, CodeInfo>.Empty);
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        baseRepository.IsCodeOverridable.Returns(true);
+
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, null);
+
+        Assert.That(repository.IsCodeOverridable, Is.True);
+    }
+
+    [Test]
     public void Precompile_WithCachingEnabled_IsWrappedInCachedPrecompile()
     {
         // Arrange

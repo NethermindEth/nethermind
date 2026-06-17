@@ -22,7 +22,6 @@ public class NodeHealthTrackerTests
     private static (NodeHealthTracker<ValueHash256, string> Tracker, RoutingTableStub Routing, IKademliaMessageSender<ValueHash256, string> Sender) CreateTracker(
         string? toRefresh = null,
         int failureThreshold = 5,
-        TimeSpan? refreshPingTimeout = null,
         IKademliaMessageSender<ValueHash256, string>? sender = null)
     {
         RoutingTableStub routing = new() { ToRefresh = toRefresh ?? string.Empty };
@@ -32,7 +31,6 @@ public class NodeHealthTrackerTests
             CurrentNodeId = Self,
             NodeRequestFailureThreshold = failureThreshold,
         };
-        if (refreshPingTimeout is { } timeout) config.RefreshPingTimeout = timeout;
 
         NodeHealthTracker<ValueHash256, string> tracker = new(
             config,
@@ -61,16 +59,16 @@ public class NodeHealthTrackerTests
     {
         IKademliaMessageSender<ValueHash256, string> sender = Substitute.For<IKademliaMessageSender<ValueHash256, string>>();
         sender.Ping(Stale, Arg.Any<CancellationToken>())
-            .Returns(Task.FromException(new OperationCanceledException()));
+            .Returns(false);
 
         (NodeHealthTracker<ValueHash256, string> tracker, RoutingTableStub routing, _) = CreateTracker(
             toRefresh: Stale,
-            refreshPingTimeout: TimeSpan.FromMilliseconds(50),
             sender: sender);
 
         tracker.OnIncomingMessageFrom(Remote);
 
         await AssertEventuallyAsync(() => routing.RemoveCalls.Contains(ValueKeccak.Compute(Stale)), token);
+        await sender.Received(1).Ping(Stale, Arg.Is<CancellationToken>(t => !t.CanBeCanceled));
     }
 
     [Test]
@@ -78,7 +76,7 @@ public class NodeHealthTrackerTests
     public async Task TryRefresh_ShouldKeepNode_WhenPingSucceeds(CancellationToken token)
     {
         IKademliaMessageSender<ValueHash256, string> sender = Substitute.For<IKademliaMessageSender<ValueHash256, string>>();
-        sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(true);
 
         (NodeHealthTracker<ValueHash256, string> tracker, RoutingTableStub routing, _) = CreateTracker(
             toRefresh: Stale,

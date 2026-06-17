@@ -80,9 +80,6 @@ public interface IDbConfig : IConfig
     string MetadataDbRocksDbOptions { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
-    string BloomDbRocksDbOptions { get; set; }
-    string? BloomDbAdditionalRocksDbOptions { get; set; }
-
     ulong? CodeDbRowCacheSize { get; set; }
     string CodeDbRocksDbOptions { get; set; }
     string? CodeDbAdditionalRocksDbOptions { get; set; }

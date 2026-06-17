@@ -56,8 +56,9 @@ public class FlatSnapServer(
             ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
             StateTree tree = new(trieStore, logManager);
             bool abort = false;
+            long responseSize = 0;
 
-            for (int i = 0; i < pathLength && !abort && !cancellationToken.IsCancellationRequested; i++)
+            for (int i = 0; i < pathLength && !abort && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; i++)
             {
                 byte[][]? requestedPath = pathSet[i].Group;
                 switch (requestedPath.Length)
@@ -69,7 +70,8 @@ public class FlatSnapServer(
                         try
                         {
                             byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), stateId.StateRoot.ToCommitment());
-                            response.Add(rlp!);
+                            response.Add(rlp ?? []);
+                            responseSize += rlp?.Length ?? 0;
                         }
                         catch (MissingTrieNodeException)
                         {
@@ -89,10 +91,11 @@ public class FlatSnapServer(
                                 Hash256? storageRoot = account.StorageRoot;
                                 StorageTree sTree = new(trieStore.GetStorageTrieStore(storagePath), storageRoot, logManager);
 
-                                for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
+                                for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
                                 {
                                     byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
-                                    response.Add(sRlp!);
+                                    response.Add(sRlp ?? []);
+                                    responseSize += sRlp?.Length ?? 0;
                                 }
                             }
                         }

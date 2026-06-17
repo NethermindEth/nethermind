@@ -37,18 +37,15 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{ \"blockNumber\": \"0xa\" }", 10)]
         public void Can_read_block_number(string input, long output)
         {
-            BlockParameter blockParameter = WithStrictHexFormat(false, () =>
-            {
-                IJsonSerializer serializer = new EthereumJsonSerializer();
-                return serializer.Deserialize<BlockParameter>(input)!;
-            });
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
 
             Assert.That(blockParameter.BlockNumber, Is.EqualTo(output));
         }
 
         [TestCase("0", true)]
         [TestCase("100", true)]
-        [TestCase("\"0x\"", false)]
+        [TestCase("\"0x\"", true)]
         [TestCase("\"0x0\"", false)]
         [TestCase("\"0xA\"", false)]
         [TestCase("\"0xa\"", false)]
@@ -58,25 +55,18 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{ \"blockNumber\": \"100\" }", true)]
         public void Cant_read_block_number_when_strict_hex_format_is_enabled(string input, bool throws)
         {
-            Action action = () => WithStrictHexFormat(true, () =>
-            {
-                IJsonSerializer serializer = new EthereumJsonSerializer();
-                return serializer.Deserialize<BlockParameter>(input);
-            });
-
-            if (throws)
-                Assert.That(action, Throws.TypeOf<FormatException>());
-            else
-                Assert.That(action, Throws.Nothing);
-        }
-
-        private static T WithStrictHexFormat<T>(bool strictHexFormat, Func<T> action)
-        {
             bool original = EthereumJsonSerializer.StrictHexFormat;
             try
             {
-                EthereumJsonSerializer.StrictHexFormat = strictHexFormat;
-                return action();
+                EthereumJsonSerializer.StrictHexFormat = true;
+                IJsonSerializer serializer = new EthereumJsonSerializer();
+
+                Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
+
+                if (throws)
+                    Assert.That(action, Throws.InstanceOf<FormatException>());
+                else
+                    Assert.That(action, Throws.Nothing);
             }
             finally
             {
@@ -127,6 +117,20 @@ namespace Nethermind.JsonRpc.Test.Data
 
             Assert.That(blockParameter.BlockHash, Is.EqualTo(new Hash256(output)));
             Assert.That(blockParameter.RequireCanonical, Is.EqualTo(requireCanonical));
+        }
+
+        [Test]
+        public void Cannot_read_object_with_both_block_hash_and_block_number()
+        {
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+
+            Action action = () => serializer.Deserialize<BlockParameter>(
+                """{ "blockNumber": "0xa", "blockHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3" }""");
+
+            Assert.That(
+                action,
+                Throws.InstanceOf<FormatException>()
+                    .With.Message.EqualTo("cannot specify both BlockHash and BlockNumber, choose one or the other"));
         }
 
         [TestCase("\"latest\"", BlockParameterType.Latest)]

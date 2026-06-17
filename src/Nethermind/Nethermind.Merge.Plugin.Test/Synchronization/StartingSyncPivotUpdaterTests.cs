@@ -33,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         private IBeaconSyncStrategy? _beaconSyncStrategy;
         private IDb? _metadataDb;
         private IBlockTree? _externalPeerBlockTree;
+        private ISyncPeer? _syncPeer;
 
         [SetUp]
         public void Setup()
@@ -54,6 +55,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
             fakePeer.Node.Returns(new Node(node));
+            _syncPeer = fakePeer;
 
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncPeerPool.InitializedPeers.Returns(new[] { new PeerInfo(fakePeer) });
@@ -100,9 +102,9 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
         }
 
-        [TestCase(2, true, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
-        [TestCase(ISyncConfig.InfiniteAttempts, false, ISyncConfig.InfiniteAttempts, TestName = "Infinite_attempts_never_fall_back_to_static_pivot")]
-        public void TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, bool expectFallback, int expectedFinalConfigValue)
+        [TestCase(2, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
+        [TestCase(ISyncConfig.InfiniteAttempts, ISyncConfig.InfiniteAttempts, TestName = "Infinite_attempts_never_fall_back_to_static_pivot")]
+        public void TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, int expectedFinalConfigValue)
         {
             _syncConfig!.MaxAttemptsToUpdatePivot = maxAttempts;
             // Finalized hash unset → TrySetFreshPivot returns null → counts as a failed attempt.
@@ -124,14 +126,6 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
                 _syncModeSelector!.Changed += Raise.EventWith(args);
             }
 
-            if (expectFallback)
-            {
-                _beaconSyncStrategy.Received().AllowBeaconHeaderSync();
-            }
-            else
-            {
-                _beaconSyncStrategy.DidNotReceive().AllowBeaconHeaderSync();
-            }
             Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(expectedFinalConfigValue));
         }
 
@@ -163,6 +157,32 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
             Assert.That(storedPivotBlockHash, Is.EqualTo(expectedPivotBlockHash));
+        }
+
+        [Test]
+        public void TrySetFreshPivot_for_unsafe_updater_ignores_peer_header_with_mismatched_number()
+        {
+            long requestedPivotNumber = _externalPeerBlockTree!.Head!.Number - 64;
+            Hash256 wrongNumberHash = _externalPeerBlockTree!.FindLevel(requestedPivotNumber + 5)!.BlockInfos[0].BlockHash;
+            _syncPeer!.GetBlockHeaders(requestedPivotNumber, 1, 0, default)
+                .ReturnsForAnyArgs(_ => _externalPeerBlockTree!.FindHeaders(wrongNumberHash, 1, 0, default));
+
+            _ = new UnsafeStartingSyncPivotUpdater(
+                _blockTree!,
+                _syncModeSelector!,
+                _syncPeerPool!,
+                _syncConfig!,
+                _blockCacheService!,
+                _beaconSyncStrategy!,
+                LimboLogs.Instance
+            );
+
+            _beaconSyncStrategy!.GetHeadBlockHash().Returns(_externalPeerBlockTree!.HeadHash);
+
+            _syncModeSelector!.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.FastSync, SyncMode.UpdatingPivot));
+
+            Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
+                "a peer header at a number other than the requested one must not set the pivot");
         }
     }
 }

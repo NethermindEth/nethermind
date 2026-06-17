@@ -25,8 +25,11 @@ public class ReadOnlyAccountChangesLookupTests
     {
         ReadOnlyAccountChanges ac = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
 
-        Assert.That(ac.GetBalance(0), Is.Null);
-        Assert.That(ac.GetBalance(uint.MaxValue), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetBalance(0), Is.Null);
+            Assert.That(ac.GetBalance(uint.MaxValue), Is.Null);
+        }
     }
 
     [Test]
@@ -39,8 +42,11 @@ public class ReadOnlyAccountChangesLookupTests
 
         // The filter is strictly-before: a change at 2 is excluded by GetBalance(2),
         // and GetBalance(0) sees nothing at all.
-        Assert.That(ac.GetBalance(0), Is.Null);
-        Assert.That(ac.GetBalance(2), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetBalance(0), Is.Null);
+            Assert.That(ac.GetBalance(2), Is.Null);
+        }
     }
 
     [Test]
@@ -144,7 +150,10 @@ public class ReadOnlyAccountChangesLookupTests
 
         BalanceChange last = ac.BalanceChanges[^1];
 
-        Assert.That(last.Index, Is.EqualTo(2u));
-        Assert.That(last.Value, Is.EqualTo((UInt256)300));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(last.Index, Is.EqualTo(2u));
+            Assert.That(last.Value, Is.EqualTo((UInt256)300));
+        }
     }
 }

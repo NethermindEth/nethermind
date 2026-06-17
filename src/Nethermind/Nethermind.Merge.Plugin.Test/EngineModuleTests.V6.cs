@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -499,12 +500,12 @@ public partial class EngineModuleTests
             Bytes.FromHexString("0x0100000000000000000000000000000000000000000000000000000000000001"),
             blobTx.BlobVersionedHashes![1]!,
         ];
-        ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?> result = await rpcModule.engine_getBlobsV4(request, requestedMask.ToBytes());
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4(request, ToBitArray(requestedMask));
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
         Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, requestedMask, out byte[][] expectedCells), Is.True);
 
-        BlobCellsAndProofsV1?[] blobsAndProofs = result.Data!.ToArray();
+        BlobCellsAndProofs?[] blobsAndProofs = result.Data!.ToArray();
         int cellsPerBlob = requestedMask.Count;
 
         using (Assert.EnterMultipleScope())
@@ -512,10 +513,8 @@ public partial class EngineModuleTests
             Assert.That(result.Result, Is.EqualTo(Result.Success));
             Assert.That(blobsAndProofs.Length, Is.EqualTo(request.Length));
             Assert.That(blobsAndProofs[1], Is.Null);
-            Assert.That(blobsAndProofs[0]!.BlobCells, Is.EqualTo(expectedCells.Take(cellsPerBlob).ToArray()));
-            Assert.That(blobsAndProofs[0]!.Proofs, Is.EqualTo(BlobCellsHelper.SelectProofs(wrapper, 0, requestedMask)));
-            Assert.That(blobsAndProofs[2]!.BlobCells, Is.EqualTo(expectedCells.Skip(cellsPerBlob).Take(cellsPerBlob).ToArray()));
-            Assert.That(blobsAndProofs[2]!.Proofs, Is.EqualTo(BlobCellsHelper.SelectProofs(wrapper, 1, requestedMask)));
+            AssertBlobCellsAndProofs(blobsAndProofs[0]!, requestedMask, expectedCells, 0, BlobCellsHelper.SelectProofs(wrapper, 0, requestedMask));
+            AssertBlobCellsAndProofs(blobsAndProofs[2]!, requestedMask, expectedCells, cellsPerBlob, BlobCellsHelper.SelectProofs(wrapper, 1, requestedMask));
         }
     }
 
@@ -560,21 +559,23 @@ public partial class EngineModuleTests
         Assert.That(txResult, Is.EqualTo(AcceptTxResult.Accepted));
 
         BlobCellMask requestedMask = BlobCellMask.FromIndices([0, 5]);
-        ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?> result = await rpcModule.engine_getBlobsV4([blobTx.BlobVersionedHashes![0]!], requestedMask.ToBytes());
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4([blobTx.BlobVersionedHashes![0]!], ToBitArray(requestedMask));
 
-        BlobCellsAndProofsV1? blobsAndProofs = result.Data!.Single();
+        BlobCellsAndProofs? blobsAndProofs = result.Data!.Single();
         byte[][] expectedProofs = BlobCellsHelper.SelectProofs(sparseWrapper, 0, requestedMask);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result, Is.EqualTo(Result.Success));
             Assert.That(blobsAndProofs, Is.Not.Null);
-            Assert.That(blobsAndProofs!.BlobCells, Has.Length.EqualTo(2));
-            Assert.That(blobsAndProofs.Proofs, Has.Length.EqualTo(2));
-            Assert.That(blobsAndProofs.BlobCells[0], Is.EqualTo(availableCells[0]));
-            Assert.That(blobsAndProofs.Proofs[0], Is.EqualTo(expectedProofs[0]));
-            Assert.That(blobsAndProofs.BlobCells[1], Is.Null);
-            Assert.That(blobsAndProofs.Proofs[1], Is.Null);
+            byte[]?[] blobCells = blobsAndProofs!.BlobCells!;
+            byte[]?[] proofs = blobsAndProofs.Proofs!;
+            Assert.That(blobCells, Has.Length.GreaterThanOrEqualTo(BlobCellMask.CellCount));
+            Assert.That(proofs, Has.Length.GreaterThanOrEqualTo(BlobCellMask.CellCount));
+            Assert.That(blobCells[0], Is.EqualTo(availableCells[0]));
+            Assert.That(proofs[0]!.AsSpan(0, expectedProofs[0].Length).ToArray(), Is.EqualTo(expectedProofs[0]));
+            Assert.That(blobCells[5], Is.Null);
+            Assert.That(proofs[5], Is.Null);
         }
     }
 
@@ -584,7 +585,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?> result = await rpcModule.engine_getBlobsV4([], []);
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4([], new BitArray(0));
 
         using (Assert.EnterMultipleScope())
         {
@@ -599,7 +600,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?> result = await rpcModule.engine_getBlobsV4(null!, BlobCellMask.FromIndices([0]).ToBytes());
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4(null!, ToBitArray(BlobCellMask.FromIndices([0])));
 
         using (Assert.EnterMultipleScope())
         {
@@ -615,6 +616,36 @@ public partial class EngineModuleTests
         builder.AddSingleton(syncingInfo);
     }
 
+    private static BitArray ToBitArray(BlobCellMask mask)
+    {
+        BitArray result = new(BlobCellMask.CellCount);
+        foreach (int index in mask.EnumerateSetBits())
+        {
+            result.Set(index, true);
+        }
+
+        return result;
+    }
+
+    private static void AssertBlobCellsAndProofs(
+        BlobCellsAndProofs actual,
+        BlobCellMask requestedMask,
+        byte[][] expectedCells,
+        int expectedCellsOffset,
+        byte[][] expectedProofs)
+    {
+        Assert.That(actual.BlobCells, Has.Length.GreaterThanOrEqualTo(BlobCellMask.CellCount));
+            Assert.That(actual.Proofs, Has.Length.GreaterThanOrEqualTo(BlobCellMask.CellCount));
+
+        int expectedIndex = 0;
+        foreach (int cellIndex in requestedMask.EnumerateSetBits())
+        {
+            Assert.That(actual.BlobCells![cellIndex], Is.EqualTo(expectedCells[expectedCellsOffset + expectedIndex]));
+            Assert.That(actual.Proofs![cellIndex]!.AsSpan(0, expectedProofs[expectedIndex].Length).ToArray(), Is.EqualTo(expectedProofs[expectedIndex]));
+            expectedIndex++;
+        }
+    }
+
     [Test]
     public async Task ForkchoiceUpdatedV4_should_update_blob_custody_tracker()
     {
@@ -624,7 +655,7 @@ public partial class EngineModuleTests
 
         BlobCellMask custodyMask = BlobCellMask.FromIndices([1, 4, 9]);
         ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: custodyMask.ToBytes());
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: ToBitArray(custodyMask));
 
         using (Assert.EnterMultipleScope())
         {
@@ -642,7 +673,7 @@ public partial class EngineModuleTests
 
         BlobCellMask custodyMask = BlobCellMask.FromIndices([2, 7]);
         ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, TestItem.KeccakF, chain.BlockTree.HeadHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: custodyMask.ToBytes());
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: ToBitArray(custodyMask));
 
         using (Assert.EnterMultipleScope())
         {
@@ -653,34 +684,19 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task ForkchoiceUpdatedV4_should_reject_invalid_custody_columns_bitarray()
+    public async Task ForkchoiceUpdatedV4_should_ignore_invalid_custody_columns_bitarray()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
 
         ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: []);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: new BitArray(0));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
             Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(BlobCellMask.Empty));
-        }
-    }
-
-    [Test]
-    public async Task BlobCellsAndProofsV1_should_serialize_blob_cells_with_spec_name()
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
-
-        string json = chain.JsonSerializer.Serialize(new BlobCellsAndProofsV1([new byte[] { 1 }, null], [new byte[] { 2 }, null]));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(json, Does.Contain("\"blob_cells\""));
-            Assert.That(json, Does.Not.Contain("\"blobCells\""));
         }
     }
 

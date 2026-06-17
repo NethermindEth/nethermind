@@ -48,7 +48,25 @@ namespace Nethermind.Core
 
             public bool KeyExists(long key) => db.KeyExists(key.ToBigEndianSpanWithoutLeadingZeros(out _));
 
+            public Span<byte> GetSpan(long key) => db.GetSpan(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+
             public byte[]? Get(long key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
+
+            public long GetLongFromBigEndianByteArrayWithoutLeadingZeros(Hash256 key, long defaultValue)
+            {
+                Span<byte> bytes = db.GetSpan(key);
+                long value = bytes.IsNull() ? defaultValue : bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                db.DangerousReleaseMemory(bytes);
+                return value;
+            }
+
+            public long GetLongFromBigEndianByteArrayWithoutLeadingZeros(long key)
+            {
+                Span<byte> bytes = db.GetSpan(key);
+                long value = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                db.DangerousReleaseMemory(bytes);
+                return value;
+            }
         }
 
         extension(IWriteOnlyKeyValueStore db)

@@ -173,10 +173,6 @@ public class DbConfig : IDbConfig
         "allow_concurrent_memtable_write=false;";
     public string? CodeDbAdditionalRocksDbOptions { get; set; }
 
-    public string BloomDbRocksDbOptions { get; set; } =
-        "max_bytes_for_level_base=16000000;";
-    public string? BloomDbAdditionalRocksDbOptions { get; set; }
-
     public string MetadataDbRocksDbOptions { get; set; } =
         "write_buffer_size=1000000;" +
         "max_bytes_for_level_base=16000000;";

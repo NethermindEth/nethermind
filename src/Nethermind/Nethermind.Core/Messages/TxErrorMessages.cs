@@ -9,6 +9,8 @@ public static class TxErrorMessages
         $"InvalidTxType: Transaction type in {name} is not supported.";
     public const string IntrinsicGasTooLow =
         "intrinsic gas too low";
+    public const string GasBelowFloorDataCost =
+        "gas below floor data cost";
     public const string TxMissingTo =
         "blob transaction of type create";
 

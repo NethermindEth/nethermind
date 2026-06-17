@@ -19,7 +19,6 @@ namespace Nethermind.Evm
     {
         private static readonly ConcurrentQueue<ExecutionEnvironment> _pool = new();
         private UInt256 _value;
-        private UInt256 _transferValue;
 
         /// <summary>
         /// Parsed bytecode for the current call.
@@ -45,11 +44,6 @@ namespace Nethermind.Evm
         public int CallDepth { get; private set; }
 
         /// <summary>
-        /// ETH value transferred in this call.
-        /// </summary>
-        public ref readonly UInt256 TransferValue => ref _transferValue;
-
-        /// <summary>
         /// Value information passed (it is different from transfer value in DELEGATECALL.
         /// DELEGATECALL behaves like a library call, and it uses the value information from the caller even
         /// as no transfer happens.
@@ -72,7 +66,6 @@ namespace Nethermind.Evm
             Address caller,
             Address? codeSource,
             int callDepth,
-            in UInt256 transferValue,
             in UInt256 value,
             in ReadOnlyMemory<byte> inputData)
         {
@@ -82,7 +75,6 @@ namespace Nethermind.Evm
             env.Caller = caller;
             env.CodeSource = codeSource;
             env.CallDepth = callDepth;
-            env._transferValue = transferValue;
             env._value = value;
             env.InputData = inputData;
             return env;
@@ -100,7 +92,6 @@ namespace Nethermind.Evm
                 Caller = null!;
                 CodeSource = null;
                 CallDepth = 0;
-                _transferValue = default;
                 _value = default;
                 InputData = default;
                 _pool.Enqueue(this);

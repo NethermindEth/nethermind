@@ -164,7 +164,7 @@ namespace Nethermind.AuRa.Test
             (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
 
-        [Test, Retry(9)]
+        [Test, Category("Flaky"), Retry(9)]
         public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions()
         {
             Context context = new();
@@ -206,7 +206,7 @@ namespace Nethermind.AuRa.Test
             (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
 
-        [Test, Retry(6)]
+        [Test]
         public async Task Does_not_produce_block_when_there_is_new_best_suggested_block_not_yet_processed() =>
             (await StartStop(new Context(), true, true)).ShouldProduceBlocks(Quantity.None());
 
@@ -236,6 +236,7 @@ namespace Nethermind.AuRa.Test
                 if (newBestSuggestedBlock)
                 {
                     context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                    await Task.Delay(context.StepDelay * 5);
                     context.BlockTree.ClearReceivedCalls();
                     processedEvent.Reset();
                 }

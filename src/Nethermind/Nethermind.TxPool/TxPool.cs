@@ -229,7 +229,7 @@ namespace Nethermind.TxPool
             => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs)
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
             => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
         public bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells)

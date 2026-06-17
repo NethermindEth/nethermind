@@ -79,8 +79,8 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     public virtual int TryGetBlobsAndProofsV1(
         byte[][] requestedBlobVersionedHashes,
-        byte[]?[] blobs,
-        ReadOnlyMemory<byte[]>[] proofs)
+        Span<byte[]?> blobs,
+        Span<ReadOnlyMemory<byte[]>> proofs)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
         int found = 0;
@@ -384,7 +384,8 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             cells = new byte[cellsPerBlob][];
             using ArrayPoolSpan<byte> allCells = new(Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob);
-            KzgPolynomialCommitments.ComputeCells(allCells, wrapper.Blobs[blobIndex]);
+            ReadOnlySpan<byte> blob = wrapper.Blobs[blobIndex];
+            KzgPolynomialCommitments.ComputeCells(allCells.Slice(0, allCells.Length), blob);
             int i = 0;
             foreach (int cellIndex in availableMask.EnumerateSetBits())
             {

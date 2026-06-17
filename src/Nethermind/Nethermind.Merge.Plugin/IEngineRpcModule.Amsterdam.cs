@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
@@ -29,7 +30,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributesV4? payloadAttributes = null, byte[]? custodyColumns = null);
+    Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
@@ -47,5 +48,5 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns requested blob cells and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, byte[]? indicesBitarray);
+    Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, BitArray indicesBitarray);
 }

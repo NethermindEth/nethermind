@@ -130,32 +130,38 @@ public class GethGenesisLoaderTests
     {
         ChainSpec chainSpec = LoadHoodiChainSpec();
 
-        Assert.That(chainSpec.ChainId, Is.EqualTo(560048));
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(560048));
-
-        Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(0));
-        Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(0));
-        Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(0));
-        Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(0));
-        Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(0));
-        Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(0));
-        Assert.That(chainSpec.BerlinBlockNumber, Is.EqualTo(0));
-        Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0));
-        Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(0));
-        Assert.That(chainSpec.CancunTimestamp, Is.EqualTo(0));
-        Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(1742999832));
-        Assert.That(chainSpec.OsakaTimestamp, Is.EqualTo(1761677592));
-
+        // Null/empty preconditions must fail fast — subsequent asserts deref these and would NRE
+        // if they were inside the same EnterMultipleScope (which records failure but keeps going).
         Assert.That(chainSpec.Genesis, Is.Not.Null);
-        Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x2255100));
-
         Assert.That(chainSpec.Allocations, Is.Not.Empty);
-        Assert.That(chainSpec.Allocations[Address.Zero].Balance, Is.EqualTo(UInt256.One));
-
         Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
-        Assert.That(chainSpec.Parameters.BlobSchedule!.Count, Is.EqualTo(3));
 
-        Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.ChainId, Is.EqualTo(560048));
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(560048));
+
+            Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.BerlinBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.CancunTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(1742999832));
+            Assert.That(chainSpec.OsakaTimestamp, Is.EqualTo(1761677592));
+
+            Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x2255100));
+
+            Assert.That(chainSpec.Allocations[Address.Zero].Balance, Is.EqualTo(UInt256.One));
+
+            Assert.That(chainSpec.Parameters.BlobSchedule!.Count, Is.EqualTo(3));
+
+            Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));
+        }
     }
 
     [Test]
@@ -165,23 +171,32 @@ public class GethGenesisLoaderTests
             chainId: 12345,
             allocJson: """{ "0x0000000000000000000000000000000000000001": { "balance": "0x1" } }""");
 
-        Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(12345));
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash));
-        Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x8000000));
-        Assert.That(chainSpec.Genesis.Header.Difficulty, Is.EqualTo(UInt256.One));
-        Assert.That(chainSpec.Allocations.Count, Is.EqualTo(1));
-        Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(12345));
+            Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash));
+            Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x8000000));
+            Assert.That(chainSpec.Genesis.Header.Difficulty, Is.EqualTo(UInt256.One));
+            Assert.That(chainSpec.Allocations.Count, Is.EqualTo(1));
+            Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
+        }
 
         EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
         Assert.That(ethashParameters, Is.Not.Null);
-        Assert.That(ethashParameters!.DifficultyBoundDivisor, Is.EqualTo(0x800));
-        Assert.That(ethashParameters!.BlockReward!.ContainsKey(0), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ethashParameters!.DifficultyBoundDivisor, Is.EqualTo(0x800));
+            Assert.That(ethashParameters!.BlockReward!.ContainsKey(0), Is.True);
+        }
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         IReleaseSpec genesisSpec = provider.GetSpec(new ForkActivation(0));
-        Assert.That(genesisSpec.DifficultyBoundDivisor, Is.EqualTo(0x800));
-        Assert.That(genesisSpec.BlockReward, Is.EqualTo(new UInt256(5_000_000_000_000_000_000ul)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(genesisSpec.DifficultyBoundDivisor, Is.EqualTo(0x800));
+            Assert.That(genesisSpec.BlockReward, Is.EqualTo(new UInt256(5_000_000_000_000_000_000ul)));
+        }
     }
 
     [Test]
@@ -200,11 +215,14 @@ public class GethGenesisLoaderTests
             "pragueTime": 1800000000
             """);
 
-        Assert.That(chainSpec.ChainId, Is.EqualTo(1));
-        Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1681338455));
-        Assert.That(chainSpec.CancunTimestamp, Is.EqualTo(1710338135));
-        Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(1800000000));
-        Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.ChainId, Is.EqualTo(1));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1681338455));
+            Assert.That(chainSpec.CancunTimestamp, Is.EqualTo(1710338135));
+            Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(1800000000));
+            Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -226,8 +244,11 @@ public class GethGenesisLoaderTests
         ChainSpec genesisAtAmsterdam = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15", timestamp: 15);
         ChainSpecBasedSpecProvider genesisProvider = new(genesisAtAmsterdam);
 
-        Assert.That(genesisAtAmsterdam.Genesis.BlockAccessListHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
-        Assert.That(genesisAtAmsterdam.Genesis.SlotNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(genesisAtAmsterdam.Genesis.BlockAccessListHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+            Assert.That(genesisAtAmsterdam.Genesis.SlotNumber, Is.EqualTo(0));
+        }
         AssertAmsterdamEipsEnabled(genesisProvider.GenesisSpec, true);
         Assert.That(genesisProvider.GenesisSpec.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
     }
@@ -263,9 +284,12 @@ public class GethGenesisLoaderTests
 
         ChainSpec chainSpec = LoadFromString(genesis);
 
-        Assert.That(chainSpec.Parameters.Eip7Transition, Is.EqualTo(1));
-        Assert.That(chainSpec.Parameters.ValidateChainIdTransition, Is.EqualTo(3));
-        Assert.That(chainSpec.Parameters.ValidateReceiptsTransition, Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip7Transition, Is.EqualTo(1));
+            Assert.That(chainSpec.Parameters.ValidateChainIdTransition, Is.EqualTo(3));
+            Assert.That(chainSpec.Parameters.ValidateReceiptsTransition, Is.EqualTo(5));
+        }
     }
 
     [Test]
@@ -283,13 +307,16 @@ public class GethGenesisLoaderTests
         Assert.That(chainSpec.Parameters.BlobSchedule!.Count, Is.EqualTo(2));
 
         List<BlobScheduleSettings> blobScheduleList = [.. chainSpec.Parameters.BlobSchedule];
-        Assert.That(blobScheduleList[0].Timestamp, Is.EqualTo(1710338135));
-        Assert.That(blobScheduleList[0].Target, Is.EqualTo(3));
-        Assert.That(blobScheduleList[0].Max, Is.EqualTo(6));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobScheduleList[0].Timestamp, Is.EqualTo(1710338135));
+            Assert.That(blobScheduleList[0].Target, Is.EqualTo(3));
+            Assert.That(blobScheduleList[0].Max, Is.EqualTo(6));
 
-        Assert.That(blobScheduleList[1].Timestamp, Is.EqualTo(1800000000));
-        Assert.That(blobScheduleList[1].Target, Is.EqualTo(6));
-        Assert.That(blobScheduleList[1].Max, Is.EqualTo(9));
+            Assert.That(blobScheduleList[1].Timestamp, Is.EqualTo(1800000000));
+            Assert.That(blobScheduleList[1].Target, Is.EqualTo(6));
+            Assert.That(blobScheduleList[1].Max, Is.EqualTo(9));
+        }
     }
 
     [Test]
@@ -312,10 +339,13 @@ public class GethGenesisLoaderTests
         Assert.That(chainSpec.Allocations.ContainsKey(address), Is.True);
 
         ChainSpecAllocation allocation = chainSpec.Allocations[address];
-        Assert.That(allocation.Balance, Is.EqualTo(UInt256.Parse("1000000000000000000"))); // 1 ETH in wei
-        Assert.That(allocation.Nonce, Is.EqualTo(UInt256.One));
-        Assert.That(allocation.Code, Is.EqualTo(new byte[] { 0x60, 0x80, 0x60, 0x40, 0x52 }));
-        Assert.That(allocation.Storage!.Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocation.Balance, Is.EqualTo(UInt256.Parse("1000000000000000000"))); // 1 ETH in wei
+            Assert.That(allocation.Nonce, Is.EqualTo(UInt256.One));
+            Assert.That(allocation.Code, Is.EqualTo(new byte[] { 0x60, 0x80, 0x60, 0x40, 0x52 }));
+            Assert.That(allocation.Storage!.Count, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -328,9 +358,12 @@ public class GethGenesisLoaderTests
             }
             """);
 
-        Assert.That(chainSpec.Allocations.Count, Is.EqualTo(2));
-        Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
-        Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000002")].Balance, Is.EqualTo((UInt256)2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Allocations.Count, Is.EqualTo(2));
+            Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
+            Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000002")].Balance, Is.EqualTo((UInt256)2));
+        }
     }
 
     [Test]
@@ -361,8 +394,11 @@ public class GethGenesisLoaderTests
 
         ChainSpec chainSpec = LoadAutoDetecting(parityChainspec);
 
-        Assert.That(chainSpec.Name, Is.EqualTo("TestNet"));
-        Assert.That(chainSpec.ChainId, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Name, Is.EqualTo("TestNet"));
+            Assert.That(chainSpec.ChainId, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -372,8 +408,11 @@ public class GethGenesisLoaderTests
             "\"pragueTime\": 1800000000, " +
             "\"depositContractAddress\": \"0x00000000219ab540356cBB839Cbe05303d7705Fa\"");
 
-        Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));
-        Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));
+            Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        }
     }
 
     [Test]
@@ -381,8 +420,11 @@ public class GethGenesisLoaderTests
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(chainId: 12345, configExtra: "\"pragueTime\": 1800000000");
 
-        Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(Address.Zero));
-        Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(Address.Zero));
+            Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        }
     }
 
     /// <summary>
@@ -639,10 +681,13 @@ public class GethGenesisLoaderTests
             }
         }
 
-        Assert.That(differences, Is.Empty, $"at activation {forkActivation}, the following properties differ:\n{string.Join("\n", differences)}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(differences, Is.Empty, $"at activation {forkActivation}, the following properties differ:\n{string.Join("\n", differences)}");
 
-        Assert.That(provider.ChainId, Is.EqualTo(hardCodedSpec.ChainId));
-        Assert.That(provider.NetworkId, Is.EqualTo(hardCodedSpec.NetworkId));
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
+            Assert.That(provider.ChainId, Is.EqualTo(hardCodedSpec.ChainId));
+            Assert.That(provider.NetworkId, Is.EqualTo(hardCodedSpec.NetworkId));
+            Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
+        }
     }
 }

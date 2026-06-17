@@ -8,11 +8,12 @@ namespace Nethermind.Network.Discovery.Discv4;
 
 public class EnrResponseHandler(EnrRequestMsg request) : ITaskCompleter<EnrResponseMsg>
 {
-    public TaskCompletionSource<EnrResponseMsg> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource<DiscoveryResponse<EnrResponseMsg>> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public bool Handle(DiscoveryMsg msg) =>
-        msg is EnrResponseMsg resp
+        !TaskCompletionSource.Task.IsCompleted
+        && msg is EnrResponseMsg resp
         && request.Hash is { } expected
         && Bytes.AreEqual(resp.RequestKeccak.Bytes, expected.Span)
-        && TaskCompletionSource.TrySetResult(resp);
+        && TaskCompletionSource.TrySetResult(DiscoveryResponse<EnrResponseMsg>.From(resp));
 }

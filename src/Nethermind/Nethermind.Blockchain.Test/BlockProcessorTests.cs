@@ -1267,9 +1267,14 @@ public class BlockProcessorTests
         public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
         public bool ParallelExecutionEnabled => true;
+        public bool BatchReadEnabled => false;
         public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
         public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
+        {
+        }
+
+        public void WaitForBalWarmup()
         {
         }
 

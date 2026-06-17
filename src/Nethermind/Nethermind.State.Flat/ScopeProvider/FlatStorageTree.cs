@@ -62,6 +62,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     }
 
     public Hash256 RootHash => _tree.RootHash;
+
+    internal bool IsDisposed => _scope.IsDisposed;
+
     public byte[] Get(in UInt256 index)
     {
         byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);

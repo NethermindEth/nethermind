@@ -125,21 +125,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             return jsonRpcResult;
         }
 
-        private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, BlockReplacementEventArgs blockEventArgs, out string subscriptionId)
+        private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, BlockReplacementEventArgs blockEventArgs, out string subscriptionId, int expectedResults = 1)
         {
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
 
             List<JsonRpcResult> jsonRpcResults = [];
-
-            SemaphoreSlim semaphoreSlim = new(0, 1);
+            SemaphoreSlim received = new(0);
             logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
                 jsonRpcResults.Add(j);
+                received.Release();
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
-            semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
+
+            for (int i = 0; i < expectedResults; i++)
+            {
+                received.Wait(TimeSpan.FromSeconds(30));
+            }
 
             subscriptionId = logsSubscription.Id;
             return jsonRpcResults;
@@ -367,10 +371,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                     manualResetEvent.Set();
             }));
 
-            blockTree.UpdateMainChain(new Block[] { block1, block2, block3 }, true);
+            // Explicit-extent moves (genesis is not canonical in this lightweight tree, and these are sibling
+            // branches off it), so move exactly the supplied blocks rather than walking back to genesis.
+            blockTree.ForceMainChainForTest(new Block[] { block1, block2, block3 });
             manualResetEvent.WaitOne();
             manualResetEvent.Reset();
-            blockTree.UpdateMainChain(new Block[] { block1B, block2B }, true);
+            blockTree.ForceMainChainForTest(new Block[] { block1B, block2B });
             manualResetEvent.WaitOne();
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(5));
@@ -420,7 +426,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
             }));
 
-            blockTree.UpdateMainChain(blocks, true);
+            // The list includes genesis and the test expects a notification per block (21). The walk stops at
+            // genesis without re-moving it, so move exactly the supplied blocks to fire all 21 events.
+            blockTree.ForceMainChainForTest(blocks);
 
             manualResetEvent.WaitOne();
 
@@ -477,7 +485,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        [Retry(3)]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {
             int blockNumber = 55555;
@@ -511,7 +518,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string _);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string _, expectedResults: 0);
 
             Assert.That(jsonRpcResults.Count, Is.EqualTo(0));
         }
@@ -532,7 +539,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId, expectedResults: 3);
 
             Assert.That(jsonRpcResults.Count, Is.EqualTo(3));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
@@ -570,7 +577,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId, expectedResults: 5);
 
             Assert.That(jsonRpcResults.Count, Is.EqualTo(5));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
@@ -624,9 +631,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string? subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string? subscriptionId, expectedResults: 3);
 
-            Assert.That(() => jsonRpcResults.Count, Is.EqualTo(3).After(1000, 100));
+            Assert.That(jsonRpcResults.Count, Is.EqualTo(3));
 
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
@@ -672,7 +679,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(static r => r.Bloom).ToArray())).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string? subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string? subscriptionId, expectedResults: 3);
 
             Assert.That(jsonRpcResults.Count, Is.EqualTo(3));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
@@ -725,7 +732,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(static r => r.Bloom).ToArray())).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string? subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string? subscriptionId, expectedResults: 3);
 
             Assert.That(jsonRpcResults.Count, Is.EqualTo(3));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);

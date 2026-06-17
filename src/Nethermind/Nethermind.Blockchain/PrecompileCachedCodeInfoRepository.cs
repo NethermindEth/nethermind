@@ -25,6 +25,8 @@ public class PrecompileCachedCodeInfoRepository(
         ? precompileProvider.GetPrecompiles()
         : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
+    public bool IsCodeOverridable => baseCodeInfoRepository.IsCodeOverridable;
+
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {

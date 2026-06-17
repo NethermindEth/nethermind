@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using NUnit.Framework;
@@ -59,6 +60,23 @@ namespace Nethermind.Core.Test.Crypto
             ecdsa.Sign(key, tx, isEip155Enabled);
             Address? address = ecdsa.RecoverAddress(tx);
             Assert.That(address, Is.EqualTo(key.Address));
+        }
+
+        [TestCase(TxType.Legacy, true)]
+        [TestCase(TxType.Legacy, false)]
+        [TestCase(TxType.AccessList, true)]
+        [TestCase(TxType.EIP1559, true)]
+        public void RecoverPublicKey_transaction_recovers_signer_public_key(TxType txType, bool isEip155Enabled)
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            PrivateKey key = Build.A.PrivateKey.TestObject;
+            Transaction tx = Build.A.Transaction.WithType(txType).TestObject;
+
+            ecdsa.Sign(key, tx, isEip155Enabled);
+
+            PublicKey? publicKey = ecdsa.RecoverPublicKey(tx);
+
+            Assert.That(publicKey, Is.EqualTo(key.PublicKey));
         }
 
         [Test]

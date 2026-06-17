@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
+using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 
 namespace Ethereum.Ssz.Test;
@@ -10,6 +12,48 @@ namespace Ethereum.Ssz.Test;
 public partial struct SingleFieldTestStruct
 {
     public byte A { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicBoolTypeContainer
+{
+    public bool Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicByteTypeContainer
+{
+    public byte Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt16TypeContainer
+{
+    public ushort Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt32TypeContainer
+{
+    public uint Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt64TypeContainer
+{
+    public ulong Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt128TypeContainer
+{
+    public UInt128 Value { get; set; }
+}
+
+[SszContainer]
+public partial struct BasicUInt256TypeContainer
+{
+    public UInt256 Value { get; set; }
 }
 
 [SszContainer]

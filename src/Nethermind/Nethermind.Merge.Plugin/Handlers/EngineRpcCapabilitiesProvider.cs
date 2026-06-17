@@ -27,14 +27,14 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
     public FrozenDictionary<string, RpcCapabilityOptions> GetJsonRpcCapabilities()
     {
         EnsureBuilt();
-        return _jsonRpc!;
+        return Volatile.Read(ref _jsonRpc)!;
     }
 
     /// <summary>SSZ-REST path capabilities only (e.g. <c>"POST /engine/v1/payloads"</c>).</summary>
     public FrozenDictionary<string, RpcCapabilityOptions> GetSszRestPaths()
     {
         EnsureBuilt();
-        return _ssz!;
+        return Volatile.Read(ref _ssz)!;
     }
 
     /// <summary>Union of JSON-RPC capabilities and SSZ-REST paths — what
@@ -50,11 +50,18 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         return _combined = combined.ToFrozenDictionary();
     }
 
+    /// <summary>
+    /// Whether the V4 engine API methods (<c>engine_getPayloadV4</c>, <c>engine_newPayloadV4</c>) are exposed.
+    /// Default: L1 condition (post-Pectra execution requests). Plugins may override to add chain-specific triggers
+    /// (e.g. OP Isthmus activation) via subclassing.
+    /// </summary>
+    protected virtual bool IsV4Enabled(IReleaseSpec spec) => spec.RequestsEnabled;
+
     private void EnsureBuilt()
     {
         if (Volatile.Read(ref _jsonRpc) is not null) return;
         Build(specProvider.GetFinalSpec(), out Dictionary<string, RpcCapabilityOptions> json, out Dictionary<string, RpcCapabilityOptions> ssz);
-        _ssz = ssz.ToFrozenDictionary();
+        Volatile.Write(ref _ssz, ssz.ToFrozenDictionary());
         Volatile.Write(ref _jsonRpc, json.ToFrozenDictionary());
     }
 
@@ -62,12 +69,12 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
     /// Builds the JSON-RPC and SSZ-REST tables in one pass. Each pair shares its
     /// <see cref="RpcCapabilityOptions"/> so the fork-gating logic is expressed once.
     /// </summary>
-    private static void Build(IReleaseSpec spec,
+    private void Build(IReleaseSpec spec,
         out Dictionary<string, RpcCapabilityOptions> json,
         out Dictionary<string, RpcCapabilityOptions> ssz)
     {
         bool preCancun = !spec.IsEip4844Enabled;
-        bool v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
+        bool v4 = IsV4Enabled(spec);
 
         Dictionary<string, RpcCapabilityOptions> jsonLocal = [];
         Dictionary<string, RpcCapabilityOptions> sszLocal = [];
@@ -95,7 +102,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadV2), SszRestPaths.GetV2Payloads, Gate(spec.WithdrawalsEnabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadV2), SszRestPaths.PostV2Payloads, Gate(spec.WithdrawalsEnabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1), SszRestPaths.PostV1PayloadBodiesByHash, Gate(spec.WithdrawalsEnabled));
-        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1), SszRestPaths.PostV1PayloadBodiesByRange, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1), SszRestPaths.GetV1PayloadBodiesByRange, Gate(spec.WithdrawalsEnabled));
 
         // Cancun
         Configure(nameof(IEngineRpcModule.engine_getPayloadV3), SszRestPaths.GetV3Payloads, GateWithWarn(spec.IsEip4844Enabled));
@@ -111,13 +118,14 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadV5), SszRestPaths.GetV5Payloads, GateWithWarn(spec.IsEip7594Enabled));
         Configure(nameof(IEngineRpcModule.engine_getBlobsV2), SszRestPaths.PostV2Blobs, Gate(spec.IsEip7594Enabled));
         Configure(nameof(IEngineRpcModule.engine_getBlobsV3), SszRestPaths.PostV3Blobs, Gate(spec.IsEip7594Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostV4Blobs, Gate(spec.IsEip7594Enabled));
 
         // Amsterdam
         Configure(nameof(IEngineRpcModule.engine_getPayloadV6), SszRestPaths.GetV6Payloads, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadV5), SszRestPaths.PostV5Payloads, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), SszRestPaths.PostV4Forkchoice, GateWithWarn(spec.IsEip7843Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostV2PayloadBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.PostV2PayloadBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetV2PayloadBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
         jsonLocal[nameof(IEngineRpcModule.engine_getBlobsV4)] = Gate(spec.IsEip7843Enabled);
 
         json = jsonLocal;

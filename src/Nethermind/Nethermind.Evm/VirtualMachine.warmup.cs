@@ -49,7 +49,6 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             caller: addressOne,
             codeSource: addressOne,
             callDepth: 0,
-            transferValue: 0,
             value: 0,
             inputData: default);
 

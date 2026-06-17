@@ -14,6 +14,7 @@ namespace Nethermind.Blockchain;
 public class BlockTreeSuggestPacer : IDisposable
 {
     private TaskCompletionSource? _dbBatchProcessed;
+    private TaskCompletionSource? _pausedSignal;
     private long _blockNumberReachedToUnlock = 0;
     private readonly long _stopBatchSize;
     private readonly long _resumeBatchSize;
@@ -25,6 +26,21 @@ public class BlockTreeSuggestPacer : IDisposable
         _blockTree = blockTree;
         _stopBatchSize = stopBatchSize;
         _resumeBatchSize = resumeBatchSize;
+    }
+
+    /// <summary>
+    /// Awaitable that completes when the pacer is paused — either right now or as soon as it
+    /// transitions into the paused state. Used by tests to wait deterministically instead of
+    /// polling on side-effects.
+    /// </summary>
+    public Task WaitForPausedAsync(CancellationToken token = default)
+    {
+        if (_dbBatchProcessed is not null) return Task.CompletedTask;
+        TaskCompletionSource signal = LazyInitializer.EnsureInitialized(
+            ref _pausedSignal, () => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))!;
+        return token.CanBeCanceled
+            ? signal.Task.WaitAsync(token)
+            : signal.Task;
     }
 
     private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
@@ -45,6 +61,7 @@ public class BlockTreeSuggestPacer : IDisposable
             _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;
             TaskCompletionSource completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _dbBatchProcessed = completionSource;
+            Interlocked.Exchange(ref _pausedSignal, null)?.TrySetResult();
         }
 
         if (_dbBatchProcessed is not null)

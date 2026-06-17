@@ -34,7 +34,7 @@ public class ParallelUnbalancedWorkTests
             if (i == 500) throw expected;
         });
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(act)!;
+        InvalidOperationException exception = Assert.Catch<InvalidOperationException>(act)!;
         Assert.That(exception, Is.SameAs(expected));
     }
 
@@ -46,7 +46,7 @@ public class ParallelUnbalancedWorkTests
             if (i == 100) ThrowFromHelper();
         });
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(act)!;
+        InvalidOperationException exception = Assert.Catch<InvalidOperationException>(act)!;
         Assert.That(exception.StackTrace, Does.Contain(nameof(ThrowFromHelper)));
     }
 

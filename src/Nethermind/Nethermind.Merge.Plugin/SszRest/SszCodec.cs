@@ -34,16 +34,18 @@ public static class SszCodec
 
     public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)
     {
-        SszBytes8[]? pidList = null;
+        SszPayloadId[]? pidList = null;
         if (resp.PayloadId is not null)
         {
             ReadOnlySpan<char> hex = resp.PayloadId.AsSpan();
             if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
             if (hex.Length != 16)
                 throw new InvalidOperationException($"Invalid payload id '{resp.PayloadId}': expected 16 hex chars, got {hex.Length}");
-            Span<byte> stack = stackalloc byte[8];
-            Bytes.FromHexString(hex, stack);
-            pidList = [SszBytes8.FromSpan(stack)];
+            // ByteVector[8]: transmitted as-is (no LE flip — the bytes are already the
+            // opaque token; the spec says treat payload_id as opaque bytes, not a uint64).
+            byte[] idBytes = new byte[8];
+            Bytes.FromHexString(hex, idBytes);
+            pidList = [new SszPayloadId { Bytes = idBytes }];
         }
 
         return EncodeToWriter(new ForkchoiceUpdatedResponseWire
@@ -120,42 +122,93 @@ public static class SszCodec
 
     public static int EncodeGetBlobsV1Response(IReadOnlyList<BlobAndProofV1?> blobs, IBufferWriter<byte> writer)
     {
-        // V1 SSZ has no nullable wrapper, nulls (unknown hashes) are dropped and the CL
-        // infers misses by comparing response length to request length.
         int count = blobs.Count;
-        int filled = 0;
-        for (int i = 0; i < count; i++) if (blobs[i] is not null) filled++;
-        BlobAndProofV1Wire[] arr = new BlobAndProofV1Wire[filled];
-        int j = 0;
+        BlobV1EntryWire[] arr = new BlobV1EntryWire[count];
         for (int i = 0; i < count; i++)
-            if (blobs[i] is { } b) arr[j++] = new() { Blob = b.Blob, Proof = b.Proof };
-        return EncodeToWriter(new GetBlobsV1ResponseWire { BlobsAndProofs = arr }, writer);
+        {
+            BlobAndProofV1? b = blobs[i];
+            arr[i] = b is null
+                ? new BlobV1EntryWire { Available = false, Contents = default }
+                : new BlobV1EntryWire { Available = true, Contents = new() { Blob = b.Blob, Proof = b.Proof } };
+        }
+        return EncodeToWriter(new GetBlobsV1ResponseWire { Entries = arr }, writer);
     }
 
     public static int EncodeGetBlobsV2Response(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
     {
         int count = blobs.Count;
-        int filled = 0;
-        for (int i = 0; i < count; i++) if (blobs[i] is not null) filled++;
-        BlobAndProofV2Wire[] arr = new BlobAndProofV2Wire[filled];
-        int j = 0;
+        BlobV2EntryWire[] arr = new BlobV2EntryWire[count];
         for (int i = 0; i < count; i++)
-            if (blobs[i] is { } b) arr[j++] = new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() };
-        return EncodeToWriter(new GetBlobsV2ResponseWire { BlobsAndProofs = arr }, writer);
+        {
+            BlobAndProofV2? b = blobs[i];
+            arr[i] = b is null
+                ? new BlobV2EntryWire { Available = false, Contents = default }
+                : new BlobV2EntryWire { Available = true, Contents = new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() } };
+        }
+        return EncodeToWriter(new GetBlobsV2ResponseWire { Entries = arr }, writer);
     }
 
     public static int EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
     {
         int count = blobs.Count;
-        NullableBlobAndProofV2Wire[] arr = new NullableBlobAndProofV2Wire[count];
+        BlobV3EntryWire[] arr = new BlobV3EntryWire[count];
         for (int i = 0; i < count; i++)
         {
             BlobAndProofV2? b = blobs[i];
             arr[i] = b is null
-                ? new() { BlobAndProof = [] }
-                : new() { BlobAndProof = [new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() }] };
+                ? new BlobV3EntryWire { Available = false, Contents = default }
+                : new BlobV3EntryWire { Available = true, Contents = new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() } };
         }
-        return EncodeToWriter(new GetBlobsV3ResponseWire { BlobsAndProofs = arr }, writer);
+        return EncodeToWriter(new GetBlobsV3ResponseWire { Entries = arr }, writer);
+    }
+
+    public static (byte[][] hashes, System.Collections.BitArray indices) DecodeGetBlobsV4Request(ReadOnlySequence<byte> buf)
+    {
+        GetBlobsV4RequestWire.Decode(buf, out GetBlobsV4RequestWire wire);
+        if (wire.BlobVersionedHashes is null) return ([], new System.Collections.BitArray(128));
+        byte[][] hashes = new byte[wire.BlobVersionedHashes.Length][];
+        for (int i = 0; i < hashes.Length; i++)
+            hashes[i] = wire.BlobVersionedHashes[i].Bytes.ToArray();
+        return (hashes, wire.IndicesBitarray ?? new System.Collections.BitArray(128));
+    }
+
+    public static int EncodeGetBlobsV4Response(IReadOnlyList<BlobCellsAndProofs?> blobs, IBufferWriter<byte> writer)
+    {
+        const int CellsPerExtBlob = 128;
+        int count = blobs.Count;
+        BlobV4EntryWire[] arr = new BlobV4EntryWire[count];
+        for (int i = 0; i < count; i++)
+        {
+            BlobCellsAndProofs? b = blobs[i];
+            if (b is null || !b.Available)
+            {
+                arr[i] = new BlobV4EntryWire { Available = false, Contents = default };
+                continue;
+            }
+
+            NullableBlobCellWire[] cells = new NullableBlobCellWire[CellsPerExtBlob];
+            NullableKzgProofWire[] proofs = new NullableKzgProofWire[CellsPerExtBlob];
+            byte[]?[]? srcCells = b.BlobCells;
+            byte[]?[]? srcProofs = b.Proofs;
+            for (int j = 0; j < CellsPerExtBlob; j++)
+            {
+                byte[]? cell = j < (srcCells?.Length ?? 0) ? srcCells![j] : null;
+                byte[]? proof = j < (srcProofs?.Length ?? 0) ? srcProofs![j] : null;
+                cells[j] = cell is null
+                    ? new() { Cell = [] }
+                    : new() { Cell = [SszBlobCell.FromSpan(cell.AsSpan(0, SszBlobCell.BlobCellLength))] };
+                proofs[j] = proof is null
+                    ? new() { Proof = [] }
+                    : new() { Proof = [SszKzgCommitment.FromSpan(proof.AsSpan(0, SszKzgCommitment.KzgCommitmentLength))] };
+            }
+
+            arr[i] = new BlobV4EntryWire
+            {
+                Available = true,
+                Contents = new BlobCellsAndProofsWire { BlobCells = cells, Proofs = proofs }
+            };
+        }
+        return EncodeToWriter(new GetBlobsV4ResponseWire { Entries = arr }, writer);
     }
 
     public static Hash256[] DecodeGetPayloadBodiesByHashRequest(ReadOnlySequence<byte> buf)
@@ -173,25 +226,29 @@ public static class SszCodec
     public static int EncodePayloadBodiesV1Response(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies, IBufferWriter<byte> writer)
     {
         int count = bodies.Count;
-        NullablePayloadBodyV1Wire[] arr = new NullablePayloadBodyV1Wire[count];
+        BodyEntryV1Wire[] arr = new BodyEntryV1Wire[count];
         for (int i = 0; i < count; i++)
         {
             ExecutionPayloadBodyV1Result? b = bodies[i];
-            arr[i] = new() { Body = b is null ? [] : [b.ToBodyWire()] };
+            arr[i] = b is null
+                ? new BodyEntryV1Wire { Available = false, Body = default }
+                : new BodyEntryV1Wire { Available = true, Body = b.ToBodyWire() };
         }
-        return EncodeToWriter(new PayloadBodiesV1ResponseWire { PayloadBodies = arr }, writer);
+        return EncodeToWriter(new PayloadBodiesV1ResponseWire { Entries = arr }, writer);
     }
 
     public static int EncodePayloadBodiesV2Response(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies, IBufferWriter<byte> writer)
     {
         int count = bodies.Count;
-        NullablePayloadBodyV2Wire[] arr = new NullablePayloadBodyV2Wire[count];
+        BodyEntryV2Wire[] arr = new BodyEntryV2Wire[count];
         for (int i = 0; i < count; i++)
         {
             ExecutionPayloadBodyV2Result? b = bodies[i];
-            arr[i] = new() { Body = b is null ? [] : [b.ToBodyWire()] };
+            arr[i] = b is null
+                ? new BodyEntryV2Wire { Available = false, Body = default }
+                : new BodyEntryV2Wire { Available = true, Body = b.ToBodyWire() };
         }
-        return EncodeToWriter(new PayloadBodiesV2ResponseWire { PayloadBodies = arr }, writer);
+        return EncodeToWriter(new PayloadBodiesV2ResponseWire { Entries = arr }, writer);
     }
 
     public static int EncodeCapabilitiesResponse(IReadOnlyList<string> caps, IBufferWriter<byte> writer)
@@ -258,17 +315,23 @@ public static class SszCodec
     private static PayloadStatusWire BuildPayloadStatusWire(PayloadStatusV1 ps)
     {
         const int MaxErrorBytes = 1024;
-        byte[] errorBytes = ps.ValidationError is not null
-            ? Encoding.UTF8.GetBytes(ps.ValidationError)
-            : [];
-        if (errorBytes.Length > MaxErrorBytes)
-            errorBytes = errorBytes[..MaxErrorBytes];
+        SszValidationError[] error;
+        if (ps.ValidationError is null)
+        {
+            error = [];
+        }
+        else
+        {
+            byte[] errorBytes = Encoding.UTF8.GetBytes(ps.ValidationError);
+            if (errorBytes.Length > MaxErrorBytes) errorBytes = errorBytes[..MaxErrorBytes];
+            error = [new SszValidationError { Bytes = errorBytes }];
+        }
 
         return new()
         {
             Status = EngineStatusToSsz(ps.Status),
             LatestValidHash = ps.LatestValidHash is not null ? [ps.LatestValidHash] : [],
-            ValidationError = errorBytes
+            ValidationError = error
         };
     }
 
@@ -310,4 +373,24 @@ public static class SszCodec
         return payloadAttributes;
     }
 
+    public static Hash256[] GetBlobVersionedHashes(ExecutionPayload payload)
+    {
+        Result<Transaction[]> decoded = payload.TryGetTransactions();
+        if (decoded.IsError) return [];
+        Transaction[] txs = decoded.Data;
+        int totalHashes = 0;
+        foreach (Transaction tx in txs)
+            if (tx.BlobVersionedHashes is { } h) totalHashes += h.Length;
+        List<Hash256> list = new(totalHashes);
+        foreach (Transaction tx in txs)
+        {
+            byte[]?[]? hashes = tx.BlobVersionedHashes;
+            if (hashes is null) continue;
+            foreach (byte[]? h in hashes)
+            {
+                if (h is not null) list.Add(new Hash256(h));
+            }
+        }
+        return list.ToArray();
+    }
 }

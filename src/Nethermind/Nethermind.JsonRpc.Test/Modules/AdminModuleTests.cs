@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -100,7 +101,8 @@ public class AdminModuleTests
             new ChainSpec { Parameters = new ChainParameters() }.Parameters,
             Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            Substitute.For<IBlockProcessingPauseControl>());
         _adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
 
         _serializer = new EthereumJsonSerializer();
@@ -125,10 +127,13 @@ public class AdminModuleTests
         Assert.That(peerInfoList.Count, Is.EqualTo(1), "the setup wires exactly one validated active peer");
 
         PeerInfo peerInfo = peerInfoList[0];
-        Assert.That(peerInfo.Network.RemoteAddress, Is.Not.Null.And.Not.Empty, "the validated session must report a remote address");
-        Assert.That(peerInfo.Network.Inbound, Is.False, "the test peer is configured with an outbound session");
-        Assert.That(peerInfo.Network.Static, Is.True, "the test peer is constructed with isStatic=true");
-        Assert.That(peerInfo.Id, Is.Not.Null, "every peer carries a public-key identifier");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.Network.RemoteAddress, Is.Not.Null.And.Not.Empty, "the validated session must report a remote address");
+            Assert.That(peerInfo.Network.Inbound, Is.False, "the test peer is configured with an outbound session");
+            Assert.That(peerInfo.Network.Static, Is.True, "the test peer is constructed with isStatic=true");
+            Assert.That(peerInfo.Id, Is.Not.Null, "every peer carries a public-key identifier");
+        }
     }
 
     [Test]
@@ -139,20 +144,23 @@ public class AdminModuleTests
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         NodeInfo nodeInfo = ((JsonElement)response.Result!).Deserialize<NodeInfo>(EthereumJsonSerializer.JsonOptions)!;
 
-        Assert.That(nodeInfo.Enode, Is.EqualTo(_enodeString), "admin_nodeInfo echoes the configured local enode URL");
-        Assert.That(nodeInfo.Id, Is.EqualTo("ae3623ef35c06ab49e9ae4b9f5a2b0f1983c28f85de1ccc98e2174333fdbdf1f"), "node id is the keccak hash of the configured public key");
-        Assert.That(nodeInfo.Ip, Is.EqualTo("127.0.0.1"), "the configured enode advertises 127.0.0.1");
-        Assert.That(nodeInfo.Name, Is.EqualTo(ProductInfo.ClientId), "the node identifies itself with the runtime client id");
-        Assert.That(nodeInfo.ListenAddress, Is.EqualTo("127.0.0.1:30303"), "listenAddress is host:port from the configured enode");
-        Assert.That(nodeInfo.Ports.Discovery, Is.EqualTo(_networkConfig.DiscoveryPort), "discovery port comes from network config");
-        Assert.That(nodeInfo.Ports.Listener, Is.EqualTo(_networkConfig.P2PPort), "listener port comes from network config");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeInfo.Enode, Is.EqualTo(_enodeString), "admin_nodeInfo echoes the configured local enode URL");
+            Assert.That(nodeInfo.Id, Is.EqualTo("ae3623ef35c06ab49e9ae4b9f5a2b0f1983c28f85de1ccc98e2174333fdbdf1f"), "node id is the keccak hash of the configured public key");
+            Assert.That(nodeInfo.Ip, Is.EqualTo("127.0.0.1"), "the configured enode advertises 127.0.0.1");
+            Assert.That(nodeInfo.Name, Is.EqualTo(ProductInfo.ClientId), "the node identifies itself with the runtime client id");
+            Assert.That(nodeInfo.ListenAddress, Is.EqualTo("127.0.0.1:30303"), "listenAddress is host:port from the configured enode");
+            Assert.That(nodeInfo.Ports.Discovery, Is.EqualTo(_networkConfig.DiscoveryPort), "discovery port comes from network config");
+            Assert.That(nodeInfo.Ports.Listener, Is.EqualTo(_networkConfig.P2PPort), "listener port comes from network config");
 
-        Assert.That(nodeInfo.Protocols, Has.Count.EqualTo(1), "only the eth protocol is registered in this test setup");
-        Assert.That(nodeInfo.Protocols["eth"].Difficulty, Is.EqualTo(_blockTree.Head?.TotalDifficulty ?? 0), "difficulty mirrors the head total difficulty");
-        Assert.That(nodeInfo.Protocols["eth"].HeadHash, Is.EqualTo(_blockTree.HeadHash), "head hash mirrors the block tree head");
-        Assert.That(nodeInfo.Protocols["eth"].GenesisHash, Is.EqualTo(_blockTree.GenesisHash), "genesis hash mirrors the block tree genesis");
-        Assert.That(nodeInfo.Protocols["eth"].NetworkId, Is.EqualTo(_blockTree.NetworkId), "network id mirrors the block tree network id");
-        Assert.That(nodeInfo.Protocols["eth"].ChainId, Is.EqualTo(_blockTree.ChainId), "chain id mirrors the block tree chain id");
+            Assert.That(nodeInfo.Protocols, Has.Count.EqualTo(1), "only the eth protocol is registered in this test setup");
+            Assert.That(nodeInfo.Protocols["eth"].Difficulty, Is.EqualTo(_blockTree.Head?.TotalDifficulty ?? 0), "difficulty mirrors the head total difficulty");
+            Assert.That(nodeInfo.Protocols["eth"].HeadHash, Is.EqualTo(_blockTree.HeadHash), "head hash mirrors the block tree head");
+            Assert.That(nodeInfo.Protocols["eth"].GenesisHash, Is.EqualTo(_blockTree.GenesisHash), "genesis hash mirrors the block tree genesis");
+            Assert.That(nodeInfo.Protocols["eth"].NetworkId, Is.EqualTo(_blockTree.NetworkId), "network id mirrors the block tree network id");
+            Assert.That(nodeInfo.Protocols["eth"].ChainId, Is.EqualTo(_blockTree.ChainId), "chain id mirrors the block tree chain id");
+        }
     }
 
     [Test]
@@ -222,8 +230,11 @@ public class AdminModuleTests
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, method, badEnode);
 
-        Assert.That(serialized, Does.Contain("\"code\":-32602"), "all four peer-management methods must return InvalidParams whether parsing fails at scheme or content level");
-        Assert.That(serialized, Does.Contain("invalid enode"), "the error message must identify the failing parameter");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Does.Contain("\"code\":-32602"), "all four peer-management methods must return InvalidParams whether parsing fails at scheme or content level");
+            Assert.That(serialized, Does.Contain("invalid enode"), "the error message must identify the failing parameter");
+        }
     }
 
     [TestCase(false, false, TestName = "AdminRemoveTrustedPeer_WhenPersistentFalse_DropsInMemoryTrustedEntry")]
@@ -502,11 +513,14 @@ public class AdminModuleTests
 
         Assert.That(result.Data, Has.Length.EqualTo(1), "the peer pool was seeded with exactly one peer");
         PeerInfo peerInfo = result.Data[0];
-        Assert.That(peerInfo.Id, Is.EqualTo(TestItem.PublicKeyA), "the peer id is the public key passed to CreateTestPeer");
-        Assert.That(peerInfo.Name, Is.EqualTo("Geth/v1.15.10-stable-2bf8a789/linux-amd64/go1.24.2"), "the peer's client id is reported under name");
-        Assert.That(peerInfo.Network.Static, Is.True, "isStatic was set to true on the test peer");
-        Assert.That(peerInfo.Network.Inbound, Is.False, "the test peer was set up with an outbound session");
-        Assert.That(peerInfo.Caps, Is.EqualTo(capabilities), "all advertised capabilities must surface in admin_peers");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.Id, Is.EqualTo(TestItem.PublicKeyA), "the peer id is the public key passed to CreateTestPeer");
+            Assert.That(peerInfo.Name, Is.EqualTo("Geth/v1.15.10-stable-2bf8a789/linux-amd64/go1.24.2"), "the peer's client id is reported under name");
+            Assert.That(peerInfo.Network.Static, Is.True, "isStatic was set to true on the test peer");
+            Assert.That(peerInfo.Network.Inbound, Is.False, "the test peer was set up with an outbound session");
+            Assert.That(peerInfo.Caps, Is.EqualTo(capabilities), "all advertised capabilities must surface in admin_peers");
+        }
     }
 
     [Test]
@@ -530,8 +544,11 @@ public class AdminModuleTests
         ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         PeerInfo peerInfo = result.Data[0];
-        Assert.That(peerInfo.Caps, Is.EqualTo(capabilities), "all advertised eth versions plus snap must be reported");
-        Assert.That(peerInfo.Protocols.Keys, Is.SupersetOf(new[] { "eth", "snap" }), "both eth and snap protocols are present in the capabilities");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.Caps, Is.EqualTo(capabilities), "all advertised eth versions plus snap must be reported");
+            Assert.That(peerInfo.Protocols.Keys, Is.SupersetOf(new[] { "eth", "snap" }), "both eth and snap protocols are present in the capabilities");
+        }
     }
 
     [Test]
@@ -543,8 +560,11 @@ public class AdminModuleTests
         ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         PeerInfo peerInfo = result.Data[0];
-        Assert.That(peerInfo.Network.Inbound, Is.True, "the peer was created with isInbound=true");
-        Assert.That(peerInfo.Network.RemoteAddress, Is.EqualTo("192.168.1.100:45678"), "inbound sessions report the originating remote address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.Network.Inbound, Is.True, "the peer was created with isInbound=true");
+            Assert.That(peerInfo.Network.RemoteAddress, Is.EqualTo("192.168.1.100:45678"), "inbound sessions report the originating remote address");
+        }
     }
 
     [TestCase(68, "Nethermind/v1.25.4+2bf8a789/linux-x64/dotnet8.0.8", TestName = "AdminPeers_WithEthOnlyV68Peer_DoesNotIncludeSnap")]
@@ -558,9 +578,12 @@ public class AdminModuleTests
         ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         PeerInfo peerInfo = result.Data[0];
-        Assert.That(peerInfo.Caps, Is.EqualTo(capabilities), "only the advertised eth capability must surface");
-        Assert.That(peerInfo.Protocols, Does.ContainKey("eth"), "the eth protocol entry must be present");
-        Assert.That(peerInfo.Protocols, Does.Not.ContainKey("snap"), "snap was not advertised by this peer");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.Caps, Is.EqualTo(capabilities), "only the advertised eth capability must surface");
+            Assert.That(peerInfo.Protocols, Does.ContainKey("eth"), "the eth protocol entry must be present");
+            Assert.That(peerInfo.Protocols, Does.Not.ContainKey("snap"), "snap was not advertised by this peer");
+        }
     }
 
     [Test]
@@ -617,10 +640,57 @@ public class AdminModuleTests
         Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32).ToArray(), Is.EqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
     }
 
+    [TestCase(true, TestName = "pause delegates to Pause")]
+    [TestCase(false, TestName = "resume delegates to Resume")]
+    public void Admin_blockProcessingVerb_delegatesToControlAndReportsAccepted(bool pause)
+    {
+        IBlockProcessingPauseControl control = Substitute.For<IBlockProcessingPauseControl>();
+        IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: control);
+        control.IsPaused.Returns(pause);
+
+        ResultWrapper<bool> result = pause
+            ? module.admin_pauseBlockProcessing()
+            : module.admin_resumeBlockProcessing();
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (pause)
+            {
+                control.Received(1).Pause();
+                control.DidNotReceive().Resume();
+            }
+            else
+            {
+                control.Received(1).Resume();
+                control.DidNotReceive().Pause();
+            }
+
+            Assert.That(result.Data, Is.True, "the verb returns true once the processor reached the requested state");
+        }
+    }
+
+    [Test]
+    public void Admin_isBlockProcessingPaused_returnsStateWithoutMutating()
+    {
+        IBlockProcessingPauseControl control = Substitute.For<IBlockProcessingPauseControl>();
+        IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: control);
+        control.IsPaused.Returns(true);
+
+        ResultWrapper<bool> result = module.admin_isBlockProcessingPaused();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.True, "the query reflects the paused state");
+            control.DidNotReceive().Pause();
+            control.DidNotReceive().Resume();
+        }
+    }
+
     private IAdminRpcModule BuildAdminRpcModuleWith(
         IStaticNodesManager? staticNodesManager = null,
         ITrustedNodesManager? trustedNodesManager = null,
-        IPeerPool? peerPool = null)
+        IPeerPool? peerPool = null,
+        IBlockProcessingPauseControl? blockProcessingPauseControl = null)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
@@ -634,7 +704,8 @@ public class AdminModuleTests
             chainSpec.Parameters,
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            blockProcessingPauseControl ?? Substitute.For<IBlockProcessingPauseControl>());
     }
 
     private JsonRpcResult RaisePeerEventAndCapture(Action raiseEvent, out string subscriptionId, bool disposeSubscription = false, bool shouldReceive = true)
@@ -696,7 +767,8 @@ public class AdminModuleTests
             new ChainParameters(),
             Substitute.For<ITrustedNodesManager>(),
             subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            Substitute.For<IBlockProcessingPauseControl>());
     }
 
     private static IPeerPool CreatePeerPool(Peer peer)

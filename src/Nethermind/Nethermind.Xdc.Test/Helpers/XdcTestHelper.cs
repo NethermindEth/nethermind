@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -8,9 +12,6 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -34,14 +35,12 @@ internal static class XdcTestHelper
 
     public static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
-        VoteDecoder encoder = new();
-        IEnumerable<Signature> signatures = keys.Select(k =>
-        {
-            KeccakRlpStream stream = new();
-            encoder.Encode(stream, new Vote(roundInfo, gapNumber), RlpBehaviors.ForSealing);
-            return ecdsa.Sign(k, stream.GetValueHash());
-        }).ToArray();
-        return signatures.ToArray();
+        KeccakRlpStream stream = new();
+        decoder.Encode(stream, new Vote(roundInfo, gapNumber), RlpBehaviors.ForSealing);
+        ValueHash256 hash = stream.GetValueHash();
+        Signature[] signatures = new Signature[keys.Length];
+        Parallel.For(0, keys.Length, i => signatures[i] = ecdsa.Sign(keys[i], hash));
+        return signatures;
     }
 
     public static Timeout BuildSignedTimeout(PrivateKey key, ulong round, ulong gap)

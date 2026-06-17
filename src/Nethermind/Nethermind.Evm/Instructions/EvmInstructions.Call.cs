@@ -17,17 +17,10 @@ namespace Nethermind.Evm;
 public static partial class EvmInstructions
 {
     /// <summary>
-    /// Interface defining the properties for a call-like opcode.
-    /// Each implementation specifies whether the call is static and what its execution type is.
+    /// Interface defining the execution type for a call-like opcode.
     /// </summary>
     public interface IOpCall
     {
-        /// <summary>
-        /// Indicates if the call is static.
-        /// Static calls cannot modify state.
-        /// </summary>
-        virtual static bool IsStatic => false;
-
         /// <summary>
         /// Returns the specific execution type of the call.
         /// </summary>
@@ -63,7 +56,6 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpStaticCall : IOpCall
     {
-        public static bool IsStatic => true;
         public static ExecutionType ExecutionType => ExecutionType.STATICCALL;
     }
 
@@ -115,12 +107,12 @@ public static partial class EvmInstructions
         ExecutionEnvironment env = vm.VmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
-        if (typeof(TOpCall) == typeof(OpStaticCall))
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL)
         {
             // Static calls cannot transfer value.
-            callValue = UInt256.Zero;
+            callValue = default;
         }
-        else if (typeof(TOpCall) == typeof(OpDelegateCall))
+        else if (TOpCall.ExecutionType == ExecutionType.DELEGATECALL)
         {
             // Delegate calls use the value from the current execution context.
             callValue = env.Value;
@@ -136,26 +128,22 @@ public static partial class EvmInstructions
             goto StackUnderflow;
         }
 
-        // For non-delegate calls, the transfer value is the call value.
-        UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
+        bool hasValueTransfer = TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
-        if (vm.VmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode))
+        if (vm.VmState.IsStatic && hasValueTransfer && TOpCall.ExecutionType != ExecutionType.CALLCODE)
             return EvmExceptionType.StaticCallViolation;
 
         // Determine caller and target based on the call type.
-        Address caller = typeof(TOpCall) == typeof(OpDelegateCall) ? env.Caller : env.ExecutingAccount;
-        Address target = (typeof(TOpCall) == typeof(OpCall) || typeof(TOpCall) == typeof(OpStaticCall))
+        Address caller = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Caller : env.ExecutingAccount;
+        Address target = TOpCall.ExecutionType != ExecutionType.DELEGATECALL && TOpCall.ExecutionType != ExecutionType.CALLCODE
             ? codeSource
             : env.ExecutingAccount;
 
         // Add extra gas cost if value is transferred.
-        if (!transferValue.IsZero)
-        {
-            if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
-        }
+        if (hasValueTransfer && !TGasPolicy.ConsumeCallValueTransfer(ref gas))
+            goto OutOfGas;
 
         IReleaseSpec spec = vm.Spec;
-
         IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
@@ -168,23 +156,18 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
 
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(
-            codeSource,
-            followDelegation: false,
-            vmSpec: spec,
-            delegationAddress: out Address? delegated);
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
-        if (spec.UseHotAndColdStorage && delegated is not null)
-        {
-            if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                    vm.TxTracer.IsTracingAccess, delegated)) goto OutOfGas;
-        }
+        if (spec.UseHotAndColdStorage &&
+            delegated is not null &&
+            !TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, delegated))
+            goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.
         bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
             false => !state.AccountExists(target),
-            true => transferValue != 0 && state.IsDeadAccount(target),
+            true => hasValueTransfer && state.IsDeadAccount(target),
         };
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
@@ -224,7 +207,7 @@ public static partial class EvmInstructions
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
-        if (!transferValue.IsZero)
+        if (hasValueTransfer)
         {
             if (vm.TxTracer.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
@@ -233,7 +216,7 @@ public static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
+            (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -262,66 +245,88 @@ public static partial class EvmInstructions
             return pushResult;
         }
 
-        // Take a snapshot of the state for potential rollback.
-        Snapshot snapshot = state.TakeSnapshot();
-        // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, in transferValue, spec);
-
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
+            // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             if (pushResult != EvmExceptionType.None) return pushResult;
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            vm.AddTransferLog<TEip7708>(caller, target, transferValue);
-            return FastCall(vm, spec, in transferValue, target);
+            // Self-call (always true for CALLCODE; runtime for CALL/STATICCALL when target == executing account):
+            // the +/- value balance ops cancel and target is the currently-executing account (alive),
+            // so skip both writes. AddTransferLog already no-ops when from == to.
+            bool isSelfCall = caller == target;
+            if (!isSelfCall)
+            {
+                if (hasValueTransfer)
+                {
+                    state.SubtractFromBalance(caller, in callValue, spec);
+                    vm.AddTransferLog<TEip7708>(caller, target, in callValue);
+                }
+                state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
+            }
+            Metrics.IncrementEmptyCalls();
+            vm.ReturnData = null;
+            return EvmExceptionType.None;
         }
 
-        // Load call data from memory.
-        if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-            goto OutOfGas;
-        // Construct the execution environment for the call.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
-            codeInfo: codeInfo,
-            executingAccount: target,
-            caller: caller,
-            codeSource: codeSource,
-            callDepth: env.CallDepth + 1,
-            transferValue: in transferValue,
-            value: in callValue,
-            inputData: in callData);
+        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
 
-        // Normalize output offset if output length is zero.
-        if (outputLength == 0)
-        {
-            // Output offset is inconsequential when output length is 0.
-            outputOffset = 0;
-        }
-
-        // Rent a new call frame for executing the call.
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
-            outputDestination: outputOffset.ToLong(),
-            outputLength: outputLength.ToLong(),
-            executionType: TOpCall.ExecutionType,
-            isStatic: TOpCall.IsStatic || vm.VmState.IsStatic,
-            isCreateOnPreExistingAccount: false,
-            env: callEnv,
-            stateForAccessLists: in vm.VmState.AccessTracker,
-            snapshot: in snapshot);
-
-        return EvmExceptionType.None;
-
-        // Fast-call path for non-contract calls:
-        // Directly credit the target account and avoid constructing a full call frame.
-        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static EvmExceptionType CreateFullCallFrame(
+            VirtualMachine<TGasPolicy> vm,
+            ref TGasPolicy gas,
+            in UInt256 dataOffset,
+            UInt256 dataLength,
+            UInt256 outputOffset,
+            UInt256 outputLength,
+            CodeInfo codeInfo,
+            Address target,
+            Address caller,
+            Address codeSource,
+            ExecutionEnvironment env,
+            in UInt256 callValue,
+            long gasLimitUl)
         {
             IWorldState state = vm.WorldState;
-            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
-            Metrics.IncrementEmptyCalls();
+            // Take a snapshot of the state for potential rollback.
+            Snapshot snapshot = state.TakeSnapshot();
+            // Subtract the transfer value from the caller's balance.
+            if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero) state.SubtractFromBalance(caller, in callValue, vm.Spec);
 
-            vm.ReturnData = null;
+            // Load call data from memory.
+            if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+                return EvmExceptionType.OutOfGas;
+            // Construct the execution environment for the call.
+            ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+                codeInfo: codeInfo,
+                executingAccount: target,
+                caller: caller,
+                codeSource: codeSource,
+                callDepth: env.CallDepth + 1,
+                value: in callValue,
+                inputData: in callData);
+
+            // Normalize output offset if output length is zero.
+            if (outputLength.IsZero)
+            {
+                // Output offset is inconsequential when output length is 0.
+                outputOffset = default;
+            }
+
+            // Rent a new call frame for executing the call.
+            vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+                gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
+                outputDestination: outputOffset.ToLong(),
+                outputLength: outputLength.ToLong(),
+                executionType: TOpCall.ExecutionType,
+                isStatic: TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
+                isCreateOnPreExistingAccount: false,
+                env: callEnv,
+                stateForAccessLists: in vm.VmState.AccessTracker,
+                snapshot: in snapshot);
+
             return EvmExceptionType.None;
         }
 

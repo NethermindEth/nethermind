@@ -442,8 +442,8 @@ FodyWeavers.xsd
 
 # AI
 .claude/*
+!.claude/CLAUDE.md
 !.claude/skills
-!.claude/skills/**
 .gemini/
 
 # Worktrees

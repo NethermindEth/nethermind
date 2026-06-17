@@ -4,83 +4,35 @@ class SszType
 {
     private const string SelectorPropertyName = "Selector";
 
-    // BCL primitives and Nethermind core types with hand-rolled SSZ encoders.
-    // Add a new entry here when introducing a new fixed-length basic SSZ type.
-    public static List<SszType> BasicTypes { get; } =
-    [
-        Primitive<byte>(),
-        Primitive<ushort>(),
-        Primitive<int>(),
-        Primitive<uint>(),
-        Primitive<long>(),
-        Primitive<ulong>(),
-        Primitive<bool>(),
-        new()
-        {
-            Namespace = "Nethermind.Int256", Name = "UInt256",
-            Kind = Kind.Basic, StaticLength = 32,
-            CustomEncodeTemplate = "{1}.ToLittleEndian({0});",
-            CustomDecodeTemplate = "{1} = new UInt256({0}, isBigEndian: false);",
-        },
-        new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
-        new() { Namespace = "Nethermind.Serialization.Ssz", Name = "SszBytes32", Kind = Kind.Basic, StaticLength = 32 },
-        FixedRefBytes("Nethermind.Serialization.Ssz", "SszBytes8", 8),
-        FixedRefBytes("Nethermind.Serialization.Ssz", "SszBytes16", 16),
-        FixedRefBytes("Nethermind.Serialization.Ssz", "SszKzgCommitment", 48),
-        BytesRef("Nethermind.Core.Crypto", "Hash256", 32),
-        BytesRef("Nethermind.Core", "Address", 20),
-        BytesRef("Nethermind.Core", "Bloom", 256),
-    ];
+    public static List<SszType> CreateKnownTypes(IEnumerable<SszTypeConverterInfo> converters)
+    {
+        List<SszType> types =
+        [
+            new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
+        ];
 
-    /// <summary>
-    /// Factory for BCL primitive numerics (and bool). Pulls Name/Namespace from
-    /// <c>typeof(T)</c>; size is the managed size from
-    /// <see cref="System.Runtime.CompilerServices.Unsafe.SizeOf{T}"/>, which returns
-    /// 1 for <c>bool</c> (matching SSZ's 1-byte encoding) and avoids the
-    /// <c>Marshal.SizeOf&lt;bool&gt;()</c> = 4 native-marshaling quirk.
-    /// </summary>
-    private static SszType Primitive<T>() where T : unmanaged =>
-        new()
+        foreach (SszTypeConverterInfo converter in converters)
         {
-            Namespace = typeof(T).Namespace!,
-            Name = typeof(T).Name,
-            Kind = Kind.Basic,
-            StaticLength = System.Runtime.CompilerServices.Unsafe.SizeOf<T>(),
-        };
+            types.Add(new()
+            {
+                Namespace = converter.TargetNamespace,
+                Name = converter.TargetName,
+                TypeReferenceName = converter.TargetTypeReferenceName,
+                Kind = Kind.Basic,
+                StaticLength = converter.Length,
+                ConverterKind = converter.Kind,
+                CustomConverterType = converter.ConverterStaticMemberAccess,
+                CustomEncodeMethod = $"{converter.ConverterStaticMemberAccess}.ToSpan",
+                CustomDecodeMethod = $"{converter.ConverterStaticMemberAccess}.FromSpan",
+                CustomEncodeTemplate = $"{converter.ConverterStaticMemberAccess}.ToSpan({{0}}, {{1}});",
+                CustomDecodeTemplate = $"{{1}} = {converter.ConverterStaticMemberAccess}.FromSpan({{0}});",
+                CustomFeedMethod = $"{converter.ConverterStaticMemberAccess}.Feed",
+                CustomFeedTemplate = $"{converter.ConverterStaticMemberAccess}.Feed(ref {{0}}, {{1}});",
+            });
+        }
 
-    /// <summary>
-    /// Factory for Nethermind reference types whose SSZ codec is the same shape:
-    /// encode by <c>{value}.Bytes.CopyTo({dest})</c>, decode by <c>new T({src})</c>.
-    /// Covers Hash256, Address, Bloom, and any future fixed-length-byte ref type.
-    /// </summary>
-    private static SszType BytesRef(string @namespace, string name, int byteLength) =>
-        new()
-        {
-            Namespace = @namespace,
-            Name = name,
-            Kind = Kind.Basic,
-            StaticLength = byteLength,
-            IsRefType = true,
-            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
-            CustomDecodeTemplate = $"{{1}} = new {name}({{0}});",
-        };
-
-    /// <summary>
-    /// Factory for fixed-length value-type SSZ wrappers that expose <c>AsSpan()</c> +
-    /// <c>FromSpan(...)</c> (e.g. <c>SszBytes8</c>, <c>SszKzgCommitment</c>). The
-    /// encode/decode templates round-trip through the span helpers.
-    /// </summary>
-    private static SszType FixedRefBytes(string @namespace, string name, int byteLength) =>
-        new()
-        {
-            Namespace = @namespace,
-            Name = name,
-            Kind = Kind.Basic,
-            StaticLength = byteLength,
-            IsRefType = true,
-            CustomEncodeTemplate = "{1}.AsSpan().CopyTo({0});",
-            CustomDecodeTemplate = $"{{1}} = {name}.FromSpan({{0}});",
-        };
+        return types;
+    }
 
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
@@ -124,6 +76,11 @@ class SszType
     /// </summary>
     public List<string> TypeParameterConstraintNamespaces { get; } = [];
 
+    /// <summary>
+    /// Extra namespaces referenced by generated code for this type, such as the namespace that contains its vector converter.
+    /// </summary>
+    public List<string> AdditionalNamespaces { get; } = [];
+
     /// <summary><c>true</c> when this <see cref="SszType"/> represents an open type parameter (forces variable-size encoding).</summary>
     public bool IsTypeParameter { get; init; }
 
@@ -140,11 +97,17 @@ class SszType
     public int ActiveFieldsBitLength { get; set; }
 
     public bool IsStruct { get; set; }
-    public bool IsRefType { get; init; }
+    public SszTypeConverterKind? ConverterKind { get; set; }
+    public bool IsSszBasicType => ConverterKind == SszTypeConverterKind.BasicType;
     public SszType? EnumType { get; set; }
 
+    public string? CustomConverterType { get; init; }
+    public string? CustomEncodeMethod { get; init; }
+    public string? CustomDecodeMethod { get; init; }
     public string? CustomEncodeTemplate { get; init; }
     public string? CustomDecodeTemplate { get; init; }
+    public string? CustomFeedMethod { get; init; }
+    public string? CustomFeedTemplate { get; init; }
     public bool HasCustomInlineCodec => CustomEncodeTemplate is not null;
     public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
     public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == SelectorPropertyName);
@@ -196,8 +159,10 @@ class SszType
 
         if (enumType is not null)
         {
-            result.EnumType = BasicTypes.First(x => x.Name == enumType.Name);
+            string? enumNamespace = GetNamespace(enumType);
+            result.EnumType = types.First(x => x.Namespace == enumNamespace && x.Name == enumType.Name);
             result.StaticLength = result.EnumType.StaticLength;
+            result.ConverterKind = result.EnumType.ConverterKind;
         }
 
         result.Members = kind switch
@@ -348,8 +313,14 @@ class SszType
             return Kind.Basic;
         }
 
+        if (type is ITypeParameterSymbol)
+        {
+            return Kind.Container;
+        }
+
         bool isProgressiveContainer = HasAnyFieldIndex(type);
         bool isCompatibleUnion = HasAttribute(type, "SszCompatibleUnionAttribute");
+        bool isContainer = HasAttribute(type, "SszContainerAttribute");
         if (isProgressiveContainer && isCompatibleUnion)
         {
             throw new InvalidOperationException($"Type {GetTypeName(type)} cannot be both a progressive container and a compatible union.");
@@ -358,6 +329,11 @@ class SszType
         if (isCompatibleUnion)
         {
             return Kind.CompatibleUnion;
+        }
+
+        if (!isContainer)
+        {
+            throw new InvalidOperationException($"Type {type.ToDisplayString()} is not SSZ serializable. Mark it with SszContainer or SszCompatibleUnion, or provide an SszBasicTypeConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}> or SszVectorTypeConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}>.");
         }
 
         return isProgressiveContainer ? Kind.ProgressiveContainer : Kind.Container;
@@ -524,7 +500,7 @@ class SszType
         syntaxNode.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToString() : null;
 
     private static string GetTypeName(ITypeSymbol syntaxNode) =>
-        string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace! + ".", "");
+        string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name;
 
     // Strip the nullable reference-type annotation so the resulting name is usable both as a
     // bare type identifier in static-member access (e.g. `Foo.Encode(...)`) and as a parameter

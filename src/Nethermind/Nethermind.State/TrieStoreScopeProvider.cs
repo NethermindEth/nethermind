@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -57,11 +58,31 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope
     {
+        // Tracked HintBal background task — StartWriteBatch / Dispose cancel and drain it.
+        private CancellationTokenSource? _hintBalCts;
+        private Task? _hintBalTask;
+
         public void Dispose()
         {
+            CancelHintBal();
             _trieStoreCloser.Dispose();
             _backingStateTree.RootHash = Keccak.EmptyTreeHash;
             _storages.Clear();
+        }
+
+        private void CancelHintBal()
+        {
+            _hintBalCts?.Cancel();
+            try { _hintBalTask?.GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                ILogger logger = _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>();
+                if (logger.IsError) logger.Error("HintBal background task faulted during cancel/drain", ex);
+            }
+            _hintBalCts?.Dispose();
+            _hintBalCts = null;
+            _hintBalTask = null;
         }
 
         public Hash256 RootHash => _backingStateTree.RootHash;
@@ -80,6 +101,102 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+        {
+            // Legacy trie-store path: no trie warmer, so HintBal only does work when a sink is given.
+            if (sink is null) return Task.CompletedTask;
+
+            int accountCount = bal.AccountChanges.Count;
+            if (accountCount == 0) return Task.CompletedTask;
+
+            // Copy the span into a pooled array so the Parallel.For body can capture it.
+            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
+
+            CancelHintBal();
+            _hintBalCts = new CancellationTokenSource();
+            CancellationToken token = _hintBalCts.Token;
+
+            return _hintBalTask = Task.Run(() =>
+            {
+                // PatriciaTree.Get mutates shared TrieNode children in place as it resolves them,
+                // so each Parallel.For iteration must own its StateTree / StorageTree — slots per
+                // account are read sequentially on the worker that owns it.
+                ParallelOptions parallelOptions = new() { CancellationToken = token };
+                try
+                {
+                    Parallel.For(0, accountCount, parallelOptions, (i) =>
+                    {
+                        if (token.IsCancellationRequested) return;
+                        ReadOnlyAccountChanges ac = accountChanges[i];
+                        Address address = ac.Address;
+
+                        // Swallow MissingTrieNodeException so a partially-synced trie can't blow up
+                        // the background warmup task; it'll fault the main read path normally instead.
+                        try
+                        {
+                            StateTree privateStateTree = _scopeProvider.CreateStateTree();
+                            privateStateTree.RootHash = _backingStateTree.RootHash;
+
+                            Account? account;
+                            if (sink.StillNeeded(address, out Account? cached))
+                            {
+                                account = privateStateTree.Get(address);
+                                sink.OnAccountRead(address, account);
+                            }
+                            else
+                            {
+                                account = cached;
+                            }
+
+                            if (account is null) return;
+                            Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                            if (storageRoot == Keccak.EmptyTreeHash) return;
+
+                            ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
+                            ReadOnlySpan<UInt256> reads = ac.StorageReads;
+                            if (changed.Length + reads.Length == 0) return;
+
+                            // Sorted-merge walk over (ChangedSlots, StorageReads) — both arrays are
+                            // ascending and disjoint, so one merged pass keeps adjacent trie paths
+                            // hot across consecutive Get calls.
+                            StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
+                            int slotIndex = 0;
+                            int readIndex = 0;
+                            while (slotIndex < changed.Length || readIndex < reads.Length)
+                            {
+                                UInt256 slot;
+                                if (readIndex >= reads.Length)
+                                {
+                                    slot = changed[slotIndex++];
+                                }
+                                else
+                                {
+                                    slot = reads[readIndex];
+                                    if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
+                                    {
+                                        slot = changed[slotIndex++];
+                                    }
+                                    else
+                                    {
+                                        readIndex++;
+                                    }
+                                }
+                                StorageCell cell = new(address, in slot);
+                                if (!sink.StillNeeded(in cell)) continue;
+                                sink.OnStorageRead(in cell, storageTree.Get(in slot));
+                            }
+                        }
+                        catch (MissingTrieNodeException) { }
+                    });
+                }
+                catch (OperationCanceledException) { }
+                finally
+                {
+                    accountChanges.Dispose();
+                }
+            }, token);
+        }
+
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree = backingStateTree;
@@ -90,7 +207,11 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
         private readonly ILogManager _logManager = logManager;
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber) => new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
+        {
+            CancelHintBal();
+            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
+        }
 
         public void Commit(long blockNumber)
         {

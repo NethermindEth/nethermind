@@ -23,6 +23,8 @@ jobs:
     name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
@@ -117,6 +119,8 @@ jobs:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:

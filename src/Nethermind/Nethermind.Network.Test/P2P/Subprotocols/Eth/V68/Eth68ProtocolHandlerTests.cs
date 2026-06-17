@@ -202,7 +202,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Should_process_huge_transaction()
     {
-        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * MemorySizes.MiB])
             .WithHash(TestItem.KeccakA).TestObject;
 
         using NewPooledTransactionHashesMessage68 msg = new(new ArrayPoolList<byte>(1) { (byte)tx.Type },

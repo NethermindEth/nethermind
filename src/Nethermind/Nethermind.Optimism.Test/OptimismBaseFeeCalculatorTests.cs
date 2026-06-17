@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -26,7 +25,7 @@ public class OptimismBaseFeeCalculatorTests
     {
         const ulong HoloceneTimestamp = 10_000_000;
 
-        IReleaseSpec releaseSpec = new ReleaseSpec
+        IReleaseSpec releaseSpec = new OptimismReleaseSpec
         {
             IsEip1559Enabled = true,
             IsOpHoloceneEnabled = true,
@@ -77,7 +76,7 @@ public class OptimismBaseFeeCalculatorTests
         long minBaseFee, long expectedBaseFee
     )
     {
-        IReleaseSpec releaseSpec = new ReleaseSpec
+        OptimismReleaseSpec releaseSpec = new()
         {
             IsEip1559Enabled = true,
             IsOpHoloceneEnabled = timestamp >= Spec.HoloceneTimeStamp,

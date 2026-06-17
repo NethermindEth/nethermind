@@ -31,7 +31,7 @@ public class WorldStateManagerTests
         IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager manager = new(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager manager = new(worldState, trieStore, dbProvider, LimboLogs.Instance, new PruningConfig());
         return (worldState, trieStore, manager);
     }
 
@@ -80,6 +80,8 @@ public class WorldStateManagerTests
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IConfigProvider configProvider = new ConfigProvider();
+        // Asserts the pruning trie store's BestPersistedState reorg announcement; a patricia-only concept.
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         int reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
         IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
         manualFinalizedStateProvider.FinalizedBlockNumber.Returns(lastBlock - reorgDepth);
@@ -112,6 +114,8 @@ public class WorldStateManagerTests
                     .WithNumber(i - 1)
                     .TestObject;
 
+                // Model production: the driver clears prewarmer caches between blocks; do the same here.
+                (worldState.ScopeProvider as IPreBlockCaches)?.Caches?.ClearCaches();
                 using (worldState.BeginScope(baseBlock))
                 {
                     worldState.IncrementNonce(TestItem.AddressA, 1);

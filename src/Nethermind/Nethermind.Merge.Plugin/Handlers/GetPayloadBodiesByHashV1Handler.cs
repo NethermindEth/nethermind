@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Core;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -11,42 +11,30 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public abstract class GetPayloadBodiesByHashHandler<TResult>(IBlockTree blockTree, ILogManager logManager)
-    : IHandler<IReadOnlyList<Hash256>, IReadOnlyList<TResult?>> where TResult : class
+public sealed class GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, IBlockStore blockStore, ILogManager logManager)
+    : IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>
 {
-    protected readonly IBlockTree _blockTree = blockTree;
-    private const int MaxCount = 1024;
-    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByHashHandler<>));
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByHashV1Handler));
 
-    public ResultWrapper<IReadOnlyList<TResult?>> Handle(IReadOnlyList<Hash256> blockHashes)
+    public ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>> Handle(IReadOnlyList<Hash256> blockHashes)
     {
-        if (blockHashes.Count > MaxCount)
+        if (blockHashes.Count > PayloadBodiesHandlerHelper.MaxCount)
         {
-            string error = $"The number of requested bodies must not exceed {MaxCount}";
+            string error = $"The number of requested bodies must not exceed {PayloadBodiesHandlerHelper.MaxCount}";
             if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
-            return ResultWrapper<IReadOnlyList<TResult?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        TResult?[] results = new TResult?[blockHashes.Count];
+        PayloadBodiesV1DirectResponse.PayloadBody?[] results = new PayloadBodiesV1DirectResponse.PayloadBody?[blockHashes.Count];
         for (int i = 0; i < blockHashes.Count; i++)
         {
-            Block? block = _blockTree.FindBlock(blockHashes[i]);
-            results[i] = block is null ? null : CreateResult(block, blockHashes[i]);
+            Hash256 blockHash = blockHashes[i];
+            results[i] = PayloadBodiesHandlerHelper.CreatePayloadBodyV1(
+                blockStore,
+                blockTree.FindHeader(blockHash, PayloadBodiesHandlerHelper.HashLookupOptions),
+                blockHash);
         }
-        return ResultWrapper<IReadOnlyList<TResult?>>.Success(CreateResponse(results));
+
+        return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(new PayloadBodiesV1DirectResponse(results));
     }
-
-    protected abstract TResult? CreateResult(Block block, Hash256 blockHash);
-
-    protected virtual IReadOnlyList<TResult?> CreateResponse(TResult?[] results) => results;
-}
-
-public class GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, ILogManager logManager)
-    : GetPayloadBodiesByHashHandler<ExecutionPayloadBodyV1Result>(blockTree, logManager)
-{
-    protected override ExecutionPayloadBodyV1Result CreateResult(Block block, Hash256 blockHash) =>
-        new(block.Transactions, block.Withdrawals);
-
-    protected override IReadOnlyList<ExecutionPayloadBodyV1Result?> CreateResponse(ExecutionPayloadBodyV1Result?[] results) =>
-        new PayloadBodiesV1DirectResponse(results);
 }

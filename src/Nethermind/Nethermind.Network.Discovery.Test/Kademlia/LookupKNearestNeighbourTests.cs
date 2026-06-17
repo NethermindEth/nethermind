@@ -55,7 +55,37 @@ public class LookupKNearestNeighbourTests
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
 
+        // Signalled once a findNeighbour request is actually dispatched, so cancellation deterministically
+        // interrupts an in-flight request (which records OnRequestFailed) instead of racing worker startup.
+        TaskCompletionSource requestInFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         Task<ValueHash256[]> task = lookup.Lookup(
+            Seed1,
+            8,
+            async (_, t) =>
+            {
+                requestInFlight.TrySetResult();
+                await Task.Delay(Timeout.Infinite, t);
+                return null;
+            },
+            cts.Token);
+
+        await requestInFlight.Task.WaitAsync(token);
+        await cts.CancelAsync();
+
+        _ = await task;
+        health.DidNotReceive().OnRequestFailed(Seed1);
+    }
+
+    [TestCase(1)]
+    [TestCase(3)]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_record_request_failure_on_hard_timeout(int alpha, CancellationToken token)
+    {
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
+            CreateLookup(alpha, TimeSpan.FromMilliseconds(100), [Seed1]);
+
+        _ = await lookup.Lookup(
             Seed1,
             8,
             async (_, t) =>
@@ -63,12 +93,25 @@ public class LookupKNearestNeighbourTests
                 await Task.Delay(Timeout.Infinite, t);
                 return null;
             },
-            cts.Token);
+            token);
 
-        cts.CancelAfter(100);
+        health.Received(1).OnRequestFailed(Seed1);
+    }
 
-        _ = await task;
-        health.Received().OnRequestFailed(Seed1);
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_not_mark_node_healthy_when_find_neighbours_returns_null(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1]);
+
+        _ = await lookup.Lookup(
+            Seed1,
+            8,
+            (_, _) => Task.FromResult<ValueHash256[]?>(null),
+            token);
+
+        health.DidNotReceive().OnIncomingMessageFrom(Seed1);
     }
 
     [TestCase(1)]

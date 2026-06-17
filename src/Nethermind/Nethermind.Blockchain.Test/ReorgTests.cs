@@ -131,10 +131,10 @@ public class ReorgTests
     public async Task TearDownAsync() => await (_blockchainProcessor?.DisposeAsync() ?? default);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Retry(3)]
-    public void Test()
+    public async Task Test()
     {
         List<Block> events = [];
+        TaskCompletionSource block2BAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
         Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;
@@ -145,7 +145,8 @@ public class ReorgTests
 
         _blockTree.BlockAddedToMain += (_, args) =>
         {
-            events.Add(args.Block);
+            lock (events) events.Add(args.Block);
+            if (args.Block.Hash == block2B.Hash) block2BAdded.TrySetResult();
         };
 
         _blockchainProcessor.Start();
@@ -157,8 +158,9 @@ public class ReorgTests
         _blockTree.SuggestBlock(block1B);
         _blockTree.SuggestBlock(block2B);
 
-        Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
+        await block2BAdded.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
+        Assert.That(_blockTree.Head, Is.EqualTo(block2B));
         Assert.That(events.Count, Is.EqualTo(6));
         Assert.That(events[4].Hash, Is.EqualTo(block1B.Hash!));
         Assert.That(events[5].Hash, Is.EqualTo(block2B.Hash!));

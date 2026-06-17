@@ -336,7 +336,7 @@ public class SyncServerTests
             .WithTotalDifficulty(ctx.LocalBlockTree.Head!.TotalDifficulty)
             .TestObject;
         ctx.LocalBlockTree.SuggestBlock(newPostMergeBlock);
-        ctx.LocalBlockTree.UpdateMainChain(new[] { newPostMergeBlock }, true, true);
+        ctx.LocalBlockTree.TryUpdateMainChain(newPostMergeBlock.Header, true, true, preloadedBlocks: new[] { newPostMergeBlock });
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
@@ -519,10 +519,9 @@ public class SyncServerTests
     }
 
     [Test]
-    [Retry(3)]
     public async Task Broadcast_NewBlock_on_arrival_to_sqrt_of_peers([Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100)] int peerCount)
     {
-        int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1)); // -1 because of ignoring sender
+        int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1));
 
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
@@ -531,19 +530,27 @@ public class SyncServerTests
 
         ISyncServer remoteServer = Substitute.For<ISyncServer>();
         int count = 0;
+        CountdownEvent received = expectedPeers > 0 ? new CountdownEvent(expectedPeers) : null!;
         remoteServer
             .When(r => r.AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
-            .Do(_ => Interlocked.Increment(ref count));
+            .Do(_ =>
+            {
+                int n = Interlocked.Increment(ref count);
+                if (received is not null && n <= expectedPeers) received.Signal();
+            });
         PeerInfo[] peers = CreatePeerInfos(peerCount, remoteBlockTree, remoteServer);
         ConfigurePeers(ctx, peers);
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peers[0].SyncPeer);
 
-        Assert.That(() => count, Is.EqualTo(expectedPeers).After(5000, 100));
+        if (received is not null)
+        {
+            Assert.That(received.Wait(TimeSpan.FromSeconds(30)), Is.True, "Broadcast did not reach all expected peers");
+        }
+        Assert.That(count, Is.EqualTo(expectedPeers));
         await CloseSyncPeerMocks(peers);
     }
 
     [Test]
-    [Retry(3)]
     [Parallelizable(ParallelScope.None)]
     public void Broadcast_BlockRangeUpdate_when_latest_increased_enough()
     {
@@ -559,10 +566,28 @@ public class SyncServerTests
             .Select(p => new PeerInfo(p))
             .ToArray();
 
-        ConfigurePeers(ctx, peers);
-
         const int blocksCount = 100;
         int startBlock = (int)localBlockTree.Head!.Number;
+        int frequencyAlignedBlocks = Enumerable.Range(startBlock + 1, blocksCount).Count(x => x % frequency == 0);
+
+        CountdownEvent[] perPeerSignals = peers.Select(_ => new CountdownEvent(frequencyAlignedBlocks)).ToArray();
+        int[] perPeerCalls = new int[peers.Length];
+        for (int i = 0; i < peers.Length; i++)
+        {
+            int idx = i;
+            peers[i].SyncPeer
+                .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
+                .Do(_ =>
+                {
+                    // Saturate at frequencyAlignedBlocks: Signal() throws once CurrentCount hits 0,
+                    // and the production code may emit more notifications than the countdown was sized for.
+                    if (Interlocked.Increment(ref perPeerCalls[idx]) <= frequencyAlignedBlocks)
+                        perPeerSignals[idx].Signal();
+                });
+        }
+
+        ConfigurePeers(ctx, peers);
+
         localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
@@ -572,19 +597,14 @@ public class SyncServerTests
             .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
             .ToArray()[^2..];
 
-        foreach (PeerInfo peerInfo in peers)
+        for (int i = 0; i < peers.Length; i++)
         {
-            Assert.That(
-                () =>
-                {
-                    (long earliest, long latest)[] arr = peerInfo.SyncPeer.ReceivedCalls()
-                        .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
-                        .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
-                        .Select(a => (earliest: a[0], latest: a[1])).ToArray();
-                    return arr.Length >= 2 ? arr[^2..] : arr;
-                },
-                Is.EqualTo(expectedUpdates).After(15000, 50) // Wait for background notifications to finish
-            );
+            Assert.That(perPeerSignals[i].Wait(TimeSpan.FromSeconds(30)), Is.True, $"Peer {i} did not receive all expected NotifyOfNewRange calls");
+            (long earliest, long latest)[] arr = peers[i].SyncPeer.ReceivedCalls()
+                .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
+                .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
+                .Select(a => (earliest: a[0], latest: a[1])).ToArray();
+            Assert.That(arr[^2..], Is.EqualTo(expectedUpdates));
         }
     }
 
@@ -620,11 +640,9 @@ public class SyncServerTests
         IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
         using (IBlockCommitter _ = trieStore.BeginBlockCommit(1))
         {
-            using (ICommitter committer = scopedTrieStore.BeginCommit(node))
-            {
-                TreePath path = TreePath.Empty;
-                committer.CommitNode(ref path, node);
-            }
+            using ICommitter committer = scopedTrieStore.BeginCommit(node);
+            TreePath path = TreePath.Empty;
+            committer.CommitNode(ref path, node);
         }
 
         Assert.That(stateDb.KeyExists(nodeKey), Is.False);

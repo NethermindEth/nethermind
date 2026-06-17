@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -27,8 +29,6 @@ public class BlockAccessListDecoderTests
         Assert.That(bal, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(bal).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -60,8 +60,11 @@ public class BlockAccessListDecoderTests
         Rlp.ValueDecoderContext ctx = new(envelope);
         ReadOnlyBlockAccessList decoded = BlockAccessListDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
 
-        Assert.That(decoded.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(balRlp))));
-        Assert.That(ctx.Position, Is.EqualTo(balRlp.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(balRlp))));
+            Assert.That(ctx.Position, Is.EqualTo(balRlp.Length));
+        }
     }
 
     // Truncated RLP causes an out-of-bounds primitive read; the Rlp.Decode entry-point
@@ -94,8 +97,8 @@ public class BlockAccessListDecoderTests
         byte[] encoded = EncodeAccountChangesWithEmptySlotChangesEntry(TestItem.AddressA);
 
         Assert.That(
-            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Empty SlotChanges entry; EIP-7928 requires a 2-field sequence."));
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded),
+            Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -161,8 +164,11 @@ public class BlockAccessListDecoderTests
             exception = e;
         }
 
-        Assert.That(exception?.Message, Is.EqualTo(ThrowingDisposableDecoder.Error));
-        Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.Message, Is.EqualTo(ThrowingDisposableDecoder.Error));
+            Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -181,8 +187,11 @@ public class BlockAccessListDecoderTests
             exception = e;
         }
 
-        Assert.That(exception?.Message, Is.EqualTo(ThrowingObjectDecoder.Error));
-        Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.Message, Is.EqualTo(ThrowingObjectDecoder.Error));
+            Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -226,6 +235,46 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void DecodeArray_with_decoder_stays_constrained_to_reference_types()
+    {
+        MethodInfo decodeArray = typeof(Rlp.ValueDecoderContext)
+            .GetMethods()
+            .Single(m => m.Name == nameof(Rlp.ValueDecoderContext.DecodeArray)
+                && m.IsGenericMethodDefinition
+                && m.GetParameters()[0].ParameterType.IsGenericType
+                && m.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IRlpDecoder<>));
+
+        GenericParameterAttributes constraints = decodeArray.GetGenericArguments()[0].GenericParameterAttributes;
+
+        Assert.That(constraints.HasFlag(GenericParameterAttributes.ReferenceTypeConstraint), Is.True,
+            "DecodeArray(IRlpDecoder<T>, ...) must stay constrained to reference types: a value-type T would otherwise silently substitute default(T) for an empty-list (0xc0) element instead of throwing.");
+    }
+
+    [Test]
+    public void Decode_slot_changes_with_empty_list_storage_change_throws_RlpException()
+    {
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(1);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>());
+    }
+
+    [TestCase(0, TestName = "storage_changes")]
+    [TestCase(1, TestName = "storage_reads")]
+    [TestCase(2, TestName = "balance_changes")]
+    [TestCase(3, TestName = "nonce_changes")]
+    [TestCase(4, TestName = "code_changes")]
+    public void Decode_account_changes_with_empty_list_element_in_field_throws_RlpException(int malformedFieldIndex)
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptyListElement(TestItem.AddressA, malformedFieldIndex);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
     public void Can_decode_then_encode_balance_change()
     {
         const string rlp = "0xc801861319718811c8";
@@ -235,8 +284,6 @@ public class BlockAccessListDecoderTests
         Assert.That(balanceChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(balanceChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -265,8 +312,6 @@ public class BlockAccessListDecoderTests
         Assert.That(nonceChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(nonceChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -283,8 +328,6 @@ public class BlockAccessListDecoderTests
         Assert.That(slotChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(slotChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(expectedRlp);
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
@@ -300,8 +343,6 @@ public class BlockAccessListDecoderTests
         Assert.That(storageChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(storageChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(expectedRlp);
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
@@ -316,8 +357,6 @@ public class BlockAccessListDecoderTests
         Assert.That(codeChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(codeChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -330,8 +369,6 @@ public class BlockAccessListDecoderTests
         Assert.That(accountChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(accountChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
@@ -629,6 +666,36 @@ public class BlockAccessListDecoderTests
         stream.Encode(Rlp.OfEmptyList);
         stream.Encode(Rlp.OfEmptyList);
         stream.Encode(Rlp.OfEmptyList);
+        return stream.Data.ToArray()!;
+    }
+
+    private static byte[] EncodeAccountChangesWithEmptyListElement(Address address, int malformedFieldIndex)
+    {
+        const int fieldCount = 5;
+        int malformedFieldLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+
+        int contentLength = Rlp.LengthOfAddressRlp;
+        for (int i = 0; i < fieldCount; i++)
+        {
+            contentLength += i == malformedFieldIndex ? malformedFieldLength : Rlp.OfEmptyList.Length;
+        }
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.Encode(address);
+        for (int i = 0; i < fieldCount; i++)
+        {
+            if (i == malformedFieldIndex)
+            {
+                stream.StartSequence(Rlp.OfEmptyList.Length);
+                stream.Encode(Rlp.OfEmptyList);
+            }
+            else
+            {
+                stream.Encode(Rlp.OfEmptyList);
+            }
+        }
+
         return stream.Data.ToArray()!;
     }
 

@@ -39,7 +39,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
-        [Retry(3)]
         public async Task With_steps_from_here_AuRa()
         {
             await using IContainer container = CreateAuraApi(
@@ -49,16 +48,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
 
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
-
-            try
-            {
-                await stepsManager.InitializeAll(source.Token);
-            }
-            catch (Exception e)
-            {
-                Assert.That(e, Is.TypeOf<TestException>());
-            }
+            Assert.That(async () => await stepsManager.InitializeAll(CancellationToken.None),
+                Throws.TypeOf<TestException>());
         }
 
         [Test]

@@ -110,11 +110,25 @@ namespace Nethermind.Network.Discovery.Test
             _networkStorage.UpdateNodes([NodeA, NodeB]);
 
             _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeA.NodeId)), Arg.Any<CancellationToken>())
-                .Returns(Task.CompletedTask);
+                .Returns(true);
             _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeB.NodeId)), Arg.Any<CancellationToken>())
-                .Returns(x => throw new Exception("Test exception"));
+                .Returns(Task.FromException<bool>(new Exception("Test exception")));
 
             await _persistenceManager.LoadPersistedNodes(cancellationToken);
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public void AddPersistedNodes_Should_Propagate_Cancellation(CancellationToken cancellationToken)
+        {
+            // A non-cancellation exception is swallowed (above), but a cancelled ping is lifecycle
+            // shutdown and must stop the load promptly rather than be swallowed.
+            _networkStorage.UpdateNodes([NodeA]);
+            _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeA.NodeId)), Arg.Any<CancellationToken>())
+                .Returns(Task.FromException<bool>(new OperationCanceledException()));
+
+            Assert.ThrowsAsync<OperationCanceledException>(
+                async () => await _persistenceManager.LoadPersistedNodes(cancellationToken));
         }
 
         [Test]

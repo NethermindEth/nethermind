@@ -32,7 +32,7 @@ public class AuthorizationTupleDecoderTests
         Rlp.ValueDecoderContext ctx = new(result.Bytes);
 
         AuthorizationTuple decoded = sut.Decode(ref ctx);
-        Assert.That(decoded, Is.EqualTo(item).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(item).UsingAuthorizationTupleComparer());
     }
 
     [Test]
@@ -45,8 +45,7 @@ public class AuthorizationTupleDecoderTests
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data);
             sut.Decode(ref decoderContext, RlpBehaviors.None);
-        }
-        , Throws.TypeOf<RlpException>());
+        }, Throws.TypeOf<RlpException>());
     }
 
     public static IEnumerable<RlpStream> WrongSizeFieldsEncodedCases()

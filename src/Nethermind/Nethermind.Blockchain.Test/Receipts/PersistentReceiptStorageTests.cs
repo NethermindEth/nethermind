@@ -448,6 +448,32 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(_storage.HasBlock(receipts[0].BlockNumber, receipts[0].BlockHash!));
     }
 
+    [TestCase(false, 5L, TestName = "Insert tracks the lowest inserted block")]
+    [TestCase(true, long.MaxValue, TestName = "InsertForMigration leaves the pointer to the migration")]
+    public void Migration_pointer_is_advanced_only_by_the_normal_insert_path(bool viaMigration, long expectedMigratedBlockNumber)
+    {
+        const long blockNumber = 5;
+        _storage.MigratedBlockNumber = long.MaxValue;
+
+        (Block block, TxReceipt[] receipts) = PrepareBlock(Build.A.Block
+            .WithNumber(blockNumber)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .TestObject);
+
+        if (viaMigration)
+        {
+            ((IReceiptMigrationStore)_storage).InsertForMigration(block, receipts);
+        }
+        else
+        {
+            _storage.Insert(block, receipts);
+        }
+
+        Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(expectedMigratedBlockNumber),
+            "the migration owns the pointer under parallel out-of-order inserts, so only the normal Insert path may advance it");
+    }
+
     private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
     {
         block ??= Build.A.Block

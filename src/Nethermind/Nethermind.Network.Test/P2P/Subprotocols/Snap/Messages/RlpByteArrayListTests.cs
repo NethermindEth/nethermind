@@ -90,6 +90,57 @@ public class RlpByteArrayListTests
         }
     }
 
+    [TestCase(0, 256, false)]
+    [TestCase(1, 256, false)]
+    [TestCase(255, 256, false)]
+    [TestCase(256, 256, false)]
+    [TestCase(257, 256, true)]
+    [TestCase(1024, 256, true)]
+    public void DecodeList_WithLimit_EnforcesCount(int itemCount, int limit, bool shouldThrow)
+    {
+        byte[] encoded = EncodeSingleByteItemList(itemCount);
+        RlpLimit rlpLimit = RlpLimit.For<RlpByteArrayListTests>(limit, "test");
+
+        if (shouldThrow)
+        {
+            Assert.Throws<RlpLimitException>(() =>
+            {
+                Rlp.ValueDecoderContext ctx = new(encoded, true);
+                using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
+            });
+        }
+        else
+        {
+            Rlp.ValueDecoderContext ctx = new(encoded, true);
+            using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
+            Assert.That(list.Count, Is.EqualTo(itemCount));
+        }
+    }
+
+    [Test]
+    public void DecodeList_WithoutLimit_AcceptsLargeList()
+    {
+        const int count = 10_000;
+        byte[] encoded = EncodeSingleByteItemList(count);
+
+        Rlp.ValueDecoderContext ctx = new(encoded, true);
+        using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
+        Assert.That(list.Count, Is.EqualTo(count));
+    }
+
+    private static byte[] EncodeSingleByteItemList(int count)
+    {
+        int contentLength = count * Rlp.LengthOf(new byte[] { 0x42 });
+        int totalLength = Rlp.LengthOfSequence(contentLength);
+        RlpStream stream = new(totalLength);
+        stream.StartSequence(contentLength);
+        for (int i = 0; i < count; i++)
+        {
+            stream.Encode(new byte[] { 0x42 });
+        }
+        return stream.Data.ToArray()!;
+    }
+
     private static RlpByteArrayList CreateList(byte[][] items)
     {
         int contentLength = 0;

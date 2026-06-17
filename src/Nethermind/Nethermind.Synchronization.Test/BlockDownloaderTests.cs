@@ -127,7 +127,7 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
-    public async Task Invoke_UpdateMainChain_Once()
+    public async Task Invoke_TryUpdateMainChain_Once()
     {
         long headNumber = 100;
         int fastSyncLag = 10;
@@ -443,7 +443,6 @@ public partial class BlockDownloaderTests
 
     [TestCase(33L)]
     [TestCase(65L)]
-    [Retry(3)]
     public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(long headNumber)
     {
         await using IContainer node = CreateNode();
@@ -851,7 +850,14 @@ public partial class BlockDownloaderTests
             .AddSingleton<ResponseBuilder>()
             .AddDecorator<IBlockTree>((ctx, tree) =>
             {
-                if (tree.Genesis is null) tree.SuggestBlock(genesis);
+                if (tree.Genesis is null)
+                {
+                    // Mirror a real node: GenesisLoader processes genesis and makes it canonical, so it is
+                    // on the main chain before any sync. Without this, the canonicalization walk would treat
+                    // genesis as a non-canonical root and move it.
+                    tree.SuggestBlock(genesis);
+                    tree.TryUpdateMainChain(genesis.Header, wereProcessed: true);
+                }
                 return tree;
             })
 
@@ -862,11 +868,6 @@ public partial class BlockDownloaderTests
                 },
             })
             .AddSingleton<Context>();
-
-        if (PseudoNethermindModule.TestUseFlat && configProvider.GetConfig<ISyncConfig>().FastSync)
-        {
-            Assert.Ignore("Flat does not work when fast sync is on");
-        }
 
         configurer?.Invoke(b);
         return b
@@ -910,20 +911,21 @@ public partial class BlockDownloaderTests
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
-            AutoResetEvent autoResetEvent = new(true);
+            SemaphoreSlim peerSemaphore = new(1, 1);
             SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
 
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns((c) =>
+                .Returns(async ci =>
                 {
-                    if (!autoResetEvent.WaitOne(100)) return Task.FromResult<SyncPeerAllocation?>(null)!;
-                    return Task.FromResult(peerAllocation);
+                    CancellationToken token = ci.ArgAt<CancellationToken>(3);
+                    await peerSemaphore.WaitAsync(token);
+                    return peerAllocation;
                 });
 
             PeerPool
                 .When((p) => p.Free(peerAllocation))
-                .Do((c) => autoResetEvent.Set());
+                .Do((c) => peerSemaphore.Release());
         }
 
         public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)

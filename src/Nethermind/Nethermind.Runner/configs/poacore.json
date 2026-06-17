@@ -24,14 +24,6 @@
   "Metrics": {
     "NodeName": "POA Core"
   },
-  "Bloom": {
-    "IndexLevelBucketSizes": [
-      16,
-      16,
-      16,
-      16
-    ]
-  },
   "Merge": {
     "Enabled": false
   }

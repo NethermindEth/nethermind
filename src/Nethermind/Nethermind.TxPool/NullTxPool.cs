@@ -86,7 +86,7 @@ namespace Nethermind.TxPool
         }
 
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs) => 0;
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs) => 0;
 
         public bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells)
         {

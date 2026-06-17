@@ -171,13 +171,10 @@ internal sealed partial class BlockAccessListValidationIndex
         private static bool ScalarLaneEqualAt<TValue>(Lane<TValue> a, Lane<TValue> b, int row, int ordinal)
             where TValue : IEquatable<TValue>
         {
-            if (a.HasAt(row, ordinal))
-            {
-                if (!b.TryGetAt(row, ordinal, out TValue bVal)) return false;
-                a.TryGetAt(row, ordinal, out TValue aVal);
-                return aVal.Equals(bVal);
-            }
-            return !b.HasAt(row, ordinal);
+            bool aHas = a.TryGetAt(row, ordinal, out TValue aVal);
+            bool bHas = b.TryGetAt(row, ordinal, out TValue bVal);
+            // Equal iff both lanes agree on presence and, when present, on the value.
+            return aHas == bHas && (!aHas || aVal.Equals(bVal));
         }
     }
 

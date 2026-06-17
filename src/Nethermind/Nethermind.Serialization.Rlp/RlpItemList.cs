@@ -21,11 +21,16 @@ public sealed class RlpItemList : IRlpItemList
     private RlpItemList? _parent;
 
     public RlpItemList(IMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion)
+        : this(memoryOwner, rlpRegion, knownCount: -1)
+    {
+    }
+
+    public RlpItemList(IMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion, int knownCount)
     {
         _memoryOwner = new RefCountingMemoryOwner<byte>(memoryOwner);
         _rlpRegion = rlpRegion;
         _prefixLength = PeekPrefixAndContentLength(rlpRegion.Span, 0).prefixLength;
-        _count = -1;
+        _count = knownCount;
         _cachedIndex = 0;
         _cachedPosition = _prefixLength;
     }

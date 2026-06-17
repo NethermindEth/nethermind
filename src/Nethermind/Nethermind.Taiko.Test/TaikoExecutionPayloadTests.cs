@@ -63,12 +63,33 @@ public class TaikoExecutionPayloadTests
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
         Assert.That(result.Data.Header.RequestsHash, Is.EqualTo(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash));
+        // A strict V2 driver (Rust) omits the blob gas fields; Unzen must still pin them to 0
+        // so the reconstructed hash matches the producer's.
+        Assert.That(result.Data.Header.BlobGasUsed, Is.EqualTo(0UL));
+        Assert.That(result.Data.Header.ExcessBlobGas, Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void TryGetBlock_normalizes_nonzero_blob_gas_to_zero_when_Unzen_active()
+    {
+        TaikoExecutionPayload payload = BuildEmptyPayload();
+        payload.BlobGasUsed = 5;
+        payload.ExcessBlobGas = 7;
+        payload.AttachSpecProvider(new TestSpecProvider(new TaikoReleaseSpec { IsUnzenEnabled = true, TaikoL2Address = Address.Zero }));
+
+        Result<Block> result = payload.TryGetBlock();
+
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.Header.BlobGasUsed, Is.EqualTo(0UL));
+        Assert.That(result.Data.Header.ExcessBlobGas, Is.EqualTo(0UL));
     }
 
     [Test]
     public void TryGetBlock_does_not_pin_Unzen_fields_when_spec_inactive()
     {
         TaikoExecutionPayload payload = BuildEmptyPayload();
+        payload.BlobGasUsed = 5;
+        payload.ExcessBlobGas = 7;
         payload.AttachSpecProvider(new TestSpecProvider(new TaikoReleaseSpec { IsUnzenEnabled = false, TaikoL2Address = Address.Zero }));
 
         Result<Block> result = payload.TryGetBlock();
@@ -76,5 +97,7 @@ public class TaikoExecutionPayloadTests
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.Null);
         Assert.That(result.Data.Header.RequestsHash, Is.Null);
+        Assert.That(result.Data.Header.BlobGasUsed, Is.Null);
+        Assert.That(result.Data.Header.ExcessBlobGas, Is.Null);
     }
 }

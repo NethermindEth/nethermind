@@ -247,7 +247,7 @@ public sealed class BlobFieldsTxValidator : ITxValidator
         return ValidationResult.Success;
     }
 
-    internal static ValidationResult ValidateBlobGasLimits(int txBlobCount, IReleaseSpec spec)
+    public static ValidationResult ValidateBlobGasLimits(int txBlobCount, IReleaseSpec spec)
     {
         if (txBlobCount < Eip4844Constants.MinBlobsPerTransaction)
         {

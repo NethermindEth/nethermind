@@ -26,7 +26,7 @@ internal class ExtraConsensusDataDecoderTests
         Rlp.ValueDecoderContext encodedContext = encodedExtraData.Bytes.AsRlpValueContext();
         ExtraFieldsV2 unencoded = decoder.Decode(ref encodedContext);
 
-        Assert.That(unencoded, Is.EqualTo(decodedExtraData).UsingXdcProperties());
+        Assert.That(unencoded, Is.EqualTo(decodedExtraData).UsingXdcComparer());
     }
 
     [Test]
@@ -40,7 +40,7 @@ internal class ExtraConsensusDataDecoderTests
         Rlp.ValueDecoderContext context = new(stream.Data);
         ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
 
-        Assert.That(decodedExtraData, Is.EqualTo(extraFields).UsingXdcProperties());
+        Assert.That(decodedExtraData, Is.EqualTo(extraFields).UsingXdcComparer());
     }
 
     [Test]
@@ -54,7 +54,7 @@ internal class ExtraConsensusDataDecoderTests
         Rlp.ValueDecoderContext context = encodedExtraData.Bytes.AsRlpValueContext();
         ExtraFieldsV2 unencoded = decoder.Decode(ref context);
 
-        Assert.That(unencoded, Is.EqualTo(extraFieldsV2).UsingXdcProperties());
+        Assert.That(unencoded, Is.EqualTo(extraFieldsV2).UsingXdcComparer());
     }
 
 }

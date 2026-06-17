@@ -18,7 +18,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {

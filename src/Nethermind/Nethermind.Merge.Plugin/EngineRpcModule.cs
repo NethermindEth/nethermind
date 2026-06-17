@@ -30,7 +30,7 @@ public partial class EngineRpcModule(
     IHandler<HashSet<string>, IReadOnlyList<string>> capabilitiesHandler,
     IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> getBlobsHandler,
     IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
-    IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofsV1?>?> getBlobsHandlerV4,
+    IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
     IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
     IEngineRequestsTracker engineRequestsTracker,
@@ -48,5 +48,6 @@ public partial class EngineRpcModule(
     public ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
         => _capabilitiesHandler.Handle(methods as HashSet<string> ?? [.. methods]);
 
-    public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1) => ResultWrapper<ClientVersionV1[]>.Success([new ClientVersionV1()]);
+    public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1) =>
+        ResultWrapper<ClientVersionV1[]>.Success(string.IsNullOrEmpty(clientVersionV1.Code) ? [new()] : [new(), clientVersionV1]);
 }

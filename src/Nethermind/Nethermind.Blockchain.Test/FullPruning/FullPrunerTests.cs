@@ -104,14 +104,17 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     [TestCase(false, FullPruningCompletionBehavior.None, false)]
     [TestCase(false, FullPruningCompletionBehavior.ShutdownOnSuccess, false)]
     [TestCase(false, FullPruningCompletionBehavior.AlwaysShutdown, true)]
-    [Retry(10)]
     public async Task pruning_shuts_down_node(bool success, FullPruningCompletionBehavior behavior, bool expectedShutdown)
     {
         TestContext test = CreateTest(successfulPruning: success, completionBehavior: behavior);
+        TaskCompletionSource exitCalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.ProcessExitSource.When(s => s.Exit(Arg.Any<int>())).Do(_ => exitCalled.TrySetResult());
+
         await test.RunFullPruning();
 
         if (expectedShutdown)
         {
+            await exitCalled.Task.WaitAsync(TimeSpan.FromSeconds(30));
             test.ProcessExitSource.Received(1).Exit(ExitCodes.Ok);
         }
         else
@@ -213,7 +216,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
             INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
         {
-            BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
+            BlockTree.OnUpdateMainChain += (_, e) => _head = e.Headers[^1].Number;
             _clearPrunedDb = clearPrunedDb;
             TrieDb = new TestMemDb();
             CopyDb = new TestMemDb();
@@ -243,6 +246,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                     FullPruningCompletionBehavior = completionBehavior
                 },
                 BlockTree,
+                Substitute.For<IStateBoundaryWriter>(),
                 StateReader,
                 ProcessExitSource,
                 _chainEstimations,
@@ -305,7 +309,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 Block head = Build.A.Block.WithStateRoot(_stateRoot).WithNumber(number).TestObject;
                 BlockTree.Head.Returns(head);
                 BlockTree.FindHeader(number).Returns(head.Header);
-                BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
+                BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<BlockHeader>() { head.Header }, true));
                 Thread.Sleep(1); // Need to add a little sleep as the wait for event in full pruner is async.
             }
         }

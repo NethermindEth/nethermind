@@ -152,7 +152,7 @@ public class TxBroadcasterTests
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        TransactionAssertions.AssertEquivalent(pickedTxs, expectedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [Test]
@@ -167,10 +167,10 @@ public class TxBroadcasterTests
 
         _broadcaster.Broadcast(tx, true);
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
-        TransactionAssertions.AssertEquivalent(_broadcaster.GetSnapshot().FirstOrDefault(), isBlob ? new LightTransaction(tx) : tx);
+        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(isBlob ? new LightTransaction(tx) : tx).UsingTransactionComparer());
 
         Assert.That(_broadcaster.TryGetPersistentTx(tx.Hash, out Transaction returnedTx), Is.EqualTo(!isBlob));
-        TransactionAssertions.AssertEquivalent(returnedTx, isBlob ? null : tx);
+        Assert.That(returnedTx, Is.EqualTo(isBlob ? null : tx).UsingTransactionComparer());
     }
 
     [Test]
@@ -190,7 +190,7 @@ public class TxBroadcasterTests
 
         _broadcaster.Broadcast(tx, true);
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
-        TransactionAssertions.AssertEquivalent(_broadcaster.GetSnapshot().FirstOrDefault(), lightTx);
+        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(lightTx).UsingTransactionComparer());
 
         ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
         peer.Id.Returns(TestItem.PublicKeyA);
@@ -254,7 +254,7 @@ public class TxBroadcasterTests
         CheckCorrectness(pickedHashes, expectedCountOfHashes);
 
         // check if full transactions and hashes returned by broadcaster are as expected
-        TransactionAssertions.AssertEquivalent(pickedFullTxs, expectedFullTxs);
+        Assert.That(pickedFullTxs, Is.EquivalentTo(expectedFullTxs).UsingTransactionComparer());
         Assert.That(expectedHashes, Is.EquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray()));
     }
 
@@ -299,7 +299,7 @@ public class TxBroadcasterTests
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        TransactionAssertions.AssertEquivalent(pickedTxs, expectedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [TestCase(0, false)]
@@ -374,7 +374,7 @@ public class TxBroadcasterTests
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        TransactionAssertions.AssertEquivalent(pickedTxs, expectedTxs, nameof(Transaction.MaxFeePerGas));
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer(nameof(Transaction.MaxFeePerGas)));
     }
 
     [Test]
@@ -452,7 +452,7 @@ public class TxBroadcasterTests
         Assert.That(pickedTxs.Count, Is.EqualTo(1));
 
         List<Transaction> expectedTxs = [transactions[0]];
-        TransactionAssertions.AssertEquivalent(pickedTxs, expectedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [Test]

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
@@ -47,14 +47,16 @@ public class GetBlobsHandlerV4Tests
 
         GetBlobsHandlerV4 handler = CreateHandler(Substitute.For<ITxPool>());
         BlobCellMask requestedMask = BlobCellMask.FromIndices([0]);
-        GetBlobsHandlerV4Request request = new([null!, [1]], requestedMask);
+        GetBlobsHandlerV4Request request = new([null!, [1]], ToBitArray(requestedMask));
 
-        ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?> result = await handler.HandleAsync(request);
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await handler.HandleAsync(request);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result, Is.EqualTo(Result.Success));
-            Assert.That(result.Data!.ToArray(), Is.EqualTo(new BlobCellsAndProofsV1?[] { null, null }));
+            Assert.That(result.Data, Has.Count.EqualTo(2));
+            Assert.That(result.Data![0], Is.Null);
+            Assert.That(result.Data![1], Is.Null);
             Assert.That(Metrics.GetBlobsRequestsTotal, Is.EqualTo(2));
             Assert.That(Metrics.GetBlobsRequestsSuccessTotal, Is.Zero);
             Assert.That(Metrics.GetBlobsRequestsFailureTotal, Is.EqualTo(1));
@@ -72,9 +74,9 @@ public class GetBlobsHandlerV4Tests
         syncingInfo.IsSyncing().Returns(true);
         ITxPool txPool = Substitute.For<ITxPool>();
         GetBlobsHandlerV4 handler = new(txPool, syncingInfo);
-        GetBlobsHandlerV4Request request = new([[0]], BlobCellMask.FromIndices([0]));
+        GetBlobsHandlerV4Request request = new([[0]], ToBitArray(BlobCellMask.FromIndices([0])));
 
-        ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?> result = await handler.HandleAsync(request);
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await handler.HandleAsync(request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -92,5 +94,16 @@ public class GetBlobsHandlerV4Tests
         IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
         syncingInfo.IsSyncing().Returns(false);
         return new GetBlobsHandlerV4(txPool, syncingInfo);
+    }
+
+    private static BitArray ToBitArray(BlobCellMask mask)
+    {
+        BitArray result = new(BlobCellMask.CellCount);
+        foreach (int index in mask.EnumerateSetBits())
+        {
+            result.Set(index, true);
+        }
+
+        return result;
     }
 }

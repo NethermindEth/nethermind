@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.State.Flat;
 
@@ -24,23 +25,28 @@ public sealed class SpmcRingBuffer<T>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            long tail = Volatile.Read(ref _tail);
-            long head = Volatile.Read(ref _head);
+            long tail = Volatile.Read(ref _tail.Value);
+            long head = Volatile.Read(ref _head.Value);
 
             long count = tail - head;
             return count < 0 ? 0 : count; // clamp just in case of a race
         }
     }
 
-    // --- head (consumers) + padding to avoid false sharing with _tail ---
-    private long _head;
-#pragma warning disable CS0169 // Field is never used
-    private long _headPad1, _headPad2, _headPad3, _headPad4, _headPad5, _headPad6, _headPad7;
+    internal bool HasReadyItem
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            long head = Volatile.Read(ref _head.Value);
+            int index = (int)(head & _mask);
+            long seq = Volatile.Read(ref _sequences[index]);
+            return seq >= head + 1;
+        }
+    }
 
-    // --- tail (producer) + padding ---
-    private long _tail;
-    private long _tailPad1, _tailPad2, _tailPad3, _tailPad4, _tailPad5, _tailPad6, _tailPad7;
-#pragma warning restore CS0169 // Field is never used
+    private CacheLinePaddedLong _head;
+    private CacheLinePaddedLong _tail;
 
     public SpmcRingBuffer(int capacityPowerOfTwo)
     {
@@ -64,7 +70,7 @@ public sealed class SpmcRingBuffer<T>
     public bool TryEnqueue(in T item)
     {
         // Single producer: no CAS needed on tail.
-        long tail = _tail;
+        long tail = _tail.Value;
         int index = (int)(tail & _mask);
 
         // Slot is free only if its sequence equals the current tail.
@@ -80,7 +86,8 @@ public sealed class SpmcRingBuffer<T>
         // sees the payload after seeing seq.
         Volatile.Write(ref _sequences[index], tail + 1);
 
-        _tail = tail + 1;
+        // Single producer owns tail; EstimatedJobCount only uses this as a stale-tolerant hint.
+        _tail.Value = tail + 1;
 
         return true;
     }
@@ -90,7 +97,7 @@ public sealed class SpmcRingBuffer<T>
     {
         while (true)
         {
-            long head = Volatile.Read(ref _head);
+            long head = Volatile.Read(ref _head.Value);
             int index = (int)(head & _mask);
             long seq = Volatile.Read(ref _sequences[index]);
             long expectedSeq = head + 1;
@@ -98,9 +105,14 @@ public sealed class SpmcRingBuffer<T>
             // If seq == expectedSeq, the producer has finished writing
             if (seq == expectedSeq)
             {
-                if (Interlocked.CompareExchange(ref _head, head + 1, head) == head)
+                if (Interlocked.CompareExchange(ref _head.Value, head + 1, head) == head)
                 {
                     item = _entries[index];
+                    if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+                    {
+                        _entries[index] = default!;
+                    }
+
                     // Mark as ready for the producer's next lap (head + capacity)
                     Volatile.Write(ref _sequences[index], head + _capacity);
                     return true;

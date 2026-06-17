@@ -11,17 +11,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Taiko.Test.ZkGas;
 
-/// <summary>
-/// Unit tests for <see cref="ZkGasTxTracer"/>, covering:
-/// <list type="bullet">
-///   <item>Non-spawn opcodes: immediate metering via ChargeOpcode.</item>
-///   <item>Spawn opcodes (deferred state machine): gas charged at ReportAction / ReportActionEnd
-///       using fixed spawn estimate when child work is dispatched.</item>
-///   <item>Deferred step flushed without spawn estimate when no ReportAction follows.</item>
-///   <item>ReportActionError charges full forwarded gas (gasRemaining = 0).</item>
-///   <item>ReportActionEnd / ReportActionRevert flush the deferred step and charge precompile.</item>
-/// </list>
-/// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public class ZkGasTxTracerTests
@@ -30,155 +19,109 @@ public class ZkGasTxTracerTests
 
     private static (ZkGasTxTracer tracer, ZkGasMeter meter) Make()
     {
-        ZkGasMeter meter = new();
+        ZkGasMeter meter = new(
+            opcodeMultipliers: ZkGasTestSchedules.OpcodeMultipliers,
+            precompileMultipliers: ZkGasTestSchedules.PrecompileMultipliers);
         ZkGasTxTracer tracer = new(meter);
         return (tracer!, meter);
     }
 
-    /// <summary>Returns a null <see cref="ExecutionEnvironment"/> suitable for tests that do not inspect it.</summary>
     private static ExecutionEnvironment Env() => null!;
 
     // ── non-spawn opcode ──────────────────────────────────────────────────────
 
-    /// <summary>
-    /// A non-spawn opcode (ADD = 0x01) is charged immediately after
-    /// <see cref="ZkGasTxTracer.ReportOperationRemainingGas"/>.
-    /// </summary>
     [Test]
     public void NonSpawnOpcode_ChargedImmediately()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
-        // ADD = 0x01, multiplier = ZkGasSchedule.OpcodeMultipliers[0x01]
         tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
-        tracer.ReportOperationRemainingGas(97); // 3 raw gas
+        tracer.ReportOperationRemainingGas(97);
 
-        ulong expected = 3UL * ZkGasSchedule.OpcodeMultipliers[0x01];
+        ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
-    /// <summary>
-    /// A second non-spawn opcode accumulates on top of the first.
-    /// </summary>
     [Test]
     public void NonSpawnOpcode_Accumulates()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
         tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
-        tracer.ReportOperationRemainingGas(97); // 3 raw
+        tracer.ReportOperationRemainingGas(97);
 
         tracer.StartOperation(1, Instruction.MUL, gas: 97, env: Env());
-        tracer.ReportOperationRemainingGas(94); // 3 raw
+        tracer.ReportOperationRemainingGas(94);
 
-        ulong expected = 3UL * ZkGasSchedule.OpcodeMultipliers[0x02]   // MUL = 0x02
-                       + 3UL * ZkGasSchedule.OpcodeMultipliers[0x01];  // ADD = 0x01
+        ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x02]
+                       + 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
     // ── spawn opcode — deferred, spawned ─────────────────────────────────────
 
-    /// <summary>
-    /// A CALL opcode followed by <see cref="ZkGasTxTracer.ReportAction"/> (child frame
-    /// dispatched) must be charged at the fixed spawn estimate, not the raw gas delta.
-    /// The deferred charge should be applied when the next opcode starts.
-    /// </summary>
     [Test]
     public void SpawnOpcode_Deferred_UsesSpawnEstimate_WhenChildDispatched()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
-        // CALL = 0xf1
         tracer.StartOperation(0, Instruction.CALL, gas: 50_000, env: Env());
-        tracer.ReportOperationRemainingGas(25_000); // 25_000 raw – should be ignored
-        // ReportAction signals that child work was dispatched
+        tracer.ReportOperationRemainingGas(25_000);
         tracer.ReportAction(25_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB,
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
-        // Deferred step is flushed when the next opcode starts
         tracer.StartOperation(1, Instruction.STOP, gas: 0, env: Env());
         tracer.ReportOperationRemainingGas(0);
 
-        // ChargeOpcode multiplies rawGas by OpcodeMultipliers[opcode], so spawn estimate is also multiplied
-        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1];
-        ulong stopCharge = 0; // STOP raw=0 → 0
+        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCall * ZkGasTestSchedules.OpcodeMultipliers.Span[0xf1];
+        ulong stopCharge = 0;
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(spawnCharge + stopCharge));
     }
 
-    /// <summary>
-    /// A CALL opcode where no <see cref="ZkGasTxTracer.ReportAction"/> follows
-    /// (e.g. call to empty account that is not dispatched as a child frame) must use
-    /// the raw measured gas delta, not the spawn estimate.
-    /// </summary>
     [Test]
     public void SpawnOpcode_Deferred_UsesRawGas_WhenNoChildDispatched()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
         tracer.StartOperation(0, Instruction.CALL, gas: 50_000, env: Env());
-        tracer.ReportOperationRemainingGas(47_000); // 3_000 raw
-        // No ReportAction — child was not dispatched
-        // Deferred step flushed by next opcode start
+        tracer.ReportOperationRemainingGas(47_000);
         tracer.StartOperation(1, Instruction.STOP, gas: 0, env: Env());
         tracer.ReportOperationRemainingGas(0);
 
-        ulong expected = 3_000UL * ZkGasSchedule.OpcodeMultipliers[0xf1];
+        ulong expected = 3_000UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0xf1];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
     // ── spawn opcode — CREATE post-trace bail vs error (regression) ──────────
 
-    /// <summary>
-    /// Regression test for block 11297 mismatch: a CREATE that bails after
-    /// <c>EndInstructionTrace</c> (e.g. EIP-7610 nonce/code collision) reports
-    /// <c>ReportOperationRemainingGas</c> but never fires <c>ReportAction</c>
-    /// nor <c>ReportOperationError</c>. REVM charges the fixed spawn estimate
-    /// in this case, so the deferred CREATE step must be flushed with
-    /// <see cref="ZkGasSchedule.SpawnEstimateCreate"/>, not the raw delta.
-    /// </summary>
     [Test]
     public void SpawnOpcode_Create_PostTraceBail_UsesSpawnEstimate()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
-        // CREATE = 0xf0
         tracer.StartOperation(0, Instruction.CREATE, gas: 50_000, env: Env());
-        tracer.ReportOperationRemainingGas(49_968); // 32 raw delta — should be ignored
-        // No ReportAction (post-trace bail) and no ReportOperationError.
-        // Deferred step flushed by the next opcode start.
+        tracer.ReportOperationRemainingGas(49_968);
         tracer.StartOperation(1, Instruction.STOP, gas: 0, env: Env());
         tracer.ReportOperationRemainingGas(0);
 
-        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCreate * ZkGasSchedule.OpcodeMultipliers[0xf0];
+        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCreate * ZkGasTestSchedules.OpcodeMultipliers.Span[0xf0];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(spawnCharge));
     }
 
-    /// <summary>
-    /// Regression test for block 259: a CREATE that runs out of gas after
-    /// <c>EndInstructionTrace</c> reports both <c>ReportOperationRemainingGas</c>
-    /// and <c>ReportOperationError</c>. This is NOT a post-trace bail — REVM
-    /// charges the raw measured gas delta, not the spawn estimate.
-    /// </summary>
     [Test]
     public void SpawnOpcode_Create_OutOfGasAfterTrace_UsesRawDelta()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
         tracer.StartOperation(0, Instruction.CREATE, gas: 50_000, env: Env());
-        tracer.ReportOperationRemainingGas(49_968); // 32 raw delta
+        tracer.ReportOperationRemainingGas(49_968);
         tracer.ReportOperationError(EvmExceptionType.OutOfGas);
-        // Deferred step flushed by the next opcode start.
         tracer.StartOperation(1, Instruction.STOP, gas: 0, env: Env());
         tracer.ReportOperationRemainingGas(0);
 
-        ulong rawCharge = 32UL * ZkGasSchedule.OpcodeMultipliers[0xf0];
+        ulong rawCharge = 32UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0xf0];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(rawCharge));
     }
 
-    /// <summary>
-    /// Deferred step is flushed with spawn estimate by
-    /// <see cref="ZkGasTxTracer.ReportActionEnd(long, ReadOnlyMemory{byte})"/>
-    /// (call-type action end), even without a subsequent opcode.
-    /// </summary>
     [Test]
     public void SpawnOpcode_FlushedByReportActionEnd_Call()
     {
@@ -190,14 +133,9 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
         tracer.ReportActionEnd(10_000, ReadOnlyMemory<byte>.Empty);
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1]));
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasTestSchedules.OpcodeMultipliers.Span[0xf1]));
     }
 
-    /// <summary>
-    /// Deferred step is flushed with spawn estimate by
-    /// <see cref="ZkGasTxTracer.ReportActionEnd(long, Address, ReadOnlyMemory{byte})"/>
-    /// (create-type action end).
-    /// </summary>
     [Test]
     public void SpawnOpcode_FlushedByReportActionEnd_Create()
     {
@@ -209,13 +147,9 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CREATE);
         tracer.ReportActionEnd(30_000, TestItem.AddressC, ReadOnlyMemory<byte>.Empty);
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCreate * ZkGasSchedule.OpcodeMultipliers[0xf0]));
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCreate * ZkGasTestSchedules.OpcodeMultipliers.Span[0xf0]));
     }
 
-    /// <summary>
-    /// Deferred step is flushed with spawn estimate by
-    /// <see cref="ZkGasTxTracer.ReportActionError"/>.
-    /// </summary>
     [Test]
     public void SpawnOpcode_FlushedByReportActionError()
     {
@@ -227,12 +161,9 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
         tracer.ReportActionError(EvmExceptionType.OutOfGas);
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1]));
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasTestSchedules.OpcodeMultipliers.Span[0xf1]));
     }
 
-    /// <summary>
-    /// Deferred step is flushed by <see cref="ZkGasTxTracer.ReportActionRevert"/>.
-    /// </summary>
     [Test]
     public void SpawnOpcode_FlushedByReportActionRevert()
     {
@@ -244,35 +175,25 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
         tracer.ReportActionRevert(0, ReadOnlyMemory<byte>.Empty);
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1]));
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.SpawnEstimateCall * ZkGasTestSchedules.OpcodeMultipliers.Span[0xf1]));
     }
 
     // ── precompile charging ───────────────────────────────────────────────────
 
-    /// <summary>
-    /// A precompile call that succeeds is charged based on
-    /// (<c>gasStart − gasEnd</c>) × multiplier.
-    /// </summary>
     [Test]
     public void Precompile_ChargedOnReportActionEnd_WithGasUsed()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
         Address ecrecover = new("0x0000000000000000000000000000000000000001");
-        // ReportAction with isPrecompileCall = true
         tracer.ReportAction(1000, UInt256.Zero, TestItem.AddressA, ecrecover,
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL, isPrecompileCall: true);
         tracer.ReportActionEnd(400, ReadOnlyMemory<byte>.Empty); // 600 gas used
 
-        ulong expected = 600UL * ZkGasSchedule.PrecompileMultipliers[0x01]; // ecrecover = address byte 1
+        ulong expected = 600UL * ZkGasTestSchedules.PrecompileMultiplier(0x01);
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
-    /// <summary>
-    /// <see cref="ZkGasTxTracer.ReportActionError"/> passes <c>gasRemaining = 0</c> to
-    /// <c>ChargePrecompileIfPending</c>. This charges the full forwarded gas, mirroring
-    /// the EVM specification where a precompile error burns all forwarded gas.
-    /// </summary>
     [Test]
     public void Precompile_ChargedFullGas_OnReportActionError()
     {
@@ -283,14 +204,10 @@ public class ZkGasTxTracerTests
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL, isPrecompileCall: true);
         tracer.ReportActionError(EvmExceptionType.PrecompileFailure);
 
-        // gasStart=800, gasRemaining=0 → gasUsed=800
-        ulong expected = 800UL * ZkGasSchedule.PrecompileMultipliers[0x01];
+        ulong expected = 800UL * ZkGasTestSchedules.PrecompileMultiplier(0x01);
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
-    /// <summary>
-    /// A precompile that reverts charges gas based on actual gas used (not full forwarded).
-    /// </summary>
     [Test]
     public void Precompile_ChargedActualGas_OnReportActionRevert()
     {
@@ -299,19 +216,14 @@ public class ZkGasTxTracerTests
         Address sha256 = new("0x0000000000000000000000000000000000000002");
         tracer.ReportAction(1000, UInt256.Zero, TestItem.AddressA, sha256,
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL, isPrecompileCall: true);
-        tracer.ReportActionRevert(300, ReadOnlyMemory<byte>.Empty); // 700 gas used
+        tracer.ReportActionRevert(300, ReadOnlyMemory<byte>.Empty);
 
-        ulong expected = 700UL * ZkGasSchedule.PrecompileMultipliers[0x02]; // sha256 = byte 2
+        ulong expected = 700UL * ZkGasTestSchedules.PrecompileMultiplier(0x02);
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
     // ── spawn + precompile interaction ────────────────────────────────────────
 
-    /// <summary>
-    /// When a CALL to a precompile occurs, the precompile flag takes precedence.
-    /// The spawn deferred step is flushed at ReportActionEnd with the spawn estimate,
-    /// and the precompile charge is also applied.
-    /// </summary>
     [Test]
     public void SpawnOpcode_AndPrecompile_BothCharged()
     {
@@ -319,23 +231,18 @@ public class ZkGasTxTracerTests
 
         Address identity = new("0x0000000000000000000000000000000000000004");
         tracer.StartOperation(0, Instruction.CALL, gas: 10_000, env: Env());
-        tracer.ReportOperationRemainingGas(9_000); // 1_000 raw — should be replaced by spawn estimate
+        tracer.ReportOperationRemainingGas(9_000);
         tracer.ReportAction(9_000, UInt256.Zero, TestItem.AddressA, identity,
             ReadOnlyMemory<byte>.Empty, ExecutionType.CALL, isPrecompileCall: true);
-        tracer.ReportActionEnd(8_500, ReadOnlyMemory<byte>.Empty); // precompile used 500 gas
+        tracer.ReportActionEnd(8_500, ReadOnlyMemory<byte>.Empty); // 500 gas used
 
-        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCall * ZkGasSchedule.OpcodeMultipliers[0xf1];
-        ulong precompileCharge = 500UL * ZkGasSchedule.PrecompileMultipliers[0x04]; // identity = byte 4
+        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCall * ZkGasTestSchedules.OpcodeMultipliers.Span[0xf1];
+        ulong precompileCharge = 500UL * ZkGasTestSchedules.PrecompileMultiplier(0x04);
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(spawnCharge + precompileCharge));
     }
 
     // ── IsTracingActions / IsTracingInstructions flags ────────────────────────
 
-    /// <summary>
-    /// Both <see cref="ZkGasTxTracer.IsTracingActions"/> and
-    /// <see cref="ZkGasTxTracer.IsTracingInstructions"/> must be <c>true</c> so that
-    /// the VM delivers the callbacks this tracer relies on.
-    /// </summary>
     [Test]
     public void TracerFlags_AreEnabled()
     {

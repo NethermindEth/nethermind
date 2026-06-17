@@ -110,7 +110,7 @@ internal static class StructLogEnvelopeWriter
         return result.Error switch
         {
             ErrorType.InsufficientSenderBalance => ReplacePrefix(detail, "insufficient sender balance for transfer", "insufficient funds for transfer"),
-            ErrorType.InsufficientMaxFeePerGasForSenderBalance => ReplacePrefix(detail, "insufficient sender balance for gas * price + value", "insufficient funds for gas * price + value"),
+            ErrorType.InsufficientMaxFeePerGasForSenderBalance => detail,
             ErrorType.SenderHasDeployedCode => ReplacePrefix(detail, "sender has deployed code", "sender not an eoa"),
             ErrorType.NonceOverflow => ReplacePrefix(detail, "nonce overflow", "nonce has max value"),
             ErrorType.MinerPremiumNegative => ReplacePrefix(detail, "miner premium is negative", "max priority fee per gas higher than max fee per gas"),

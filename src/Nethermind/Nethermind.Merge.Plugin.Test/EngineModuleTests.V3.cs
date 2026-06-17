@@ -183,9 +183,17 @@ public partial class EngineModuleTests
         Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
-        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidBlockNumber"));
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "InvalidBlockNumber");
+    }
+
+    private static void AssertInvalidNewPayload(ResultWrapper<PayloadStatusV1> result, string expectedValidationErrorPrefix)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+            Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
+            Assert.That(result.Data.ValidationError, Does.StartWith(expectedValidationErrorPrefix));
+        }
     }
 
     [Test]
@@ -201,9 +209,7 @@ public partial class EngineModuleTests
         Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
-        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "InvalidStateRoot");
     }
 
     [Test]
@@ -221,9 +227,7 @@ public partial class EngineModuleTests
         Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
-        Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction 0 is not valid");
     }
 
     [Test]
@@ -237,9 +241,7 @@ public partial class EngineModuleTests
         Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
-        Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction 0 is not valid");
     }
 
     [Test]
@@ -399,10 +401,10 @@ public partial class EngineModuleTests
                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                 Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-                Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
+                Substitute.For<IHandler<HashSet<string>, IReadOnlyList<string>>>(),
                 Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
-                Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofsV1?>?>>(),
+                Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>(),
                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
                 Substitute.For<IEngineRequestsTracker>(),
@@ -855,7 +857,7 @@ public partial class EngineModuleTests
             yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
             {
                 TestName = "ForkchoiceUpdatedV2 To Request Shanghai Payload, Zero Beacon Root",
-                ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
+                ExpectedResult = MergeErrorCodes.UnsupportedFork,
             };
             yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
             {

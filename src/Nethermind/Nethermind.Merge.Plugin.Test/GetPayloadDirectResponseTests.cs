@@ -155,6 +155,83 @@ public class GetPayloadDirectResponseTests
         await AssertStreamableJsonMatchesPlainAsync(expected, direct);
     }
 
+    [TestCase(1, false, -1)]
+    [TestCase(1, false, 0)]
+    [TestCase(1, false, 2)]
+    [TestCase(2, false, -1)]
+    [TestCase(2, false, 0)]
+    [TestCase(2, false, 2)]
+    [TestCase(2, true, 2)]
+    public async Task Payload_bodies_raw_block_rlp_response_matches_dto_json_and_ssz(int version, bool blockAccessList, int withdrawalCount)
+    {
+        Transaction[] transactions =
+        [
+            CreateTransaction(TxType.Legacy),
+            CreateTransaction(TxType.EIP1559),
+            CreateTransaction(TxType.Blob),
+            CreateTransaction(TxType.SetCode)
+        ];
+        Withdrawal[]? withdrawals = withdrawalCount < 0 ? null : CreateWithdrawals(withdrawalCount);
+        Block block = CreateBlock(transactions, withdrawals, requests: null, BalKind.None, slotNumber: null);
+        byte[] blockRlp = Rlp.Encode(block).Bytes;
+
+        if (version == 1)
+        {
+            ExecutionPayloadBodyV1Result?[] expected =
+            [
+                new(transactions, withdrawals),
+                null
+            ];
+            PayloadBodiesV1DirectResponse.PayloadBody?[] items =
+            [
+                PayloadBodiesV1DirectResponse.CreatePayloadBody(blockRlp),
+                null
+            ];
+            PayloadBodiesV1DirectResponse direct = new(items);
+
+            await AssertStreamableJsonMatchesPlainAsync(expected, direct);
+
+            ArrayBufferWriter<byte> expectedSsz = new();
+            ArrayBufferWriter<byte> actualSsz = new();
+            SszCodec.EncodePayloadBodiesV1Response(expected, expectedSsz);
+            SszCodec.EncodePayloadBodiesV1Response(direct, actualSsz);
+
+            Assert.That(actualSsz.WrittenSpan.ToArray(), Is.EqualTo(expectedSsz.WrittenSpan.ToArray()));
+            return;
+        }
+
+        byte[]? blockAccessListBytes = blockAccessList ? [1, 2, 3] : null;
+        ExecutionPayloadBodyV2Result?[] expectedV2 =
+        [
+            new(transactions, withdrawals, blockAccessListBytes),
+            null
+        ];
+        PayloadBodiesV2DirectResponse.PayloadBody?[] itemsV2 =
+        [
+            PayloadBodiesV2DirectResponse.CreatePayloadBody(blockRlp, ArrayMemoryManager.From(blockAccessListBytes)),
+            null
+        ];
+
+        using PayloadBodiesV2DirectResponse directV2 = new(itemsV2);
+        await AssertStreamableJsonMatchesPlainAsync(expectedV2, directV2);
+
+        ArrayBufferWriter<byte> expectedV2Ssz = new();
+        ArrayBufferWriter<byte> actualV2Ssz = new();
+        SszCodec.EncodePayloadBodiesV2Response(expectedV2, expectedV2Ssz);
+        SszCodec.EncodePayloadBodiesV2Response(directV2, actualV2Ssz);
+
+        Assert.That(actualV2Ssz.WrittenSpan.ToArray(), Is.EqualTo(expectedV2Ssz.WrittenSpan.ToArray()));
+    }
+
+    [Test]
+    public void Payload_bodies_v1_indexer_throws_argument_out_of_range()
+    {
+        PayloadBodiesV1DirectResponse direct = new([new ExecutionPayloadBodyV1Result([], null)]);
+
+        Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[-1]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[direct.Count]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
+    }
+
     [TestCase(5)]
     [TestCase(6)]
     public async Task Json_rpc_envelope_matches_plain_dto_semantically(int version)

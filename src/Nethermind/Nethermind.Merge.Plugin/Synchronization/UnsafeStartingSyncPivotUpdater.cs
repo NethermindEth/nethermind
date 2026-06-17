@@ -66,7 +66,8 @@ public class UnsafeStartingSyncPivotUpdater(
         {
             using IOwnedReadOnlyList<BlockHeader>? x = await peer.GetBlockHeaders(number, 1, 0, token);
             ReadOnlySpan<BlockHeader> headers = x is null ? [] : x.AsSpan();
-            return headers.Length == 1 ? headers[0] : null;
+            // Only accept the header that is actually at the requested number; a peer must not substitute another.
+            return headers.Length == 1 && headers[0].Number == number ? headers[0] : null;
         });
 
     private Hash256? TryGetPotentialPivotBlockNumberFromBlockCache(long potentialPivotBlockNumber)

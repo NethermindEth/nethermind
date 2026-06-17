@@ -226,7 +226,6 @@ public static partial class EvmInstructions
             caller: env.ExecutingAccount,
             codeSource: null,
             callDepth: env.CallDepth + 1,
-            transferValue: in value,
             value: in value,
             inputData: in _emptyMemory);
 

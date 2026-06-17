@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Era1;
 
@@ -17,24 +16,31 @@ public class AccumulatorCalculator : IDisposable
     private const int TreeDepth = 13;   // log2(8192)
     private const int ProofLength = 15; // 1 (HeaderRecord field) + 13 (tree) + 1 (length mixin)
 
-    private readonly ArrayPoolList<ReadOnlyMemory<byte>> _roots = new(EraWriter.MaxEra1Size);
+    private readonly ArrayPoolList<ValueHash256> _roots = new(EraWriter.MaxEra1Size);
     private readonly ArrayPoolList<UInt256> _totalDifficulties = new(EraWriter.MaxEra1Size);
 
     public void Add(Hash256 headerHash, UInt256 td)
     {
-        Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(2));
-        merkleizer.Feed(headerHash.Bytes);
-        merkleizer.Feed(td);
-        _roots.Add(merkleizer.CalculateRoot().ToLittleEndian());
+        HeaderRecord.Merkleize(new()
+        {
+            BlockHash = headerHash,
+            TotalDifficulty = td
+        }, out UInt256 root);
+        _roots.Add(ToValueHash256(root));
         _totalDifficulties.Add(td);
     }
 
     public ValueHash256 ComputeRoot()
     {
-        Merkleizer merkleizer = new(0);
-        merkleizer.Feed(_roots, EraWriter.MaxEra1Size);
-        UInt256 root = merkleizer.CalculateRoot();
-        return new ValueHash256(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1)));
+        HeaderRecordRoots.Merkleize(new() { Roots = _roots }, out UInt256 root);
+        return ToValueHash256(root);
+    }
+
+    private static ValueHash256 ToValueHash256(UInt256 root)
+    {
+        Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
+        root.ToLittleEndian(bytes);
+        return new ValueHash256(bytes);
     }
 
     public ValueHash256[] GetProof(int blockIndex)
@@ -54,7 +60,7 @@ public class AccumulatorCalculator : IDisposable
         flatTree.Clear();
         for (int i = 0; i < count; i++)
         {
-            _roots[i].Span.CopyTo(flatTree.Slice((EraWriter.MaxEra1Size + i) * 32, 32));
+            _roots[i].Bytes.CopyTo(flatTree.Slice((EraWriter.MaxEra1Size + i) * 32, 32));
         }
 
         Span<byte> combined = stackalloc byte[64];
@@ -93,4 +99,18 @@ public class AccumulatorCalculator : IDisposable
         _roots.Dispose();
         _totalDifficulties.Dispose();
     }
+}
+
+[SszContainer]
+internal partial struct HeaderRecord
+{
+    public Hash256 BlockHash { get; set; }
+    public UInt256 TotalDifficulty { get; set; }
+}
+
+[SszContainer(isCollectionItself: true)]
+internal partial struct HeaderRecordRoots
+{
+    [SszList(EraWriter.MaxEra1Size)]
+    public ArrayPoolList<ValueHash256> Roots { get; set; }
 }

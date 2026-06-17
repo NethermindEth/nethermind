@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -74,7 +75,7 @@ public class BlobTxStorageTests
         Assert.That(found, Is.EqualTo(3));
         for (int i = 0; i < 3; i++)
         {
-            TransactionAssertions.AssertEquivalent(results[i], txs[i], nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(results[i], Is.EqualTo(txs[i]).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
         }
     }
 

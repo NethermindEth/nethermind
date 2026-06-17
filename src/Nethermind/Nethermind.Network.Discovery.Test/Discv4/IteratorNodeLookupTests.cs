@@ -61,7 +61,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         private void FindNeighboursThrows(Node from, Exception exception) =>
             _msgSender.FindNeighbours(from, _targetKey, Arg.Any<CancellationToken>())
-                .Returns(Task.FromException<Node[]>(exception));
+                .Returns(Task.FromException<Node[]?>(exception));
 
         private Task AssertFindNeighboursCalledOnce(Node node) =>
             _msgSender.Received(1).FindNeighbours(

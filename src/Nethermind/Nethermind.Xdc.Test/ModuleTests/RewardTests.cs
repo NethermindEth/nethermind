@@ -58,7 +58,8 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>()
+            Substitute.For<ITransactionProcessor>(),
+            Substitute.For<IRewardsStore>()
         );
 
         XdcBlockHeader head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -194,7 +195,8 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>()
+            Substitute.For<ITransactionProcessor>(),
+            Substitute.For<IRewardsStore>()
         );
 
         XdcBlockHeader head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -373,7 +375,7 @@ public class RewardTests
             .Returns(ci => ci.ArgAt<Address>(2));
 
         SigningTxCache signingTxCache = new(tree, specProvider);
-        XdcRewardCalculator rewardCalculator = new(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, Substitute.For<ITransactionProcessor>());
+        XdcRewardCalculator rewardCalculator = new(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, Substitute.For<ITransactionProcessor>(), Substitute.For<IRewardsStore>());
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -387,9 +389,12 @@ public class RewardTests
         UInt256 bOwnerReward = rewards.Single(r => r.Address == signerB.Address).Value;
         UInt256 foundationReward = rewards.Single(r => r.Address == foundationWalletAddr).Value;
 
-        Assert.That(foundationReward, Is.EqualTo(aFoundExpected + bFoundExpected));
-        Assert.That(aOwnerReward, Is.EqualTo(aOwnerExpected));
-        Assert.That(bOwnerReward, Is.EqualTo(bOwnerExpected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(foundationReward, Is.EqualTo(aFoundExpected + bFoundExpected));
+            Assert.That(aOwnerReward, Is.EqualTo(aOwnerExpected));
+            Assert.That(bOwnerReward, Is.EqualTo(bOwnerExpected));
+        }
     }
 
     [Test]
@@ -518,18 +523,22 @@ public class RewardTests
             votingContract,
             mintedRecordContract,
             signingTxCache,
-            transactionProcessor);
+            transactionProcessor,
+            Substitute.For<IRewardsStore>());
 
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks[(int)checkpointNumber]);
 
-        Assert.That(rewards, Has.Length.EqualTo(6));
-        Assert.That(rewards.Single(r => r.Address == signer1.Address).Value, Is.EqualTo((UInt256)450));
-        Assert.That(rewards.Single(r => r.Address == signer2.Address).Value, Is.EqualTo((UInt256)450));
-        Assert.That(rewards.Single(r => r.Address == protector1.Address).Value, Is.EqualTo((UInt256)360));
-        Assert.That(rewards.Single(r => r.Address == protector2.Address).Value, Is.EqualTo((UInt256)360));
-        Assert.That(rewards.Single(r => r.Address == observer1.Address).Value, Is.EqualTo((UInt256)270));
-        Assert.That(rewards.Single(r => r.Address == foundationWalletAddr).Value, Is.EqualTo((UInt256)210));
-        Assert.That(rewards.Any(r => r.Address == observer2.Address), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewards, Has.Length.EqualTo(6));
+            Assert.That(rewards.Single(r => r.Address == signer1.Address).Value, Is.EqualTo((UInt256)450));
+            Assert.That(rewards.Single(r => r.Address == signer2.Address).Value, Is.EqualTo((UInt256)450));
+            Assert.That(rewards.Single(r => r.Address == protector1.Address).Value, Is.EqualTo((UInt256)360));
+            Assert.That(rewards.Single(r => r.Address == protector2.Address).Value, Is.EqualTo((UInt256)360));
+            Assert.That(rewards.Single(r => r.Address == observer1.Address).Value, Is.EqualTo((UInt256)270));
+            Assert.That(rewards.Single(r => r.Address == foundationWalletAddr).Value, Is.EqualTo((UInt256)210));
+            Assert.That(rewards.Any(r => r.Address == observer2.Address), Is.False);
+        }
 
         // Validate minted-record accounting side effects produced by the reward upgrade path.
         UInt256 epochNumber = 3;
@@ -543,10 +552,13 @@ public class RewardTests
         UInt256 onsetBlock = ReadStorageUInt256(worldState, mintedRecordAddress, (UInt256)2);
         UInt256 totalBurned = ReadStorageUInt256(worldState, mintedRecordAddress, mintedRecordPostBurnedBase + epochNumber);
 
-        Assert.That(totalMinted, Is.EqualTo((UInt256)2100));
-        Assert.That(rewardBlock, Is.EqualTo((UInt256)checkpointNumber));
-        Assert.That(onsetBlock, Is.EqualTo((UInt256)checkpointNumber));
-        Assert.That(totalBurned, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(totalMinted, Is.EqualTo((UInt256)2100));
+            Assert.That(rewardBlock, Is.EqualTo((UInt256)checkpointNumber));
+            Assert.That(onsetBlock, Is.EqualTo((UInt256)checkpointNumber));
+            Assert.That(totalBurned, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -563,7 +575,8 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>()
+            Substitute.For<ITransactionProcessor>(),
+            Substitute.For<IRewardsStore>()
             );
 
         UInt256 totalReward = UInt256.Parse("171000000000000000000");
@@ -580,8 +593,11 @@ public class RewardTests
         masternodeVotingContract.GetCandidateOwner(Arg.Any<ITransactionProcessor>(), header, signer!).Returns(signer!);
         (BlockReward holderReward, UInt256 foundationWalletReward) = rewardCalculator.DistributeRewards(signer!, expectedReward, header);
 
-        Assert.That(holderReward.Value, Is.EqualTo(expectedAmountOwner));
-        Assert.That(foundationWalletReward, Is.EqualTo(expectedAmountFoundationWallet));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(holderReward.Value, Is.EqualTo(expectedAmountOwner));
+            Assert.That(foundationWalletReward, Is.EqualTo(expectedAmountFoundationWallet));
+        }
     }
 
     private static Transaction BuildSigningTx(IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0)

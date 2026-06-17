@@ -466,7 +466,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         _server.DisposeAsync().AsTask();
 
     [Test]
-    [Retry(5)]
+    [Category("Flaky"), Retry(5)]
     public async Task FullSync()
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
@@ -482,7 +482,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Retry(5)]
+    [Category("Flaky"), Retry(5)]
     public async Task FastSync()
     {
         // After the nodedata satellite protocol was removed, fast sync without snap can no longer
@@ -522,7 +522,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Retry(5)]
+    [Category("Flaky"), Retry(5)]
     public async Task SnapSync()
     {
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
@@ -564,7 +564,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static IEnumerable<int> StressIterations() => Enumerable.Range(0, StressIterationCount);
 
     [Test]
-    [Retry(2)]
+    [Category("Flaky"), Retry(2)]
     public async Task FastSync_downloads_block_access_lists_over_eth71()
     {
         if (!isPostMerge || dbMode != DbMode.Default)
@@ -617,7 +617,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Retry(5)]
+    [Category("Flaky"), Retry(5)]
     public async Task SnapSync_HalfPathServer_HashClient()
     {
         if (dbMode != DbMode.Default) Assert.Ignore("This test only runs on the Default (HalfPath) server fixture");
@@ -643,7 +643,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Retry(2)]
+    [Category("Flaky"), Retry(2)]
     public async Task FastSync_skips_pre_eip7928_block_access_lists_over_eth71()
     {
         if (!isPostMerge || dbMode != DbMode.Default)
@@ -821,12 +821,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             long finalizedBlockNumber = Math.Max(0, otherBlockTree.Head!.Number - finalizedDistanceFromHead);
             Block finalizedBlock = otherBlockTree.FindBlock(finalizedBlockNumber)!;
             Block headBlock = otherBlockTree.Head!;
-            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(finalizedBlock.Hash!), finalizedBlock);
-            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(headBlock.Hash!), headBlock);
+            blockCacheService.TryAddBlock(finalizedBlock);
+            blockCacheService.TryAddBlock(headBlock);
             blockCacheService.FinalizedHash = finalizedBlock.Hash!;
 
             await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
-            mergeSyncController.TryInitBeaconHeaderSync(headBlock.Header);
+            mergeSyncController.InitBeaconHeaderSync(headBlock.Header);
 
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken, finalizedDistanceFromHead);
         }
@@ -1114,9 +1114,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                             $"syncedBalHash={syncedBlock.Header.BlockAccessListHash}");
                     }
 
-                    Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
-                    Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
-                    Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
+                        Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
+                        Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    }
                     return;
                 }
 

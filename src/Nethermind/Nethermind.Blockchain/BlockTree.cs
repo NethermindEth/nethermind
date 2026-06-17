@@ -15,7 +15,6 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -27,7 +26,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 
 namespace Nethermind.Blockchain
 {
@@ -52,7 +50,6 @@ namespace Nethermind.Blockchain
 
         protected readonly ILogger Logger;
         protected readonly ISpecProvider SpecProvider;
-        private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
 
@@ -118,7 +115,6 @@ namespace Nethermind.Blockchain
             IBlockAccessListStore? balStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
-            IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
             ILogManager? logManager,
             long genesisBlockNumber = 0)
@@ -131,7 +127,6 @@ namespace Nethermind.Blockchain
             _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
             _balStore = balStore ?? throw new ArgumentNullException(nameof(balStore));
             SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
@@ -223,7 +218,6 @@ namespace Nethermind.Blockchain
                 SetTotalDifficulty(header);
             }
 
-            _bloomStorage.Store(header.Number, header.Bloom);
             _headerStore.Insert(header);
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
@@ -296,38 +290,6 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Cannot accept new blocks at the moment.");
             }
 
-            using ArrayPoolList<(long, Bloom)> bloomToStore = new(headers.Count);
-            foreach (BlockHeader? header in headers)
-            {
-                if (header.Hash is null)
-                {
-                    throw new InvalidOperationException("An attempt to insert a block header without a known hash.");
-                }
-
-                if (header.Bloom is null)
-                {
-                    throw new InvalidOperationException("An attempt to insert a block header without a known bloom.");
-                }
-
-                if (header.Number == _genesisBlockNumber)
-                {
-                    throw new InvalidOperationException("Genesis block should not be inserted.");
-                }
-
-                bool totalDifficultyNeeded = (headerOptions & BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded) == 0;
-
-                if (header.TotalDifficulty is null && totalDifficultyNeeded)
-                {
-                    SetTotalDifficulty(header);
-                }
-
-                bloomToStore.Add((header.Number, header.Bloom));
-            }
-
-            Task bloomStoreTask = Task.Run(() =>
-            {
-                _bloomStorage.Store(bloomToStore);
-            });
 
             _headerStore.BulkInsert(headers);
 
@@ -395,8 +357,6 @@ namespace Nethermind.Blockchain
             }
 
             UpdateOrCreateLevel(blockInfos, isOnMainChain);
-
-            bloomStoreTask.Wait();
         }
 
         public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
@@ -793,18 +753,29 @@ namespace Nethermind.Blockchain
             return FindBlock(hash, options, blockNumber: blockNumber);
         }
 
+        public void ReportBadBlock(Block badBlock)
+        {
+            if (badBlock.Hash is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"{nameof(ReportBadBlock)} call has been made for a block with a null hash.");
+                return;
+            }
+
+            _invalidBlocks.Set(badBlock.Hash, badBlock);
+            _badBlockStore.Insert(badBlock);
+        }
+
         public void DeleteInvalidBlock(Block invalidBlock)
         {
             if (invalidBlock.Hash is null)
             {
-                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteInvalidBlock)} call has been made for a block without a null hash.");
+                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteInvalidBlock)} call has been made for a block with a null hash.");
                 return;
             }
 
             if (Logger.IsDebug) Logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
-            _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
-            _badBlockStore.Insert(invalidBlock);
+            ReportBadBlock(invalidBlock);
 
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
@@ -967,44 +938,103 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceUpdateHeadBlock = false)
+        public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks)
+        {
+            // The head itself must have a body to be moved onto the main chain (the walk below checks every
+            // ancestor the same way). Fail fast here rather than throwing later when GetBlock can't load it.
+            if (!_blockStore.HasBlock(newHead.Number, newHead.Hash!))
+            {
+                return false;
+            }
+
+            PreloadedBlockLookup cache = PreloadedBlockLookup.Build(preloadedBlocks);
+
+            // Walk back from the new head, collecting the branch of headers down to the current main chain.
+            // Only headers are loaded here, so this stays cheap regardless of reorg depth. A missing
+            // predecessor means we cannot complete the reorg - bail out without mutating anything.
+            using ArrayPoolList<BlockHeader> headers = new(16) { newHead };
+            BlockHeader current = newHead;
+            while (!current.IsGenesis)
+            {
+                // Prefer the preloaded cache (a full block the caller already holds) over a store lookup.
+                bool fromCache = cache.TryGet(current.ParentHash!, out Block? cachedParent);
+                BlockHeader? parent = fromCache
+                    ? cachedParent!.Header
+                    : this.FindParentHeader(current, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+                if (parent is null)
+                {
+                    return false;
+                }
+
+                // Stop at the reorg's common ancestor - the first parent already on the main chain. Genesis is
+                // canonicalized at init (GenesisLoader, and TaikoGenesisBuilder for Taiko), so it is caught here
+                // by IsMainChain; we deliberately do not special-case it, so a not-yet-canonical root is moved.
+                if (IsMainChain(parent)) break;
+
+                // A header whose body is missing cannot be moved onto the main chain. Preloaded blocks
+                // already carry their body, so only store-fetched parents need the check. For a forced (FCU)
+                // reorg a missing body means the branch is incomplete; for forward processing it is a
+                // header-only beacon gap below the processed block, so we stop and move only the suffix above.
+                if (!fromCache && !_blockStore.HasBlock(parent.Number, parent.Hash!))
+                {
+                    if (forceUpdateHeadBlock) return false;
+                    break;
+                }
+
+                headers.Add(parent);
+                current = parent;
+            }
+
+            headers.Reverse(); // ascending order, from the branching point up to the new head
+            UpdateMainChainCore(headers, wereProcessed, forceUpdateHeadBlock, cache);
+            return true;
+        }
+
+        /// <summary>
+        /// Test-only: marks exactly the supplied blocks canonical without walking to the current main chain.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="TryUpdateMainChain"/> deliberately validates connectivity (it walks back to a main-chain
+        /// ancestor and refuses if a predecessor is missing). Some tests need to stage states that violate that —
+        /// e.g. a disconnected fast-sync head, beacon blocks marked canonical above a stale head, or deliberately
+        /// inconsistent level markers. This bypass moves exactly the given blocks; do not use it from production.
+        /// </remarks>
+        internal void MarkBlocksCanonicalForTest(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceUpdateHeadBlock = false)
         {
             if (blocks.Count == 0)
             {
                 return;
             }
 
-            bool ascendingOrder = true;
-            if (blocks.Count > 1)
+            bool descending = blocks.Count > 1 && blocks[^1].Number < blocks[0].Number;
+            using ArrayPoolList<BlockHeader> headers = new(blocks.Count);
+            if (descending)
+                for (int i = blocks.Count - 1; i >= 0; i--) headers.Add(blocks[i].Header);
+            else
+                for (int i = 0; i < blocks.Count; i++) headers.Add(blocks[i].Header);
+
+            UpdateMainChainCore(headers, wereProcessed, forceUpdateHeadBlock, PreloadedBlockLookup.Build(blocks as Block[] ?? [.. blocks]));
+        }
+
+        /// <remarks>
+        /// <paramref name="headers"/> must be in ascending order and contiguous, ending at the new head.
+        /// The chain-level manipulation is header-only; full blocks are loaded one at a time afterwards
+        /// (from <paramref name="cache"/> or the store) purely to fire events and write BAL/cache, so peak
+        /// memory stays bounded. Events are raised only after the chain-level batch is flushed, so
+        /// subscribers always observe committed state.
+        /// </remarks>
+        private void UpdateMainChainCore(IReadOnlyList<BlockHeader> headers, bool wereProcessed, bool forceUpdateHeadBlock, in PreloadedBlockLookup cache)
+        {
+            if (headers.Count == 0)
             {
-                if (blocks[^1].Number < blocks[0].Number)
-                {
-                    ascendingOrder = false;
-                }
+                return;
             }
 
-#if DEBUG
-            for (int i = 0; i < blocks.Count; i++)
-            {
-                if (i != 0)
-                {
-                    if (ascendingOrder && blocks[i].Number != blocks[i - 1].Number + 1)
-                    {
-                        throw new InvalidOperationException("Update main chain invoked with gaps");
-                    }
-
-                    if (!ascendingOrder && blocks[i - 1].Number != blocks[i].Number + 1)
-                    {
-                        throw new InvalidOperationException("Update main chain invoked with gaps");
-                    }
-                }
-            }
-#endif
-
-            long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
+            long lastNumber = headers[^1].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
 
-            using ArrayPoolListRef<DeferredMainChainEvent> pendingEvents = new(blocks.Count);
+            using ArrayPoolListRef<DeferredHeaderEvent> pending = new(headers.Count);
+            Block? headBlock = null;
 
             using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
             {
@@ -1030,41 +1060,121 @@ namespace Nethermind.Blockchain
                 if (forceUpdateHeadBlock)
                     ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
 
-                for (int i = 0; i < blocks.Count; i++)
+                for (int i = 0; i < headers.Count; i++)
                 {
-                    Block block = blocks[i];
-                    _balStore.InsertFromBlock(block);
+                    BlockHeader header = headers[i];
 
-                    if (ShouldCache(block.Number))
+                    // Cache the header up front (it is already in hand) so the sync-pivot lookup below and any
+                    // sync requests can be served without touching the DB - matching the pre-refactor behavior.
+                    if (ShouldCache(header.Number)) _headerStore.Cache(header);
+
+                    Hash256? previousMainHash = MoveHeaderToMain(header, batch, wereProcessed);
+
+                    // we only force update head block for the last header in the branch
+                    bool forceThisHead = forceUpdateHeadBlock && i == headers.Count - 1;
+                    bool isNewHead = wereProcessed && (forceThisHead || header.IsGenesis || HeadImprovementRequirementsSatisfied(header));
+                    if (isNewHead)
                     {
-                        _blockStore.Cache(block);
-                        _headerStore.Cache(block.Header);
+                        // Head improvement is evaluated progressively (HeadImprovementRequirementsSatisfied reads the
+                        // current Head), so the head must be moved here, inside the batch, before TryUpdateSyncPivot
+                        // and any event observes it. Loading one block at a time keeps peak memory bounded.
+                        headBlock = GetBlock(cache, header);
+                        if (headBlock.TotalDifficulty is null)
+                        {
+                            throw new InvalidOperationException("Head block with null total difficulty");
+                        }
+
+                        SetHeadBlock(headBlock);
                     }
 
-                    // we only force update head block for last block in processed blocks
-                    bool lastProcessedBlock = i == blocks.Count - 1;
-
-                    // Where head is set if wereProcessed is true
-                    DeferredMainChainEvent deferred = MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
-                    pendingEvents.Add(deferred);
+                    pending.Add(new DeferredHeaderEvent(header, previousMainHash, isNewHead));
                 }
             }
 
             TryUpdateSyncPivot();
 
-            foreach (DeferredMainChainEvent deferred in pendingEvents.AsSpan())
+            // Events fire only after the chain-level batch is flushed, so subscribers observe committed state.
+            // Blocks are loaded one at a time here (cache hit for preloaded/near-head blocks) and released each
+            // iteration, so a deep reorg never materializes its whole branch at once.
+            foreach (DeferredHeaderEvent deferred in pending.AsSpan())
             {
-                if (deferred.NewHead is not null)
+                BlockHeader header = deferred.Header;
+                Block block = headBlock is not null && headBlock.Hash == header.Hash ? headBlock : GetBlock(cache, header);
+
+                _balStore.InsertFromBlock(block);
+
+                if (ShouldCache(block.Number)) _blockStore.Cache(block);
+
+                if (deferred.IsNewHead)
                 {
-                    NewHeadBlock?.Invoke(this, deferred.NewHead);
+                    NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
                 }
-                BlockAddedToMain?.Invoke(this, deferred.BlockAdded);
+
+                Block? previous = deferred.PreviousMainHash is not null && deferred.PreviousMainHash != block.Hash
+                    ? FindBlock(deferred.PreviousMainHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block.Number)
+                    : null;
+                BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
             }
 
-            OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
+            OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(headers, wereProcessed));
         }
 
-        private readonly record struct DeferredMainChainEvent(BlockReplacementEventArgs BlockAdded, BlockEventArgs? NewHead);
+        /// <remarks>
+        /// Lookup over caller-preloaded blocks. The steady-state hot callers (BlockchainProcessor, BlockDownloader)
+        /// preload a single block, so a linear span scan is allocation-free and faster than building a dictionary.
+        /// Above the threshold we fall back to a Dictionary so deep reorgs stay O(1) per lookup.
+        /// </remarks>
+        private readonly ref struct PreloadedBlockLookup
+        {
+            private const int DictionaryThreshold = 8;
+
+            private readonly ReadOnlySpan<Block> _span;
+            private readonly Dictionary<Hash256, Block>? _dict;
+
+            private PreloadedBlockLookup(ReadOnlySpan<Block> span, Dictionary<Hash256, Block>? dict)
+            {
+                _span = span;
+                _dict = dict;
+            }
+
+            public static PreloadedBlockLookup Build(ReadOnlySpan<Block> preloadedBlocks)
+            {
+                if (preloadedBlocks.Length == 0) return default;
+                if (preloadedBlocks.Length <= DictionaryThreshold) return new PreloadedBlockLookup(preloadedBlocks, null);
+
+                Dictionary<Hash256, Block> dict = new(preloadedBlocks.Length);
+                foreach (Block block in preloadedBlocks)
+                {
+                    if (block.Hash is not null) dict[block.Hash] = block;
+                }
+                return new PreloadedBlockLookup(default, dict);
+            }
+
+            public bool TryGet(Hash256 hash, out Block? block)
+            {
+                if (_dict is not null) return _dict.TryGetValue(hash, out block);
+
+                foreach (Block b in _span)
+                {
+                    if (b.Hash == hash)
+                    {
+                        block = b;
+                        return true;
+                    }
+                }
+
+                block = null;
+                return false;
+            }
+        }
+
+        private Block GetBlock(in PreloadedBlockLookup cache, BlockHeader header) =>
+            cache.TryGet(header.Hash!, out Block? block)
+                ? block!
+                : FindBlock(header.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing, blockNumber: header.Number)
+                  ?? throw new InvalidOperationException($"Cannot load block {header.ToString(BlockHeader.Format.FullHashAndNumber)} required to update main chain");
+
+        private readonly record struct DeferredHeaderEvent(BlockHeader Header, Hash256? PreviousMainHash, bool IsNewHead);
 
         private void TryUpdateSyncPivot()
         {
@@ -1170,30 +1280,30 @@ namespace Nethermind.Blockchain
 
 
         /// <summary>
-        /// Moves block to main chain.
+        /// Marks the block identified by <paramref name="header"/> as the main-chain block at its level.
         /// </summary>
-        /// <param name="block">Block to move</param>
-        /// <param name="batch">Db batch</param>
-        /// <param name="wasProcessed">Was block processed (full sync), or not (fast sync)</param>
-        /// <param name="forceUpdateHeadBlock">Force updating <see cref="Head"/> to this block, even when <see cref="Block.TotalDifficulty"/> is not higher than previous head.</param>
+        /// <remarks>
+        /// Header-only: it touches the chain level (swap to main, processed flag, bloom) but does not load
+        /// the full block or update <see cref="Head"/>. The caller sets the head and raises events.
+        /// </remarks>
+        /// <returns>The hash of the block that was on main at this level before the move, or null if none.</returns>
         /// <exception cref="InvalidOperationException">Invalid block</exception>
-        [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
-        private DeferredMainChainEvent MoveToMain(Block block, BatchWrite batch, bool wasProcessed, bool forceUpdateHeadBlock)
+        private Hash256? MoveHeaderToMain(BlockHeader header, BatchWrite batch, bool wasProcessed)
         {
-            if (Logger.IsTrace) Logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
-            if (block.Hash is null)
+            if (Logger.IsTrace) Logger.Trace($"Moving {header.ToString(BlockHeader.Format.Short)} to main");
+            if (header.Hash is null)
             {
                 throw new InvalidOperationException("An attempt to move to main a block with hash not set.");
             }
 
-            if (block.Bloom is null)
+            if (header.Bloom is null)
             {
                 throw new InvalidOperationException("An attempt to move to main a block with bloom not set.");
             }
 
-            ChainLevelInfo? level = LoadLevel(block.Number);
-            int? index = (level?.FindIndex(block.Hash)) ?? throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.FullHashAndNumber)} to main");
-            Hash256 hashOfThePreviousMainBlock = level.MainChainBlock?.BlockHash;
+            ChainLevelInfo? level = LoadLevel(header.Number);
+            int? index = (level?.FindIndex(header.Hash)) ?? throw new InvalidOperationException($"Cannot move unknown block {header.ToString(BlockHeader.Format.FullHashAndNumber)} to main");
+            Hash256? hashOfThePreviousMainBlock = level.MainChainBlock?.BlockHash;
 
             BlockInfo info = level.BlockInfos[index.Value];
             info.WasProcessed = wasProcessed;
@@ -1202,40 +1312,17 @@ namespace Nethermind.Blockchain
                 level.SwapToMain(index.Value);
             }
 
-            _bloomStorage.Store(block.Number, block.Bloom);
             level.HasBlockOnMainChain = true;
-            _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
+            _chainLevelInfoRepository.PersistLevel(header.Number, level, batch);
 
-            Block previous = hashOfThePreviousMainBlock is not null && hashOfThePreviousMainBlock != block.Hash
-                ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block.Number)
-                : null;
-
-            BlockEventArgs? newHeadArgs = null;
-            if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
+            if (header.Number == _genesisBlockNumber)
             {
-                if (block.Number == _genesisBlockNumber)
-                {
-                    Genesis = block.Header;
-                }
-
-                if (block.TotalDifficulty is null)
-                {
-                    throw new InvalidOperationException("Head block with null total difficulty");
-                }
-
-                if (wasProcessed)
-                {
-                    newHeadArgs = SetHeadBlock(block);
-                }
+                Genesis = header;
             }
 
-            if (Logger.IsTrace) Logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
+            if (Logger.IsTrace) Logger.Trace($"Block {header.ToString(BlockHeader.Format.Short)}, TD: {header.TotalDifficulty} added to main chain");
 
-            BlockReplacementEventArgs blockAddedArgs = new(block, previous);
-
-            if (Logger.IsTrace) Logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
-
-            return new DeferredMainChainEvent(blockAddedArgs, newHeadArgs);
+            return hashOfThePreviousMainBlock;
         }
 
         protected virtual bool HeadImprovementRequirementsSatisfied(BlockHeader header)
@@ -1335,7 +1422,7 @@ namespace Nethermind.Blockchain
         }
 
         // Mutates Head and writes the head hash without raising NewHeadBlock.
-        // UpdateMainChain raises the event itself after the ChainLevelInfoRepository write batch
+        // TryUpdateMainChain raises the event itself after the ChainLevelInfoRepository write batch
         // has been disposed (and therefore flushed) so subscribers always observe committed state.
         private BlockEventArgs SetHeadBlock(Block block)
         {

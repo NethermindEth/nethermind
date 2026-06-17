@@ -45,6 +45,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IBlockFinder _blockFinder;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptFinder _receiptFinder;
+    private readonly IEthCapabilitiesProvider _capabilitiesProvider;
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IProtocolsManager _protocolsManager;
     private readonly IForkInfo _forkInfo;
@@ -58,6 +59,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IBlockFinder blockFinder,
         IBlockTree blockTree,
         IReceiptFinder receiptFinder,
+        IEthCapabilitiesProvider capabilitiesProvider,
         IStateReader stateReader,
         ITxPool txPool,
         ITxSender txSender,
@@ -94,6 +96,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _blockFinder = blockFinder;
         _blockTree = blockTree;
         _receiptFinder = receiptFinder;
+        _capabilitiesProvider = capabilitiesProvider;
         _opSpecHelper = opSpecHelper;
         _protocolsManager = protocolsManager;
         _forkInfo = forkInfo;
@@ -138,6 +141,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _sealer,
             _logIndexConfig,
             _opSpecHelper,
-            _headBlockSignal
+            _headBlockSignal,
+            _capabilitiesProvider
         );
 }

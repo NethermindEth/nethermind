@@ -3,9 +3,12 @@
 
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
 using EraException = Nethermind.Era1.Exceptions.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
@@ -23,6 +26,11 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     private readonly IRemoteEraClient _client;
     private readonly string _downloadDir;
     private readonly int _maxEraSize;
+    private readonly ISpecProvider _specProvider;
+    private readonly IBlockValidator _blockValidator;
+    private readonly Proofs.Validator? _validator;
+    private readonly ISet<ValueHash256>? _trustedAccumulators;
+    private readonly int _verifyConcurrency;
     // Bounded reader pool: capped at ProcessorCount*2 to stay within OS fd limits.
     // Mainnet has ~1600 epochs; Linux default fd limit is 1024 — an unbounded pool would exhaust it.
     private readonly int _maxOpenReaders;
@@ -35,8 +43,11 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     // One semaphore per epoch prevents concurrent duplicate downloads.
     private readonly ConcurrentDictionary<int, SemaphoreSlim> _epochLocks = new();
 
-    // Verified epoch paths — populated after successful SHA-256 check
-    private readonly ConcurrentDictionary<int, string> _verifiedEpochs = new();
+    // Available epoch paths — populated after successful download + SHA-256 check
+    private readonly ConcurrentDictionary<int, string> _availableEpochs = new();
+
+    // Epochs whose content has passed EraReader.VerifyContent (only required when ensureValidated)
+    private readonly ConcurrentDictionary<int, bool> _contentVerifiedEpochs = new();
 
     // Bounded idle reader pool — readers are checked out (TryRemove) before use and returned
     // (TryAdd) when done, so the eviction path can only dispose readers that are not in flight.
@@ -49,16 +60,28 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         IEraStore? localStore,
         IRemoteEraClient client,
         string downloadDir,
-        int maxEraSize)
+        int maxEraSize,
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        ISet<ValueHash256>? trustedAccumulators = null,
+        int verifyConcurrency = 0,
+        Nethermind.EraE.Proofs.Validator? validator = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentException.ThrowIfNullOrWhiteSpace(downloadDir);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxEraSize, 0);
+        ArgumentNullException.ThrowIfNull(specProvider);
+        ArgumentNullException.ThrowIfNull(blockValidator);
 
         _localStore = localStore;
         _client = client;
         _downloadDir = downloadDir;
         _maxEraSize = maxEraSize;
+        _specProvider = specProvider;
+        _blockValidator = blockValidator;
+        _trustedAccumulators = trustedAccumulators;
+        _verifyConcurrency = verifyConcurrency;
+        _validator = validator;
         _maxOpenReaders = Math.Max(Environment.ProcessorCount * 2, 8);
         Directory.CreateDirectory(downloadDir);
     }
@@ -73,7 +96,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         }
 
         int epoch = (int)(number / _maxEraSize);
-        string localPath = await EnsureEpochAvailableAsync(epoch, cancellation).ConfigureAwait(false);
+        string localPath = await EnsureEpochAvailableAsync(epoch, ensureValidated, cancellation).ConfigureAwait(false);
 
         using EraRenter renter = RentReader(epoch, localPath);
         if (number > renter.Reader.LastBlock) return (null, null);
@@ -89,8 +112,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
             return _localStore.NextEraStart(blockNumber);
 
         int epoch = (int)(blockNumber / _maxEraSize);
-        // Setup path — sequential, sync-over-async is safe (see thread-safety model above)
-        string localPath = EnsureEpochAvailableAsync(epoch).GetAwaiter().GetResult();
+        string localPath = EnsureEpochAvailableAsync(epoch, ensureValidated: false).GetAwaiter().GetResult();
         using EraReader reader = new(localPath);
         return reader.LastBlock + 1;
     }
@@ -173,9 +195,10 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         }
     }
 
-    private async Task<string> EnsureEpochAvailableAsync(int epoch, CancellationToken cancellation = default)
+    private async Task<string> EnsureEpochAvailableAsync(int epoch, bool ensureValidated, CancellationToken cancellation = default)
     {
-        if (_verifiedEpochs.TryGetValue(epoch, out string? cached))
+        if (_availableEpochs.TryGetValue(epoch, out string? cached)
+            && (!ensureValidated || _contentVerifiedEpochs.ContainsKey(epoch)))
             return cached;
 
         IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation).ConfigureAwait(false);
@@ -189,18 +212,41 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         try
         {
             // Re-check after acquiring lock (another thread may have finished)
-            if (_verifiedEpochs.TryGetValue(epoch, out cached))
+            if (_availableEpochs.TryGetValue(epoch, out cached)
+                && (!ensureValidated || _contentVerifiedEpochs.ContainsKey(epoch)))
                 return cached;
 
-            if (!File.Exists(destinationPath))
-                await _client.DownloadFileAsync(entry.Filename, destinationPath, cancellation).ConfigureAwait(false);
+            if (!_availableEpochs.ContainsKey(epoch))
+            {
+                if (!File.Exists(destinationPath))
+                    await _client.DownloadFileAsync(entry.Filename, destinationPath, cancellation).ConfigureAwait(false);
 
-            VerifySha256(destinationPath, entry.Sha256Hash);
-            _verifiedEpochs.TryAdd(epoch, destinationPath);
+                VerifySha256(destinationPath, entry.Sha256Hash);
+                _availableEpochs.TryAdd(epoch, destinationPath);
+            }
+
+            if (ensureValidated)
+            {
+                await VerifyEpochContentAsync(epoch, destinationPath, cancellation).ConfigureAwait(false);
+                _contentVerifiedEpochs.TryAdd(epoch, true);
+            }
+
             return destinationPath;
+        }
+        catch (OperationCanceledException)
+        {
+            if (!_availableEpochs.ContainsKey(epoch) && File.Exists(destinationPath))
+                File.Delete(destinationPath);
+            _contentVerifiedEpochs.TryRemove(epoch, out _);
+            throw;
         }
         catch (Exception)
         {
+            // A failed download, checksum, or content check leaves no trusted state behind.
+            _availableEpochs.TryRemove(epoch, out _);
+            _contentVerifiedEpochs.TryRemove(epoch, out _);
+            if (_openedReaders.TryRemove(epoch, out EraReader? staleReader))
+                staleReader.Dispose();
             if (File.Exists(destinationPath))
                 File.Delete(destinationPath);
             throw;
@@ -209,6 +255,15 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         {
             epochLock.Release();
         }
+    }
+
+    private async Task VerifyEpochContentAsync(int epoch, string localPath, CancellationToken cancellation)
+    {
+        using EraReader reader = new(localPath);
+        ValueHash256 accumulatorRoot =
+            await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, _validator, cancellation).ConfigureAwait(false);
+        if (_trustedAccumulators is not null && accumulatorRoot != default && !_trustedAccumulators.Contains(accumulatorRoot))
+            throw new EraVerificationException($"AccumulatorRoot {accumulatorRoot} for epoch {epoch} is not trusted.");
     }
 
     private string ResolveDestinationPath(string filename)

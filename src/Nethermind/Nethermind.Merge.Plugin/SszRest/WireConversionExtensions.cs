@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
@@ -130,9 +129,7 @@ internal static class WireConversionExtensions
         {
             Transactions = body.Transactions.ToTxsWire(),
             Withdrawals = body.Withdrawals.ToWire(),
-            BlockAccessList = body.BlockAccessList is not null
-                ? [new SszTransaction { Bytes = body.BlockAccessList }]
-                : []
+            BlockAccessList = body.BlockAccessList ?? []
         };
 
     private static SszBlob[] ToBlobsWire(byte[][] blobs)

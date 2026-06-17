@@ -8,8 +8,11 @@ namespace Nethermind.Network.Discovery.Discv4;
 
 public class PongMsgHandler(PingMsg ping) : ITaskCompleter<PongMsg>
 {
-    public TaskCompletionSource<PongMsg> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource<DiscoveryResponse<PongMsg>> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public bool Handle(DiscoveryMsg msg) =>
-        msg is PongMsg pong && Bytes.AreEqual(pong.PingMdc, ping.Mdc) && TaskCompletionSource.TrySetResult(pong);
+        !TaskCompletionSource.Task.IsCompleted
+        && msg is PongMsg pong
+        && Bytes.AreEqual(pong.PingMdc, ping.Mdc)
+        && TaskCompletionSource.TrySetResult(DiscoveryResponse<PongMsg>.From(pong));
 }

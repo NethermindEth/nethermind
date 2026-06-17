@@ -738,28 +738,38 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TestCase(100000)]
         [TestCase(102400)]
         [TestCase(222222)]
-        [Retry(10)]
         public void should_send_single_transaction_even_if_exceed_MaxPacketSize(int dataSize)
         {
-            int txCount = 512; //we will try to send 512 txs
+            const int txCount = 512;
 
             Transaction[] txs = new Transaction[txCount];
-
             for (int i = 0; i < txCount; i++)
             {
                 txs[i] = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
-            Transaction tx = txs[0];
-            int sizeOfOneTx = tx.GetLength();
+            int sizeOfOneTx = txs[0].GetLength();
             int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
             int nonFullMsgTxsCount = txCount % numberOfTxsInOneMsg;
             int messagesCount = txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
 
+            CountdownEvent delivered = new(messagesCount);
+            int matchingDeliveries = 0;
+            _session.When(s => s.DeliverMessage(Arg.Any<TransactionsMessage>()))
+                .Do(call =>
+                {
+                    TransactionsMessage msg = (TransactionsMessage)call[0];
+                    if (msg.Transactions.Count == numberOfTxsInOneMsg || msg.Transactions.Count == nonFullMsgTxsCount)
+                    {
+                        Interlocked.Increment(ref matchingDeliveries);
+                        if (!delivered.IsSet) delivered.Signal();
+                    }
+                });
+
             _handler.SendNewTransactions(txs);
 
-            Assert.That(() => _session.ReceivedCallsMatching(s => s.DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == numberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount)), messagesCount), Is.True.After(500, 50));
-
+            Assert.That(delivered.Wait(TimeSpan.FromSeconds(30)), Is.True, "Not all expected messages were delivered within 30s");
+            Assert.That(matchingDeliveries, Is.EqualTo(messagesCount));
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -85,10 +87,8 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
 
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
-                {
-                    storageSet.Set(1, [1, 2, 3]);
-                }
+                using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageSet.Set(1, [1, 2, 3]);
             }
 
             scope.Commit(1);
@@ -112,10 +112,8 @@ public class ScopeProviderTests(bool useFlat)
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
-            using (IWorldStateScopeProvider.ICodeSetter writer = scope.CodeDb.BeginCodeWrite())
-            {
-                writer.Set(TestItem.KeccakA, [1, 2, 3]);
-            }
+            using IWorldStateScopeProvider.ICodeSetter writer = scope.CodeDb.BeginCodeWrite();
+            writer.Set(TestItem.KeccakA, [1, 2, 3]);
         }
 
         if (!useFlat)
@@ -138,14 +136,217 @@ public class ScopeProviderTests(bool useFlat)
         // Simulates the EIP-161 scenario: storage is flushed for an account that was
         // then deleted (set to null) during state commit. The write batch Dispose should
         // skip the storage root update for the deleted account instead of throwing.
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
         {
-            using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
+            storageSet.Set(1, [1, 2, 3]);
+        }
+
+        writeBatch.Set(TestItem.AddressA, null);
+    }
+
+    [Test]
+    public void Test_HintBalWithSink_MatchesIndividualReads()
+    {
+        using Context ctx = new(useFlat);
+
+        // Setup: write accounts with storage
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
             {
-                storageSet.Set(1, [1, 2, 3]);
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
+
+                using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 2))
+                {
+                    storageA.Set(1, [10, 20]);
+                    storageA.Set(2, [30, 40]);
+                }
+
+                using IWorldStateScopeProvider.IStorageWriteBatch storageB = writeBatch.CreateStorageWriteBatch(TestItem.AddressB, 1);
+                storageB.Set(5, [50, 60]);
             }
 
-            writeBatch.Set(TestItem.AddressA, null);
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        // Build a BAL referencing these accounts and storage slots
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1, 2).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(5).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressC).TestObject) // not in state — should be null
+            .TestObject;
+
+        // Collect results via HintBal(bal, sink) — the merged trie warmup + BAL read pass
+        CollectingBalSink sink = new();
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            scope.HintBal(bal, sink).Wait();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sink.Accounts.ContainsKey(TestItem.AddressA), Is.True);
+                Assert.That(sink.Accounts[TestItem.AddressA]!.Balance, Is.EqualTo((UInt256)100));
+
+                Assert.That(sink.Accounts.ContainsKey(TestItem.AddressB), Is.True);
+                Assert.That(sink.Accounts[TestItem.AddressB]!.Balance, Is.EqualTo((UInt256)200));
+
+                Assert.That(sink.NullAccounts.ContainsKey(TestItem.AddressC), Is.True);
+
+                IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
+                IWorldStateScopeProvider.IStorageTree storageTreeB = scope.CreateStorageTree(TestItem.AddressB);
+
+                StorageCell cellA1 = new(TestItem.AddressA, 1);
+                StorageCell cellA2 = new(TestItem.AddressA, 2);
+                StorageCell cellB5 = new(TestItem.AddressB, 5);
+
+                Assert.That(sink.Storage.ContainsKey(cellA1), Is.True);
+                Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1)));
+
+                Assert.That(sink.Storage.ContainsKey(cellA2), Is.True);
+                Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2)));
+
+                Assert.That(sink.Storage.ContainsKey(cellB5), Is.True);
+                Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5)));
+            }
         }
     }
+
+    [TestCase(10)]
+    [TestCase(1500)]
+    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount)
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slotCount);
+                for (int i = 1; i <= slotCount; i++)
+                {
+                    storageA.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        UInt256[] readKeys = new UInt256[slotCount];
+        for (int i = 1; i <= slotCount; i++) readKeys[i - 1] = (UInt256)i;
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(readKeys).TestObject)
+            .TestObject;
+
+        CollectingBalSink sink = new();
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            scope.HintBal(bal, sink).Wait();
+
+            Assert.That(sink.Storage, Has.Count.EqualTo(slotCount));
+            IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
+            for (int i = 1; i <= slotCount; i++)
+            {
+                StorageCell cell = new(TestItem.AddressA, (UInt256)i);
+                Assert.That(sink.Storage[cell], Is.EqualTo(storageTreeA.Get((UInt256)i)), $"slot {i}");
+            }
+        }
+    }
+
+    [Test]
+    public void Test_HintBal_DoesNotThrow()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
+
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject)
+            .TestObject;
+
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            Assert.DoesNotThrow(() => scope.HintBal(bal));
+            // Dispose exits the using — must not throw either (covers the Cancel path).
+        }
+    }
+
+    [Test]
+    public void Test_HintBal_Smoke_PrewarmerWrapped()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        // isPrewarmer: false targets the main-processing scope where HintBal actually runs.
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1).TestObject)
+            .TestObject;
+
+        using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            Assert.DoesNotThrow(() => scope.HintBal(bal));
+        }
+    }
+
+#nullable enable
+    private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    {
+        public ConcurrentDictionary<Address, Account> Accounts { get; } = new();
+        public ConcurrentDictionary<Address, byte> NullAccounts { get; } = new();
+        public ConcurrentDictionary<StorageCell, byte[]> Storage { get; } = new();
+
+        public void OnAccountRead(Address address, Account? account)
+        {
+            if (account is null)
+                NullAccounts[address] = 0;
+            else
+                Accounts[address] = account;
+        }
+
+        public void OnStorageRead(in StorageCell storageCell, byte[] value)
+            => Storage[storageCell] = value;
+    }
+#nullable disable
 }

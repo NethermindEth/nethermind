@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -67,8 +66,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 clonedHeader.GasUsed = 0;
-                _blockOverride?.ApplyOverrides(clonedHeader);
 
+                // The block override is applied later, inside the bridge, after the read-only state scope is opened
+                // on this (base) header — so the overridden block number does not leak into state selection.
                 return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
 
@@ -99,16 +99,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     if (executionReverted)
                     {
-                        // Check the raw revert bytes to determine if the selector is Error(string) or Panic(uint256).
-                        // Using the bytes rather than errorMessage avoids the sentinel-string collision
-                        // (e.g. require(false, "revert") would be misidentified as the Revert sentinel).
-                        bool isKnownRevertType = executionRevertedReason is { Length: >= 4 } &&
-                            (executionRevertedReason.AsSpan(0, 4).SequenceEqual(TransactionSubstate.ErrorFunctionSelector) ||
-                             executionRevertedReason.AsSpan(0, 4).SequenceEqual(TransactionSubstate.PanicFunctionSelector));
-
-                        string revertMessage = isKnownRevertType && errorMessage is not null
-                            ? "execution reverted: " + errorMessage
-                            : "execution reverted";
+                        string revertMessage = TransactionSubstate.BuildRevertMessage(executionRevertedReason, errorMessage);
 
                         if (executionRevertedReason is not null)
                         {
@@ -132,7 +123,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<HexBytes> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, token);
+                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverride, token);
 
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
@@ -158,10 +149,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Dictionary<Address, AccountOverride>? stateOverride = null,
                 SearchResult<BlockHeader>? searchResult = null)
             {
-                // Match Geth: when no gas is specified, binary search is bounded by blockGasLimit (then
-                // capped at gasCap inside ToTransaction). eth_call uses gasCap directly because it is a
-                // pure simulation; estimateGas is computing gas for a real transaction that must fit in a block.
-                if (transactionCall.Gas is null)
+                // Match Geth: eth_estimateGas treats gas: 0x0 the same as an omitted gas field and
+                // bounds the binary search by blockGasLimit (then caps at gasCap inside ToTransaction).
+                if (!transactionCall.Gas.IsGasCapped())
                 {
                     if (BlockOverride?.GasLimit is not null)
                     {
@@ -179,7 +169,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, token);
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverride, token);
 
                 string? errorMessage = result.Error;
                 if (!result.ExecutionReverted && !result.InputError && errorMessage is not null)

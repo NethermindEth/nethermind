@@ -19,7 +19,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
-using Nethermind.Taiko.ZkGas;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -162,9 +161,9 @@ public class CertainBatchLookupTests
     [Test]
     public void TestBatchLookup_MainnetBelowThresholdReturnsNull()
     {
-        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoMainnetChainId);
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, BatchLookupThresholds.TaikoMainnetChainId);
         UInt256 batchId = 1;
-        UInt256 blockId = ZkGasSchedule.TaikoMainnetBatchLookupThreshold - 1;
+        UInt256 blockId = BatchLookupThresholds.TaikoMainnetBatchLookupThreshold - 1;
         L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
         _store.WriteBatchToLastBlockID(batchId, blockId);
         _store.WriteL1Origin(blockId, origin);
@@ -194,9 +193,9 @@ public class CertainBatchLookupTests
     [Test]
     public void TestBatchLookup_MainnetAtThresholdReturnsValue()
     {
-        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoMainnetChainId);
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, BatchLookupThresholds.TaikoMainnetChainId);
         UInt256 batchId = 1;
-        UInt256 blockId = ZkGasSchedule.TaikoMainnetBatchLookupThreshold;
+        UInt256 blockId = BatchLookupThresholds.TaikoMainnetBatchLookupThreshold;
         L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
         _store.WriteBatchToLastBlockID(batchId, blockId);
         _store.WriteL1Origin(blockId, origin);
@@ -213,9 +212,9 @@ public class CertainBatchLookupTests
     [Test]
     public void TestBatchLookup_HoodiBelowThresholdReturnsNull()
     {
-        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoHoodiChainId);
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, BatchLookupThresholds.TaikoHoodiChainId);
         UInt256 batchId = 1;
-        UInt256 blockId = ZkGasSchedule.TaikoHoodiBatchLookupThreshold - 1;
+        UInt256 blockId = BatchLookupThresholds.TaikoHoodiBatchLookupThreshold - 1;
         L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
         _store.WriteBatchToLastBlockID(batchId, blockId);
         _store.WriteL1Origin(blockId, origin);
@@ -230,8 +229,8 @@ public class CertainBatchLookupTests
     /// Devnet and Masaya have no threshold (geth: <c>threshold == 0</c>; reth: <c>None</c>).
     /// Any block id, including ones well below the Mainnet/Hoodi thresholds, must pass through.
     /// </summary>
-    [TestCase(ZkGasSchedule.TaikoDevnetChainId)]
-    [TestCase(ZkGasSchedule.TaikoMasayaChainId)]
+    [TestCase(167_001UL, TestName = "Devnet")]
+    [TestCase(167_011UL, TestName = "Masaya")]
     public void TestBatchLookup_UnfilteredNetworks(ulong chainId)
     {
         TaikoEngineRpcModule rpc = CreateRpcModule(_store, chainId);
@@ -260,7 +259,7 @@ public class CertainBatchLookupTests
     public void TestBatchLookup_MainnetScanPathBelowThresholdReturnsNull()
     {
         UInt256 batchId = 1;
-        long blockNumber = (long)(ZkGasSchedule.TaikoMainnetBatchLookupThreshold - 1);
+        long blockNumber = (long)(BatchLookupThresholds.TaikoMainnetBatchLookupThreshold - 1);
 
         // Shasta extraData layout: [basefeeSharingPctg=0][proposalId=batchId, 6 bytes big-endian].
         byte[] extraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
@@ -287,13 +286,24 @@ public class CertainBatchLookupTests
         _store.WriteL1Origin(blockId, new L1Origin(blockId, Hash256.Zero, 3, Hash256.Zero, null));
         // Deliberately do NOT WriteBatchToLastBlockID — forces the scan fallback.
 
-        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoMainnetChainId, blockFinder);
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, BatchLookupThresholds.TaikoMainnetChainId, blockFinder);
 
         // Only the scan-fallback methods are asserted: taikoAuth_lastCertain*ByBatchID have
         // no scan fallback, so with an empty batch→block mapping they already return null
         // before the threshold gate is reached and would not prove the gate fired.
         Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Null);
         Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.Null);
+    }
+
+    /// <summary>
+    /// Pins the exact threshold literals sourced from taiko-geth PR #558 and alethia-reth PR #177.
+    /// These are consensus-critical values; a typo would silently allow or block entire block ranges.
+    /// </summary>
+    [Test]
+    public void BatchLookupThresholds_are_pinned()
+    {
+        Assert.That(BatchLookupThresholds.TaikoMainnetBatchLookupThreshold, Is.EqualTo(4_990_434UL));
+        Assert.That(BatchLookupThresholds.TaikoHoodiBatchLookupThreshold, Is.EqualTo(3_951_005UL));
     }
 
     private static TaikoEngineRpcModule CreateRpcModule(IL1OriginStore l1OriginStore, ulong chainId = 0, IBlockFinder? blockFinder = null)
@@ -318,7 +328,7 @@ public class CertainBatchLookupTests
         Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
         Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
         Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
-        Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofsV1?>?>>(),
+        Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>(),
         Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
         Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
         Substitute.For<IEngineRequestsTracker>(),

@@ -107,41 +107,44 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
-    [Retry(3)]
     public async Task Test_task_scheduled_during_block_processing_gets_cancelled_token()
     {
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
         _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
         int cancelledCount = 0;
+        CountdownEvent expiredRan = new(5);
         for (int i = 0; i < 5; i++)
         {
             scheduler.TryScheduleTask(1, (_, token) =>
             {
                 if (token.IsCancellationRequested)
                     Interlocked.Increment(ref cancelledCount);
+                expiredRan.Signal();
                 return Task.CompletedTask;
             }, TimeSpan.FromMilliseconds(1));
         }
 
-        // Expired tasks during block processing run with a cancelled token
-        Assert.That(() => Volatile.Read(ref cancelledCount), Is.EqualTo(5).After(2000, 10));
+        Assert.That(expiredRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Expired tasks did not all run within 30s");
+        Assert.That(cancelledCount, Is.EqualTo(5));
 
-        // After block processing, new tasks execute with active token
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
 
         int postBlockCount = 0;
+        CountdownEvent postBlockRan = new(3);
         for (int i = 0; i < 3; i++)
         {
             scheduler.TryScheduleTask(1, (_, token) =>
             {
                 if (!token.IsCancellationRequested)
                     Interlocked.Increment(ref postBlockCount);
+                postBlockRan.Signal();
                 return Task.CompletedTask;
             });
         }
 
-        Assert.That(() => Volatile.Read(ref postBlockCount), Is.EqualTo(3).After(2000, 10));
+        Assert.That(postBlockRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Post-block tasks did not all run within 30s");
+        Assert.That(postBlockCount, Is.EqualTo(3));
     }
 
     [Test]

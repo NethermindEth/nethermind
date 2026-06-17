@@ -30,6 +30,6 @@ public interface IKademliaDiscv4Adapter : IKademliaMessageSender<PublicKey, Node
     /// </summary>
     /// <param name="receiver">The node to send the request to.</param>
     /// <param name="token">Cancellation token.</param>
-    /// <returns>The ENR response message.</returns>
-    Task<EnrResponseMsg> SendEnrRequest(Node receiver, CancellationToken token);
+    /// <returns>The ENR response message, or <see langword="null"/> when the peer does not respond.</returns>
+    Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token);
 }

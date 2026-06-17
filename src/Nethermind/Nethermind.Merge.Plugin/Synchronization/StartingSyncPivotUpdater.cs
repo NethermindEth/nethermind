@@ -33,7 +33,7 @@ public class StartingSyncPivotUpdater : IDisposable
 
     private CancellationTokenSource? _cancellation = new();
 
-    private static int _maxAttempts;
+    private int _maxAttempts;
     private int _attemptsLeft;
     private int _updateInProgress;
     private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
@@ -57,11 +57,7 @@ public class StartingSyncPivotUpdater : IDisposable
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot; // Note: Blocktree would have set this to 0 if sync pivot is in DB
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
 
-        if (_maxAttempts == 0)
-        {
-            _beaconSyncStrategy.AllowBeaconHeaderSync();
-        }
-        else
+        if (_maxAttempts != 0 && !syncConfig.StaticSnapPivot)
         {
             _syncModeSelector.Changed += OnSyncModeChanged;
         }
@@ -69,32 +65,49 @@ public class StartingSyncPivotUpdater : IDisposable
 
     private async void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
     {
-        if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && Interlocked.CompareExchange(ref _updateInProgress, 1, 0) == 0)
+        CancellationTokenSource? cancellation = _cancellation;
+        if (cancellation is null)
         {
-            if (await TrySetFreshPivot(_cancellation!.Token))
+            return;
+        }
+
+        try
+        {
+            CancellationToken token = cancellation.Token;
+
+            if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && Interlocked.CompareExchange(ref _updateInProgress, 1, 0) == 0)
             {
-                _syncModeSelector.Changed -= OnSyncModeChanged;
+                if (await TrySetFreshPivot(token))
+                {
+                    _syncModeSelector.Changed -= OnSyncModeChanged;
+                }
+                else if (_attemptsLeft-- > 0 || _maxAttempts == ISyncConfig.InfiniteAttempts)
+                {
+                    Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
+                }
+                else
+                {
+                    _syncModeSelector.Changed -= OnSyncModeChanged;
+                    _syncConfig.MaxAttemptsToUpdatePivot = 0;
+                    if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
+                }
             }
-            else if (_attemptsLeft-- > 0 || _maxAttempts == ISyncConfig.InfiniteAttempts)
-            {
-                Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
-            }
-            else
+
+            // if sync mode is different than UpdatePivot, it means it will never be in UpdatePivot
+            if ((syncMode.Current & SyncMode.UpdatingPivot) == 0)
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
                 _syncConfig.MaxAttemptsToUpdatePivot = 0;
-                _beaconSyncStrategy.AllowBeaconHeaderSync();
-                if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
+                if (_logger.IsInfo) _logger.Info("Skipping pivot update");
             }
         }
-
-        // if sync mode is different than UpdatePivot, it means it will never be in UpdatePivot
-        if ((syncMode.Current & SyncMode.UpdatingPivot) == 0)
+        catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException)
         {
-            _syncModeSelector.Changed -= OnSyncModeChanged;
-            _syncConfig.MaxAttemptsToUpdatePivot = 0;
-            _beaconSyncStrategy.AllowBeaconHeaderSync();
-            if (_logger.IsInfo) _logger.Info("Skipping pivot update");
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Unexpected error while updating the starting sync pivot.", e);
+            Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
         }
     }
 
@@ -164,7 +177,12 @@ public class StartingSyncPivotUpdater : IDisposable
     }
 
     protected async Task<long?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
-        (await TryGetFromPeers(hash, cancellationToken, static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token), type))?.Number;
+        (await TryGetFromPeers(hash, cancellationToken, static async (peer, hash256, token) =>
+        {
+            BlockHeader? header = await peer.GetHeadBlockHeader(hash256, token);
+            // Only accept a header that is actually the requested block; a peer must not substitute another.
+            return header is not null && header.Hash == hash256 ? header : null;
+        }, type))?.Number;
 
     protected async Task<BlockHeader?> TryGetFromPeers<T>(T id, CancellationToken cancellationToken,
         Func<ISyncPeer, T, CancellationToken, Task<BlockHeader?>> getHeader, string? type = Pivot)
@@ -186,7 +204,7 @@ public class StartingSyncPivotUpdater : IDisposable
                         if (_logger.IsInfo) _logger.Info($"Received header of {type} block from peer {peer.SyncPeer.Node.ClientId}");
                         return finalizedHeader;
                     }
-                    if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedHeader.Hash} when expecting {id}");
+                    if (_logger.IsInfo) _logger.Info($"Header of {type} block {id} from peer {peer.SyncPeer.Node.ClientId} failed hash validation");
                 }
             }
             catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
@@ -227,7 +245,6 @@ public class StartingSyncPivotUpdater : IDisposable
     {
         _blockTree.SyncPivot = (finalizedBlockNumber, finalizedBlockHash);
         _syncConfig.MaxAttemptsToUpdatePivot = 0;
-        _beaconSyncStrategy.AllowBeaconHeaderSync();
     }
 
     protected void UpdateAndPrintPotentialNewPivot(Hash256 finalizedBlockHash)

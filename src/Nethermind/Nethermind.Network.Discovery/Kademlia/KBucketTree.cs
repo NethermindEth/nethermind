@@ -368,6 +368,8 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
     private void LogTreeStatistics()
     {
+        if (!_logger.IsDebug) return;
+
         int totalNodes = 0;
         int totalBuckets = 0;
         int maxDepth = 0;
@@ -392,21 +394,21 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
         TraverseTree(_root, 0);
 
-        if (_logger.IsDebug)
-        {
-            _logger.Debug($"Tree Statistics:\n" +
-                         $"Total Nodes: {totalNodes}\n" +
-                         $"Total Buckets: {totalBuckets}\n" +
-                         $"Max Depth: {maxDepth}\n" +
-                         $"Total Items: {totalItems}\n" +
-                         $"Average Items per Bucket: {(double)totalItems / totalBuckets:F2}");
-        }
+        _logger.Debug($"Tree Statistics:\n" +
+                     $"Total Nodes: {totalNodes}\n" +
+                     $"Total Buckets: {totalBuckets}\n" +
+                     $"Max Depth: {maxDepth}\n" +
+                     $"Total Items: {totalItems}\n" +
+                     $"Average Items per Bucket: {(double)totalItems / totalBuckets:F2}");
     }
+
     private void LogTreeStructure()
     {
+        if (!_logger.IsTrace) return;
+
         StringBuilder sb = new();
         LogTreeStructureRecursive(_root, "", true, 0, sb);
-        _logger.Info($"Current Tree Structure:\n{sb}");
+        _logger.Trace($"Current Tree Structure:\n{sb}");
     }
 
     public void LogDebugInfo()
