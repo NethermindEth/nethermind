@@ -62,6 +62,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
             catch
             {
+                foreach (Transaction tx in result)
+                    tx.ClearPreHash();
                 result.Dispose();
                 throw;
             }

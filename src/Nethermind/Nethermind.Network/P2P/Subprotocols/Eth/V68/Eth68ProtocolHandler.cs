@@ -260,6 +260,10 @@ public class Eth68ProtocolHandler(ISession session,
         {
             if (!ValidateSizeAndType(transactionsSpan[i]))
             {
+                for (int j = startIdx; j < transactionsSpan.Length; j++)
+                {
+                    transactionsSpan[j].ClearPreHash();
+                }
                 transactions.Dispose();
                 throw new SubprotocolException("invalid pooled tx type or size");
             }
