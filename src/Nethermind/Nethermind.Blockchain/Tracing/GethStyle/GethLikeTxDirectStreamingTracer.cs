@@ -29,7 +29,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 {
     private const int DefaultFlushIntervalEntries = 8192;
     private const int EvmWordSize = 32;
-    private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode(new string('0', EvmWordSize * 2));
+    private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode("0x" + new string('0', EvmWordSize * 2));
     private const int InitialStorageMapCapacity = 8;
     private const int InitialDepthStackCapacity = 8;
 
@@ -185,6 +185,13 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         top[storageIndex] = new UInt256(newValue, isBigEndian: true);
     }
 
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        if (!IsTracingOpLevelStorage || _activeStorageDepth == 0) return;
+        PooledDictionary<UInt256, UInt256> top = _storageByDepth![_activeStorageDepth - 1];
+        top[storageIndex] = new UInt256(value, isBigEndian: true);
+    }
+
     public override GethLikeTxTrace BuildResult()
     {
         FinalizePendingOpcode();
@@ -260,8 +267,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _writer.WriteNumber("gasCost"u8, _pendingGasCost);
         _writer.WriteNumber("depth"u8, _pendingDepth);
 
-        if (_pendingError is null) _writer.WriteNull("error"u8);
-        else _writer.WriteString("error"u8, _pendingError);
+        if (_pendingError is not null) _writer.WriteString("error"u8, _pendingError);
 
         if (IsTracingStack) WriteStackArrayIfPresent();
         if (IsTracingFullMemory) WriteMemoryArrayIfPresent();
@@ -293,7 +299,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
             }
             else
             {
-                HexWriter.WriteFixed32HexRawValue(_writer, slot, addHexPrefix: false);
+                HexWriter.WriteFixed32HexRawValue(_writer, slot, addHexPrefix: true);
             }
         }
         _writer.WriteEndArray();
@@ -302,13 +308,19 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private void WriteStorageObjectIfPresent()
     {
         if (_activeStorageDepth == 0) return;
+
+        // Per execution-apis#762 the cumulative storage snapshot is emitted only on SLOAD/SSTORE entries, and the
+        // field is absent (not an empty object) when there is nothing to report.
+        if (_pendingOpcode is not (Instruction.SLOAD or Instruction.SSTORE)) return;
+
         PooledDictionary<UInt256, UInt256> top = _storageByDepth![_activeStorageDepth - 1];
+        if (top.Count == 0) return;
 
         _writer.WriteStartObject("storage"u8);
         foreach (KeyValuePair<UInt256, UInt256> kv in top)
         {
-            HexWriter.WriteUInt256HexPropertyName(_writer, kv.Key, zeroPadded: true, addHexPrefix: false);
-            HexWriter.WriteUInt256HexRawValue(_writer, kv.Value, zeroPadded: true, addHexPrefix: false);
+            HexWriter.WriteUInt256HexPropertyName(_writer, kv.Key, zeroPadded: true, addHexPrefix: true);
+            HexWriter.WriteUInt256HexRawValue(_writer, kv.Value, zeroPadded: true, addHexPrefix: true);
         }
         _writer.WriteEndObject();
     }

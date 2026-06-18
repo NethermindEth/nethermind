@@ -25,11 +25,11 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
             if (sizeAvailable > 0)
             {
                 ReadOnlySpan<byte> bytes = _memory.Slice(traceLocation, sizeAvailable).Span;
-                memory[i] = bytes.ToHexString();
+                memory[i] = bytes.ToHexString(true);
             }
             else // Memory might not be initialized
             {
-                memory[i] = Bytes.Zero32.ToHexString();
+                memory[i] = Bytes.Zero32.ToHexString(true);
             }
 
             traceLocation += EvmPooledMemory.WordSize;

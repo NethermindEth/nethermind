@@ -1,12 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -323,14 +330,14 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trace.Entries[0].Storage.Count, Is.EqualTo(0), "BEGIN 1");
-            Assert.That(trace.Entries[13].Storage.Count, Is.EqualTo(0), "CALL FROM 1");
-            Assert.That(trace.Entries[14].Storage.Count, Is.EqualTo(0), "BEGIN 2");
-            Assert.That(trace.Entries[26].Storage.Count, Is.EqualTo(0), "CREATE FROM 2");
-            Assert.That(trace.Entries[27].Storage.Count, Is.EqualTo(0), "BEGIN 3");
-            Assert.That(trace.Entries[32].Storage.Count, Is.EqualTo(0), "END 3");
-            Assert.That(trace.Entries[33].Storage.Count, Is.EqualTo(0), "END 2");
-            Assert.That(trace.Entries[34].Storage.Count, Is.EqualTo(0), "END 1");
+            Assert.That(trace.Entries[0].Storage, Is.Null, "BEGIN 1");
+            Assert.That(trace.Entries[13].Storage, Is.Null, "CALL FROM 1");
+            Assert.That(trace.Entries[14].Storage, Is.Null, "BEGIN 2");
+            Assert.That(trace.Entries[26].Storage, Is.Null, "CREATE FROM 2");
+            Assert.That(trace.Entries[27].Storage, Is.Null, "BEGIN 3");
+            Assert.That(trace.Entries[32].Storage, Is.Null, "END 3");
+            Assert.That(trace.Entries[33].Storage, Is.Null, "END 2");
+            Assert.That(trace.Entries[34].Storage, Is.Null, "END 1");
         }
     }
 
@@ -409,13 +416,67 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Entries[2].Memory.Count, Is.EqualTo(0), "entry[2] length");
 
         Assert.That(trace.Entries[3].Memory.Count, Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[3][0]");
+        Assert.That(trace.Entries[3].Memory[0], Is.EqualTo($"0x{SampleHexData1.PadLeft(64, '0')}"), "entry[3][0]");
 
         Assert.That(trace.Entries[4].Memory.Count, Is.EqualTo(1), "entry[4] length");
-        Assert.That(trace.Entries[4].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[4][0]");
+        Assert.That(trace.Entries[4].Memory[0], Is.EqualTo($"0x{SampleHexData1.PadLeft(64, '0')}"), "entry[4][0]");
 
         Assert.That(trace.Entries[5].Memory.Count, Is.EqualTo(1), "entry[5] length");
-        Assert.That(trace.Entries[5].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[5][0]");
+        Assert.That(trace.Entries[5].Memory[0], Is.EqualTo($"0x{SampleHexData1.PadLeft(64, '0')}"), "entry[5][0]");
+    }
+
+    [Test]
+    public void Streaming_tracer_emits_spec_aligned_wire_format()
+    {
+        // execution-apis#762: no `error` field when no error occurred, no empty `storage` objects, and memory
+        // words encoded as 0x-prefixed bytes32. Drives the streaming struct logger over a real execution and
+        // inspects the raw opcode JSON it writes.
+        byte[] code = Prepare.EvmCode
+            .PushData(SampleHexData1.PadLeft(64, '0'))
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            GethLikeTxDirectStreamingTracer tracer = new(
+                transaction,
+                GethTraceOptions.Default with { EnableMemory = true },
+                writer,
+                pipeWriter: null,
+                CancellationToken.None);
+
+            writer.WriteStartArray();
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+            tracer.BuildResult();
+            writer.WriteEndArray();
+            writer.Flush();
+        }
+
+        string json = Encoding.UTF8.GetString(buffer.WrittenSpan);
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        bool sawMemoryWord = false;
+        foreach (JsonElement entry in document.RootElement.EnumerateArray())
+        {
+            Assert.That(entry.TryGetProperty("error", out _), Is.False, "error must be absent when no error occurred");
+            Assert.That(entry.TryGetProperty("storage", out _), Is.False, "empty storage must be omitted");
+
+            if (entry.TryGetProperty("memory", out JsonElement memory))
+            {
+                foreach (JsonElement word in memory.EnumerateArray())
+                {
+                    Assert.That(word.GetString(), Does.StartWith("0x"), "memory words must be 0x-prefixed");
+                    sawMemoryWord = true;
+                }
+            }
+        }
+
+        Assert.That(sawMemoryWord, Is.True, "the MSTORE should have produced at least one memory word to check");
     }
 
     [Test]

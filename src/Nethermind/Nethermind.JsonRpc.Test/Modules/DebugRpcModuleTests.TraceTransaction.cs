@@ -202,9 +202,7 @@ public partial class DebugRpcModuleTests
                             "gas": 46928,
                             "gasCost": 3,
                             "depth": 1,
-                            "error": null,
-                            "stack": [],
-                            "storage": {}
+                            "stack": []
                         },
                         {
                             "pc": 2,
@@ -212,11 +210,9 @@ public partial class DebugRpcModuleTests
                             "gas": 46925,
                             "gasCost": 3,
                             "depth": 1,
-                            "error": null,
                             "stack": [
                                 "0x0"
-                            ],
-                            "storage": {}
+                            ]
                         },
                         {
                             "pc": 4,
@@ -224,12 +220,10 @@ public partial class DebugRpcModuleTests
                             "gas": 46922,
                             "gasCost": 2200,
                             "depth": 1,
-                            "error": null,
                             "stack": [
                                 "0x0",
                                 "0x20"
-                            ],
-                            "storage": {}
+                            ]
                         },
                         {
                             "pc": 5,
@@ -237,9 +231,7 @@ public partial class DebugRpcModuleTests
                             "gas": 44722,
                             "gasCost": 0,
                             "depth": 1,
-                            "error": null,
-                            "stack": [],
-                            "storage": {}
+                            "stack": []
                         }
                     ]
                 },

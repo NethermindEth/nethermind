@@ -16,6 +16,11 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
 
+    // Cumulative storage touched within the current call frame, carried across opcodes. Per execution-apis#762 a
+    // snapshot of it is attached to an opcode entry only when that opcode is an SLOAD or SSTORE; other entries omit
+    // the storage field entirely.
+    private Dictionary<string, string> _storage = [];
+
     public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
     {
         _transaction = transaction;
@@ -42,41 +47,45 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     {
         base.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
-        byte[] bigEndian = new byte[32];
+        RecordStorage(storageIndex, newValue);
+    }
 
-        storageIndex.ToBigEndian(bigEndian);
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        base.LoadOperationStorage(address, storageIndex, value);
 
-        CurrentTraceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left)
-            .ToArray()
-            .ToHexString(false);
+        RecordStorage(storageIndex, value);
     }
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-        GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
         int previousDepth = CurrentTraceEntry?.Depth ?? 0;
 
         base.StartOperation(pc, opcode, gas, env);
 
         if (CurrentTraceEntry.Depth > previousDepth)
         {
-            CurrentTraceEntry.Storage = [];
-
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? [] : previousTraceEntry.Storage);
+            Trace.StoragesByDepth.Push(_storage);
+            _storage = [];
         }
         else if (CurrentTraceEntry.Depth < previousDepth)
         {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
+            _storage = Trace.StoragesByDepth.Pop();
         }
-        else
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on continuation.");
+    }
 
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
-        }
+    private void RecordStorage(UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        byte[] bigEndian = new byte[32];
+
+        storageIndex.ToBigEndian(bigEndian);
+
+        _storage[bigEndian.ToHexString(true)] = new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left)
+            .ToArray()
+            .ToHexString(true);
+
+        // Attach a snapshot to the current (SLOAD/SSTORE) entry only; non-storage opcodes leave Storage null so the
+        // serializer omits the field, matching geth's struct logger.
+        CurrentTraceEntry.Storage = new Dictionary<string, string>(_storage);
     }
 }
