@@ -50,6 +50,16 @@ on:
           disable. Ignored for non-flat layouts and when additional_extra_flags already sets it.
         required: false
         default: "67108864"
+      expb_env:
+        description: >-
+          Optional environment variables passed to the expb process (KEY=VALUE,
+          comma- or newline-separated). Applies to both single-image and
+          multi-image runs. Enables expb env-gated options, e.g.
+          EXPB_EVM_WARMUP=1 (per-block eth_simulateV1 warmup). Values that
+          themselves contain commas must use the newline-separated form, since
+          commas are treated as entry separators.
+        required: false
+        default: ""
       rebuild_docker:
         description: Rebuild Nethermind Docker image before running benchmarks
         required: false
@@ -119,6 +129,7 @@ jobs:
       delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
       amount: ${{ steps.resolve.outputs.amount }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
+      expb_env: ${{ steps.resolve.outputs.expb_env }}
       cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
       scenario_name: ${{ steps.resolve.outputs.scenario_name }}
       run_count: ${{ steps.resolve.outputs.run_count }}
@@ -148,6 +159,7 @@ jobs:
           DISPATCH_AMOUNT: ${{ inputs.amount }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
           DISPATCH_FLAT_WRITE_BUFFER_FLOOR: ${{ inputs.flat_write_buffer_floor }}
+          DISPATCH_EXPB_ENV: ${{ inputs.expb_env }}
           DISPATCH_REBUILD_DOCKER: ${{ inputs.rebuild_docker }}
           DISPATCH_RUN_COUNT: ${{ inputs.run_count }}
           DISPATCH_DOCKER_IMAGES: ${{ inputs.docker_images }}
@@ -162,6 +174,7 @@ jobs:
           mode="single"
           # Default FlatDb write-buffer floor (bytes) for flat layout; overridden by the dispatch input.
           flat_write_buffer_floor="67108864"
+          expb_env=""
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
             state_layout="${DISPATCH_STATE_LAYOUT}"
@@ -179,6 +192,7 @@ jobs:
             fi
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             flat_write_buffer_floor="${DISPATCH_FLAT_WRITE_BUFFER_FLOOR-67108864}"
+            expb_env="${DISPATCH_EXPB_ENV:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
@@ -332,6 +346,9 @@ jobs:
             echo "dottrace=${dottrace}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
+            echo "EOF"
+            echo "expb_env<<EOF"
+            printf '%s\n' "${expb_env}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
@@ -664,10 +681,26 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
           set -euo pipefail
           expb_pid=""
           : > "${RAW_RUN_LOG}"
+
+          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
+          # values containing commas must use the newline-separated form).
+          if [[ -n "${EXPB_ENV_PASSTHROUGH:-}" ]]; then
+            while IFS= read -r _kv; do
+              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              [[ -z "${_kv}" ]] && continue
+              if [[ "${_kv}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                export "${_kv}"
+                echo "Exported expb env: ${_kv%%=*}=<value>"
+              else
+                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
+              fi
+            done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
+          fi
 
           on_terminate() {
             echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."
@@ -1727,10 +1760,26 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
           set -euo pipefail
           expb_pid=""
           : > "${RAW_RUN_LOG}"
+
+          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
+          # values containing commas must use the newline-separated form).
+          if [[ -n "${EXPB_ENV_PASSTHROUGH:-}" ]]; then
+            while IFS= read -r _kv; do
+              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              [[ -z "${_kv}" ]] && continue
+              if [[ "${_kv}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                export "${_kv}"
+                echo "Exported expb env: ${_kv%%=*}=<value>"
+              else
+                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
+              fi
+            done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
+          fi
 
           on_terminate() {
             echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."

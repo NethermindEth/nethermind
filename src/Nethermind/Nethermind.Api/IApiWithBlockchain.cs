@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -26,8 +24,6 @@ namespace Nethermind.Api
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner BlockProducerRunner { get; set; }
 
-        IEnode? Enode { get; set; }
-
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         ISealer Sealer { get; }
         ISealEngine SealEngine { get; }
@@ -46,14 +42,6 @@ namespace Nethermind.Api
 
         [SkipServiceCollection]
         ITxValidator? HeadTxValidator { get; }
-
-        /// <summary>
-        /// Manager of block finalization
-        /// </summary>
-        /// <remarks>
-        /// Currently supported in <see cref="SealEngineType.AuRa"/> and Eth2Merge.
-        /// </remarks>
-        IBlockFinalizationManager? FinalizationManager { get; set; }
 
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
 
