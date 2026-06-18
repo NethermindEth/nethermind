@@ -211,6 +211,20 @@ public partial class BlockProcessor(
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
         using MetricsTimer<BloomsTimeSink> _ = new();
+
+        // Avoid parallel scheduling overhead for small receipt counts: ParallelUnbalancedWork queues
+        // ProcessorCount-1 ThreadPool items regardless of work size, which adds scheduling jitter and
+        // allocation overhead that exceeds the bloom computation cost for small blocks.
+        if (receipts.Length <= Environment.ProcessorCount)
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                receipts[i].CalculateBloom();
+            }
+
+            return;
+        }
+
         ParallelUnbalancedWork.For(
             0,
             receipts.Length,

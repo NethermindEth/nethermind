@@ -35,6 +35,8 @@ public class GCKeeper : IDisposable
 
     public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
 
+    public IDisposable StartNoGCRegion() => TryStartNoGCRegion();
+
     public Task<IDisposable> TryStartNoGCRegionAsync() => Task.Run(_tryStartNoGCRegionFunc);
 
     private IDisposable TryStartNoGCRegion()
