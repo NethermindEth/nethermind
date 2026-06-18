@@ -50,12 +50,12 @@ public class FlatWorldStateManager(
 
     public ulong? RetentionWindowBlocks => null;
 
-    public long? OldestStateBlock
+    public ulong? OldestStateBlock
     {
         get
         {
-            long blockNumber = (long)persistenceManager.GetCurrentPersistedStateId().BlockNumber;
-            return blockNumber >= 0 ? blockNumber : null;
+            ulong blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
+            return blockNumber != ulong.MaxValue ? blockNumber : null;
         }
     }
 

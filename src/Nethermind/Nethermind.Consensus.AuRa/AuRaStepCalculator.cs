@@ -72,9 +72,11 @@ namespace Nethermind.Consensus.AuRa
 
         private static long GetTimeToNextStepInTicks(UnixTime unixTime, StepDurationInfo currentStepInfo)
         {
-            long timeFromTransition = unixTime.MillisecondsLong - currentStepInfo.TransitionTimestampMilliseconds;
-            long timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
-            return (currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
+            ulong milliseconds = unixTime.Milliseconds;
+            ulong transition = currentStepInfo.TransitionTimestampMilliseconds;
+            ulong timeFromTransition = milliseconds >= transition ? milliseconds - transition : 0UL;
+            ulong timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
+            return (long)(currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
         }
 
         private StepDurationInfo GetStepInfo(ulong timestampInSeconds) =>
@@ -127,20 +129,20 @@ namespace Nethermind.Consensus.AuRa
         {
             public StepDurationInfo(ulong transitionStep, ulong transitionTimestamp, ulong stepDuration)
             {
-                const long millisecondsInSecond = 1000;
+                const ulong millisecondsInSecond = 1000UL;
 
                 TransitionStep = transitionStep;
                 TransitionTimestamp = transitionTimestamp;
                 StepDuration = stepDuration;
-                StepDurationMilliseconds = (long)stepDuration * millisecondsInSecond;
-                TransitionTimestampMilliseconds = (long)transitionTimestamp * millisecondsInSecond;
+                StepDurationMilliseconds = stepDuration * millisecondsInSecond;
+                TransitionTimestampMilliseconds = transitionTimestamp * millisecondsInSecond;
             }
 
             public ulong TransitionStep { get; }
             public ulong TransitionTimestamp { get; }
-            public long TransitionTimestampMilliseconds { get; }
+            public ulong TransitionTimestampMilliseconds { get; }
             public ulong StepDuration { get; }
-            public long StepDurationMilliseconds { get; }
+            public ulong StepDurationMilliseconds { get; }
             ulong IActivatedAt<ulong>.Activation => TransitionTimestamp;
 
             public ulong GetCurrentStep(in ulong timestampSeconds) => TransitionStep + (timestampSeconds - TransitionTimestamp) / StepDuration;

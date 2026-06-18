@@ -25,7 +25,7 @@ public class PatriciaTreeSyncStore(INodeStorage nodeStorage, IStateBoundaryWrite
     {
         nodeStorage.Flush(onlyWal: false);
         // Records the floor reported through eth_capabilities.
-        stateBoundary.OldestStateBlock = (long)pivotHeader.Number;
+        stateBoundary.OldestStateBlock = pivotHeader.Number;
     }
 
     public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData) =>

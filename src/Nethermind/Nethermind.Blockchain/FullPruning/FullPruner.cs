@@ -277,7 +277,7 @@ namespace Nethermind.Blockchain.FullPruning
                     // mirrors this write into the cloning DB, so after Commit() the new live DB
                     // has the marker atomically with the swap — a crash in between cannot leave
                     // the new DB live without the floor.
-                    _stateBoundary.OldestStateBlock = (long)stateToCopy;
+                    _stateBoundary.OldestStateBlock = stateToCopy;
 
                     using (_trieStore.PrepareStableState(cancellationToken))
                     {

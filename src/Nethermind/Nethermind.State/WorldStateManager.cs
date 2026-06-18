@@ -54,7 +54,7 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
 
     public ulong? RetentionWindowBlocks { get; }
 
-    public long? OldestStateBlock
+    public ulong? OldestStateBlock
     {
         get => _boundaryStore.OldestStateBlock;
         set => _boundaryStore.OldestStateBlock = value;

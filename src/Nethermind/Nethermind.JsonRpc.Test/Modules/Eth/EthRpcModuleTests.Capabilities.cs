@@ -28,7 +28,7 @@ public partial class EthRpcModuleTests
     private static EthCapabilities GetCaps(
         ulong? retentionWindow = null,
         ulong headNumber = 1000,
-        long? oldestStateBlock = null,
+        ulong? oldestStateBlock = null,
         SyncConfig? syncConfig = null,
         ulong? lowestInsertedBody = null,
         ulong? lowestInsertedReceipt = null,
@@ -74,7 +74,7 @@ public partial class EthRpcModuleTests
     {
         public ulong? RetentionWindow { get; init; }
         public ulong HeadNumber { get; init; } = 1000;
-        public long? OldestStateBlock { get; init; }
+        public ulong? OldestStateBlock { get; init; }
         public ulong? LowestInsertedBody { get; init; }
         public ulong? LowestInsertedReceipt { get; init; }
         public SyncConfig? SyncConfig { get; init; }
@@ -153,10 +153,10 @@ public partial class EthRpcModuleTests
         // (OldestStateBlock = pivot) but historical block sync continues.
         const long midSyncBody = 12_000_000;
         const long midSyncReceipt = 12_500_000;
-        const long midSyncStateFloor = 18_000_000;
+        const ulong midSyncStateFloor = 18_000_000UL;
         ResourceAvailability midSyncBlocks = new(Disabled: false, OldestBlock: midSyncBody);
         ResourceAvailability midSyncReceipts = new(Disabled: false, OldestBlock: midSyncReceipt);
-        ResourceAvailability midSyncState = new(Disabled: false, OldestBlock: midSyncStateFloor);
+        ResourceAvailability midSyncState = new(Disabled: false, OldestBlock: (long)midSyncStateFloor);
         yield return new CapabilitiesScenario(
             Name: "fast_sync_mid_progress_reports_actual_lowest_inserted",
             ExpectedState: midSyncState, ExpectedStateproofs: midSyncState,
@@ -191,8 +191,8 @@ public partial class EthRpcModuleTests
             SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true, AncientBodiesBarrier = 5_000_000 },
         };
 
-        const long fastSyncFloor = 18_000_000;
-        ResourceAvailability fastSyncedState = new(Disabled: false, OldestBlock: fastSyncFloor);
+        const ulong fastSyncFloor = 18_000_000UL;
+        ResourceAvailability fastSyncedState = new(Disabled: false, OldestBlock: (long)fastSyncFloor);
         yield return new CapabilitiesScenario(
             Name: "archive_after_fast_sync_reports_pivot_floor",
             ExpectedState: fastSyncedState, ExpectedStateproofs: fastSyncedState,
@@ -205,8 +205,8 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = fullSync };
 
-        const long fullPruneFloor = 500;
-        ResourceAvailability fullPruned = new(Disabled: false, OldestBlock: fullPruneFloor);
+        const ulong fullPruneFloor = 500UL;
+        ResourceAvailability fullPruned = new(Disabled: false, OldestBlock: (long)fullPruneFloor);
         yield return new CapabilitiesScenario(
             Name: "full_pruning_after_run_reports_copied_state_floor",
             ExpectedState: fullPruned, ExpectedStateproofs: fullPruned,
@@ -226,8 +226,8 @@ public partial class EthRpcModuleTests
         { RetentionWindow = (ulong)retention, HeadNumber = memoryHead, OldestStateBlock = 0, SyncConfig = fullSync };
 
         // Floor dominates window — DeleteStrategy is suppressed so oldestBlock and head-retentionBlocks stay consistent.
-        const long recentPivot = 950;
-        ResourceAvailability postSyncMemory = new(Disabled: false, OldestBlock: recentPivot);
+        const ulong recentPivot = 950UL;
+        ResourceAvailability postSyncMemory = new(Disabled: false, OldestBlock: (long)recentPivot);
         yield return new CapabilitiesScenario(
             Name: "memory_pruning_floor_dominates_window",
             ExpectedState: postSyncMemory, ExpectedStateproofs: postSyncMemory,

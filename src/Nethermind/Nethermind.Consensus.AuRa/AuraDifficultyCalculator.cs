@@ -15,14 +15,15 @@ namespace Nethermind.Consensus.AuRa
 
         public static UInt256 CalculateDifficulty(ulong parentStep, ulong currentStep, ulong emptyStepsCount = 0UL)
         {
-            if (parentStep + emptyStepsCount >= currentStep)
+            ulong parentStepWithEmpty = parentStep + emptyStepsCount;
+            if (parentStepWithEmpty >= currentStep)
             {
-                ulong diff = parentStep + emptyStepsCount - currentStep;
+                ulong diff = parentStepWithEmpty - currentStep;
                 return MaxDifficulty + (UInt256)diff;
             }
             else
             {
-                ulong diff = currentStep - (parentStep + emptyStepsCount);
+                ulong diff = currentStep - parentStepWithEmpty;
                 return MaxDifficulty - (UInt256)diff;
             }
         }

@@ -15,7 +15,7 @@ public interface IStateBoundary
     /// completes (= pivot) and after a full pruning run completes (= copied state's block).
     /// Null if never set (archive node syncing from genesis).
     /// </summary>
-    long? OldestStateBlock { get; }
+    ulong? OldestStateBlock { get; }
 
     /// <summary>
     /// Configured rolling-window retention in blocks (e.g. trie memory pruning). Null when
@@ -37,5 +37,5 @@ public interface IStateBoundary
 /// </remarks>
 public interface IStateBoundaryWriter
 {
-    long? OldestStateBlock { set; }
+    ulong? OldestStateBlock { set; }
 }

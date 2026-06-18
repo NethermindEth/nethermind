@@ -321,9 +321,13 @@ namespace Nethermind.Consensus.AuRa
                 // in that case check if it has enough blocks to best known to be finalized
                 // as everything before pivot should be finalized
                 ulong bestKnown = _blockTree.BestKnownNumber;
-                if (bestKnown >= level && bestKnown - level + 1 >= minSealersForFinalization)
+                if (bestKnown >= level)
                 {
-                    return level + minSealersForFinalization - 1UL;
+                    ulong blocksAfter = bestKnown + 1UL - level;
+                    if (blocksAfter >= minSealersForFinalization)
+                    {
+                        return level + minSealersForFinalization - 1UL;
+                    }
                 }
             }
 
