@@ -28,7 +28,7 @@ namespace Nethermind.Merge.Plugin
         // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
         // We MUST discard NewBlock/NewBlockHash messages after receiving FIRST_FINALIZED_BLOCK.
         public bool ShouldDiscardBlocks => _poSSwitcher.TransitionFinished ||
-                                           (_beaconSyncStrategy.GetFinalizedHash() is not null && _beaconSyncStrategy.GetFinalizedHash() != Keccak.Zero);  /*  _beaconSyncStrategy.GetFinalizedHash() is not null && _beaconSyncStrategy.GetFinalizedHash() != Keccak.Zero
+                                           (_beaconSyncStrategy.GetFinalizedHash() is { } finalizedHash && finalizedHash != Keccak.Zero);  /*  _beaconSyncStrategy.GetFinalizedHash() is not null && _beaconSyncStrategy.GetFinalizedHash() != Keccak.Zero
                                             This condition was added for edge case situation.
                                             We started beacon sync, and we hadn't reached transition yet. If CL sent us non zero finalization hash, it would mean that network reached transition.
                                             However, in edge case situation (verified by merge hive tests), our node needs to be reorged to PoW again, so we can't add this condition _beaconSyncStrategy.GetFinalizedHash() != Keccak.Zero

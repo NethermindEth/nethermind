@@ -25,8 +25,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ISyncConfig _syncConfig = syncConfig;
         private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
         private bool _isInBeaconModeControl = false;
-        private Hash256? _finalizedHash;
-        private Hash256? _headBlockHash;
+        private volatile Hash256? _finalizedHash;
+        private volatile Hash256? _headBlockHash;
         private readonly ILogger _logger = logManager.GetClassLogger<BeaconSync>();
 
         /// <inheritdoc />
