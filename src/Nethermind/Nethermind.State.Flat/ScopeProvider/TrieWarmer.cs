@@ -101,7 +101,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         long pending = PendingHint();
         if (pending == 0) return;
 
-        int desiredProcessors = (int)Math.Min(_processors.Length - activeProcessors, Math.Max(1, pending));
+        int desiredProcessors = (int)Math.Min(_processors.Length, Math.Max(1, pending));
         int scheduledProcessors = 0;
         for (int i = 0; i < _processors.Length && scheduledProcessors < desiredProcessors; i++)
         {
