@@ -8,9 +8,8 @@ namespace Nethermind.Consensus.Stateless;
 /// <summary>
 /// Per-main-processing-scope arming point for witness capture. Holds nullable pointers to the
 /// recorders that are active during a single <c>ProcessOne</c> call; the decorators
-/// (<see cref="WitnessCapturingWorldStateProxy"/>, <see cref="WitnessCapturingTrieStore"/>,
-/// <see cref="WitnessCapturingHeaderFinder"/>) consult these pointers on every call and forward
-/// straight through to the inner component when null.
+/// (<see cref="WitnessCapturingWorldStateProxy"/>, <see cref="WitnessCapturingHeaderFinder"/>)
+/// consult these pointers on every call and forward straight through to the inner component when null.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,29 +29,25 @@ public sealed class WitnessCaptureSession
 {
     private WitnessGeneratingWorldState? _worldStateRecorder;
     private WitnessHeaderRecorder? _headerRecorder;
-    private WitnessTrieStoreRecorder? _trieRecorder;
 
     public WitnessGeneratingWorldState? WorldStateRecorder => Volatile.Read(ref _worldStateRecorder);
     public WitnessHeaderRecorder? HeaderRecorder => Volatile.Read(ref _headerRecorder);
-    public WitnessTrieStoreRecorder? TrieRecorder => Volatile.Read(ref _trieRecorder);
 
     public bool IsActive => WorldStateRecorder is not null;
 
     /// <summary>
-    /// Atomically installs the three recorders for a single capture pass. Returns <c>false</c>
+    /// Atomically installs the two recorders for a single capture pass. Returns <c>false</c>
     /// when a capture is already in progress on this session.
     /// </summary>
     /// <remarks>
     /// The world-state recorder is the primary slot — the CAS on it gates the operation; the other
-    /// two are written under the post-CAS happens-before, so any reader that observes the
-    /// world-state recorder also observes the header and trie recorders.
+    /// is written under the post-CAS happens-before, so any reader that observes the
+    /// world-state recorder also observes the header recorder.
     /// </remarks>
     public bool TryArm(
         WitnessGeneratingWorldState worldStateRecorder,
-        WitnessHeaderRecorder headerRecorder,
-        WitnessTrieStoreRecorder trieRecorder)
+        WitnessHeaderRecorder headerRecorder)
     {
-        Volatile.Write(ref _trieRecorder, trieRecorder);
         Volatile.Write(ref _headerRecorder, headerRecorder);
         return Interlocked.CompareExchange(ref _worldStateRecorder, worldStateRecorder, null) is null;
     }
@@ -61,6 +56,5 @@ public sealed class WitnessCaptureSession
     {
         Volatile.Write(ref _worldStateRecorder, null);
         Volatile.Write(ref _headerRecorder, null);
-        Volatile.Write(ref _trieRecorder, null);
     }
 }

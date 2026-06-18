@@ -38,12 +38,6 @@ namespace Nethermind.Consensus.Stateless;
 ///     — catches header lookups from the EVM (e.g. BLOCKHASH) and the rest of the processing
 ///     pipeline so the witness header chain extends back to whatever the block touched.
 ///   </item>
-///   <item>
-///     <b><see cref="WitnessCapturingTrieStore"/> / <see cref="WitnessTrieStoreRecorder"/></b>
-///     — intercepts raw trie node reads at the storage layer for the case where branch nodes
-///     collapse during state-root recomputation and siblings are read that never surface at the
-///     <see cref="IWorldState"/> level.
-///   </item>
 /// </list>
 /// <para>
 /// All capture state lives on per-call instances installed onto the session — there is no global
@@ -56,8 +50,8 @@ public sealed class WitnessCapturingBlockProcessor(
     IBlockProcessor inner,
     WitnessCapturingWorldStateProxy proxy,
     WitnessCapturingHeaderFinder headerFinder,
-    WitnessCapturingTrieStore trieStore,
     WitnessCaptureSession session,
+    WorldStateManager worldStateManager,
     WitnessRendezvous rendezvous,
     IStateReader stateReader,
     ILogManager? logManager = null) : IBlockProcessor
@@ -93,17 +87,15 @@ public sealed class WitnessCapturingBlockProcessor(
         BlockHeader parent = headerFinder.Inner.Get(parentHash, parentBlockNumber)
             ?? throw new ArgumentException($"Unable to find parent for block {parentBlockNumber} with hash {parentHash}");
 
-        WitnessTrieStoreRecorder trieRecorder = new();
         WitnessHeaderRecorder headerRecorder = new();
         WitnessGeneratingWorldState recorder = new(
             proxy.InnerState,
             stateReader,
-            trieStore,
-            trieRecorder,
+            worldStateManager.CreateReadOnlyTrieStore(),
             headerRecorder,
             headerFinder.Inner);
 
-        if (!session.TryArm(recorder, headerRecorder, trieRecorder))
+        if (!session.TryArm(recorder, headerRecorder))
         {
             // Another capture is in progress for some other block on this session. Skip capture
             // for this one rather than risking interleaved recording.

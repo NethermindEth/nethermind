@@ -290,13 +290,6 @@ public class BaseMergePluginModule : Module
             // at root, before the main-processing child scope exists, so its read-tap must consult a
             // root-scoped session. The main-processing module's decorators resolve this same instance.
             .AddSingleton<WitnessCaptureSession>()
-            // Read-tap on the patricia main-world trie store (registered by PruningTrieStoreModule).
-            // Inert — one null check per node read — until the witness-capturing block processor arms
-            // the session. Never constructed on flat, where no main-world ITrieStore is resolved.
-            // Lambda registration because the write-through flag is not container-resolvable: the
-            // live store persists state, so commits must forward rather than hit NullCommitter.
-            .AddDecorator<ITrieStore>((ctx, trieStore) =>
-                new WitnessCapturingTrieStore(trieStore, ctx.Resolve<WitnessCaptureSession>(), readOnly: false))
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()

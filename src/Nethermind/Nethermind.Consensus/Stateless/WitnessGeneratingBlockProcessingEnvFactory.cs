@@ -78,7 +78,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         // components are wired directly, not via the main-pipeline proxy); Reset() clears the recorder
         // data between rents while leaving the session armed at the same recorder instances.
         WitnessCaptureSession session = new();
-        WitnessTrieStoreRecorder trieRecorder = new();
         WitnessHeaderRecorder headerRecorder = new();
 
         IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();
@@ -91,9 +90,9 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         // Proof-collection walks go through the global (non-capturing) reader; the capturing trieStore
         // serves execution-path reads (not account proof collection). headerStore is the undecorated source BuildHeaders walks.
         WitnessGeneratingWorldState witnessWorldState = new(
-            baseWorldState, worldStateManager.GlobalStateReader, trieStore, trieRecorder, headerRecorder, headerStore);
+            baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
 
-        session.TryArm(witnessWorldState, headerRecorder, trieRecorder);
+        session.TryArm(witnessWorldState, headerRecorder);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder => builder
             .AddScoped<IStateReader>(stateReader)
@@ -111,7 +110,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IWitnessGeneratingBlockProcessingEnv env = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
         IBlockhashCache blockhashCache = envLifetimeScope.Resolve<IBlockhashCache>();
-        return new PooledEntry(envLifetimeScope, readOnlyDbProvider, trieRecorder, headerRecorder, witnessWorldState, blockhashCache, env);
+        return new PooledEntry(envLifetimeScope, readOnlyDbProvider, headerRecorder, witnessWorldState, blockhashCache, env);
     }
 
     private void Return(PooledEntry entry)
@@ -165,7 +164,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     private sealed class PooledEntry(
         ILifetimeScope scope,
         IReadOnlyDbProvider dbProvider,
-        WitnessTrieStoreRecorder trieRecorder,
         WitnessHeaderRecorder headerRecorder,
         WitnessGeneratingWorldState worldState,
         IBlockhashCache blockhashCache,
@@ -183,7 +181,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         /// </remarks>
         public void Reset()
         {
-            trieRecorder.Reset();
             headerRecorder.Reset();
             worldState.Reset();
             dbProvider.ClearTempChanges();

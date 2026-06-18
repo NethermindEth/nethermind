@@ -31,14 +31,14 @@ public class PruningTrieStateFactory(
     IDbProvider dbProvider,
     IBlockTree blockTree,
     MainPruningTrieStoreFactory mainPruningTrieStoreFactory,
-    ITrieStore mainWorldTrieStore,
     INodeStorage mainNodeStorage,
     IProcessExitSource processExit,
     IDisposableStack disposeStack,
     IFullPrunerFactory fullPrunerFactory,
     CompositePruningTrigger compositePruningTrigger,
     Lazy<IPathRecovery> pathRecovery,
-    ILogManager logManager
+    ILogManager logManager,
+    NodeStorageCache? nodeStorageCache = null
 )
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
@@ -46,6 +46,13 @@ public class PruningTrieStateFactory(
     public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
+
+        ITrieStore mainWorldTrieStore = trieStore;
+
+        if (nodeStorageCache is not null)
+        {
+            mainWorldTrieStore = new PreCachedTrieStore(mainWorldTrieStore, nodeStorageCache);
+        }
 
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
         IWorldStateScopeProvider scopeProvider = syncConfig.TrieHealing

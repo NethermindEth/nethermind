@@ -21,7 +21,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
@@ -86,25 +85,6 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
 
             // Most config actually done in factory. We just call `Build` and then get back components from its output.
             .AddSingleton<MainPruningTrieStoreFactory>() // This part is done separately so that triestore can be obtained in test.
-            ;
-
-        // The main-world trie store — what GlobalWorldState reads and writes through. Registered as
-        // a service (rather than built inline in PruningTrieStateFactory) so plugins can decorate it,
-        // e.g. the witness read-tap installed by the merge plugin on EIP-7928 chains.
-        // ExternallyOwned: PruningTrieStateFactory pushes it onto the dispose stack, which must stay
-        // the sole owner — TrieStore.Dispose persists the cache on shutdown and is not idempotent.
-        builder.Register(ctx =>
-            {
-                ITrieStore store = ctx.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore;
-                return ctx.ResolveOptional<NodeStorageCache>() is { } nodeStorageCache
-                    ? new PreCachedTrieStore(store, nodeStorageCache)
-                    : store;
-            })
-            .As<ITrieStore>()
-            .SingleInstance()
-            .ExternallyOwned();
-
-        builder
             .AddSingleton<CompositePruningTrigger>()
             .AddSingleton<IFullPrunerFactory, FullPrunerFactory>()
             .AddSingleton<PruningTrieStateFactory>()
