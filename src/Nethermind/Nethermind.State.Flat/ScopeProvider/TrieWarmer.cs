@@ -93,11 +93,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void KickProcessors()
     {
-        // Fast-path the hot enqueue caller (PushSlotJob/PushAddressJob run per storage-write/account-read).
-        // Once every processor is already scheduled there is nothing to wake — a running processor drains
-        // the buffers and re-checks for work before unscheduling — so a single volatile read suffices and we
-        // skip the PendingHint() reads plus the CompareExchange loop on busy blocks. Likewise bail out when
-        // nothing is pending. Only ever schedule as many processors as there is pending work for.
         int activeProcessors = Volatile.Read(ref _activeProcessors);
         if (activeProcessors >= _processors.Length) return;
 
