@@ -43,28 +43,42 @@ public class NodeRecordTests
         Assert.Throws<Exception>(() => _ = nodeRecord.EnrString);
     }
 
-    [Test]
-    public void Discovery_endpoint_rejects_ipv4_with_udp6_only()
+    [TestCase("192.0.2.1", "", -1, 30304, "", -1)]
+    [TestCase("", "2001:db8::1", 30303, -1, "2001:db8::1", 30303)]
+    public void Discovery_endpoint_uses_expected_ip_udp_fallback(string ip, string ip6, int udp, int udp6, string expectedIp, int expectedPort)
     {
-        IPAddress ip = IPAddress.Parse("192.0.2.1");
         NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(new IpEntry(ip));
-        nodeRecord.SetEntry(new Udp6Entry(30304));
 
-        Assert.That(nodeRecord.DiscoveryIp, Is.Null);
-        Assert.That(nodeRecord.DiscoveryPort, Is.Null);
-    }
+        if (!string.IsNullOrEmpty(ip))
+        {
+            nodeRecord.SetEntry(new IpEntry(IPAddress.Parse(ip)));
+        }
 
-    [Test]
-    public void Discovery_endpoint_uses_udp_as_ipv6_fallback()
-    {
-        IPAddress ip = IPAddress.Parse("2001:db8::1");
-        NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(new Ip6Entry(ip));
-        nodeRecord.SetEntry(new UdpEntry(30303));
+        if (!string.IsNullOrEmpty(ip6))
+        {
+            nodeRecord.SetEntry(new Ip6Entry(IPAddress.Parse(ip6)));
+        }
 
-        Assert.That(nodeRecord.DiscoveryIp, Is.EqualTo(ip));
-        Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(30303));
+        if (udp >= 0)
+        {
+            nodeRecord.SetEntry(new UdpEntry(udp));
+        }
+
+        if (udp6 >= 0)
+        {
+            nodeRecord.SetEntry(new Udp6Entry(udp6));
+        }
+
+        if (expectedPort < 0)
+        {
+            Assert.That(nodeRecord.DiscoveryIp, Is.Null);
+            Assert.That(nodeRecord.DiscoveryPort, Is.Null);
+        }
+        else
+        {
+            Assert.That(nodeRecord.DiscoveryIp, Is.EqualTo(IPAddress.Parse(expectedIp)));
+            Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(expectedPort));
+        }
     }
 
     [Test]

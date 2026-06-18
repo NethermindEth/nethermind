@@ -20,12 +20,9 @@ namespace Nethermind.Network
         {
             int contentEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
             ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit);
-            if (IsEnrString(firstItem))
-            {
-                return DecodeEnrFormat(ref decoderContext, firstItem, contentEnd);
-            }
-
-            return DecodeLegacyFormat(ref decoderContext, firstItem);
+            return IsEnrString(firstItem)
+                ? DecodeEnrFormat(ref decoderContext, firstItem, contentEnd)
+                : DecodeLegacyFormat(ref decoderContext, firstItem);
         }
 
         private static NetworkNode DecodeEnrFormat(ref Rlp.ValueDecoderContext decoderContext, ReadOnlySpan<byte> firstItem, int contentEnd)

@@ -23,7 +23,8 @@ namespace Nethermind.Network.IP
                 string ip = httpClient.GetStringAsync(_url).Result.Trim();
                 if (_logger.IsDebug) _logger.Debug($"External ip: {ip}");
                 bool result = IPAddress.TryParse(ip, out IPAddress ipAddress);
-                return Task.FromResult(result && !ipAddress.IsInternal() ? (true, ipAddress) : (false, (IPAddress)null));
+                bool isExternal = result && !Nethermind.Network.IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
+                return Task.FromResult(isExternal ? (true, ipAddress) : (false, (IPAddress)null));
             }
             catch (Exception e)
             {

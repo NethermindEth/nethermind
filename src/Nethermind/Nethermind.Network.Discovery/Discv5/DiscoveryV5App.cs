@@ -159,14 +159,9 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     }
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NodeRecord nodeRecord)
-    {
-        if (TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node))
-        {
-            return AddBootNode(bootNodes, seen, node);
-        }
-
-        return BootNodeAddResult.Skipped;
-    }
+        => TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node)
+            ? AddBootNode(bootNodes, seen, node)
+            : BootNodeAddResult.Skipped;
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
     {

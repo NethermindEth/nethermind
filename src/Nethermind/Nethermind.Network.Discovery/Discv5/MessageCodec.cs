@@ -37,14 +37,9 @@ internal static class MessageCodec
     }
 
     public static Discv5Message Decode(ReadOnlySpan<byte> message)
-    {
-        if (NeedsOwnedMessage(message))
-        {
-            throw new RlpException("discv5 TALK messages require owned message memory. Use DecodeOwned.");
-        }
-
-        return Decode(message, default, null);
-    }
+        => NeedsOwnedMessage(message)
+            ? throw new RlpException("discv5 TALK messages require owned message memory. Use DecodeOwned.")
+            : Decode(message, default, null);
 
     public static Discv5Message DecodeOwned(ReadOnlyMemory<byte> message, ArrayPoolSpan<byte> owner)
         => Decode(message.Span, message, owner);

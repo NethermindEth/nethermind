@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -123,46 +124,11 @@ public class NodeRecordSignerTests
         Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
     }
 
-    [Test]
-    public void Throws_when_keys_are_not_sorted()
+    [TestCaseSource(nameof(InvalidRecordCases))]
+    public void Throws_when_record_is_invalid(Func<RlpStream> createRecord)
     {
         NodeRecordSigner signer = new(new Ecdsa());
-        RlpStream rlpStream = CreateRecord(
-            (EnrContentKey.Udp, static stream => stream.Encode(30303), Rlp.LengthOf(30303)),
-            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")));
-
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
-    }
-
-    [Test]
-    public void Throws_when_keys_are_duplicated()
-    {
-        NodeRecordSigner signer = new(new Ecdsa());
-        RlpStream rlpStream = CreateRecord(
-            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")),
-            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")));
-
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
-    }
-
-    [Test]
-    public void Throws_when_id_is_missing()
-    {
-        NodeRecordSigner signer = new(new Ecdsa());
-        RlpStream rlpStream = CreateRecord(
-            ("z", static stream => stream.Encode(Array.Empty<byte>()), Rlp.LengthOf(Array.Empty<byte>())));
-
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
-    }
-
-    [Test]
-    public void Throws_when_id_is_not_v4()
-    {
-        NodeRecordSigner signer = new(new Ecdsa());
-        RlpStream rlpStream = CreateRecord(
-            (EnrContentKey.Id, static stream => stream.Encode("v5"), Rlp.LengthOf("v5")));
-
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
+        Assert.That(() => signer.Deserialize(createRecord()), Throws.TypeOf<RlpException>());
     }
 
     [TestCase("f897b840421561b4ed5de28a7100e0a5005ecc0ba6ba6cc18528061e811704c8794fec965cba63831051d134bdc801c0c90d31a30d241074095311ffe6628d5545478b770a83657468c7c68496516d06808269648276348269708436ed0a0a89736563703235366b31a103f5c110132b0374805d4453f55577cc9c58bb1a08f822b9b3722132e3095f69728374637082765f8375647082765f")]
@@ -233,6 +199,27 @@ public class NodeRecordSignerTests
 
         rlpStream.Position = 0;
         return rlpStream;
+    }
+
+    private static IEnumerable<TestCaseData> InvalidRecordCases()
+    {
+        yield return new TestCaseData((Func<RlpStream>)(static () => CreateRecord(
+            (EnrContentKey.Udp, static stream => stream.Encode(30303), Rlp.LengthOf(30303)),
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")))))
+            .SetName("Throws_when_keys_are_not_sorted");
+
+        yield return new TestCaseData((Func<RlpStream>)(static () => CreateRecord(
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")),
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")))))
+            .SetName("Throws_when_keys_are_duplicated");
+
+        yield return new TestCaseData((Func<RlpStream>)(static () => CreateRecord(
+            ("z", static stream => stream.Encode(Array.Empty<byte>()), Rlp.LengthOf(Array.Empty<byte>())))))
+            .SetName("Throws_when_id_is_missing");
+
+        yield return new TestCaseData((Func<RlpStream>)(static () => CreateRecord(
+            (EnrContentKey.Id, static stream => stream.Encode("v5"), Rlp.LengthOf("v5")))))
+            .SetName("Throws_when_id_is_not_v4");
     }
 
     private static byte[] FindFillerForOversizedEncodedRecord()
