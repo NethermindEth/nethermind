@@ -146,6 +146,6 @@ public class CliqueTests
     private void MineBlock(BlockTree tree, Block block)
     {
         tree.SuggestBlock(block);
-        tree.UpdateMainChain(block);
+        tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
     }
 }

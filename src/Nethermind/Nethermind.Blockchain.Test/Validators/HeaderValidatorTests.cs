@@ -122,7 +122,7 @@ public class HeaderValidatorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_slot_number_same_as_parent()
+    public void When_slot_number_not_greater_than_parent_is_still_valid()
     {
         // Arrange: Same setup as above
         TestSpecProvider specProvider = new(Amsterdam.Instance);
@@ -142,10 +142,12 @@ public class HeaderValidatorTests
             .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
             .TestObject;
 
+        // Slot number lower than the parent's: EIP-7843 imposes no ordering on the EL,
+        // so the block must still be accepted.
         _block = Build.A.Block
             .WithParent(_parentBlock)
             .WithNumber(_parentBlock.Number + 1)
-            .WithSlotNumber(10)
+            .WithSlotNumber(7)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithEmptyRequestsHash()
@@ -162,8 +164,8 @@ public class HeaderValidatorTests
         using (Assert.EnterMultipleScope())
         {
             // Assert
-            Assert.That(result, Is.False);
-            Assert.That(error, Is.EqualTo("InvalidSlotNumber: Slot number in header must exceed parent."));
+            Assert.That(result, Is.True);
+            Assert.That(error, Is.Null);
         }
     }
 

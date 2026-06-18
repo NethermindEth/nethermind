@@ -65,7 +65,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient sender balance"));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient funds for gas * price + value"));
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
@@ -335,7 +335,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient sender balance"));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient funds for gas * price + value"));
     }
 
     [Test]
@@ -929,7 +929,14 @@ public partial class EthRpcModuleTests
         """{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"balance":"0x56BC75E2D63100000"}}""",
         """{"blobBaseFee":"0xb","baseFeePerGas":"0x1"}""",
         null,
-        BlockErrorMessages.InsufficientMaxFeePerBlobGas,
+        "max fee per blob gas less than block blob gas fee",
+        TestName = "blob tx rejected when maxFeePerBlobGas below blobBaseFee override")]
+    [TestCase(
+        """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","maxFeePerBlobGas":"0xa","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"],"gas":"0x5208"}""",
+        """{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"balance":"0x56BC75E2D63100000"}}""",
+        """{"blobBaseFee":"0xb","baseFeePerGas":"0x1"}""",
+        null,
+        "max fee per blob gas less than block blob gas fee",
         TestName = "blob tx rejected when maxFeePerBlobGas below blobBaseFee override")]
 
     public async Task Eth_call_blobBaseFeePerGas_override_test(
@@ -985,7 +992,7 @@ public partial class EthRpcModuleTests
         string serialized = await test.TestEthRpc("eth_call", tx, "latest", stateOverride, null);
         Assert.That(
             JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
-            Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas));
+            Does.Contain("max fee per blob gas less than block blob gas fee"));
     }
 
     [TestCase(
@@ -1025,6 +1032,23 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
     }
 
+    /// <summary>
+    /// Regression: state overrides with only storage (no code/balance/nonce) create an account
+    /// that is EIP-158 empty.
+    /// </summary>
+    [Test]
+    public async Task Eth_call_state_override_with_storage_blocks_create2_via_eip7610()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        (object stateOverride, object transaction) = BuildEip7610Fixture();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        JToken parsed = JToken.Parse(serialized);
+        byte[] returnData = Bytes.FromHexString(parsed["result"]!.Value<string>()!);
+
+        Assert.That(returnData, Is.EqualTo(new byte[32]));
+    }
+
     [TestCaseSource(nameof(ZeroBalanceWantCases))]
     public async Task Eth_call_zero_balance_reports_full_required_balance(
         string transactionJson, string? blockOverrideJson, string expectedDetailSubstring)
@@ -1044,7 +1068,7 @@ public partial class EthRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-            Assert.That(message, Does.Contain("insufficient sender balance for gas * price + value"));
+            Assert.That(message, Does.Contain("insufficient funds for gas * price + value"));
             Assert.That(message, Does.Contain(expectedDetailSubstring));
         }
     }

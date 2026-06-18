@@ -149,10 +149,7 @@ public partial class BlockProcessor
                             {
                                 if (i == 0)
                                 {
-                                    // ApplyStateChanges mutates the shared stateProvider so runs inside
-                                    // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                                    // workers read from BAL-backed world states, not stateProvider, so
-                                    // neither races with this write.
+                                    state.balManager.WaitForBalWarmup();
                                     BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                                     return state;
                                 }

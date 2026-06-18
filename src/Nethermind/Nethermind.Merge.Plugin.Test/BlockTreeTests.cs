@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -146,7 +147,7 @@ public partial class BlockTreeTests
             .WithDifficulty(0)
             .WithNumber(tree.Head!.Number + 1).TestObject;
         tree.SuggestBlock(firstPoSBlock);
-        tree.UpdateMainChain(new[] { firstPoSBlock }, true, true); // simulating fcU
+        tree.TryUpdateMainChain(firstPoSBlock.Header, true, true, preloadedBlocks: new[] { firstPoSBlock }); // simulating fcU
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tree.BestKnownNumber, Is.EqualTo(10));
@@ -327,7 +328,7 @@ public partial class BlockTreeTests
             }
 
             private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e) =>
-                NotSyncedTree.UpdateMainChain(new[] { e.Block! }, true);
+                NotSyncedTree.TryUpdateMainChain(e.Block!.Header, true, preloadedBlocks: new[] { e.Block! });
 
             public ScenarioBuilder InsertBeaconPivot(long num)
             {
@@ -451,7 +452,7 @@ public partial class BlockTreeTests
 
                 if (moveToBeaconMainChain)
                 {
-                    if (moveSyncedTree) SyncedTree.UpdateMainChain(blocks, true, true);
+                    if (moveSyncedTree) SyncedTree.TryUpdateMainChain(blocks[^1].Header, true, true, preloadedBlocks: CollectionsMarshal.AsSpan(blocks));
                     NotSyncedTree.UpdateBeaconMainChain(blockInfos, blockInfos[^1].BlockNumber);
                 }
 
@@ -475,7 +476,7 @@ public partial class BlockTreeTests
                     parent = blockToInsert;
                 }
 
-                blockTree.UpdateMainChain(newBlocks, true, true);
+                blockTree.TryUpdateMainChain(newBlocks[^1].Header, true, true, preloadedBlocks: CollectionsMarshal.AsSpan(newBlocks));
 
                 return this;
             }

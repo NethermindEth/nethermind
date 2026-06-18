@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -19,8 +20,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.Test.Modules.Eth;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -1545,6 +1548,52 @@ public class TraceRpcModuleTests
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
             "tracing a London block with a pre-EIP-1559 fork override must succeed (AdjustHeaderForSpec zeroes BaseFeePerGas)");
+    }
+
+    /// <summary>
+    /// Regression: without the NoEip158Spec fix, state overrides committed with EIP-158 enabled
+    /// would delete an account that is EIP-158 empty (no code/balance/nonce) even if it has storage,
+    /// causing IsNonZeroAccount to short-circuit false and silently bypass EIP-7610 collision detection.
+    /// </summary>
+    [Test]
+    public async Task Trace_call_state_override_with_storage_blocks_create2_via_eip7610()
+    {
+        (object stateOverride, object transaction) = EthRpcModuleTests.BuildEip7610Fixture();
+        Context context = new();
+        await context.Build(new TestSpecProvider(Osaka.Instance));
+        string serialized = await RpcTest.TestSerializedRequest(
+            context.TraceRpcModule,
+            "trace_call", transaction, new[] { "trace" }, "latest", stateOverride);
+
+        JToken parsed = JToken.Parse(serialized);
+        Assert.That(parsed["error"], Is.Null, $"trace_call failed: {parsed["error"]}");
+
+        string output = parsed["result"]!["output"]!.Value<string>()!;
+        Assert.That(output, Is.EqualTo("0x" + new string('0', 64)));
+    }
+
+    // regression test ensuring asynchronous streaming pipe doesn't crash tracing
+    // was caused by synchronously waiting non-completed IValueTaskSource-backed ValueTask
+    [Test]
+    public async Task trace_block_to_async_stream()
+    {
+        Context context = new();
+        await context.Build();
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        Block block = context.Blockchain.BlockTree.Head!;
+        Assert.That(block.Transactions, Is.Not.Empty, "block must contain transactions so AddTrace is exercised");
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_block(new BlockParameter(block.Number));
+        Assert.That(result.Data, Is.AssignableTo<IStreamableResult>());
+        IStreamableResult streaming = (IStreamableResult)result.Data;
+
+        await using AsyncCompletingStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+
+        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+
+        await writer.CompleteAsync();
     }
 
     private static void AssertBalanceChange(ParityAccountStateChange? stateChanges, UInt256 before, UInt256 after)

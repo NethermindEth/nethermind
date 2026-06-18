@@ -46,6 +46,26 @@ namespace Nethermind.Core.Test
             Assert.That(output.Bytes, Is.EqualTo(new byte[] { 193, 1 }));
         }
 
+        [TestCase("")]
+        [TestCase("00")]
+        [TestCase("05")]
+        [TestCase("7f")]
+        [TestCase("80")]
+        [TestCase("ff")]
+        [TestCase("0102")]
+        [TestCase("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
+        public void Encode_byte_string_into_span_matches_allocating_overload(string hex)
+        {
+            byte[] input = Extensions.Bytes.FromHexString(hex);
+            byte[] expected = Rlp.Encode((ReadOnlySpan<byte>)input).Bytes;
+
+            Span<byte> output = stackalloc byte[Math.Max(1, expected.Length)];
+            int written = Rlp.Encode(input, output);
+
+            Assert.That(written, Is.EqualTo(expected.Length));
+            Assert.That(output[..written].ToArray(), Is.EqualTo(expected));
+        }
+
         [Test]
         [Explicit("That was a regression test but now it is failing again and cannot find the reason we needed this behaviour in the first place. Sync works all fine. Leaving it here as it may resurface - make sure to add more explanation to it in such case.")]
         public void Serializing_object_int_regression()
