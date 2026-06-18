@@ -1214,7 +1214,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TCancelable : struct, IFlag
     {
         IReleaseSpec spec = Spec;
-        if (TCancelable.IsActive && spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
+        if (spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
             && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
         {
             return RunStream<TCancelable>(stream, ref stack, ref gas);
