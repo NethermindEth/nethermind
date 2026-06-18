@@ -300,14 +300,19 @@ public sealed class KademliaAdapter(
             if (_logger.IsTrace) _logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
             Node node = new(msg.FarPublicKey, msg.FarAddress);
-            NodeSession session = GetSession(node);
-            session.RecordStatsForIncomingMsg(msg);
 
-            if (HandleViaMessageHandlers(node, msg))
+            if (IsResponse(msgType))
             {
+                if (!HandleViaMessageHandlers(node, msg)) return;
+
+                NodeSession responseSession = GetSession(node);
+                responseSession.RecordStatsForIncomingMsg(msg);
                 nodeHealthTracker.Value.OnIncomingMessageFrom(node);
                 return;
             }
+
+            NodeSession session = GetSession(node);
+            session.RecordStatsForIncomingMsg(msg);
 
             CancellationToken token = processExitSource.Token;
             switch (msgType)
@@ -330,12 +335,6 @@ public sealed class KademliaAdapter(
                         nodeHealthTracker.Value.OnIncomingMessageFrom(node);
                     }
                     break;
-
-                // Unsolicited response.
-                case MsgType.Neighbors:
-                case MsgType.Pong:
-                case MsgType.EnrResponse:
-                    break;
                 default:
                     if (_logger.IsError) _logger.Error($"Unsupported msgType: {msgType}");
                     return;
@@ -350,6 +349,8 @@ public sealed class KademliaAdapter(
             if (_logger.IsError) _logger.Error("Error during msg handling", e);
         }
     }
+
+    private static bool IsResponse(MsgType msgType) => msgType is MsgType.Neighbors or MsgType.Pong or MsgType.EnrResponse;
 
     private bool ValidatePingAddress(PingMsg msg)
     {

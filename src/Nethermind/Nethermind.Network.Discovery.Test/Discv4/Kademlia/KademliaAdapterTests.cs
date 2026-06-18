@@ -167,6 +167,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 _ => throw new ArgumentOutOfRangeException(nameof(request), request, null)
             };
 
+        private DiscoveryMsg CreateUnsolicitedResponse(MsgType msgType) =>
+            msgType switch
+            {
+                MsgType.Pong => AddReceiverFarAddress(new PongMsg(_receiver.Address, _timestamper.UnixTime.SecondsLong + 1, TestItem.KeccakA.ValueHash256)),
+                MsgType.Neighbors => AddReceiverFarAddress(new NeighborsMsg(_receiver.Address, _timestamper.UnixTime.SecondsLong + 1, Array.Empty<Node>())),
+                MsgType.EnrResponse => AddReceiverFarAddress(new EnrResponseMsg(_receiver.Address, _selfNodeRecord, TestItem.KeccakA)),
+                _ => throw new ArgumentOutOfRangeException(nameof(msgType), msgType, null)
+            };
+
         [Test]
         [CancelAfter(10000)]
         public async Task Ping_should_send_ping_and_receive_pong(CancellationToken token)
@@ -278,6 +287,20 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _adapter.OnIncomingMsg(response);
 
             _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
+        }
+
+        [TestCase(MsgType.Pong)]
+        [TestCase(MsgType.Neighbors)]
+        [TestCase(MsgType.EnrResponse)]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_unsolicited_response_should_not_create_session_stats(MsgType msgType)
+        {
+            DiscoveryMsg response = CreateUnsolicitedResponse(msgType);
+
+            await _adapter.OnIncomingMsg(response);
+
+            _nodeStatsManager.DidNotReceive().GetOrAdd(Arg.Any<Node>());
+            _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
         }
 
         [TestCase(NoResponseRequest.Ping)]
