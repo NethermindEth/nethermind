@@ -18,7 +18,6 @@ namespace Nethermind.Api
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
         IIPResolver IpResolver { get; }
-        IMessageSerializationService MessageSerializationService { get; }
         IGossipPolicy GossipPolicy { get; set; }
         IPeerManager? PeerManager { get; }
         IProtocolsManager? ProtocolsManager { get; }
@@ -33,7 +32,6 @@ namespace Nethermind.Api
         ITrustedNodesManager TrustedNodesManager { get; }
         ISyncModeSelector SyncModeSelector { get; }
         ISyncPeerPool? SyncPeerPool { get; }
-        ISyncServer? SyncServer { get; }
 
         [SkipServiceCollection]
         IEngineRequestsTracker EngineRequestsTracker { get; }

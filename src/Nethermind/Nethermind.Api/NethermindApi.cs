@@ -57,7 +57,6 @@ namespace Nethermind.Api
 
         public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
-        public IBlockProcessingQueue BlockProcessingQueue => Context.Resolve<IBlockProcessingQueue>();
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree BlockTree => Context.Resolve<IBlockTree>();
@@ -78,7 +77,6 @@ namespace Nethermind.Api
         public EthereumJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
         public IKeyStore? KeyStore { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
-        public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
         public IProtocolsManager? ProtocolsManager => Context.Resolve<IProtocolsManager>();
@@ -88,18 +86,13 @@ namespace Nethermind.Api
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public IJsonRpcLocalStats JsonRpcLocalStats => Context.Resolve<IJsonRpcLocalStats>();
-        public ISealer Sealer => Context.Resolve<ISealer>();
         public string SealEngineType => ChainSpec.SealEngineType;
-        public ISealEngine SealEngine => Context.Resolve<ISealEngine>();
 
         public ISessionMonitor SessionMonitor => Context.Resolve<ISessionMonitor>();
         public ISpecProvider SpecProvider => _dependencies.SpecProvider;
         public ISyncModeSelector SyncModeSelector => Context.Resolve<ISyncModeSelector>()!;
 
         public ISyncPeerPool? SyncPeerPool => Context.Resolve<ISyncPeerPool>();
-        public ISyncServer? SyncServer => Context.Resolve<ISyncServer>();
-        public IWorldStateManager? WorldStateManager => Context.Resolve<IWorldStateManager>();
-        public IStateReader? StateReader => Context.Resolve<IStateReader>();
         public IStaticNodesManager StaticNodesManager => Context.Resolve<IStaticNodesManager>();
         public ITrustedNodesManager TrustedNodesManager => Context.Resolve<ITrustedNodesManager>();
         public ITimestamper Timestamper => Context.Resolve<ITimestamper>();
