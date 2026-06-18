@@ -39,7 +39,7 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
-        private string? LocalIp { get; }
+        private readonly IPAddress _localIp;
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -97,8 +97,8 @@ namespace Nethermind.Network.Rlpx
             _handshakeService = handshakeService;
             LocalNodeId = nodeKey.PublicKey;
             LocalPort = networkConfig.P2PPort;
-            NethermindIp ips = ipResolver.Resolve().GetAwaiter().GetResult();
-            LocalIp = ips.LocalIp.ToString();
+            IIPResolver.NethermindIp ips = ipResolver.Resolve().GetAwaiter().GetResult();
+            _localIp = ips.LocalIp;
             _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
             _connectTimeout = TimeSpan.FromMilliseconds(networkConfig.ConnectTimeoutMs);
             _channelFactory = channelFactory;
@@ -145,9 +145,8 @@ namespace Nethermind.Network.Rlpx
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new InboundChannelInitializer(this));
 
-                Task<IChannel> openTask = NetworkHelper.HandlePortTakenError(() => LocalIp is null
-                        ? bootstrap.BindAsync(LocalPort)
-                        : bootstrap.BindAsync(IPAddress.Parse(LocalIp), LocalPort),
+                Task<IChannel> openTask = NetworkHelper.HandlePortTakenError(
+                    () => bootstrap.BindAsync(_localIp, LocalPort),
                     LocalPort);
 
                 _bootstrapChannel = await openTask.ContinueWith(t =>

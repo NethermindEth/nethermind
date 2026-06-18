@@ -20,22 +20,22 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     private readonly ILogManager _logManager = logManager;
 
     private readonly Lock _lock = new();
-    private Task<NethermindIp>? _resolveTask;
+    private Task<IIPResolver.NethermindIp>? _resolveTask;
 
-    public ValueTask<NethermindIp> Resolve(CancellationToken cancellationToken = default)
+    public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default)
     {
-        Task<NethermindIp>? task = Volatile.Read(ref _resolveTask);
-        if (task is not null) return new ValueTask<NethermindIp>(task);
+        Task<IIPResolver.NethermindIp>? task = Volatile.Read(ref _resolveTask);
+        if (task is not null) return new ValueTask<IIPResolver.NethermindIp>(task);
 
         lock (_lock)
         {
             task = _resolveTask ??= ResolveCore(cancellationToken);
         }
 
-        return new ValueTask<NethermindIp>(task);
+        return new ValueTask<IIPResolver.NethermindIp>(task);
     }
 
-    private async Task<NethermindIp> ResolveCore(CancellationToken cancellationToken)
+    private async Task<IIPResolver.NethermindIp> ResolveCore(CancellationToken cancellationToken)
     {
         IPAddress localIp;
         try
@@ -47,7 +47,7 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             localIp = IPAddress.Loopback;
         }
 
-        return new NethermindIp(localIp, await ResolveExternalIp(cancellationToken));
+        return new IIPResolver.NethermindIp(localIp, await ResolveExternalIp(cancellationToken));
     }
 
     private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)

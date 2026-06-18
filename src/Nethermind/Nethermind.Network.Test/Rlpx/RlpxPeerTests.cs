@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             IIPResolver ipResolver = Substitute.For<IIPResolver>();
             ipResolver.Resolve(Arg.Any<CancellationToken>())
-                .Returns(new ValueTask<NethermindIp>(new NethermindIp(IPAddress.Any, IPAddress.None)));
+                .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.None)));
 
             RlpxHost host = new(
                 Substitute.For<IMessageSerializationService>(),

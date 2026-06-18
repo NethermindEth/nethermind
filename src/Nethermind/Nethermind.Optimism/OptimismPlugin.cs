@@ -84,10 +84,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         return Task.CompletedTask;
     }
 
-    public Task InitRpcModules()
+    public async Task InitRpcModules()
     {
         if (_api is null)
-            return Task.CompletedTask;
+            return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
@@ -144,7 +144,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 // Configs
                 config,
                 clParameters,
-                _api.IpResolver.Resolve().GetAwaiter().GetResult().ExternalIp,
+                (await _api.IpResolver.Resolve()).ExternalIp,
                 _api.SpecProvider.ChainId,
                 _api.ChainSpec.Genesis.Timestamp,
                 // Logging
@@ -165,7 +165,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
-        return Task.CompletedTask;
     }
 
     public bool MustInitialize => true;

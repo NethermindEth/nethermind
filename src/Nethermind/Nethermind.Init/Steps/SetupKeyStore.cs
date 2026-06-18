@@ -63,7 +63,7 @@ namespace Nethermind.Init.Steps
                 set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
             }
 
-            NethermindIp ip = await api.IpResolver.Resolve(cancellationToken);
+            IIPResolver.NethermindIp ip = await api.IpResolver.Resolve(cancellationToken);
             IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ip.ExternalIp, networkConfig.P2PPort);
 
             get.LogManager.SetGlobalVariable("enode", enode.ToString());

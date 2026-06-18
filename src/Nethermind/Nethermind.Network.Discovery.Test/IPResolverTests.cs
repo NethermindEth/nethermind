@@ -16,7 +16,7 @@ public class IPResolverTests
     public async Task Can_resolve_ip_without_override()
     {
         IPResolver ipResolver = new(new NetworkConfig(), LimboLogs.Instance);
-        NethermindIp ip = await ipResolver.Resolve();
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
         Assert.That(ip.LocalIp, Is.Not.Null);
         Assert.That(ip.ExternalIp, Is.Not.Null);
     }
@@ -27,7 +27,7 @@ public class IPResolverTests
     {
         INetworkConfig networkConfig = new NetworkConfig { ExternalIp = ipOverride };
         IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
-        NethermindIp ip = await ipResolver.Resolve();
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
         Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse(ipOverride)));
     }
 
@@ -37,7 +37,7 @@ public class IPResolverTests
         const string ipOverride = "99.99.99.99";
         INetworkConfig networkConfig = new NetworkConfig { LocalIp = ipOverride };
         IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
-        NethermindIp ip = await ipResolver.Resolve();
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
         Assert.That(ip.LocalIp, Is.EqualTo(IPAddress.Parse(ipOverride)));
     }
 }

@@ -87,7 +87,7 @@ public class RlpxHostIntegrationTests
 
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<NethermindIp>(new NethermindIp(IPAddress.Loopback, externalIp is null ? IPAddress.None : IPAddress.Parse(externalIp))));
+            .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, externalIp is null ? IPAddress.None : IPAddress.Parse(externalIp))));
 
         return new RlpxHost(
             Substitute.For<IMessageSerializationService>(),

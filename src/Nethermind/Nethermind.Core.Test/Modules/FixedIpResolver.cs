@@ -11,8 +11,8 @@ namespace Nethermind.Core.Test.Modules;
 
 public class FixedIpResolver(INetworkConfig networkConfig) : IIPResolver
 {
-    public ValueTask<NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
-        new(new NethermindIp(
+    public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
+        new(new IIPResolver.NethermindIp(
             networkConfig.LocalIp is null ? IPAddress.Loopback : IPAddress.Parse(networkConfig.LocalIp),
             networkConfig.ExternalIp is null ? IPAddress.None : IPAddress.Parse(networkConfig.ExternalIp)));
 }

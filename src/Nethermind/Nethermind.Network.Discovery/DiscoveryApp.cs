@@ -165,7 +165,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 
     private async Task Initialize()
     {
-        NethermindIp ip = await _ipResolver.Resolve();
+        IIPResolver.NethermindIp ip = await _ipResolver.Resolve();
         if (_logger.IsDebug)
             _logger.Debug($"Discovery    : udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
         ThisNodeInfo.AddInfo("Discovery    :", $"udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
