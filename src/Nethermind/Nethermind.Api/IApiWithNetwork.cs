@@ -19,16 +19,10 @@ namespace Nethermind.Api
 
         IIPResolver IpResolver { get; }
         IGossipPolicy GossipPolicy { get; set; }
-        IPeerManager? PeerManager { get; }
         IProtocolsManager? ProtocolsManager { get; }
-        IProtocolValidator ProtocolValidator { get; }
-        IRlpxHost RlpxPeer { get; }
 
         [SkipServiceCollection]
         IRpcModuleProvider? RpcModuleProvider { get; }
-        ISessionMonitor SessionMonitor { get; }
-        IStaticNodesManager StaticNodesManager { get; }
-        ITrustedNodesManager TrustedNodesManager { get; }
         ISyncModeSelector SyncModeSelector { get; }
         ISyncPeerPool? SyncPeerPool { get; }
 

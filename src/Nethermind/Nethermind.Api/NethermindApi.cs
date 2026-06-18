@@ -76,22 +76,16 @@ namespace Nethermind.Api
         public IKeyStore? KeyStore { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
-        public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
         public IProtocolsManager? ProtocolsManager => Context.Resolve<IProtocolsManager>();
-        public IProtocolValidator ProtocolValidator => Context.Resolve<IProtocolValidator>();
         public IReceiptStorage? ReceiptStorage => Context.Resolve<IReceiptStorage>();
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
-        public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public string SealEngineType => ChainSpec.SealEngineType;
 
-        public ISessionMonitor SessionMonitor => Context.Resolve<ISessionMonitor>();
         public ISpecProvider SpecProvider => _dependencies.SpecProvider;
         public ISyncModeSelector SyncModeSelector => Context.Resolve<ISyncModeSelector>()!;
 
         public ISyncPeerPool? SyncPeerPool => Context.Resolve<ISyncPeerPool>();
-        public IStaticNodesManager StaticNodesManager => Context.Resolve<IStaticNodesManager>();
-        public ITrustedNodesManager TrustedNodesManager => Context.Resolve<ITrustedNodesManager>();
         public ITimestamper Timestamper => Context.Resolve<ITimestamper>();
         public ITimerFactory TimerFactory => Context.Resolve<ITimerFactory>();
         public IMainProcessingContext MainProcessingContext => Context.Resolve<IMainProcessingContext>();
