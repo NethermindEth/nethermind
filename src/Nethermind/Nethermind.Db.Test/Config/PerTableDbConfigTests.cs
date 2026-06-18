@@ -72,16 +72,16 @@ public class PerTableDbConfigTests
         Assert.That(config.MaxOpenFiles, Is.EqualTo(2));
     }
 
-    [TestCase(null, false, TestName = "FullFlushOnExit defaults to false")]
-    [TestCase(true, true)]
-    [TestCase(false, false)]
-    public void FullFlushOnExit_reads_general_config(bool? configured, bool expected)
+    [TestCase(null, FlushOnExitMode.WalOnly, TestName = "FlushOnExit defaults to WalOnly")]
+    [TestCase(FlushOnExitMode.None, FlushOnExitMode.None)]
+    [TestCase(FlushOnExitMode.Full, FlushOnExitMode.Full)]
+    public void FlushOnExit_reads_general_config(FlushOnExitMode? configured, FlushOnExitMode expected)
     {
         DbConfig dbConfig = new();
-        if (configured is not null) dbConfig.FullFlushOnExit = configured.Value;
+        if (configured is not null) dbConfig.FlushOnExit = configured.Value;
 
         PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
-        Assert.That(config.FullFlushOnExit, Is.EqualTo(expected));
+        Assert.That(config.FlushOnExit, Is.EqualTo(expected));
     }
 
     [Test]
