@@ -1202,9 +1202,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     /// <summary>
-    /// Runs the frame's bytecode: picks the per-fork-specialized interpreter loop when the
-    /// spec's dispatch fingerprint matches a tip fork (see VirtualMachine.DispatchSpecialized),
-    /// otherwise the generic, runtime-flag loop — never wrong, only unspecialized.
+    /// Runs the frame's bytecode through the dispatch loop (see VirtualMachine.DispatchSpecialized),
+    /// lifting the two opcode-availability flags it gates on into compile-time <see cref="IFlag"/>
+    /// type args so the JIT folds them. One loop body serves all forks.
     /// </summary>
     [SkipLocalsInit]
     protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
@@ -1213,21 +1213,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        int fingerprint = EvmSpecFingerprint.Compute(Spec);
-        bool specialized = fingerprint == _osakaFingerprint || fingerprint == _cancunPragueFingerprint;
-        if (specialized && StreamInterpreter.Enabled && !TTracingInst.IsActive
+        IReleaseSpec spec = Spec;
+        if (spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
             && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
         {
-            // The stream executor is fork-agnostic within the specialized fingerprints (its
-            // in-block op set assumes Shanghai+ semantics, which both share).
             return RunStream<TCancelable>(stream, ref stack, ref gas);
         }
 
-        if (fingerprint == _osakaFingerprint)
-            return RunByteCodeCore<TTracingInst, TCancelable, OsakaEvmSpec>(ref stack, ref gas);
-        if (fingerprint == _cancunPragueFingerprint)
-            return RunByteCodeCore<TTracingInst, TCancelable, CancunEvmSpec>(ref stack, ref gas);
-        return RunByteCodeCore<TTracingInst, TCancelable, GenericEvmSpec>(ref stack, ref gas);
+        return (spec.ShiftOpcodesEnabled, spec.IncludePush0Instruction) switch
+        {
+            (true, true) => RunByteCodeCore<TTracingInst, TCancelable, OnFlag, OnFlag>(ref stack, ref gas),
+            (true, false) => RunByteCodeCore<TTracingInst, TCancelable, OnFlag, OffFlag>(ref stack, ref gas),
+            (false, true) => RunByteCodeCore<TTracingInst, TCancelable, OffFlag, OnFlag>(ref stack, ref gas),
+            (false, false) => RunByteCodeCore<TTracingInst, TCancelable, OffFlag, OffFlag>(ref stack, ref gas),
+        };
     }
 
 

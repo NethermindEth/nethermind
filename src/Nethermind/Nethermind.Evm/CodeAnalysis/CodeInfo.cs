@@ -78,9 +78,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
             return null;
 
-        // Reached the threshold on a fresh instance: reuse a stream built before this CodeInfo's
-        // eviction instead of rebuilding it. Cold code (below the threshold) never reaches here.
-        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
+        if (CodeHash != null && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
         {
             Volatile.Write(ref _stream, cached);
             return cached;

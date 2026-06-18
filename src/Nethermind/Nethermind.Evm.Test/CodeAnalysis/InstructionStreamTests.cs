@@ -315,14 +315,10 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Activation_WhenFingerprinted_SelectsASpecializedDispatch()
-    {
-        int fingerprint = EvmSpecFingerprint.Compute(SpecProvider.GetSpec(Activation));
+    public void Activation_IsShanghaiOrLater_SoStreamEngages() =>
         Assert.That(
-            fingerprint == EvmSpecFingerprint.Compute<OsakaEvmSpec>()
-            || fingerprint == EvmSpecFingerprint.Compute<CancunEvmSpec>(),
+            SpecProvider.GetSpec(Activation).IncludePush0Instruction,
             "the differential fixture must run on a fork where the stream engages");
-    }
 
     private static readonly byte[] s_calleeCode = Prepare.EvmCode
         .PushData(7).PushData(6).Op(Instruction.MUL)

@@ -13,10 +13,12 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// The interpreter dispatch: a per-fork-specialized loop (the JIT folds every
-/// <see cref="IEvmSpec"/> gate to a constant per <c>TSpec</c> instantiation and inlines the
-/// hot opcode cases) selected by spec fingerprint, with the generic function-pointer table
-/// loop as the always-correct fallback for historical forks and custom chains.
+/// The interpreter dispatch loop. A direct <c>switch</c> over the hot opcodes (so they dispatch
+/// without the function-pointer <c>calli</c> and the JIT can inline the handler bodies); every
+/// other opcode falls through to the per-fork function-pointer table. The two opcode-availability
+/// flags the loop gates on are lifted to compile-time <see cref="IFlag"/> type args (<c>TShift</c>
+/// for EIP-145 SHL/SHR, <c>TPush0</c> for EIP-3855 PUSH0) so the JIT folds the gates and drops the
+/// untaken cases. Every other hot opcode is fork-invariant, so one loop body serves all forks.
 /// </summary>
 public unsafe partial class VirtualMachine<TGasPolicy>
 {
@@ -46,24 +48,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// The method uses an unsafe context and function pointers to invoke opcode implementations directly,
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
-    // The two specialized interpreter instantiations: the tip fork and the one before it.
-    // Any spec whose flag set matches runs the specialized loop; everything else (historical
-    // forks, custom chains) takes the generic, runtime-flag path — never wrong, only slower.
-    private static readonly int _osakaFingerprint = EvmSpecFingerprint.Compute<OsakaEvmSpec>();
-    // Cancun and Prague share every dispatch-relevant flag; one instantiation serves both.
-    private static readonly int _cancunPragueFingerprint = EvmSpecFingerprint.Compute<CancunEvmSpec>();
-
     // Poll cancellation every 1024 opcodes (mask of low bits of the per-frame op counter).
     private const int CancellationCheckMask = 1023;
 
 
     [SkipLocalsInit]
-    private CallResult RunByteCodeCore<TTracingInst, TCancelable, TSpec>(
+    private CallResult RunByteCodeCore<TTracingInst, TCancelable, TShift, TPush0>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
-        where TSpec : struct, IEvmSpec
+        where TShift : struct, IFlag
+        where TPush0 : struct, IFlag
     {
         // Reset return data before executing the current frame.
         ReturnData = null;
@@ -118,14 +114,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // for the loop's fetch/bounds/++; passing ref programCounter directly to the
                 // handlers (incl. the calli) address-takes it, forcing a frame reload every opcode.
                 int pc = programCounter;
-                if (typeof(TSpec) != typeof(GenericEvmSpec))
+                // Direct dispatch for the measured-hot opcodes; the rest take the table.
+                // MUST stay inline in the loop: extracted, the JIT stops inlining the
+                // handlers and direct dispatch loses to the table's calli. The fork-gated
+                // cases check IFlag constants the JIT folds per instantiation.
+                switch (instruction)
                 {
-                    // Direct dispatch for the measured-hot opcodes; the rest take the table.
-                    // MUST stay inline in the loop: extracted, the JIT stops inlining the
-                    // handlers and direct dispatch loses to the table's calli. Spec-gated
-                    // cases check TSpec constants the JIT folds per fork.
-                    switch (instruction)
-                    {
                         case Instruction.ADD:
                             exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, ref pc);
                             break;
@@ -157,11 +151,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpNot>(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.SHL:
-                            if (!TSpec.ShiftOpcodesEnabled) goto default;
+                            if (!TShift.IsActive) goto default;
                             exceptionType = EvmInstructions.InstructionShift<TGasPolicy, EvmInstructions.OpShl, TTracingInst>(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.SHR:
-                            if (!TSpec.ShiftOpcodesEnabled) goto default;
+                            if (!TShift.IsActive) goto default;
                             exceptionType = EvmInstructions.InstructionShift<TGasPolicy, EvmInstructions.OpShr, TTracingInst>(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.CALLDATALOAD:
@@ -189,7 +183,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.PUSH0:
-                            if (!TSpec.IncludePush0Instruction) goto default;
+                            if (!TPush0.IsActive) goto default;
                             exceptionType = EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.PUSH1:
@@ -232,22 +226,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
                             break;
                     }
-
-                }
-                // For the very common POP opcode, use an inlined implementation to reduce overhead.
-                else if (Instruction.POP == instruction)
-                {
-                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref pc);
-                }
-                else
-                {
-                    // Retrieve the opcode function pointer corresponding to the current instruction.
-                    delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType> opcodeMethod = opcodeMethods[(int)instruction];
-                    // Invoke the opcode method, which may modify the stack, gas, and program counter.
-                    // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                    exceptionType = opcodeMethod(this, ref stack, ref gas, ref pc);
-                }
-                programCounter = pc;
+                    programCounter = pc;
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (TGasPolicy.GetRemainingGas(in gas) < 0)
@@ -269,10 +248,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 // If return data has been set, exit the loop to process the returned value.
                 // Only the 0xF0+ family sets it (RETURN returns None and signals completion
-                // solely through it), so the specialized path skips the field load for the
-                // cheap majority — the typeof comparison is a JIT constant and folds away.
-                if ((typeof(TSpec) == typeof(GenericEvmSpec) || instruction >= Instruction.CREATE)
-                    && ReturnData is not null)
+                // solely through it), so the field load is skipped for the cheap majority below CREATE.
+                if (instruction >= Instruction.CREATE && ReturnData is not null)
                 {
                     break;
                 }
