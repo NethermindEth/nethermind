@@ -13,11 +13,9 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroPacketSplitter() : MessageToByteEncoder<IByteBuffer>, IFramingAware
     {
-        private volatile int _maxFrameSize = Frame.DefaultMaxFrameSize;
+        public void DisableFraming() => MaxFrameSize = int.MaxValue;
 
-        public void DisableFraming() => _maxFrameSize = int.MaxValue;
-
-        public int MaxFrameSize => _maxFrameSize;
+        public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
 
         private int _contextId;
 
@@ -26,16 +24,13 @@ namespace Nethermind.Network.Rlpx
         {
             Interlocked.Increment(ref _contextId);
 
-            // Snapshot once: DisableFraming() may flip this concurrently from another thread.
-            int maxFrameSize = _maxFrameSize;
-
             int totalPayloadSize = input.ReadableBytes;
 
-            int framesCount = (totalPayloadSize - 1) / maxFrameSize + 1;
+            int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
             {
-                int totalPayloadOffset = maxFrameSize * i;
-                int framePayloadSize = Math.Min(maxFrameSize, totalPayloadSize - totalPayloadOffset);
+                int totalPayloadOffset = MaxFrameSize * i;
+                int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
                 int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
                 output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize);
 

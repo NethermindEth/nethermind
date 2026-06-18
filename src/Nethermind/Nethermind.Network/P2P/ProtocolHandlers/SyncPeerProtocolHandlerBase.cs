@@ -31,6 +31,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     {
         internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
+        internal static ulong HardOutgoingBodiesMessageSizeLimit = (ulong)15.MiB;
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -341,14 +342,29 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     continue;
                 }
 
-                sizeEstimate += MessageSizeEstimator.EstimateSize(block);
+                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
 
+                // Never build a response above the protocol message-size limit; doing so overflows the
+                // 24-bit RLPx frame size and corrupts the connection. A single body above the limit
+                // cannot be served at all, so omit it (responses are sparse).
+                if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
+                {
+                    if (blocks.Count > 0)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                blocks.Add(block);
+                sizeEstimate += blockSize;
+
+                // Soft limit keeps the common-case response small.
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
                 {
                     break;
                 }
-
-                blocks.Add(block);
             }
 
             return Task.FromResult(new BlockBodiesMessage(blocks));
