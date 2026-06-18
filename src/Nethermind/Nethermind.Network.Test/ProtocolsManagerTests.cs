@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -165,7 +166,7 @@ public class ProtocolsManagerTests
 
         private IProtocolHandlerFactory[] BuildProtocolHandlerFactories() => [
                 new ReusableProtocolHandlerFactory<P2PProtocolHandler>(
-                    session => new P2PProtocolHandler(session, _rlpxHost.LocalNodeId, _nodeStatsManager, _serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance),
+                    session => new P2PProtocolHandler(session, new InsecureProtectedPrivateKey(TestItem.PrivateKeyA), _nodeStatsManager, _serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance),
                     Protocol.P2P),
                 new ReusableProtocolHandlerFactory<Eth66ProtocolHandler>(
                     session => new Eth66ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),

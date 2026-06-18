@@ -7,6 +7,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -63,7 +64,7 @@ namespace Nethermind.Network.Test.P2P
 
             return new P2PProtocolHandler(
                 _session,
-                TestItem.PublicKeyA,
+                new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
                 _nodeStatsManager,
                 _serializer,
                 Substitute.For<IBackgroundTaskScheduler>(),

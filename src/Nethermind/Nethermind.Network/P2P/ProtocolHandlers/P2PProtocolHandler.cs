@@ -8,12 +8,14 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using FastEnumUtility;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -26,7 +28,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers;
 
 public class P2PProtocolHandler(
     ISession session,
-    PublicKey localNodeId,
+    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
@@ -60,7 +62,7 @@ public class P2PProtocolHandler(
     private readonly List<Capability> _supportedCapabilities = [];
 
     public int ListenPort { get; } = session.LocalPort;
-    public PublicKey LocalNodeId { get; } = localNodeId;
+    public PublicKey LocalNodeId { get; } = nodeKey.PublicKey;
     private string RemoteClientId { get; set; }
 
     public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
