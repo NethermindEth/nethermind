@@ -85,7 +85,6 @@ namespace Nethermind.Api
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
-        public IJsonRpcLocalStats JsonRpcLocalStats => Context.Resolve<IJsonRpcLocalStats>();
         public string SealEngineType => ChainSpec.SealEngineType;
 
         public ISessionMonitor SessionMonitor => Context.Resolve<ISessionMonitor>();

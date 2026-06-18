@@ -26,7 +26,6 @@ namespace Nethermind.Api
 
         [SkipServiceCollection]
         IRpcModuleProvider? RpcModuleProvider { get; }
-        IJsonRpcLocalStats JsonRpcLocalStats { get; }
         ISessionMonitor SessionMonitor { get; }
         IStaticNodesManager StaticNodesManager { get; }
         ITrustedNodesManager TrustedNodesManager { get; }
