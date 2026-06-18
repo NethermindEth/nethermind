@@ -17,7 +17,6 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
 {
     private readonly ILogger _logger = logManager?.GetClassLogger<IPResolver>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-    private readonly ILogManager _logManager = logManager;
 
     private readonly Lock _lock = new();
     private Task<IIPResolver.NethermindIp>? _resolveTask;
@@ -25,14 +24,17 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default)
     {
         Task<IIPResolver.NethermindIp>? task = Volatile.Read(ref _resolveTask);
-        if (task is not null) return new ValueTask<IIPResolver.NethermindIp>(task);
-
-        lock (_lock)
+        if (task is null)
         {
-            task = _resolveTask ??= ResolveCore(cancellationToken);
+            lock (_lock)
+            {
+                // Resolve with CancellationToken.None so the cached, shared resolution is never bound to
+                // (and faulted by) a single caller's token. Per-call cancellation is honored via WaitAsync below.
+                task = _resolveTask ??= ResolveCore(CancellationToken.None);
+            }
         }
 
-        return new ValueTask<IIPResolver.NethermindIp>(task);
+        return new ValueTask<IIPResolver.NethermindIp>(task.WaitAsync(cancellationToken));
     }
 
     private async Task<IIPResolver.NethermindIp> ResolveCore(CancellationToken cancellationToken)
@@ -42,8 +44,9 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         {
             localIp = await InitializeLocalIp();
         }
-        catch (Exception)
+        catch (Exception e)
         {
+            if (_logger.IsWarn) _logger.Warn($"Could not resolve local IP, falling back to loopback: {e.Message}");
             localIp = IPAddress.Loopback;
         }
 
@@ -85,12 +88,12 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     {
         IEnumerable<IIPSource> GetIPSources()
         {
-            yield return new NetworkConfigExternalIPSource(_networkConfig, _logManager);
-            yield return new WebIPSource("http://ipv4.icanhazip.com", _logManager);
-            yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", _logManager);
-            yield return new WebIPSource("http://checkip.amazonaws.com", _logManager);
-            yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
-            yield return new WebIPSource("http://api.ipify.org", _logManager);
+            yield return new NetworkConfigExternalIPSource(_networkConfig, logManager);
+            yield return new WebIPSource("http://ipv4.icanhazip.com", logManager);
+            yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", logManager);
+            yield return new WebIPSource("http://checkip.amazonaws.com", logManager);
+            yield return new WebIPSource("http://ipinfo.io/ip", logManager);
+            yield return new WebIPSource("http://api.ipify.org", logManager);
         }
 
         try
@@ -117,7 +120,7 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     {
         IEnumerable<IIPSource> GetIPSources()
         {
-            yield return new NetworkConfigLocalIPSource(_networkConfig, _logManager);
+            yield return new NetworkConfigLocalIPSource(_networkConfig, logManager);
         }
 
         try

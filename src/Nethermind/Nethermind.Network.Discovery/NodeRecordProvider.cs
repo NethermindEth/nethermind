@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Crypto;
 using Nethermind.Network.Config;
@@ -17,10 +15,25 @@ public class NodeRecordProvider(
     INetworkConfig networkConfig
 ) : INodeRecordProvider
 {
-    private NodeRecord? _nodeRecord;
+    private readonly Lock _lock = new();
+    private Task<NodeRecord>? _nodeRecordTask;
 
-    public async ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
-        => _nodeRecord ??= await PrepareNodeRecord(cancellationToken);
+    public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
+    {
+        Task<NodeRecord>? task = Volatile.Read(ref _nodeRecordTask);
+        if (task is null)
+        {
+            lock (_lock)
+            {
+                // Build once, guarding concurrent callers (Ping/HandleEnrRequest run from concurrent
+                // discovery handlers). Use CancellationToken.None so the cached ENR isn't faulted by a
+                // single caller's token; per-call cancellation is honored via WaitAsync below.
+                task = _nodeRecordTask ??= PrepareNodeRecord(CancellationToken.None);
+            }
+        }
+
+        return new ValueTask<NodeRecord>(task.WaitAsync(cancellationToken));
+    }
 
     private async Task<NodeRecord> PrepareNodeRecord(CancellationToken cancellationToken)
     {

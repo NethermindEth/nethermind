@@ -17,6 +17,10 @@ namespace Nethermind.Network
         /// resolution. An explicit <c>INetworkConfig.LocalIp</c>/<c>ExternalIp</c> override is
         /// honored when set, otherwise the address is auto-detected.
         /// </remarks>
+        /// <param name="cancellationToken">
+        /// Cancels only the caller's wait for the result, not the shared cached resolution (which always
+        /// runs to completion so it can still serve other callers).
+        /// </param>
         ValueTask<NethermindIp> Resolve(CancellationToken cancellationToken = default);
 
         /// <summary>

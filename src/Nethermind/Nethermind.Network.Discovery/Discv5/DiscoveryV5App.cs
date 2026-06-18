@@ -64,6 +64,8 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         _discoveryDb = discoveryDb;
         _legacyDiscoveryDb = legacyDiscoveryDb;
         _logManager = logManager;
+        // DiscoveryV5App is resolved during network startup, after SetupKeyStore (a declared dependency of
+        // InitializeNetwork) has already awaited Resolve() and warmed the cache, so this does not block.
         IPAddress externalIp = ipResolver.Resolve().GetAwaiter().GetResult().ExternalIp;
         _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(externalIp);
         IdentityVerifierV4 identityVerifier = new();

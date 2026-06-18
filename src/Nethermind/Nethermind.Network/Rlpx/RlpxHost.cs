@@ -97,6 +97,8 @@ namespace Nethermind.Network.Rlpx
             _handshakeService = handshakeService;
             LocalNodeId = nodeKey.PublicKey;
             LocalPort = networkConfig.P2PPort;
+            // RlpxHost is injected as Lazy<> into InitializeNetwork, whose async Initialize() runs after its
+            // SetupKeyStore dependency has awaited Resolve() and warmed the cache, so this does not block.
             IIPResolver.NethermindIp ips = ipResolver.Resolve().GetAwaiter().GetResult();
             _localIp = ips.LocalIp;
             _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
