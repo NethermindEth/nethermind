@@ -56,8 +56,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Estimate_tx_with_data_size_matches_encoded_length()
         {
-            Transaction tx = Build.A.Transaction.WithData(new byte[7]).TestObject;
-            Assert.That(MessageSizeEstimator.EstimateSize(tx), Is.EqualTo((ulong)TxDecoder.Instance.GetLength(tx, RlpBehaviors.None)));
+            const int dataLength = 7;
+            Transaction baseline = Build.A.Transaction.TestObject;
+            Transaction tx = Build.A.Transaction.WithData(new byte[dataLength]).TestObject;
+
+            ulong estimate = MessageSizeEstimator.EstimateSize(tx);
+
+            Assert.That(estimate, Is.EqualTo((ulong)TxDecoder.Instance.GetLength(tx, RlpBehaviors.None)));
+            // Independent of the estimator internals: dataLength extra calldata bytes encode to
+            // dataLength extra bytes, so the estimate must grow by exactly that — guarding against a
+            // regression to a constant or to a heuristic that drops the field.
+            Assert.That(estimate - MessageSizeEstimator.EstimateSize(baseline), Is.EqualTo((ulong)dataLength));
         }
 
         [Test]
