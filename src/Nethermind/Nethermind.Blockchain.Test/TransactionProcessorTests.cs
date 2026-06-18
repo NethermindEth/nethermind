@@ -774,8 +774,8 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
     }
 
     /// <summary>
-    /// Demonstrates the correct override pattern for <see cref="TransactionProcessorBase{TGasPolicy}.ShouldExecuteEvm"/>:
-    /// when returning <c>false</c> the override must call <see cref="TransactionProcessorBase{TGasPolicy}.Refund"/>,
+    /// Demonstrates the correct override pattern for <see cref="TransactionProcessorBase{TGasPolicy}.ExecuteEvm"/>:
+    /// to omit execution, the override must call <see cref="TransactionProcessorBase{TGasPolicy}.Refund"/>,
     /// <see cref="TransactionProcessorBase{TGasPolicy}.UpdateHeaderGasUsedAndPayFees"/>, and
     /// <see cref="TransactionProcessorBase{TGasPolicy}.FinalizeTransaction"/> itself so that gas accounting,
     /// fee payment, and state commit/restore are handled correctly.
@@ -789,7 +789,7 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         ILogManager logManager)
         : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     {
-        protected override bool ShouldExecuteEvm(
+        protected override TransactionResult ExecuteEvm(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
@@ -804,9 +804,9 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
             in UInt256 premiumPerGas,
             in UInt256 senderReservedGasPayment,
             in UInt256 blobBaseFee,
+            bool useSimpleTransferFastPath,
             CodeInfo? preloadedCodeInfo,
-            Address? preloadedDelegationAddress,
-            out TransactionResult transactionResult)
+            Address? preloadedDelegationAddress)
         {
             TransactionSubstate substate = new(default, 0, null, null, false, false, logger: Logger);
             EthereumGasPolicy floorGas = intrinsicGas.FloorGas;
@@ -817,9 +817,8 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
             UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in gasConsumed,
                 in premiumPerGas, in blobBaseFee, StatusCode.Success);
             Address executingAccount = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0)!;
-            transactionResult = FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount,
+            return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount,
                 in senderReservedGasPayment, executingAccount, in substate, gasConsumed, StatusCode.Success);
-            return false;
         }
     }
 }

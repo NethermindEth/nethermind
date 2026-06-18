@@ -223,7 +223,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 return result;
             }
 
-            Address? recipient = tx.To;
             bool useSimpleTransferFastPath = TryPrepareSimpleTransferFastPath(tx, spec, out CodeInfo? preloadedCodeInfo, out Address? preloadedDelegationAddress);
 
             bool commitBeforeExecution = commit && (!useSimpleTransferFastPath || restore || tracer.IsTracingState);
@@ -231,22 +230,43 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
 
-            if (ShouldExecuteEvm(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas,
-                    gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee,
-                    preloadedCodeInfo, preloadedDelegationAddress,
-                    out TransactionResult transactionResult))
-            {
-                transactionResult = useSimpleTransferFastPath
-                    ? ExecuteSimpleTransfer(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount,
-                        recipient!, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas,
-                        in senderReservedGasPayment, in blobBaseFee)
-                    : ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount,
-                        in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment,
-                        in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
-            }
-
-            return transactionResult;
+            return ExecuteEvm(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas,
+                gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee,
+                useSimpleTransferFastPath, preloadedCodeInfo, preloadedDelegationAddress);
         }
+
+        /// <remarks>
+        /// Overrides that skip or replace EVM execution are responsible for calling
+        /// <see cref="Refund"/>, <see cref="UpdateHeaderGasUsedAndPayFees"/>, and
+        /// <see cref="FinalizeTransaction"/> directly — the base class will not call them
+        /// when the override returns early. See <c>NoOpTransactionProcessor</c> in the
+        /// test suite for the canonical pattern.
+        /// </remarks>
+        protected virtual TransactionResult ExecuteEvm(Transaction tx,
+            BlockHeader header,
+            IReleaseSpec spec,
+            ITxTracer tracer,
+            ExecutionOptions opts,
+            bool restore,
+            bool commit,
+            bool deleteCallerAccount,
+            in IntrinsicGas<TGasPolicy> intrinsicGas,
+            TGasPolicy gasAvailable,
+            in UInt256 opcodeGasPrice,
+            in UInt256 premiumPerGas,
+            in UInt256 senderReservedGasPayment,
+            in UInt256 blobBaseFee,
+            bool useSimpleTransferFastPath,
+            CodeInfo? preloadedCodeInfo,
+            Address? preloadedDelegationAddress) =>
+
+            useSimpleTransferFastPath
+                ? ExecuteSimpleTransfer(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount,
+                    tx.To!, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas,
+                    in senderReservedGasPayment, in blobBaseFee)
+                : ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount,
+                    in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment,
+                    in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsSimpleTransferFastPathCandidate(Transaction tx, bool isCodeOverridable)
@@ -590,44 +610,6 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             gasAvailable = TGasPolicy.CreateAvailableFromIntrinsic(tx.GasLimit, intrinsicGas.Standard, spec);
             return TransactionResult.Ok;
-        }
-
-        /// <summary>
-        /// Determines whether the EVM (or simple-transfer fast-path) should be executed for this transaction.
-        /// </summary>
-        /// <param name="transactionResult">
-        /// The result to return when <c>false</c> is returned. Set to <see cref="TransactionResult.Ok"/>
-        /// to indicate the no-op was intentional and the transaction should be treated as successful.
-        /// </param>
-        /// <returns>
-        /// <c>true</c> to proceed with normal EVM execution; <c>false</c> to skip it.
-        /// </returns>
-        /// <remarks>
-        /// When returning <c>false</c>, the caller does NOT invoke <see cref="FinalizeTransaction"/> or
-        /// <see cref="UpdateHeaderGasUsedAndPayFees"/>. Overrides that skip execution are responsible for
-        /// calling those methods themselves with an empty <see cref="TransactionSubstate"/> if correct gas
-        /// accounting and tracer notifications are required.
-        /// </remarks>
-        protected virtual bool ShouldExecuteEvm(Transaction tx,
-            BlockHeader header,
-            IReleaseSpec spec,
-            ITxTracer tracer,
-            ExecutionOptions opts,
-            bool restore,
-            bool commit,
-            bool deleteCallerAccount,
-            in IntrinsicGas<TGasPolicy> intrinsicGas,
-            TGasPolicy gasAvailable,
-            in UInt256 opcodeGasPrice,
-            in UInt256 premiumPerGas,
-            in UInt256 senderReservedGasPayment,
-            in UInt256 blobBaseFee,
-            CodeInfo? preloadedCodeInfo,
-            Address? preloadedDelegationAddress,
-            out TransactionResult transactionResult)
-        {
-            transactionResult = TransactionResult.Ok;
-            return true;
         }
 
         private TransactionResult Apply8037DelegationRefunds(
