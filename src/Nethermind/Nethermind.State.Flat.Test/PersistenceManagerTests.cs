@@ -286,6 +286,51 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void DetermineSnapshotAction_FinalizedGatePassesButSeedMissing_BackstopStillForcesPersist()
+    {
+        // Regression: with MinReorgDepth == the configured backstop (both 90000), the finalized
+        // trigger's depth gate (depth + CompactSize > MinReorgDepth) is satisfied across the whole
+        // operating range above the backstop. When the finalized branch is entered but yields no seed
+        // (its synthetic boundary root resolves to null here), the backstop must STILL fire — it is an
+        // independent fallback, not an `else if` shadowed by the always-satisfied finalized depth gate.
+        // Before the fix this returned no persist candidate, so deep state never persisted.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 90000,
+            MaxReorgDepth = 90000,
+            LongFinalityMaxReorgDepth = 90000,
+            EnableLongFinality = true,
+            MaxInMemoryBaseSnapshotCount = 160,
+        };
+        using PersistenceManager pm = new(
+            config,
+            ScheduleHelper.CreateWithOffset(config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+
+        // Finalized at/above the next boundary so the finalized branch IS entered, but leave
+        // GetFinalizedStateRootAt(16) unset so its seed resolves to null. Depth (90017) exceeds the
+        // effective backstop (MinReorgDepth + CompactSize = 90016), so the backstop must persist.
+        StateId tierTip = CreateStateId(config.CompactSize);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(90000);
+
+        (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(90017));
+
+        Assert.That(toPersist, Is.Not.Null, "Backstop must force a persist even when the finalized branch ran but found no seed");
+        Assert.That(toPersist!.From, Is.EqualTo(Block0));
+        Assert.That(toPersist.To, Is.EqualTo(tierTip));
+        Assert.That(toConvert, Is.Null);
+        toPersist.Dispose();
+    }
+
+    [Test]
     public void DetermineSnapshotAction_FinalizedBeyondHead_SeedsAtBoundary()
     {
         // Catch-up sync: CL reports a finalized block far beyond the local chain head.

@@ -78,17 +78,20 @@ public class PersistenceManager(
     /// the HSST persisted-snapshot tier) runs only when Phase 1 returns no candidate.
     /// </summary>
     /// <remarks>
-    /// Phase 1 single-seed selection:
+    /// Phase 1 seed selection — the finalized trigger and the backstop are evaluated independently,
+    /// the backstop being a fallback rather than an alternative so it stays reachable even when the
+    /// finalized trigger ran but found nothing to persist:
     /// <list type="bullet">
-    ///   <item>If <c>finalizedBlock &gt;= persistedBlock + CompactSize</c> AND
+    ///   <item>Finalized trigger: if <c>finalizedBlock &gt;= persistedBlock + CompactSize</c> AND
     ///   <c>snapshotsDepth + CompactSize &gt; MinReorgDepth</c> → seed = canonical state at
     ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
     ///   <see cref="IFinalizedStateProvider"/> — the boundary is always locally synced even
     ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
-    ///   <item>Else if <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c>
-    ///   when long finality is enabled, otherwise <c>MaxReorgDepth</c>; finalization stalled) → seed =
-    ///   the committed head.</item>
-    ///   <item>Else → no seed; Phase 1 doesn't run, fall through to Phase 2.</item>
+    ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
+    ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
+    ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
+    ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head.</item>
+    ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
     /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>.
@@ -99,44 +102,44 @@ public class PersistenceManager(
         long snapshotsDepth = latestSnapshot.BlockNumber - currentPersistedState.BlockNumber;
 
         // ---- Phase 1: persistence to RocksDB ----
-        StateId? seed = null;
-        bool forcedByBackstop = false;
         long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         long nextBoundary = schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+
+        // Normal finalized-driven persistence. Anchor at the next boundary block, not at the
+        // CL-reported finalized tip. The outer gate guarantees boundary <= finalizedBlockNumber, so
+        // the provider's own range check passes; the boundary is below chain head by construction, so
+        // the canonical header is in the block tree and FindHeader resolves.
         if (finalizedBlockNumber >= nextBoundary
             && snapshotsDepth + _compactSize > _minReorgDepth)
         {
-            // Anchor at the next boundary block, not at the CL-reported finalized tip. The
-            // outer gate guarantees boundary <= finalizedBlockNumber, so the provider's own
-            // range check passes; the boundary is below chain head by construction, so the
-            // canonical header is in the block tree and FindHeader resolves.
-            long targetBlockNumber = nextBoundary;
-            Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedStateRootAt(targetBlockNumber);
+            Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedStateRootAt(nextBoundary);
             if (canonicalRoot is not null)
-                seed = new StateId(targetBlockNumber, canonicalRoot);
-        }
-        else if (snapshotsDepth > _backstopReorgDepth)
-        {
-            // Backstop (finalization stalled): seed from the committed head so the forced persist
-            // follows the canonical chain rather than an arbitrary/longest fork (which
-            // RemoveSiblingAndDescendents would then orphan). Falls back to the longest chain, then the
-            // latest state, only when nothing was committed this session.
-            seed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
-            forcedByBackstop = true;
+            {
+                (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersist(
+                    new StateId(nextBoundary, canonicalRoot), currentPersistedState, _compactSize);
+                if (persisted is not null || inMemory is not null)
+                    return (persisted, inMemory, null);
+            }
         }
 
-        if (seed is not null)
+        // Force-persist backstop: an independent safety net, NOT an alternative to the finalized
+        // trigger. It must stay reachable even when the finalized branch ran but produced no
+        // persistable candidate (e.g. its synthetic boundary seed matched no live snapshot). An
+        // `else if` here would let the always-satisfied finalized depth gate permanently shadow it
+        // once MinReorgDepth is configured near the backstop depth, so deep state would never persist.
+        // Seed from the committed head so the forced persist follows the canonical chain rather than an
+        // arbitrary/longest fork (which RemoveSiblingAndDescendents would then orphan); fall back to the
+        // longest chain, then the latest state, only when nothing was committed this session.
+        if (snapshotsDepth > _backstopReorgDepth)
         {
+            StateId backstopSeed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
             (PersistedSnapshot? persisted, Snapshot? inMemory) =
-                snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
+                snapshotRepository.FindSnapshotToPersist(backstopSeed, currentPersistedState, _compactSize);
             if (persisted is not null || inMemory is not null)
             {
-                // Warn only when the backstop (not the normal finalized trigger) actually forces this
-                // persist — not when the backstop seed finds no candidate and we fall through to the
-                // Phase 2 persisted-snapshot conversion below.
-                if (forcedByBackstop && _logger.IsWarn) _logger.Warn(
-                    $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth} " +
-                    $"with finality stalled (finalized block {finalizedBlockNumber}). Forcing persistence to bound memory.");
+                if (_logger.IsWarn) _logger.Warn(
+                    $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}; " +
+                    $"forcing persistence to bound memory (finalized block {finalizedBlockNumber}).");
                 return (persisted, inMemory, null);
             }
         }
