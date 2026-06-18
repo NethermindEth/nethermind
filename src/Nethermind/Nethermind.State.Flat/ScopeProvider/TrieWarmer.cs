@@ -93,8 +93,17 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void KickProcessors()
     {
+        // Fast-path the hot enqueue caller: if every processor is already scheduled there is nothing
+        // to wake (a running processor drains the buffers and re-checks before unscheduling), and with
+        // no pending work there is nothing to do. This keeps the per-Hint enqueue cost to a single
+        // volatile read on busy blocks instead of a PendingHint() read plus a CompareExchange loop.
+        int activeProcessors = Volatile.Read(ref _activeProcessors);
+        if (activeProcessors >= _processors.Length) return;
+
         long pending = PendingHint();
-        int desiredProcessors = (int)Math.Min(_processors.Length, Math.Max(1, pending));
+        if (pending == 0) return;
+
+        int desiredProcessors = (int)Math.Min(_processors.Length - activeProcessors, Math.Max(1, pending));
         int scheduledProcessors = 0;
         for (int i = 0; i < _processors.Length && scheduledProcessors < desiredProcessors; i++)
         {
