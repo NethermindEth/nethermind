@@ -129,11 +129,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         void StopBeaconModeControl();
 
-        /// <summary>
-        /// Records the finalized and head block hashes declared by the consensus client. Both are protected from
-        /// block cache pruning and exposed for reads via <see cref="IBeaconSyncStrategy.GetFinalizedHash"/> and
-        /// <see cref="IBeaconSyncStrategy.GetHeadBlockHash"/>.
-        /// </summary>
         void SetForkchoiceHashes(Hash256? finalizedHash, Hash256? headBlockHash);
     }
 }

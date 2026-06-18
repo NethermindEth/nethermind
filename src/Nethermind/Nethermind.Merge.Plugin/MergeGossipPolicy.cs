@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,13 +9,13 @@ using Nethermind.Synchronization;
 namespace Nethermind.Merge.Plugin
 {
     public class MergeGossipPolicy(
-        IGossipPolicy? apiGossipPolicy,
-        IPoSSwitcher? poSSwitcher,
+        IGossipPolicy apiGossipPolicy,
+        IPoSSwitcher poSSwitcher,
         IBeaconSyncStrategy beaconSyncStrategy) : IGossipPolicy
     {
-        private readonly IGossipPolicy _preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
-        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-        private readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
+        private readonly IGossipPolicy _preMergeGossipPolicy = apiGossipPolicy;
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
+        private readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy;
 
         // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
         // We SHOULD NOT advertise the descendant of any terminal PoW block.
