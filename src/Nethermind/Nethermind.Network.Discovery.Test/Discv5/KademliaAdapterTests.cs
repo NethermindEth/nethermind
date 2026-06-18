@@ -103,7 +103,8 @@ public class KademliaAdapterTests
             KademliaAdapter.IsAcceptableNodeRecord(
                 NodeRecord.FromEnrString(record.EnrString),
                 testCase.ExpectedNodeId,
-                testCase.AllowNonRoutable),
+                testCase.AllowNonRoutable,
+                ExecutionLayerDiscv5RecordFilter.Instance),
             Is.EqualTo(testCase.ExpectedResult));
     }
 
@@ -126,6 +127,7 @@ public class KademliaAdapterTests
             new DiscoveryConfig(),
             new CryptoRandom(),
             Hash256KademliaDistance.Instance,
+            ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
     }
 
