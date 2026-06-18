@@ -155,8 +155,8 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
 
     private void BlockTreeOnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
     {
-        IReadOnlyList<Block> blocks = e.Blocks;
-        if (blocks.Count == 0) return;
+        IReadOnlyList<BlockHeader> headers = e.Headers;
+        if (headers.Count == 0) return;
 
         lock (_cacheLock)
         {
@@ -166,11 +166,10 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
             long cacheStart = cached[0]!.Number;
             long cacheEnd = cached[^1]!.Number;
 
-            // `UpdateMainChain` can fire in either ascending or descending order, and reorgs may
-            // start below `cacheStart`; scan until we hit a block inside the cached range.
-            for (int i = 0; i < blocks.Count; i++)
+            // Reorgs may start below `cacheStart`; scan until we hit a block inside the cached range.
+            for (int i = 0; i < headers.Count; i++)
             {
-                Block block = blocks[i];
+                BlockHeader block = headers[i];
                 if (block.Number < cacheStart || block.Number > cacheEnd) continue;
 
                 int idx = (int)(block.Number - cacheStart);

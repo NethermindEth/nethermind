@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -494,41 +495,72 @@ public class DebugRpcModule(
         return ResultWrapper<bool>.Success(true);
     }
 
-    public ResultWrapper<string?> debug_getRawTransaction(Hash256 transactionHash)
+    public ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash)
     {
         Transaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
-            return ResultWrapper<string?>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<ArrayPoolList<byte>>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
         }
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
-
-        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
+        return ResultWrapper<ArrayPoolList<byte>>.Success(TxRlpDecoder.EncodeToArrayPoolList(transaction, encodingSettings));
     }
 
-    public ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter)
+    public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)
     {
-        TxReceipt[] receipts = debugBridge.GetReceiptsForBlock(blockParameter);
+        TxReceipt[]? receipts = debugBridge.GetReceiptsForBlock(blockParameter);
         if (receipts is null)
         {
-            return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<RawReceiptsResult>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
 
         if (receipts.Length == 0)
         {
-            return ResultWrapper<byte[][]>.Success([]);
+            return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(ArrayPoolList<ArrayPoolList<byte>>.Empty()));
         }
+
         RlpBehaviors behavior =
             (specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?
                 RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        IEnumerable<byte[]>? rlp = receipts.Select(tx => Rlp.Encode(tx, behavior).Bytes);
-        return ResultWrapper<byte[][]>.Success(rlp.ToArray());
+        IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoder<TxReceipt>()!;
+
+        ArrayPoolList<ArrayPoolList<byte>> encoded = new(receipts.Length);
+        try
+        {
+            foreach (TxReceipt receipt in receipts)
+            {
+                ArrayPoolList<byte> receiptRlp = receiptDecoder.EncodeToArrayPoolList(receipt, behavior);
+                try
+                {
+                    encoded.Add(receiptRlp);
+                }
+                catch
+                {
+                    receiptRlp.Dispose();
+                    throw;
+                }
+            }
+            return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(encoded));
+        }
+        catch
+        {
+            foreach (ArrayPoolList<byte> buffer in encoded)
+            {
+                buffer.Dispose();
+            }
+            encoded.Dispose();
+            throw;
+        }
     }
 
-    public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter) =>
-        GetBlockRlpOrFail(blockParameter);
+    public ResultWrapper<ArrayPoolList<byte>> debug_getRawBlock(BlockParameter blockParameter)
+    {
+        Block? block = debugBridge.GetBlock(blockParameter);
+        return block is null
+            ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
+            : ResultWrapper<ArrayPoolList<byte>>.Success(_blockDecoder.EncodeToArrayPoolList(block));
+    }
 
     public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
     {
@@ -545,15 +577,12 @@ public class DebugRpcModule(
             : ResultWrapper<OwnedByteMemory>.Success(new OwnedByteMemory(balRlp));
     }
 
-    public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)
+    public ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter)
     {
         Block? block = debugBridge.GetBlock(blockParameter);
-        if (block is null)
-        {
-            return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
-        }
-        Rlp rlp = Rlp.Encode(block.Header);
-        return ResultWrapper<byte[]>.Success(rlp.Bytes);
+        return block is null
+            ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
+            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoder<BlockHeader>()!.EncodeToArrayPoolList(block.Header));
     }
 
     public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());

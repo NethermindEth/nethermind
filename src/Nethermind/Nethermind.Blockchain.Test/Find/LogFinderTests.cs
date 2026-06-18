@@ -63,7 +63,7 @@ public class LogFinderTests
             .WithParent(_headTestBlock)
             .TestObject;
         Assert.That(_rawBlockTree.SuggestBlock(blockWithNoTransaction), Is.EqualTo(AddBlockResult.Added));
-        _rawBlockTree.UpdateMainChain(blockWithNoTransaction);
+        _rawBlockTree.TryUpdateMainChain(blockWithNoTransaction.Header, true, preloadedBlocks: new[] { blockWithNoTransaction });
     }
 
     private IEnumerable<LogEntry> LogsForBlockBuilder(Block block, Transaction transaction)

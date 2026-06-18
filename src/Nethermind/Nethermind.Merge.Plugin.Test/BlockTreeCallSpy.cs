@@ -1,33 +1,37 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Reflection;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-// DispatchProxy wrapper that forwards every IBlockTree call to an inner instance while
-// counting FindHeader invocations. Lets tests observe ancestry-walk depth from the outside.
-public class BlockTreeCallSpy : DispatchProxy
+/// <summary>
+/// Counts <see cref="IBlockFinder.FindHeader"/> calls on a real block tree.
+/// </summary>
+internal sealed class BlockTreeCallSpy(IBlockTree inner) : BlockTreeTestDouble(inner)
 {
-    private IBlockTree _inner = null!;
-
     public int FindHeaderCalls { get; private set; }
 
     public void ResetCounters() => FindHeaderCalls = 0;
 
-    protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
-    {
-        if (targetMethod?.Name == nameof(IBlockFinder.FindHeader)) FindHeaderCalls++;
-        return targetMethod?.Invoke(_inner, args);
-    }
-
     public static (IBlockTree Proxy, BlockTreeCallSpy Spy) Wrap(IBlockTree inner)
     {
-        object raw = Create<IBlockTree, BlockTreeCallSpy>()!;
-        BlockTreeCallSpy spy = (BlockTreeCallSpy)raw;
-        spy._inner = inner;
-        return ((IBlockTree)raw, spy);
+        BlockTreeCallSpy spy = new(inner);
+        return (spy, spy);
+    }
+
+    public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
+    {
+        FindHeaderCalls++;
+        return base.FindHeader(blockHash, options, blockNumber);
+    }
+
+    public override BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options)
+    {
+        FindHeaderCalls++;
+        return base.FindHeader(blockNumber, options);
     }
 }

@@ -11,6 +11,7 @@ using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -317,7 +318,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (_pipeWriter is null) return;
         if (++_entriesSinceLastFlush < _flushIntervalEntries) return;
         _writer.Flush();
-        _pipeWriter.FlushAsync(_cancellationToken).GetAwaiter().GetResult();
+        _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
         _entriesSinceLastFlush = 0;
     }
 

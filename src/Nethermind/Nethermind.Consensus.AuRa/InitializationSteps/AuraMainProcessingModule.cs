@@ -38,7 +38,7 @@ public class AuraMainProcessingModule(
                 envFactory.Create(),
                 api.ReceiptStorage,
                 api.ValidatorStore,
-                api.FinalizationManager,
+                api.AuRaFinalizationManager,
                 new TxPoolSender(api.TxPool, new TxSealer(api.EngineSigner, api.Timestamper), api.NonceManager, api.EthereumEcdsa),
                 api.TxPool,
                 api.Config<IBlocksConfig>(),
