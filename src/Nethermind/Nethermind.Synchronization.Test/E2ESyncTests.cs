@@ -814,7 +814,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Block headBlock = otherBlockTree.Head!;
             blockCacheService.TryAddBlock(finalizedBlock);
             blockCacheService.TryAddBlock(headBlock);
-            mergeSyncController.SetFinalizedHash(finalizedBlock.Hash!);
+            mergeSyncController.SetForkchoiceHashes(finalizedBlock.Hash!, headBlock.Hash!);
 
             await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
             mergeSyncController.InitBeaconHeaderSync(headBlock.Header);

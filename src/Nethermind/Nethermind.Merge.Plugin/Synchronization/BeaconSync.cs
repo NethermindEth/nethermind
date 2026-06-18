@@ -114,9 +114,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public Hash256? GetHeadBlockHash() => _headBlockHash;
 
-        public void SetFinalizedHash(Hash256? finalizedHash) => _finalizedHash = finalizedHash;
-
-        public void SetHeadBlockHash(Hash256? headBlockHash) => _headBlockHash = headBlockHash;
+        public void SetForkchoiceHashes(Hash256? finalizedHash, Hash256? headBlockHash)
+        {
+            _finalizedHash = finalizedHash;
+            _headBlockHash = headBlockHash;
+        }
     }
 
     public interface IMergeSyncController
@@ -128,15 +130,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
         void StopBeaconModeControl();
 
         /// <summary>
-        /// Records the finalized block hash declared by the consensus client. Protected from block cache pruning
-        /// and exposed for reads via <see cref="IBeaconSyncStrategy.GetFinalizedHash"/>.
+        /// Records the finalized and head block hashes declared by the consensus client. Both are protected from
+        /// block cache pruning and exposed for reads via <see cref="IBeaconSyncStrategy.GetFinalizedHash"/> and
+        /// <see cref="IBeaconSyncStrategy.GetHeadBlockHash"/>.
         /// </summary>
-        void SetFinalizedHash(Hash256? finalizedHash);
-
-        /// <summary>
-        /// Records the head block hash declared by the consensus client. Protected from block cache pruning
-        /// and exposed for reads via <see cref="IBeaconSyncStrategy.GetHeadBlockHash"/>.
-        /// </summary>
-        void SetHeadBlockHash(Hash256? headBlockHash);
+        void SetForkchoiceHashes(Hash256? finalizedHash, Hash256? headBlockHash);
     }
 }
