@@ -1569,17 +1569,21 @@ jobs:
           ordered_json='['
           first_matrix=true
           first_ordered=true
+          # ordered list: one entry per image, in image order
           for i in "${!all_tags[@]}"; do
-            tag="${all_tags[$i]}"
-            image="${all_images[$i]}"
-            date="${all_dates[$i]}"
             if [[ "${first_ordered}" != "true" ]]; then ordered_json+=','; fi
             first_ordered=false
-            ordered_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\",\"image\":\"${image}\"}"
-            for (( r=1; r<=run_count; r++ )); do
+            ordered_json+="{\"tag\":\"${all_tags[$i]}\",\"date\":\"${all_dates[$i]}\",\"image\":\"${all_images[$i]}\"}"
+          done
+          # matrix: RUN-MAJOR ordering (run is the OUTER loop, image the inner). With max-parallel:1
+          # this interleaves images within each run pass (A,B,A,B,...) so runner-state/epoch drift
+          # cancels across an A/B comparison instead of confounding it (image-major ran all of A then
+          # all of B, separating the groups in wall-clock). Artifact names stay unique via distinct tags.
+          for (( r=1; r<=run_count; r++ )); do
+            for i in "${!all_tags[@]}"; do
               if [[ "${first_matrix}" != "true" ]]; then matrix_json+=','; fi
               first_matrix=false
-              matrix_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\",\"image\":\"${image}\",\"run\":${r}}"
+              matrix_json+="{\"tag\":\"${all_tags[$i]}\",\"date\":\"${all_dates[$i]}\",\"image\":\"${all_images[$i]}\",\"run\":${r}}"
             done
           done
           matrix_json+=']}'
