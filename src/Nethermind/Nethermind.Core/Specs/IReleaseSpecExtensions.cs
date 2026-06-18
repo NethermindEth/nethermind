@@ -73,5 +73,12 @@ public static class IReleaseSpecExtensions
         /// </summary>
         public IReleaseSpec WithoutEip158() =>
             spec.IsEip158Enabled ? new NoEip158Spec(spec) : spec;
+
+        /// <summary>
+        /// Returns a spec with EIP-3607 disabled, allowing contract addresses to act as transaction senders.
+        /// Used in <c>eth_simulateV1</c> where state-overridden contracts may be the <c>from</c> address.
+        /// </summary>
+        public IReleaseSpec WithoutEip3607() =>
+            spec.IsEip3607Enabled ? new NoEip3607Spec(spec) : spec;
     }
 }
