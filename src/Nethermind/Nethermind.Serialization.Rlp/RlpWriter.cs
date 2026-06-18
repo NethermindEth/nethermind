@@ -42,38 +42,6 @@ public ref struct RlpWriter(Span<byte> data) : IRlpWriteBackend
     public override readonly string ToString() => $"[{nameof(RlpWriter)}|{_position}/{_data.Length}]";
 }
 
-public ref struct PooledRlpWriter(int length) : IRlpWriteBackend, IDisposable
-{
-    private ArrayPoolSpan<byte> _buffer = new(length);
-    private int _position;
-
-    public readonly int Position => _position;
-
-    public readonly ReadOnlySpan<byte> Span => _buffer.Slice(0, _position);
-
-    void IRlpWriteBackend.WriteByte(byte byteToWrite) => _buffer[_position++] = byteToWrite;
-
-    void IRlpWriteBackend.Write(scoped ReadOnlySpan<byte> bytesToWrite)
-    {
-        bytesToWrite.CopyTo(_buffer.Slice(_position, bytesToWrite.Length));
-        _position += bytesToWrite.Length;
-    }
-
-    void IRlpWriteBackend.WriteZero(int length)
-    {
-        _buffer.Slice(_position, length).Clear();
-        _position += length;
-    }
-
-    public void Dispose()
-    {
-        _buffer.Dispose();
-        _position = 0;
-    }
-
-    public override readonly string ToString() => $"[{nameof(PooledRlpWriter)}|{_position}/{_buffer.Length}]";
-}
-
 public struct ByteBufferRlpWriter(IByteBuffer byteBuffer) : IRlpWriteBackend
 {
     private readonly IByteBuffer _byteBuffer = byteBuffer ?? throw new ArgumentNullException(nameof(byteBuffer));

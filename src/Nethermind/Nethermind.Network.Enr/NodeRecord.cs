@@ -4,6 +4,7 @@
 using System.Text;
 using DotNetty.Buffers;
 using DotNetty.Codecs.Base64;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -190,10 +191,10 @@ public class NodeRecord
     {
         int contentLength = GetContentLengthWithSignature();
         int totalLength = Rlp.LengthOfSequence(contentLength);
-        byte[] bytes = new byte[totalLength];
+        using ArrayPoolSpan<byte> bytes = new(totalLength);
         RlpWriter writer = new(bytes);
         Encode(ref writer);
-        return bytes.AsSpan(0, writer.Position).ToHexString();
+        return bytes.Slice(0, writer.Position).ToHexString();
     }
 
     /// <summary>

@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -89,7 +90,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
             contentLength += codec.GetLength(withdrawal, RlpBehaviors.None);
         }
 
-        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        using ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(contentLength));
         RlpWriter writer = new(bytes);
         writer.StartSequence(contentLength);
         foreach (Withdrawal withdrawal in withdrawals)

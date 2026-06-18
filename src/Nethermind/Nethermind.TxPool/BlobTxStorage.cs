@@ -192,21 +192,16 @@ public class BlobTxStorage : IBlobTxStorage
             contentLength += _txDecoder.GetLength(blockBlobTransactions[i], RlpBehaviors.InMempoolForm);
         }
 
-        PooledRlpWriter writer = new(Rlp.LengthOfSequence(contentLength));
-        try
-        {
-            writer.StartSequence(contentLength);
-            for (int i = 0; i < blockBlobTransactions.Count; i++)
-            {
-                _txDecoder.Encode(ref writer, blockBlobTransactions[i], RlpBehaviors.InMempoolForm);
-            }
+        using ArrayPoolSpan<byte> rlp = new(Rlp.LengthOfSequence(contentLength));
+        RlpWriter writer = new(rlp);
 
-            db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), writer.Span);
-        }
-        finally
+        writer.StartSequence(contentLength);
+        for (int i = 0; i < blockBlobTransactions.Count; i++)
         {
-            writer.Dispose();
+            _txDecoder.Encode(ref writer, blockBlobTransactions[i], RlpBehaviors.InMempoolForm);
         }
+
+        db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
     }
 }
 

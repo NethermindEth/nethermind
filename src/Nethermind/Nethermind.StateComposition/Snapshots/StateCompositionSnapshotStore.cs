@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -49,17 +49,10 @@ internal sealed class StateCompositionSnapshotStore(
         BinaryPrimitives.WriteInt64BigEndian(key, snapshot.BlockNumber);
 
         int length = Decoder.GetLength(snapshot);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-        try
-        {
-            RlpWriter writer = new(buffer.AsSpan(0, length));
-            Decoder.Encode(ref writer, snapshot);
-            db.PutSpan(key, buffer.AsSpan(0, length));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using ArrayPoolSpan<byte> buffer = new(length);
+        RlpWriter writer = new(buffer);
+        Decoder.Encode(ref writer, snapshot);
+        db.PutSpan(key, buffer);
 
         Span<byte> blockBytes = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(blockBytes, snapshot.BlockNumber);

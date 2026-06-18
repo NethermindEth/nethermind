@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
@@ -349,53 +348,36 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         public readonly ulong GetCompressedTxsLength()
         {
             int contentLength = Transactions.Sum(GetTxLength);
-            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
+            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(data);
 
-            try
+            writer.StartSequence(contentLength);
+            foreach (Transaction tx in Transactions.AsSpan())
             {
-                RlpWriter writer = new(data);
-
-                writer.StartSequence(contentLength);
-                foreach (Transaction tx in Transactions.AsSpan())
-                {
-                    txDecoder.Encode(ref writer, tx);
-                }
-
-                return GetCompressedLength(data, writer.Position);
-
+                txDecoder.Encode(ref writer, tx);
             }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(data);
-            }
+
+            return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
         private readonly ulong EstimateTxLength(Transaction tx)
         {
             int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
-            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
+            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(data);
 
-            try
-            {
-                RlpWriter writer = new(data);
+            writer.StartSequence(contentLength);
+            txDecoder.Encode(ref writer, tx);
 
-                writer.StartSequence(contentLength);
-                txDecoder.Encode(ref writer, tx);
-
-                return GetCompressedLength(data, writer.Position);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(data);
-            }
+            return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
-        private static ulong GetCompressedLength(byte[] data, int length)
+        private static ulong GetCompressedLength(ReadOnlySpan<byte> data)
         {
             using RecyclableMemoryStream stream = RecyclableStream.GetStream(nameof(Batch));
             using ZLibStream compressingStream = new(stream, CompressionMode.Compress, false);
 
-            compressingStream.Write(data, 0, length);
+            compressingStream.Write(data);
             compressingStream.Flush();
             return (ulong)stream.Position;
         }

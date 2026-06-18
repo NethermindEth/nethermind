@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm
 {
@@ -19,22 +17,15 @@ namespace Nethermind.Evm
             int contentLength = Rlp.LengthOf(deployingAddress) + Rlp.LengthOf(nonce);
             int totalLength = Rlp.LengthOfSequence(contentLength);
 
-            byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
-            try
-            {
-                RlpWriter writer = new(new CappedArray<byte>(rented, totalLength));
-                writer.StartSequence(contentLength);
-                writer.Encode(deployingAddress);
-                writer.Encode(nonce);
+            Span<byte> bytes = stackalloc byte[totalLength];
+            RlpWriter writer = new(bytes);
+            writer.StartSequence(contentLength);
+            writer.Encode(deployingAddress);
+            writer.Encode(nonce);
 
-                ValueHash256 contractAddressKeccak = ValueKeccak.Compute(rented.AsSpan(0, writer.Position));
+            ValueHash256 contractAddressKeccak = ValueKeccak.Compute(bytes[..writer.Position]);
 
-                return new(in contractAddressKeccak);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(rented);
-            }
+            return new(in contractAddressKeccak);
         }
 
         [SkipLocalsInit]
