@@ -13,14 +13,13 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -39,7 +38,7 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
         private readonly INetworkConfig _networkConfig;
         private readonly IRlpxHost _rlpxHost;
-        private readonly IProtectedPrivateKey _nodeKey;
+        private readonly IEnode _enode;
         private readonly INodeStatsManager _stats;
         private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
         private Task? _peerUpdateLoopTask;
@@ -73,19 +72,12 @@ namespace Nethermind.Network
             IPeerPool peerPool,
             INodeStatsManager stats,
             INetworkConfig networkConfig,
-            [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+            IEnode enode,
             ILogManager logManager)
         {
-            ArgumentNullException.ThrowIfNull(rlpxHost);
-            ArgumentNullException.ThrowIfNull(peerPool);
-            ArgumentNullException.ThrowIfNull(stats);
-            ArgumentNullException.ThrowIfNull(networkConfig);
-            ArgumentNullException.ThrowIfNull(nodeKey);
-            ArgumentNullException.ThrowIfNull(logManager);
-
             _logger = logManager.GetClassLogger<PeerManager>();
             _rlpxHost = rlpxHost;
-            _nodeKey = nodeKey;
+            _enode = enode;
             _stats = stats;
             _networkConfig = networkConfig;
             _onHandshakeComplete = OnHandshakeComplete;
@@ -1034,7 +1026,7 @@ namespace Nethermind.Network
         private ConnectionDirection ChooseDirectionToKeep(PublicKey remoteNode)
         {
             if (_logger.IsTrace) TraceChoosingDirection();
-            byte[] localKey = _nodeKey.PublicKey.Bytes;
+            byte[] localKey = _enode.PublicKey.Bytes;
             byte[] remoteKey = remoteNode.Bytes;
             for (int i = 0; i < remoteNode.Bytes.Length; i++)
             {

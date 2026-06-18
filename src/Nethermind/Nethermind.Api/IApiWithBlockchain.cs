@@ -25,8 +25,6 @@ namespace Nethermind.Api
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner BlockProducerRunner { get; set; }
 
-        IEnode? Enode { get; set; }
-
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         ISealer Sealer { get; }
         ISealEngine SealEngine { get; }

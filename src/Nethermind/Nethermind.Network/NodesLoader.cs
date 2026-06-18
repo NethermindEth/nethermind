@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -23,14 +22,14 @@ namespace Nethermind.Network
         INetworkConfig networkConfig,
         INodeStatsManager stats,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IEnode enode,
         ILogManager logManager) : INodeSource
     {
-        private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-        private readonly INodeStatsManager _stats = stats ?? throw new ArgumentNullException(nameof(stats));
-        private readonly INetworkStorage _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-        private readonly IProtectedPrivateKey _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
-        private readonly ILogger _logger = logManager?.GetClassLogger<NodesLoader>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly INetworkConfig _networkConfig = networkConfig;
+        private readonly INodeStatsManager _stats = stats;
+        private readonly INetworkStorage _peerStorage = peerStorage;
+        private readonly IEnode _enode = enode;
+        private readonly ILogger _logger = logManager.GetClassLogger<NodesLoader>();
 
         public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
         {
@@ -53,7 +52,7 @@ namespace Nethermind.Network
             });
 
             IEnumerable<Node> combined = allPeers
-                .Where(p => p.Id != _nodeKey.PublicKey)
+                .Where(p => p.Id != _enode.PublicKey)
                 .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic);
 
             return combined.ToAsyncEnumerable();

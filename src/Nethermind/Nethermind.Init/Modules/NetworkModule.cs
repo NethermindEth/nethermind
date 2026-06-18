@@ -45,6 +45,10 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<ITxGossipPolicySource, TxGossipPolicySource>()
             .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>(singleInstance: true)
             .AddSingleton<IIPResolver, IPResolver>()
+
+            .AddSingleton<EnodeProvider>()
+            .Map<IEnode, EnodeProvider>(provider => provider.Enode)
+
             .AddSingleton<IForkInfo, ForkInfo>()
 
             // Rlpxhost

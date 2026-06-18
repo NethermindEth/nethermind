@@ -3,10 +3,10 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -33,7 +33,7 @@ public class NodesLoaderTests
         _discoveryConfig = new DiscoveryConfig();
         _statsManager = Substitute.For<INodeStatsManager>();
         _peerStorage = Substitute.For<INetworkStorage>();
-        _loader = new NodesLoader(_networkConfig, _statsManager, _peerStorage, new InsecureProtectedPrivateKey(TestItem.PrivateKeyA), LimboLogs.Instance);
+        _loader = new NodesLoader(_networkConfig, _statsManager, _peerStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
     }
 
     [Test]

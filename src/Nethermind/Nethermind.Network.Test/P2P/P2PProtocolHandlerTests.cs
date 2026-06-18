@@ -3,11 +3,12 @@
 
 using System.Linq;
 using System.Collections.Generic;
+using System.Net;
+using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -64,7 +65,7 @@ namespace Nethermind.Network.Test.P2P
 
             return new P2PProtocolHandler(
                 _session,
-                new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303),
                 _nodeStatsManager,
                 _serializer,
                 Substitute.For<IBackgroundTaskScheduler>(),
