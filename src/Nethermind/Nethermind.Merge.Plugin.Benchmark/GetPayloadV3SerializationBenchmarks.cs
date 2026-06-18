@@ -244,7 +244,7 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
     {
         ISszEndpointHandler[] handlers =
         [
-            new GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>(engine),
+            new GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>(engine),
             new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(engine),
             new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(engine),
             new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(engine),

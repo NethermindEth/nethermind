@@ -33,7 +33,10 @@ public static class StateOverridesExtensions
 
                 if (!state.TryGetAccount(address, out AccountStruct account))
                 {
-                    state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? 0);
+                    if (accountOverride.HasStateChanges)
+                    {
+                        state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? 0);
+                    }
                 }
                 else
                 {
