@@ -27,7 +27,6 @@ public static class RlpDecoderArrayPoolExtensions
         {
             RlpWriter writer = new(buffer);
             decoder.Encode(ref writer, item, rlpBehaviors);
-            EnsureFullyWritten(writer.Position, buffer.Length);
             return buffer;
         }
         catch
@@ -66,7 +65,6 @@ public static class RlpDecoderArrayPoolExtensions
                 EncodeNullable(decoder, ref writer, items[i], behaviors);
             }
 
-            EnsureFullyWritten(writer.Position, buffer.Length);
             return buffer;
         }
         catch
@@ -105,7 +103,6 @@ public static class RlpDecoderArrayPoolExtensions
                 EncodeNullable(decoder, ref writer, items[i], behaviors);
             }
 
-            EnsureFullyWritten(writer.Position, buffer.Length);
             return buffer;
         }
         catch
@@ -139,7 +136,6 @@ public static class RlpDecoderArrayPoolExtensions
                 EncodeNullable(decoder, ref writer, items[i], behaviors);
             }
 
-            EnsureFullyWritten(writer.Position, buffer.Length);
             return buffer;
         }
         catch
@@ -151,9 +147,18 @@ public static class RlpDecoderArrayPoolExtensions
 
     private static ArrayPoolSpan<byte> EmptyListSpan()
     {
-        ArrayPoolSpan<byte> span = new(Rlp.OfEmptyList.Length);
-        span[0] = Rlp.EmptyListByte;
-        return span;
+        ArrayPoolSpan<byte> buffer = new(Rlp.OfEmptyList.Length);
+        try
+        {
+            RlpWriter writer = new(buffer);
+            writer.EncodeNullObject();
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
     }
 
     private static void EncodeNullable<TWriter, T>(IRlpDecoder<T> decoder, ref TWriter writer, T? item, RlpBehaviors behaviors)
@@ -184,7 +189,6 @@ public static class RlpDecoderArrayPoolExtensions
         {
             RlpWriter writer = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
             decoder.Encode(ref writer, item, rlpBehaviors);
-            EnsureFullyWritten(writer.Position, length);
             return buffer;
         }
         catch
@@ -194,11 +198,4 @@ public static class RlpDecoderArrayPoolExtensions
         }
     }
 
-    private static void EnsureFullyWritten(int position, int length)
-    {
-        if (position != length)
-        {
-            throw new RlpException($"RLP writer produced {position} bytes for a {length} byte buffer.");
-        }
-    }
 }

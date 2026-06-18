@@ -30,8 +30,8 @@ public class HeaderStore(
 
     public void Insert(BlockHeader header)
     {
-        Rlp newRlp = _headerDecoder.Encode(header);
-        headerDb.Set(header.Number, header.Hash!, newRlp.Bytes);
+        using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
+        headerDb.Set(header.Number, header.Hash!, rlp);
         InsertBlockNumber(header.Hash, header.Number);
     }
 
@@ -43,8 +43,8 @@ public class HeaderStore(
         Span<byte> blockNumberSpan = stackalloc byte[8];
         foreach (BlockHeader header in headers)
         {
-            Rlp newRlp = _headerDecoder.Encode(header);
-            headerWriteBatch.Set(header.Number, header.Hash!, newRlp.Bytes);
+            using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
+            headerWriteBatch.Set(header.Number, header.Hash!, rlp);
 
             header.Number.WriteBigEndian(blockNumberSpan);
             blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);

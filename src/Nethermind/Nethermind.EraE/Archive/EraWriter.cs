@@ -45,9 +45,9 @@ public sealed class EraWriter : IDisposable
     private readonly SlotTime? _slotTime;
 
     // Buffered per-block RLP payloads. These are written in section order during Finalize().
-    private readonly ArrayPoolList<byte[]> _headers = new(MaxEraSize);
-    private readonly ArrayPoolList<byte[]> _bodies = new(MaxEraSize);
-    private readonly ArrayPoolList<byte[]> _receipts = new(MaxEraSize);
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _headers = new(MaxEraSize);
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _bodies = new(MaxEraSize);
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _receipts = new(MaxEraSize);
 
     // Per-block byte offsets recorded during Finalize() and written into the ComponentIndex.
     // Each stores the absolute file position of the entry's TLV header.
@@ -60,6 +60,7 @@ public sealed class EraWriter : IDisposable
     private long _startNumber;
     private bool _firstBlock = true;
     private bool _finalized;
+    private bool _payloadsDisposed;
     private int _preMergeBlockCount;
     private bool _hasPostMergeBlocks;
     private UInt256 _lastPreMergeTD;
@@ -130,20 +131,19 @@ public sealed class EraWriter : IDisposable
 
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
-        Rlp headerRlp = _headerDecoder.Encode(block.Header, rlpBehaviors);
-        _headers.Add(headerRlp.Bytes);
-
-        Rlp bodyRlp = _blockBodyDecoder.Encode(block.Body, rlpBehaviors);
-        _bodies.Add(bodyRlp.Bytes);
-
-        _receipts.Add(EncodeSlimReceipts(receipts, spec.IsEip658Enabled));
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots = null;
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
             long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * MillisecondsPerSecond);
-            (ValueHash256 beaconBlockRoot, ValueHash256 stateRoot)? roots =
-                await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
-            _blocksRootContext!.ProcessBlock(block, roots?.beaconBlockRoot, roots?.stateRoot);
+            roots = await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
+        }
+
+        AddEncodedPayloads(block, receipts, rlpBehaviors, spec.IsEip658Enabled);
+
+        if (isPostMerge)
+        {
+            _blocksRootContext!.ProcessBlock(block, roots?.BeaconBlockRoot, roots?.StateRoot);
         }
         else
         {
@@ -192,19 +192,19 @@ public sealed class EraWriter : IDisposable
             for (int i = 0; i < blockCount; i++)
             {
                 _headerOffsets.Add(_e2StoreWriter.Position);
-                await WriteCompressed(EntryTypes.CompressedHeader, _headers[i], cancellation);
+                await WriteCompressed(EntryTypes.CompressedHeader, _headers[i].AsReadOnlyMemory(), cancellation);
             }
 
             for (int i = 0; i < blockCount; i++)
             {
                 _bodyOffsets.Add(_e2StoreWriter.Position);
-                await WriteCompressed(EntryTypes.CompressedBody, _bodies[i], cancellation);
+                await WriteCompressed(EntryTypes.CompressedBody, _bodies[i].AsReadOnlyMemory(), cancellation);
             }
 
             for (int i = 0; i < blockCount; i++)
             {
                 _receiptsOffsets.Add(_e2StoreWriter.Position);
-                await WriteCompressed(EntryTypes.CompressedSlimReceipts, _receipts[i], cancellation);
+                await WriteCompressed(EntryTypes.CompressedSlimReceipts, _receipts[i].AsReadOnlyMemory(), cancellation);
             }
 
             if (needsTd)
@@ -255,6 +255,7 @@ public sealed class EraWriter : IDisposable
             await _e2StoreWriter.Flush(cancellation);
 
             _finalized = true;
+            DisposePayloads();
             return (accumulatorRoot, _e2StoreWriter.FinalizeChecksum());
         }
         finally
@@ -266,6 +267,7 @@ public sealed class EraWriter : IDisposable
 
     public void Dispose()
     {
+        DisposePayloads();
         _blocksRootContext?.Dispose();
         _e2StoreWriter?.Dispose();
         _headers.Dispose();
@@ -283,18 +285,26 @@ public sealed class EraWriter : IDisposable
     /// txType is empty-bytes for legacy (type 0), single byte otherwise.
     /// postStateOrStatus is the 32-byte state root pre-EIP-658, or 0x01/empty for success/failure post-EIP-658.
     /// </summary>
-    private static byte[] EncodeSlimReceipts(TxReceipt[] receipts, bool isEip658)
+    private static ArrayPoolSpan<byte> EncodeSlimReceipts(TxReceipt[] receipts, bool isEip658)
     {
         int totalLength = 0;
         foreach (TxReceipt receipt in receipts)
             totalLength += Rlp.LengthOfSequence(GetReceiptContentLength(receipt, isEip658));
 
-        byte[] bytes = new byte[Rlp.LengthOfSequence(totalLength)];
-        RlpWriter writer = new(bytes);
-        writer.StartSequence(totalLength);
-        foreach (TxReceipt receipt in receipts)
-            WriteReceipt(ref writer, receipt, isEip658);
-        return bytes;
+        ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(totalLength));
+        try
+        {
+            RlpWriter writer = new(bytes);
+            writer.StartSequence(totalLength);
+            foreach (TxReceipt receipt in receipts)
+                WriteReceipt(ref writer, receipt, isEip658);
+            return bytes;
+        }
+        catch
+        {
+            bytes.Dispose();
+            throw;
+        }
     }
 
     private static int GetReceiptContentLength(TxReceipt receipt, bool isEip658)
@@ -365,4 +375,81 @@ public sealed class EraWriter : IDisposable
 
     private static void WriteInt64(Span<byte> destination, int off, long value) =>
         BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, IndexFieldSize), value);
+
+    private void DisposePayloads()
+    {
+        if (_payloadsDisposed)
+        {
+            return;
+        }
+
+        _payloadsDisposed = true;
+        DisposePayloads(_headers);
+        DisposePayloads(_bodies);
+        DisposePayloads(_receipts);
+    }
+
+    private static void DisposePayloads(ArrayPoolList<ArrayPoolSpan<byte>> payloads)
+    {
+        for (int i = 0; i < payloads.Count; i++)
+        {
+            payloads[i].Dispose();
+        }
+
+        payloads.Clear();
+    }
+
+    private static void DisposeAddedOrOwned(
+        ArrayPoolList<ArrayPoolSpan<byte>> payloads,
+        int originalCount,
+        ArrayPoolSpan<byte> payload,
+        bool ownsPayload)
+    {
+        if (payloads.Count > originalCount)
+        {
+            payloads[^1].Dispose();
+            payloads.RemoveAt(payloads.Count - 1);
+        }
+        else if (ownsPayload)
+        {
+            payload.Dispose();
+        }
+    }
+
+    private void AddEncodedPayloads(Block block, TxReceipt[] receipts, RlpBehaviors rlpBehaviors, bool isEip658)
+    {
+        ArrayPoolSpan<byte> headerRlp = _headerDecoder.EncodeToArrayPoolSpan(block.Header, rlpBehaviors);
+        ArrayPoolSpan<byte> bodyRlp = default;
+        ArrayPoolSpan<byte> receiptRlp = default;
+
+        bool ownsHeader = true;
+        bool ownsBody = false;
+        bool ownsReceipt = false;
+
+        int headersCount = _headers.Count;
+        int bodiesCount = _bodies.Count;
+        int receiptsCount = _receipts.Count;
+
+        try
+        {
+            bodyRlp = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
+            ownsBody = true;
+            receiptRlp = EncodeSlimReceipts(receipts, isEip658);
+            ownsReceipt = true;
+
+            _headers.Add(headerRlp);
+            ownsHeader = false;
+            _bodies.Add(bodyRlp);
+            ownsBody = false;
+            _receipts.Add(receiptRlp);
+            ownsReceipt = false;
+        }
+        catch
+        {
+            DisposeAddedOrOwned(_headers, headersCount, headerRlp, ownsHeader);
+            DisposeAddedOrOwned(_bodies, bodiesCount, bodyRlp, ownsBody);
+            DisposeAddedOrOwned(_receipts, receiptsCount, receiptRlp, ownsReceipt);
+            throw;
+        }
+    }
 }

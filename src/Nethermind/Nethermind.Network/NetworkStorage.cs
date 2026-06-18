@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -20,6 +21,7 @@ namespace Nethermind.Network
         private readonly Lock _lock = new();
         private readonly IFullDb _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
         private readonly ILogger _logger = logManager?.GetClassLogger<NetworkStorage>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly NetworkNodeDecoder _networkNodeDecoder = new();
         private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = [];
         private long _updateCounter;
         private long _removeCounter;
@@ -91,7 +93,8 @@ namespace Nethermind.Network
 
         private void UpdateNodeImpl(NetworkNode node)
         {
-            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+            using ArrayPoolSpan<byte> rlp = _networkNodeDecoder.EncodeToArrayPoolSpan(node);
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb).PutSpan(node.NodeId.Bytes, rlp);
             _updateCounter++;
 
             if (!_nodesDict.ContainsKey(node.NodeId))

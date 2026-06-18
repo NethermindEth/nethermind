@@ -180,8 +180,8 @@ public class BlobTxStorage : IBlobTxStorage
 
     private void EncodeAndSaveTx(Transaction transaction, IDb db, Span<byte> txHashPrefixed)
     {
-        Rlp rlp = _txDecoder.Encode(transaction, RlpBehaviors.InMempoolForm);
-        db.PutSpan(txHashPrefixed, rlp.Bytes);
+        using ArrayPoolSpan<byte> rlp = _txDecoder.EncodeToArrayPoolSpan(transaction, RlpBehaviors.InMempoolForm);
+        db.PutSpan(txHashPrefixed, rlp);
     }
 
     private void EncodeAndSaveTxs(in ArrayPoolListRef<Transaction> blockBlobTransactions, IDb db, long blockNumber)
@@ -192,15 +192,21 @@ public class BlobTxStorage : IBlobTxStorage
             contentLength += _txDecoder.GetLength(blockBlobTransactions[i], RlpBehaviors.InMempoolForm);
         }
 
-        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
-        writer.StartSequence(contentLength);
-        for (int i = 0; i < blockBlobTransactions.Count; i++)
+        PooledRlpWriter writer = new(Rlp.LengthOfSequence(contentLength));
+        try
         {
-            _txDecoder.Encode(ref writer, blockBlobTransactions[i], RlpBehaviors.InMempoolForm);
-        }
+            writer.StartSequence(contentLength);
+            for (int i = 0; i < blockBlobTransactions.Count; i++)
+            {
+                _txDecoder.Encode(ref writer, blockBlobTransactions[i], RlpBehaviors.InMempoolForm);
+            }
 
-        db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), bytes);
+            db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), writer.Span);
+        }
+        finally
+        {
+            writer.Dispose();
+        }
     }
 }
 

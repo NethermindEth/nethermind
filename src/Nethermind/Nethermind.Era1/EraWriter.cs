@@ -75,14 +75,14 @@ public class EraWriter : IDisposable
 
         RlpBehaviors behaviors = _specProvider.GetSpec(block.Header).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
-        Rlp headerBytes = _headerDecoder.Encode(block.Header, behaviors);
-        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, headerBytes.Bytes, cancellation);
+        using ArrayPoolSpan<byte> headerBytes = _headerDecoder.EncodeToArrayPoolSpan(block.Header, behaviors);
+        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, headerBytes.AsMemory(), cancellation);
 
-        Rlp bodyBytes = _blockBodyDecoder.Encode(block.Body, behaviors);
-        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, bodyBytes.Bytes, cancellation);
+        using ArrayPoolSpan<byte> bodyBytes = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, behaviors);
+        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, bodyBytes.AsMemory(), cancellation);
 
-        Rlp receiptBytes = _receiptDecoder.Encode(receipts, behaviors);
-        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.Bytes, cancellation);
+        using ArrayPoolSpan<byte> receiptBytes = _receiptDecoder.EncodeToArrayPoolSpan(receipts, behaviors);
+        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.AsMemory(), cancellation);
 
         _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);
     }

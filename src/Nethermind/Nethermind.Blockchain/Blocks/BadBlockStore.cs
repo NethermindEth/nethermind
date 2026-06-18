@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -22,8 +23,8 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
-        Rlp newRlp = _blockDecoder.Encode(block);
-        blockDb.Set(block.Number, block.Hash, newRlp.Bytes, writeFlags);
+        using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
+        blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
 
         TruncateToMaxSize();
     }

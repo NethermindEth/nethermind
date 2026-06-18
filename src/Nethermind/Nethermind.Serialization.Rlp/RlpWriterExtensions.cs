@@ -423,6 +423,5 @@ public static class RlpWriterExtensions
         public void EncodeNullObject() => writer.WriteByte(EmptySequenceByte);
 
         public void EncodeEmptyByteArray() => writer.WriteByte(EmptyArrayByte);
-
     }
 }

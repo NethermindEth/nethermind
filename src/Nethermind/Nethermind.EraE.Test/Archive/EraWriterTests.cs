@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Era1.Exceptions;
+using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
@@ -68,6 +70,21 @@ internal class EraWriterTests
         Block block = Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject;
         Assert.That(async () => await sut.Add(block, []), Throws.Nothing);
         return Task.CompletedTask;
+    }
+
+    [Test]
+    public async Task Add_WhenBeaconRootsProviderThrows_DoesNotAdvanceBufferedBlock()
+    {
+        ThrowOnceBeaconRootsProvider beaconRootsProvider = new();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.BeaconChainGenesisTimestamp.Returns((ulong?)0UL);
+        using EraWriter sut = new(new MemoryStream(), specProvider, beaconRootsProvider);
+
+        Block block = Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject;
+
+        Assert.That(async () => await sut.Add(block, []), Throws.TypeOf<InvalidOperationException>());
+        Assert.That(async () => await sut.Add(block, []), Throws.Nothing);
+        Assert.That(async () => await sut.Finalize(), Throws.Nothing);
     }
 
     [Test]
@@ -182,4 +199,26 @@ internal class EraWriterTests
     }
 
     private static EraWriter CreateSut() => new(new MemoryStream(), Substitute.For<ISpecProvider>());
+
+    private sealed class ThrowOnceBeaconRootsProvider : IBeaconRootsProvider
+    {
+        private bool _shouldThrow = true;
+
+        public Task<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> GetBeaconRoots(
+            long slot,
+            CancellationToken cancellationToken = default)
+        {
+            if (_shouldThrow)
+            {
+                _shouldThrow = false;
+                throw new InvalidOperationException("Beacon roots lookup failed.");
+            }
+
+            return Task.FromResult<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?>(null);
+        }
+
+        public void Dispose()
+        {
+        }
+    }
 }

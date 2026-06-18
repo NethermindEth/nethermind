@@ -64,6 +64,30 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         return bytes;
     }
 
+    /// <summary>
+    /// Encodes <paramref name="item"/> into a pool-rented byte span. The caller owns the result and must dispose it.
+    /// </summary>
+    public static ArrayPoolSpan<byte> EncodeToArrayPoolSpan(
+        GeneratedBlockAccessList item,
+        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
+        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
+        PrepareGeneratedLengths(sortedAccounts.AsSpan(), accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
+        ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(contentLength));
+        try
+        {
+            RlpWriter writer = new(bytes);
+            EncodeGeneratedPrepared(ref writer, sortedAccounts.AsSpan(), accountLengths.AsSpan(), contentLength, rlpBehaviors);
+            return bytes;
+        }
+        catch
+        {
+            bytes.Dispose();
+            throw;
+        }
+    }
+
     /// <inheritdoc cref="EncodeToBytes(GeneratedBlockAccessList, RlpBehaviors)"/>
     public static byte[] EncodeToBytes(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -188,4 +212,5 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowAccountChangesOutOfOrder() =>
         throw new RlpException("Account changes were in incorrect order.");
+
 }
