@@ -32,18 +32,21 @@ public class InstructionStreamTests
         InstructionStream stream = InstructionStream.TryBuild(code)!;
 
         Assert.That(stream, Is.Not.Null);
-        Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
-        Assert.That(stream.BlockGas[0], Is.EqualTo(3 * GasCostOf.VeryLow),
-            "two pushes and an add are one block charged as a single sum");
-        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst), "the first op of a block carries its charge");
-        Assert.That(stream.Ops[0].Operand, Is.EqualTo(1UL), "PUSH1 immediates are pre-decoded into the entry");
-        Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.FusedInBlock),
-            "PUSH1 2; ADD folds into a single const-op entry");
-        Assert.That(stream.Ops[1].Opcode, Is.EqualTo(FusedOpcode.Add), "the pair runs under its virtual opcode");
-        Assert.That(stream.Constants[(int)stream.Ops[1].Operand], Is.EqualTo((Nethermind.Int256.UInt256)2),
-            "the pushed constant survives in the pool as the pair's operand");
-        Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary),
-            "STOP is not a static-cost op and must run the standard handler");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
+            Assert.That(stream.BlockGas[0], Is.EqualTo(3 * GasCostOf.VeryLow),
+                "two pushes and an add are one block charged as a single sum");
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst), "the first op of a block carries its charge");
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo(1UL), "PUSH1 immediates are pre-decoded into the entry");
+            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.FusedInBlock),
+                "PUSH1 2; ADD folds into a single const-op entry");
+            Assert.That(stream.Ops[1].Opcode, Is.EqualTo(FusedOpcode.Add), "the pair runs under its virtual opcode");
+            Assert.That(stream.Constants[(int)stream.Ops[1].Operand], Is.EqualTo((Nethermind.Int256.UInt256)2),
+                "the pushed constant survives in the pool as the pair's operand");
+            Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary),
+                "STOP is not a static-cost op and must run the standard handler");
+        }
     }
 
     [Test]
@@ -58,10 +61,13 @@ public class InstructionStreamTests
 
         InstructionStream stream = InstructionStream.TryBuild(code)!;
 
-        Assert.That(stream.BlockGas, Has.Length.EqualTo(2),
-            "a fused PUSH2+JUMP lands one past the JUMPDEST, so the ops after it need a separately charged block");
-        Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.JumpDest));
-        Assert.That(stream.BlockGas[1], Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Base));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.BlockGas, Has.Length.EqualTo(2),
+                "a fused PUSH2+JUMP lands one past the JUMPDEST, so the ops after it need a separately charged block");
+            Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.JumpDest));
+            Assert.That(stream.BlockGas[1], Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Base));
+        }
     }
 
     [Test]
@@ -77,11 +83,14 @@ public class InstructionStreamTests
 
         InstructionStream stream = InstructionStream.TryBuild(code)!;
 
-        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.StaticJump),
-            "an analysis-validated PUSH2+JUMP pair jumps straight to its target entry");
-        Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5]),
-            "the operand is the pre-resolved target entry index");
-        Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.StaticJump),
+                "an analysis-validated PUSH2+JUMP pair jumps straight to its target entry");
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5]),
+                "the operand is the pre-resolved target entry index");
+            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
+        }
     }
 
     [Test]
@@ -124,18 +133,21 @@ public class InstructionStreamTests
 
         InstructionStream stream = InstructionStream.TryBuild(code)!;
 
-        Assert.That(stream.PcToEntry[0], Is.EqualTo(0), "PUSH3 opens the block as its first entry");
-        Assert.That(stream.Constants[(int)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)0x010203),
-            "PUSH3 immediates are pre-decoded big-endian into the pool");
-        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst),
-            "PUSH3 const; ADD folds into a single block-charging const-op entry");
-        Assert.That(stream.Ops[0].Advance, Is.EqualTo(5), "the pair covers the push, its immediates, and the op");
-        Assert.That(stream.PcToEntry[1], Is.EqualTo(InstructionStream.InvalidEntry));
-        Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
-        Assert.That(stream.PcToEntry[3], Is.EqualTo(InstructionStream.InvalidEntry));
-        Assert.That(stream.PcToEntry[4], Is.EqualTo(InstructionStream.InvalidEntry),
-            "nothing can land inside a fused pair, so the op's own start unmaps");
-        Assert.That(stream.PcToEntry[5], Is.EqualTo(stream.Ops.Length), "pc one past the end terminates the stream loop");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.PcToEntry[0], Is.EqualTo(0), "PUSH3 opens the block as its first entry");
+            Assert.That(stream.Constants[(int)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)0x010203),
+                "PUSH3 immediates are pre-decoded big-endian into the pool");
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst),
+                "PUSH3 const; ADD folds into a single block-charging const-op entry");
+            Assert.That(stream.Ops[0].Advance, Is.EqualTo(5), "the pair covers the push, its immediates, and the op");
+            Assert.That(stream.PcToEntry[1], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.PcToEntry[3], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.PcToEntry[4], Is.EqualTo(InstructionStream.InvalidEntry),
+                "nothing can land inside a fused pair, so the op's own start unmaps");
+            Assert.That(stream.PcToEntry[5], Is.EqualTo(stream.Ops.Length), "pc one past the end terminates the stream loop");
+        }
     }
 
     [Test]
@@ -153,8 +165,11 @@ public class InstructionStreamTests
     [TestCase(Instruction.PUSH32, GasCostOf.VeryLow, TestName = "Push32_ViaConstantPool")]
     public void TryGetInBlockCost_ForStaticCostOp_MatchesGasCostOf(Instruction instruction, long expectedCost)
     {
-        Assert.That(InstructionStream.TryGetInBlockCost(instruction, out long cost), Is.True);
-        Assert.That(cost, Is.EqualTo(expectedCost), "block sums diverging from GasCostOf is a consensus bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(InstructionStream.TryGetInBlockCost(instruction, out long cost), Is.True);
+            Assert.That(cost, Is.EqualTo(expectedCost), "block sums diverging from GasCostOf is a consensus bug");
+        }
     }
 
     [TestCase(Instruction.PUSH2, TestName = "Push2_KeepsFusedTableHandler")]
@@ -325,11 +340,14 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         long framesBefore = StreamInterpreter.FramesExecuted;
         ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
 
-        Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore),
-            "the stream interpreter did not engage — this differential proved nothing");
-        Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "success/failure must match");
-        Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas must match to the unit");
-        Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore),
+                "the stream interpreter did not engage — this differential proved nothing");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "success/failure must match");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas must match to the unit");
+            Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
+        }
     }
 
     // Guards the consensus invariant that the executor's in-block switch covers exactly the
@@ -350,10 +368,13 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         long framesBefore = StreamInterpreter.FramesExecuted;
         ReceiptCaptureTracer streamed = RunWithInterpreter(bytecode, useStream: true);
 
-        Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), $"{op}: stream did not engage");
-        Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), $"{op}: status must match (no BadInstruction)");
-        Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), $"{op}: gas must match");
-        Assert.That(streamed.Output, Is.EqualTo(baseline.Output), $"{op}: output must match");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), $"{op}: stream did not engage");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), $"{op}: status must match (no BadInstruction)");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), $"{op}: gas must match");
+            Assert.That(streamed.Output, Is.EqualTo(baseline.Output), $"{op}: output must match");
+        }
     }
 
     private static IEnumerable<Instruction> InBlockOpcodes()

@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Benchmark
 
         // Straight-line dispatcher-like glue (no jumps): 100 repetitions of a fusable
         // arithmetic/dup/swap pattern with PUSH20 masking — the node-workload-shaped profile.
-        private static readonly byte[] s_straightLine = BuildStraightLine();
+        private static readonly byte[] StraightLine = BuildStraightLine();
 
         private static byte[] BuildStraightLine()
         {
@@ -138,7 +138,7 @@ namespace Nethermind.Evm.Benchmark
                 executingAccount: Address.Zero,
                 codeSource: Address.Zero,
                 caller: Address.Zero,
-                codeInfo: new CodeInfo(s_straightLine),
+                codeInfo: new CodeInfo(StraightLine),
                 callDepth: 0,
                 value: 0,
                 inputData: default

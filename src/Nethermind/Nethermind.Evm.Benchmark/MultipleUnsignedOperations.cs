@@ -70,8 +70,6 @@ public class MultipleUnsignedOperations
     public void GlobalSetup()
     {
         _stateProvider = TestWorldStateFactory.CreateForTest();
-        // Start a world-state scope (the post-refactor WorldState requires one before read/commit);
-        // mirrors VirtualMachineTestsBase. Left open for the benchmark process lifetime.
         _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
         _stateProvider.Commit(_spec);
