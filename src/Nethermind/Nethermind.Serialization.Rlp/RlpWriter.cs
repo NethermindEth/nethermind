@@ -42,7 +42,7 @@ public ref struct RlpWriter(Span<byte> data) : IRlpWriteBackend
     public override readonly string ToString() => $"[{nameof(RlpWriter)}|{_position}/{_data.Length}]";
 }
 
-public struct ByteBufferRlpWriter(IByteBuffer byteBuffer) : IRlpWriteBackend
+public ref struct ByteBufferRlpWriter(IByteBuffer byteBuffer) : IRlpWriteBackend
 {
     private readonly IByteBuffer _byteBuffer = byteBuffer ?? throw new ArgumentNullException(nameof(byteBuffer));
     private int _position;
@@ -86,7 +86,7 @@ public struct ByteBufferRlpWriter(IByteBuffer byteBuffer) : IRlpWriteBackend
     public override readonly string ToString() => $"[{nameof(ByteBufferRlpWriter)}|{_byteBuffer.GetType().Name}|{_position}]";
 }
 
-public struct KeccakRlpWriter(KeccakHash keccakHash) : IRlpWriteBackend
+public ref struct KeccakRlpWriter(KeccakHash keccakHash) : IRlpWriteBackend
 {
     private readonly KeccakHash _keccakHash = keccakHash ?? throw new ArgumentNullException(nameof(keccakHash));
     private int _position;
