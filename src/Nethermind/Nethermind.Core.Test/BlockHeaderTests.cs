@@ -213,7 +213,7 @@ public class BlockHeaderTests
         blockHeader.Number = 2001;
         // No cast needed: ParentTargetGasUsed is ulong, GasLimit is ulong post-migration.
         // ElasticityMultiplier is a small protocol constant (currently 2); product fits in ulong.
-        blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * (ulong)Eip1559Constants.DefaultElasticityMultiplier;
+        blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.DefaultElasticityMultiplier;
         blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
         // No cast needed: ParentGasUsed is ulong, GasUsed is ulong post-migration.
         blockHeader.GasUsed = testCase.Info.ParentGasUsed;

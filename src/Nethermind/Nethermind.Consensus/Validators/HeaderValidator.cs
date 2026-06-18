@@ -220,7 +220,6 @@ namespace Nethermind.Consensus.Validators
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                    && (isUncle
                                        || _daoBlockNumber is null
-                                       // Safe cast: DaoBlockNumber is a known small constant (~1.9M), always fits ulong
                                        || header.Number < _daoBlockNumber.Value
                                        || header.Number >= _daoBlockNumber.Value + 10
                                        || Bytes.AreEqual(header.ExtraData, DaoExtraData));

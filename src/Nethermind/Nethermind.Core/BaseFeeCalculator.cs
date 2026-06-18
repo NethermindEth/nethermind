@@ -23,7 +23,7 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
         {
             UInt256 parentBaseFee = parent.BaseFeePerGas;
             bool isForkBlockNumber = specFor1559.Eip1559TransitionBlock == parent.Number + 1;
-            ulong parentGasTarget = parent.GasLimit / (ulong)specFor1559.ElasticityMultiplier;
+            ulong parentGasTarget = parent.GasLimit / specFor1559.ElasticityMultiplier;
             if (isForkBlockNumber)
                 parentGasTarget = parent.GasLimit;
 

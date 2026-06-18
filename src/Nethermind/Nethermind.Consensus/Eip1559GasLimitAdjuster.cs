@@ -13,8 +13,7 @@ namespace Nethermind.Consensus
             ulong adjustedGasLimit = gasLimit;
             if (releaseSpec.Eip1559TransitionBlock == blockNumber)
             {
-                // Safe cast: ElasticityMultiplier is always a small positive constant (e.g. 2)
-                adjustedGasLimit *= (ulong)releaseSpec.ElasticityMultiplier;
+                adjustedGasLimit *= releaseSpec.ElasticityMultiplier;
             }
 
             return adjustedGasLimit;

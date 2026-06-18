@@ -103,14 +103,14 @@ namespace Nethermind.Consensus.Validators
 
         private static bool IsKin(BlockHeader header, BlockHeader uncle, int relationshipLevel, ReadOnlySpan<BlockHeader> ancestors, int ancestorsCount)
         {
-            int maxDepth = Math.Min(Math.Min(ancestorsCount, relationshipLevel), (int)header.Number);
+            ulong maxDepth = Math.Min(Math.Min((ulong)ancestorsCount, (ulong)relationshipLevel), header.Number);
 
-            if (uncle.Number < header.Number - (ulong)maxDepth)
+            if (uncle.Number < header.Number - maxDepth)
             {
                 return false;
             }
 
-            for (int depth = 0; depth < maxDepth; depth++)
+            for (int depth = 0; depth < (int)maxDepth; depth++)
             {
                 BlockHeader parent = ancestors[depth];
 

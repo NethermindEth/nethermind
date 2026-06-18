@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Test
             TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig());
             BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;
             ulong actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
-            Assert.That(actualValue, Is.EqualTo(gasLimit * (ulong)Eip1559Constants.DefaultElasticityMultiplier));
+            Assert.That(actualValue, Is.EqualTo(gasLimit * Eip1559Constants.DefaultElasticityMultiplier));
         }
 
         [TestCase(30_000_000ul, 100_000_000UL, 30029295UL)]

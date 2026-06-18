@@ -46,7 +46,7 @@ public class LongConverter : JsonConverter<long>
     public override long ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
-        return FromString(hex);
+        return NumericConverterHelper.ParseLax<long>(hex);
     }
 
     public static long FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<long>(s);

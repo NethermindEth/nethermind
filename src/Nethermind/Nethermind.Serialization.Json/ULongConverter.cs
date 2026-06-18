@@ -72,4 +72,10 @@ public class ULongConverter : JsonConverter<ulong>
         ref Utf8JsonReader reader,
         Type typeToConvert,
         JsonSerializerOptions options) => ReadCore(ref reader);
+
+    public override ulong ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+        return NumericConverterHelper.ParseLax<ulong>(hex);
+    }
 }
