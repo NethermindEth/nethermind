@@ -42,6 +42,14 @@ on:
           (or provide one flag per line).
         required: false
         default: ""
+      flat_write_buffer_floor:
+        description: >-
+          FlatDb write-buffer (memtable) floor in bytes for flat-layout runs, applied as
+          --FlatDb.PersistenceWriteBufferFloor. Keeps small-CompactSize persistence batches from
+          shrinking RocksDB memtables (decouples write amplification from CompactSize). Set empty to
+          disable. Ignored for non-flat layouts and when additional_extra_flags already sets it.
+        required: false
+        default: "67108864"
       rebuild_docker:
         description: Rebuild Nethermind Docker image before running benchmarks
         required: false
@@ -139,6 +147,7 @@ jobs:
           DISPATCH_DELAY_SECONDS: ${{ inputs.delay_seconds }}
           DISPATCH_AMOUNT: ${{ inputs.amount }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
+          DISPATCH_FLAT_WRITE_BUFFER_FLOOR: ${{ inputs.flat_write_buffer_floor }}
           DISPATCH_REBUILD_DOCKER: ${{ inputs.rebuild_docker }}
           DISPATCH_RUN_COUNT: ${{ inputs.run_count }}
           DISPATCH_DOCKER_IMAGES: ${{ inputs.docker_images }}
@@ -151,6 +160,8 @@ jobs:
 
           should_run="true"
           mode="single"
+          # Default FlatDb write-buffer floor (bytes) for flat layout; overridden by the dispatch input.
+          flat_write_buffer_floor="67108864"
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
             state_layout="${DISPATCH_STATE_LAYOUT}"
@@ -167,6 +178,7 @@ jobs:
               amount="100"
             fi
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
+            flat_write_buffer_floor="${DISPATCH_FLAT_WRITE_BUFFER_FLOOR-67108864}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
@@ -219,14 +231,28 @@ jobs:
             dottrace="false"
           fi
 
+          # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
+          # extra-flags pipeline, so it actually reaches Nethermind (same path as additional_extra_flags).
+          # Skipped for non-flat layouts, when disabled (empty), or when the caller already set it.
+          if [[ "${state_layout}" == "flat" && -n "${flat_write_buffer_floor:-}" ]]; then
+            if ! printf '%s' "${additional_extra_flags}" | grep -qi "PersistenceWriteBufferFloor"; then
+              floor_flag="--FlatDb.PersistenceWriteBufferFloor=${flat_write_buffer_floor}"
+              if [[ -n "${additional_extra_flags}" ]]; then
+                additional_extra_flags="${additional_extra_flags}, ${floor_flag}"
+              else
+                additional_extra_flags="${floor_flag}"
+              fi
+            fi
+          fi
+
           branch="${branch#refs/heads/}"
           if [[ -z "${branch}" ]]; then
             echo "Failed to resolve branch for event '${EVENT_NAME}'."
             exit 1
           fi
 
-          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+$ ]]; then
-            echo "delay_seconds must be an integer, got '${delay_seconds}'."
+          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "delay_seconds must be a number (integer or decimal seconds, e.g. 0.25), got '${delay_seconds}'."
             exit 1
           fi
 

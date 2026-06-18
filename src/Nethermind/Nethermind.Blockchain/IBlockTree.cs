@@ -135,12 +135,21 @@ namespace Nethermind.Blockchain
         bool WasProcessed(long number, Hash256 blockHash);
 
         /// <summary>
-        /// Marks all <paramref name="blocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
+        /// Reorgs the main chain to <paramref name="newHead"/>: walks back from it to the current main chain
+        /// building the branch of headers, marks them as processed, moves the head, and updates all chain levels.
         /// </summary>
-        /// <param name="blocks">Blocks that will now be at the top of the chain</param>
-        /// <param name="wereProcessed"></param>
-        /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
-        void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false);
+        /// <remarks>
+        /// Only headers are walked, and the full blocks needed for events/storage are loaded one at a time, so peak
+        /// memory stays bounded regardless of reorg depth. Callers that already hold the blocks (e.g. just processed
+        /// or downloaded them) should pass them via <paramref name="preloadedBlocks"/> to avoid re-reading from the
+        /// store; callers that would only re-read from the store (e.g. FCU) should leave it null.
+        /// </remarks>
+        /// <param name="newHead">The block header that will become the new chain head.</param>
+        /// <param name="wereProcessed">Whether the branch blocks have been processed (full sync) or not (fast sync).</param>
+        /// <param name="forceUpdateHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> regardless of <see cref="Block.TotalDifficulty"/>.</param>
+        /// <param name="preloadedBlocks">Optional blocks the caller already holds, used as a hash→block cache during the walk.</param>
+        /// <returns><value>True</value> if the chain was updated; <value>False</value> if the branch could not be walked back to the main chain (a predecessor was missing) — in which case nothing is mutated.</returns>
+        bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks);
 
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
 
@@ -175,6 +184,17 @@ namespace Nethermind.Blockchain
         void DeleteOldBlock(long blockNumber, Hash256 blockHash);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
+
+        /// <summary>
+        /// Block number of the most recent finalized block; 0 if none.
+        /// </summary>
+        long LastFinalizedBlockLevel { get; }
+
+        /// <summary>
+        /// Fires when <see cref="ForkChoiceUpdated"/> advances <see cref="IBlockFinder.FinalizedHash"/>
+        /// to a new block (and the corresponding header is locally available).
+        /// </summary>
+        event EventHandler<FinalizeEventArgs> BlocksFinalized;
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
