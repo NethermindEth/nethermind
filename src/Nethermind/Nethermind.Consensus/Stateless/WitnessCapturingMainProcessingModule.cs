@@ -9,7 +9,6 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
