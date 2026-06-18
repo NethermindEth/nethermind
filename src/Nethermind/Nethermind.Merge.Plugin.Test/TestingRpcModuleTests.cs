@@ -263,9 +263,8 @@ public class TestingRpcModuleTests
     [Test]
     public async Task Testing_commitBlockV1_passes_correct_flags_to_producer()
     {
-        // ReadOnlyChain must NOT be set — empirically, the producer pass under FlatDb
-        // only appends a snapshot bundle when the chain is not read-only; without it the
-        // next testing_commitBlockV1's BeginScope(parent) fails with "Unable to gather snapshots".
+        // Options must mirror BlockProducerBase.GetProcessingOptions for BuildBlocksOnMainState;
+        // state persistence itself is covered end-to-end by TestingRpcModuleBlockchainTests.
         ProcessingOptions? observedOptions = null;
         (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
             CreateCommitTestingModule(suggestResult: AddBlockResult.Added,
@@ -281,8 +280,7 @@ public class TestingRpcModuleTests
             Assert.That(opts.ContainsFlag(ProcessingOptions.NoValidation), Is.True);
             Assert.That(opts.ContainsFlag(ProcessingOptions.ForceProcessing), Is.True);
             Assert.That(opts.ContainsFlag(ProcessingOptions.DoNotUpdateHead), Is.True);
-            Assert.That(opts.ContainsFlag(ProcessingOptions.ReadOnlyChain), Is.False,
-                "ReadOnlyChain blocks FlatDb snapshot append; the producer must write FlatDb here");
+            Assert.That(opts.ContainsFlag(ProcessingOptions.ReadOnlyChain), Is.False);
         }
     }
 
@@ -368,10 +366,13 @@ public class TestingRpcModuleTests
         blockProducerEnvFactory.CreatePersistent().Returns(blockProducerEnv);
         blockProducerEnvFactory.CreateTransient().Returns(new ScopedBlockProducerEnv(blockProducerEnv, Substitute.For<IAsyncDisposable>()));
 
+        IMainStateBlockProducerEnvFactory mainStateBlockProducerEnvFactory = Substitute.For<IMainStateBlockProducerEnvFactory>();
+        mainStateBlockProducerEnvFactory.CreatePersistent().Returns(blockProducerEnv);
+
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockTree tree = blockTree ?? Substitute.For<IBlockTree>();
 
-        TestingRpcModule module = new(blockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, tree, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+        TestingRpcModule module = new(blockProducerEnvFactory, mainStateBlockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, tree, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         _disposables.Add(module);
         return (module, tree, blockFinder, parentHeader);
     }

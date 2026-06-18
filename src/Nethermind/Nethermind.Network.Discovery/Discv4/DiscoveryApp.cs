@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -29,7 +27,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
 
     public DiscoveryApp(
         ILifetimeScope rootScope,
-        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IEnode enode,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
         IProcessExitSource processExitSource,
@@ -43,7 +41,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
             (builder) =>
             {
                 builder
-                .AddModule(new KademliaModule(nodeKey.PublicKey, bootNodes))
+                .AddModule(new KademliaModule(enode.PublicKey, bootNodes))
                 .AddSingleton<DiscV4Services>();
 
                 configureDiscv4Services?.Invoke(builder);
