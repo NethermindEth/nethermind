@@ -102,6 +102,12 @@ public class WitnessGeneratingWorldState(
     private void CollectStateNodes(BlockHeader parentHeader, CollectingSink sink)
     {
         Hash256 stateRoot = parentHeader.StateRoot!;
+
+        // Flat's IReadOnlyTrieStore (FlatReadOnlyTrieStore) resolves nothing until a scope is opened:
+        // BeginScope gathers the read-only snapshot bundle for the parent (blockNumber, stateRoot).
+        // On patricia BeginScope is a no-op, so this is required for flat and harmless for half-path.
+        using IDisposable _ = trieStore.BeginScope(parentHeader);
+
         if (_storageSlots.Count > 0)
         {
             using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
