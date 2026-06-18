@@ -13,7 +13,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network.Contract.Messages;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using System;
@@ -37,7 +36,9 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IAsyncDisposable
     {
-        private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
+        private const int ReceivedTxHashCacheSize = 500_000;
+
+        private readonly AssociativeKeyCache<Hash96> _receivedTxHashes = new(ReceivedTxHashCacheSize);
 
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
@@ -124,8 +125,6 @@ namespace Nethermind.TxPool
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
-            _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(logManager, requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10, token: _cts.Token);
-
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
 
             // Capture closures once rather than per invocation
@@ -493,6 +492,7 @@ namespace Nethermind.TxPool
             {
                 // Clear hash cache and account cache
                 _hashCache.ClearAll();
+                _receivedTxHashes.Clear();
                 _accountCache.Reset();
 
                 // Also clear all pending transactions
@@ -584,9 +584,10 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
-            if (accepted != AcceptTxResult.Invalid)
+            if (tx.Hash is not null)
             {
-                _retryCache.Received(tx.Hash!);
+                Hash96 txHash = Hash96.From(tx.Hash);
+                _receivedTxHashes.Set(in txHash);
             }
 
             return accepted;
@@ -619,10 +620,16 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
-            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash) ?
-                AnnounceResult.Delayed :
-                _retryCache.Announced(hash, retryHandler);
+        public bool ShouldRequestTx(Hash256 hash)
+        {
+            if ((!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash))
+            {
+                return false;
+            }
+
+            Hash96 txHash = Hash96.From(hash);
+            return !_receivedTxHashes.Get(in txHash);
+        }
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {
@@ -1007,7 +1014,6 @@ namespace Nethermind.TxPool
             _headBlocksChannel.Writer.Complete();
             _transactions.Removed -= OnRemovedTx;
 
-            await _retryCache.DisposeAsync();
             await _headProcessing;
         }
 
@@ -1166,4 +1172,3 @@ Db usage:
         private static void DisposeBlockAccountChanges(Block block) => block.DisposeAccountChanges();
     }
 }
-

@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -39,8 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         IForkInfo forkInfo,
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
-        : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
-          IMessageHandler<PooledTransactionRequestMessage>
+        : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
         public override string Name => "eth65";
 
@@ -228,22 +226,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!_txPool.IsKnown(hash))
+                if (_txPool.ShouldRequestTx(hash))
                 {
-                    if (_txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
-                    {
-                        discoveredTxHashesAndSizes.Add(hash);
-                    }
+                    discoveredTxHashesAndSizes.Add(hash);
                 }
             }
 
             return discoveredTxHashesAndSizes;
-        }
-
-        public virtual void HandleMessage(PooledTransactionRequestMessage message)
-        {
-            using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
         }
     }
 }

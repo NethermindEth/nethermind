@@ -154,6 +154,27 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_request_announced_tx_until_it_is_received()
+        {
+            _txPool = CreatePool();
+            Transaction tx = GetTransaction(TestItem.PrivateKeyA);
+
+            Assert.That(_txPool.ShouldRequestTx(tx.Hash!), Is.True);
+            Assert.That(_txPool.ShouldRequestTx(tx.Hash!), Is.True);
+        }
+
+        [Test]
+        public void should_delay_announced_tx_after_rejected_tx_is_received()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.ShouldRequestTx(tx.Hash!), Is.True);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InsufficientFunds));
+            Assert.That(_txPool.ShouldRequestTx(tx.Hash!), Is.False);
+        }
+
+        [Test]
         public void should_add_valid_transactions_recovering_its_address()
         {
             _txPool = CreatePool();

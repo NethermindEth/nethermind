@@ -5,9 +5,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -257,13 +255,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
             return HandleResponse(request, speedType, describeRequestFunc, token);
         }
-
-        public override void HandleMessage(PooledTransactionRequestMessage message)
-        {
-            using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
-        }
-
         private readonly struct GetBlockHeadersHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage>
         {
             public static Task<BlockHeadersMessage> Execute(Eth66ProtocolHandler handler, GetBlockHeadersMessage request, CancellationToken cancellationToken) => handler.Handle(request, cancellationToken);
