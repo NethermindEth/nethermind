@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Crypto;
 using Nethermind.Network.Config;
@@ -15,16 +17,18 @@ public class NodeRecordProvider(
     INetworkConfig networkConfig
 ) : INodeRecordProvider
 {
+    private NodeRecord? _nodeRecord;
 
-    NodeRecord? _nodeRecord = null;
-    public NodeRecord Current => _nodeRecord ??= PrepareNodeRecord();
+    public async ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
+        => _nodeRecord ??= await PrepareNodeRecord(cancellationToken);
 
-    private NodeRecord PrepareNodeRecord()
+    private async Task<NodeRecord> PrepareNodeRecord(CancellationToken cancellationToken)
     {
         // TODO: Add forkid
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(IdEntry.Instance);
-        selfNodeRecord.SetEntry(new IpEntry(ipResolver.Resolve().GetAwaiter().GetResult().ExternalIp));
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
+        selfNodeRecord.SetEntry(new IpEntry(ip.ExternalIp));
         selfNodeRecord.SetEntry(new TcpEntry(networkConfig.P2PPort));
         selfNodeRecord.SetEntry(new UdpEntry(networkConfig.DiscoveryPort));
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
