@@ -59,8 +59,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         _api = (TaikoNethermindApi)api;
 
-        _api.GossipPolicy = ShouldNotGossip.Instance;
-
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
         InitializeL1Precompiles();
@@ -159,6 +157,8 @@ public class TaikoModule : Module
             .AddSingleton<IBlockValidator, TaikoBlockValidator>()
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
+
+            .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
 
             // Block processing
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()

@@ -5,6 +5,7 @@ using System.Threading;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -47,6 +48,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>(singleInstance: true)
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IForkInfo, ForkInfo>()
+            .AddSingleton<IGossipPolicy>(Policy.FullGossip)
 
             // Rlpxhost
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()

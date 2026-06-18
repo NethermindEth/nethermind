@@ -96,9 +96,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
                 _api.DisposeStack.Push(processedTransactionsDbCleaner);
             }
 
-            IBeaconSyncStrategy beaconSyncStrategy = _api.Context.Resolve<IBeaconSyncStrategy>();
-            _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, beaconSyncStrategy);
-
             _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
         }
 
@@ -245,6 +242,7 @@ public class MergePluginModule : Module
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealer, MergeSealer>()
+            .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
 
             .AddSingleton<ManualTimestamper>()
             .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager>(

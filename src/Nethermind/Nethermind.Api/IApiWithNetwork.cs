@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -19,7 +18,6 @@ namespace Nethermind.Api
 
         IIPResolver IpResolver { get; }
         IMessageSerializationService MessageSerializationService { get; }
-        IGossipPolicy GossipPolicy { get; set; }
         IPeerManager? PeerManager { get; }
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator ProtocolValidator { get; }

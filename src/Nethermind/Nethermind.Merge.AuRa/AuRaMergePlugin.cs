@@ -101,6 +101,7 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
+                .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
 
                 // Merge-aware override: skips wiring the branch processor on post-merge chains so
                 // the AuRa finalization manager's startup catch-up walk never runs.

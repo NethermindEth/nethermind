@@ -192,7 +192,7 @@ public class MergePluginTests
         await _plugin.InitNetworkProtocol();
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);
-        Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
+        Assert.That(container.Resolve<IGossipPolicy>().CanGossipBlocks, Is.True);
         IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
         Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
     }

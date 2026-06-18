@@ -32,8 +32,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
 
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
-            // Validators
-            .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
             .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
 
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
