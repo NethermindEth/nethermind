@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
 using Nethermind.Logging;
 
@@ -80,7 +79,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 while (!Volatile.Read(ref finished))
                 {
                     token.ThrowIfCancellationRequested();
-                    if (!TryGetNodeToQuery(out (TKadKey hash, TNode node)? toQuery))
+                    if (!TryGetNodeToQuery(out TKadKey toQueryHash, out TNode toQueryNode))
                     {
                         if (queryingTask > 0)
                         {
@@ -102,11 +101,11 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                             break;
                         }
 
-                        queried.TryAdd(toQuery.Value.hash, toQuery.Value.node);
-                        (TNode, TNode[]? neighbours)? result = await WrappedFindNeighbourOp(toQuery.Value.node);
-                        if (result is null) continue;
+                        queried.TryAdd(toQueryHash, toQueryNode);
+                        TNode[]? neighbours = await WrappedFindNeighbourOp(toQueryNode);
+                        if (neighbours is null) continue;
 
-                        ProcessResult(toQuery.Value.hash, toQuery.Value.node, result, round);
+                        ProcessResult(toQueryHash, toQueryNode, neighbours, round);
                     }
                     finally
                     {
@@ -139,7 +138,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
 
         return CompileResult();
 
-        async Task<(TNode target, TNode[]? retVal)> WrappedFindNeighbourOp(TNode node)
+        async Task<TNode[]?> WrappedFindNeighbourOp(TNode node)
         {
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             cts.CancelAfter(_findNeighbourHardTimeout);
@@ -148,16 +147,16 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             {
                 // targetHash is implied in findNeighbourOp
                 TNode[]? ret = await findNeighbourOp(node, cts.Token);
-                if (ret is null) return (node, null);
+                if (ret is null) return null;
 
                 nodeHealthTracker.OnIncomingMessageFrom(node);
 
-                return (node, ret);
+                return ret;
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                return (node, null);
+                return null;
             }
             catch (OperationCanceledException)
             {
@@ -167,29 +166,30 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             {
                 nodeHealthTracker.OnRequestFailed(node);
                 if (_logger.IsWarn) _logger.Warn($"Find neighbour op failed: {e}");
-                return (node, null);
+                return null;
             }
         }
 
-        bool TryGetNodeToQuery([NotNullWhen(true)] out (TKadKey, TNode)? toQuery)
+        bool TryGetNodeToQuery(out TKadKey hash, out TNode node)
         {
             lock (queueLock)
             {
                 if (bestSeen.Count == 0)
                 {
-                    toQuery = default;
+                    hash = default!;
+                    node = default!;
                     // No more node to query.
                     // Note: its possible that there are other worker currently which may add to bestSeen.
                     return false;
                 }
 
                 Interlocked.Increment(ref queryingTask);
-                toQuery = bestSeen.Dequeue();
+                (hash, node) = bestSeen.Dequeue();
                 return true;
             }
         }
 
-        void ProcessResult(TKadKey hash, TNode toQuery, (TNode, TNode[]? neighbours)? valueTuple, int round)
+        void ProcessResult(TKadKey hash, TNode toQuery, TNode[] neighbours, int round)
         {
             lock (queueLock)
             {
@@ -198,9 +198,6 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 {
                     finalResult.Dequeue();
                 }
-
-                TNode[]? neighbours = valueTuple?.neighbours;
-                if (neighbours is null) return;
 
                 foreach (TNode neighbour in neighbours)
                 {

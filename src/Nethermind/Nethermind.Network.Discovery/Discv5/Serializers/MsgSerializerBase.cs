@@ -16,21 +16,22 @@ internal abstract class MsgSerializerBase<TMessage>
 
     public void Serialize(NettyRlpStream stream, TMessage msg)
     {
-        EncodeRequestId(stream, msg.RequestId);
+        RequestId requestId = msg.RequestId;
+        EncodeRequestId(stream, in requestId);
         SerializeCore(stream, msg);
     }
 
     public TMessage Deserialize(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         RequestId requestId = DecodeRequestId(ref ctx);
-        return DeserializeCore(requestId, ref ctx, ownedMessage, owner);
+        return DeserializeCore(in requestId, ref ctx, ownedMessage, owner);
     }
 
     protected abstract int GetContentLengthCore(TMessage msg);
 
     protected abstract void SerializeCore(NettyRlpStream stream, TMessage msg);
 
-    protected abstract TMessage DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner);
+    protected abstract TMessage DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner);
 
     protected static ReadOnlyMemory<byte> DecodeByteMemory(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage)
     {
@@ -59,7 +60,7 @@ internal abstract class MsgSerializerBase<TMessage>
     }
 
     [SkipLocalsInit]
-    private static void EncodeRequestId(NettyRlpStream stream, RequestId requestId)
+    private static void EncodeRequestId(NettyRlpStream stream, in RequestId requestId)
     {
         Span<byte> bytes = stackalloc byte[RequestId.MaxLength];
         requestId.CopyTo(bytes);

@@ -15,6 +15,6 @@ internal sealed class TalkRespMsgSerializer : MsgSerializerBase<TalkRespMsg>
     protected override void SerializeCore(NettyRlpStream stream, TalkRespMsg msg)
         => stream.Encode(msg.Response);
 
-    protected override TalkRespMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override TalkRespMsg DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, DecodeByteMemory(ref ctx, ownedMessage), owner);
 }

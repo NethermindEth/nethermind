@@ -377,7 +377,7 @@ public sealed class KademliaAdapter(
             return;
         }
 
-        Challenge challenge = packetCodec.DecodeWhoAreYou(packet);
+        Challenge challenge = packetCodec.DecodeWhoAreYou(in packet);
         byte[] handshakePacket = packetCodec.EncodeHandshake(pendingRequest.Receiver.Id, challenge, pendingRequest.Message, out Session session);
         SetSession(new SessionKey(pendingRequest.Receiver.Id.Hash, endpoint), session);
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 HANDSHAKE for {pendingRequest.Message.MessageType} {pendingRequest.Message.RequestId} to {endpoint}, bytes: {handshakePacket.Length}, requested ENR seq: {challenge.EnrSequence}.");
@@ -386,14 +386,14 @@ public sealed class KademliaAdapter(
 
     private async Task HandleOrdinary(IPEndPoint endpoint, Packet packet, CancellationToken token)
     {
-        if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256? nodeId))
+        if (!PacketCodec.TryGetSourceNodeId(in packet, out Hash256? nodeId))
         {
             if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 ordinary packet from {endpoint}; source node id missing.");
             return;
         }
 
         SessionKey sessionKey = new(nodeId, endpoint);
-        if (!TryDecryptOrdinaryMessage(packet, sessionKey, out Session? session, out Discv5Message? message))
+        if (!TryDecryptOrdinaryMessage(in packet, sessionKey, out Session? session, out Discv5Message? message))
         {
             if (_logger.IsTrace) _logger.Trace($"Discv5 ordinary packet from {endpoint} could not be decrypted with an existing session; sending WHOAREYOU.");
             await SendWhoAreYou(endpoint, packet, nodeId);
@@ -412,12 +412,12 @@ public sealed class KademliaAdapter(
     }
 
     [SkipLocalsInit]
-    private bool TryDecryptOrdinaryMessage(Packet packet, SessionKey sessionKey, [NotNullWhen(true)] out Session? session, [NotNullWhen(true)] out Discv5Message? message)
+    private bool TryDecryptOrdinaryMessage(scoped in Packet packet, SessionKey sessionKey, [NotNullWhen(true)] out Session? session, [NotNullWhen(true)] out Discv5Message? message)
     {
         Span<byte> readKey = stackalloc byte[Session.KeySize];
         if (TryGetSession(sessionKey, out session) &&
             session.TryCopyReadKey(readKey) &&
-            packetCodec.TryDecryptMessage(packet, readKey, out Discv5Message decodedMessage))
+            packetCodec.TryDecryptMessage(in packet, readKey, out Discv5Message decodedMessage))
         {
             message = decodedMessage;
             return true;
@@ -429,7 +429,7 @@ public sealed class KademliaAdapter(
 
     private async Task HandleHandshake(IPEndPoint endpoint, Packet packet, CancellationToken token)
     {
-        if (!PacketCodec.TryGetSourceNodeId(packet, out Hash256? nodeId))
+        if (!PacketCodec.TryGetSourceNodeId(in packet, out Hash256? nodeId))
         {
             if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake packet from {endpoint}; source node id missing.");
             return;
@@ -452,7 +452,7 @@ public sealed class KademliaAdapter(
         try
         {
             TryGetKnownRecord(nodeId, out NodeRecord? knownRecord);
-            if (!packetCodec.TryDecryptHandshake(packet, sentChallenge.Challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord))
+            if (!packetCodec.TryDecryptHandshake(in packet, sentChallenge.Challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord))
             {
                 if (_logger.IsTrace) _logger.Trace($"Unable to decrypt discv5 handshake packet from {endpoint}.");
                 return;

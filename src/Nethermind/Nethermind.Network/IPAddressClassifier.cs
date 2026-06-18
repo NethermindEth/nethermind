@@ -27,7 +27,10 @@ public static class IPAddressClassifier
     /// Returns <c>true</c> for loopback, private, link-local, CGNAT, and IPv6 ULA addresses.
     /// </summary>
     public static bool IsLoopbackOrPrivateOrLinkLocal(IPAddress ipAddress)
-        => IsLoopbackOrPrivateOrLinkLocal(Parse(ipAddress));
+    {
+        ParsedIPAddress parsed = Parse(ipAddress);
+        return IsLoopbackOrPrivateOrLinkLocal(in parsed);
+    }
 
     /// <summary>
     /// Returns <c>true</c> for IPv4 or IPv6 multicast addresses.
@@ -110,7 +113,7 @@ public static class IPAddressClassifier
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsLoopbackOrPrivateOrLinkLocal(ParsedIPAddress parsed)
+    internal static bool IsLoopbackOrPrivateOrLinkLocal(in ParsedIPAddress parsed)
         => parsed.Family == ParsedIPAddressFamily.IPv4
             ? IsIPv4LoopbackOrPrivateOrLinkLocal(parsed.V4)
             : IsIPv6LoopbackOrPrivateOrLinkLocal(parsed.Hi, parsed.Lo);

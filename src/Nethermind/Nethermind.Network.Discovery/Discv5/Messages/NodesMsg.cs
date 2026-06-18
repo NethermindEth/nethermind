@@ -13,8 +13,8 @@ internal sealed record NodesMsg : Discv5Message
     {
     }
 
-    public NodesMsg(RequestId requestId, int total, IReadOnlyList<NodeRecord> records, ArrayPoolSpan<byte>? owner = null)
-        : base(requestId, owner)
+    public NodesMsg(in RequestId requestId, int total, IReadOnlyList<NodeRecord> records, ArrayPoolSpan<byte>? owner = null)
+        : base(in requestId, owner)
     {
         Total = total;
         Records = records;

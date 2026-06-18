@@ -72,7 +72,7 @@ public class CodecTests
         bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
         using (packet)
         {
-            bool decrypted = PacketCodec.TryDecryptMessageForTest(packet, new byte[16], out Discv5Message message);
+            bool decrypted = PacketCodec.TryDecryptMessageForTest(in packet, new byte[16], out Discv5Message message);
 
             Assert.That(decoded, Is.True);
             Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
@@ -128,7 +128,7 @@ public class CodecTests
         using (packet)
         {
             using PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
-            Challenge challenge = codec.DecodeWhoAreYou(packet);
+            Challenge challenge = codec.DecodeWhoAreYou(in packet);
 
             Assert.That(decoded, Is.True);
             Assert.That(packet.Flag, Is.EqualTo(PacketFlag.WhoAreYou));
@@ -186,7 +186,7 @@ public class CodecTests
         bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
         using (packet)
         {
-            bool decrypted = codec.TryDecryptHandshake(packet, challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord);
+            bool decrypted = codec.TryDecryptHandshake(in packet, challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord);
 
             Assert.That(decoded, Is.True);
             Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Handshake));

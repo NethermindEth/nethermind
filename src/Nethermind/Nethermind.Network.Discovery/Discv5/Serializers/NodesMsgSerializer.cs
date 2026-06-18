@@ -25,7 +25,7 @@ internal sealed class NodesMsgSerializer : MsgSerializerBase<NodesMsg>
         EncodeNodeRecords(stream, msg.Records);
     }
 
-    protected override NodesMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override NodesMsg DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         int total = ctx.DecodePositiveInt();
         return new NodesMsg(requestId, total, DecodeNodeRecords(ref ctx), owner);

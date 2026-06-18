@@ -18,6 +18,6 @@ internal sealed class TalkReqMsgSerializer : MsgSerializerBase<TalkReqMsg>
         stream.Encode(msg.Request);
     }
 
-    protected override TalkReqMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override TalkReqMsg DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, DecodeByteMemory(ref ctx, ownedMessage), DecodeByteMemory(ref ctx, ownedMessage), owner);
 }

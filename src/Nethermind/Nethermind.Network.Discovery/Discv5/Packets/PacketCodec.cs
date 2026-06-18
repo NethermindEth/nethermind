@@ -213,10 +213,10 @@ public sealed class PacketCodec(
         }
     }
 
-    internal bool TryDecryptMessage(Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
-        => TryDecryptMessageForTest(packet, encryptionKey, out message);
+    internal bool TryDecryptMessage(scoped in Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
+        => TryDecryptMessageForTest(in packet, encryptionKey, out message);
 
-    internal static bool TryDecryptMessageForTest(Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
+    internal static bool TryDecryptMessageForTest(scoped in Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
     {
         message = null!;
         ReadOnlySpan<byte> encryptedMessage = packet.Message.Span;
@@ -261,7 +261,7 @@ public sealed class PacketCodec(
         }
     }
 
-    internal Challenge DecodeWhoAreYou(Packet packet)
+    internal Challenge DecodeWhoAreYou(scoped in Packet packet)
     {
         if (packet.AuthData.Length != WhoAreYouAuthDataSize)
         {
@@ -274,7 +274,7 @@ public sealed class PacketCodec(
     }
 
     internal bool TryDecryptHandshake(
-        Packet packet,
+        scoped in Packet packet,
         Challenge challenge,
         NodeRecord? knownRecord,
         out Session session,
@@ -322,7 +322,7 @@ public sealed class PacketCodec(
 
         DeriveKeys(ephemeralPublicKey, sourceNodeId.Bytes, _localNodeId.Bytes, challenge.ChallengeData, out byte[] initiatorKey, out byte[] recipientKey);
 
-        if (!TryDecryptMessage(packet, initiatorKey, out message))
+        if (!TryDecryptMessage(in packet, initiatorKey, out message))
         {
             return false;
         }
@@ -331,7 +331,7 @@ public sealed class PacketCodec(
         return true;
     }
 
-    internal static bool TryGetSourceNodeId(Packet packet, [NotNullWhen(true)] out Hash256? sourceNodeId)
+    internal static bool TryGetSourceNodeId(scoped in Packet packet, [NotNullWhen(true)] out Hash256? sourceNodeId)
     {
         sourceNodeId = null;
         switch (packet.Flag)

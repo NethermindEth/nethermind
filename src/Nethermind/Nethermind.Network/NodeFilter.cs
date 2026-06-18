@@ -106,7 +106,7 @@ public sealed class NodeFilter
         => _exactMatchOnly || exactOnly
             ? IpSubnetKey.Exact(ipAddress)
             : (_parsedCurrentIp is { } current
-                ? IpSubnetKey.CreateNodeFilterKey(ipAddress, current)
+                ? IpSubnetKey.CreateNodeFilterKey(ipAddress, in current)
                 : IpSubnetKey.DefaultKey(ipAddress));
 
     /// <summary>
@@ -245,7 +245,7 @@ public sealed class NodeFilter
             bool requireCurrentIpIsLocalForExact = true)
         {
             ParsedIp current = new(currentIp);
-            return CreateNodeFilterKey(remoteIp, current,
+            return CreateNodeFilterKey(remoteIp, in current,
                 v4BucketPrefixBits, v6BucketPrefixBits,
                 v4LocalPrefixBits, v6LocalPrefixBits,
                 exactIfSameSubnetAsCurrentIp, requireCurrentIpIsLocalForExact);
@@ -253,7 +253,7 @@ public sealed class NodeFilter
 
         public static IpSubnetKey CreateNodeFilterKey(
             IPAddress remoteIp,
-            ParsedIp currentIp,
+            in ParsedIp currentIp,
             byte v4BucketPrefixBits = 24,
             byte v6BucketPrefixBits = 64,
             byte v4LocalPrefixBits = 24,

@@ -12,8 +12,8 @@ internal sealed record TalkReqMsg : Discv5Message
     {
     }
 
-    public TalkReqMsg(RequestId requestId, ReadOnlyMemory<byte> protocol, ReadOnlyMemory<byte> request, ArrayPoolSpan<byte>? owner = null)
-        : base(requestId, owner)
+    public TalkReqMsg(in RequestId requestId, ReadOnlyMemory<byte> protocol, ReadOnlyMemory<byte> request, ArrayPoolSpan<byte>? owner = null)
+        : base(in requestId, owner)
     {
         _protocol = protocol;
         _request = request;

@@ -15,7 +15,7 @@ internal sealed class FindNodeMsgSerializer : MsgSerializerBase<FindNodeMsg>
     protected override void SerializeCore(NettyRlpStream stream, FindNodeMsg msg)
         => EncodeDistances(stream, msg.Distances);
 
-    protected override FindNodeMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override FindNodeMsg DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, DecodeDistances(ref ctx), owner);
 
     private static int GetDistancesLength(Distances distances)

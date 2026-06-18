@@ -12,8 +12,8 @@ internal sealed record FindNodeMsg : Discv5Message
     {
     }
 
-    public FindNodeMsg(RequestId requestId, Distances distances, ArrayPoolSpan<byte>? owner = null)
-        : base(requestId, owner)
+    public FindNodeMsg(in RequestId requestId, Distances distances, ArrayPoolSpan<byte>? owner = null)
+        : base(in requestId, owner)
         => Distances = distances;
 
     public override MessageType MessageType => MessageType.FindNode;

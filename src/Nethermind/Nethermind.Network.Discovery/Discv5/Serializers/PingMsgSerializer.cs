@@ -15,6 +15,6 @@ internal sealed class PingMsgSerializer : MsgSerializerBase<PingMsg>
     protected override void SerializeCore(NettyRlpStream stream, PingMsg msg)
         => Encode(stream, msg.EnrSequence);
 
-    protected override PingMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override PingMsg DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, ctx.DecodeULong(), owner);
 }
