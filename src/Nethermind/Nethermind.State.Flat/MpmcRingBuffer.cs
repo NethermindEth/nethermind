@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Threading;
 
 namespace Nethermind.State.Flat;
 
@@ -23,28 +22,23 @@ public sealed class MpmcRingBuffer<T>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            long tail = Volatile.Read(ref _tail.Value);
-            long head = Volatile.Read(ref _head.Value);
+            long tail = Volatile.Read(ref _tail);
+            long head = Volatile.Read(ref _head);
 
             long count = tail - head;
             return count < 0 ? 0 : count; // clamp just in case of a race
         }
     }
 
-    internal bool HasReadyItem
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get
-        {
-            long head = Volatile.Read(ref _head.Value);
-            int index = (int)(head & _mask);
-            long seq = Volatile.Read(ref _sequences[index]);
-            return seq >= head + 1;
-        }
-    }
+#pragma warning disable CS0169 // Field is never used
+    // --- head (consumers) + padding ---
+    private long _head;
+    private long _p1, _p2, _p3, _p4, _p5, _p6, _p7;
 
-    private CacheLinePaddedLong _head;
-    private CacheLinePaddedLong _tail;
+    // --- tail (producers) + padding ---
+    private long _tail;
+    private long _p8, _p9, _p10, _p11, _p12, _p13, _p14;
+#pragma warning restore CS0169 // Field is never used
 
     public MpmcRingBuffer(int capacityPowerOfTwo)
     {
@@ -70,14 +64,14 @@ public sealed class MpmcRingBuffer<T>
     {
         while (true)
         {
-            long tail = Volatile.Read(ref _tail.Value);
+            long tail = Volatile.Read(ref _tail);
             int index = (int)(tail & _mask);
             long seq = Volatile.Read(ref _sequences[index]);
 
             if (seq == tail)
             {
                 // Interlocked exchange for multiple producer.
-                if (Interlocked.CompareExchange(ref _tail.Value, tail + 1, tail) == tail)
+                if (Interlocked.CompareExchange(ref _tail, tail + 1, tail) == tail)
                 {
                     // Success
                     _entries[index] = item;
@@ -103,7 +97,7 @@ public sealed class MpmcRingBuffer<T>
     {
         while (true)
         {
-            long head = Volatile.Read(ref _head.Value);
+            long head = Volatile.Read(ref _head);
             int index = (int)(head & _mask);
             long seq = Volatile.Read(ref _sequences[index]);
             long expectedSeq = head + 1;
@@ -111,14 +105,9 @@ public sealed class MpmcRingBuffer<T>
             // If seq == expectedSeq, the producer has finished writing
             if (seq == expectedSeq)
             {
-                if (Interlocked.CompareExchange(ref _head.Value, head + 1, head) == head)
+                if (Interlocked.CompareExchange(ref _head, head + 1, head) == head)
                 {
                     item = _entries[index];
-                    if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-                    {
-                        _entries[index] = default!;
-                    }
-
                     // Mark as ready for the producer's next lap (head + capacity)
                     Volatile.Write(ref _sequences[index], head + _capacity);
                     return true;

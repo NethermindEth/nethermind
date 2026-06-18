@@ -10,7 +10,7 @@ public interface ITrieWarmer
 {
     public bool PushSlotJob(
         IStorageWarmer storageTree,
-        in UInt256 index,
+        in UInt256? index,
         int sequenceId);
 
     /// <summary>

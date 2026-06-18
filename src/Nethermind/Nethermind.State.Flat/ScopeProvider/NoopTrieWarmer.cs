@@ -8,7 +8,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public class NoopTrieWarmer : ITrieWarmer
 {
-    public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
+    public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId) => false;
 
     public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
 

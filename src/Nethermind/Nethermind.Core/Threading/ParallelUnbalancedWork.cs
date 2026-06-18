@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -166,13 +167,20 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// </summary>
     private class SharedCounter(int fromInclusive)
     {
-        private CacheLinePaddedLong _index = new(fromInclusive);
+        private PaddedValue _index = new(fromInclusive);
 
         /// <summary>
         /// Gets the next index in a thread-safe manner.
         /// </summary>
         /// <returns>The next index.</returns>
-        public int GetNext() => (int)(Interlocked.Increment(ref _index.Value) - 1);
+        public int GetNext() => Interlocked.Increment(ref _index.Value) - 1;
+
+        [StructLayout(LayoutKind.Explicit, Size = 128)]
+        private struct PaddedValue(int value)
+        {
+            [FieldOffset(64)]
+            public int Value = value;
+        }
     }
 
     /// <summary>

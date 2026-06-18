@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -11,32 +10,6 @@ namespace Nethermind.State.Flat.Test;
 
 public class SpmcRingBufferTests
 {
-    [Test]
-    public void HasReadyItem_TracksPublishedItems()
-    {
-        SpmcRingBuffer<int> jobQueue = new(4);
-
-        Assert.That(jobQueue.HasReadyItem, Is.False);
-
-        Assert.That(jobQueue.TryEnqueue(1), Is.True);
-        Assert.That(jobQueue.HasReadyItem, Is.True);
-
-        Assert.That(jobQueue.TryDequeue(out int item), Is.True);
-        Assert.That(item, Is.EqualTo(1));
-        Assert.That(jobQueue.HasReadyItem, Is.False);
-
-        for (int i = 0; i < 4; i++)
-        {
-            Assert.That(jobQueue.TryEnqueue(i), Is.True);
-            Assert.That(jobQueue.TryDequeue(out item), Is.True);
-            Assert.That(item, Is.EqualTo(i));
-            Assert.That(jobQueue.HasReadyItem, Is.False);
-        }
-
-        Assert.That(jobQueue.TryEnqueue(42), Is.True);
-        Assert.That(jobQueue.HasReadyItem, Is.True);
-    }
-
     [Test]
     public void SmokeTest()
     {
@@ -111,20 +84,6 @@ public class SpmcRingBufferTests
     }
 
     [Test]
-    public void TryDequeue_ClearsReferenceContainingEntry()
-    {
-        SpmcRingBuffer<ReferenceJob> jobQueue = new(4);
-        ReferenceJob job = new(new object());
-
-        Assert.That(jobQueue.TryEnqueue(job), Is.True);
-        Assert.That(jobQueue.TryDequeue(out ReferenceJob dequeued), Is.True);
-        Assert.That(dequeued, Is.EqualTo(job));
-
-        ReferenceJob[] entries = GetEntries(jobQueue);
-        Assert.That(entries[0].Value, Is.Null);
-    }
-
-    [Test]
     public async Task HighConcurrency_StressTest_NoDataLoss()
     {
         int Capacity = 1024;
@@ -176,13 +135,4 @@ public class SpmcRingBufferTests
             Assert.That(consumedCounts[i] == 1, $"Item {i} was consumed {consumedCounts[i]} times!");
         }
     }
-
-    private static T[] GetEntries<T>(SpmcRingBuffer<T> buffer)
-    {
-        FieldInfo? entriesField = typeof(SpmcRingBuffer<T>).GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.That(entriesField, Is.Not.Null);
-        return (T[])entriesField!.GetValue(buffer)!;
-    }
-
-    private readonly record struct ReferenceJob(object? Value);
 }
