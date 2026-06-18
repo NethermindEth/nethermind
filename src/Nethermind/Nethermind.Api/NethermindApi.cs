@@ -61,7 +61,6 @@ namespace Nethermind.Api
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree BlockTree => Context.Resolve<IBlockTree>();
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
-        public ICryptoRandom CryptoRandom => Context.Resolve<ICryptoRandom>();
         public IDbProvider DbProvider => Context.Resolve<IDbProvider>();
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
@@ -102,7 +101,6 @@ namespace Nethermind.Api
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public ITxValidator? HeadTxValidator => Context.ResolveOptionalKeyed<ITxValidator>(ITxValidator.HeadTxValidatorKey);
 
-        public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
