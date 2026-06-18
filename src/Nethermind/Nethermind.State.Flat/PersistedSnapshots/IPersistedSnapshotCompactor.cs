@@ -18,6 +18,9 @@ public interface IPersistedSnapshotCompactor : IAsyncDisposable
     /// thread.
     /// </remarks>
     /// <param name="batch">The converted states to compact; ownership transfers to the compactor.</param>
+    /// <param name="persistedBlockNumber">The current persistence point (RocksDB persisted state block).
+    /// Compaction windows are clamped to not reach below it — snapshots below are already in RocksDB,
+    /// so merging them would be wasted work.</param>
     /// <param name="cancellationToken">Releases the backpressure wait when the producer is shutting down.</param>
-    ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, CancellationToken cancellationToken);
+    ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, long persistedBlockNumber, CancellationToken cancellationToken);
 }

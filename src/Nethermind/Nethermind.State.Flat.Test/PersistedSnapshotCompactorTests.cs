@@ -733,6 +733,71 @@ public class PersistedSnapshotCompactorTests
         }
     }
 
+    // A [0,8] large-compacted (To=8) survives until persistence passes block 8, so its From=0 sits
+    // below any persistence point in (0, 8]. The widest-skip-first assemble walk would follow that
+    // edge and drag block 16's compaction down to From=0. Clamping the window to the persistence
+    // point makes the walk reject the below-P edge and assemble from P upward via the bases instead.
+    private static IEnumerable<TestCaseData> ClampToPersistenceCases()
+    {
+        // P at genesis: no clamp, the walk follows the [0,8] large-compacted skip-pointer to From=0.
+        yield return new TestCaseData(0L, 0L).SetName("ClampToPersistence_GenesisP_NoClamp_From0");
+        // P inside the [0,8] span: the below-P edge is skipped, the walk wins at From=P via the bases.
+        yield return new TestCaseData(4L, 4L).SetName("ClampToPersistence_PInsideSpan_ClampsFrom4");
+        // P at the [0,8] To boundary: still clamped, never reaching the From=0 edge.
+        yield return new TestCaseData(8L, 8L).SetName("ClampToPersistence_PAtBoundary_ClampsFrom8");
+    }
+
+    [TestCaseSource(nameof(ClampToPersistenceCases))]
+    public void DoCompactSnapshot_ClampsWindowToPersistencePoint(long persistedBlock, long expectedFromBlock)
+    {
+        // CompactSize=1 makes every block a boundary; MaxCompactSize=16 so block 16's window is [0, 16].
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 256 * 1024,
+            blobFileSizeBytes: 4 * 1024 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(
+                ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 16 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId[] states = new StateId[17];
+        states[0] = new StateId(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 16; i++)
+            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+
+        // Build base snapshots [0..8], then the [0,8] large-compacted skip-pointer.
+        for (int i = 1; i <= 8; i++)
+            BuildBase(tier, states, i);
+        compactor.DoCompactSnapshot(states[8], persistedBlockNumber: 0);
+        Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? seed), Is.True,
+            "precondition: the [0,8] large-compacted skip-pointer must exist");
+        seed!.Dispose();
+
+        // Build base snapshots [9..16] so narrower edges exist above the persistence point.
+        for (int i = 9; i <= 16; i++)
+            BuildBase(tier, states, i);
+
+        // Compact block 16's [0,16] window, clamped to the persistence point.
+        compactor.DoCompactSnapshot(states[16], persistedBlockNumber: persistedBlock);
+
+        Assert.That(repo.TryLeasePersistedState(states[16], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True,
+            "Expected a large-compacted snapshot at block 16");
+        using (compacted)
+        {
+            Assert.That(compacted!.To.BlockNumber, Is.EqualTo(16));
+            Assert.That(compacted.From.BlockNumber, Is.EqualTo(expectedFromBlock),
+                persistedBlock == 0
+                    ? "Unclamped: the walk follows the [0,8] large-compacted edge down to From=0"
+                    : "Clamped: the below-P [0,8] edge is rejected and the walk wins at From=P");
+        }
+    }
+
+    private void BuildBase(FlatTestContainer tier, StateId[] states, int block)
+    {
+        SnapshotContent content = new();
+        content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
+        tier.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+    }
+
     /// <summary>
     /// After compaction, <see cref="PersistedSnapshot.TryLoadStateNodeRlp"/> /
     /// <see cref="PersistedSnapshot.TryLoadStorageNodeRlp"/> must dereference the merged

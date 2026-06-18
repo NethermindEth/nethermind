@@ -18,7 +18,7 @@ public sealed class NullPersistedSnapshotCompactor : IPersistedSnapshotCompactor
     private NullPersistedSnapshotCompactor() { }
 
     // Dispose immediately — no compaction work, but ownership still transfers so callers don't leak.
-    public ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, CancellationToken cancellationToken)
+    public ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, long persistedBlockNumber, CancellationToken cancellationToken)
     {
         batch.Dispose();
         return ValueTask.CompletedTask;
