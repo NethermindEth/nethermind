@@ -41,9 +41,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _currentTxIndex = 0;
-        BlockExecutionContext ctx = blockExecutionContext.Spec.IsEip3607Enabled
-            ? new BlockExecutionContext(blockExecutionContext.Header, blockExecutionContext.Spec.WithoutEip3607())
-            : blockExecutionContext;
+        BlockExecutionContext ctx = new(blockExecutionContext.Header, blockExecutionContext.Spec.WithoutEip3607());
         transactionProcessor.SetBlockExecutionContext(in ctx);
     }
 }
