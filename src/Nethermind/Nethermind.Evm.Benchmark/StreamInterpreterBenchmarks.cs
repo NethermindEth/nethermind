@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Benchmark
             Stream,
         }
 
-        private static readonly byte[] s_computeLoop =
+        private static readonly byte[] ComputeLoop =
         [
             (byte)Instruction.PUSH2, 0x04, 0x00,
             (byte)Instruction.JUMPDEST,           // pc 3: loop head
@@ -123,7 +123,7 @@ namespace Nethermind.Evm.Benchmark
                 executingAccount: Address.Zero,
                 codeSource: Address.Zero,
                 caller: Address.Zero,
-                codeInfo: new CodeInfo(s_computeLoop),
+                codeInfo: new CodeInfo(ComputeLoop),
                 callDepth: 0,
                 value: 0,
                 inputData: default
