@@ -51,7 +51,7 @@ public sealed class WitnessCapturingBlockProcessor(
     WitnessCapturingWorldStateProxy proxy,
     WitnessCapturingHeaderFinder headerFinder,
     WitnessCaptureSession session,
-    WorldStateManager worldStateManager,
+    IWorldStateManager worldStateManager,
     WitnessRendezvous rendezvous,
     IStateReader stateReader,
     ILogManager? logManager = null) : IBlockProcessor
