@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -72,6 +73,20 @@ public class BlockCacheServiceTest
         Assert.That(blockCacheService.BlockCache, Has.Count.EqualTo(2));
         Assert.That(blockCacheService.BlockCache.ContainsKey(finalizedHash), Is.True);
         Assert.That(blockCacheService.BlockCache.ContainsKey(headHash), Is.True);
+    }
+
+    [Test]
+    public void clears_cache_when_beacon_sync_stops()
+    {
+        IBeaconSyncStrategy beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+        BlockCacheService blockCacheService = new(4, beaconSyncStrategy);
+        blockCacheService.TryAddBlock(Build.A.Block.WithNumber(1).TestObject);
+        blockCacheService.TryAddBlock(Build.A.Block.WithNumber(2).TestObject);
+        Assert.That(blockCacheService.BlockCache, Has.Count.EqualTo(2));
+
+        beaconSyncStrategy.BeaconSyncStopped += Raise.Event<Action>();
+
+        Assert.That(blockCacheService.BlockCache, Is.Empty);
     }
 
     private static IBeaconSyncStrategy ProtectingStrategy(Hash256 finalizedHash, Hash256 headHash)

@@ -39,6 +39,7 @@ public class BlockCacheService : IBlockCacheService
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCachedBlocks);
         _maxCachedBlocks = maxCachedBlocks;
         _beaconSyncStrategy = beaconSyncStrategy ?? No.BeaconSync;
+        _beaconSyncStrategy.BeaconSyncStopped += Clear;
     }
 
     /// <inheritdoc />

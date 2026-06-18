@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -21,6 +22,7 @@ namespace Nethermind.Synchronization
         public long? GetTargetBlockHeight() => null;
         public Hash256? GetFinalizedHash() => null;
         public Hash256? GetHeadBlockHash() => null;
+        public event Action? BeaconSyncStopped { add { } remove { } }
     }
 
     public interface IBeaconSyncStrategy
@@ -34,5 +36,11 @@ namespace Nethermind.Synchronization
         public long? GetTargetBlockHeight();
         public Hash256? GetFinalizedHash();
         public Hash256? GetHeadBlockHash();
+
+        /// <summary>
+        /// Raised when beacon sync stops and the beacon pivot is removed, signalling that cached payload blocks
+        /// may be discarded.
+        /// </summary>
+        event Action? BeaconSyncStopped;
     }
 }

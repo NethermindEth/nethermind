@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -70,7 +69,7 @@ public class BeaconHeadersSyncTests
         }
 
         private BeaconSync? _beaconSync;
-        public BeaconSync BeaconSync => _beaconSync ??= new(BeaconPivot, BlockTree, SyncConfig, new Lazy<IBlockCacheService>(() => BlockCacheService), PoSSwitcher, LimboLogs.Instance);
+        public BeaconSync BeaconSync => _beaconSync ??= new(BeaconPivot, BlockTree, SyncConfig, PoSSwitcher, LimboLogs.Instance);
 
         private IDb? _metadataDb;
         public IDb MetadataDb => _metadataDb ??= new MemDb();

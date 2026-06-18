@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization
@@ -18,26 +17,27 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IBeaconPivot beaconPivot,
         IBlockTree blockTree,
         ISyncConfig syncConfig,
-        Lazy<IBlockCacheService> blockCacheService,
         IPoSSwitcher poSSwitcher,
         ILogManager logManager) : IMergeSyncController, IBeaconSyncStrategy
     {
         private readonly IBeaconPivot _beaconPivot = beaconPivot;
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ISyncConfig _syncConfig = syncConfig;
-        private readonly Lazy<IBlockCacheService> _blockCacheService = blockCacheService;
         private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
         private bool _isInBeaconModeControl = false;
         private Hash256? _finalizedHash;
         private Hash256? _headBlockHash;
         private readonly ILogger _logger = logManager.GetClassLogger<BeaconSync>();
 
+        /// <inheritdoc />
+        public event Action? BeaconSyncStopped;
+
         public void StopSyncing()
         {
             if (!_isInBeaconModeControl)
             {
                 _beaconPivot.RemoveBeaconPivot();
-                _blockCacheService.Value.Clear();
+                BeaconSyncStopped?.Invoke();
             }
 
             _isInBeaconModeControl = true;

@@ -96,7 +96,8 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
                 _api.DisposeStack.Push(processedTransactionsDbCleaner);
             }
 
-            _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _api.Context.Resolve<IBeaconSyncStrategy>());
+            IBeaconSyncStrategy beaconSyncStrategy = _api.Context.Resolve<IBeaconSyncStrategy>();
+            _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, beaconSyncStrategy);
 
             _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
         }
