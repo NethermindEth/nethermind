@@ -524,6 +524,31 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Storage_snapshot_is_emitted_on_SLOAD()
+    {
+        const string val = "42";
+
+        byte[] code = Prepare.EvmCode
+            .PersistData("0x1", val) // SSTORE slot 0x1 = 0x42
+            .PushData("0x1")
+            .Op(Instruction.SLOAD)   // SLOAD slot 0x1
+            .Op(Instruction.STOP)
+            .Done;
+
+        static string Word(string hex) => "0x" + hex.PadLeft(64, '0');
+        Dictionary<string, string> expected = new() { [Word("1")] = Word(val) };
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        GethTxTraceEntry sload = trace.Entries.Single(e => e.Opcode == "SLOAD");
+        Assert.That(sload.Storage, Is.EquivalentTo(expected), "in-memory SLOAD snapshot");
+
+        // The streaming tracer must emit the same storage on the SLOAD step.
+        JsonElement streamedSload = ExecuteStreamingTracerEntries(code).Single(e => e.GetProperty("op").GetString() == "SLOAD");
+        Assert.That(ToStorageDictionary(streamedSload), Is.EquivalentTo(expected), "streaming SLOAD snapshot");
+    }
+
     private static Dictionary<string, string> ToStorageDictionary(JsonElement entry)
     {
         Dictionary<string, string> storage = [];
