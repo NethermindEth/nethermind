@@ -54,8 +54,10 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         _logger = logManager.GetClassLogger<TrieWarmer>();
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
+        // Processors self-unschedule when their queues drain, so the higher default cap costs nothing at rest
+        // and restores warming parallelism for read-heavy blocks.
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount / 2, 1)
+            ? Math.Max(Environment.ProcessorCount - 1, 1)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
@@ -93,8 +95,13 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void KickProcessors()
     {
+        int activeProcessors = Volatile.Read(ref _activeProcessors);
+        if (activeProcessors >= _processors.Length) return;
+
         long pending = PendingHint();
-        int desiredProcessors = (int)Math.Min(_processors.Length, Math.Max(1, pending));
+        if (pending == 0) return;
+
+        int desiredProcessors = (int)Math.Min(_processors.Length - activeProcessors, Math.Max(1, pending));
         int scheduledProcessors = 0;
         for (int i = 0; i < _processors.Length && scheduledProcessors < desiredProcessors; i++)
         {

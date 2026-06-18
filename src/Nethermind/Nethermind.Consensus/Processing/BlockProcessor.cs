@@ -141,18 +141,16 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
-        CommitState(spec);
+        // Receipt blooms and root depend only on finalized receipt data, so they can overlap with post-tx state work.
+        Hash256? suggestedReceiptsRoot = block.ReceiptsRoot;
+        Task<Hash256> receiptsRootTask = Task.Run(() => CalculateReceiptsRootAfterBlooms(receipts, spec, suggestedReceiptsRoot));
 
-        CalculateBlooms(receipts);
+        CommitState(spec);
 
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
-
-        // Receipts root depends only on finalized receipt data, so it can overlap with post-tx state work.
-        Hash256? suggestedReceiptsRoot = block.ReceiptsRoot;
-        Task<Hash256> receiptsRootTask = Task.Run(() => CalculateReceiptsRoot(receipts, spec, suggestedReceiptsRoot));
 
         ApplyMinerRewards(block, blockTracer, spec);
         _systemContractHandler.ProcessWithdrawals(block, spec);
@@ -210,6 +208,12 @@ public partial class BlockProcessor(
     {
         using MetricsTimer<ReceiptsRootTimeSink> _ = new();
         return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, suggestedRoot);
+    }
+
+    private static Hash256 CalculateReceiptsRootAfterBlooms(TxReceipt[] receipts, IReleaseSpec spec, Hash256? suggestedRoot)
+    {
+        CalculateBlooms(receipts);
+        return CalculateReceiptsRoot(receipts, spec, suggestedRoot);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
