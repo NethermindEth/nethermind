@@ -62,7 +62,7 @@ public class P2PProtocolHandler(
     private readonly List<Capability> _supportedCapabilities = [];
 
     public int ListenPort { get; } = session.LocalPort;
-    public PublicKey LocalNodeId { get; } = nodeKey.PublicKey;
+    private readonly PublicKey _localNodeId = nodeKey.PublicKey;
     private string RemoteClientId { get; set; }
 
     public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
@@ -432,7 +432,7 @@ public class P2PProtocolHandler(
         {
             Capabilities = _supportedCapabilities.ToPooledList(),
             ClientId = ProductInfo.PublicClientId,
-            NodeId = LocalNodeId,
+            NodeId = _localNodeId,
             ListenPort = ListenPort,
             P2PVersion = ProtocolVersion
         };

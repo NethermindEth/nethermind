@@ -136,7 +136,6 @@ public class ProtocolsManagerTests
 
             _rlpxHost = Substitute.For<IRlpxHost>();
             _rlpxHost.LocalPort.Returns(_localPort);
-            _rlpxHost.LocalNodeId.Returns(TestItem.PublicKeyA);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _blockTree = Substitute.For<IBlockTree>();

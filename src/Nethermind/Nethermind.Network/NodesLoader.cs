@@ -7,10 +7,10 @@ using System.Linq;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -23,13 +23,13 @@ namespace Nethermind.Network
         INetworkConfig networkConfig,
         INodeStatsManager stats,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-        IRlpxHost rlpxHost,
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
         ILogManager logManager) : INodeSource
     {
         private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         private readonly INodeStatsManager _stats = stats ?? throw new ArgumentNullException(nameof(stats));
         private readonly INetworkStorage _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-        private readonly IRlpxHost _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
+        private readonly IProtectedPrivateKey _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
         private readonly ILogger _logger = logManager?.GetClassLogger<NodesLoader>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
@@ -53,7 +53,7 @@ namespace Nethermind.Network
             });
 
             IEnumerable<Node> combined = allPeers
-                .Where(p => p.Id != _rlpxHost.LocalNodeId)
+                .Where(p => p.Id != _nodeKey.PublicKey)
                 .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic);
 
             return combined.ToAsyncEnumerable();

@@ -5,10 +5,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -32,8 +33,7 @@ public class NodesLoaderTests
         _discoveryConfig = new DiscoveryConfig();
         _statsManager = Substitute.For<INodeStatsManager>();
         _peerStorage = Substitute.For<INetworkStorage>();
-        IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
-        _loader = new NodesLoader(_networkConfig, _statsManager, _peerStorage, rlpxHost, LimboLogs.Instance);
+        _loader = new NodesLoader(_networkConfig, _statsManager, _peerStorage, new InsecureProtectedPrivateKey(TestItem.PrivateKeyA), LimboLogs.Instance);
     }
 
     [Test]

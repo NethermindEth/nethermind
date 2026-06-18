@@ -138,7 +138,8 @@ namespace Nethermind.Network.Test.P2P
         public void Sets_local_node_id_from_constructor()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            Assert.That(TestItem.PublicKeyA, Is.EqualTo(p2PProtocolHandler.LocalNodeId));
+            p2PProtocolHandler.Init();
+            _session.Received(1).DeliverMessage(Arg.Is<HelloMessage>(m => m.NodeId == TestItem.PublicKeyA));
         }
 
         [Test]
