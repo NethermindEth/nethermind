@@ -11,9 +11,8 @@ using Int256;
 public static partial class EvmInstructions
 {
     /// <summary>
-    /// Body of a fused <c>PUSH const; binary-op</c> pair: the op runs against the pre-decoded
-    /// constant directly on the stack top — no push, no pop, one dispatch. Preserves the exact
-    /// per-op failure order: the push's overflow at a full stack, then the op's underflow.
+    /// Fused <c>PUSH const; binary-op</c>: runs against the pre-decoded constant on the stack top —
+    /// no push/pop, one dispatch. Preserves per-op failure order: push overflow before op underflow.
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -34,10 +33,7 @@ public static partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
-    /// <summary>
-    /// Body of a fused <c>PUSH shift-amount; SHL/SHR</c> pair, mirroring
-    /// <see cref="ShiftCore{TOpShift, TTracingInst}"/> against the pre-decoded amount.
-    /// </summary>
+    /// <summary>Fused <c>PUSH shift-amount; SHL/SHR</c>, mirroring <see cref="ShiftCore{TOpShift, TTracingInst}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, in UInt256 a)
@@ -64,8 +60,8 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Body of a fused <c>PUSH const; bitwise-op</c> pair over the stack-representation pool:
-    /// one vector load per operand, no limb conversion.
+    /// Fused <c>PUSH const; bitwise-op</c> over the stack-representation pool: one vector load per
+    /// operand, no limb conversion.
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]

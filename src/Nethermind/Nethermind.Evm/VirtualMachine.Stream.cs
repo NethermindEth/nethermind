@@ -10,42 +10,26 @@ using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
-/// <summary>
-/// Process-wide switches for the preprocessed-stream interpreter; non-generic so every
-/// <see cref="VirtualMachine{TGasPolicy}"/> instantiation shares one flag and one counter.
-/// </summary>
+/// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 public static class StreamInterpreter
 {
-    /// <summary>
-    /// Rollout switch; off by default, set at startup from <see cref="IEvmConfig.StreamInterpreter"/>.
-    /// Volatile so a test flipping it in-process is visible to frame-executing threads.
-    /// </summary>
+    // Volatile so a test flipping it in-process is visible to frame-executing threads.
     public static volatile bool Enabled;
 
-    /// <summary>
-    /// Executions a <see cref="CodeAnalysis.CodeInfo"/> must reach before its stream is built (see
-    /// <see cref="CodeAnalysis.CodeInfo.GetOrBuildStream"/>). Keeps the one-time build off
-    /// rarely-executed code and pays only for hot code. Set at startup from
-    /// <see cref="IEvmConfig.StreamInterpreterThreshold"/>; minimum 1.
-    /// </summary>
+    // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
 
-    /// <summary>
-    /// Frames executed by the stream interpreter; engagement proof for tests and rollout.
-    /// Bumped via <see cref="Interlocked"/> so the 64-bit count is atomic on 32-bit platforms.
-    /// </summary>
+    // Interlocked-bumped so the 64-bit count is atomic on 32-bit platforms.
     public static long FramesExecuted;
 }
 
 public unsafe partial class VirtualMachine<TGasPolicy>
 {
     /// <summary>
-    /// Executes a frame over the preprocessed <see cref="InstructionStream"/>: per-block static
-    /// gas charged once at each block's first entry, static-cost ops run gas-free cores, fused
-    /// pairs run against their pre-decoded constant, every other op runs the table handler.
-    /// Non-tracing tip-fork frames only. A block whose precharge exceeds remaining gas — or one
-    /// entered past its charging entry — runs the metered micro-loop (raw code, per-op dispatch)
-    /// so the halting op and failure type match per-op interpretation exactly.
+    /// Executes a frame over the preprocessed <see cref="InstructionStream"/>: per-block static gas charged
+    /// once at each block's first entry, in-block ops run gas-free cores. Non-tracing tip-fork frames only.
+    /// A block whose precharge exceeds remaining gas, or one entered past its charging entry, falls to the
+    /// metered micro-loop so the halting op and failure type match per-op interpretation exactly.
     /// </summary>
     [SkipLocalsInit]
     private CallResult RunStream<TCancelable>(
@@ -67,7 +51,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ushort[] pcToEntry = stream.PcToEntry;
         int callDepth = VmState.Env.CallDepth;
         int opCodeCount = 0;
-        // Set when a block's precharge exceeds remaining gas; the block then runs metered.
         bool metered = false;
 
         // Resume pcs land one past code end at most; the bound guards a truncated trailing PUSH.
@@ -123,8 +106,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
                     opCodeCount += 1 + ((byte)entry.Kind & 1);
 
-                    // One dense switch for in-block ops and fused pairs; gas already charged at
-                    // the block entry, so the cores are gas-free. Must stay inline (JIT).
+                    // Gas already charged at the block entry, so the cores are gas-free. Must stay inline (JIT).
                     switch (instruction)
                     {
                         case (Instruction)FusedOpcode.Add:
@@ -243,8 +225,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             break;
                         case Instruction.PUSH1:
                         case >= Instruction.PUSH3 and <= Instruction.PUSH8:
-                            // The analyzer pre-decoded the immediates (full-width only; a
-                            // truncated trailing PUSH stays a boundary op).
+                            // Analyzer pre-decoded full-width immediates; a truncated trailing PUSH stays a boundary op.
                             exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
                             break;
                         case >= Instruction.PUSH9 and <= Instruction.PUSH32:
@@ -260,7 +241,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmExceptionType.None;
                             break;
                         case (Instruction)FusedOpcode.StaticJump:
-                            // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges, jumps to the resolved entry.
+                            // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
                             TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump);
                             if (TGasPolicy.GetRemainingGas(in gas) < 0)
                             {
@@ -290,9 +271,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             break;
                         default:
-                            // Unreachable: every TryGetInBlockCost opcode has a case above, asserted by
-                            // StreamExecutor_DispatchesEveryInBlockOpcode_IdenticallyToBytecodeLoop. A miss
-                            // would precharge then mis-dispatch, so fail closed rather than corrupt gas.
+                            // Unreachable: every in-block opcode has a case above. Fail closed rather than
+                            // mis-dispatch a precharged op and corrupt gas.
                             exceptionType = EvmExceptionType.BadInstruction;
                             break;
                     }
@@ -315,8 +295,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 programCounter++;
                 opCodeCount++;
 
-                // Stack temp by ref keeps programCounter register-resident across the loop (the
-                // boundary calli is the only ref site); mirrors the dispatch loops.
+                // Stack temp by ref keeps programCounter register-resident across the loop.
                 int pc = programCounter;
                 exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
                 programCounter = pc;
@@ -335,8 +314,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (ReturnData is not null)
                     break;
 
-                // Table handlers may consume more than one instruction, so recompute the entry
-                // index from the landing pc. A landing past code end exits cleanly.
+                // Table handlers may consume more than one instruction; recompute the entry from the landing pc.
                 if ((uint)programCounter >= (uint)pcToEntry.Length)
                 {
                     entryIndex = ops.Length;
@@ -406,11 +384,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private enum MeteredOutcome : byte
     {
-        /// <summary>Resume the stream loop at the updated entry index.</summary>
         Continue,
-        /// <summary>Exit the stream loop (exception or frame switch recorded by the caller's refs).</summary>
         BreakLoop,
-        /// <summary>Gas went negative; the caller takes its out-of-gas exit.</summary>
         OutOfGas,
     }
 
@@ -423,9 +398,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         EvmExceptionType Exception);
 
     /// <summary>
-    /// Cold path: per-op metered execution over raw code (exact gas and failure semantics) for a
-    /// block whose precharge didn't fit or that was entered past its charging entry. Kept out of
-    /// <see cref="RunStream{TCancelable}"/> so the hot loop stays small and reducible.
+    /// Cold path: per-op metered execution over raw code (exact gas and failure semantics) for a block whose
+    /// precharge didn't fit. Kept out of <see cref="RunStream{TCancelable}"/> so the hot loop stays small and reducible.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private MeteredResult RunMeteredSegment<TCancelable>(

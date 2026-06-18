@@ -7,10 +7,10 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Evm.CodeAnalysis;
 
 /// <summary>
-/// Caches built <see cref="InstructionStream"/>s by code hash, separately from the CodeInfo cache,
-/// so a stream survives CodeInfo eviction instead of being rebuilt. Keyed by code hash alone: the
-/// stream is fork-agnostic across the specialized dispatch fingerprints (Shanghai+ semantics), which
-/// is the only context it runs in. Cleared together with the code cache on a fork/state change.
+/// Caches built <see cref="InstructionStream"/>s separately from the CodeInfo cache, so a stream
+/// survives CodeInfo eviction. Keyed by code hash alone is safe: the stream is fork-agnostic across
+/// the specialized dispatch fingerprints (Shanghai+), the only context it runs in. Cleared with the
+/// code cache on a fork/state change.
 /// </summary>
 internal static class InstructionStreamCache
 {

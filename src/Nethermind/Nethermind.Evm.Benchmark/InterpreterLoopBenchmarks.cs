@@ -21,10 +21,8 @@ using Nethermind.Specs.Forks;
 namespace Nethermind.Evm.Benchmark
 {
     /// <summary>
-    /// Drives the production interpreter loop (non-tracing, tip-fork specialized dispatch)
-    /// hard enough for tiered compilation to produce the real Tier1 code, on two workload
-    /// shapes: a compute loop (dispatch-bound) and nested calls (frame-cycle-bound).
-    /// The dispatch-layer measuring stick: any interpreter change is judged here first.
+    /// Drives the production interpreter loop hard enough for tiered compilation to reach Tier1,
+    /// on two workload shapes: a dispatch-bound compute loop and frame-cycle-bound nested calls.
     /// </summary>
     [MemoryDiagnoser]
     public class InterpreterLoopBenchmarks
@@ -96,16 +94,14 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Reset();
         }
 
-        // counter-down loop: PUSH val / loop body of arithmetic / JUMPI back — heavy on the
-        // dispatch path the specialized switch serves.
         private static byte[] BuildComputeLoopCode()
         {
             Prepare code = Prepare.EvmCode
-                .PushData(LoopIterations)      // counter
+                .PushData(LoopIterations)
                 .Op(Instruction.JUMPDEST)      // pc 3 (PUSH2 imm is 2 bytes)
                 .PushData(1)
                 .Op(Instruction.SWAP1)
-                .Op(Instruction.SUB)           // counter--
+                .Op(Instruction.SUB)
                 .Op(Instruction.DUP1)
                 .PushData(7)
                 .Op(Instruction.ADD)

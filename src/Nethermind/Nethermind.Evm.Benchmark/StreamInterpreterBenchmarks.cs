@@ -21,9 +21,8 @@ using Nethermind.Specs;
 namespace Nethermind.Evm.Benchmark
 {
     /// <summary>
-    /// Compares the bytecode loop against the stream interpreter (with and without const
-    /// fusion) on a glue-heavy compute loop — the local proxy for the eth_call workload, so
-    /// interpreter changes are measured in minutes instead of node deploy cycles.
+    /// Bytecode loop vs stream interpreter on a glue-heavy compute loop — local proxy for the
+    /// eth_call workload.
     /// </summary>
     [MemoryDiagnoser]
     public class StreamInterpreterBenchmarks
@@ -34,8 +33,6 @@ namespace Nethermind.Evm.Benchmark
             Stream,
         }
 
-        // 1024 iterations of arithmetic/dup/swap glue with fusable PUSH1+op pairs and a
-        // PUSH2+JUMPI loop head — no storage, so the interpreter dominates entirely.
         private static readonly byte[] s_computeLoop =
         [
             (byte)Instruction.PUSH2, 0x04, 0x00,
@@ -59,8 +56,6 @@ namespace Nethermind.Evm.Benchmark
             (byte)Instruction.STOP,
         ];
 
-        // Straight-line dispatcher-like glue (no jumps): 100 repetitions of a fusable
-        // arithmetic/dup/swap pattern with PUSH20 masking — the node-workload-shaped profile.
         private static readonly byte[] StraightLine = BuildStraightLine();
 
         private static byte[] BuildStraightLine()
@@ -143,7 +138,6 @@ namespace Nethermind.Evm.Benchmark
                 value: 0,
                 inputData: default
             );
-
         }
 
         [GlobalCleanup]
@@ -167,9 +161,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark]
         public void ExecuteComputeLoop()
         {
-            // A fresh frame per invocation: a reused VmState resumes at the end of code and
-            // measures nothing. The rent cost is identical across modes and amortized over
-            // ~14k executed ops.
+            // Fresh frame per invocation: a reused VmState resumes at end-of-code and measures nothing.
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
                 EthereumGasPolicy.FromLong(100_000_000), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);

@@ -9,9 +9,8 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.CodeAnalysis;
 
 /// <summary>
-/// Dispatch kind of a <see cref="StreamOp"/>. Values are ordered: "carries the block charge"
-/// is <c>Kind &lt;= FusedBlockFirst</c>, "is precharged" is <c>Kind &lt; Boundary</c>, "is a
-/// fused pair" is <c>(Kind &amp; 1) == 1</c>.
+/// Values are ordered so that: "carries the block charge" is <c>Kind &lt;= FusedBlockFirst</c>,
+/// "is precharged" is <c>Kind &lt; Boundary</c>, "is a fused pair" is <c>(Kind &amp; 1) == 1</c>.
 /// </summary>
 public enum StreamOpKind : byte
 {
@@ -26,9 +25,8 @@ public enum StreamOpKind : byte
 
 /// <summary>
 /// Virtual opcodes for fused PUSH+op pairs, placed in byte values the EVM does not define
-/// (0x0C..0x0F and 0x21..0x2F gaps). Only the analyzer creates entries with these values; a
-/// future fork defining one of them would surface as a boundary op (the in-block set is
-/// explicit), and the fingerprint gate keeps new forks off the stream until reviewed.
+/// (0x0C..0x0F and 0x21..0x2F gaps). The fingerprint gate keeps new forks (which might define
+/// one of these) off the stream until reviewed.
 /// </summary>
 public static class FusedOpcode
 {
@@ -52,10 +50,7 @@ public static class FusedOpcode
     public const byte StaticJump = 0x2E;
     public const byte StaticJumpI = 0x2F;
 
-    /// <summary>
-    /// Binary ops whose first operand is the stack top — a preceding in-block PUSH constant
-    /// folds into them. Must match the executor's fused cases exactly.
-    /// </summary>
+    /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
     {
         switch (instruction)
@@ -92,7 +87,6 @@ public readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushor
     public readonly StreamOpKind Kind = kind;
     /// <summary>Code bytes this entry covers (opcode + immediates; both for a fused pair).</summary>
     public readonly byte Advance = advance;
-    /// <summary>For block-charging kinds: index into <see cref="InstructionStream.BlockGas"/>.</summary>
     public readonly ushort BlockIndex = blockIndex;
     public readonly ushort Pc = pc;
     /// <summary>In-block PUSH immediate (value for widths ≤8 bytes, else index into
@@ -113,7 +107,6 @@ public readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushor
 /// </remarks>
 public sealed class InstructionStream
 {
-    /// <summary>Entry-index sentinel for program counters that are not an entry start.</summary>
     public const ushort InvalidEntry = ushort.MaxValue;
 
     public readonly StreamOp[] Ops;
@@ -162,8 +155,8 @@ public sealed class InstructionStream
 
             if (instruction == Instruction.JUMPDEST)
             {
-                // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having charged it
-                // itself, so the ops that follow must sit in their own, separately charged block.
+                // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it,
+                // so the following ops must sit in their own separately charged block.
                 blockGas.Add(GasCostOf.JumpDest);
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
@@ -174,10 +167,8 @@ public sealed class InstructionStream
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
-                    // The pair becomes one entry under a virtual opcode: the pushed constant
-                    // always lives in the pool (one indexed load at execution, no per-width
-                    // branching), and the pc map forgets this op's own start (nothing can
-                    // land inside a pair).
+                    // Pair becomes one entry: constant goes to the pool (one indexed load, no
+                    // per-width branching) and the pc map forgets this start (nothing lands in a pair).
                     blockGas[openBlock] += cost;
                     pcToEntry[pc] = InvalidEntry;
                     ulong poolIndex;
@@ -226,10 +217,9 @@ public sealed class InstructionStream
                 && (Instruction)code[pc + 3] is Instruction.JUMP or Instruction.JUMPI
                 && TryReadStaticJumpTarget(code, pc) is int dest and >= 0)
             {
-                // PUSH2 const + JUMP/JUMPI with an analysis-validated JUMPDEST: one entry,
-                // jump target resolved to an entry index by the fixup pass below. Gas
-                // (push + jump) is self-charged at execution; the landing JUMPDEST's solo
-                // block charges itself exactly as a taken dynamic jump would.
+                // PUSH2 const + JUMP/JUMPI to a validated JUMPDEST: one entry, target resolved to an
+                // entry index by the fixup pass below. Push+jump gas is self-charged at execution; the
+                // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
                 openBlock = -1;
                 ops.Add(new StreamOp(
@@ -241,9 +231,7 @@ public sealed class InstructionStream
             }
             else
             {
-                // Includes dynamic JUMP/JUMPI/PUSH2 (the table keeps the fused PUSH2+JUMP
-                // handler) and a trailing PUSH whose immediates are truncated by the end of
-                // code.
+                // Dynamic JUMP/JUMPI/PUSH2 and trailing truncated PUSHes.
                 openBlock = -1;
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, 0));
             }
@@ -251,25 +239,21 @@ public sealed class InstructionStream
             pc += size;
         }
 
-        // Entry indexes live in the ushort pc map; oversized streams fall back to the
-        // bytecode loop.
+        // Entry indexes are ushort; oversized streams fall back to the bytecode loop.
         if (ops.Count >= InvalidEntry)
             return null;
 
         pcToEntry[code.Length] = (ushort)ops.Count;
 
-        // Static jump targets were recorded as destination pcs; resolve them to entry indexes
-        // now that every entry exists (forward jumps included).
+        // Resolve static jump target pcs to entry indexes now that every entry exists.
         for (int i = 0; i < ops.Count; i++)
         {
             StreamOp op = ops[i];
             if (op.Kind is StreamOpKind.StaticJump or StreamOpKind.StaticJumpI)
             {
                 ushort targetEntry = pcToEntry[(int)op.Operand];
-                // The raw byte at the target was 0x5B, but a JUMPDEST is always a solo block, so a
-                // real one maps to an entry. InvalidEntry means the target is a PUSH immediate (or
-                // other non-entry pc) — not a valid jump. Refuse to stream this code so the bytecode
-                // loop's ValidateJump produces the correct InvalidJumpDestination / fall-through.
+                // InvalidEntry means the 0x5B target is a PUSH immediate, not a real JUMPDEST. Refuse
+                // to stream so the bytecode loop's ValidateJump produces the correct failure.
                 if (targetEntry == InvalidEntry)
                     return null;
                 ops[i] = new StreamOp(op.Opcode, op.Kind, op.Pc, op.BlockIndex, op.Advance, targetEntry);
@@ -280,10 +264,9 @@ public sealed class InstructionStream
     }
 
     /// <summary>
-    /// The static-cost op set the stream executor runs unmetered; must match the executor's
-    /// in-block switch exactly. PUSH2 is excluded (keeps the table's fused PUSH2+JUMP);
-    /// PUSH9+ and DUP9+/SWAP9+ are excluded to keep the executor switch within the size the
-    /// JIT inlines.
+    /// The static-cost op set run unmetered; must match the executor's in-block switch exactly.
+    /// PUSH2 excluded (keeps fused PUSH2+JUMP); PUSH9+/DUP9+/SWAP9+ excluded to keep the switch
+    /// within the size the JIT inlines.
     /// </summary>
     public static bool TryGetInBlockCost(Instruction instruction, out long cost)
     {
@@ -326,9 +309,7 @@ public sealed class InstructionStream
         }
     }
 
-    /// <summary>Reads the PUSH2 immediate at <paramref name="pc"/> and returns it when it
-    /// points at a JUMPDEST; -1 otherwise (the pair then stays a boundary op and fails at
-    /// runtime exactly like a dynamic jump).</summary>
+    /// <summary>Returns the PUSH2 immediate at <paramref name="pc"/> when it points at a JUMPDEST; -1 otherwise.</summary>
     private static int TryReadStaticJumpTarget(ReadOnlySpan<byte> code, int pc)
     {
         int dest = (code[pc + 1] << 8) | code[pc + 2];

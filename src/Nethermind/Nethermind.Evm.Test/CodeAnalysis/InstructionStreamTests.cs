@@ -114,10 +114,8 @@ public class InstructionStreamTests
 
     private static IEnumerable<TestCaseData> BoundaryFallbackCases()
     {
-        // PUSH2+JUMP to a non-JUMPDEST: stays a dynamic-jump table pair.
         yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH2, 0x00, 0x04, (byte)Instruction.JUMP, (byte)Instruction.STOP })
         { TestName = "Push2JumpToNonJumpdest" };
-        // Truncated trailing PUSH: keeps the table handler's padding semantics.
         yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH4, 0x01, 0x02 })
         { TestName = "TruncatedTrailingPush" };
     }
@@ -234,8 +232,6 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         .Op(Instruction.STOP)
         .Done;
 
-    // PUSH2 0x0007; JUMPI loop counting down — exercises the fused PUSH2+JUMPI handler and
-    // the per-iteration recharge of the jump-target block.
     private static readonly byte[] s_fusedPush2JumpiLoop =
     [
         (byte)Instruction.PUSH1, 200,                  // counter
@@ -249,8 +245,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         (byte)Instruction.STOP,
     ];
 
-    // Code ends inside PUSH2's immediates; the program counter runs past the end of code and
-    // the stream must exit as cleanly as the bytecode loop does.
+    // Code ends inside PUSH2's immediates: pc runs past end-of-code; the stream must still exit cleanly.
     private static readonly byte[] s_truncatedTrailingPush2 =
     [
         (byte)Instruction.PUSH1, 1,
@@ -271,9 +266,8 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private static Address CalleeAddress => TestItem.AddressC;
     private static Address SolidityExampleAddress => TestItem.AddressE;
 
-    // Runtime code of the Legacy stExample.solidityExample contract — the smallest real-world
-    // reproducer of the mainnet stream divergence (CREATE of a child contract, then a CALL into
-    // it, with fused PUSH2+JUMPI dispatchers throughout).
+    // Runtime code of Legacy stExample.solidityExample — smallest real-world reproducer of the
+    // mainnet stream divergence (CREATE child contract, then CALL into it).
     private const string SolidityExampleRuntime =
         "608060405234801561001057600080fd5b506004361061002b5760003560e01c8063b66176a714610030575b600080fd5b61004a6004803603810190610045919061018d565b61004c565b005b60405161005890610145565b604051809103906000f080158015610074573d6000803e3d6000fd5b506000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555060008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663b66176a783836040518363ffffffff1660e01b815260040161010f9291906101dc565b600060405180830381600087803b15801561012957600080fd5b505af115801561013d573d6000803e3d6000fd5b505050505050565b6101238061020683390190565b600080fd5b6000819050919050565b61016a81610157565b811461017557600080fd5b50565b60008135905061018781610161565b92915050565b600080604083850312156101a4576101a3610152565b5b60006101b285828601610178565b92505060206101c385828601610178565b9150509250929050565b6101d681610157565b82525050565b60006040820190506101f160008301856101cd565b6101fe60208301846101cd565b939250505056fe608060405267ff00ff00ff00ff0060005534801561001c57600080fd5b5060f88061002b6000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063b66176a714602d575b600080fd5b60436004803603810190603f91906089565b6045565b005b806000819055508082555050565b600080fd5b6000819050919050565b6069816058565b8114607357600080fd5b50565b6000813590506083816062565b92915050565b60008060408385031215609d57609c6053565b5b600060a9858286016076565b925050602060b8858286016076565b915050925092905056fea26469706673582212209beb73a466a9b6fcce247e8e1ec0ac303febcb2192064276aa2188d57d06a98d64736f6c63430008150033a2646970667358221220223335c3b4079496a81c6cbdfc0adb8a4b8ed0637499a9301f31c89383d238e164736f6c63430008150033";
 
@@ -286,8 +280,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
 
     private static byte[] BuildOutOfGasMidBlock()
     {
-        // ~2000 in-block ops behind a tx gas limit (set in the runner) that cannot cover
-        // them: the charge-refused first block must die metered at the exact per-op point.
+        // ~2000 in-block ops behind a gas limit that can't cover them: must die metered at the exact per-op point.
         byte[] code = new byte[2001];
         code[0] = (byte)Instruction.PUSH0;
         for (int i = 1; i < 2000; i++)
@@ -330,7 +323,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     public void StreamInterpreter_ComparedToByteCodeLoop_IsObservablyIdentical(byte[] code)
     {
         ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
-        // The baseline run commits state; reset so the stream run sees the same starting world.
+        // Baseline run commits state; reset so the stream run sees the same starting world.
         Setup();
 
         long framesBefore = StreamInterpreter.FramesExecuted;
@@ -346,8 +339,8 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         }
     }
 
-    // Guards the consensus invariant that the executor's in-block switch covers exactly the
-    // TryGetInBlockCost set: a precharged op with no case returns BadInstruction, diverging here.
+    // Guards that the executor's in-block switch covers exactly the TryGetInBlockCost set:
+    // a precharged op with no case returns BadInstruction and diverges here.
     [TestCaseSource(nameof(InBlockOpcodes))]
     public void StreamExecutor_DispatchesEveryInBlockOpcode_IdenticallyToBytecodeLoop(Instruction op)
     {
@@ -392,14 +385,13 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         StreamInterpreter.Enabled = useStream;
         try
         {
-            // The base Execute helper caps gas at 100k; the CREATE-heavy cases need more.
+            // Base Execute helper caps gas at 100k; the CREATE-heavy cases need more.
             (Block block, Transaction transaction) = PrepareTx(Activation, 8_000_000, code);
 
             if (useStream)
             {
-                // Production builds the stream asynchronously past a threshold, which this
-                // single-execution differential would never reach. Lower the threshold and wait
-                // for the background build to publish on the very CodeInfo the run will use.
+                // Production builds the stream asynchronously past a threshold this single run never
+                // reaches; lower it and wait for the background build to publish on this CodeInfo.
                 StreamInterpreter.BuildThreshold = 1;
                 CodeInfo codeInfo = CodeInfoRepository.GetCachedCodeInfo(Recipient, Spec);
                 if (!System.Threading.SpinWait.SpinUntil(() => codeInfo.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)))
