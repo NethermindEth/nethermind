@@ -52,10 +52,7 @@ public static partial class EvmInstructions
         return BitwiseCore<TOpBitwise>(ref stack);
     }
 
-    /// <summary>
-    /// Gas-free body of <see cref="InstructionBitwise{TGasPolicy, TOpBitwise}"/>;
-    /// also run directly by the stream executor inside precharged basic blocks.
-    /// </summary>
+    /// <summary>Gas-free body of <see cref="InstructionBitwise{TGasPolicy, TOpBitwise}"/>, also run directly by the stream executor inside precharged blocks.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType BitwiseCore<TOpBitwise>(ref EvmStack stack)

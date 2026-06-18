@@ -57,16 +57,14 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     private int _streamHits;
     private int _streamBuildScheduled;
 
-    // Set by the repository when this CodeInfo is cached; the key into the shared
-    // InstructionStreamCache so a built stream survives this instance's eviction.
+    // Key into the shared InstructionStreamCache (set by the repository), so a built stream
+    // survives this instance's eviction.
     public ValueHash256 CodeHash { get; set; }
 
     /// <summary>
-    /// Returns the built stream, or <c>null</c> until it is ready. After
-    /// <see cref="StreamInterpreter.BuildThreshold"/> executions the build is scheduled once on the
-    /// thread pool; callers keep getting <c>null</c> (and run the raw interpreter) until it
-    /// publishes, so no call ever blocks. Always <c>null</c> for unstreamable code (empty,
-    /// precompile, oversized). Lock-free: a CAS guards single scheduling, another single publication.
+    /// Returns the built stream, or <c>null</c> until ready: past <see cref="StreamInterpreter.BuildThreshold"/>
+    /// the build is scheduled once on the thread pool and callers keep getting <c>null</c> until it publishes,
+    /// so no call blocks. Lock-free via two CASes (schedule, publish).
     /// </summary>
     public InstructionStream? GetOrBuildStream()
     {
