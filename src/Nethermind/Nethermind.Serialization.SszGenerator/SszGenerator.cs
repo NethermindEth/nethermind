@@ -1034,9 +1034,9 @@ internal static class SszCodecHelpers
         string arguments = $"{target}, {EncodeValueExpression(property, expression)}";
         if (property.Kind == Kind.BitList)
         {
-            // The bitlist Encode limit parameter is int-typed (and unused); clamp so bitlists
-            // declared with limits beyond int.MaxValue still emit compilable code.
-            arguments += $", {Math.Min(property.Limit!.Value, int.MaxValue)}";
+            // The Encode limit parameter is int-typed; bitlist limits beyond int.MaxValue are
+            // rejected at parse time (a BitArray cannot exceed int.MaxValue bits), so this fits.
+            arguments += $", {property.Limit!.Value}";
         }
         else if (property.Kind == Kind.ProgressiveBitList)
         {

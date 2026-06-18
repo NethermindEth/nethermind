@@ -6,19 +6,6 @@ using Nethermind.Network.Enr;
 namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
 /// <summary>Protocol-level ENR acceptance policy of a discv5 instance.</summary>
-/// <remarks>
-/// Discv5 is one DHT shared by execution- and consensus-layer nodes, so every instance sees both
-/// kinds of records. Which records are useful is a property of the instance's purpose, not of the
-/// protocol: the execution layer's instance discovers RLPx peers and must drop consensus-only ENRs
-/// (an <c>eth2</c> entry without an <c>eth</c> entry) or its routing table fills with peers it can
-/// never dial; a consensus-layer instance — e.g. the embedded beacon chain driver's discovery —
-/// exists precisely to find those records. The policy is therefore a required dependency of the
-/// record-handling components (<see cref="Handlers.NodesResponseHandler"/>,
-/// <see cref="KademliaAdapter"/>, <see cref="NodeSource"/>) rather than a hard-coded check;
-/// <see cref="KademliaModule"/> registers <see cref="ExecutionLayerDiscv5RecordFilter"/> by
-/// default, and a consensus-layer composition scope overrides the registration with
-/// <see cref="AcceptAllDiscv5RecordFilter"/>.
-/// </remarks>
 public interface IDiscv5RecordFilter
 {
     /// <summary>Returns whether this discv5 instance must drop the record.</summary>

@@ -478,11 +478,4 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public FixedC[] Items { get; set; }
     }
 
-    [SszContainer(isCollectionItself: true)]
-    public partial struct HugeLimitBitlist
-    {
-        [SszList(1_099_511_627_776)]
-        public BitArray? Bits { get; set; }
-    }
-
 }

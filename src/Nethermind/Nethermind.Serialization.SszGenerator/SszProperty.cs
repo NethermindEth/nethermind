@@ -60,12 +60,14 @@ class SszProperty
             AttributeData? listAttr = GetAttribute(attributes, nameof(SszListAttribute));
             if (listAttr is not null)
             {
-                result.Limit = listAttr.ConstructorArguments.FirstOrDefault().Value switch
+                ulong limit = listAttr.ConstructorArguments.FirstOrDefault().Value as ulong? ?? 0UL;
+                if (prop.Type.Name == nameof(BitArray) && limit > int.MaxValue)
                 {
-                    ulong limit => limit,
-                    int limit => (ulong)limit,
-                    _ => 0UL,
-                };
+                    throw new InvalidOperationException(
+                        $"Bitlist property {prop.ContainingType.Name}.{prop.Name} declares limit {limit}, but a BitArray cannot exceed int.MaxValue bits.");
+                }
+
+                result.Limit = limit;
             }
 
             result.IsProgressiveList = HasAttribute(attributes, nameof(SszProgressiveListAttribute));

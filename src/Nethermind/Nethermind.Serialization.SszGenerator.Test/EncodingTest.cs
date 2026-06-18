@@ -126,21 +126,11 @@ public class EncodingTest
         Merkle.Merkleize(out UInt256 expectedCompositeRoot, itemRoots, Limit);
         Merkle.MixIn(ref expectedCompositeRoot, compositeItems.Length);
 
-        // Bitlists with huge limits must still produce compilable generated code (the runtime
-        // bitlist Encode limit is int-typed and unused; validation/merkleization take ulong).
-        HugeLimitBitlist bitlist = new() { Bits = MakeSampleBits10() };
-        byte[] encodedBits = HugeLimitBitlist.Encode(bitlist);
-        HugeLimitBitlist.Decode(encodedBits, out HugeLimitBitlist decodedBits);
-        HugeLimitBitlist.Merkleize(bitlist, out UInt256 bitlistRoot);
-        Merkle.Merkleize(out UInt256 expectedBitlistRoot, MakeSampleBits10(), Limit);
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decodedBasic.Items, Is.EqualTo(basicItems));
             Assert.That(basicRoot, Is.EqualTo(expectedBasicRoot));
             Assert.That(compositeRoot, Is.EqualTo(expectedCompositeRoot));
-            Assert.That(decodedBits.Bits!.Cast<bool>(), Is.EqualTo(bitlist.Bits!.Cast<bool>()));
-            Assert.That(bitlistRoot, Is.EqualTo(expectedBitlistRoot));
         }
     }
 
