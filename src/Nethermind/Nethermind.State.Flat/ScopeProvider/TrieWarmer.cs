@@ -54,8 +54,13 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         _logger = logManager.GetClassLogger<TrieWarmer>();
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
+        // Default to ProcessorCount - 1 warmers. Processors self-unschedule when their queues drain
+        // (see Execute), so an idle warmer holds no thread and a higher cap costs nothing at rest;
+        // under load it restores the warming parallelism needed to keep ahead of execution on
+        // read-heavy blocks. A lower cap (e.g. ProcessorCount / 2) measurably regresses the P90/P95
+        // shoulder on realblocks by starving warming on those blocks.
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount / 2, 1)
+            ? Math.Max(Environment.ProcessorCount - 1, 1)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
