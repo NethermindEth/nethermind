@@ -3,6 +3,7 @@
 
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -23,6 +24,10 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public async Task Start_stop()
         {
+            IIPResolver ipResolver = Substitute.For<IIPResolver>();
+            ipResolver.Resolve(Arg.Any<CancellationToken>())
+                .Returns(new ValueTask<NethermindIp>(new NethermindIp(IPAddress.Any, IPAddress.None)));
+
             RlpxHost host = new(
                 Substitute.For<IMessageSerializationService>(),
                 new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
@@ -37,6 +42,7 @@ namespace Nethermind.Network.Test.Rlpx
                     ConnectTimeoutMs = 200,
                     SimulateSendLatencyMs = 0,
                 },
+                ipResolver,
                 LimboLogs.Instance);
             await host.Init();
             await host.Shutdown();

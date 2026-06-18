@@ -438,8 +438,8 @@ public class EthereumRunnerTests
                 base.Load(builder);
 
                 IIPResolver ipResolver = Substitute.For<IIPResolver>();
-                ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
-                ipResolver.LocalIp.Returns(IPAddress.Parse("127.0.0.1"));
+                ipResolver.Resolve(Arg.Any<CancellationToken>())
+                    .Returns(new ValueTask<NethermindIp>(new NethermindIp(IPAddress.Parse("127.0.0.1"), IPAddress.Parse("127.0.0.1"))));
 
                 builder
                     .AddSingleton(ipResolver)

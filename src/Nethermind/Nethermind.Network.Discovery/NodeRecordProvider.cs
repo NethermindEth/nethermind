@@ -24,7 +24,7 @@ public class NodeRecordProvider(
         // TODO: Add forkid
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(IdEntry.Instance);
-        selfNodeRecord.SetEntry(new IpEntry(ipResolver.ExternalIp));
+        selfNodeRecord.SetEntry(new IpEntry(ipResolver.Resolve().GetAwaiter().GetResult().ExternalIp));
         selfNodeRecord.SetEntry(new TcpEntry(networkConfig.P2PPort));
         selfNodeRecord.SetEntry(new UdpEntry(networkConfig.DiscoveryPort));
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));

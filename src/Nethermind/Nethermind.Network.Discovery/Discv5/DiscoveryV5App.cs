@@ -64,7 +64,8 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         _discoveryDb = discoveryDb;
         _legacyDiscoveryDb = legacyDiscoveryDb;
         _logManager = logManager;
-        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(ipResolver.ExternalIp);
+        IPAddress externalIp = ipResolver.Resolve().GetAwaiter().GetResult().ExternalIp;
+        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(externalIp);
         IdentityVerifierV4 identityVerifier = new();
 
         PrivateKey privateKey = nodeKey.Unprotect();
@@ -91,7 +92,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         EnrBuilder enrBuilder = new EnrBuilder()
             .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
             .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Ip, new EntryIp(ipResolver.ExternalIp))
+            .WithEntry(EnrEntryKey.Ip, new EntryIp(externalIp))
             .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
             .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
             .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));

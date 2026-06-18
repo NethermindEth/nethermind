@@ -19,17 +19,39 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
     private readonly ILogManager _logManager = logManager;
 
-    public async Task Initialize(CancellationToken cancellationToken = default)
+    private readonly Lock _lock = new();
+    private Task<NethermindIp>? _resolveTask;
+
+    public ValueTask<NethermindIp> Resolve(CancellationToken cancellationToken = default)
     {
+        Task<NethermindIp>? task = Volatile.Read(ref _resolveTask);
+        if (task is not null) return new ValueTask<NethermindIp>(task);
+
+        lock (_lock)
+        {
+            task = _resolveTask ??= ResolveCore(cancellationToken);
+        }
+
+        return new ValueTask<NethermindIp>(task);
+    }
+
+    private async Task<NethermindIp> ResolveCore(CancellationToken cancellationToken)
+    {
+        IPAddress localIp;
         try
         {
-            LocalIp = await InitializeLocalIp();
+            localIp = await InitializeLocalIp();
         }
         catch (Exception)
         {
-            LocalIp = IPAddress.Loopback;
+            localIp = IPAddress.Loopback;
         }
 
+        return new NethermindIp(localIp, await ResolveExternalIp(cancellationToken));
+    }
+
+    private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)
+    {
         const int maxAttempts = 5;
         const int delaySeconds = 2;
 
@@ -43,10 +65,10 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
 
             try
             {
-                ExternalIp = await InitializeExternalIp();
-                if (!Equals(ExternalIp, IPAddress.Any) && !Equals(ExternalIp, IPAddress.None))
+                IPAddress externalIp = await InitializeExternalIp();
+                if (!Equals(externalIp, IPAddress.Any) && !Equals(externalIp, IPAddress.None))
                 {
-                    return;
+                    return externalIp;
                 }
             }
             catch (Exception)
@@ -55,13 +77,9 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             }
         }
 
-        ExternalIp = IPAddress.None;
         if (_logger.IsWarn) _logger.Warn("External IP could not be resolved after all retries. Peers will not be able to connect.");
+        return IPAddress.None;
     }
-
-    public IPAddress LocalIp { get; private set; }
-
-    public IPAddress ExternalIp { get; private set; }
 
     private async Task<IPAddress> InitializeExternalIp()
     {

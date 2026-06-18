@@ -144,7 +144,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 // Configs
                 config,
                 clParameters,
-                _api.IpResolver.ExternalIp,
+                _api.IpResolver.Resolve().GetAwaiter().GetResult().ExternalIp,
                 _api.SpecProvider.ChainId,
                 _api.ChainSpec.Genesis.Timestamp,
                 // Logging

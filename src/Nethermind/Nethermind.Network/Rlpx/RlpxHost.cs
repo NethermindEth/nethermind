@@ -68,6 +68,7 @@ namespace Nethermind.Network.Rlpx
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
             INetworkConfig networkConfig,
+            IIPResolver ipResolver,
             ILogManager logManager,
             IChannelFactory? channelFactory = null)
         {
@@ -96,7 +97,8 @@ namespace Nethermind.Network.Rlpx
             _handshakeService = handshakeService;
             LocalNodeId = nodeKey.PublicKey;
             LocalPort = networkConfig.P2PPort;
-            LocalIp = networkConfig.LocalIp;
+            NethermindIp ips = ipResolver.Resolve().GetAwaiter().GetResult();
+            LocalIp = ips.LocalIp.ToString();
             _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
             _connectTimeout = TimeSpan.FromMilliseconds(networkConfig.ConnectTimeoutMs);
             _channelFactory = channelFactory;
@@ -107,8 +109,7 @@ namespace Nethermind.Network.Rlpx
             _markDisconnectedAfterCloseDelay = MarkDisconnectedAfterCloseDelay;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
-            IPAddress? currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? ip) ? ip : null;
-            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, currentIp);
+            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
         }
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.TryAccept(ip, exactOnly);
