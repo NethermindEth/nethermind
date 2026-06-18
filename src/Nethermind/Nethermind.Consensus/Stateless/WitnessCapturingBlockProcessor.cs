@@ -56,10 +56,10 @@ public sealed class WitnessCapturingBlockProcessor(
     IBlockProcessor inner,
     WitnessCapturingWorldStateProxy proxy,
     WitnessCapturingHeaderFinder headerFinder,
+    WitnessCapturingTrieStore trieStore,
     WitnessCaptureSession session,
     WitnessRendezvous rendezvous,
     IStateReader stateReader,
-    IWorldStateManager worldStateManager,
     ILogManager? logManager = null) : IBlockProcessor
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
@@ -95,17 +95,10 @@ public sealed class WitnessCapturingBlockProcessor(
 
         WitnessTrieStoreRecorder trieRecorder = new();
         WitnessHeaderRecorder headerRecorder = new();
-        // Backend-agnostic fallback store: CreateReadOnlyTrieStore returns the backend-appropriate
-        // read-only store (patricia ReadOnlyTrieStore or flat FlatReadOnlyTrieStore), so this builds
-        // no patricia machinery on a flat node. Live trie-node capture during execution happens
-        // elsewhere — the main-world ITrieStore decorator on patricia, the trie-read observer on
-        // flat — both feeding the same recorder; this instance backs only GetWitness's rarely-hit
-        // root-resolution fallback.
-        WitnessCapturingTrieStore fallbackTrieStore = new(worldStateManager.CreateReadOnlyTrieStore(), session);
         WitnessGeneratingWorldState recorder = new(
             proxy.InnerState,
             stateReader,
-            fallbackTrieStore,
+            trieStore,
             trieRecorder,
             headerRecorder,
             headerFinder.Inner);

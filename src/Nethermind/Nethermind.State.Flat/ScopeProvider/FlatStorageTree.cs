@@ -36,8 +36,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         ConcurrencyController concurrencyQuota,
         Hash256 storageRoot,
         Address address,
-        ILogManager logManager,
-        ITrieNodeReadObserver? trieReadObserver = null)
+        ILogManager logManager)
     {
         _scope = scope;
         _trieCacheWarmer = trieCacheWarmer;
@@ -46,7 +45,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _addressHash = address.ToAccountPath.ToHash256();
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
-        StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash, trieReadObserver);
+        StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
         StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
 
         _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)

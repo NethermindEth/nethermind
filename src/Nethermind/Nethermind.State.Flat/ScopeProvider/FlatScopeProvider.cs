@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -17,8 +16,7 @@ public class FlatScopeProvider(
     ITrieWarmer trieWarmer,
     ResourcePool.Usage usage,
     ILogManager logManager,
-    bool isReadOnly,
-    ITrieNodeReadObserver? trieReadObserver = null)
+    bool isReadOnly)
     : IWorldStateScopeProvider, IDisposable
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
@@ -46,8 +44,7 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             warmReadPool: _warmReadPool,
-            isReadOnly: isReadOnly,
-            trieReadObserver: trieReadObserver);
+            isReadOnly: isReadOnly);
     }
 
     public void Dispose()

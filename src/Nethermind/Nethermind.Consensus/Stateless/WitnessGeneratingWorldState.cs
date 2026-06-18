@@ -51,14 +51,11 @@ public class WitnessGeneratingWorldState(
         // wouldn't require it.
         if (!trieRecorder.TouchedNodesRlp.Any())
         {
-            // No storage-slot or account reads — lazy TrieNode handling can leave the root node
-            // uncaptured. Resolve it explicitly so the witness still includes it.
-            //
-            // BeginScope is required on flat — the fresh read-only store gathers its snapshot bundle
-            // per scope, keyed by (blockNumber, stateRoot); without it the resolve throws. On patricia
-            // it is a no-op (content-addressed store, globally available). Scoped here (not hoisted) so
-            // flat only gathers the bundle on the rare blocks where this fallback actually fires.
-            using IDisposable _ = trieStore.BeginScope(parentHeader);
+            // When there are no storage-slot or account reads, lazy TrieNode handling can leave the root node
+            // unrecorded, especially when recording is skipped for nodes with an unknown type.
+            // To ensure the witness still includes the root node in this case, we explicitly resolve it here
+            // through the capturing trie store so the read lands on the recorder.
+            // This usually works because trie nodes, and especially the root node, tend to be cached.
             ITrieNodeResolver stateResolver = trieStore.GetTrieStore(null);
             TreePath path = TreePath.Empty;
             TrieNode node = stateResolver.FindCachedOrUnknown(path, parentHeader.StateRoot!);

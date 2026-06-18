@@ -39,7 +39,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
-    private readonly ITrieNodeReadObserver? _trieReadObserver;
     internal volatile bool _pausePrewarmer = false;
 
     private CancellationTokenSource? _hintBalCts;
@@ -56,18 +55,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
-        bool isReadOnly = false,
-        ITrieNodeReadObserver? trieReadObserver = null)
+        bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
-        _trieReadObserver = trieReadObserver;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, trieReadObserver),
+            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
             logManager
         )
         {
@@ -354,8 +351,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _concurrencyQuota,
             storageRoot,
             address,
-            _logManager,
-            _trieReadObserver);
+            _logManager);
 
         return storage;
     }

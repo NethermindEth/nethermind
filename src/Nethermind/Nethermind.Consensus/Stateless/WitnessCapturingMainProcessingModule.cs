@@ -9,6 +9,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -61,6 +62,13 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
                 ctx.Resolve<IPrecompileProvider>(),
                 () => session.IsActive);
         });
+
+        // Typed-singleton bridge for the main-world trie store's read-tap (registered as the
+        // ITrieStore decorator by the merge plugin at root), mirroring the proxy and header-finder
+        // bridges above: the block processor hands it to the per-block recorder so GetWitness's
+        // fallback root resolution flows through the tap and lands on the armed trie recorder.
+        builder.AddSingleton<WitnessCapturingTrieStore>(ctx =>
+            (WitnessCapturingTrieStore)ctx.Resolve<ITrieStore>());
 
         builder.AddDecorator<IBlockProcessor, WitnessCapturingBlockProcessor>();
     }

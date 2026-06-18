@@ -38,7 +38,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Json;
@@ -298,12 +297,6 @@ public class BaseMergePluginModule : Module
             // live store persists state, so commits must forward rather than hit NullCommitter.
             .AddDecorator<ITrieStore>((ctx, trieStore) =>
                 new WitnessCapturingTrieStore(trieStore, ctx.Resolve<WitnessCaptureSession>(), readOnly: false))
-            // Flat-side capture: FlatWorldStateManager threads this observer into its main world
-            // state's trie adapters, so commit-time merkleization reads (write paths + collapse
-            // siblings) land on the armed session's trie recorder. Inert when no capture is armed;
-            // never resolved on patricia (the optional ctor param is only on the flat manager).
-            // Use that as flat db doesn't have ITrieStore to wrap in WitnessCapturingTrieStore for main processing pipeline
-            .AddSingleton<ITrieNodeReadObserver, WitnessTrieNodeReadObserver>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
