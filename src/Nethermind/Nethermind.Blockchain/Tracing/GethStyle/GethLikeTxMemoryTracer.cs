@@ -16,7 +16,6 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
 
-    // Per-address cumulative storage (matches go-ethereum): captured only at SLOAD/SSTORE, never cleared on call return.
     private readonly Dictionary<Address, Dictionary<string, string>> _storageByAddress = [];
 
     public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)

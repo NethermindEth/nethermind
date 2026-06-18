@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// Streams Geth-style struct-log entries directly to a <see cref="Utf8JsonWriter"/> without allocating
 /// per-opcode <see cref="GethTxMemoryTraceEntry"/> objects. Peak memory is bounded by a single opcode's
 /// stack/memory plus, when storage tracing is enabled, the cumulative per-address storage map for the
-/// transaction (as in go-ethereum).
+/// transaction.
 /// </summary>
 public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 {
@@ -54,7 +54,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
 
-    // Per-address cumulative storage (matches go-ethereum): captured only at SLOAD/SSTORE, never cleared on call return.
     private readonly Dictionary<Address, PooledDictionary<UInt256, UInt256>> _storageByAddress = [];
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
@@ -288,8 +287,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private void WriteStorageObjectIfPresent()
     {
-        // No clone needed (unlike go-ethereum's maps.Clone): this runs at the next StartOperation, before that
-        // opcode executes and mutates the map, so _pendingStorageMap is still the pending opcode's snapshot.
         _writer.WriteStartObject("storage"u8);
         foreach (KeyValuePair<UInt256, UInt256> kv in _pendingStorageMap!)
         {

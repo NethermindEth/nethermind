@@ -329,9 +329,6 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             1, // STOP [34]
         }; */
 
-        // Geth's struct logger (execution-apis#762) records storage only on SLOAD/SSTORE entries; every other
-        // entry omits the field (null). The snapshot is the cumulative set of slots touched by that frame's
-        // contract so far, and is NOT inherited across call levels.
         static string Slot(string index) => "0x" + index.PadLeft(64, '0');
         string ZeroWord = "0x" + HexZero.PadLeft(64, '0');
 
@@ -470,10 +467,6 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     [Test]
     public void Storage_snapshot_accumulates_per_address_across_repeated_calls_to_same_contract()
     {
-        // Contract at AddressC writes slot 0x1 then slot 0x2 on every invocation. The root contract calls it
-        // twice. Mirroring go-ethereum's struct logger (execution-apis#762), storage accumulates per contract
-        // address for the whole tx and is never cleared on call return, so on the SECOND invocation the very
-        // first SSTORE (slot 0x1) must already snapshot the cumulative {0x1, 0x2} from the first invocation.
         const string val1 = "11";
         const string val2 = "22";
 

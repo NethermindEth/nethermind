@@ -31,7 +31,7 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
             }
             else if (sizeAvailable > 0)
             {
-                // Zero-pad a partial word to a full 32-byte chunk, matching go-ethereum's struct logger.
+                // Zero-pad a partial word to a full 32-byte chunk
                 paddedWord.Clear();
                 _memory.Slice(traceLocation, sizeAvailable).Span.CopyTo(paddedWord);
                 memory[i] = paddedWord.ToHexString(true);
