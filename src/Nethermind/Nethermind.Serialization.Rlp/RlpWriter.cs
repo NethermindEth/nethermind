@@ -5,7 +5,6 @@ using System;
 using System.Runtime.InteropServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp;
