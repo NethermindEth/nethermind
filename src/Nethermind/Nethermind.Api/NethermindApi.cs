@@ -77,7 +77,6 @@ namespace Nethermind.Api
         public ILogManager LogManager => _dependencies.LogManager;
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IProtocolsManager? ProtocolsManager => Context.Resolve<IProtocolsManager>();
-        public IReceiptStorage? ReceiptStorage => Context.Resolve<IReceiptStorage>();
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public string SealEngineType => ChainSpec.SealEngineType;

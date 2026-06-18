@@ -20,7 +20,6 @@ namespace Nethermind.Api
         ISignerStore? EngineSignerStore { get; set; }
         [SkipServiceCollection]
         IProtectedPrivateKey? NodeKey { get; set; }
-        IReceiptStorage? ReceiptStorage { get; }
         IReceiptFinder ReceiptFinder { get; }
         IWallet? Wallet { get; set; }
     }
