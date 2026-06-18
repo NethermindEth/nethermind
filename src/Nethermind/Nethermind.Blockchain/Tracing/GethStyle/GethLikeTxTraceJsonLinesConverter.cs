@@ -56,8 +56,7 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
 
         if ((value.Memory?.Length ?? 0) != 0)
         {
-            // Each word from TraceMemory.ToHexWordList() is individually 0x-prefixed; strip the per-word
-            // prefix and emit a single contiguous 0x-prefixed blob to preserve the file format's shape.
+            // TraceMemory words are individually 0x-prefixed; strip per-word prefixes for a single contiguous blob.
             StringBuilder memory = new("0x");
             foreach (string word in value.Memory!)
                 memory.Append(word.AsSpan(2));

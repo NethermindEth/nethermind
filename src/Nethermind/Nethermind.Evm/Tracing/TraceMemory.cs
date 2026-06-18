@@ -18,7 +18,6 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
         string[] memory = new string[(int)Size / EvmPooledMemory.WordSize + (Size % EvmPooledMemory.WordSize == 0 ? 0 : 1)];
         int traceLocation = 0;
 
-        // Reused buffer for zero-padding a trailing partial word to a full 32-byte chunk.
         Span<byte> paddedWord = stackalloc byte[EvmPooledMemory.WordSize];
 
         int i = 0;

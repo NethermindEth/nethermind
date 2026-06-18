@@ -20,9 +20,10 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 /// <summary>
-/// Streams Geth-style struct-log entries directly to a <see cref="Utf8JsonWriter"/> without
-/// allocating per-opcode <see cref="GethTxMemoryTraceEntry"/> objects or cloning the storage
-/// dictionary on every opcode. Bounded peak memory regardless of trace length.
+/// Streams Geth-style struct-log entries directly to a <see cref="Utf8JsonWriter"/> without allocating
+/// per-opcode <see cref="GethTxMemoryTraceEntry"/> objects. Peak memory is bounded by a single opcode's
+/// stack/memory plus, when storage tracing is enabled, the cumulative per-address storage map for the
+/// transaction (as in go-ethereum).
 /// </summary>
 public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 {
@@ -53,9 +54,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
 
-    // Cumulative storage snapshot per contract, mirroring go-ethereum's struct logger: storage is captured
-    // only at SLOAD/SSTORE and accumulates per address for the whole transaction, never cleared on call
-    // return (execution-apis#762).
+    // Per-address cumulative storage (matches go-ethereum): captured only at SLOAD/SSTORE, never cleared on call return.
     private readonly Dictionary<Address, PooledDictionary<UInt256, UInt256>> _storageByAddress = [];
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
@@ -80,7 +79,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _cancellationToken = cancellationToken;
         _flushIntervalEntries = flushIntervalEntries;
         IsTracingMemory = IsTracingFullMemory;
-        IsTracingStorage = IsTracingOpLevelStorage;
     }
 
     internal void ResetForNextTx(Transaction? transaction)
@@ -186,9 +184,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) =>
         RecordStorage(address, storageIndex, value);
 
-    // Mirrors go-ethereum's struct logger: storage is captured at both SLOAD and SSTORE, accumulating per
-    // contract address for the whole tx, and the snapshot is emitted only on the opcode that touched it
-    // (execution-apis#762).
     private void RecordStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
         if (!IsTracingOpLevelStorage) return;
@@ -293,10 +288,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private void WriteStorageObjectIfPresent()
     {
-        // No snapshot clone is needed (unlike go-ethereum's maps.Clone): the streaming writer emits the
-        // pending opcode's JSON at FinalizePendingOpcode (which runs at the NEXT StartOperation, before that
-        // next opcode executes and before its RecordStorage), so _pendingStorageMap still reflects exactly
-        // the pending opcode's cumulative state at write time.
+        // No clone needed (unlike go-ethereum's maps.Clone): this runs at the next StartOperation, before that
+        // opcode executes and mutates the map, so _pendingStorageMap is still the pending opcode's snapshot.
         _writer.WriteStartObject("storage"u8);
         foreach (KeyValuePair<UInt256, UInt256> kv in _pendingStorageMap!)
         {

@@ -16,15 +16,13 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
 
-    // Cumulative storage snapshot per contract, mirroring go-ethereum's struct logger: storage is captured
-    // only at SLOAD/SSTORE and accumulates per address for the whole transaction (execution-apis#762).
+    // Per-address cumulative storage (matches go-ethereum): captured only at SLOAD/SSTORE, never cleared on call return.
     private readonly Dictionary<Address, Dictionary<string, string>> _storageByAddress = [];
 
     public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
     {
         _transaction = transaction;
         IsTracingMemory = IsTracingFullMemory;
-        IsTracingStorage = IsTracingOpLevelStorage;
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -57,10 +55,6 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         RecordStorageSnapshot(address, storageIndex, newValue);
     }
 
-    /// <summary>
-    /// Records a cumulative storage snapshot on the current opcode entry, matching go-ethereum's struct logger:
-    /// emitted only at SLOAD/SSTORE, keyed and valued as 0x-prefixed 32-byte words, accumulating per address.
-    /// </summary>
     private void RecordStorageSnapshot(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
         if (CurrentTraceEntry is null)
