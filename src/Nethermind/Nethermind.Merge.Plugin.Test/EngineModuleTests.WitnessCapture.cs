@@ -35,6 +35,10 @@ public partial class EngineModuleTests
         Headers = new ArrayPoolList<byte[]>(0),
     };
 
+    // TEMPORARY witness-capture CI diagnostics. Ungated Console.WriteLine so it surfaces in the
+    // Microsoft.Testing.Platform failed-test "Standard output" section on CI. Remove before PR.
+    private static void WitLog(string m) => Console.WriteLine($"[WITDEBUG] {m}");
+
     private sealed class WitnessHandlerBuilder
     {
         public IEngineRpcModule EngineModule { get; set; }
@@ -163,21 +167,30 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         WitnessRendezvous rendezvous = chain.Container.Resolve<WitnessRendezvous>();
 
+        int timeoutMs = chain.Container.Resolve<Nethermind.Merge.Plugin.IMergeConfig>().NewPayloadBlockProcessingTimeout;
+        WitLog($"[multi] NewPayloadBlockProcessingTimeout = {timeoutMs} ms; UseFlatDb = {chain.UseFlatDb}");
+
         (ExecutionPayloadV4 p1, byte[][]? r1) = await BuildAmsterdamPayload(chain);
         Task<Witness?> t1 = rendezvous.RequestWitness(p1.BlockHash!);
-        await rpc.engine_newPayloadV5(p1, [], TestItem.KeccakE, r1 ?? []);
+        ResultWrapper<PayloadStatusV1> p1Result = await rpc.engine_newPayloadV5(p1, [], TestItem.KeccakE, r1 ?? []);
+        WitLog($"[multi] newPayloadV5(p1): resultType={p1Result.Result.ResultType} status={p1Result.Data?.Status} t1.Status={t1.Status}");
+        // await rpc.engine_newPayloadV5(p1, [], TestItem.KeccakE, r1 ?? []);
         await rpc.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(p1.BlockHash!, p1.BlockHash!, p1.BlockHash!), null);
         (await t1)?.Dispose();
 
         (ExecutionPayloadV4 p2, byte[][]? r2) = await BuildAmsterdamPayload(chain);
         Task<Witness?> t2 = rendezvous.RequestWitness(p2.BlockHash!);
-        await rpc.engine_newPayloadV5(p2, [], TestItem.KeccakE, r2 ?? []);
+        ResultWrapper<PayloadStatusV1> p2Result = await rpc.engine_newPayloadV5(p2, [], TestItem.KeccakE, r2 ?? []);
+        WitLog($"[multi] newPayloadV5(p2): resultType={p2Result.Result.ResultType} status={p2Result.Data?.Status} " +
+            $"error={p2Result.Result.Error} t2.Status(immediate)={t2.Status} hasPending={rendezvous.HasPendingRequest(p2.BlockHash!)}");
+        // await rpc.engine_newPayloadV5(p2, [], TestItem.KeccakE, r2 ?? []);
 
         Assert.That(t1.IsCompletedSuccessfully, Is.True, "block-1 task was completed during block-1");
-        Assert.That(t2.IsCompletedSuccessfully, Is.True, "block-2 task must be completed during block-2");
+        Assert.That(t2.IsCompletedSuccessfully, Is.True, $"block-2 task must be completed during block-2, status={t2.Status} error={p2Result.Result.Error}");
 
         using Witness? w2 = await t2;
+        WitLog($"[multi] t2 completed: status={t2.Status} witnessNull={w2 is null}");
         Assert.That(w2, Is.Not.Null, "block 2 must produce a valid witness");
     }
 
@@ -188,6 +201,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         WitnessRendezvous rendezvous = chain.Container.Resolve<WitnessRendezvous>();
+
+        WitLog($"[uncaptured] UseFlatDb = {chain.UseFlatDb}");
 
         (ExecutionPayloadV4 p1, byte[][]? r1) = await BuildAmsterdamPayload(chain);
         Task<Witness?> t1 = rendezvous.RequestWitness(p1.BlockHash!);
@@ -201,10 +216,13 @@ public partial class EngineModuleTests
 
         (ExecutionPayloadV4 p3, byte[][]? r3) = await BuildAmsterdamPayload(chain);
         Task<Witness?> t3 = rendezvous.RequestWitness(p3.BlockHash!);
-        await rpc.engine_newPayloadV5(p3, [], TestItem.KeccakE, r3 ?? []);
+        // await rpc.engine_newPayloadV5(p3, [], TestItem.KeccakE, r3 ?? []);
+        ResultWrapper<PayloadStatusV1> p3Result = await rpc.engine_newPayloadV5(p3, [], TestItem.KeccakE, r3 ?? []);
+        WitLog($"[uncaptured] newPayloadV5(p3): resultType={p3Result.Result.ResultType} status={p3Result.Data?.Status} " +
+            $"error={p3Result.Result.Error} t3.Status(immediate)={t3.Status} hasPending={rendezvous.HasPendingRequest(p3.BlockHash!)}");
 
         Assert.That(t3.IsCompletedSuccessfully, Is.True,
-            "an armed capture for block 3 must succeed even after an uncaptured block 2");
+            $"an armed capture for block 3 must succeed even after an uncaptured block 2, status={t3.Status} error={p3Result.Result.Error}");
         using Witness? w3 = await t3;
         Assert.That(w3, Is.Not.Null, "block 3 must produce a valid witness");
     }
