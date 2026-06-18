@@ -429,14 +429,15 @@ public struct EvmPooledMemory
     private static byte[] RentClean(int minLength)
     {
         byte[]?[]? cache = _cleanArrays;
-        for (int i = _cleanArrayCount - 1; i >= 0; i--)
+        int cleanArrayCount = _cleanArrayCount - 1;
+        for (int i = cleanArrayCount; i >= 0; i--)
         {
             byte[] candidate = cache![i]!;
             if (candidate.Length >= minLength)
             {
-                _cleanArrayCount--;
-                cache[i] = cache[_cleanArrayCount];
-                cache[_cleanArrayCount] = null;
+                _cleanArrayCount = cleanArrayCount;
+                cache[i] = cache[cleanArrayCount];
+                cache[cleanArrayCount] = null;
                 return candidate;
             }
         }
@@ -466,7 +467,175 @@ public struct EvmPooledMemory
         }
         else if (Size > (ulong)_memory.LongLength)
         {
-            byte[] beforeResize = _memory;
+            byte[] beforeResize = _memory; 1 file changed, 5 insertions(+), 2 deletions(-)
+                                          20:06:01.625: [/Volumes/Intenso/nethermindProjects/nethermind] git -c credential.helper= -c core.quotepath=false -c log.showSignature=false push --progress --porcelain origin refs/heads/fix-flaky-cannot-produce-bad-blocks:master
+                                          Enumerating objects: 1
+                                          Enumerating objects: 56, done.
+                                          Counting objects:   2% (1/49)
+                                          Counting objects:   4% (2/49)
+                                          Counting objects:   6% (3/49)
+                                          Counting objects:   8% (4/49)
+                                          Counting objects:  10% (5/49)
+                                          Counting objects:  12% (6/49)
+                                          Counting objects:  14% (7/49)
+                                          Counting objects:  16% (8/49)
+                                          Counting objects:  18% (9/49)
+                                          Counting objects:  20% (10/49)
+                                          Counting objects:  22% (11/49)
+                                          Counting objects:  24% (12/49)
+                                          Counting objects:  26% (13/49)
+                                          Counting objects:  28% (14/49)
+                                          Counting objects:  30% (15/49)
+                                          Counting objects:  32% (16/49)
+                                          Counting objects:  34% (17/49)
+                                          Counting objects:  36% (18/49)
+                                          Counting objects:  38% (19/49)
+                                          Counting objects:  40% (20/49)
+                                          Counting objects:  42% (21/49)
+                                          Counting objects:  44% (22/49)
+                                          Counting objects:  46% (23/49)
+                                          Counting objects:  48% (24/49)
+                                          Counting objects:  51% (25/49)
+                                          Counting objects:  53% (26/49)
+                                          Counting objects:  55% (27/49)
+                                          Counting objects:  57% (28/49)
+                                          Counting objects:  59% (29/49)
+                                          Counting objects:  61% (30/49)
+                                          Counting objects:  63% (31/49)
+                                          Counting objects:  65% (32/49)
+                                          Counting objects:  67% (33/49)
+                                          Counting objects:  69% (34/49)
+                                          Counting objects:  71% (35/49)
+                                          Counting objects:  73% (36/49)
+                                          Counting objects:  75% (37/49)
+                                          Counting objects:  77% (38/49)
+                                          Counting objects:  79% (39/49)
+                                          Counting objects:  81% (40/49)
+                                          Counting objects:  83% (41/49)
+                                          Counting objects:  85% (42/49)
+                                          Counting objects:  87% (43/49)
+                                          Counting objects:  89% (44/49)
+                                          Counting objects:  91% (45/49)
+                                          Counting objects:  93% (46/49)
+                                          Counting objects:  95% (47/49)
+                                          Counting objects:  97% (48/49)
+                                          Counting objects: 100% (49/49)
+                                          Counting objects: 100% (49/49), done.
+                                          Delta compression using up to 8 threads
+                                          Compressing objects:  16% (1/6)
+                                          Compressing objects:  33% (2/6)
+                                          Compressing objects:  50% (3/6)
+                                          Compressing objects:  66% (4/6)
+                                          Compressing objects:  83% (5/6)
+                                          Compressing objects: 100% (6/6)
+                                          Compressing objects: 100% (6/6), done.
+                                          Writing objects:  16% (1/6)
+                                          Writing objects:  33% (2/6)
+                                          Writing objects:  50% (3/6)
+                                          Writing objects:  66% (4/6)
+                                          Writing objects:  83% (5/6)
+                                          Writing objects: 100% (6/6)
+                                          Writing objects: 100% (6/6), 1.29 KiB | 438.00 KiB/s, done.
+                                          Total 6 (delta 4), reused 0 (delta 0), pack-reused 0 (from 0)
+                                          remote: Resolving deltas:   0% (0/4)
+                                          remote: Resolving deltas:  25% (1/4)
+                                          remote: Resolving deltas:  50% (2/4)
+                                          remote: Resolving deltas:  75% (3/4)
+                                          remote: Resolving deltas: 100% (4/4)
+                                          remote: Resolving deltas: 100% (4/4), completed with 4 local objects.
+                                          remote: error: GH006: Protected branch update failed for refs/heads/master.
+                                          remote:
+                                          remote: - Changes must be made through a pull request.
+                                          remote:
+                                          remote: - 8 of 8 required status checks are expected.
+                                          error: failed to push some refs to 'https://github.com/NethermindEth/nethermind'
+                                          To https://github.com/NethermindEth/nethermind
+                                          !	refs/heads/fix-flaky-cannot-produce-bad-blocks:refs/heads/master	[remote rejected] (protected branch hook declined)
+                                          Done
+                                          20:06:27.799: [/Volumes/Intenso/nethermindProjects/nethermind] git -c credential.helper= -c core.quotepath=false -c log.showSignature=false push --progress --porcelain origin refs/heads/fix-flaky-cannot-produce-bad-blocks:master
+                                          Enumerating objects: 1
+                                          Enumerating objects: 56, done.
+                                          Counting objects:   2% (1/49)
+                                          Counting objects:   4% (2/49)
+                                          Counting objects:   6% (3/49)
+                                          Counting objects:   8% (4/49)
+                                          Counting objects:  10% (5/49)
+                                          Counting objects:  12% (6/49)
+                                          Counting objects:  14% (7/49)
+                                          Counting objects:  16% (8/49)
+                                          Counting objects:  18% (9/49)
+                                          Counting objects:  20% (10/49)
+                                          Counting objects:  22% (11/49)
+                                          Counting objects:  24% (12/49)
+                                          Counting objects:  26% (13/49)
+                                          Counting objects:  28% (14/49)
+                                          Counting objects:  30% (15/49)
+                                          Counting objects:  32% (16/49)
+                                          Counting objects:  34% (17/49)
+                                          Counting objects:  36% (18/49)
+                                          Counting objects:  38% (19/49)
+                                          Counting objects:  40% (20/49)
+                                          Counting objects:  42% (21/49)
+                                          Counting objects:  44% (22/49)
+                                          Counting objects:  46% (23/49)
+                                          Counting objects:  48% (24/49)
+                                          Counting objects:  51% (25/49)
+                                          Counting objects:  53% (26/49)
+                                          Counting objects:  55% (27/49)
+                                          Counting objects:  57% (28/49)
+                                          Counting objects:  59% (29/49)
+                                          Counting objects:  61% (30/49)
+                                          Counting objects:  63% (31/49)
+                                          Counting objects:  65% (32/49)
+                                          Counting objects:  67% (33/49)
+                                          Counting objects:  69% (34/49)
+                                          Counting objects:  71% (35/49)
+                                          Counting objects:  73% (36/49)
+                                          Counting objects:  75% (37/49)
+                                          Counting objects:  77% (38/49)
+                                          Counting objects:  79% (39/49)
+                                          Counting objects:  81% (40/49)
+                                          Counting objects:  83% (41/49)
+                                          Counting objects:  85% (42/49)
+                                          Counting objects:  87% (43/49)
+                                          Counting objects:  89% (44/49)
+                                          Counting objects:  91% (45/49)
+                                          Counting objects:  93% (46/49)
+                                          Counting objects:  95% (47/49)
+                                          Counting objects:  97% (48/49)
+                                          Counting objects: 100% (49/49)
+                                          Counting objects: 100% (49/49), done.
+                                          Delta compression using up to 8 threads
+                                          Compressing objects:  16% (1/6)
+                                          Compressing objects:  33% (2/6)
+                                          Compressing objects:  50% (3/6)
+                                          Compressing objects:  66% (4/6)
+                                          Compressing objects:  83% (5/6)
+                                          Compressing objects: 100% (6/6)
+                                          Compressing objects: 100% (6/6), done.
+                                          Writing objects:  16% (1/6)
+                                          Writing objects:  33% (2/6)
+                                          Writing objects:  50% (3/6)
+                                          Writing objects:  66% (4/6)
+                                          Writing objects:  83% (5/6)
+                                          Writing objects: 100% (6/6)
+                                          Writing objects: 100% (6/6), 1.29 KiB | 1.29 MiB/s, done.
+                                          Total 6 (delta 4), reused 0 (delta 0), pack-reused 0 (from 0)
+                                          remote: Resolving deltas:   0% (0/4)
+                                          remote: Resolving deltas:  25% (1/4)
+                                          remote: Resolving deltas:  50% (2/4)
+                                          remote: Resolving deltas:  75% (3/4)
+                                          remote: Resolving deltas: 100% (4/4)
+                                          remote: Resolving deltas: 100% (4/4), completed with 4 local objects.
+                                          remote: error: GH006: Protected branch update failed for refs/heads/master.
+                                          remote:
+                                          remote: - Changes must be made through a pull request.
+                                          remote:
+                                          remote: - 8 of 8 required status checks are expected.
+                                          error: failed to push some refs to 'https://github.com/NethermindEth/nethermind'
+                                          To https://github.com/NethermindEth/nethermind
+                                          !	refs/heads/fix-flaky-cannot-produce-bad-blocks:refs/heads/master	[remote rejected] (protected branch hook declined)
+                                          Done
             _memory = RentClean(TruncateToInt32(Size));
             Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
             ReturnClean(beforeResize, beforeResize.Length);
