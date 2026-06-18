@@ -245,6 +245,46 @@ public class PersistenceManagerTests
         toPersist.Dispose();
     }
 
+    // With MinReorgDepth >= the configured backstop, the effective backstop is raised to
+    // MinReorgDepth + CompactSize, so a depth just past the configured 90000 does NOT force-persist,
+    // but one past MinReorgDepth + CompactSize does.
+    [TestCase(90001, false, TestName = "DetermineSnapshotAction_BackstopRaised_BelowMinPlusCompactSize_NoForce")]
+    [TestCase(90000 + 16 + 1, true, TestName = "DetermineSnapshotAction_BackstopRaised_AboveMinPlusCompactSize_Forces")]
+    public void DetermineSnapshotAction_BackstopRaisedAboveMinReorgDepth(long latestBlock, bool expectForcedPersist)
+    {
+        // MinReorgDepth == configured backstop == 90000, CompactSize 16 → effective backstop 90016.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 90000,
+            MaxReorgDepth = 90000,
+            LongFinalityMaxReorgDepth = 90000,
+            EnableLongFinality = true,
+            MaxInMemoryBaseSnapshotCount = 160,
+        };
+        using PersistenceManager pm = new(
+            config,
+            ScheduleHelper.CreateWithOffset(config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+
+        // Finalized below the next boundary so only the backstop (not the finalized trigger) can fire;
+        // a registered base at tierTip gives FindSnapshotToPersist a candidate.
+        StateId tierTip = CreateStateId(config.CompactSize);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+
+        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        Assert.That(toPersist is not null, Is.EqualTo(expectForcedPersist));
+        toPersist?.Dispose();
+    }
+
     [Test]
     public void DetermineSnapshotAction_FinalizedBeyondHead_SeedsAtBoundary()
     {

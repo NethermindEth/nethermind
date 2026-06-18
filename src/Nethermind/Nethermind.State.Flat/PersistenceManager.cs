@@ -44,10 +44,14 @@ public class PersistenceManager(
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxInMemoryBaseSnapshotCount = configuration.MaxInMemoryBaseSnapshotCount;
     // Force-persist backstop depth: the long-finality window when enabled (the persisted tier serves
-    // deep reorgs), otherwise the smaller non-long-finality MaxReorgDepth.
-    private readonly int _backstopReorgDepth = configuration.EnableLongFinality
-        ? configuration.LongFinalityMaxReorgDepth
-        : configuration.MaxReorgDepth;
+    // deep reorgs), otherwise the smaller non-long-finality MaxReorgDepth. Raised to at least one
+    // CompactSize above MinReorgDepth so the normal finalized-persistence trigger (which engages around
+    // MinReorgDepth) always has room to act before the backstop fires. This lets MinReorgDepth be
+    // configured at or above the backstop without the two thresholds colliding — the backstop is
+    // adjusted up accordingly.
+    private readonly int _backstopReorgDepth = Math.Max(
+        configuration.EnableLongFinality ? configuration.LongFinalityMaxReorgDepth : configuration.MaxReorgDepth,
+        configuration.MinReorgDepth + configuration.CompactSize);
     private readonly int _compactSize = configuration.CompactSize;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
