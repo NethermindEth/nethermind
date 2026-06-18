@@ -51,8 +51,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
-            _lastStorageAddress = null;
-            _lastStorage = null;
+            InvalidateStorageMemo();
             _toUpdateRoots.Clear();
         }
     }
@@ -265,15 +264,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public void ClearStorageMap()
     {
         _storages.Clear();
+        InvalidateStorageMemo();
+    }
+
+    private Address? _lastStorageAddress;
+    private PerContractState? _lastStorage;
+
+    private void InvalidateStorageMemo()
+    {
         _lastStorageAddress = null;
         _lastStorage = null;
     }
-
-    // Consecutive SLOADs overwhelmingly hit the same contract; the one-entry memo removes a
-    // dictionary lookup from the per-SLOAD hot path. Cleared wherever _storages is cleared
-    // (the pooled PerContractState is returned there and must not be reachable).
-    private Address? _lastStorageAddress;
-    private PerContractState? _lastStorage;
 
     private PerContractState GetOrCreateStorage(Address address)
     {
