@@ -69,7 +69,11 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    internal static void Clear() => _codeCache.Clear();
+    internal static void Clear()
+    {
+        _codeCache.Clear();
+        InstructionStreamCache.Clear();
+    }
 
     /// <summary>
     /// Lightweight service for DI auto-discovery of code cache clearing.
@@ -77,7 +81,11 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     /// </summary>
     public sealed class CacheClearService : IClearableCache
     {
-        public void ClearCache() => _codeCache.Clear();
+        public void ClearCache()
+        {
+            _codeCache.Clear();
+            InstructionStreamCache.Clear();
+        }
     }
 
     private sealed class CodeLruCache
@@ -86,7 +94,11 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 
         public CodeInfo? Get(in ValueHash256 codeHash) => _cache.Get(in codeHash);
 
-        public void Set(in ValueHash256 codeHash, CodeInfo codeInfo) => _cache.Set(in codeHash, codeInfo);
+        public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
+        {
+            codeInfo.CodeHash = codeHash;
+            _cache.Set(in codeHash, codeInfo);
+        }
 
         public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
         {

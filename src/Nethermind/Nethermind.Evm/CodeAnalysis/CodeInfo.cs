@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
@@ -56,6 +57,10 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     private int _streamHits;
     private int _streamBuildScheduled;
 
+    // Set by the repository when this CodeInfo is cached; the key into the shared
+    // InstructionStreamCache so a built stream survives this instance's eviction.
+    public ValueHash256 CodeHash { get; set; }
+
     /// <summary>
     /// Returns the built stream, or <c>null</c> until it is ready. After
     /// <see cref="StreamInterpreter.BuildThreshold"/> executions the build is scheduled once on the
@@ -73,6 +78,14 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
             return null;
 
+        // Reached the threshold on a fresh instance: reuse a stream built before this CodeInfo's
+        // eviction instead of rebuilding it. Cold code (below the threshold) never reaches here.
+        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
+        {
+            Volatile.Write(ref _stream, cached);
+            return cached;
+        }
+
         if (Interlocked.CompareExchange(ref _streamBuildScheduled, 1, 0) == 0)
             ThreadPool.UnsafeQueueUserWorkItem(static codeInfo => codeInfo.BuildStream(), this, preferLocal: false);
 
@@ -83,7 +96,11 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
         if (stream is not null)
+        {
+            if (CodeHash != default)
+                InstructionStreamCache.Set(CodeHash, stream);
             Interlocked.CompareExchange(ref _stream, stream, null);
+        }
     }
 
     /// <summary>
