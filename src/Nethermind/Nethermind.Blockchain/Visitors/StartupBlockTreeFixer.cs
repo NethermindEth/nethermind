@@ -168,14 +168,14 @@ namespace Nethermind.Blockchain.Visitors
         Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, ulong levelNumber,
             CancellationToken cancellationToken)
         {
-            int expectedVisitedBlocksCount = _currentLevel?.BlockInfos.Length ?? 0;
-            if (_blocksCheckedInCurrentLevel != (ulong)expectedVisitedBlocksCount)
+            ulong expectedVisitedBlocksCount = (ulong)(_currentLevel?.BlockInfos.Length ?? 0);
+            if (_blocksCheckedInCurrentLevel != expectedVisitedBlocksCount)
             {
                 throw new InvalidDataException(
                     $"Some blocks have not been visited at level {_currentLevelNumber}: {_blocksCheckedInCurrentLevel}/{expectedVisitedBlocksCount}");
             }
 
-            if (_bodiesInCurrentLevel > (ulong)expectedVisitedBlocksCount)
+            if (_bodiesInCurrentLevel > expectedVisitedBlocksCount)
             {
                 throw new InvalidOperationException(
                     $"Invalid bodies count at level {_currentLevelNumber}: {_bodiesInCurrentLevel}/{expectedVisitedBlocksCount}");

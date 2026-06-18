@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain
 
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
-            long repairedAbove = ClearStaleMarkersAbove(start.Number, batch); // start.Number is ulong (BlockHeader)
+            long repairedAbove = ClearStaleMarkersAbove(start.Number, batch);
             long repairedBelow = RepairMarkersBelow(start, maxBlockDepth, batch);
 
             if (Logger.IsInfo) Logger.Info($"Canonical chain heal complete: {repairedAbove + repairedBelow} level(s) repaired ({repairedAbove} stale above head cleared, {repairedBelow} incorrect markers fixed).");

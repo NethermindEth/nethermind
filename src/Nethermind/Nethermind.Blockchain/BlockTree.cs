@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _oldestBlock = (ulong)syncConfig.AncientBodiesBarrierCalc;
+            _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
             _genesisBlockNumber = genesisBlockNumber;
 
@@ -684,19 +684,27 @@ namespace Nethermind.Blockchain
 
             ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
             BlockHeader current = startHeader;
-            int directionMultiplier = reverse ? -1 : 1;
             int responseIndex = 0;
             do
             {
                 result[responseIndex] = current;
                 responseIndex++;
-                long nextNumber = (long)startHeader.Number + directionMultiplier * (responseIndex * skip + responseIndex);
-                if (nextNumber < 0)
+                ulong offset = (ulong)responseIndex * ((ulong)skip + 1ul);
+                ulong nextNumber;
+                if (reverse)
                 {
-                    break;
+                    if (startHeader.Number < offset)
+                    {
+                        break;
+                    }
+                    nextNumber = startHeader.Number - offset;
+                }
+                else
+                {
+                    nextNumber = startHeader.Number + offset;
                 }
 
-                current = FindHeader((ulong)nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             } while (current is not null && responseIndex < numberOfBlocks);
 
             return result;
@@ -837,10 +845,7 @@ namespace Nethermind.Blockchain
 
                 if (shouldRemoveLevel)
                 {
-                    // Guard against underflow: currentNumber is ulong, so only subtract if > 0
-                    BestKnownNumber = currentNumber > 0
-                        ? Math.Min(BestKnownNumber, currentNumber - 1)
-                        : 0;
+                    BestKnownNumber = Math.Min(BestKnownNumber, currentNumber.SaturatingSub(1ul));
                     _chainLevelInfoRepository.Delete(currentNumber, batch);
                 }
                 else if (currentLevel is not null)

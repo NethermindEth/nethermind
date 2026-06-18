@@ -864,22 +864,22 @@ public class CliqueBlockProducerTests
                 .AssertHeadBlockIs(keys[i], 1);
         }
 
-        for (int i = 1; i <= 10; i++)
+        for (ulong i = 1ul; i <= 10ul; i++)
         {
-            PrivateKey inTurnKey = keys[i % 3];
-            goerli.AddPendingTransaction(keys[(i + 1) % 3]);
+            PrivateKey inTurnKey = keys[(int)(i % 3ul)];
+            goerli.AddPendingTransaction(keys[(int)((i + 1ul) % 3ul)]);
             for (int j = 0; j < keys.Length; j++)
             {
                 PrivateKey nodeKey = keys[j];
                 if (!nodeKey.Equals(inTurnKey))
                 {
-                    goerli.Process(nodeKey, goerli.GetBlock(inTurnKey, (ulong)i));
-                    goerli.AssertHeadBlockIs(keys[j], (ulong)(i + 1));
+                    goerli.Process(nodeKey, goerli.GetBlock(inTurnKey, i));
+                    goerli.AssertHeadBlockIs(keys[j], i + 1ul);
                     goerli.AssertHeadBlockTimestamp(keys[j]);
                 }
                 else
                 {
-                    goerli.AssertHeadBlockIs(keys[j], (ulong)i);
+                    goerli.AssertHeadBlockIs(keys[j], i);
                     goerli.AssertHeadBlockTimestamp(keys[j]);
                 }
             }
