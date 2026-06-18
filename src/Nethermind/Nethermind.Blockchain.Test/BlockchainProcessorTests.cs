@@ -534,7 +534,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext AssertProcessedBlocks(params IEnumerable<Block> blocks)
         {
-            Assert.That(_branchProcessor.Processed, Is.EquivalentTo(blocks.Select(b => b.Hash)));
+            Assert.That(_branchProcessor.Processed, Is.EqualTo(blocks.Select(b => b.Hash)));
             return this;
         }
 

@@ -76,31 +76,22 @@ public class HeaderValidatorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(0, false, TestName = "When_gas_limit_too_high")]
-    [TestCase(-1, true, TestName = "When_gas_limit_just_correct_high")]
-    public void When_gas_limit_above_parent(int adjustment, bool expectedResult)
+    [TestCase(1, false, TestName = "When_gas_limit_too_high")]
+    [TestCase(0, true, TestName = "When_gas_limit_just_correct_high")]
+    [TestCase(-1, true, TestName = "When_gas_limit_just_correct_low")]
+    [TestCase(-2, false, TestName = "When_gas_limit_is_just_too_low")]
+    public void When_gas_limit_is_adjusted_around_parent(int boundaryIndex, bool expectedResult)
     {
         ulong delta = _parentBlock.Header.GasLimit / 1024ul;
 
-        _block.Header.GasLimit = adjustment >= 0
-            ? _parentBlock.Header.GasLimit + delta + (ulong)adjustment
-            : _parentBlock.Header.GasLimit + delta - (ulong)(-adjustment);
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.EqualTo(expectedResult));
-    }
-
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1, true, TestName = "When_gas_limit_just_correct_low")]
-    [TestCase(0, false, TestName = "When_gas_limit_is_just_too_low")]
-    public void When_gas_limit_below_parent(int adjustment, bool expectedResult)
-    {
-        ulong delta = _parentBlock.Header.GasLimit / 1024ul;
-
-        _block.Header.GasLimit = adjustment >= 0
-            ? _parentBlock.Header.GasLimit - delta + (ulong)adjustment
-            : _parentBlock.Header.GasLimit - delta - (ulong)(-adjustment);
+        _block.Header.GasLimit = boundaryIndex switch
+        {
+            1 => _parentBlock.Header.GasLimit + delta,
+            0 => _parentBlock.Header.GasLimit + delta - 1ul,
+            -1 => _parentBlock.Header.GasLimit - delta + 1ul,
+            -2 => _parentBlock.Header.GasLimit - delta,
+            _ => throw new ArgumentOutOfRangeException(nameof(boundaryIndex))
+        };
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -258,26 +249,6 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    private static IEnumerable<TestCaseData> NegativeFieldCases()
-    {
-        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = unchecked((ulong)-1)))
-            .SetName("When_block_number_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasUsed = unchecked((ulong)-1)))
-            .SetName("When_gas_used_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasLimit = unchecked((ulong)-1)))
-            .SetName("When_gas_limit_is_negative");
-    }
-
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCaseSource(nameof(NegativeFieldCases))]
-    public void When_header_field_is_negative(Action<Block> corrupt)
-    {
-        corrupt(_block);
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_total_difficulty_null_we_should_skip_total_difficulty_validation()

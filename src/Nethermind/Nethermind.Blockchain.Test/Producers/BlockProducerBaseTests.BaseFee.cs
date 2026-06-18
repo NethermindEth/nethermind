@@ -104,16 +104,16 @@ public partial class BlockProducerBaseTests
 
             public ScenarioBuilder SendEip1559Transaction(ulong gasLimit = 1000000ul, UInt256? gasPremium = null, UInt256? feeCap = null, bool serviceTransaction = false)
             {
-                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei, feeCap ?? UInt256.Zero, serviceTransaction);
+                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei, (ulong)(feeCap ?? UInt256.Zero), serviceTransaction);
                 return this;
             }
 
             public ScenarioBuilder SendLegacyTransaction(ulong gasLimit = 1000000ul, UInt256? gasPremium = null, bool serviceTransaction = false, ulong? nonce = null)
             {
-                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei, UInt256.Zero, serviceTransaction, nonce);
+                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei, 0UL, serviceTransaction, nonce);
                 return this;
             }
-            private async Task<ScenarioBuilder> SendTransactionAsync(ulong gasLimit, UInt256 gasPrice, UInt256 feeCap, bool serviceTransaction, ulong? nonce = null)
+            private async Task<ScenarioBuilder> SendTransactionAsync(ulong gasLimit, UInt256 gasPrice, ulong feeCap, bool serviceTransaction, ulong? nonce = null)
             {
                 await ExecuteAntecedentIfNeeded();
                 byte[] txData = _abiEncoder.Encode(
@@ -127,7 +127,7 @@ public partial class BlockProducerBaseTests
                     SenderAddress = _address,
                     GasLimit = gasLimit,
                     GasPrice = gasPrice,
-                    DecodedMaxFeePerGas = (ulong)feeCap,
+                    DecodedMaxFeePerGas = feeCap,
                     Nonce = nonce ?? _currentNonce++,
                     IsServiceTransaction = serviceTransaction
                 };

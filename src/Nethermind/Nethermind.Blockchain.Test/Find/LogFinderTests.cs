@@ -278,67 +278,67 @@ public class LogFinderTests
     }
 
     [TestCase("Empty index",
-        1, 2,
+        1UL, 2UL,
         null, null,
         null, null
     )]
     [TestCase("No intersection, left",
-        1, 2,
+        1UL, 2UL,
         4, 6,
         null, null
     )]
     [TestCase("No intersection, adjacent left",
-        1, 3,
+        1UL, 3UL,
         4, 6,
         null, null
     )]
     [TestCase("1 block intersection, left",
-        1, 4,
+        1UL, 4UL,
         4, 6,
         4, 4
     )]
     [TestCase("Partial intersection, left",
-        1, 5,
+        1UL, 5UL,
         4, 6,
         4, 5
     )]
     [TestCase("Full containment, border right",
-        1, 6,
+        1UL, 6UL,
         4, 6,
         4, 6
     )]
     [TestCase("Full containment",
-        1, 9,
+        1UL, 9UL,
         4, 6,
         4, 6
     )]
     [TestCase("Full containment, border left",
-        4, 9,
+        4UL, 9UL,
         4, 6,
         4, 6
     )]
     [TestCase("Partial intersection, right",
-        5, 9,
+        5UL, 9UL,
         4, 6,
         5, 6
     )]
     [TestCase("1 block intersection, right",
-        6, 9,
+        6UL, 9UL,
         4, 6,
         6, 6
     )]
     [TestCase("No intersection, adjacent right",
-        7, 9,
+        7UL, 9UL,
         4, 6,
         null, null
     )]
     [TestCase("No intersection, right",
-        8, 9,
+        8UL, 9UL,
         4, 6,
         null, null
     )]
     public void query_intersected_range_from_log_index(string name,
-        int from, int to,
+        ulong from, ulong to,
         int? indexFrom, int? indexTo,
         int? exFrom, int? exTo
     )
@@ -353,10 +353,10 @@ public class LogFinderTests
             .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
 
         Address address = TestItem.AddressA;
-        BlockHeader fromHeader = Build.A.BlockHeader.WithNumber((ulong)from).TestObject;
-        BlockHeader toHeader = Build.A.BlockHeader.WithNumber((ulong)to).TestObject;
+        BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
+        BlockHeader toHeader = Build.A.BlockHeader.WithNumber(to).TestObject;
         LogFilter filter = FilterBuilder.New()
-            .FromBlock((ulong)from).ToBlock((ulong)to)
+            .FromBlock(from).ToBlock(to)
             .WithAddress(address)
             .Build();
 

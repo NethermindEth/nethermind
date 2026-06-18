@@ -34,8 +34,8 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class Eip8037BlockGasIntegrationTests
 {
-    private const long Cpsb = 1530;
-    private const long IntrinsicNewAccountState = 120 * Cpsb;
+    private const ulong Cpsb = 1530ul;
+    private const ulong IntrinsicNewAccountState = 120ul * Cpsb;
 
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
@@ -153,7 +153,7 @@ public class Eip8037BlockGasIntegrationTests
         GasValidationResultSlot[] results = ResultsForCount(2);
         results[0].TrySetResult(GasResult(block, 0, 50_000ul, 100_000ul)); // filler post-exec
         // Simulate creation tx ran with modest actual gas - spec would have rejected at inclusion.
-        results[1].TrySetResult(GasResult(block, 1, 53_000ul, (ulong)IntrinsicNewAccountState));
+        results[1].TrySetResult(GasResult(block, 1, 53_000ul, IntrinsicNewAccountState));
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None),
