@@ -1064,10 +1064,10 @@ namespace Nethermind.Evm.TransactionProcessing
                     return RequiredBalanceExceeds256Bits(tx);
                 }
 
-                if (validate && tx.MaxFeePerBlobGas < feePerBlobGas)
+                if (tx.MaxFeePerBlobGas < feePerBlobGas)
                 {
                     TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
-                    return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas);
+                    return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, feePerBlobGas));
                 }
 
                 if (UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment))
