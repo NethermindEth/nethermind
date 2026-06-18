@@ -48,7 +48,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static string ReadAllHex(this IByteBuffer buffer) => buffer.ReadAllBytesAsSpan().ToHexString();
 
-        public static void WriteBytes(this IByteBuffer buffer, ReadOnlySpan<byte> bytes)
+        public static void WriteBytes(this IByteBuffer buffer, scoped ReadOnlySpan<byte> bytes)
         {
             for (int i = 0; i < bytes.Length; i++)
             {

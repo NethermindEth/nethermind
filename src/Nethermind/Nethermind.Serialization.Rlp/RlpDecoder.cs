@@ -76,7 +76,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         return result;
     }
 
-    public virtual T Decode(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual T Decode(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpReader context = new(bytes);
         return Decode(ref context, rlpBehaviors);
@@ -91,7 +91,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
     /// <inheritdoc/>
-    public virtual T DecodeComplete(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual T DecodeComplete(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpReader context = new(bytes);
         return DecodeComplete(ref context, rlpBehaviors);
@@ -117,7 +117,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
     /// <inheritdoc/>
-    public virtual T DecodeCompleteNotNull(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual T DecodeCompleteNotNull(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpReader context = new(bytes);
         return DecodeCompleteNotNull(ref context, rlpBehaviors);

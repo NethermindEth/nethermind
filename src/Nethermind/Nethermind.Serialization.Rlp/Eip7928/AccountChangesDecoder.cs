@@ -181,7 +181,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return new EncodingLengths(contentLength, storageChanges, storageReads, balance, nonce, code);
     }
 
-    private static int SlotChangesContentLength(ReadOnlySpan<ReadOnlySlotChanges> items, RlpBehaviors rlpBehaviors)
+    private static int SlotChangesContentLength(scoped ReadOnlySpan<ReadOnlySlotChanges> items, RlpBehaviors rlpBehaviors)
     {
         SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
         int len = 0;
@@ -200,7 +200,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return len;
     }
 
-    private static int UInt256ContentLength(ReadOnlySpan<UInt256> items, RlpBehaviors rlpBehaviors)
+    private static int UInt256ContentLength(scoped ReadOnlySpan<UInt256> items, RlpBehaviors rlpBehaviors)
     {
         UInt256Decoder decoder = UInt256Decoder.Instance;
         int len = 0;
@@ -219,7 +219,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return len;
     }
 
-    private static int IndexedContentLength<T>(ReadOnlySpan<T> items, RlpDecoder<T> encoder, RlpBehaviors rlpBehaviors)
+    private static int IndexedContentLength<T>(scoped ReadOnlySpan<T> items, RlpDecoder<T> encoder, RlpBehaviors rlpBehaviors)
     {
         int len = 0;
         for (int i = 0; i < items.Length; i++)
@@ -229,7 +229,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return len;
     }
 
-    private static void EncodeSlotChanges<TWriter>(ref TWriter writer, ReadOnlySpan<ReadOnlySlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeSlotChanges<TWriter>(ref TWriter writer, scoped ReadOnlySpan<ReadOnlySlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
@@ -240,7 +240,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         }
     }
 
-    private static void EncodeGeneratedSlotChanges<TWriter>(ref TWriter writer, ReadOnlySpan<GeneratedSlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeGeneratedSlotChanges<TWriter>(ref TWriter writer, scoped ReadOnlySpan<GeneratedSlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
@@ -251,7 +251,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         }
     }
 
-    private static void EncodeStorageReads<TWriter>(ref TWriter writer, ReadOnlySpan<UInt256> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeStorageReads<TWriter>(ref TWriter writer, scoped ReadOnlySpan<UInt256> items, int contentLength, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(contentLength);
@@ -261,7 +261,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         }
     }
 
-    private static void EncodeIndexed<TWriter, T>(ref TWriter writer, ReadOnlySpan<T> items, int contentLength, IndexedChangeDecoder<T> encoder, RlpBehaviors rlpBehaviors)
+    private static void EncodeIndexed<TWriter, T>(ref TWriter writer, scoped ReadOnlySpan<T> items, int contentLength, IndexedChangeDecoder<T> encoder, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
         where T : struct, IIndexedChange
     {
@@ -290,7 +290,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     /// <summary>Binary search over <paramref name="sortedSlotChanges"/> (sorted by key, verified
     /// during decode) for <paramref name="key"/>. O(log n) lookup with no allocation, matching
     /// master's behaviour for the storage-read-vs-change overlap check.</summary>
-    private static bool ContainsStorageChange(ReadOnlySlotChanges[] sortedSlotChanges, UInt256 key)
+    private static bool ContainsStorageChange(ReadOnlySlotChanges[] sortedSlotChanges, in UInt256 key)
     {
         int low = 0;
         int high = sortedSlotChanges.Length - 1;

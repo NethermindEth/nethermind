@@ -140,8 +140,8 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     }
 
     private static void PrepareReadOnlyLengths(
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts,
-        Span<AccountChangesDecoder.EncodingLengths> accountLengths,
+        scoped ReadOnlySpan<ReadOnlyAccountChanges> accounts,
+        scoped Span<AccountChangesDecoder.EncodingLengths> accountLengths,
         RlpBehaviors rlpBehaviors,
         out int contentLength)
     {
@@ -157,8 +157,8 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     }
 
     private static void PrepareGeneratedLengths(
-        ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
-        Span<AccountChangesDecoder.EncodingLengths> accountLengths,
+        scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
+        scoped Span<AccountChangesDecoder.EncodingLengths> accountLengths,
         RlpBehaviors rlpBehaviors,
         out int contentLength)
     {
@@ -175,8 +175,8 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 
     private static void EncodeReadOnlyPrepared<TWriter>(
         ref TWriter writer,
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts,
-        ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
+        scoped ReadOnlySpan<ReadOnlyAccountChanges> accounts,
+        scoped ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
         int contentLength,
         RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
@@ -193,8 +193,8 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 
     private static void EncodeGeneratedPrepared<TWriter>(
         ref TWriter writer,
-        ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
-        ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
+        scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
+        scoped ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
         int contentLength,
         RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct

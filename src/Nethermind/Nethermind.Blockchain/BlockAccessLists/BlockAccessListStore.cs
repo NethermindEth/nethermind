@@ -42,7 +42,7 @@ public class BlockAccessListStore(
     }
 
     [SkipLocalsInit]
-    public void Insert(long blockNumber, Hash256 blockHash, ReadOnlySpan<byte> encodedBal)
+    public void Insert(long blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> encodedBal)
     {
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);

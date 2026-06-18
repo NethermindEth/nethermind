@@ -50,7 +50,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         writer.Encode(new UInt256(item.AuthoritySignature.S.Span, true));
     }
 
-    public static void EncodeWithoutSignature<TWriter>(ref TWriter writer, UInt256 chainId, Address codeAddress, ulong nonce)
+    public static void EncodeWithoutSignature<TWriter>(ref TWriter writer, in UInt256 chainId, Address codeAddress, ulong nonce)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
@@ -60,7 +60,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         writer.Encode(nonce);
     }
 
-    public static void EncodeSignaturePayload<TWriter>(ref TWriter writer, UInt256 chainId, Address codeAddress, ulong nonce)
+    public static void EncodeSignaturePayload<TWriter>(ref TWriter writer, in UInt256 chainId, Address codeAddress, ulong nonce)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.WriteByte(Eip7702Constants.Magic);
@@ -99,7 +99,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.R.Span, true))
         + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.S.Span, true));
 
-    private static int GetContentLengthWithoutSig(UInt256 chainId, Address codeAddress, ulong nonce) =>
+    private static int GetContentLengthWithoutSig(in UInt256 chainId, Address codeAddress, ulong nonce) =>
         Rlp.LengthOf(chainId)
         + Rlp.LengthOf(codeAddress)
         + Rlp.LengthOf(nonce);
