@@ -16,7 +16,6 @@ namespace Nethermind.Api
     {
         IBlobTxStorage BlobTxStorage { get; }
         IBlockTree BlockTree { get; }
-        IChainLevelInfoRepository? ChainLevelInfoRepository { get; }
         ISigner? EngineSigner { get; set; }
         ISignerStore? EngineSignerStore { get; set; }
         [SkipServiceCollection]
