@@ -298,11 +298,11 @@ namespace Nethermind.Init.Steps.Migrations
 
             // Guarded: block.Number can transiently exceed head during reorgs.
             ulong? headNumber = _blockTree.Head?.Number;
-            bool txIndexExpired = _receiptConfig.TxLookupLimit > 0
+            bool txIndexExpired = _receiptConfig.TxLookupLimit > 0ul
                                   && headNumber is ulong h
                                   && h > block.Number
-                                  && h - block.Number > (ulong)_receiptConfig.TxLookupLimit.Value;
-            bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
+                                  && h - block.Number > _receiptConfig.TxLookupLimit.Value;
+            bool neverIndexTx = _receiptConfig.TxLookupLimit == ulong.MaxValue;
             if (neverIndexTx || txIndexExpired)
             {
                 using IWriteBatch writeBatch = _txIndexDb.StartWriteBatch();

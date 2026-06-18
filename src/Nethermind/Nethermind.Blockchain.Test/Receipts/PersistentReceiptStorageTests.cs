@@ -305,9 +305,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void When_TxLookupLimitIs_NegativeOne_DoNotIndexTxHash()
+    public void When_TxLookupLimitIs_MaxValue_DoNotIndexTxHash()
     {
-        _receiptConfig.TxLookupLimit = -1;
+        _receiptConfig.TxLookupLimit = ulong.MaxValue;
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
@@ -319,7 +319,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TestCase(11ul, true)]
     public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(ulong blockNumber, bool willPruneOldIndices)
     {
-        _receiptConfig.TxLookupLimit = 10;
+        _receiptConfig.TxLookupLimit = 10ul;
         CreateStorage();
         _blockTree.BlockAddedToMain +=
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
@@ -331,7 +331,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test]
     public void When_HeadBlockIsFarAhead_DoNotIndexTxHash()
     {
-        _receiptConfig.TxLookupLimit = 1000;
+        _receiptConfig.TxLookupLimit = 1000ul;
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001ul);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
@@ -423,7 +423,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test]
     public void When_NewHeadBlock_ClearOldTxIndex_And_KeepsReceipts()
     {
-        _receiptConfig.TxLookupLimit = 1000;
+        _receiptConfig.TxLookupLimit = 1000ul;
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock();
 
@@ -437,7 +437,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.Not.Null);
         }
 
-        Block newHead = Build.A.Block.WithNumber((ulong)_receiptConfig.TxLookupLimit.Value + 1ul).TestObject;
+        Block newHead = Build.A.Block.WithNumber(_receiptConfig.TxLookupLimit.Value + 1ul).TestObject;
         _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead));
 

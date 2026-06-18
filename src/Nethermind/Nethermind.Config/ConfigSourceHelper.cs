@@ -161,6 +161,18 @@ namespace Nethermind.Config
                     : throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
             }
 
+            if (valueType == typeof(ulong))
+            {
+                if (long.TryParse(itemValue, out long longVal))
+                {
+                    return unchecked((ulong)longVal);
+                }
+                if (ulong.TryParse(itemValue, out ulong ulongVal))
+                {
+                    return ulongVal;
+                }
+            }
+
             return TryFromHex(valueType, itemValue, out object? value) ? value : Convert.ChangeType(itemValue, valueType);
         }
     }
