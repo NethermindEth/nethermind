@@ -344,17 +344,16 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 ulong blockSize = MessageSizeEstimator.EstimateSize(block);
 
-                // Never build a response above the protocol message-size limit; doing so overflows the
-                // 24-bit RLPx frame size and corrupts the connection. A single body above the limit
-                // cannot be served at all, so omit it (responses are sparse).
+                // Stop once the next body would cross the protocol message-size limit: an oversized
+                // message overflows the 24-bit RLPx frame size and corrupts the connection. Return the
+                // prefix gathered so far instead of skipping this body and continuing — a requester
+                // matches bodies to the requested hashes positionally (see BlockDownloader.HandleResponse),
+                // so omitting a non-trailing body misaligns every following one and is rejected as an
+                // invalid body. A single body that alone exceeds the limit cannot be served within a
+                // devp2p frame regardless, so an empty prefix here is the only correct response.
                 if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
                 {
-                    if (blocks.Count > 0)
-                    {
-                        break;
-                    }
-
-                    continue;
+                    break;
                 }
 
                 blocks.Add(block);
