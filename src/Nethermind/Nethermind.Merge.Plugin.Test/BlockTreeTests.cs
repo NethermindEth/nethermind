@@ -280,6 +280,18 @@ public partial class BlockTreeTests
             private IBeaconPivot? _beaconPivot;
 
             public ScenarioBuilder WithBlockTrees(
+                ulong notSyncedTreeSize,
+                ulong? syncedTreeSize = null,
+                bool moveBlocksToMainChain = true,
+                UInt256? ttd = null,
+                int splitVariant = 0,
+                int splitFrom = 0,
+                int syncedSplitVariant = 0,
+                int syncedSplitFrom = 0,
+                IReceiptStorage? receiptStorage = null
+            ) => WithBlockTrees(checked((int)notSyncedTreeSize), syncedTreeSize is { } s ? checked((int)s) : -1, moveBlocksToMainChain, ttd, splitVariant, splitFrom, syncedSplitVariant, syncedSplitFrom, receiptStorage);
+
+            public ScenarioBuilder WithBlockTrees(
                 int notSyncedTreeSize,
                 int syncedTreeSize = -1,
                 bool moveBlocksToMainChain = true,

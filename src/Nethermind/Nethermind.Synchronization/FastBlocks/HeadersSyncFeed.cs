@@ -522,10 +522,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private static HeadersSyncBatch BuildRightFiller(HeadersSyncBatch batch, int rightFillerSize)
         {
             HeadersSyncBatch rightFiller = new();
-            // EndNumber is ulong; rightFillerSize is int. Guard against underflow (should never happen in practice).
-            rightFiller.StartNumber = batch.EndNumber >= (ulong)(rightFillerSize - 1)
-                ? batch.EndNumber - (ulong)(rightFillerSize - 1)
-                : 0UL;
+            rightFiller.StartNumber = batch.EndNumber.SaturatingSub((ulong)(rightFillerSize - 1));
             rightFiller.RequestSize = rightFillerSize;
             return rightFiller;
         }
@@ -623,8 +620,6 @@ namespace Nethermind.Synchronization.FastBlocks
             using ArrayPoolList<BlockHeader> headersToAdd = new(response.Length);
             (Hash256 nextHeaderHash, UInt256? nextHeaderTotalDifficulty) = _expectedNextHeader;
 
-            // Use ulong.MaxValue as "not set" sentinel for addedEarliest (any real block number will be lower).
-            // Use 0 as "not set" sentinel for addedLast (any real block number ≥ 1 will be higher).
             // These are adjusted during iteration; arithmetic is safe for realistic block heights.
             ulong addedLast = batch.StartNumber == 0 ? 0UL : batch.StartNumber - 1UL;
             ulong addedEarliest = batch.EndNumber + 1UL;
