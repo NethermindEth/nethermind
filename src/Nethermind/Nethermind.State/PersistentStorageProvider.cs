@@ -270,7 +270,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public void ClearStorageMap()
     {
-        _storages.Clear();
+        _storages.ResetAndClear();
         InvalidateStorageMemo();
     }
 
