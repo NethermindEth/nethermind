@@ -57,30 +57,30 @@ public partial class BlockDownloaderTests
     private const int FullBatch = 24;
     private const ulong SyncBatchSizeMax = 128;
 
-    [TestCase(1UL, false, 0)]
-    [TestCase(32UL, false, 0)]
-    [TestCase(32UL, true, 0)]
-    [TestCase(1UL, true, 0)]
-    [TestCase(2UL, true, 0)]
-    [TestCase(3UL, true, 0)]
-    [TestCase(32UL, true, 0)]
-    [TestCase(SyncBatchSizeMax * 8, true, 0)]
-    [TestCase(SyncBatchSizeMax * 8, false, 0)]
-    [TestCase(1UL, false, 32)]
-    [TestCase(32UL, false, 32)]
-    [TestCase(32UL, true, 32)]
-    [TestCase(1UL, true, 32)]
-    [TestCase(2UL, true, 32)]
-    [TestCase(3UL, true, 32)]
-    [TestCase(32UL, true, 32)]
-    [TestCase(SyncBatchSizeMax * 8, true, 32)]
-    [TestCase(SyncBatchSizeMax * 8, false, 32)]
-    public async Task Happy_path(ulong headNumber, bool enableFastSync, int fastSynclag)
+    [TestCase(1UL, false, 0UL)]
+    [TestCase(32UL, false, 0UL)]
+    [TestCase(32UL, true, 0UL)]
+    [TestCase(1UL, true, 0UL)]
+    [TestCase(2UL, true, 0UL)]
+    [TestCase(3UL, true, 0UL)]
+    [TestCase(32UL, true, 0UL)]
+    [TestCase(SyncBatchSizeMax * 8, true, 0UL)]
+    [TestCase(SyncBatchSizeMax * 8, false, 0UL)]
+    [TestCase(1UL, false, 32UL)]
+    [TestCase(32UL, false, 32UL)]
+    [TestCase(32UL, true, 32UL)]
+    [TestCase(1UL, true, 32UL)]
+    [TestCase(2UL, true, 32UL)]
+    [TestCase(3UL, true, 32UL)]
+    [TestCase(32UL, true, 32UL)]
+    [TestCase(SyncBatchSizeMax * 8, true, 32UL)]
+    [TestCase(SyncBatchSizeMax * 8, false, 32UL)]
+    public async Task Happy_path(ulong headNumber, bool enableFastSync, ulong fastSynclag)
     {
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = enableFastSync,
-            StateMinDistanceFromHead = (ulong)fastSynclag
+            StateMinDistanceFromHead = fastSynclag
         }));
         Context ctx = node.Resolve<Context>();
         bool withReceipts = enableFastSync;
@@ -98,12 +98,11 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
+        ulong effectiveHead = headNumber.SaturatingSub(fastSynclag);
         if (enableFastSync)
         {
             await ctx.FastSyncUntilNoRequest(peerInfo);
-            // Use long arithmetic to safely handle the fastSynclag subtraction (which could underflow if ulong).
-            long effectiveHead = Math.Max(0L, (long)headNumber - fastSynclag);
-            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo((ulong)effectiveHead));
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(effectiveHead));
         }
 
         syncPeer.ExtendTree(chainLength * 2);
@@ -116,8 +115,7 @@ public partial class BlockDownloaderTests
         if (enableFastSync)
         {
             int receiptCount = 0;
-            long effectiveHead2 = Math.Max(0L, (long)headNumber - fastSynclag);
-            for (int i = 0; i < (int)effectiveHead2; i++)
+            for (ulong i = 0; i < effectiveHead; i++)
             {
                 if (i % 3 == 0)
                 {
@@ -133,14 +131,14 @@ public partial class BlockDownloaderTests
     public async Task Invoke_TryUpdateMainChain_Once()
     {
         ulong headNumber = 100;
-        int fastSyncLag = 10;
+        ulong fastSyncLag = 10;
         bool withReceipts = true;
         ulong chainLength = headNumber + 1;
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
-            StateMinDistanceFromHead = (ulong)fastSyncLag,
+            StateMinDistanceFromHead = fastSyncLag,
         }));
         Context ctx = node.Resolve<Context>();
 
@@ -152,11 +150,11 @@ public partial class BlockDownloaderTests
         ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add(b.Block.Number);
 
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        long effectiveHead = Math.Max(0L, (long)headNumber - fastSyncLag);
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo((ulong)effectiveHead));
+        ulong effectiveHead = headNumber.SaturatingSub(fastSyncLag);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(effectiveHead));
 
         List<ulong> expectedNewHeadSequence = Enumerable
-            .Range(1, (int)(chainLength - (ulong)fastSyncLag - 1))
+            .Range(1, (int)(chainLength - fastSyncLag - 1))
             .Select(i => (ulong)i)
             .ToList();
         Assert.That(newHeadSequence, Is.EqualTo(expectedNewHeadSequence));
@@ -166,7 +164,7 @@ public partial class BlockDownloaderTests
     public async Task ForwardHeaderProvider_ReturnedSameHeaders_EvenAfterSuggestion()
     {
         ulong headNumber = 200;
-        int fastSyncLag = 10;
+        ulong fastSyncLag = 10;
         bool withReceipts = true;
         ulong chainLength = headNumber + 1;
 
@@ -175,7 +173,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
-            StateMinDistanceFromHead = (ulong)fastSyncLag,
+            StateMinDistanceFromHead = fastSyncLag,
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
@@ -738,11 +736,11 @@ public partial class BlockDownloaderTests
 
         Response responseOptions = Response.AllCorrect | Response.WithTransactions;
 
-        int headNumber = 5;
+        ulong headNumber = 5;
 
         // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
         // will only be fixed slightly later
-        ulong chainLength = (ulong)(headNumber + 1);
+        ulong chainLength = headNumber + 1;
         SyncPeerMock syncPeerInternal = new(chainLength, true, responseOptions);
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -869,7 +867,6 @@ public partial class BlockDownloaderTests
                 return tree;
             })
 
-            // Dictionary key changed from long to ulong to match BlockHeader.Number
             .AddSingleton<Dictionary<ulong, Hash256>, IBlockTree>((blockTree) => new Dictionary<ulong, Hash256>()
             {
                 {
@@ -1116,7 +1113,6 @@ public partial class BlockDownloaderTests
             BlockHeader[] headers = new BlockHeader[maxBlocks];
             for (int i = 0; i < (justFirst ? 1 : maxBlocks); i++)
             {
-                // Cast loop variable i (int) to ulong to avoid ambiguous operator with ulong number
                 headers[i] = BlockTree.FindHeader(number + (ulong)i, BlockTreeLookupOptions.None)!;
             }
 
@@ -1220,7 +1216,6 @@ public partial class BlockDownloaderTests
                         _blockTree.SuggestHeader(header);
                     }
 
-                    // Cast loop variable i (int) to ulong to avoid ambiguous operator with ulong startNumber
                     _testHeaderMapping[startNumber + (ulong)i] = headers[i].Hash!;
                 }
             }
