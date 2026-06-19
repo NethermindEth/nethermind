@@ -220,7 +220,7 @@ public class HealingTreeTests
 
             Address storageAddress = new(Keccak.Compute("storage"));
             Assert.That(mainWorldState.GetBalance(storageAddress), Is.EqualTo((UInt256)100));
-            Assert.That(mainWorldState.GetNonce(storageAddress), Is.EqualTo((ulong)100));
+            Assert.That(mainWorldState.GetNonce(storageAddress), Is.EqualTo(100ul));
             for (int i = 1; i < 100; i++)
             {
                 Assert.That(mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray(), Is.EqualTo(i.ToBigEndianByteArray()));

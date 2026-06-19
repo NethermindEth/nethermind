@@ -176,7 +176,7 @@ public partial class ForwardHeaderProviderTests
         Context ctx = node.Resolve<Context>();
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse((long)ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect ^ Response.Consistent));
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect ^ Response.Consistent));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
@@ -197,7 +197,7 @@ public partial class ForwardHeaderProviderTests
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse((long)ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1000UL);
@@ -217,7 +217,7 @@ public partial class ForwardHeaderProviderTests
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse((long)ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1000UL);
@@ -234,7 +234,7 @@ public partial class ForwardHeaderProviderTests
         newSyncPeer.HeadNumber.Returns(1000UL);
         newSyncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         newSyncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse((long)ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
         ctx.ConfigureBestPeer(new PeerInfo(newSyncPeer));
 
         Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Not.Null);
@@ -251,7 +251,7 @@ public partial class ForwardHeaderProviderTests
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse((long)ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1000UL);
@@ -290,7 +290,7 @@ public partial class ForwardHeaderProviderTests
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse((long)ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect));
@@ -471,7 +471,7 @@ public partial class ForwardHeaderProviderTests
                 return tree;
             })
 
-            .AddSingleton<Dictionary<long, Hash256>, IBlockTree>((blockTree) => new Dictionary<long, Hash256>()
+            .AddSingleton<Dictionary<ulong, Hash256>, IBlockTree>((blockTree) => new Dictionary<ulong, Hash256>()
             {
                 {
                     0, blockTree.Genesis!.Hash!
@@ -643,12 +643,12 @@ public partial class ForwardHeaderProviderTests
             throw new NotImplementedException();
     }
 
-    private class ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
+    private class ResponseBuilder(IBlockTree blockTree, Dictionary<ulong, Hash256> testHeaderMapping)
     {
         private readonly IBlockTree _blockTree = blockTree;
-        private readonly Dictionary<long, Hash256> _testHeaderMapping = testHeaderMapping;
+        private readonly Dictionary<ulong, Hash256> _testHeaderMapping = testHeaderMapping;
 
-        public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
+        public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(ulong startNumber, int number, Response flags)
         {
             bool consistent = flags.HasFlag(Response.Consistent);
             bool justFirst = flags.HasFlag(Response.JustFirst);
@@ -687,7 +687,7 @@ public partial class ForwardHeaderProviderTests
                         _blockTree.SuggestHeader(headers[i]);
                     }
 
-                    _testHeaderMapping[startNumber + i] = headers[i].Hash!;
+                    _testHeaderMapping[startNumber + (ulong)i] = headers[i].Hash!;
                 }
             }
 
@@ -752,7 +752,7 @@ public partial class ForwardHeaderProviderTests
                         ? _headers[blockHashes[i]]
                         : Build.A.BlockHeader.WithNumber(blockHeaders[i - 1].Number + 1).WithHash(blockHashes[i]).TestObject;
 
-                    _testHeaderMapping[(long)(startHeader.Number + (ulong)i)] = blockHeaders[i].Hash!;
+                    _testHeaderMapping[startHeader.Number + (ulong)i] = blockHeaders[i].Hash!;
 
                     BlockHeader header = consistent
                         ? blockHeaders[i]

@@ -28,7 +28,7 @@ public class StateSyncPivotTest
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindHeader(Arg.Any<ulong>())
-            .Returns(static (ci) => Build.A.BlockHeader.WithNumber((ulong)ci[0]).TestObject);
+            .Returns(static (ci) => Build.A.BlockHeader.WithNumber(ci.ArgAt<ulong>(0)).TestObject);
 
         Synchronization.FastSync.StateSyncPivot stateSyncPivot = new(blockTree,
             new TestSyncConfig()

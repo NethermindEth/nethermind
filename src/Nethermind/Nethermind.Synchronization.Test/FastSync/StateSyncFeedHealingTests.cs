@@ -67,7 +67,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             pathPool[i] = keccak;
         }
 
-        int blockJumps = 5;
+        ulong blockJumps = 5;
 
         // Store accounts snapshot at each block number
         SortedDictionary<Hash256, Account>[] accountsAtBlock = new SortedDictionary<Hash256, Account>[blockJumps + 1];
@@ -89,7 +89,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         remote.StateTree.Commit();
 
         // Pre-build all blocks and store state at each block
-        for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
+        for (ulong blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Store snapshot of accounts and root hash at this block
             accountsAtBlock[blockNumber] = new SortedDictionary<Hash256, Account>(accounts);
@@ -135,7 +135,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         int endHashIndex;
 
         // Now process account ranges using stored snapshots
-        for (uint blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
+        for (ulong blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Set remote tree to the state at this block number
             remote.StateTree.RootHash = rootHashAtBlock[blockNumber];
@@ -164,7 +164,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
                 endHashIndex = pathPool.Length - 1;
             }
 
-            ProcessAccountRange(remote.StateTree, snapTrieFactory, (ulong)blockJumps, finalRootHash,
+            ProcessAccountRange(remote.StateTree, snapTrieFactory, blockJumps, finalRootHash,
                 accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
             startingHashIndex += 1000;

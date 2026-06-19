@@ -36,7 +36,7 @@ public class StateSyncDispatcherTests
 
     private readonly PublicKey _publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 
-    private const int ChainLength = 100;
+    private const ulong ChainLength = 100;
     private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(ChainLength).TestObject);
 
     [SetUp]
@@ -68,7 +68,7 @@ public class StateSyncDispatcherTests
         peer.ProtocolVersion.Returns((byte)66);
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
-        peer.HeadNumber.Returns((ulong)(ChainLength - 1));
+        peer.HeadNumber.Returns(ChainLength - 1);
         _pool.AddPeer(peer);
 
         using StateSyncBatch batch = new(
@@ -89,7 +89,7 @@ public class StateSyncDispatcherTests
         peer.ProtocolVersion.Returns((byte)67);
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
-        peer.HeadNumber.Returns((ulong)(ChainLength - 1));
+        peer.HeadNumber.Returns(ChainLength - 1);
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
         peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>
