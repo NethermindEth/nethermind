@@ -458,13 +458,8 @@ public class Metrics
             if (prev == median) break;
             median = prev;
         }
-
-        // Latest-block Prometheus gauges; last-writer-wins is fine for a gauge.
-        GasPriceMin = BlockMinGasPrice;
-        if (BlockMaxGasPrice != 0) GasPriceMax = BlockMaxGasPrice;
-        if (newAve != 0) GasPriceAve = newAve;
-        float curMedian = BlockEstMedianGasPrice;
-        if (curMedian != 0) GasPriceMedian = curMedian;
+        // Gauges are not published here: a slow parallel worker could overwrite them with a stale view.
+        // PublishBlockGasPriceGauges() publishes once from the final aggregates after workers join.
     }
 
     /// <summary>
@@ -487,9 +482,20 @@ public class Metrics
 
         Volatile.Write(ref _countAveGasPriceBits, PackCountAve(0, gasPrice));
         Volatile.Write(ref _blockEstMedianGasPrice, gasPrice);
-        GasPriceMin = gasPrice;
-        GasPriceMax = gasPrice;
-        GasPriceAve = gasPrice;
-        GasPriceMedian = gasPrice;
+    }
+
+    /// <summary>
+    /// Publishes the latest-block gas-price gauges from the final aggregates. Call once after all
+    /// (possibly parallel) transactions are processed, so a slow worker cannot leave a stale value.
+    /// </summary>
+    internal static void PublishBlockGasPriceGauges()
+    {
+        float min = BlockMinGasPrice;
+        if (min == float.MaxValue) return; // no data this block; keep previous gauge values
+
+        GasPriceMin = min;
+        GasPriceMax = BlockMaxGasPrice;
+        GasPriceAve = BlockAveGasPrice;
+        GasPriceMedian = BlockEstMedianGasPrice;
     }
 }

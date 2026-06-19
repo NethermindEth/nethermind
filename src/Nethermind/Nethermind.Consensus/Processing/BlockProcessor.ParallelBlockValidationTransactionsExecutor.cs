@@ -58,8 +58,10 @@ public partial class BlockProcessor
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
 
-            // Seed empty/system-only blocks with the base fee after workers join.
+            // Seed empty/system-only blocks with the base fee, then publish gauges once - after workers
+            // join - from the final aggregates so a stale worker view cannot overwrite them.
             Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
+            Metrics.PublishBlockGasPriceGauges();
 
             return receipts;
         }

@@ -80,4 +80,18 @@ public class GasPriceMetricsTests
         Assert.That(Metrics.BlockTransactions, Is.EqualTo(0));
         Assert.That(Metrics.GetBlockGasPrices(), Is.Null);
     }
+
+    [Test]
+    public void Gauges_publish_final_aggregates_not_per_tx_worker_value()
+    {
+        Metrics.UpdateBlockGasPrice(Gwei(10));
+        Metrics.UpdateBlockGasPrice(Gwei(30));
+
+        // Per-tx updates do not touch the gauges; only the explicit publish does (once, after workers join).
+        Metrics.PublishBlockGasPriceGauges();
+
+        Assert.That(Metrics.GasPriceMin, Is.EqualTo(10.0f));
+        Assert.That(Metrics.GasPriceMax, Is.EqualTo(30.0f));
+        Assert.That(Metrics.GasPriceAve, Is.EqualTo(20.0f));
+    }
 }
