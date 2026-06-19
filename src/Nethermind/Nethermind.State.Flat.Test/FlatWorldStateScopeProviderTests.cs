@@ -956,36 +956,4 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(sink.Slots[0].Value, Is.EqualTo(new byte[] { 0x12 }));
     }
 
-    [Test]
-    public async Task HintBal_WithSink_ReadsSlotsForEmptyStorageRoot()
-    {
-        using TestContext ctx = new(withWarmReadPool: true);
-
-        Address address = TestItem.AddressA;
-        UInt256 slot = 1;
-        ValueHash256 accountPath = address.ToAccountPath;
-        Account account = new(0, 0, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
-        ctx.PersistenceReader.GetAccount(address).Returns(account);
-        SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero([0x34]);
-        ctx.PersistenceReader.TryGetSlot(in accountPath, slot, ref Arg.Any<SlotValue>())
-            .Returns(x =>
-            {
-                x[2] = outValue;
-                return true;
-            });
-
-        ReadOnlyBlockAccessList bal = new(
-            [new ReadOnlyAccountChanges(address, [], [slot], [], [], [])],
-            itemCount: 2);
-        RecordingBalSink sink = new();
-
-        await ctx.Scope.HintBal(bal, sink);
-
-        ctx.PersistenceReader.Received(1).TryGetSlot(in accountPath, slot, ref Arg.Any<SlotValue>());
-        ctx.PersistenceReader.DidNotReceive().TryGetSlot(address, slot, ref Arg.Any<SlotValue>());
-        Assert.That(sink.Slots, Has.Count.EqualTo(1));
-        Assert.That(sink.Slots[0].Cell, Is.EqualTo(new StorageCell(address, in slot)));
-        Assert.That(sink.Slots[0].Value, Is.EqualTo(new byte[] { 0x34 }));
-    }
-
 }

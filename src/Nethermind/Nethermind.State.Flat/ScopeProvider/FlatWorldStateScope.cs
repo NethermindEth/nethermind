@@ -232,8 +232,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             ParallelOptions parallelOptions = new() { CancellationToken = token };
 
+            Account?[]? accounts = sink is null ? null : new Account?[accountCount];
             int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
-            bool[]? shouldReadSlots = sink is null ? null : new bool[accountCount];
 
             try
             {
@@ -266,14 +266,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         sink.OnAccountRead(address, account);
                     }
 
-                    if (sink is not null && (accountStillNeeded || account is not null))
-                    {
-                        shouldReadSlots![i] = true;
-                        selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-                    }
-
-                    if (account is null)
-                        return;
+                    if (account is null) return;
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                     if (storageRoot == Keccak.EmptyTreeHash) return;
 
@@ -298,9 +291,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                                 Interlocked.Increment(ref _outstandingWarmups);
                         }
                     }
+
+                    if (accounts is not null)
+                    {
+                        accounts[i] = account;
+                        selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                    }
                 });
 
-                if (sink is not null) RunSinkSlotReads(accountChanges, shouldReadSlots!, selfDestructIdxs!, sink, parallelOptions);
+                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
             finally
@@ -312,7 +311,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private void RunSinkSlotReads(
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
-        bool[] shouldReadSlots,
+        Account?[] accounts,
         int[] selfDestructIdxs,
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
@@ -323,7 +322,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
-            if (!shouldReadSlots[i]) continue;
+            if (accounts[i] is null) continue;
             totalSlots += accountChanges[i].StorageChanges.Length
                        + accountChanges[i].StorageReads.Length;
         }
@@ -334,7 +333,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int idx = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
-            if (!shouldReadSlots[i]) continue;
+            if (accounts[i] is null) continue;
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             ValueHash256 accountPath = address.ToAccountPath;
