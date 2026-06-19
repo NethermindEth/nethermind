@@ -405,17 +405,19 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
+        UInt256 sample1 = Hex(SampleHexData1);
+
         Assert.That(trace.Entries[0].Stack.Count, Is.EqualTo(0), "entry[0] length");
 
         Assert.That(trace.Entries[1].Stack.Count, Is.EqualTo(1), "entry[1] length");
-        Assert.That(trace.Entries[1].Stack[0], Is.EqualTo($"0x{SampleHexData1}"), "entry[1][0]");
+        Assert.That(trace.Entries[1].Stack[0], Is.EqualTo(sample1), "entry[1][0]");
 
         Assert.That(trace.Entries[2].Stack.Count, Is.EqualTo(2), "entry[2] length");
-        Assert.That(trace.Entries[2].Stack[0], Is.EqualTo($"0x{SampleHexData1}"), "entry[2][0]");
-        Assert.That(trace.Entries[2].Stack[1], Is.EqualTo("0x0"), "entry[2][1]");
+        Assert.That(trace.Entries[2].Stack[0], Is.EqualTo(sample1), "entry[2][0]");
+        Assert.That(trace.Entries[2].Stack[1], Is.EqualTo(UInt256.Zero), "entry[2][1]");
 
         Assert.That(trace.Entries[3].Stack.Count, Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].Stack[0], Is.EqualTo($"0x{SampleHexData1}"), "entry[3][0]");
+        Assert.That(trace.Entries[3].Stack[0], Is.EqualTo(sample1), "entry[3][0]");
     }
 
     [Test]
@@ -435,6 +437,8 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         /* note the curious Geth trace behaviour where memory grows now but is populated from the next trace entry */
 
+        UInt256 sample1 = Hex(SampleHexData1);
+
         Assert.That(trace.Entries[0].Memory.Count, Is.EqualTo(0), "entry[0] length");
 
         Assert.That(trace.Entries[1].Memory.Count, Is.EqualTo(0), "entry[1] length");
@@ -442,13 +446,13 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Entries[2].Memory.Count, Is.EqualTo(0), "entry[2] length");
 
         Assert.That(trace.Entries[3].Memory.Count, Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].Memory[0], Is.EqualTo($"0x{SampleHexData1.PadLeft(64, '0')}"), "entry[3][0]");
+        Assert.That(trace.Entries[3].Memory[0], Is.EqualTo(sample1), "entry[3][0]");
 
         Assert.That(trace.Entries[4].Memory.Count, Is.EqualTo(1), "entry[4] length");
-        Assert.That(trace.Entries[4].Memory[0], Is.EqualTo($"0x{SampleHexData1.PadLeft(64, '0')}"), "entry[4][0]");
+        Assert.That(trace.Entries[4].Memory[0], Is.EqualTo(sample1), "entry[4][0]");
 
         Assert.That(trace.Entries[5].Memory.Count, Is.EqualTo(1), "entry[5] length");
-        Assert.That(trace.Entries[5].Memory[0], Is.EqualTo($"0x{SampleHexData1.PadLeft(64, '0')}"), "entry[5][0]");
+        Assert.That(trace.Entries[5].Memory[0], Is.EqualTo(sample1), "entry[5][0]");
     }
 
     [Test]
@@ -459,9 +463,9 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: "0x866833515b6d086c607f", expectedStackCount: 8);
-        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: "0x0", expectedStackCount: 8);
-        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: "0x1", expectedStackCount: 8);
+        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
+        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
+        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
     }
 
     [Test]
@@ -581,7 +585,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         return document.RootElement.EnumerateArray().Select(e => e.Clone()).ToArray();
     }
 
-    private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, string expectedStackTop, int expectedStackCount)
+    private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, UInt256 expectedStackTop, int expectedStackCount)
     {
         using (Assert.EnterMultipleScope())
         {
@@ -591,4 +595,6 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             Assert.That(entry.Stack.Count, Is.EqualTo(expectedStackCount));
         }
     }
+
+    private static UInt256 Hex(string hex) => new(Bytes.FromHexString(hex), isBigEndian: true);
 }

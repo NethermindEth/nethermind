@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
@@ -708,44 +709,34 @@ public class JsonRpcSocketsClientTests
 
     private static object RandomObject(int size)
     {
-        string[] strings = RandomStringArray(size / 2);
+        UInt256[] words = RandomWordArray(size / 2);
         return new GethLikeTxTrace
         {
             Entries =
             {
                 new GethTxTraceEntry
                 {
-                    Stack = strings, Memory = strings,
+                    Stack = words, Memory = words,
                 }
             }
         };
     }
 
-    private static string[] RandomStringArray(int length, bool runGc = true)
+    private static UInt256[] RandomWordArray(int length, bool runGc = true)
     {
-        string[] array = new string[length];
+        Random random = new();
+        UInt256[] array = new UInt256[length];
+        Span<byte> word = stackalloc byte[32];
         for (int i = 0; i < length; i++)
         {
-            array[i] = RandomString(length);
+            random.NextBytes(word);
+            array[i] = new UInt256(word, isBigEndian: true);
             if (runGc && i % 100 == 0)
             {
                 GC.Collect();
             }
         }
         return array;
-    }
-
-    private static string RandomString(int length)
-    {
-        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        char[] stringChars = new char[length];
-        Random random = new();
-
-        for (int i = 0; i < stringChars.Length; i++)
-        {
-            stringChars[i] = chars[random.Next(chars.Length)];
-        }
-        return new string(stringChars);
     }
 
     private static bool IsEndOfIpcMessage(ReceiveResult result) => result.EndOfMessage && (!result.Closed || result.Read != 0);

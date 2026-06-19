@@ -136,9 +136,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(entry.Storage, Is.Null, nameof(entry.Storage));
             // Storage is recorded only at the SSTORE entry (slot 0x0 set to 0x0), matching Geth's struct logger.
             Assert.That(trace.Entries[4].Opcode, Is.EqualTo("SSTORE"), "SSTORE opcode");
-            Assert.That(trace.Entries[4].Storage, Is.EquivalentTo(new Dictionary<string, string>
+            Assert.That(trace.Entries[4].Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256>
             {
-                ["0x" + new string('0', 64)] = "0x" + new string('0', 64),
+                [UInt256.Zero] = UInt256.Zero,
             }), nameof(trace.Entries));
             Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
             Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
@@ -496,8 +496,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        string copied = traces.Entries.Last().Memory[0];
-        string origin = traces.Entries.Last().Memory[1];
+        UInt256 copied = traces.Entries.Last().Memory[0];
+        UInt256 origin = traces.Entries.Last().Memory[1];
 
         using (Assert.EnterMultipleScope())
         {
@@ -523,12 +523,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        string result = traces.Entries.Last().Memory[0];
+        UInt256 result = traces.Entries.Last().Memory[0];
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
-            Assert.That(result, Is.EqualTo("0x0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
+            Assert.That(result, Is.EqualTo(new UInt256(Bytes.FromHexString("0x0101020304050607080000000000000000000000000000000000000000000000"), isBigEndian: true)), "memory state");
         }
     }
 
@@ -583,12 +583,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        string result = traces.Entries.Last().Memory[0];
+        UInt256 result = traces.Entries.Last().Memory[0];
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
-            Assert.That(result, Is.EqualTo("0x0102030405060708080000000000000000000000000000000000000000000000"), "memory state");
+            Assert.That(result, Is.EqualTo(new UInt256(Bytes.FromHexString("0x0102030405060708080000000000000000000000000000000000000000000000"), isBigEndian: true)), "memory state");
         }
     }
 

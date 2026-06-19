@@ -31,9 +31,11 @@ public class GethTxTraceEntry
 
     public string? Error { get; set; }
 
-    public string[]? Stack { get; set; }
+    [JsonConverter(typeof(StackHexConverter))]
+    public UInt256[]? Stack { get; set; }
 
-    public string[]? Memory { get; set; }
+    [JsonConverter(typeof(MemoryHexConverter))]
+    public UInt256[]? Memory { get; set; }
 
     [JsonConverter(typeof(StorageHexConverter))]
     public Dictionary<UInt256, UInt256>? Storage { get; set; }

@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Text;
+using System.Buffers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
@@ -56,12 +59,8 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
 
         if ((value.Memory?.Length ?? 0) != 0)
         {
-            StringBuilder memory = new("0x");
-            foreach (string word in value.Memory!)
-                memory.Append(word.AsSpan(2));
-
             writer.WritePropertyName("memory");
-            writer.WriteStringValue(memory.ToString());
+            WriteMemoryBlob(writer, value.Memory!);
         }
 
         if (value.Stack is not null)
@@ -69,8 +68,8 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
             writer.WritePropertyName("stack");
             writer.WriteStartArray();
 
-            foreach (string s in value.Stack)
-                writer.WriteStringValue(s);
+            foreach (UInt256 word in value.Stack)
+                HexWriter.WriteUInt256HexRawValue(writer, word, zeroPadded: false, addHexPrefix: true);
 
             writer.WriteEndArray();
         }
@@ -101,5 +100,33 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         // to avoid adding comma on writer reuse
         writer.Flush();
         writer.Reset();
+    }
+
+    private const int WordSize = 32;
+
+    // The file format renders memory as a single contiguous 0x-prefixed hex blob (not a per-word array),
+    // so the words are encoded straight into a UTF-8 buffer and written as one JSON string.
+    private static void WriteMemoryBlob(Utf8JsonWriter writer, UInt256[] words)
+    {
+        int rawLength = words.Length * WordSize;
+        byte[] raw = ArrayPool<byte>.Shared.Rent(rawLength);
+        byte[] hex = ArrayPool<byte>.Shared.Rent(2 + rawLength * 2);
+        try
+        {
+            Span<byte> rawSpan = raw.AsSpan(0, rawLength);
+            for (int i = 0; i < words.Length; i++)
+                words[i].ToBigEndian(rawSpan.Slice(i * WordSize, WordSize));
+
+            hex[0] = (byte)'0';
+            hex[1] = (byte)'x';
+            ((ReadOnlySpan<byte>)rawSpan).OutputBytesToByteHex(hex.AsSpan(2, rawLength * 2), extraNibble: false);
+
+            writer.WriteStringValue(hex.AsSpan(0, 2 + rawLength * 2));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(raw);
+            ArrayPool<byte>.Shared.Return(hex);
+        }
     }
 }

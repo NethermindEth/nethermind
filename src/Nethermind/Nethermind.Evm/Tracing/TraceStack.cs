@@ -30,6 +30,18 @@ public readonly struct TraceStack(ReadOnlyMemory<byte> stack)
         return hexWordList;
     }
 
+    /// <summary>Materializes the stack words as <see cref="UInt256"/> domain values, avoiding the per-word hex string allocation of a textual representation.</summary>
+    public UInt256[] ToWordArray()
+    {
+        UInt256[] words = new UInt256[Count];
+        for (int i = 0; i < words.Length; i++)
+        {
+            words[i] = new UInt256(this[i].Span, isBigEndian: true);
+        }
+
+        return words;
+    }
+
     public ReadOnlySpan<byte> Peek(int index) => this[^(index + 1)].Span;
     public UInt256 PeekUInt256(int index) => new(Peek(index), true);
     public Address PeekAddress(int index) => new(Peek(index)[12..]);
