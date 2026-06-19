@@ -88,6 +88,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
+        if (blobVersionedHashes is null)
+        {
+            error = "Blob versioned hashes must not be null";
+            return ValidationResult.Fail;
+        }
+
         Result<Transaction[]> transactionDecodingResult = executionPayload.TryGetTransactions();
         if (transactionDecodingResult.IsError)
         {
