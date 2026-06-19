@@ -158,6 +158,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
+            // Parent may have been processed and found invalid (deleted from block tree).
+            // Check the tracker directly so we return INVALID rather than SYNCING.
+            if (_invalidChainTracker.IsOnKnownInvalidChain(block.ParentHash!, out Hash256? parentLastValidHash))
+            {
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"parent block is part of an invalid chain. Last valid: {parentLastValidHash}"));
+                return NewPayloadV1Result.Invalid(parentLastValidHash, $"Parent block {block.ParentHash} is known to be a part of an invalid chain.");
+            }
+
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));

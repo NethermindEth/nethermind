@@ -30,6 +30,7 @@ public class InvalidChainTracker(
     private readonly IBlockCacheService _blockCacheService = blockCacheService;
     private readonly ILogger _logger = logManager.GetClassLogger<InvalidChainTracker>();
     private readonly LruCache<ValueHash256, Node> _tree = new(1024, nameof(InvalidChainTracker));
+    private readonly object _nodeLock = new();
 
     // CompositeDisposable only available on System.Reactive. So this will do for now.
     private readonly List<Action> _disposables = [];
@@ -63,10 +64,19 @@ public class InvalidChainTracker(
 
     private Node GetNode(Hash256 hash)
     {
-        if (!_tree.TryGet(hash, out Node node))
+        if (_tree.TryGet(hash, out Node node))
+            return node;
+
+        // Double-checked locking prevents two threads from creating different Node objects
+        // for the same hash. Without this, the second Set() overwrites the first, leaving
+        // the first thread holding a stale Node whose children are never seen by future lookups.
+        lock (_nodeLock)
         {
-            node = new Node();
-            _tree.Set(hash, node);
+            if (!_tree.TryGet(hash, out node))
+            {
+                node = new Node();
+                _tree.Set(hash, node);
+            }
         }
 
         return node;

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -212,6 +213,38 @@ public class InvalidChainTrackerTest
         _tracker.OnInvalidBlock(blockHeader.GetOrCalculateHash(), null);
 
         AssertInvalid(blockHeader.GetOrCalculateHash(), parentBlockHeader.Hash);
+    }
+
+    [Test]
+    public async Task GetNode_WhenCalledConcurrently_DoesNotLoseChildren()
+    {
+        // Regression test: before the fix, two threads could both see TryGet return false
+        // for the same parent hash, create separate Node objects, and the second Set() would
+        // overwrite the first. The thread holding the evicted Node's children were then
+        // invisible to OnInvalidBlock's PropagateLastValidHash, so descendants were never
+        // marked invalid — causing engine_newPayload to return SYNCING instead of INVALID.
+        Hash256 parent = Keccak.Compute("parent");
+        Hash256 grandparent = Keccak.Compute("grandparent");
+
+        const int threadCount = 32;
+        Hash256[] children = new Hash256[threadCount];
+        for (int i = 0; i < threadCount; i++)
+            children[i] = Keccak.Compute($"child{i}");
+
+        // Simulate many concurrent SetChildParent calls on the same parent hash,
+        // as happens when the beacon header sync feed and engine API calls race.
+        await Parallel.ForEachAsync(children, async (child, _) =>
+        {
+            await Task.Yield();
+            _tracker.SetChildParent(child, parent);
+        });
+
+        _tracker.OnInvalidBlock(parent, grandparent);
+
+        foreach (Hash256 child in children)
+        {
+            AssertInvalid(child, grandparent);
+        }
     }
 
     private void AssertValid(Hash256 hash) =>
