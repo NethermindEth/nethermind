@@ -48,6 +48,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ReadOnlySpan<byte> Get(in StorageCell storageCell);
 
     /// <summary>
+    /// Get the persistent storage value and track it as the original value for a possible storage write.
+    /// </summary>
+    /// <param name="storageCell">Storage location</param>
+    /// <returns>Value at cell</returns>
+    ReadOnlySpan<byte> GetAndTrackOriginal(in StorageCell storageCell) => Get(in storageCell);
+
+    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>

@@ -70,7 +70,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
     protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell, trackOriginal: false);
+
+    public ReadOnlySpan<byte> GetAndTrackOriginal(in StorageCell storageCell) =>
+        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell, trackOriginal: true);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -81,7 +84,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
-            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            GetAndTrackOriginal(storageCell);
+            if (!_originalValues.TryGetValue(storageCell, out value))
+            {
+                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            }
         }
 
         if (_transactionChangesSnapshots.TryPeek(out int snapshot))
@@ -294,12 +301,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         if (!isEmpty)
         {
-            LoadFromTree(in storageCell);
+            LoadFromTree(in storageCell, trackOriginal: false);
         }
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
-        GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell, bool trackOriginal) =>
+        GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell, trackOriginal);
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
@@ -340,20 +347,33 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
+        private bool _hasClear;
         private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
-        public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
-        public bool HasClear => _missingAreDefault;
+        public int EstimatedSize => _dictionary.Count + (_hasClear ? 1 : 0);
+        public bool HasClear => _hasClear;
         public int Capacity => _dictionary.Capacity;
 
         public void Reset()
         {
             _missingAreDefault = false;
+            _hasClear = false;
             _dictionary.Clear();
         }
         public void ClearAndSetMissingAsDefault()
         {
             _missingAreDefault = true;
+            _hasClear = true;
             _dictionary.Clear();
+        }
+
+        public void ClearAndSetExistingAsDefault()
+        {
+            _missingAreDefault = true;
+            _hasClear = true;
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in _dictionary)
+            {
+                _dictionary[kvp.Key] = new StorageChangeTrace(kvp.Value.Before, StorageTree.ZeroBytes);
+            }
         }
 
         public ref StorageChangeTrace GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
@@ -393,7 +413,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
         }
 
-        public void UnmarkClear() => _missingAreDefault = false;
+        public void UnmarkClear() => _hasClear = false;
     }
 
     private sealed class PerContractState : IReturnable
@@ -460,7 +480,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void Clear()
         {
             EnsureStorageTree();
-            BlockChange.ClearAndSetMissingAsDefault();
+            BlockChange.ClearAndSetExistingAsDefault();
         }
 
         public void Return()
@@ -492,7 +512,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
         }
 
-        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
+        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell, bool trackOriginal)
         {
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
@@ -506,7 +526,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
+            if (trackOriginal && !storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
             return valueChange.After;
         }
 

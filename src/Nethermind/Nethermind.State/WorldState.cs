@@ -107,6 +107,11 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _persistentStorageProvider.Get(storageCell);
         }
+        public ReadOnlySpan<byte> GetAndTrackOriginal(in StorageCell storageCell)
+        {
+            DebugGuardInScope();
+            return _persistentStorageProvider.GetAndTrackOriginal(storageCell);
+        }
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
             DebugGuardInScope();

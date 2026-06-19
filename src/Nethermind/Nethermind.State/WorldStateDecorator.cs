@@ -68,6 +68,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell)
         => State.Get(in storageCell);
 
+    public virtual ReadOnlySpan<byte> GetAndTrackOriginal(in StorageCell storageCell)
+        => State.GetAndTrackOriginal(in storageCell);
+
     public virtual void Set(in StorageCell storageCell, byte[] newValue)
         => State.Set(in storageCell, newValue);
 

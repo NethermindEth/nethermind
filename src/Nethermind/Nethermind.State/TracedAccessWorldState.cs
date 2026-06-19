@@ -89,6 +89,24 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return GetInternal(accountChanges, in storageCell);
     }
 
+    public override ReadOnlySpan<byte> GetAndTrackOriginal(in StorageCell storageCell)
+    {
+        AccountChangesAtIndex accountChanges;
+        if (_hasLastReadCell && _lastReadStorageCell.Equals(storageCell))
+        {
+            accountChanges = _lastReadStorageChanges!;
+        }
+        else
+        {
+            accountChanges = _generatingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
+            _lastReadStorageCell = storageCell;
+            _lastReadStorageChanges = accountChanges;
+            _hasLastReadCell = true;
+        }
+
+        return GetInternal(accountChanges, in storageCell, trackOriginal: true);
+    }
+
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
         UInt256? currentNonce = GetNonceCurrent(address);
@@ -326,17 +344,22 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
         => GetInternal(parallel ? _generatingBlockAccessList.GetAccountChanges(storageCell.Address) : null, in storageCell);
 
-    private ReadOnlySpan<byte> GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell)
+    private ReadOnlySpan<byte> GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell, bool trackOriginal = false)
     {
         if (parallel && accountChanges?.TryGetStorageChange(storageCell.Index, out StorageChange? change) == true)
         {
+            if (trackOriginal)
+            {
+                base.GetAndTrackOriginal(storageCell);
+            }
+
             // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
             // frame without allocating a new byte[32] per SLOAD.
             Unsafe.WriteUnaligned(ref MemoryMarshal.GetArrayDataReference(_scratchStorage), change.Value.Value);
             return _scratchStorage;
         }
 
-        return base.Get(storageCell);
+        return trackOriginal ? base.GetAndTrackOriginal(storageCell) : base.Get(storageCell);
     }
 
     private bool AccountExistsInternal(Address address)

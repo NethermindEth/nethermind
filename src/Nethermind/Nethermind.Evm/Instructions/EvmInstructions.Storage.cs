@@ -384,7 +384,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
-        ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
+        ReadOnlySpan<byte> currentValue = vm.WorldState.GetAndTrackOriginal(in storageCell);
         bool currentIsZero = currentValue.IsZero();
 
         // Determine whether the new value is identical to the current stored value.
@@ -498,7 +498,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
-        ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
+        ReadOnlySpan<byte> currentValue = vm.WorldState.GetAndTrackOriginal(in storageCell);
         bool currentIsZero = currentValue.IsZero();
 
         // Determine whether the new value is identical to the current stored value.

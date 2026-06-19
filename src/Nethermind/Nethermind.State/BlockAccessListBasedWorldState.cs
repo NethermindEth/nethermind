@@ -97,6 +97,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return default;
     }
 
+    public override ReadOnlySpan<byte> GetAndTrackOriginal(in StorageCell storageCell)
+        => Get(in storageCell);
+
     public override ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(storageCell.Address);
