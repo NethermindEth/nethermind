@@ -168,8 +168,8 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         {
             writer.WritePropertyName("stack");
             writer.WriteStartArray();
-            foreach (string s in entry.Stack)
-                writer.WriteStringValue(s);
+            foreach (UInt256 s in entry.Stack)
+                writer.WriteStringValue($"0x{s:x}");
             writer.WriteEndArray();
         }
 

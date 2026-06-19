@@ -226,8 +226,8 @@ public class DebugTraceStreamingBenchmarks
         Depth = 1,
         Gas = 1_000_000 - pc,
         GasCost = 3,
-        Memory = ["0x0000000000000000000000000000000000000000000000000000000000000000"],
-        Stack = ["0x1", "0x2"],
+        Memory = [UInt256.Zero],
+        Stack = [UInt256.One, new UInt256(2)],
         Error = null,
         Storage = [],
     };
