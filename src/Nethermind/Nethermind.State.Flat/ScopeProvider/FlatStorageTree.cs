@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private UInt256 _lastIndex;
     private byte[]? _lastValue;
     private bool _hasLastValue;
+    private UInt256 _previousIndex;
+    private byte[]? _previousValue;
+    private bool _hasPreviousValue;
     private readonly PreservedStorageTries? _preservedStorageTries;
     private readonly PreservedStorageTries.Rebinder _storageTreeRebinder;
 
@@ -83,9 +87,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public byte[] Get(in UInt256 index)
     {
-        if (!_config.VerifyWithTrie && _hasLastValue && _lastIndex.Equals(index))
+        if (!_config.VerifyWithTrie && TryGetMemoized(in index, out byte[] memoizedValue))
         {
-            return _lastValue!;
+            return memoizedValue;
         }
 
         byte[]? value = _bundle.GetSlot(_address, _addressHash.ValueHash256, index, _selfDestructKnownStateIdx);
@@ -103,9 +107,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             }
         }
 
-        _lastIndex = index;
-        _lastValue = value;
-        _hasLastValue = true;
+        Memoize(in index, value);
         return value!;
     }
 
@@ -154,9 +156,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         _bundle.SetChangedSlot(_address, slot, value);
 
-        _lastIndex = slot;
-        _lastValue = value.Length == 0 ? StorageTree.ZeroBytes : value;
-        _hasLastValue = true;
+        Memoize(in slot, value.Length == 0 ? StorageTree.ZeroBytes : value);
     }
 
     public void SelfDestruct()
@@ -165,7 +165,68 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         _tree.RootHash = Keccak.EmptyTreeHash;
         _hasLastValue = false;
+        _hasPreviousValue = false;
         _lastValue = null;
+        _previousValue = null;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryGetMemoized(in UInt256 index, out byte[] value)
+    {
+        if (_hasLastValue && _lastIndex.Equals(index))
+        {
+            value = _lastValue!;
+            return true;
+        }
+
+        if (_hasPreviousValue && _previousIndex.Equals(index))
+        {
+            UInt256 lastIndex = _lastIndex;
+            byte[]? lastValue = _lastValue;
+            bool hasLastValue = _hasLastValue;
+
+            _lastIndex = index;
+            _lastValue = _previousValue;
+            _hasLastValue = true;
+
+            if (hasLastValue)
+            {
+                _previousIndex = lastIndex;
+                _previousValue = lastValue;
+            }
+            else
+            {
+                _previousValue = null;
+                _hasPreviousValue = false;
+            }
+
+            value = _lastValue!;
+            return true;
+        }
+
+        value = null!;
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void Memoize(in UInt256 index, byte[] value)
+    {
+        if (_hasLastValue)
+        {
+            if (_lastIndex.Equals(index))
+            {
+                _lastValue = value;
+                return;
+            }
+
+            _previousIndex = _lastIndex;
+            _previousValue = _lastValue;
+            _hasPreviousValue = true;
+        }
+
+        _lastIndex = index;
+        _lastValue = value;
+        _hasLastValue = true;
     }
 
     public void CommitTree() => _tree.Commit();

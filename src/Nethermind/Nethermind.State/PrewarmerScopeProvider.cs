@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -205,14 +206,17 @@ public class PrewarmerScopeProvider(
         private UInt256 _lastIndex;
         private byte[]? _lastValue;
         private bool _hasLastValue;
+        private UInt256 _previousIndex;
+        private byte[]? _previousValue;
+        private bool _hasPreviousValue;
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
         public byte[] Get(in UInt256 index)
         {
-            if (_hasLastValue && _lastIndex.Equals(index))
+            if (TryGetMemoized(in index, out byte[] memoizedValue))
             {
-                return _lastValue!;
+                return memoizedValue;
             }
 
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
@@ -230,20 +234,82 @@ public class PrewarmerScopeProvider(
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
 
-            _lastIndex = index;
-            _lastValue = value;
-            _hasLastValue = true;
+            Memoize(in index, value);
             return value;
         }
 
         public void HintSet(in UInt256 index, byte[]? value)
         {
+            byte[] memoizedValue = value ?? StorageTree.ZeroBytes;
             if (_hasLastValue && _lastIndex.Equals(index))
             {
-                _lastValue = value ?? StorageTree.ZeroBytes;
+                _lastValue = memoizedValue;
+            }
+            else if (_hasPreviousValue && _previousIndex.Equals(index))
+            {
+                _previousValue = memoizedValue;
             }
 
             baseStorageTree.HintSet(in index, value);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool TryGetMemoized(in UInt256 index, out byte[] value)
+        {
+            if (_hasLastValue && _lastIndex.Equals(index))
+            {
+                value = _lastValue!;
+                return true;
+            }
+
+            if (_hasPreviousValue && _previousIndex.Equals(index))
+            {
+                UInt256 lastIndex = _lastIndex;
+                byte[]? lastValue = _lastValue;
+                bool hasLastValue = _hasLastValue;
+
+                _lastIndex = index;
+                _lastValue = _previousValue;
+                _hasLastValue = true;
+
+                if (hasLastValue)
+                {
+                    _previousIndex = lastIndex;
+                    _previousValue = lastValue;
+                }
+                else
+                {
+                    _previousValue = null;
+                    _hasPreviousValue = false;
+                }
+
+                value = _lastValue!;
+                return true;
+            }
+
+            value = null!;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void Memoize(in UInt256 index, byte[] value)
+        {
+            if (_hasLastValue)
+            {
+                if (_lastIndex.Equals(index))
+                {
+                    _lastValue = value;
+                    return;
+                }
+
+                _previousIndex = _lastIndex;
+                _previousValue = _lastValue;
+                _hasPreviousValue = true;
+            }
+
+            _lastIndex = index;
+            _lastValue = value;
+            _hasLastValue = true;
         }
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
