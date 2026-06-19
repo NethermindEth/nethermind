@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Autofac.Features.AttributeFilters;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
@@ -37,7 +35,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 
     public DiscoveryApp(
         ILifetimeScope rootScope,
-        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IEnode enode,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
         IIPResolver ipResolver,
@@ -79,7 +77,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
             (builder) =>
             {
                 builder
-                .AddModule(new DiscV4KademliaModule(nodeKey.PublicKey, bootNodes))
+                .AddModule(new DiscV4KademliaModule(enode.PublicKey, bootNodes))
                 .AddSingleton<DiscV4Services>();
 
                 configureDiscv4Services?.Invoke(builder);

@@ -5,8 +5,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
@@ -30,7 +28,6 @@ namespace Nethermind.Network.Test.Rlpx
 
             RlpxHost host = new(
                 Substitute.For<IMessageSerializationService>(),
-                new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
                 Substitute.For<IHandshakeService>(),
                 Substitute.For<ISessionMonitor>(),
                 NullDisconnectsAnalyzer.Instance,

@@ -5,7 +5,6 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -91,7 +90,6 @@ public class RlpxHostIntegrationTests
 
         return new RlpxHost(
             Substitute.For<IMessageSerializationService>(),
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
             Substitute.For<IHandshakeService>(),
             Substitute.For<ISessionMonitor>(),
             NullDisconnectsAnalyzer.Instance,

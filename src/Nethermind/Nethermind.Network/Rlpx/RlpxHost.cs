@@ -9,15 +9,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -37,7 +34,6 @@ namespace Nethermind.Network.Rlpx
         private IEventLoopGroup? _workerGroup;
 
         private bool _isInitialized;
-        public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
         private readonly IPAddress _localIp;
         private readonly IHandshakeService _handshakeService;
@@ -63,7 +59,6 @@ namespace Nethermind.Network.Rlpx
 
         public RlpxHost(
             IMessageSerializationService serializationService,
-            [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
@@ -73,7 +68,6 @@ namespace Nethermind.Network.Rlpx
             IChannelFactory? channelFactory = null)
         {
             ArgumentNullException.ThrowIfNull(serializationService);
-            ArgumentNullException.ThrowIfNull(nodeKey);
             ArgumentNullException.ThrowIfNull(handshakeService);
             ArgumentNullException.ThrowIfNull(sessionMonitor);
             ArgumentNullException.ThrowIfNull(disconnectsAnalyzer);
@@ -95,7 +89,6 @@ namespace Nethermind.Network.Rlpx
             _sessionMonitor = sessionMonitor;
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _handshakeService = handshakeService;
-            LocalNodeId = nodeKey.PublicKey;
             LocalPort = networkConfig.P2PPort;
             // RlpxHost is injected as Lazy<> into InitializeNetwork, whose async Initialize() runs after its
             // SetupKeyStore dependency has awaited Resolve() and warmed the cache, so this does not block.

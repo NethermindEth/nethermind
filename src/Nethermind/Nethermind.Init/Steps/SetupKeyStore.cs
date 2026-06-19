@@ -5,12 +5,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
-using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Wallet;
 using System.Linq;
@@ -20,7 +18,7 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies]
     public class SetupKeyStore(INethermindApi api) : IStep
     {
-        public async Task Execute(CancellationToken cancellationToken)
+        public Task Execute(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -63,12 +61,9 @@ namespace Nethermind.Init.Steps
                 set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
             }
 
-            IIPResolver.NethermindIp ip = await api.IpResolver.Resolve(cancellationToken);
-            IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ip.ExternalIp, networkConfig.P2PPort);
-
-            get.LogManager.SetGlobalVariable("enode", enode.ToString());
-
             networkConfig.Bootnodes = [.. networkConfig.Bootnodes.Where(bn => bn.NodeId != nodeKey.PublicKey)];
+
+            return Task.CompletedTask;
         }
     }
 }

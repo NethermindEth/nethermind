@@ -4,7 +4,6 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -14,7 +13,7 @@ namespace Nethermind.Xdc.Discovery;
 
 public class XdcDiscoveryApp(
     ILifetimeScope rootScope,
-    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+    IEnode enode,
     IProcessExitSource processExitSource,
     INetworkConfig networkConfig,
     IDiscoveryConfig discoveryConfig,
@@ -22,7 +21,7 @@ public class XdcDiscoveryApp(
     ILogManager logManager)
     : DiscoveryApp(
         rootScope,
-        nodeKey,
+        enode,
         networkConfig,
         discoveryConfig,
         ipResolver,
