@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.History;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -41,7 +42,7 @@ public sealed class EthCapabilitiesProvider(
 
         ulong historyFloor = historyPruner.OldestBlockHeader?.Number ?? 0ul;
         DeleteStrategy? historyWindow = BuildWindow(
-            historyConfig.Pruning == PruningModes.Rolling ? (long)historyPruner.GetRetentionBlocks(historyConfig.RetentionEpochs) : 0L);
+            historyConfig.Pruning == PruningModes.Rolling ? historyPruner.GetRetentionBlocks(historyConfig.RetentionEpochs) : 0UL);
 
         ulong lowestReceipt = Math.Max(syncPointers.LowestInsertedReceiptBlockNumber ?? 0ul, receiptsBarrier);
         ulong lowestBody = Math.Max(syncPointers.LowestInsertedBodyNumber ?? 0ul, bodiesBarrier);
@@ -50,10 +51,10 @@ public sealed class EthCapabilitiesProvider(
         ResourceAvailability state = BuildState(head, fastSyncing);
 
         return new EthCapabilities(
-            Head: new ChainHead((long)head.Number, head.Hash!),
+            Head: new ChainHead(head.Number, head.Hash!),
             State: state,
-            Receipts: BuildResource(receiptsDownloaded, (long)Math.Max(lowestReceipt, historyFloor), historyWindow),
-            Blocks: BuildResource(blockTree.BestSuggestedHeader is not null && bodiesDownloaded, (long)Math.Max(lowestBlock, historyFloor), historyWindow),
+            Receipts: BuildResource(receiptsDownloaded, Math.Max(lowestReceipt, historyFloor), historyWindow),
+            Blocks: BuildResource(blockTree.BestSuggestedHeader is not null && bodiesDownloaded, Math.Max(lowestBlock, historyFloor), historyWindow),
             Stateproofs: state);
     }
 
@@ -65,22 +66,22 @@ public sealed class EthCapabilitiesProvider(
 
         ulong stateFloor = oldestStateBlock ?? 0UL;
         if (stateBoundary.RetentionWindowBlocks is not { } retention)
-            return new ResourceAvailability(Disabled: false, OldestBlock: (long)stateFloor, DeleteStrategy: null);
+            return new ResourceAvailability(Disabled: false, OldestBlock: stateFloor, DeleteStrategy: null);
 
-        ulong windowOldest = head.Number >= retention ? head.Number - retention : 0UL;
+        ulong windowOldest = head.Number.SaturatingSub(retention);
         ulong stateOldest = Math.Max(stateFloor, windowOldest);
         // Emit the window only when it's the binding constraint, and report the configured
         // retention so the value stays accurate before head reaches it.
-        DeleteStrategy? window = windowOldest >= stateFloor ? BuildWindow((long)retention) : null;
-        return new ResourceAvailability(Disabled: false, OldestBlock: (long)stateOldest, DeleteStrategy: window);
+        DeleteStrategy? window = windowOldest >= stateFloor ? BuildWindow(retention) : null;
+        return new ResourceAvailability(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: window);
     }
 
     private static bool IsDescendingResourceDownloaded(bool fastSyncing, ulong pivot, bool downloadInFastSync, ulong? pointer) =>
         !fastSyncing || (downloadInFastSync && (pivot == 0ul || pointer is not null));
 
-    private static ResourceAvailability BuildResource(bool enabled, long oldestBlock, DeleteStrategy? deleteStrategy) =>
+    private static ResourceAvailability BuildResource(bool enabled, ulong oldestBlock, DeleteStrategy? deleteStrategy) =>
         enabled ? new ResourceAvailability(false, oldestBlock, deleteStrategy) : Disabled;
 
-    private static DeleteStrategy? BuildWindow(long retentionBlocks) =>
+    private static DeleteStrategy? BuildWindow(ulong retentionBlocks) =>
         retentionBlocks > 0 ? new DeleteStrategy("window", retentionBlocks) : null;
 }

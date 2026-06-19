@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
-    private static readonly ResourceAvailability Available = new(Disabled: false, OldestBlock: 0L);
+    private static readonly ResourceAvailability Available = new(Disabled: false, OldestBlock: 0UL);
     private static readonly ResourceAvailability Disabled = new(Disabled: true, OldestBlock: null);
 
     private static EthCapabilities GetCaps(
@@ -106,7 +106,7 @@ public partial class EthRpcModuleTests
             SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true },
         };
 
-        const long bodiesBarrier = 5_000_000;
+        const ulong bodiesBarrier = 5_000_000;
         ResourceAvailability barrierBound = new(Disabled: false, OldestBlock: bodiesBarrier);
         yield return new CapabilitiesScenario(
             Name: "fast_sync_with_ancient_bodies_barrier_caps_blocks_and_receipts",
@@ -126,8 +126,8 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Disabled, ExpectedBlocks: Disabled)
         { HeadNumber = 18_001_000, OldestStateBlock = 0, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadBodiesInFastSync = false } };
 
-        const long bodiesBarrierLow = 3_000_000;
-        const long receiptsBarrierHigh = 6_000_000;
+        const ulong bodiesBarrierLow = 3_000_000;
+        const ulong receiptsBarrierHigh = 6_000_000;
         ResourceAvailability blocksAtBodiesBarrier = new(Disabled: false, OldestBlock: bodiesBarrierLow);
         ResourceAvailability receiptsAtReceiptsBarrier = new(Disabled: false, OldestBlock: receiptsBarrierHigh);
         yield return new CapabilitiesScenario(
@@ -151,8 +151,8 @@ public partial class EthRpcModuleTests
         // Mid-sync: bodies/receipts caught up to block 12M from pivot 18M; blocks/receipts oldest
         // tracks the actual progress, not the eventual barrier. State sync is finished
         // (OldestStateBlock = pivot) but historical block sync continues.
-        const long midSyncBody = 12_000_000;
-        const long midSyncReceipt = 12_500_000;
+        const ulong midSyncBody = 12_000_000;
+        const ulong midSyncReceipt = 12_500_000;
         const ulong midSyncStateFloor = 18_000_000UL;
         ResourceAvailability midSyncBlocks = new(Disabled: false, OldestBlock: midSyncBody);
         ResourceAvailability midSyncReceipts = new(Disabled: false, OldestBlock: midSyncReceipt);
@@ -213,8 +213,8 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { OldestStateBlock = fullPruneFloor, SyncConfig = fullSync };
 
-        const long retention = 128;
-        const long memoryHead = 1000;
+        const ulong retention = 128;
+        const ulong memoryHead = 1000;
         ResourceAvailability memoryPruned = new(
             Disabled: false,
             OldestBlock: memoryHead - retention,
@@ -251,7 +251,7 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = false } };
 
-        const long rollingFloor = 1000;
+        const ulong rollingFloor = 1000;
         const uint retentionEpochs = 200;
         ResourceAvailability rollingPruned = new(
             Disabled: false,
@@ -267,7 +267,7 @@ public partial class EthRpcModuleTests
             HistoryPruner = MockHistoryPruner(rollingFloor),
         };
 
-        const long ancientFloor = 500;
+        const ulong ancientFloor = 500;
         ResourceAvailability ancientPruned = new(Disabled: false, OldestBlock: ancientFloor);
         yield return new CapabilitiesScenario(
             Name: "ancient_barriers_history_pruning_advances_floor",

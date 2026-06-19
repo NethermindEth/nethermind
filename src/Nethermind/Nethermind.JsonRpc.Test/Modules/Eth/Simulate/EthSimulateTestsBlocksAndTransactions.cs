@@ -163,7 +163,7 @@ public class EthSimulateTestsBlocksAndTransactions
             SenderAddress = from.Address,
             To = to,
             GasPrice = 20.GWei,
-            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? (ulong)20.GWei : 0UL
+            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20_000_000_000UL : 0UL
         };
 
         ethereumEcdsa.Sign(from, tx);
