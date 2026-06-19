@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Threading;
+using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 [assembly: InternalsVisibleTo("Nethermind.State")]
@@ -440,10 +442,66 @@ public class Metrics
 
     public static void ResetBlockStats()
     {
-        BlockTransactions = 0;
-        BlockAveGasPrice = 0.0f;
-        BlockMaxGasPrice = 0.0f;
-        BlockEstMedianGasPrice = 0.0f;
-        BlockMinGasPrice = float.MaxValue;
+        lock (_gasPriceLock)
+        {
+            BlockTransactions = 0;
+            BlockAveGasPrice = 0.0f;
+            BlockMaxGasPrice = 0.0f;
+            BlockEstMedianGasPrice = 0.0f;
+            BlockMinGasPrice = float.MaxValue;
+        }
+    }
+
+    // Serializes the per-tx block gas-price aggregate update so parallel BAL validation workers,
+    // which each call UpdateBlockGasPrice once per transaction, produce race-free min/max and a
+    // deterministic running average/median. Contention is negligible: one short critical section per
+    // transaction, not per opcode.
+    private static readonly Lock _gasPriceLock = new();
+
+    /// <summary>Folds a transaction's effective gas price into the per-block aggregates.</summary>
+    /// <remarks>
+    /// Gas prices at or above <see cref="ulong.MaxValue"/> wei/gas (~18.4 ETH) are not meaningful for
+    /// these metrics, so the rare wider value is skipped rather than paying the multi-limb
+    /// <see cref="UInt256"/> to <see cref="double"/> conversion on the hot path.
+    /// </remarks>
+    internal static void UpdateBlockGasPrice(in UInt256 effectiveGasPrice)
+    {
+        if (!effectiveGasPrice.IsUint64) return;
+
+        float gasPrice = (float)(effectiveGasPrice.u0 / 1_000_000_000.0);
+
+        lock (_gasPriceLock)
+        {
+            BlockMinGasPrice = Math.Min(gasPrice, BlockMinGasPrice);
+            BlockMaxGasPrice = Math.Max(gasPrice, BlockMaxGasPrice);
+            BlockAveGasPrice = (BlockAveGasPrice * BlockTransactions + gasPrice) / (BlockTransactions + 1);
+            BlockEstMedianGasPrice += BlockAveGasPrice * 0.01f * float.Sign(gasPrice - BlockEstMedianGasPrice);
+            BlockTransactions++;
+        }
+    }
+
+    /// <summary>
+    /// Seeds the block gas-price aggregates with the block base fee when no user transaction
+    /// contributed (empty or system-only block), so the report shows a meaningful value.
+    /// </summary>
+    /// <remarks>
+    /// Skips zero-base-fee chains (pre-EIP-1559, some rollups, genesis): rendering "0.000" there is
+    /// less informative than the prior blank output.
+    /// </remarks>
+    internal static void SeedBlockGasPriceIfEmpty(in UInt256 baseFee)
+    {
+        if (!baseFee.IsUint64 || baseFee.IsZero) return;
+
+        float gasPrice = (float)(baseFee.u0 / 1_000_000_000.0);
+
+        lock (_gasPriceLock)
+        {
+            if (BlockMinGasPrice != float.MaxValue) return; // a transaction already contributed
+
+            BlockMinGasPrice = gasPrice;
+            BlockMaxGasPrice = gasPrice;
+            BlockAveGasPrice = gasPrice;
+            BlockEstMedianGasPrice = gasPrice;
+        }
     }
 }

@@ -54,9 +54,14 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            return !block.IsGenesis && balManager.ParallelExecutionEnabled
+            TxReceipt[] receipts = !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
+
+            // After all (possibly parallel) workers have joined, seed empty/system-only blocks with the base fee.
+            Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
+
+            return receipts;
         }
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)

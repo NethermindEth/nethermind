@@ -54,6 +54,8 @@ public partial class BlockProcessor
                 }
             }
 
+            Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
+
             return [.. receiptsTracer.TxReceipts];
 
             [DebuggerHidden]
