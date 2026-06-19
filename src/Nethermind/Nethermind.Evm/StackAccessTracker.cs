@@ -93,7 +93,11 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 #else
         private static readonly ConcurrentQueue<TrackingState> _trackerPool = new();
 #endif
-        public static TrackingState RentState() => _trackerPool.TryDequeue(out TrackingState tracker) ? tracker : new TrackingState();
+        public static TrackingState RentState()
+        {
+            if (_trackerPool.TryDequeue(out TrackingState tracker)) return tracker;
+            return new TrackingState();
+        }
 
         public static void ResetAndReturn(TrackingState state)
         {
