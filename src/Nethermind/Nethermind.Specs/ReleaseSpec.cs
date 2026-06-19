@@ -18,8 +18,8 @@ public class ReleaseSpec : IReleaseSpec
     public long MaximumExtraDataSize { get; set; }
     public long MaxCodeSize { get; set; }
     public ulong MinGasLimit { get; set; }
-    public long MinHistoryRetentionEpochs { get; set; }
-    public long MinBalRetentionEpochs { get; set; }
+    public ulong MinHistoryRetentionEpochs { get; set; }
+    public ulong MinBalRetentionEpochs { get; set; }
     public ulong GasLimitBoundDivisor { get; set; }
     public UInt256 BlockReward { get; set; }
     public ulong DifficultyBombDelay { get; set; }

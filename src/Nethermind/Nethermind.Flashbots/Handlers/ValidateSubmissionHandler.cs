@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -292,11 +293,7 @@ public class ValidateSubmissionHandler(
         ulong gasLimit = parentGasLimit;
         ulong newBlockNumber = parentHeader.Number + 1;
 
-        // Non-trivial: GasLimitBoundDivisor is a positive ulong; dividing a ulong by it is safe.
-        // The subtraction `/ divisor - 1` could underflow if parentGasLimit < divisor, hence
-        // the Math.Max(0, ...) guard — replicated here using ulong-safe clamping.
-        ulong rawDiff = parentGasLimit / releaseSpec.GasLimitBoundDivisor;
-        ulong maxGasLimitDifference = rawDiff > 0 ? rawDiff - 1 : 0;
+        ulong maxGasLimitDifference = (parentGasLimit / releaseSpec.GasLimitBoundDivisor).SaturatingSub(1);
 
         if (desiredGasLimit > parentGasLimit)
         {

@@ -28,9 +28,9 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? MinGasLimit { get; set; }
 
-    public long? MinHistoryRetentionEpochs { get; set; }
+    public ulong? MinHistoryRetentionEpochs { get; set; }
 
-    public long? MinBalRetentionEpochs { get; set; }
+    public ulong? MinBalRetentionEpochs { get; set; }
 
     public ulong? ForkBlock { get; set; }
 

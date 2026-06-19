@@ -18,8 +18,8 @@ public class ChainParameters
     public Address Registrar { get; set; }
     public long MaximumExtraDataSize { get; set; }
     public ulong MinGasLimit { get; set; }
-    public long MinHistoryRetentionEpochs { get; set; }
-    public long MinBalRetentionEpochs { get; set; }
+    public ulong MinHistoryRetentionEpochs { get; set; }
+    public ulong MinBalRetentionEpochs { get; set; }
     public Hash256 ForkCanonHash { get; set; }
     public ulong? ForkBlock { get; set; }
     public ulong? Eip7Transition { get; set; }

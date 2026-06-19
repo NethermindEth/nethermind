@@ -257,11 +257,11 @@ public class HistoryPrunerTests
         CheckHeadPreserved(testBlockchain, blocks);
     }
 
-    [TestCase(0, 100000u, 0L, 3533u, false)]
-    [TestCase(100, 10u, 0L, 3533u, true)]      // block retention below min
-    [TestCase(0, 100000u, 3533L, 3000u, true)] // BAL retention below min
-    [TestCase(0, 100000u, 3533L, 3533u, false)] // BAL retention exactly at min
-    public void Validates_config(int minHistoryRetentionEpochs, uint retentionEpochs, long minBalRetentionEpochs, uint balRetentionEpochs, bool shouldThrow)
+    [TestCase(0UL, 100000u, 0UL, 3533u, false)]
+    [TestCase(100UL, 10u, 0UL, 3533u, true)]      // block retention below min
+    [TestCase(0UL, 100000u, 3533UL, 3000u, true)] // BAL retention below min
+    [TestCase(0UL, 100000u, 3533UL, 3533u, false)] // BAL retention exactly at min
+    public void Validates_config(ulong minHistoryRetentionEpochs, uint retentionEpochs, ulong minBalRetentionEpochs, uint balRetentionEpochs, bool shouldThrow)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {

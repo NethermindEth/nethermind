@@ -228,12 +228,12 @@ namespace Nethermind.Facade
             IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
             UInt256 senderBalance = worldState.GetBalance(tx.SenderAddress ?? Address.Zero);
             UInt256 feeCap = tx.CalculateFeeCap();
-            if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, (UInt256)tx.ValueRef, out UInt256 availableForGas))
+            if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.ValueRef, out UInt256 availableForGas))
             {
                 if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref availableForGas))
                     availableForGas = UInt256.Zero;
 
-                ulong allowance = (ulong)UInt256.Min(availableForGas / feeCap, (UInt256)ulong.MaxValue);
+                ulong allowance = UInt256.Min(availableForGas / feeCap, ulong.MaxValue).u0;
                 if (tx.GasLimit > allowance)
                     tx.GasLimit = allowance;
             }

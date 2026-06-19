@@ -19,8 +19,8 @@ namespace Nethermind.Specs.Test
         public long MaximumExtraDataSize { get; set; } = spec.MaximumExtraDataSize;
         public long MaxCodeSize { get; set; } = spec.MaxCodeSize;
         public ulong MinGasLimit { get; set; } = spec.MinGasLimit;
-        public long MinHistoryRetentionEpochs { get; set; } = spec.MinHistoryRetentionEpochs;
-        public long MinBalRetentionEpochs { get; set; } = spec.MinBalRetentionEpochs;
+        public ulong MinHistoryRetentionEpochs { get; set; } = spec.MinHistoryRetentionEpochs;
+        public ulong MinBalRetentionEpochs { get; set; } = spec.MinBalRetentionEpochs;
         public ulong GasLimitBoundDivisor { get; set; } = spec.GasLimitBoundDivisor;
         public UInt256 BlockReward { get; set; } = spec.BlockReward;
         public ulong DifficultyBombDelay { get; set; } = spec.DifficultyBombDelay;

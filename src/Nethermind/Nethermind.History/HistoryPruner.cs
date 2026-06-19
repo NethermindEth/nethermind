@@ -44,8 +44,8 @@ public class HistoryPruner : IHistoryPruner
     private readonly bool _enabled;
     private readonly ulong _pruningInterval;
     // MinHistoryRetentionEpochs / MinBalRetentionEpochs come from IReleaseSpec which still returns long.
-    private readonly long _minHistoryRetentionEpochs;
-    private readonly long _minBalRetentionEpochs;
+    private readonly ulong _minHistoryRetentionEpochs;
+    private readonly ulong _minBalRetentionEpochs;
     private readonly ulong _ancientBarrier;
     private readonly ulong _minDeletableBlockNumber;
 

@@ -13,8 +13,8 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual long MaximumExtraDataSize => spec.MaximumExtraDataSize;
     public virtual long MaxCodeSize => spec.MaxCodeSize;
     public virtual ulong MinGasLimit => spec.MinGasLimit;
-    public virtual long MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
-    public virtual long MinBalRetentionEpochs => spec.MinBalRetentionEpochs;
+    public virtual ulong MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
+    public virtual ulong MinBalRetentionEpochs => spec.MinBalRetentionEpochs;
     public virtual ulong GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
     public virtual UInt256 BlockReward => spec.BlockReward;
     public virtual ulong DifficultyBombDelay => spec.DifficultyBombDelay;
