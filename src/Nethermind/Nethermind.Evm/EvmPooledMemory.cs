@@ -143,7 +143,10 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         UpdateSize(newLength);
-        MarkDirty(location.u0, newLength);
+        if (value.Span.Length != 0)
+        {
+            MarkDirty(location.u0, location.u0 + (ulong)value.Span.Length);
+        }
 
         int intLocation = TruncateToInt32(location.u0);
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
