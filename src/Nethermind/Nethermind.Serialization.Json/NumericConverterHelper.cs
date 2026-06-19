@@ -20,6 +20,12 @@ public static class NumericConverterHelper
     /// <summary>
     /// Parse a UTF-8 span that may be hex ("0x...") or decimal into <typeparamref name="T"/>.
     /// </summary>
+    /// <remarks>
+    /// Lax with respect to leading zeros in the hex form — chainspec JSON values (e.g.
+    /// <c>0x0400</c> for <c>gasLimitBoundDivisor</c>) and stored receipts use non-canonical
+    /// encodings that must round-trip. JSON-RPC strictness is enforced separately at the
+    /// RPC entry point.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T Parse<T>(ReadOnlySpan<byte> s) where T : struct, INumberBase<T>
     {
@@ -31,11 +37,6 @@ public static class NumericConverterHelper
         if (s.SequenceEqual("0x0"u8))
         {
             return T.Zero;
-        }
-
-        if (s.StartsWith("0x0"u8))
-        {
-            ThrowHexConversion(typeof(T).Name);
         }
 
         if (s.StartsWith("0x"u8))
