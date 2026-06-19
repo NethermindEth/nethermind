@@ -5,6 +5,7 @@ using System;
 using System.Text;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -49,7 +50,7 @@ namespace Nethermind.Synchronization.Reporting
 
             BeaconHeaders.SetFormat((progress) =>
             {
-                ulong numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
+                ulong numHeadersToDownload = _pivot.PivotNumber.SaturatingSub(_pivot.PivotDestinationNumber) + 1;
                 string skipSectionStr = progress.SkippedPerSecond != -1
                     ? $"skipped {progress.SkippedPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s | "
                     : "";

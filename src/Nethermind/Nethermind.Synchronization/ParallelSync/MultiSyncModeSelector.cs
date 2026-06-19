@@ -573,10 +573,6 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasAnyPostPivotPeer = best.AnyPostPivotPeerKnown || (_syncConfig.StaticSnapPivot && best.Peer.Block >= best.PivotNumber);
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
-            // Safe: _syncConfig.StateMinDistanceFromHead + StickyStateNodesDelta are non-negative config
-            // ints whose sum fits comfortably in ulong. If TargetBlock < Header the subtraction wraps
-            // (ulong underflow) yielding a very large number, so stickyStateNodes is false — correct
-            // behaviour because we are already ahead of the target.
             bool stickyStateNodes = best.TargetBlock - best.Header < _syncConfig.StateMinDistanceFromHead + StickyStateNodesDelta;
 
             bool stateNotDownloadedYet = !best.StateDownloaded;

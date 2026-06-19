@@ -401,7 +401,6 @@ namespace Nethermind.Synchronization.FastSync
             }
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
-            // headerForState.Number is ulong; ResetStateRoot takes long. Cast is safe for realistic chain heights.
             ResetStateRoot(headerForState.Number, headerForState.StateRoot!);
             return headerForState;
         }

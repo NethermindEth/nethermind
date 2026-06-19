@@ -119,7 +119,7 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(peerInfo);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(blocksToIgnore, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders((ulong)blocksToIgnore, 128, CancellationToken.None);
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedBestKnownNumber));
     }
 

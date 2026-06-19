@@ -66,7 +66,7 @@ public class PosForwardHeaderProviderCacheTests
     public void TearDown() => _provider.UnsubscribeForTest();
 
     private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(int skip = 0, int max = Requested) =>
-        _provider.GetBlockHeaders(skip, max, CancellationToken.None);
+        _provider.GetBlockHeaders((ulong)skip, (ulong)max, CancellationToken.None);
 
     private void RaiseMainChainUpdate(params Block[] blocks)
     {

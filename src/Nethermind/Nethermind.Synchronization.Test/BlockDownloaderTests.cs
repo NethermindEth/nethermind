@@ -184,7 +184,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())!
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())!
             .Returns((c) => syncPeer.GetBlockHeaders(0, 200, 0, default));
 
         Func<Task> act = async () => await ctx.FastSyncUntilNoRequest(peerInfo);
@@ -195,7 +195,7 @@ public partial class BlockDownloaderTests
     public async Task Catch_exception_from_forwardHeaderProvider()
     {
         IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
-        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
             .Throws(new Exception("test exception"));
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
@@ -221,7 +221,7 @@ public partial class BlockDownloaderTests
         headers.Add(Build.A.EmptyBlockHeader);
 
         IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
-        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers));
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
@@ -261,7 +261,7 @@ public partial class BlockDownloaderTests
 
         Assert.That(request, Is.Null);
         await mockForwardHeaderProvider.DidNotReceive()
-            .GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+            .GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>());
     }
 
     [Test]

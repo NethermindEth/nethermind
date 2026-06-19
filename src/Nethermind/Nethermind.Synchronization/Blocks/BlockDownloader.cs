@@ -117,7 +117,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0UL);
         }
 
-        public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
+        public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, ulong fastSyncLag, CancellationToken cancellation)
         {
             await _requestLock.WaitAsync(cancellation);
             try
@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private async Task<BlocksRequest?> DoPrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
+        private async Task<BlocksRequest?> DoPrepareRequest(DownloaderOptions options, ulong fastSyncLag, CancellationToken cancellation)
         {
             bool originalDownloadReceiptOpts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
             bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.Blocks
                     return null;
                 }
 
-                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, HeaderLookupSize + 1, cancellation);
+                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, (ulong)HeaderLookupSize + 1, cancellation);
                 if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
                 bool shouldProcess;
                 bool downloadReceipts;

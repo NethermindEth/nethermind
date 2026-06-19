@@ -21,8 +21,6 @@ public class FullStateFinder(
     private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
-    // Block numbers are ulong throughout; 0 is the "not yet known" sentinel (genesis is never
-    // a valid "last known full state" to resume from).
     private ulong _lastKnownState;
 
     private bool IsFullySynced(BlockHeader block) =>
@@ -69,16 +67,10 @@ public class FullStateFinder(
     {
         ulong bestFullState = 0;
         ulong maxLookupBack = MaxLookupBack;
-        if (_lastKnownState != 0)
+        if (_lastKnownState != 0 && startHeader.Number >= _lastKnownState)
         {
-            // Guard against underflow: only extend the window when the header is ahead of
-            // (or at) the last known state. If startHeader.Number < _lastKnownState the
-            // chain walked backwards during a reorg; keep the default MaxLookupBack window.
-            if (startHeader.Number >= _lastKnownState)
-            {
-                ulong lookback = startHeader.Number - _lastKnownState + 1;
-                if (lookback > maxLookupBack) maxLookupBack = lookback;
-            }
+            ulong lookback = startHeader.Number - _lastKnownState + 1;
+            if (lookback > maxLookupBack) maxLookupBack = lookback;
         }
 
         for (ulong i = 0; i < maxLookupBack; i++)
@@ -90,7 +82,6 @@ public class FullStateFinder(
 
             if (IsFullySynced(startHeader))
             {
-                // startHeader.Number is ulong — direct assignment, no cast needed.
                 bestFullState = startHeader.Number;
                 break;
             }

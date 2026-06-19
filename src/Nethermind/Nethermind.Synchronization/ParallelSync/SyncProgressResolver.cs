@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _blockTree.BestSuggestedHeader?.Number ?? 0UL,
             _blockTree.BestSuggestedBody?.Number ?? 0UL); // avoiding any potential concurrency issue
         public bool IsLoadingBlocksFromDb() => !_blockTree.CanAcceptNewBlocks;
-        public ulong FindBestProcessedBlock() => _blockTree.Head?.Number is { } n ? n : ulong.MaxValue;
+        public ulong FindBestProcessedBlock() => _blockTree.Head?.Number ?? ulong.MaxValue;
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
 
         public UInt256? GetTotalDifficulty(Hash256 blockHash)
@@ -61,14 +61,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || receiptsSyncFeed.IsFinished;
         public bool IsFastBlockAccessListsFinished() => !IsFastBlocks() || !_syncConfig.DownloadBlockAccessListsInFastSync || blockAccessListsSyncFeed.IsFinished;
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
-        public (ulong BlockNumber, Hash256 BlockHash) SyncPivot
-        {
-            get
-            {
-                (ulong blockNumber, Hash256 blockHash) = _blockTree.SyncPivot;
-                return (blockNumber, blockHash);
-            }
-        }
+        public (ulong BlockNumber, Hash256 BlockHash) SyncPivot => _blockTree.SyncPivot;
         private bool IsFastBlocks() => _syncConfig.FastSync && _blockTree.SyncPivot.BlockNumber != 0UL; // if pivot number is 0 then it is equivalent to fast blocks disabled
     }
 }

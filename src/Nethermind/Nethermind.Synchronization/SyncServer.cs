@@ -174,9 +174,7 @@ namespace Nethermind.Synchronization
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             ulong headNumber = _blockTree.Head?.Number ?? 0UL;
-            // Guard against underflow
-            bool isBlockOlderThanMaxReorgAllows = headNumber > Sync.MaxReorgLength &&
-                                                  block.Number < headNumber - Sync.MaxReorgLength;
+            bool isBlockOlderThanMaxReorgAllows = block.Number < headNumber.SaturatingSub(Sync.MaxReorgLength);
 
             // We skip blocks that are old
             if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
@@ -255,7 +253,7 @@ namespace Nethermind.Synchronization
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
             // Otherwise we could hint incorrect ranges and cause expensive cache recalculations.
-            ulong start = block.Number >= 128 ? block.Number - 128 : 0UL;
+            ulong start = block.Number.SaturatingSub(128);
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, start, block.Number + 1024);
             return _sealValidator.ValidateSeal(block.Header, true);
         }
@@ -365,8 +363,7 @@ namespace Nethermind.Synchronization
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
-            // number is from the peer protocol (long); HeadNumber is ulong. Guard against negative values.
-            if (number >= 0 && number > syncPeer.HeadNumber)
+            if (number > syncPeer.HeadNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
                 syncPeer.HeadNumber = number;
@@ -540,7 +537,7 @@ namespace Nethermind.Synchronization
                         return;
                     }
                     PeerInfo peerInfo = allPeers[i];
-                    if (peerInfo.ShouldNotifyNewRange((long)earliest.Number, (long)latest.Number))
+                    if (peerInfo.ShouldNotifyNewRange(earliest.Number, latest.Number))
                     {
                         NotifyOfNewRange(peerInfo, earliest, latest);
                         Interlocked.Increment(ref counter);

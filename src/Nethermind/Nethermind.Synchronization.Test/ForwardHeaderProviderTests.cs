@@ -68,7 +68,7 @@ public partial class ForwardHeaderProviderTests
 
         int maxNHeader = Math.Min(maxHeader, peerInfo!.MaxHeadersPerRequest());
 
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(skipLastN, maxNHeader, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders((ulong)skipLastN, (ulong)maxNHeader, CancellationToken.None);
         Assert.That(headers?[0]?.Number, Is.EqualTo(expectedStartNumber));
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedEndNumber));
     }

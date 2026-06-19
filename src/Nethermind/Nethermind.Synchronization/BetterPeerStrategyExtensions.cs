@@ -23,7 +23,6 @@ public static class BetterPeerStrategyExtensions
     public static int Compare(this IBetterPeerStrategy peerStrategy, (UInt256 TotalDifficulty, ulong Number) value, ISyncPeer? peerInfo)
     {
         UInt256? peerDifficulty = peerInfo?.TotalDifficulty;
-        // ISyncPeer.HeadNumber is ulong; cast to long is safe for realistic chain heights.
         ulong peerInfoHeadNumber = peerInfo?.HeadNumber ?? 0UL;
         return peerStrategy.Compare(value, (peerDifficulty, peerInfoHeadNumber));
     }

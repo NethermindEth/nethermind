@@ -59,12 +59,15 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
 
     private bool ShouldUsePreMerge() => !_beaconPivot.BeaconPivotExists() && !_poSSwitcher.HasEverReachedTerminalBlock();
 
-    public override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeader, CancellationToken cancellation)
+    public override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(ulong skipLastNUlong, ulong maxHeaderUlong, CancellationToken cancellation)
     {
         if (ShouldUsePreMerge())
         {
-            return base.GetBlockHeaders(skipLastN, maxHeader, cancellation);
+            return base.GetBlockHeaders(skipLastNUlong, maxHeaderUlong, cancellation);
         }
+
+        int skipLastN = (int)skipLastNUlong;
+        int maxHeader = (int)maxHeaderUlong;
 
         _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_beaconPivot.PivotNumber, _beaconPivot.PivotDestinationNumber);
 

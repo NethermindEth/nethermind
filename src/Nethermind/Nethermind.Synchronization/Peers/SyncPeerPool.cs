@@ -650,7 +650,6 @@ namespace Nethermind.Synchronization.Peers
             if (parent is not null && (parent.TotalDifficulty ?? 0) != 0)
             {
                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-                // header.Number is ulong; Compare expects long Number. Cast is safe for realistic chain heights.
                 bool newValueIsNotWorseThanPeer = _betterPeerStrategy.Compare((newTotalDifficulty, header.Number), syncPeer) >= 0;
                 if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number} based on totalDifficulty, newValueIsNotWorseThanPeer {newValueIsNotWorseThanPeer}, newTotalDifficulty: {newTotalDifficulty}, header.Difficulty: {header.Difficulty}, Parent total difficulty: {parent.TotalDifficulty}");
                 if (newValueIsNotWorseThanPeer)
