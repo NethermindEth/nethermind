@@ -20,6 +20,7 @@ public struct EvmPooledMemory
     internal const long MaxMemoryWords = (int.MaxValue - WordSize + 1L) / WordSize;
 
     private ulong _lastZeroedSize;
+    private ulong _dirtyLength;
 
     private byte[]? _memory;
     public ulong Size { get; private set; }
@@ -34,6 +35,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         EvmWord word1 = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
+        MarkDirty(newLength);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
         return true;
@@ -46,6 +48,7 @@ public struct EvmPooledMemory
 
         int offset = TruncateToInt32(location.u0);
         UpdateSize(newLength);
+        MarkDirty(newLength);
         _memory![offset] = value;
         return true;
     }
@@ -61,6 +64,7 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         UpdateSize(newLength);
+        MarkDirty(newLength);
         value.CopyTo(_memory.AsSpan(TruncateToInt32(location.u0), value.Length));
         return true;
     }
@@ -119,6 +123,7 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         UpdateSize(newLength);
+        MarkDirty(newLength);
 
         Array.Copy(value, 0, _memory!, TruncateToInt32(location.u0), value.Length);
         return true;
@@ -137,6 +142,7 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         UpdateSize(newLength);
+        MarkDirty(newLength);
 
         int intLocation = TruncateToInt32(location.u0);
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
@@ -280,7 +286,9 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
-        PrepareAccessAfterGas(location.u0 + WordSize);
+        ulong dirtyEnd = location.u0 + WordSize;
+        PrepareAccessAfterGas(dirtyEnd);
+        MarkDirty(dirtyEnd);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
     }
@@ -290,7 +298,9 @@ public struct EvmPooledMemory
     {
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
-        PrepareAccessAfterGas(location.u0 + 1);
+        ulong dirtyEnd = location.u0 + 1;
+        PrepareAccessAfterGas(dirtyEnd);
+        MarkDirty(dirtyEnd);
         _memory![offset] = value;
     }
 
@@ -335,6 +345,7 @@ public struct EvmPooledMemory
         int intLength = TruncateToInt32(length);
 
         PrepareAccessAfterGas(destination.u0 + length);
+        MarkDirty(destination.u0 + length);
         _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
     }
 
@@ -375,7 +386,16 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
+            ReturnClean(memory, (int)Math.Min(_dirtyLength, (ulong)memory.Length));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void MarkDirty(ulong dirtyEnd)
+    {
+        if (dirtyEnd > _dirtyLength)
+        {
+            _dirtyLength = dirtyEnd;
         }
     }
 
@@ -470,7 +490,7 @@ public struct EvmPooledMemory
             byte[] beforeResize = _memory;
             _memory = RentClean(TruncateToInt32(Size));
             Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            ReturnClean(beforeResize, beforeResize.Length);
+            ReturnClean(beforeResize, (int)Math.Min(_dirtyLength, (ulong)beforeResize.Length));
         }
 
         _lastZeroedSize = (ulong)_memory.Length;
