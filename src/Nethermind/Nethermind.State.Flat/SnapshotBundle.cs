@@ -71,8 +71,8 @@ public sealed class SnapshotBundle : IDisposable
         _changedStorageNodes = _currentPooledContent.StorageNodes;
         _changedStateNodes = _currentPooledContent.StateNodes;
         _selfDestructedAccountAddresses = _currentPooledContent.SelfDestructedStorageAddresses;
-        _changedSlotCount = _changedSlots.Count;
-        _selfDestructedAccountCount = _selfDestructedAccountAddresses.Count;
+        _changedSlotCount = 0;
+        _selfDestructedAccountCount = 0;
     }
 
     public Account? GetAccount(Address address) => DoGetAccount(address, false);
