@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
-using Nethermind.Evm.Tracing;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
@@ -655,90 +654,22 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         Address executingAccount = vm.VmState.Env.ExecutingAccount;
         StorageCell storageCell = new(executingAccount, in result);
-
-        ITxTracer tracer = vm.TxTracer;
-        bool isTracingAccess = tracer.IsTracingAccess;
+        bool isTracingStorage = vm.TxTracer.IsTracingStorage;
 
         // Charge additional gas based on whether the storage cell is hot or cold.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, isTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
 
-        bool isTracingStorage = tracer.IsTracingStorage;
+        // Retrieve the persistent storage value and push it onto the stack.
         ReadOnlySpan<byte> value = isTracingStorage
             ? vm.WorldState.GetAndTrackOriginal(in storageCell)
             : vm.WorldState.Get(in storageCell);
-
-        if (!TTracingInst.IsActive
-            && (uint)programCounter < (uint)stack.CodeLength
-            && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD
-            && !isTracingAccess && !isTracingStorage)
-        {
-            int extraOps = 0;
-            int codeLength = stack.CodeLength;
-            bool fusedOutOfGas = false;
-            long sameCellCost = spec.GasCosts.SLoadCost + (spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : 0);
-
-            while ((uint)programCounter < (uint)codeLength
-                   && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD)
-            {
-                UInt256 nextKey = new(value, isBigEndian: true);
-                if (nextKey == result)
-                {
-                    int runLength = 1;
-                    while ((uint)(programCounter + runLength) < (uint)codeLength
-                           && Unsafe.Add(ref stack.Code, programCounter + runLength) == (byte)Instruction.SLOAD)
-                    {
-                        runLength++;
-                    }
-
-                    long affordable = sameCellCost > 0 ? TGasPolicy.GetRemainingGas(in gas) / sameCellCost : runLength;
-                    int fused = (int)Math.Min(runLength, Math.Max(0, affordable));
-                    if (fused > 0)
-                    {
-                        TGasPolicy.Consume(ref gas, fused * sameCellCost);
-                        programCounter += fused;
-                        extraOps += fused;
-                    }
-
-                    if (fused < runLength) break;
-                }
-                else
-                {
-                    TGasPolicy.Consume(ref gas, spec.GasCosts.SLoadCost);
-                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
-                    {
-                        fusedOutOfGas = true;
-                        break;
-                    }
-
-                    storageCell = new(executingAccount, in nextKey);
-                    if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, isTracingAccess: false, in storageCell, StorageAccessType.SLOAD, spec))
-                    {
-                        fusedOutOfGas = true;
-                        break;
-                    }
-
-                    value = vm.WorldState.Get(in storageCell);
-                    result = nextKey;
-                    programCounter++;
-                    extraOps++;
-                }
-            }
-
-            if (extraOps != 0)
-            {
-                vm.OpCodeCount += extraOps;
-                Metrics.AddSLoadOpcodes(extraOps);
-            }
-
-            if (fusedOutOfGas) goto OutOfGas;
-        }
-
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
 
+        // Log the storage load operation if tracing is enabled.
         if (isTracingStorage)
         {
-            tracer.LoadOperationStorage(executingAccount, result, value);
+            vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
         }
 
         return pushResult;

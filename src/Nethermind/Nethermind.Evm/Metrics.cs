@@ -168,12 +168,6 @@ public class Metrics
         if (IsBlockProcessingThread) counters.MainSLoadOpcode++; else counters.OtherSLoadOpcode++;
     }
 
-    public static void AddSLoadOpcodes(int count)
-    {
-        OpcodeCounters counters = ThreadCounters;
-        if (IsBlockProcessingThread) counters.MainSLoadOpcode += count; else counters.OtherSLoadOpcode += count;
-    }
-
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
     public static long SstoreOpcode => SumOpcodeCounters(static c => c.MainSStoreOpcode + c.OtherSStoreOpcode);
