@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
@@ -59,6 +60,33 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
     }
 
+    [Test]
+    public void TryGetSlot_ByAccountPath_SecondReadAtSameBasis_ServedFromCache()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+
+        ReadSlotByAccountPath(cache, 1);
+        ReadSlotByAccountPath(cache, 1);
+
+        Assert.That(inner.SlotReads, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void TryGetSlot_ByAccountPath_WrittenSlotInvalidated()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+
+        ReadSlotByAccountPath(cache, 1);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+            batch.SetStorage(Address, 1, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+        inner.ReaderState = Basis1;
+        ReadSlotByAccountPath(cache, 1);
+
+        Assert.That(inner.SlotReads, Is.EqualTo(2));
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)
@@ -110,6 +138,13 @@ public class CarryForwardCachingPersistenceTests
         reader.TryGetSlot(Address, slot, ref value);
     }
 
+    private static void ReadSlotByAccountPath(IPersistence persistence, UInt256 slot)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        SlotValue value = default;
+        reader.TryGetSlot(Address.ToAccountPath, slot, ref value);
+    }
+
     private static void ReadAccount(IPersistence persistence, Address address)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
@@ -136,6 +171,13 @@ public class CarryForwardCachingPersistenceTests
             }
 
             public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+            {
+                parent.SlotReads++;
+                outValue = SlotValue.FromSpanWithoutLeadingZero([0x11]);
+                return true;
+            }
+
+            public bool TryGetSlot(in ValueHash256 accountPath, in UInt256 slot, ref SlotValue outValue)
             {
                 parent.SlotReads++;
                 outValue = SlotValue.FromSpanWithoutLeadingZero([0x11]);

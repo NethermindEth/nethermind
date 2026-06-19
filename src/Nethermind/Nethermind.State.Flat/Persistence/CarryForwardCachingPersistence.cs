@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
@@ -24,8 +25,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private readonly ConcurrentDictionary<Address, Account?> _accounts = new();
     private readonly ConcurrentDictionary<(Address, UInt256), CachedSlot> _slots = new();
+    private readonly ConcurrentDictionary<(ValueHash256, UInt256), CachedSlot> _slotsByAccountPath = new();
     private int _accountCount;
     private int _slotCount;
+    private int _slotByAccountPathCount;
 
     private readonly Lock _lock = new();
     private StateId _basis;
@@ -95,10 +98,22 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (_generation != readerGeneration) return;
             if (_slotCount >= _maxEntriesPerKind)
             {
-                _slots.Clear();
-                _slotCount = 0;
+                ClearSlotsNoLock();
             }
             if (_slots.TryAdd(key, slot)) _slotCount++;
+        }
+    }
+
+    private void TryCacheSlot(in (ValueHash256, UInt256) key, in CachedSlot slot, long readerGeneration)
+    {
+        using (_lock.EnterScope())
+        {
+            if (_generation != readerGeneration) return;
+            if (_slotByAccountPathCount >= _maxEntriesPerKind)
+            {
+                ClearSlotsNoLock();
+            }
+            if (_slotsByAccountPath.TryAdd(key, slot)) _slotByAccountPathCount++;
         }
     }
 
@@ -128,6 +143,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 foreach ((Address, UInt256) key in writtenSlots)
                 {
                     if (_slots.TryRemove(key, out _)) _slotCount--;
+                    if (_slotsByAccountPath.TryRemove((key.Item1.ToAccountPath, key.Item2), out _)) _slotByAccountPathCount--;
                 }
             }
         }
@@ -137,8 +153,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         _accounts.Clear();
         _accountCount = 0;
+        ClearSlotsNoLock();
+    }
+
+    private void ClearSlotsNoLock()
+    {
         _slots.Clear();
         _slotCount = 0;
+        _slotsByAccountPath.Clear();
+        _slotByAccountPathCount = 0;
     }
 
     private readonly struct CachedSlot(bool found, SlotValue value)
@@ -171,6 +194,21 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             }
 
             bool found = inner.TryGetSlot(address, slot, ref outValue);
+            if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
+            return found;
+        }
+
+        public bool TryGetSlot(in ValueHash256 accountPath, in UInt256 slot, ref SlotValue outValue)
+        {
+            (ValueHash256, UInt256) key = (accountPath, slot);
+            bool current = parent.IsCurrent(generation);
+            if (current && parent._slotsByAccountPath.TryGetValue(key, out CachedSlot cached))
+            {
+                if (cached.Found) outValue = cached.Value;
+                return cached.Found;
+            }
+
+            bool found = inner.TryGetSlot(in accountPath, slot, ref outValue);
             if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
             return found;
         }
