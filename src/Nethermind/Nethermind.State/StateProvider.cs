@@ -31,7 +31,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     private static readonly UInt256 _zero = UInt256.Zero;
 
     private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = [];
-    private readonly HashSet<AddressAsKey> _committedThisRound = [];
+    private readonly Dictionary<AddressAsKey, int> _committedThisRound = [];
     private readonly HashSet<AddressAsKey> _nullAccountReads = [];
     // Only guarding against hot duplicates within the current block; the cross-block
     // "already persisted" hint now lives on ICodeDb itself (see ICodeDb.ContainsCode).
@@ -51,6 +51,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     internal bool TrackAccountReads { get; set; } = true;
 
     private bool _needsStateRootUpdate;
+    private int _commitRound = 1;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
 
     public void RecalculateStateRoot()
@@ -515,7 +516,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 continue;
             }
 
-            if (_committedThisRound.Contains(change!.Address))
+            if (IsCommittedThisRound(change!.Address))
             {
                 if (change.ChangeType == ChangeType.JustCache)
                 {
@@ -539,7 +540,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 ThrowUnexpectedPosition(stepsBack, i, forAssertion);
             }
 
-            _committedThisRound.Add(change.Address);
+            MarkCommittedThisRound(change.Address);
 
             switch (change.ChangeType)
             {
@@ -613,7 +614,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
 
         _changes.Clear();
-        _committedThisRound.Clear();
+        AdvanceCommitRound(resetBlockChanges: false);
         _nullAccountReads.Clear();
         _intraTxCache.ResetAndClear();
 
@@ -859,7 +860,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             _codeBatch?.Clear();
         }
         _intraTxCache.ResetAndClear();
-        _committedThisRound.Clear();
+        AdvanceCommitRound(resetBlockChanges);
         _nullAccountReads.Clear();
         _changes.Clear();
         _needsStateRootUpdate = false;
@@ -923,6 +924,24 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
         public Account? Before { get; set; } = before;
         public Account? After { get; set; } = after;
+    }
+
+    private bool IsCommittedThisRound(AddressAsKey address) =>
+        _committedThisRound.TryGetValue(address, out int round) && round == _commitRound;
+
+    private void MarkCommittedThisRound(AddressAsKey address) =>
+        _committedThisRound[address] = _commitRound;
+
+    private void AdvanceCommitRound(bool resetBlockChanges)
+    {
+        if (resetBlockChanges || _commitRound == int.MaxValue)
+        {
+            _committedThisRound.Clear();
+            _commitRound = 1;
+            return;
+        }
+
+        _commitRound++;
     }
 }
 

@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -17,7 +20,9 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase(ILogManager? logManager)
     {
-        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = [];
+        private readonly Dictionary<StorageCell, RegistryEntry> _intraBlockCache = [];
+        private readonly List<StorageCell> _intraBlockCacheTouched = new(Resettable.StartCapacity);
+        private int _registryRound = 1;
         protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = [];
@@ -80,7 +85,7 @@ namespace Nethermind.State
             for (int i = 0; i < currentPosition - snapshot; i++)
             {
                 Change change = _changes[currentPosition - i];
-                StackList<int> stack = _intraBlockCache[change!.StorageCell];
+                StackList<int> stack = GetRegistry(change!.StorageCell);
                 if (stack.Count == 1)
                 {
                     if (_changes[stack.Peek()]!.ChangeType == ChangeType.JustCache)
@@ -107,8 +112,7 @@ namespace Nethermind.State
 
                 if (stack.Count == 0)
                 {
-                    _intraBlockCache.Remove(change.StorageCell);
-                    stack.Return();
+                    RemoveRegistry(change.StorageCell, stack);
                 }
             }
 
@@ -118,7 +122,7 @@ namespace Nethermind.State
             {
                 currentPosition++;
                 _changes.Add(kept);
-                _intraBlockCache[kept.StorageCell].Push(currentPosition);
+                GetRegistry(kept.StorageCell).Push(currentPosition);
             }
 
             _keptInCache.Clear();
@@ -151,19 +155,28 @@ namespace Nethermind.State
         /// Used for storage-specific logic
         /// </summary>
         /// <param name="tracer">Storage tracer</param>
-        protected virtual void CommitCore(IStorageTracer tracer) => Reset();
+        protected virtual void CommitCore(IStorageTracer tracer) => ResetCore(resetBlockChanges: false);
 
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset(bool resetBlockChanges = true) => Reset();
+        public virtual void Reset(bool resetBlockChanges = true) => ResetCore(resetBlockChanges);
 
-        private void Reset()
+        private void ResetCore(bool resetBlockChanges)
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
-            _intraBlockCache.ResetAndClear();
+            ReturnActiveRegistries();
+            if (resetBlockChanges)
+            {
+                _intraBlockCache.Clear();
+                _registryRound = 1;
+            }
+            else
+            {
+                AdvanceRegistryRound();
+            }
             _transactionChangesSnapshots.Clear();
         }
 
@@ -177,7 +190,7 @@ namespace Nethermind.State
         {
             // If the cache is completely empty (no writes or reads yet this transaction),
             // skip hashing the 52-byte cell — TryGetValue would miss anyway.
-            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            if (_intraBlockCacheTouched.Count != 0 && TryGetRegistry(storageCell, out StackList<int>? stack))
             {
                 int lastChangeIndex = stack.Peek();
                 {
@@ -215,13 +228,21 @@ namespace Nethermind.State
         /// <param name="cell"></param>
         protected StackList<int> SetupRegistry(in StorageCell cell)
         {
-            ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
-            if (!exists)
+            ref RegistryEntry entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out _);
+            if (entry.Round == _registryRound && entry.Stack is not null)
             {
-                value = StackList<int>.Rent();
+                return entry.Stack;
             }
 
-            return value;
+            entry.Stack = StackList<int>.Rent();
+            entry.Round = _registryRound;
+            if (entry.ListedRound != _registryRound)
+            {
+                entry.ListedRound = _registryRound;
+                _intraBlockCacheTouched.Add(cell);
+            }
+
+            return entry.Stack;
         }
 
         /// <summary>
@@ -232,14 +253,86 @@ namespace Nethermind.State
         {
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block
-            foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraBlockCache)
+            ReadOnlySpan<StorageCell> touchedCells = CollectionsMarshal.AsSpan(_intraBlockCacheTouched);
+            for (int i = 0; i < touchedCells.Length; i++)
             {
-                if (cellByAddress.Key.Address == address)
+                StorageCell cell = touchedCells[i];
+                if (cell.Address == address && TryGetRegistry(cell, out _))
                 {
-                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
+                    Set(cell, StorageTree.ZeroBytes);
                 }
             }
         }
+
+        protected bool TryGetRegistry(in StorageCell cell, [NotNullWhen(true)] out StackList<int>? stack)
+        {
+            if (_intraBlockCache.TryGetValue(cell, out RegistryEntry entry)
+                && entry.Round == _registryRound
+                && entry.Stack is not null)
+            {
+                stack = entry.Stack;
+                return true;
+            }
+
+            stack = null;
+            return false;
+        }
+
+        protected StackList<int> GetRegistry(in StorageCell cell)
+        {
+            if (TryGetRegistry(cell, out StackList<int>? stack))
+            {
+                return stack;
+            }
+
+            ThrowMissingRegistry(cell);
+            return null!;
+        }
+
+        private void RemoveRegistry(in StorageCell cell, StackList<int> stack)
+        {
+            ref RegistryEntry entry = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, cell);
+            if (!Unsafe.IsNullRef(ref entry) && entry.Round == _registryRound && ReferenceEquals(entry.Stack, stack))
+            {
+                entry.Stack = null;
+                entry.Round = 0;
+                stack.Return();
+            }
+        }
+
+        private void ReturnActiveRegistries()
+        {
+            ReadOnlySpan<StorageCell> touchedCells = CollectionsMarshal.AsSpan(_intraBlockCacheTouched);
+            for (int i = 0; i < touchedCells.Length; i++)
+            {
+                StorageCell cell = touchedCells[i];
+                ref RegistryEntry entry = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, cell);
+                if (!Unsafe.IsNullRef(ref entry) && entry.Round == _registryRound && entry.Stack is not null)
+                {
+                    entry.Stack.Return();
+                    entry.Stack = null;
+                    entry.Round = 0;
+                }
+            }
+
+            _intraBlockCacheTouched.Clear();
+        }
+
+        private void AdvanceRegistryRound()
+        {
+            if (_registryRound == int.MaxValue)
+            {
+                _intraBlockCache.Clear();
+                _registryRound = 1;
+                return;
+            }
+
+            _registryRound++;
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowMissingRegistry(in StorageCell cell) =>
+            throw new InvalidOperationException($"Missing storage cache entry for {cell.Address}_{cell.Index}");
 
         /// <summary>
         /// Used for tracking each change to storage
@@ -261,6 +354,13 @@ namespace Nethermind.State
             Null = 0,
             JustCache,
             Update,
+        }
+
+        private struct RegistryEntry
+        {
+            public StackList<int>? Stack;
+            public int Round;
+            public int ListedRound;
         }
     }
 }

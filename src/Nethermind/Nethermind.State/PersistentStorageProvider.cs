@@ -37,17 +37,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
-    private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
-    private readonly HashSet<StorageCell> _committedThisRound = [];
+    private readonly Dictionary<StorageCell, OriginalValueEntry> _originalValues = [];
+    private readonly Dictionary<StorageCell, int> _committedThisRound = [];
+    private int _storageRound = 1;
 
     /// <summary>
     /// Reset the storage state
     /// </summary>
     public override void Reset(bool resetBlockChanges = true)
     {
-        base.Reset();
-        _originalValues.Clear();
-        _committedThisRound.Clear();
+        base.Reset(resetBlockChanges);
+        AdvanceStorageRound(resetBlockChanges);
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -82,10 +82,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns></returns>
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out byte[] value))
+        if (!TryGetOriginalValue(storageCell, out byte[]? value))
         {
             GetAndTrackOriginal(storageCell);
-            if (!_originalValues.TryGetValue(storageCell, out value))
+            if (!TryGetOriginalValue(storageCell, out value))
             {
                 throw new InvalidOperationException("Get original should only be called after get within the same caching round");
             }
@@ -93,7 +93,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         if (_transactionChangesSnapshots.TryPeek(out int snapshot))
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            if (TryGetRegistry(storageCell, out StackList<int>? stack))
             {
                 if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                 {
@@ -146,7 +146,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 continue;
             }
 
-            if (_committedThisRound.Contains(change!.StorageCell))
+            if (IsCommittedThisRound(change!.StorageCell))
             {
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
@@ -161,8 +161,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 tracer!.ReportStorageRead(change.StorageCell);
             }
 
-            _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].Pop();
+            MarkCommittedThisRound(change.StorageCell);
+            int forAssertion = GetRegistry(change.StorageCell).Pop();
             if (forAssertion != currentPosition - i)
             {
                 throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
@@ -175,7 +175,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                 }
 
-                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
+                if (TryGetOriginalValue(change.StorageCell, out byte[]? initialValue) &&
                     initialValue.AsSpan().SequenceEqual(change.Value))
                 {
                     // no need to update the tree if the value is the same
@@ -218,13 +218,46 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         toUpdateRoots.Clear();
 
         base.CommitCore(tracer);
-        _originalValues.Clear();
-        _committedThisRound.Clear();
+        AdvanceStorageRound(resetBlockChanges: false);
 
         if (isTracing)
         {
             ReportChanges(tracer!, trace!);
         }
+    }
+
+    private bool TryGetOriginalValue(in StorageCell storageCell, [NotNullWhen(true)] out byte[]? value)
+    {
+        if (_originalValues.TryGetValue(storageCell, out OriginalValueEntry entry) && entry.Round == _storageRound)
+        {
+            value = entry.Value;
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    private void SetOriginalValue(in StorageCell storageCell, byte[] value) =>
+        _originalValues[storageCell] = new OriginalValueEntry(value, _storageRound);
+
+    private bool IsCommittedThisRound(in StorageCell storageCell) =>
+        _committedThisRound.TryGetValue(storageCell, out int round) && round == _storageRound;
+
+    private void MarkCommittedThisRound(in StorageCell storageCell) =>
+        _committedThisRound[storageCell] = _storageRound;
+
+    private void AdvanceStorageRound(bool resetBlockChanges)
+    {
+        if (resetBlockChanges || _storageRound == int.MaxValue)
+        {
+            _originalValues.Clear();
+            _committedThisRound.Clear();
+            _storageRound = 1;
+            return;
+        }
+
+        _storageRound++;
     }
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
@@ -311,7 +344,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
         StackList<int> stack = SetupRegistry(cell);
-        _originalValues[cell] = value;
+        SetOriginalValue(cell, value);
         stack.Push(_changes.Count);
         _changes.Add(new Change(in cell, value, ChangeType.JustCache));
     }
@@ -664,5 +697,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public readonly byte[] Before;
         public readonly byte[] After;
         public readonly bool IsInitialValue;
+    }
+
+    private readonly struct OriginalValueEntry(byte[] value, int round)
+    {
+        public readonly byte[] Value = value;
+        public readonly int Round = round;
     }
 }
