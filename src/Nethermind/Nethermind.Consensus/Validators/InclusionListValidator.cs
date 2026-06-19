@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -47,17 +48,19 @@ public static class InclusionListValidator
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
-            if (!included[i] && CouldIncludeTx(il[i], block, state, ref senderCache)) return false;
+            if (!included[i] && CouldIncludeTx(il[i], block, state, spec, ref senderCache)) return false;
         }
         return true;
     }
 
-    private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
+    private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
         // Blob txs MUST NOT appear in an IL; cost formula here doesn't include blob gas anyway.
         if (tx.SupportsBlobs) return false;
         if (block.GasUsed + tx.GasLimit > block.GasLimit) return false;
+        // A tx whose GasLimit is below the intrinsic cost cannot execute, so it isn't appendable.
+        if (tx.GasLimit < (long)IntrinsicGasCalculator.Calculate(tx, spec, block.GasLimit)) return false;
 
         // EIP-1559: compare baseFee against the cap (MaxFeePerGas), not the priority tip
         // (which is what tx.GasPrice exposes for type-2). Matches TransactionProcessor.
