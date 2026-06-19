@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -442,13 +443,31 @@ public struct EvmPooledMemory
             }
         }
 
+        if (minLength > MaxCachedArrayLength)
+        {
+            // Large buffers (Multicall memory, big returndata) would otherwise be fresh LOH allocations
+            // discarded every frame. Pool them through the runtime's per-core, low-contention shared pool
+            // rather than a hand-rolled cache: no per-thread large-array retention, no second pool to
+            // replicate. It may hand back a buffer dirtied by an earlier user, and RentSlow marks the whole
+            // array as zeroed, so clear the full length first. Buffers above the shared pool's 1 MB ceiling
+            // fall through to a plain allocation.
+            byte[] pooled = SafeArrayPool<byte>.Shared.Rent(minLength);
+            Array.Clear(pooled);
+            return pooled;
+        }
+
         return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
     }
 
     private static void ReturnClean(byte[] array, int dirtyLength)
     {
         if (array.Length > MaxCachedArrayLength)
+        {
+            // Large buffers only ever come from the shared pool above, so return them there for reuse
+            // instead of dropping them to GC. Cleared on rent rather than here to avoid double-zeroing.
+            SafeArrayPool<byte>.Shared.Return(array);
             return;
+        }
 
         byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
         if (_cleanArrayCount < CleanCacheSlots)
