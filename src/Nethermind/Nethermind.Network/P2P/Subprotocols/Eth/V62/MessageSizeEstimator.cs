@@ -26,8 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return 0;
             }
 
-            // Use the actual encoded length so large non-calldata fields (access lists,
-            // authorization lists, etc.) are accounted for and not under-counted.
+            // Exact encoded length so access/authorization lists aren't under-counted.
             return (ulong)TxDecoder.Instance.GetLength(tx, RlpBehaviors.None);
         }
 
