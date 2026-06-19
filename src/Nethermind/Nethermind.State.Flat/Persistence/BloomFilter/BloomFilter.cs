@@ -47,6 +47,10 @@ public sealed unsafe class BloomFilter : IDisposable
     private byte* _data;
     private nuint _dataSize;
     private int _disposed;
+    private readonly int[] _lineEpochs;
+    private readonly int[] _touchedLines;
+    private int _clearEpoch = 1;
+    private int _touchedLineCount;
 
     public BloomFilter(long capacity, double bitsPerKey, long initialCount = 0)
     {
@@ -63,6 +67,9 @@ public sealed unsafe class BloomFilter : IDisposable
         long totalBytes = AlignUp((long)Math.Ceiling(capacity * bitsPerKey / 8.0), CacheLineBytes);
         DataBytes = totalBytes;
         NumBlocks = totalBytes / CacheLineBytes;
+        int numBlocks = checked((int)NumBlocks);
+        _lineEpochs = new int[numBlocks];
+        _touchedLines = new int[numBlocks];
 
         _dataSize = checked((nuint)totalBytes);
 
@@ -131,6 +138,7 @@ public sealed unsafe class BloomFilter : IDisposable
             throw new ObjectDisposedException(nameof(BloomFilter));
 
         GetLineAndHashState(key, NumBlocks, out long lineIndex, out uint h);
+        TrackTouchedLine((int)lineIndex);
 
         byte* linePtr = _data + lineIndex * CacheLineBytes;
 
@@ -187,16 +195,42 @@ public sealed unsafe class BloomFilter : IDisposable
         if (Volatile.Read(ref _disposed) != 0)
             throw new ObjectDisposedException(nameof(BloomFilter));
 
-        long totalBytes = DataBytes;
-        long off = 0;
-        const int Chunk = 8 * MemorySizes.MiB;
-        while (off < totalBytes)
+        int touchedLineCount = Volatile.Read(ref _touchedLineCount);
+        for (int i = 0; i < touchedLineCount; i++)
         {
-            int len = (int)Math.Min(Chunk, totalBytes - off);
-            new Span<byte>(_data + off, len).Clear();
-            off += len;
+            new Span<byte>(_data + ((long)_touchedLines[i] * CacheLineBytes), CacheLineBytes).Clear();
         }
+
+        _touchedLineCount = 0;
+        AdvanceClearEpoch();
         Volatile.Write(ref _count, 0);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void TrackTouchedLine(int lineIndex)
+    {
+        int clearEpoch = Volatile.Read(ref _clearEpoch);
+        ref int lineEpoch = ref _lineEpochs[lineIndex];
+        int observed = Volatile.Read(ref lineEpoch);
+        if (observed == clearEpoch) return;
+
+        if (Interlocked.CompareExchange(ref lineEpoch, clearEpoch, observed) == observed)
+        {
+            int index = Interlocked.Increment(ref _touchedLineCount) - 1;
+            _touchedLines[index] = lineIndex;
+        }
+    }
+
+    private void AdvanceClearEpoch()
+    {
+        int next = _clearEpoch + 1;
+        if (next == int.MinValue)
+        {
+            Array.Clear(_lineEpochs);
+            next = 1;
+        }
+
+        Volatile.Write(ref _clearEpoch, next);
     }
 
     internal byte* DangerousGetDataPointer() => _data;

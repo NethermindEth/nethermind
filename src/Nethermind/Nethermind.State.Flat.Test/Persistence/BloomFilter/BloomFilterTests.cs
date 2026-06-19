@@ -105,6 +105,37 @@ public class BloomFilterTests
     }
 
     [Test]
+    public void Clear_AfterAdds_RemovesItemsAndAllowsReuse()
+    {
+        ulong[] hashes = Enumerable.Range(0, 500).Select(static i => (ulong)i * 7919UL).ToArray();
+        using Bloom bloom = NewBloom(capacity: 10000);
+
+        foreach (ulong hash in hashes) bloom.Add(hash);
+
+        bloom.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bloom.Count, Is.Zero);
+            foreach (ulong hash in hashes)
+            {
+                Assert.That(bloom.MightContain(hash), Is.False, $"hash {hash} should not be found after clear");
+            }
+        }
+
+        bloom.Add(123456789);
+        Assert.That(bloom.MightContain(123456789), Is.True);
+
+        bloom.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bloom.Count, Is.Zero);
+            Assert.That(bloom.MightContain(123456789), Is.False);
+        }
+    }
+
+    [Test]
     public void Add_LargeNumberOfItems_ShouldWork()
     {
         const int totalItems = 500;
