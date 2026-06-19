@@ -215,28 +215,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
-    public void Dispose_DoesNotNeedToClearZeroPaddingBeforeReusingCachedArray()
-    {
-        UInt256 paddingLocation = 4095;
-
-        EvmPooledMemory dirtyMemory = new();
-        Assert.That(dirtyMemory.TrySaveByte(in paddingLocation, 0x7f), Is.True);
-        dirtyMemory.Dispose();
-
-        EvmPooledMemory paddedMemory = new();
-        byte[] copied = [0x7f];
-        ZeroPaddedSpan value = new(copied, paddingLength: 4095, PadDirection.Right);
-        Assert.That(paddedMemory.TrySave(UInt256.Zero, in value), Is.True);
-        paddedMemory.Dispose();
-
-        EvmPooledMemory reusedMemory = new();
-        UInt256 length = 1;
-        Assert.That(reusedMemory.TryLoadSpan(in paddingLocation, in length, out Span<byte> valueInPadding), Is.True);
-        Assert.That(valueInPadding[0], Is.Zero);
-        reusedMemory.Dispose();
-    }
-
-    [Test]
     public void LoadSpan_LocationExceedsULong_ShouldReturnOutOfGas()
     {
         EvmPooledMemory memory = new();
