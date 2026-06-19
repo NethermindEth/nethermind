@@ -223,7 +223,7 @@ public partial class EthRpcModuleTests
             Name: "memory_pruning_window_dominates_old_floor",
             ExpectedState: memoryPruned, ExpectedStateproofs: memoryPruned,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { RetentionWindow = (ulong)retention, HeadNumber = memoryHead, OldestStateBlock = 0, SyncConfig = fullSync };
+        { RetentionWindow = retention, HeadNumber = memoryHead, OldestStateBlock = 0, SyncConfig = fullSync };
 
         // Floor dominates window — DeleteStrategy is suppressed so oldestBlock and head-retentionBlocks stay consistent.
         const ulong recentPivot = 950UL;
