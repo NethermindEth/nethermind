@@ -288,7 +288,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         memory.CalculateMemoryCost(0, 32, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
-        Assert.That(memory.GetTrace().ToHexWordList(), Is.EqualTo(new string[] { "0x0000000000000000000000000000000000000000000000000000000000000000" }));
+        Assert.That(memory.GetTrace().ToHexWordList(), Is.EqualTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" }));
     }
 
     [Test]

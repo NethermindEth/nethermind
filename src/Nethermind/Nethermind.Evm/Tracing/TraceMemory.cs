@@ -19,27 +19,18 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
         string[] memory = new string[(int)Size / EvmPooledMemory.WordSize + (Size % EvmPooledMemory.WordSize == 0 ? 0 : 1)];
         int traceLocation = 0;
 
-        Span<byte> paddedWord = stackalloc byte[EvmPooledMemory.WordSize];
-
         int i = 0;
         while ((ulong)traceLocation < Size)
         {
             int sizeAvailable = Math.Min(EvmPooledMemory.WordSize, _memory.Length - traceLocation);
-            if (sizeAvailable == EvmPooledMemory.WordSize)
+            if (sizeAvailable > 0)
             {
                 ReadOnlySpan<byte> bytes = _memory.Slice(traceLocation, sizeAvailable).Span;
-                memory[i] = bytes.ToHexString(true);
-            }
-            else if (sizeAvailable > 0)
-            {
-                // Zero-pad a partial word to a full 32-byte chunk
-                paddedWord.Clear();
-                _memory.Slice(traceLocation, sizeAvailable).Span.CopyTo(paddedWord);
-                memory[i] = paddedWord.ToHexString(true);
+                memory[i] = bytes.ToHexString();
             }
             else // Memory might not be initialized
             {
-                memory[i] = Bytes.Zero32.ToHexString(true);
+                memory[i] = Bytes.Zero32.ToHexString();
             }
 
             traceLocation += EvmPooledMemory.WordSize;
