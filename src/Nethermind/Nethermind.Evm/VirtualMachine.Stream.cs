@@ -16,6 +16,12 @@ public static class StreamInterpreter
     // Volatile so a test flipping it in-process is visible to frame-executing threads.
     public static volatile bool Enabled;
 
+    // The stream is a compute optimization with no payoff on storage-bound block processing, where it is
+    // pure overhead (build cost + retained StreamOp[]). Production engages it only in cancelable call
+    // contexts (eth_call/estimateGas/simulate). Differential tests set this to exercise the stream in any
+    // context regardless of that heuristic.
+    public static volatile bool ForceAllContexts;
+
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
 

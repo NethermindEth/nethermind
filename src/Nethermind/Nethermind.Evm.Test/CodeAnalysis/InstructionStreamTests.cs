@@ -382,7 +382,11 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
 
         bool enabledBefore = StreamInterpreter.Enabled;
         int thresholdBefore = StreamInterpreter.BuildThreshold;
+        bool forceBefore = StreamInterpreter.ForceAllContexts;
         StreamInterpreter.Enabled = useStream;
+        // The base Execute path runs a non-cancelable tracer, so the production gate would skip the stream;
+        // force it on here to exercise the stream regardless of the call-context heuristic.
+        StreamInterpreter.ForceAllContexts = useStream;
         try
         {
             // Base Execute helper caps gas at 100k; the CREATE-heavy cases need more.
@@ -406,6 +410,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         {
             StreamInterpreter.Enabled = enabledBefore;
             StreamInterpreter.BuildThreshold = thresholdBefore;
+            StreamInterpreter.ForceAllContexts = forceBefore;
         }
     }
 
