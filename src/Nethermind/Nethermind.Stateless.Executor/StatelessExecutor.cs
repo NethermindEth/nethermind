@@ -19,18 +19,6 @@ namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
-    /// <summary>
-    /// Gets the encoded failure result of the current execution. Intended for zkVM guests.
-    /// </summary>
-    /// <remarks>
-    /// As there's no exception unwinding in the zkVM runtime, an exception thrown during execution
-    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
-    /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
-    /// The failure result is therefore encoded up front, before execution begins, so the
-    /// callback can access it.
-    /// </remarks>
-    public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
-
     // Debug-only phase markers printed to the zkVM console (no-op off-zisk).
     private static void Mark(string m)
     {
@@ -54,8 +42,6 @@ public static class StatelessExecutor
         };
         byte[] output = StatelessValidationResult.Encode(result);
         bool success = false;
-
-        FailureOutput = output;
 
         if (transactions.Length == publicKeys.Length)
         {
@@ -130,6 +116,7 @@ public static class StatelessExecutor
         Mark("E3 validate-suggested");
         if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error))
         {
+            Mark("E3-FAIL: " + error);
             Debug.Fail(error);
             return false;
         }
