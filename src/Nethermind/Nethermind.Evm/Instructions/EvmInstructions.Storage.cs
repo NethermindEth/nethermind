@@ -383,8 +383,12 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
+        bool isTracingStorage = vm.TxTracer.IsTracingStorage;
+
         // Retrieve the current value from persistent storage.
-        ReadOnlySpan<byte> currentValue = vm.WorldState.GetAndTrackOriginal(in storageCell);
+        ReadOnlySpan<byte> currentValue = isTracingStorage
+            ? vm.WorldState.GetAndTrackOriginal(in storageCell)
+            : vm.WorldState.Get(in storageCell);
         bool currentIsZero = currentValue.IsZero();
 
         // Determine whether the new value is identical to the current stored value.
@@ -413,6 +417,11 @@ public static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
+            if (!isTracingStorage)
+            {
+                vm.WorldState.GetAndTrackOriginal(in storageCell);
+            }
+
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
             if (newIsZero)
             {
@@ -497,8 +506,12 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
+        bool isTracingStorage = vm.TxTracer.IsTracingStorage;
+
         // Retrieve the current value from persistent storage.
-        ReadOnlySpan<byte> currentValue = vm.WorldState.GetAndTrackOriginal(in storageCell);
+        ReadOnlySpan<byte> currentValue = isTracingStorage
+            ? vm.WorldState.GetAndTrackOriginal(in storageCell)
+            : vm.WorldState.Get(in storageCell);
         bool currentIsZero = currentValue.IsZero();
 
         // Determine whether the new value is identical to the current stored value.
