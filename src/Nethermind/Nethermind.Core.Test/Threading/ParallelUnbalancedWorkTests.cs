@@ -158,6 +158,34 @@ public class ParallelUnbalancedWorkTests
     }
 
     [Test]
+    public void For_WithThreadLocal_WhenRangeSmallerThanWorkerCount_InitializesAtMostOneWorkerPerIteration()
+    {
+        int initCount = 0;
+
+        ParallelUnbalancedWork.For<int>(
+            0, 2, FourThreads,
+            init: () => { Interlocked.Increment(ref initCount); return 0; },
+            action: (_, local) => local,
+            @finally: _ => { });
+
+        Assert.That(initCount, Is.LessThanOrEqualTo(2));
+    }
+
+    [Test]
+    public void For_WithThreadLocal_WhenRangeIsEmpty_DoesNotInitializeWorkers()
+    {
+        int initCount = 0;
+
+        ParallelUnbalancedWork.For<int>(
+            0, 0, FourThreads,
+            init: () => { Interlocked.Increment(ref initCount); return 0; },
+            action: (_, local) => local,
+            @finally: _ => { });
+
+        Assert.That(initCount, Is.Zero);
+    }
+
+    [Test]
     public void For_DoesNotLeakWorkerExceptionToThreadPool()
     {
         // If a worker exception escaped onto a thread-pool thread it would surface via
