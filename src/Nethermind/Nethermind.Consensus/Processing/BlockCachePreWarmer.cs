@@ -221,12 +221,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
                             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
                             scope.TransactionProcessor.SetBlockExecutionContext(context);
+                            ITxTracer txTracer = NullTxTracer.Instance.WithCancellation(token);
 
                             // Sequential within the same sender-state changes propagate correctly
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
-                                if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                token.ThrowIfCancellationRequested();
+                                WarmupSingleTransaction(scope, tx, txIndex, blockState, token, txTracer);
                             }
                         }
                         finally
@@ -277,10 +278,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
-        BlockState blockState)
+        BlockState blockState,
+        CancellationToken cancellationToken,
+        ITxTracer txTracer)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 
@@ -294,9 +299,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList); // eip-2930
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, txTracer);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Ignore, block completed cancel.
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
