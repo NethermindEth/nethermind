@@ -8,67 +8,19 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Network;
 
-/// <summary>
-/// Classifies IP addresses into reusable networking categories used by peer and discovery filtering.
-/// </summary>
-public static class IPAddressClassifier
+internal enum IpFamily : byte { IPv4 = 4, IPv6 = 6 }
+
+internal readonly struct ParsedIPAddress(IpFamily family, uint v4, ulong hi, ulong lo)
 {
-    internal enum ParsedIPAddressFamily : byte { IPv4 = 4, IPv6 = 6 }
-
-    internal readonly struct ParsedIPAddress(ParsedIPAddressFamily family, uint v4, ulong hi, ulong lo)
-    {
-        public readonly ParsedIPAddressFamily Family = family;
-        public readonly uint V4 = v4;
-        public readonly ulong Hi = hi;
-        public readonly ulong Lo = lo;
-    }
-
-    /// <summary>
-    /// Returns <c>true</c> for loopback, private, link-local, CGNAT, and IPv6 ULA addresses.
-    /// </summary>
-    public static bool IsLoopbackOrPrivateOrLinkLocal(IPAddress ipAddress)
-    {
-        ParsedIPAddress parsed = Parse(ipAddress);
-        return IsLoopbackOrPrivateOrLinkLocal(in parsed);
-    }
-
-    /// <summary>
-    /// Returns <c>true</c> for IPv4 or IPv6 multicast addresses.
-    /// </summary>
-    public static bool IsMulticast(IPAddress ipAddress)
-    {
-        ParsedIPAddress parsed = Parse(ipAddress);
-        return parsed.Family == ParsedIPAddressFamily.IPv4
-            ? IsIPv4Multicast(parsed.V4)
-            : IsIPv6Multicast(parsed.Hi);
-    }
-
-    /// <summary>
-    /// Returns <c>true</c> for IPv4 multicast addresses.
-    /// </summary>
-    public static bool IsIPv4Multicast(IPAddress ipAddress)
-    {
-        ParsedIPAddress parsed = Parse(ipAddress);
-        return parsed.Family == ParsedIPAddressFamily.IPv4 && IsIPv4Multicast(parsed.V4);
-    }
-
-    /// <summary>
-    /// Returns <c>true</c> for special-use addresses that should not be accepted as routable peers.
-    /// </summary>
-    /// <remarks>
-    /// This intentionally does not include loopback, private, link-local, CGNAT, or IPv6 ULA ranges;
-    /// callers that support private deployments can decide whether to accept those separately.
-    /// </remarks>
-    public static bool IsSpecialUseAddress(IPAddress ipAddress)
-    {
-        ParsedIPAddress parsed = Parse(ipAddress);
-        return parsed.Family == ParsedIPAddressFamily.IPv4
-            ? IsIPv4SpecialUseAddress(parsed.V4)
-            : IsIPv6SpecialUseAddress(parsed.Hi, parsed.Lo);
-    }
+    public readonly IpFamily Family = family;
+    public readonly uint V4 = v4;
+    public readonly ulong Hi = hi;
+    public readonly ulong Lo = lo;
 
     internal static ParsedIPAddress Parse(IPAddress ipAddress)
     {
+        ArgumentNullException.ThrowIfNull(ipAddress);
+
         Span<byte> bytes = stackalloc byte[16];
         if (!ipAddress.TryWriteBytes(bytes, out int written))
         {
@@ -79,7 +31,7 @@ public static class IPAddressClassifier
         {
             case 4:
                 return new ParsedIPAddress(
-                    ParsedIPAddressFamily.IPv4,
+                    IpFamily.IPv4,
                     BinaryPrimitives.ReadUInt32BigEndian(bytes),
                     hi: 0,
                     lo: 0);
@@ -87,14 +39,13 @@ public static class IPAddressClassifier
                 {
                     ulong hi = BinaryPrimitives.ReadUInt64BigEndian(bytes);
 
-                    // Fast-path IPv4-mapped IPv6 (::ffff:a.b.c.d) - treat as IPv4.
                     if (hi == 0)
                     {
                         uint mid = BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(8, 4));
                         if (mid == 0x0000_FFFFu)
                         {
                             return new ParsedIPAddress(
-                                ParsedIPAddressFamily.IPv4,
+                                IpFamily.IPv4,
                                 BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(12, 4)),
                                 hi: 0,
                                 lo: 0);
@@ -102,7 +53,7 @@ public static class IPAddressClassifier
                     }
 
                     return new ParsedIPAddress(
-                        ParsedIPAddressFamily.IPv6,
+                        IpFamily.IPv6,
                         v4: 0,
                         hi,
                         BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(8, 8)));
@@ -112,14 +63,38 @@ public static class IPAddressClassifier
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsLoopbackOrPrivateOrLinkLocal(in ParsedIPAddress parsed)
-        => parsed.Family == ParsedIPAddressFamily.IPv4
-            ? IsIPv4LoopbackOrPrivateOrLinkLocal(parsed.V4)
-            : IsIPv6LoopbackOrPrivateOrLinkLocal(parsed.Hi, parsed.Lo);
+    public bool IsLoopbackOrPrivateOrLinkLocal
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Family == IpFamily.IPv4
+            ? IsIPv4LoopbackOrPrivateOrLinkLocal(V4)
+            : IsIPv6LoopbackOrPrivateOrLinkLocal(Hi, Lo);
+    }
+
+    public bool IsMulticast
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Family == IpFamily.IPv4
+            ? IsIPv4MulticastAddress(V4)
+            : IsIPv6Multicast(Hi);
+    }
+
+    public bool IsIPv4Multicast
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Family == IpFamily.IPv4 && IsIPv4MulticastAddress(V4);
+    }
+
+    public bool IsSpecialUseAddress
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Family == IpFamily.IPv4
+            ? IsIPv4SpecialUseAddress(V4)
+            : IsIPv6SpecialUseAddress(Hi, Lo);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsIPv4Multicast(uint v4)
+    internal static bool IsIPv4MulticastAddress(uint v4)
         => (byte)(v4 >> 24) is >= 224 and <= 239;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

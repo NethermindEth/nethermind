@@ -10,22 +10,26 @@ namespace Nethermind.Network.Discovery.Discv5;
 
 internal static class MessageCodec
 {
-    private static readonly PingMsgSerializer PingSerializer = new();
-    private static readonly PongMsgSerializer PongSerializer = new();
-    private static readonly FindNodeMsgSerializer FindNodeSerializer = new();
-    private static readonly NodesMsgSerializer NodesSerializer = new();
-    private static readonly TalkReqMsgSerializer TalkReqSerializer = new();
-    private static readonly TalkRespMsgSerializer TalkRespSerializer = new();
+    private static readonly IMsgSerializer?[] Serializers = [null,
+        new PingMsgSerializer(),
+        new PongMsgSerializer(),
+        new FindNodeMsgSerializer(),
+        new NodesMsgSerializer(),
+        new TalkReqMsgSerializer(),
+        new TalkRespMsgSerializer(),
+    ];
 
     public static NettyRlpStream Encode(Discv5Message message)
     {
-        int contentLength = GetContentLength(message);
+        IMsgSerializer serializer = GetSerializer(message.MessageType);
+        int contentLength = serializer.GetContentLength(message);
         NettyRlpStream stream = new(NethermindBuffers.Default.Buffer(Rlp.LengthOfSequence(contentLength) + 1));
+
         try
         {
             stream.WriteByte((byte)message.MessageType);
             stream.StartSequence(contentLength);
-            EncodeContent(stream, message);
+            serializer.Serialize(stream, message);
         }
         catch
         {
@@ -37,7 +41,7 @@ internal static class MessageCodec
     }
 
     public static Discv5Message Decode(ReadOnlySpan<byte> message)
-        => NeedsOwnedMessage(message)
+        => RequiresOwnedMessage(message)
             ? throw new RlpException("discv5 TALK messages require owned message memory. Use DecodeOwned.")
             : Decode(message, default, null);
 
@@ -56,20 +60,11 @@ internal static class MessageCodec
         try
         {
             MessageType messageType = (MessageType)message[0];
+            IMsgSerializer serializer = GetSerializer(messageType);
             Rlp.ValueDecoderContext ctx = new(message[1..]);
             int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
 
-            decoded = messageType switch
-            {
-                MessageType.Ping => PingSerializer.Deserialize(ref ctx, ownedMessage, owner),
-                MessageType.Pong => PongSerializer.Deserialize(ref ctx, ownedMessage, owner),
-                MessageType.FindNode => FindNodeSerializer.Deserialize(ref ctx, ownedMessage, owner),
-                MessageType.Nodes => NodesSerializer.Deserialize(ref ctx, ownedMessage, owner),
-                MessageType.TalkReq => TalkReqSerializer.Deserialize(ref ctx, ownedMessage, owner),
-                MessageType.TalkResp => TalkRespSerializer.Deserialize(ref ctx, ownedMessage, owner),
-                _ => throw new RlpException($"Unsupported discv5 message type {(byte)messageType}.")
-            };
-
+            decoded = serializer.Deserialize(ref ctx, ownedMessage, owner);
             ctx.Check(checkPosition);
             ctx.CheckEnd();
             return decoded;
@@ -89,6 +84,17 @@ internal static class MessageCodec
         }
     }
 
+    private static IMsgSerializer GetSerializer(MessageType messageType)
+    {
+        int type = (byte)messageType;
+        if ((uint)type < (uint)Serializers.Length && Serializers[type] is { } serializer)
+        {
+            return serializer;
+        }
+
+        throw new RlpException($"Unsupported discv5 message type {(byte)messageType}.");
+    }
+
     private static void DisposeOwner(ArrayPoolSpan<byte>? owner)
     {
         if (owner is { } ownerValue)
@@ -97,44 +103,8 @@ internal static class MessageCodec
         }
     }
 
-    private static bool NeedsOwnedMessage(ReadOnlySpan<byte> message)
-        => !message.IsEmpty && (MessageType)message[0] is MessageType.TalkReq or MessageType.TalkResp;
-
-    private static int GetContentLength(Discv5Message message) => message switch
-    {
-        PingMsg ping => PingSerializer.GetContentLength(ping),
-        PongMsg pong => PongSerializer.GetContentLength(pong),
-        FindNodeMsg findNode => FindNodeSerializer.GetContentLength(findNode),
-        NodesMsg nodes => NodesSerializer.GetContentLength(nodes),
-        TalkReqMsg talkReq => TalkReqSerializer.GetContentLength(talkReq),
-        TalkRespMsg talkResp => TalkRespSerializer.GetContentLength(talkResp),
-        _ => throw new RlpException($"Unsupported discv5 message {message.GetType().Name}.")
-    };
-
-    private static void EncodeContent(NettyRlpStream stream, Discv5Message message)
-    {
-        switch (message)
-        {
-            case PingMsg ping:
-                PingSerializer.Serialize(stream, ping);
-                break;
-            case PongMsg pong:
-                PongSerializer.Serialize(stream, pong);
-                break;
-            case FindNodeMsg findNode:
-                FindNodeSerializer.Serialize(stream, findNode);
-                break;
-            case NodesMsg nodes:
-                NodesSerializer.Serialize(stream, nodes);
-                break;
-            case TalkReqMsg talkReq:
-                TalkReqSerializer.Serialize(stream, talkReq);
-                break;
-            case TalkRespMsg talkResp:
-                TalkRespSerializer.Serialize(stream, talkResp);
-                break;
-            default:
-                throw new RlpException($"Unsupported discv5 message {message.GetType().Name}.");
-        }
-    }
+    private static bool RequiresOwnedMessage(ReadOnlySpan<byte> message)
+        => !message.IsEmpty
+            && message[0] < Serializers.Length
+            && Serializers[message[0]] is { RequiresOwnedMemory: true };
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Network.Discovery.Discv5.Messages;
@@ -12,9 +13,7 @@ internal sealed class Distances : IReadOnlyList<int>, IDisposable
     private const int InlineCapacity = 3;
 
     private int[]? _rented;
-    private int _first;
-    private int _second;
-    private int _third;
+    private InlineDistances _inline;
 
     public Distances(ReadOnlySpan<int> distances)
         : this(distances.Length)
@@ -52,13 +51,7 @@ internal sealed class Distances : IReadOnlyList<int>, IDisposable
                 return _rented[index];
             }
 
-            return index switch
-            {
-                0 => _first,
-                1 => _second,
-                2 => _third,
-                _ => throw new ArgumentOutOfRangeException(nameof(index))
-            };
+            return _inline[index];
         }
     }
 
@@ -91,19 +84,12 @@ internal sealed class Distances : IReadOnlyList<int>, IDisposable
             return;
         }
 
-        switch (index)
-        {
-            case 0:
-                _first = value;
-                return;
-            case 1:
-                _second = value;
-                return;
-            case 2:
-                _third = value;
-                return;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(index));
-        }
+        _inline[index] = value;
+    }
+
+    [InlineArray(InlineCapacity)]
+    private struct InlineDistances
+    {
+        private int _element0;
     }
 }

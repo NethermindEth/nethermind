@@ -8,9 +8,26 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal abstract class MsgSerializerBase<TMessage>
+internal interface IMsgSerializer
+{
+    MessageType MessageType { get; }
+
+    bool RequiresOwnedMemory { get; }
+
+    int GetContentLength(Discv5Message msg);
+
+    void Serialize(NettyRlpStream stream, Discv5Message msg);
+
+    Discv5Message Deserialize(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner);
+}
+
+internal abstract class MsgSerializerBase<TMessage>(MessageType messageType, bool requiresOwnedMemory = false) : IMsgSerializer
     where TMessage : Discv5Message
 {
+    public MessageType MessageType { get; } = messageType;
+
+    public bool RequiresOwnedMemory { get; } = requiresOwnedMemory;
+
     public int GetContentLength(TMessage msg)
         => msg.RequestId.GetRlpLength() + GetContentLengthCore(msg);
 
@@ -26,6 +43,13 @@ internal abstract class MsgSerializerBase<TMessage>
         RequestId requestId = DecodeRequestId(ref ctx);
         return DeserializeCore(in requestId, ref ctx, ownedMessage, owner);
     }
+
+    int IMsgSerializer.GetContentLength(Discv5Message msg) => GetContentLength((TMessage)msg);
+
+    void IMsgSerializer.Serialize(NettyRlpStream stream, Discv5Message msg) => Serialize(stream, (TMessage)msg);
+
+    Discv5Message IMsgSerializer.Deserialize(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+        => Deserialize(ref ctx, ownedMessage, owner);
 
     protected abstract int GetContentLengthCore(TMessage msg);
 

@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class PongMsgSerializer : MsgSerializerBase<PongMsg>
+internal sealed class PongMsgSerializer() : MsgSerializerBase<PongMsg>(MessageType.Pong)
 {
     private static readonly RlpLimit IpAddressRlpLimit = RlpLimit.For<IPAddress>(16, nameof(PongMsg.RecipientIp));
 

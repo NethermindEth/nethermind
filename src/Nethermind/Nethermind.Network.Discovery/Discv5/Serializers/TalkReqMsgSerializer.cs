@@ -7,7 +7,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class TalkReqMsgSerializer : MsgSerializerBase<TalkReqMsg>
+internal sealed class TalkReqMsgSerializer() : MsgSerializerBase<TalkReqMsg>(MessageType.TalkReq, requiresOwnedMemory: true)
 {
     protected override int GetContentLengthCore(TalkReqMsg msg)
         => Rlp.LengthOf(msg.Protocol) + Rlp.LengthOf(msg.Request);

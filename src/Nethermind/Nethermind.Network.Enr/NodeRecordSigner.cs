@@ -30,7 +30,6 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         }
 
         nodeRecord.OriginalRlp = null;
-        nodeRecord.OriginalContentRlp = null;
         nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
     }
 
@@ -60,13 +59,11 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         if (checkPosition - startPosition > 300)
             throw new RlpException("RLP received for ENR is bigger than 300 bytes");
         NodeRecord nodeRecord = new();
-        byte[]? originalContent = null;
-        byte[] previousKey = [];
+        ReadOnlySpan<byte> previousKey = default;
 
         ReadOnlySpan<byte> sigBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);
         Signature signature = new(sigBytes, 0);
 
-        bool canVerify = true;
         bool hasV4Id = false;
         ulong enrSequence = ctx.DecodeULong();
         while (ctx.Position < checkPosition)
@@ -76,7 +73,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             {
                 throw new RlpException("ENR keys must be sorted and unique.");
             }
-            previousKey = key.ToArray();
+            previousKey = key;
 
             switch (key.Length)
             {
@@ -141,7 +138,6 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     nodeRecord.SetEntry(new SecP256k1Entry(reportedKey));
                     break;
                 default:
-                    canVerify = false;
                     int valueStart = ctx.Position;
                     ctx.SkipItem();
                     int valueLength = ctx.Position - valueStart;
@@ -160,24 +156,8 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         }
 
         int endPosition = ctx.Position;
-        if (!canVerify)
-        {
-            ctx.Position = startPosition;
-            ctx.ReadSequenceLength();
-            ctx.SkipItem(); // signature
-            int noSigContentLength = endPosition - ctx.Position;
-            int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
-            originalContent = new byte[noSigSequenceLength];
-            RlpStream originalContentStream = new(originalContent);
-            originalContentStream.StartSequence(noSigContentLength);
-            originalContentStream.Write(ctx.Read(noSigContentLength));
-            ctx.Position = endPosition;
-            originalContent = originalContentStream.Data.ToArray()!;
-        }
-
         nodeRecord.EnrSequence = enrSequence;
         nodeRecord.Signature = signature;
-        nodeRecord.OriginalContentRlp = originalContent;
         nodeRecord.OriginalRlp = ctx.Data.Slice(startPosition, endPosition - startPosition).ToArray();
 
         return nodeRecord;
@@ -198,15 +178,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
 
-        ValueHash256 contentHash;
-        if (nodeRecord.OriginalContentRlp is not null)
-        {
-            contentHash = ValueKeccak.Compute(nodeRecord.OriginalContentRlp);
-        }
-        else
-        {
-            contentHash = nodeRecord.ContentHash;
-        }
+        ValueHash256 contentHash = nodeRecord.ContentHash;
 
         CompressedPublicKey? publicKeyA =
             _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, in contentHash);

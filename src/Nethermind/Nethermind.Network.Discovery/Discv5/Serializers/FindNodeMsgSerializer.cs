@@ -7,7 +7,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class FindNodeMsgSerializer : MsgSerializerBase<FindNodeMsg>
+internal sealed class FindNodeMsgSerializer() : MsgSerializerBase<FindNodeMsg>(MessageType.FindNode)
 {
     protected override int GetContentLengthCore(FindNodeMsg msg)
         => GetDistancesLength(msg.Distances);

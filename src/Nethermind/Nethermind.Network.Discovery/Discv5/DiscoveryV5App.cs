@@ -207,17 +207,17 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return false;
         }
 
-        if (IPAddressClassifier.IsMulticast(ipAddress))
+        if (ipAddress.IsMulticast)
         {
             return false;
         }
 
-        if (IPAddressClassifier.IsSpecialUseAddress(ipAddress))
+        if (ipAddress.IsSpecialUseAddress)
         {
             return false;
         }
 
-        return allowNonRoutable || !IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
+        return allowNonRoutable || !ipAddress.IsLoopbackOrPrivateOrLinkLocal;
     }
 
     internal static bool IsDiscoveryAddressRoutable(IPAddress ipAddress)
@@ -229,7 +229,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
         => !IPAddress.Any.Equals(externalIp)
             && !IPAddress.None.Equals(externalIp)
-            && IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(externalIp);
+            && externalIp.IsLoopbackOrPrivateOrLinkLocal;
 
     public override void InitializeChannel(IChannel channel)
     {
@@ -297,7 +297,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         Skipped
     }
 
-    private sealed class BootNodeStats
+    private struct BootNodeStats
     {
         public int Total { get; private set; }
         public int Added { get; private set; }

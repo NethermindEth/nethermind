@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class NodesMsgSerializer : MsgSerializerBase<NodesMsg>
+internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(MessageType.Nodes)
 {
     private const int MaxNodeRecordsPerMessage = 16;
 

@@ -6,7 +6,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using System.Net;
-using Convert = System.Convert;
 
 namespace Nethermind.Network.Enr;
 
@@ -25,16 +24,9 @@ public class NodeRecord
 
     private Signature? _signature;
 
-    private SortedDictionary<string, EnrContentEntry> Entries { get; } = new(System.StringComparer.Ordinal);
+    private SortedDictionary<string, EnrContentEntry> Entries { get; } = new(StringComparer.Ordinal);
 
     internal byte[]? OriginalRlp { get; set; }
-
-    /// <summary>
-    /// This field is used when this <see cref="NodeRecord"/> is deserialized and an unknown entry is encountered.
-    /// In such cases we do not know the RLP serialization format of such an entry and we store the original RLP
-    /// in order to be able to verify the signature. I think that we may replace it by Keccak(OriginalContentRlp).
-    /// </summary>
-    public byte[]? OriginalContentRlp { get; set; }
 
     /// <summary>
     /// Represents the version / id / sequence of the node record data. It should be increased by one with each
@@ -81,11 +73,6 @@ public class NodeRecord
 
     private Hash256 CalculateContentHash()
     {
-        if (OriginalContentRlp is not null)
-        {
-            return ValueKeccak.Compute(OriginalContentRlp).ToCommitment();
-        }
-
         KeccakRlpStream rlpStream = new();
         EncodeContent(rlpStream);
         return rlpStream.GetHash();
@@ -101,7 +88,6 @@ public class NodeRecord
         {
             _signature = value;
             OriginalRlp = null;
-            OriginalContentRlp = null;
             _enrString = null;
             _contentHash = null;
         }
@@ -247,7 +233,6 @@ public class NodeRecord
 
         Entries[entry.Key] = entry;
         OriginalRlp = null;
-        OriginalContentRlp = null;
         _enrString = null;
         _contentHash = null;
         _signature = null;

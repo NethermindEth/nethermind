@@ -7,7 +7,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class PingMsgSerializer : MsgSerializerBase<PingMsg>
+internal sealed class PingMsgSerializer() : MsgSerializerBase<PingMsg>(MessageType.Ping)
 {
     protected override int GetContentLengthCore(PingMsg msg)
         => Rlp.LengthOf(msg.EnrSequence);

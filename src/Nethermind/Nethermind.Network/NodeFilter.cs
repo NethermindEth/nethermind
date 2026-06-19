@@ -25,7 +25,7 @@ public sealed class NodeFilter
 
     private readonly ClockCache<IpSubnetKey, long>? _cache;
     private readonly bool _exactMatchOnly;
-    private readonly IpSubnetKey.ParsedIp? _parsedCurrentIp;
+    private readonly ParsedIPAddress? _parsedCurrentIp;
     private readonly long _timeoutMs;
 
     private NodeFilter() { }
@@ -37,7 +37,7 @@ public sealed class NodeFilter
     {
         _cache = new(size);
         _exactMatchOnly = exactMatchOnly;
-        _parsedCurrentIp = currentIp is not null ? new IpSubnetKey.ParsedIp(currentIp) : null;
+        _parsedCurrentIp = currentIp is not null ? ParsedIPAddress.Parse(currentIp) : null;
         _timeoutMs = timeoutMs;
     }
 
@@ -52,12 +52,6 @@ public sealed class NodeFilter
     /// </summary>
     public static NodeFilter CreateExact(int size, TimeSpan timeout)
         => new(size, exactMatchOnly: true, currentIp: null, (long)timeout.TotalMilliseconds);
-
-    public static bool IsLoopbackOrPrivateOrLinkLocal(IPAddress ipAddress)
-        => IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
-
-    public static bool IsIPv4Multicast(IPAddress ipAddress)
-        => IPAddressClassifier.IsIPv4Multicast(ipAddress);
 
     /// <summary>
     /// Checks whether <paramref name="ipAddress"/> should be accepted.
@@ -77,18 +71,6 @@ public sealed class NodeFilter
 
         _cache.Set(key, now);
         return true;
-    }
-
-    /// <summary>
-    /// Read-only check: returns <c>true</c> if the address would be accepted (not seen recently),
-    /// without inserting it into the cache.
-    /// </summary>
-    public bool CanAccept(IPAddress ipAddress, bool exactOnly = false)
-    {
-        if (_cache is null) return true;
-
-        IpSubnetKey key = GetKey(ipAddress, exactOnly);
-        return !_cache.TryGet(key, out long lastSeen) || Environment.TickCount64 - lastSeen >= _timeoutMs;
     }
 
     public void Touch(IPAddress ipAddress, bool exactOnly = false)
@@ -113,28 +95,8 @@ public sealed class NodeFilter
     /// Allocation-free key for an IP address or a masked subnet prefix, suitable for hash lookups and prefix checks.
     /// </summary>
     [StructLayout(LayoutKind.Explicit)]
-    internal readonly struct IpSubnetKey : IEquatable<IpSubnetKey>
+    private readonly struct IpSubnetKey : IEquatable<IpSubnetKey>
     {
-        internal enum IpFamily : byte { IPv4 = 4, IPv6 = 6 }
-
-        internal readonly struct ParsedIp
-        {
-            public readonly IpFamily Family;
-            public readonly uint V4;
-            public readonly ulong Hi;
-            public readonly ulong Lo;
-            public readonly bool IsLocal;
-
-            public ParsedIp(IPAddress ip)
-            {
-                Family = ReadAddress(ip, out uint v4, out ulong hi, out ulong lo);
-                V4 = v4;
-                Hi = hi;
-                Lo = lo;
-                IsLocal = IsLoopbackOrPrivateOrLinkLocal(Family, v4, hi, lo);
-            }
-        }
-
         // For IPv6: _hi/_lo are the masked 128-bit network prefix (big-endian).
         // For IPv4: _hi holds the masked v4 in the low 32 bits (big-endian), _lo is 0.
         [FieldOffset(0)]
@@ -147,44 +109,23 @@ public sealed class NodeFilter
 
         public static IpSubnetKey DefaultKey(IPAddress ipAddress, byte v4BucketPrefixBits = 24, byte v6BucketPrefixBits = 64)
         {
-            IpFamily family = ReadAddress(ipAddress, out uint v4, out ulong hi, out ulong lo);
+            ParsedIPAddress parsed = ParsedIPAddress.Parse(ipAddress);
 
-            if (IsLoopbackOrPrivateOrLinkLocal(family, v4, hi, lo))
+            if (parsed.IsLoopbackOrPrivateOrLinkLocal)
             {
                 v4BucketPrefixBits = 32;
                 v6BucketPrefixBits = 128;
             }
 
-            return family == IpFamily.IPv4
-                ? CreateFromV4(v4, v4BucketPrefixBits)
-                : CreateFromV6(hi, lo, v6BucketPrefixBits);
-        }
-
-        public IpSubnetKey(IPAddress ipAddress, byte v4PrefixBits = 24, byte v6PrefixBits = 64)
-        {
-            IpFamily family = ReadAddress(ipAddress, out uint v4, out ulong hi, out ulong lo);
-
-            if (family == IpFamily.IPv4)
-            {
-                _meta = MakeMeta(IpFamily.IPv4, v4PrefixBits);
-                _hi = MaskV4(v4, v4PrefixBits);
-                _lo = 0;
-                return;
-            }
-
-            _meta = MakeMeta(IpFamily.IPv6, v6PrefixBits);
-            MaskV6(ref hi, ref lo, v6PrefixBits);
-            _hi = hi;
-            _lo = lo;
+            return CreateFromParsed(in parsed, v4BucketPrefixBits, v6BucketPrefixBits);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IpSubnetKey Exact(IPAddress ipAddress)
-            => new(ipAddress, v4PrefixBits: 32, v6PrefixBits: 128);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static IpSubnetKey Bucket(IPAddress ipAddress, byte v4PrefixBits = 24, byte v6PrefixBits = 64)
-            => new(ipAddress, v4PrefixBits, v6PrefixBits);
+        {
+            ParsedIPAddress parsed = ParsedIPAddress.Parse(ipAddress);
+            return CreateExactFromParsed(in parsed);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(IpSubnetKey other)
@@ -202,41 +143,9 @@ public sealed class NodeFilter
         public override int GetHashCode()
             => MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<ulong, byte>(ref Unsafe.AsRef(in _hi)), 2 * sizeof(ulong) + sizeof(ushort)).FastHash();
 
-        public bool Matches(IPAddress other)
-        {
-            IpFamily family = (IpFamily)(_meta >> 8);
-            byte prefix = (byte)_meta;
-
-            IpFamily otherFamily = ReadAddress(other, out uint v4, out ulong hi, out ulong lo);
-            if (otherFamily != family)
-                return false;
-
-            if (family == IpFamily.IPv4)
-                return _hi == MaskV4Trusted(v4, prefix);
-
-            MaskV6Trusted(ref hi, ref lo, prefix);
-            return _hi == hi && _lo == lo;
-        }
-
-        public static bool AreInSameSubnet(IPAddress a, IPAddress b, byte v4PrefixBits = 24, byte v6PrefixBits = 64)
-        {
-            IpFamily fa = ReadAddress(a, out uint a4, out ulong aHi, out ulong aLo);
-            IpFamily fb = ReadAddress(b, out uint b4, out ulong bHi, out ulong bLo);
-
-            if (fa != fb)
-                return false;
-
-            if (fa == IpFamily.IPv4)
-                return MaskV4(a4, v4PrefixBits) == MaskV4(b4, v4PrefixBits);
-
-            MaskV6(ref aHi, ref aLo, v6PrefixBits);
-            MaskV6(ref bHi, ref bLo, v6PrefixBits);
-            return aHi == bHi && aLo == bLo;
-        }
-
         public static IpSubnetKey CreateNodeFilterKey(
             IPAddress remoteIp,
-            IPAddress currentIp,
+            in ParsedIPAddress currentIp,
             byte v4BucketPrefixBits = 24,
             byte v6BucketPrefixBits = 64,
             byte v4LocalPrefixBits = 24,
@@ -244,67 +153,48 @@ public sealed class NodeFilter
             bool exactIfSameSubnetAsCurrentIp = true,
             bool requireCurrentIpIsLocalForExact = true)
         {
-            ParsedIp current = new(currentIp);
-            return CreateNodeFilterKey(remoteIp, in current,
-                v4BucketPrefixBits, v6BucketPrefixBits,
-                v4LocalPrefixBits, v6LocalPrefixBits,
-                exactIfSameSubnetAsCurrentIp, requireCurrentIpIsLocalForExact);
-        }
+            ParsedIPAddress remote = ParsedIPAddress.Parse(remoteIp);
 
-        public static IpSubnetKey CreateNodeFilterKey(
-            IPAddress remoteIp,
-            in ParsedIp currentIp,
-            byte v4BucketPrefixBits = 24,
-            byte v6BucketPrefixBits = 64,
-            byte v4LocalPrefixBits = 24,
-            byte v6LocalPrefixBits = 64,
-            bool exactIfSameSubnetAsCurrentIp = true,
-            bool requireCurrentIpIsLocalForExact = true)
-        {
-            IpFamily rFamily = ReadAddress(remoteIp, out uint rV4, out ulong rHi, out ulong rLo);
-
-            if (IsLoopbackOrPrivateOrLinkLocal(rFamily, rV4, rHi, rLo))
-                return CreateExactFromParsed(rFamily, rV4, rHi, rLo);
+            if (remote.IsLoopbackOrPrivateOrLinkLocal)
+                return CreateExactFromParsed(in remote);
 
             if (exactIfSameSubnetAsCurrentIp)
             {
-                if (!requireCurrentIpIsLocalForExact || currentIp.IsLocal)
+                if (!requireCurrentIpIsLocalForExact || currentIp.IsLoopbackOrPrivateOrLinkLocal)
                 {
-                    if (rFamily == currentIp.Family)
+                    if (remote.Family == currentIp.Family)
                     {
-                        if (rFamily == IpFamily.IPv4)
+                        if (remote.Family == IpFamily.IPv4)
                         {
-                            if (MaskV4(rV4, v4LocalPrefixBits) == MaskV4(currentIp.V4, v4LocalPrefixBits))
-                                return CreateExactFromParsed(rFamily, rV4, rHi, rLo);
+                            if (MaskV4(remote.V4, v4LocalPrefixBits) == MaskV4(currentIp.V4, v4LocalPrefixBits))
+                                return CreateExactFromParsed(in remote);
                         }
                         else
                         {
-                            ulong rNetHi = rHi, rNetLo = rLo;
+                            ulong rNetHi = remote.Hi, rNetLo = remote.Lo;
                             ulong cNetHi = currentIp.Hi, cNetLo = currentIp.Lo;
                             MaskV6(ref rNetHi, ref rNetLo, v6LocalPrefixBits);
                             MaskV6(ref cNetHi, ref cNetLo, v6LocalPrefixBits);
 
                             if (rNetHi == cNetHi && rNetLo == cNetLo)
-                                return CreateExactFromParsed(rFamily, rV4, rHi, rLo);
+                                return CreateExactFromParsed(in remote);
                         }
                     }
                 }
             }
 
-            return rFamily == IpFamily.IPv4
-                ? CreateFromV4(rV4, v4BucketPrefixBits)
-                : CreateFromV6(rHi, rLo, v6BucketPrefixBits);
-        }
-
-        public static bool IsLoopbackOrPrivateOrLinkLocal(IPAddress ip)
-        {
-            IpFamily family = ReadAddress(ip, out uint v4, out ulong hi, out ulong lo);
-            return IsLoopbackOrPrivateOrLinkLocal(family, v4, hi, lo);
+            return CreateFromParsed(in remote, v4BucketPrefixBits, v6BucketPrefixBits);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static IpSubnetKey CreateExactFromParsed(IpFamily family, uint v4, ulong hi, ulong lo)
-            => family == IpFamily.IPv4 ? CreateFromV4(v4, 32) : CreateFromV6(hi, lo, 128);
+        private static IpSubnetKey CreateExactFromParsed(in ParsedIPAddress parsed)
+            => CreateFromParsed(in parsed, 32, 128);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static IpSubnetKey CreateFromParsed(in ParsedIPAddress parsed, byte v4PrefixBits, byte v6PrefixBits)
+            => parsed.Family == IpFamily.IPv4
+                ? CreateFromV4(parsed.V4, v4PrefixBits)
+                : CreateFromV6(parsed.Hi, parsed.Lo, v6PrefixBits);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static IpSubnetKey CreateFromV4(uint v4, byte prefixBits)
@@ -328,16 +218,6 @@ public sealed class NodeFilter
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ushort MakeMeta(IpFamily family, byte prefixBits)
             => (ushort)(((byte)family << 8) | prefixBits);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static IpFamily ReadAddress(IPAddress ip, out uint v4, out ulong hi, out ulong lo)
-        {
-            IPAddressClassifier.ParsedIPAddress parsed = IPAddressClassifier.Parse(ip);
-            v4 = parsed.V4;
-            hi = parsed.Hi;
-            lo = parsed.Lo;
-            return parsed.Family == IPAddressClassifier.ParsedIPAddressFamily.IPv4 ? IpFamily.IPv4 : IpFamily.IPv6;
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MaskV4(uint v4, byte prefixBits)
@@ -379,11 +259,5 @@ public sealed class NodeFilter
                     return;
             }
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsLoopbackOrPrivateOrLinkLocal(IpFamily family, uint v4, ulong hi, ulong lo)
-            => family == IpFamily.IPv4
-                ? IPAddressClassifier.IsIPv4LoopbackOrPrivateOrLinkLocal(v4)
-                : IPAddressClassifier.IsIPv6LoopbackOrPrivateOrLinkLocal(hi, lo);
     }
 }

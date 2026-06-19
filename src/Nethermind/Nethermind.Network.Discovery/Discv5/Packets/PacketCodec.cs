@@ -46,7 +46,7 @@ public sealed class PacketCodec(
 
     private readonly PrivateKey _privateKey = nodeKey.Unprotect();
     private readonly PublicKey _publicKey = nodeKey.PublicKey;
-    private readonly Hash256 _localNodeId = nodeKey.PublicKey.Hash;
+    private readonly ValueHash256 _localNodeId = nodeKey.PublicKey.Hash.ValueHash256;
     private readonly INodeRecordProvider _nodeRecordProvider = nodeRecordProvider;
     private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
     private readonly IEcdsa _ecdsa = ecdsa;
@@ -285,7 +285,7 @@ public sealed class PacketCodec(
         message = null!;
         nodeRecord = null;
 
-        if (!TryReadHandshakeAuthData(packet.AuthData, out Hash256? sourceNodeId, out ReadOnlyMemory<byte> idSignature, out CompressedPublicKey? ephemeralPublicKey, out ReadOnlyMemory<byte> recordBytes))
+        if (!TryReadHandshakeAuthData(packet.AuthData, out ValueHash256 sourceNodeId, out ReadOnlyMemory<byte> idSignature, out CompressedPublicKey? ephemeralPublicKey, out ReadOnlyMemory<byte> recordBytes))
         {
             return false;
         }
@@ -310,7 +310,7 @@ public sealed class PacketCodec(
         }
 
         PublicKey remotePublicKey = remoteCompressedPublicKey.Decompress();
-        if (!remotePublicKey.Hash.Equals(sourceNodeId))
+        if (remotePublicKey.Hash != sourceNodeId)
         {
             return false;
         }
@@ -331,16 +331,16 @@ public sealed class PacketCodec(
         return true;
     }
 
-    internal static bool TryGetSourceNodeId(scoped in Packet packet, [NotNullWhen(true)] out Hash256? sourceNodeId)
+    internal static bool TryGetSourceNodeId(scoped in Packet packet, out ValueHash256 sourceNodeId)
     {
-        sourceNodeId = null;
+        sourceNodeId = default;
         switch (packet.Flag)
         {
             case PacketFlag.Ordinary when packet.AuthData.Length == NodeIdSize:
-                sourceNodeId = new Hash256(packet.AuthData.Span);
+                sourceNodeId = new ValueHash256(packet.AuthData.Span);
                 return true;
             case PacketFlag.Handshake when packet.AuthData.Length >= HandshakeAuthDataHeadSize:
-                sourceNodeId = new Hash256(packet.AuthData.Span[..NodeIdSize]);
+                sourceNodeId = new ValueHash256(packet.AuthData.Span[..NodeIdSize]);
                 return true;
             default:
                 return false;
@@ -674,12 +674,12 @@ public sealed class PacketCodec(
 
     private static bool TryReadHandshakeAuthData(
         ReadOnlyMemory<byte> authDataMemory,
-        [NotNullWhen(true)] out Hash256? sourceNodeId,
+        out ValueHash256 sourceNodeId,
         out ReadOnlyMemory<byte> idSignature,
         [NotNullWhen(true)] out CompressedPublicKey? ephemeralPublicKey,
         out ReadOnlyMemory<byte> record)
     {
-        sourceNodeId = null;
+        sourceNodeId = default;
         idSignature = ReadOnlyMemory<byte>.Empty;
         ephemeralPublicKey = null;
         record = ReadOnlyMemory<byte>.Empty;
@@ -690,7 +690,7 @@ public sealed class PacketCodec(
             return false;
         }
 
-        sourceNodeId = new Hash256(authData[..NodeIdSize]);
+        sourceNodeId = new ValueHash256(authData[..NodeIdSize]);
         int signatureSize = authData[NodeIdSize];
         int ephemeralKeySize = authData[NodeIdSize + 1];
         if (signatureSize != IdSignatureSize || ephemeralKeySize != EphemeralPublicKeySize)
