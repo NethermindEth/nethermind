@@ -452,10 +452,7 @@ public class Metrics
         }
     }
 
-    // Serializes the per-tx block gas-price aggregate update so parallel BAL validation workers,
-    // which each call UpdateBlockGasPrice once per transaction, produce race-free min/max and a
-    // deterministic running average/median. Contention is negligible: one short critical section per
-    // transaction, not per opcode.
+    // Serializes the once-per-tx gas-price aggregate update so parallel BAL workers don't race on it.
     private static readonly Lock _gasPriceLock = new();
 
     /// <summary>Folds a transaction's effective gas price into the per-block aggregates.</summary>

@@ -33,9 +33,8 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        // Per-scope, single-threaded counter accumulator shared with the providers and the scope
-        // (see BeginScope), folded into the global Metrics in Commit/EndScope to avoid per-increment
-        // cross-thread Interlocked contention during prewarm / parallel-BAL execution.
+        // Per-scope counter accumulator shared with the providers and scope; folded into the global
+        // Metrics in Commit/EndScope to avoid per-increment cross-thread contention.
         private readonly LocalMetrics _localMetrics = new();
         private IWorldStateScopeProvider.IScope? _currentScope;
         private bool _isInScope;

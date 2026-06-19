@@ -293,10 +293,6 @@ namespace Nethermind.Consensus.Processing
                 blockData.PerTxTicks = PerTxTimingCollector.Snapshot();
             }
 
-            // Snapshot on the block-processing thread; GenerateReport runs on a ThreadPool thread where
-            // the flag's own value would not be visible.
-            blockData.UsedParallelExecution = BlockProcessor.ParallelBlockValidationTransactionsExecutor.LastBlockUsedParallelExecution;
-
             CaptureReportData(blockData);
         }
 
@@ -603,7 +599,7 @@ namespace Nethermind.Consensus.Processing
                 };
 
                 // Execution-mode indicator: chains for parallel BAL validation, link for sequential.
-                string execMode = data.UsedParallelExecution ? " ⛓️" : " 🔗";
+                string execMode = _parallelExecution ? " ⛓️" : " 🔗";
 
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
@@ -832,7 +828,6 @@ namespace Nethermind.Consensus.Processing
                 data.GasUsed = 0;
                 data.TransactionCount = 0;
                 data.BlobCount = 0;
-                data.UsedParallelExecution = false;
 
                 // Reset the slow-block Delta* fields too. They're only written when the threshold
                 // is enabled (UpdateStats line ~270), so if a pooled instance was returned without
@@ -876,7 +871,6 @@ namespace Nethermind.Consensus.Processing
             public long GasUsed;
             public long TransactionCount;
             public long BlobCount;
-            public bool UsedParallelExecution;
             public long CurrentOpCodes;
             public long CurrentSLoadOps;
             public long CurrentSStoreOps;
