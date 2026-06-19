@@ -55,6 +55,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private int _memoryByteCount;
 
     private readonly Dictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = [];
+    private readonly Stack<PooledDictionary<UInt256, UInt256>> _storageMapPool = new();
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
     private int _entriesSinceLastFlush;
@@ -95,8 +96,13 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingStorageTouched = false;
         _stackByteCount = 0;
         _memoryByteCount = 0;
-        // Storage must not persist across txs — dispose each per-address map and clear.
-        foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values) map.Dispose();
+        // Storage must not persist across txs, but the per-address maps are reused across the tracer's
+        // lifetime: clear and return each to the free-list rather than disposing+reallocating per tx.
+        foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values)
+        {
+            map.Clear();
+            _storageMapPool.Push(map);
+        }
         _storageByAddress.Clear();
         _pendingStorageMap = null;
         _entriesSinceLastFlush = 0;
@@ -188,7 +194,10 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (!IsTracingOpLevelStorage) return;
         if (!_storageByAddress.TryGetValue(address, out PooledDictionary<UInt256, UInt256>? contractStorage))
         {
-            _storageByAddress[address] = contractStorage = new PooledDictionary<UInt256, UInt256>(InitialStorageMapCapacity);
+            contractStorage = _storageMapPool.TryPop(out PooledDictionary<UInt256, UInt256>? pooled)
+                ? pooled
+                : new PooledDictionary<UInt256, UInt256>(InitialStorageMapCapacity);
+            _storageByAddress[address] = contractStorage;
         }
         contractStorage[storageIndex] = new UInt256(value, isBigEndian: true);
         _pendingStorageMap = contractStorage;
@@ -227,6 +236,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (_memoryBuffer is not null) { ArrayPool<byte>.Shared.Return(_memoryBuffer); _memoryBuffer = null; }
         foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values) map.Dispose();
         _storageByAddress.Clear();
+        while (_storageMapPool.TryPop(out PooledDictionary<UInt256, UInt256>? map)) map.Dispose();
         _pendingStorageMap = null;
     }
 
