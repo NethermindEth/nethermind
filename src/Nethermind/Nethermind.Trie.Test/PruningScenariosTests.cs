@@ -315,7 +315,9 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
-            public PruningContext WithMaxDepth(int maxDepth) => WithPruningConfig((cfg) => cfg.PruningBoundary = (ulong)maxDepth);
+            public PruningContext WithMaxDepth(int maxDepth) => WithMaxDepth((ulong)maxDepth);
+
+            public PruningContext WithMaxDepth(ulong maxDepth) => WithPruningConfig((cfg) => cfg.PruningBoundary = maxDepth);
 
             public PruningContext WithPruningConfig(Action<IPruningConfig> configurer)
             {

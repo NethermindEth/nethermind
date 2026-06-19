@@ -7,6 +7,7 @@ using NUnit.Framework;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -86,7 +87,7 @@ public class SurgeGasPriceOracleTests
         _blockFinder.Head.Returns(headBlock);
 
         ulong windowSize = _surgeConfig.L2GasUsageWindowSize;
-        ulong lowestBlock = headBlockNumber + 1 > windowSize ? headBlockNumber - windowSize + 1 : 0UL;
+        ulong lowestBlock = (headBlockNumber + 1).SaturatingSub(windowSize);
         for (ulong i = lowestBlock; i <= headBlockNumber; i++)
         {
             _blockFinder.FindBlock(i, BlockTreeLookupOptions.RequireCanonical)

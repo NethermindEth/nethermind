@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -79,7 +80,7 @@ public sealed class ZkGasTxTracer : TxTracer
 
         _stepActive = false;
 
-        ulong rawGas = _currentGasStart > gas ? _currentGasStart - gas : 0UL;
+        ulong rawGas = _currentGasStart.SaturatingSub(gas);
 
         if (IsSpawnOpcode(_currentOpcode))
         {
@@ -258,7 +259,7 @@ public sealed class ZkGasTxTracer : TxTracer
             return;
 
         _pendingPrecompile = false;
-        ulong gasUsed = _precompileGasStart > gasRemaining ? _precompileGasStart - gasRemaining : 0UL;
+        ulong gasUsed = _precompileGasStart.SaturatingSub(gasRemaining);
         if (gasUsed > 0 && _precompileAddress is not null)
         {
             _meter.ChargePrecompile(_precompileAddress, gasUsed);

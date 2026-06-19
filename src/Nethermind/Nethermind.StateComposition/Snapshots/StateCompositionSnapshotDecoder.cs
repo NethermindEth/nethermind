@@ -127,7 +127,11 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
         return Rlp.LengthOf(value);
     }
 
-    private static int EncodeULong(RlpStream? stream, ulong value) => EncodeLong(stream, (long)value);
+    private static int EncodeULong(RlpStream? stream, ulong value)
+    {
+        stream?.Encode(value);
+        return Rlp.LengthOf(value);
+    }
 
     private static int EncodeInt(RlpStream? stream, int value)
     {

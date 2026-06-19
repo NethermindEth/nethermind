@@ -108,7 +108,7 @@ namespace Nethermind.Trie.Test.Pruning
                 using (IDisposable _ = fullTrieStore.BeginScope(baseBlock))
                 {
                     pt.Set(TestItem.KeccakA.BytesToArray(), TestItem.Keccaks[i].BytesToArray());
-                    using (fullTrieStore.BeginStateBlockCommit((ulong)(i + 1), trieNode))
+                    using (fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
                     {
                         pt.Commit();
                     }
@@ -149,14 +149,14 @@ namespace Nethermind.Trie.Test.Pruning
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
 
-            long reorgBoundaryCount = 0L;
+            ulong reorgBoundaryCount = 0UL;
             using TrieStore fullTrieStore = CreateTrieStore();
-            fullTrieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += (long)e.BlockNumber;
+            fullTrieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
             fullTrieStore.BeginStateBlockCommit(1, trieNode).Dispose();
             fullTrieStore.BeginStateBlockCommit(2, trieNode).Dispose();
             fullTrieStore.BeginStateBlockCommit(3, trieNode).Dispose();
             fullTrieStore.BeginStateBlockCommit(4, trieNode).Dispose();
-            Assert.That(reorgBoundaryCount, Is.EqualTo(0L));
+            Assert.That(reorgBoundaryCount, Is.EqualTo(0UL));
         }
 
         [Test]
@@ -970,22 +970,21 @@ namespace Nethermind.Trie.Test.Pruning
             StateTree stateTree = new(trieStore, LimboLogs.Instance);
 
             // Start from block 1 (not genesis) to avoid special-casing block 0
-            int startBlock = 1;
-            int blockCount = (int)(pruningBoundary * 4);
+            ulong startBlock = 1;
+            ulong blockCount = pruningBoundary * 4;
             Hash256[] rootHashes = new Hash256[startBlock + blockCount];
-            for (int i = startBlock; i < startBlock + blockCount; i++)
+            for (ulong i = startBlock; i < startBlock + blockCount; i++)
             {
-                ulong blockNumber = (ulong)i;
-                using (trieStore.BeginBlockCommit(blockNumber))
+                using (trieStore.BeginBlockCommit(i))
                 {
-                    stateTree.Set(TestItem.AddressA, new Account(blockNumber + 1));
+                    stateTree.Set(TestItem.AddressA, new Account(i + 1));
                     stateTree.Commit();
                 }
                 rootHashes[i] = stateTree.RootHash;
             }
 
             trieStore.WaitForPruning();
-            Assert.That(trieStore.LastPersistedBlockNumber, Is.GreaterThan(pruningBoundary + (ulong)startBlock));
+            Assert.That(trieStore.LastPersistedBlockNumber, Is.GreaterThan(pruningBoundary + startBlock));
 
             ulong lastPersisted = trieStore.LastPersistedBlockNumber;
 
@@ -993,7 +992,7 @@ namespace Nethermind.Trie.Test.Pruning
             Assert.That(trieStore.HasRoot(rootHashes[(int)lastPersisted], lastPersisted), Is.True);
 
             // Block 1 is well outside the pruning boundary but should still be accessible in archive mode
-            Assert.That(trieStore.HasRoot(rootHashes[startBlock], (ulong)startBlock), Is.True);
+            Assert.That(trieStore.HasRoot(rootHashes[startBlock], startBlock), Is.True);
 
             trieStore.Dispose();
         }

@@ -97,7 +97,7 @@ namespace Nethermind.Test.Runner
                     txTrace.State.StateRoot = result.StateRoot;
                     try
                     {
-                        txTrace.Result.GasUsed -= (ulong)IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
+                        txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
                     }
                     catch (InvalidDataException e)
                     {

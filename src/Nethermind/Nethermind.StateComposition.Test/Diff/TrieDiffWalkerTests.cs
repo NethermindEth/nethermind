@@ -24,7 +24,7 @@ namespace Nethermind.StateComposition.Test.Diff;
 [TestFixture]
 public class TrieDiffWalkerTests
 {
-    private static Account CreateEOA(ulong balance = 100UL) => new(0UL, balance);
+    private static Account CreateEOA(int balance = 100) => new(0UL, (UInt256)balance);
 
     private static Account CreateContract(Hash256 storageRoot, byte[]? code = null)
     {
@@ -338,7 +338,7 @@ public class TrieDiffWalkerTests
             addressBytes[0] = (byte)(i >> 8);
             addressBytes[1] = (byte)(i & 0xFF);
             Address addr = new(addressBytes);
-            tree.Set(addr, CreateEOA(i + 1));
+            tree.Set(addr, CreateEOA((int)(i + 1)));
         }
         tree.Commit();
         tree.UpdateRootHash();
@@ -354,7 +354,7 @@ public class TrieDiffWalkerTests
             addressBytes[0] = (byte)(i >> 8);
             addressBytes[1] = (byte)(i & 0xFF);
             Address addr = new(addressBytes);
-            tree.Set(addr, CreateEOA(i + 1));
+            tree.Set(addr, CreateEOA((int)(i + 1)));
         }
         tree.Commit();
         tree.UpdateRootHash();
@@ -436,7 +436,7 @@ public class TrieDiffWalkerTests
             for (int i = 0; i < newEOAsPerBlock; i++)
             {
                 Address addr = AddressFromSeed(addressSeed++);
-                tree.Set(addr, CreateEOA((ulong)rng.Next(1, 10000)));
+                tree.Set(addr, CreateEOA(rng.Next(1, 10000)));
                 eoaAddresses.Add(addr);
             }
 
@@ -462,7 +462,7 @@ public class TrieDiffWalkerTests
                 for (int i = 0; i < modifiedEOAsPerBlock && pool > 0; i++)
                 {
                     int idx = rng.Next(0, pool);
-                    tree.Set(eoaAddresses[idx], CreateEOA((ulong)rng.Next(1, 10000)));
+                    tree.Set(eoaAddresses[idx], CreateEOA(rng.Next(1, 10000)));
                 }
             }
 
