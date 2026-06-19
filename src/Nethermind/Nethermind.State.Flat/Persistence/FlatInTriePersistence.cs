@@ -15,8 +15,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
 {
     private readonly WriteBufferAdjuster _adjuster = new(db);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.FlatInTrie);
-    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, logManager.GetClassLogger<FlatInTriePersistence>());
-    private int _slotEncodingPersisted = 0;
+    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.StorageNodes), logManager.GetClassLogger<FlatInTriePersistence>());
 
     public void Flush() => db.Flush();
 
@@ -106,8 +105,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
             {
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
-                BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.FlatInTrie);
-                BasePersistence.RecordSlotEncodingOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _slotEncodingPersisted, _rlpWrapSlots);
+                if (_rlpWrapSlots)
+                    BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.FlatInTrie);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();

@@ -17,12 +17,16 @@ public class FlatScopeProvider(
     ResourcePool.Usage usage,
     ILogManager logManager,
     bool isReadOnly)
-    : IWorldStateScopeProvider
+    : IWorldStateScopeProvider, IDisposable
 {
-    // Write paths (block processing) wrap the durable production codeDb directly and benefit
-    // from the cross-block persisted-code hint cache. Read-only paths wrap a ReadOnlyDb temp
-    // buffer (writes are transient) and must NOT populate the hint cache — see TrieStoreScopeProvider.
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+
+    private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
+    {
+        int configured = configuration.WarmReadConcurrency;
+        int concurrency = configured < 0 ? Math.Min(4 * Environment.ProcessorCount, 64) : Math.Max(1, configured);
+        return new WarmReadPool(concurrency);
+    });
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
@@ -39,6 +43,12 @@ public class FlatScopeProvider(
             configuration,
             trieWarmer,
             logManager,
+            warmReadPool: _warmReadPool,
             isReadOnly: isReadOnly);
+    }
+
+    public void Dispose()
+    {
+        if (_warmReadPool is { IsValueCreated: true }) _warmReadPool.Value.Dispose();
     }
 }

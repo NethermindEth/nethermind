@@ -36,7 +36,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </remarks>
 public class ForkchoiceUpdatedHandler(
     IBlockTree blockTree,
-    IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
     IBlockProcessingQueue processingQueue,
@@ -51,7 +50,6 @@ public class ForkchoiceUpdatedHandler(
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-    private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
@@ -246,29 +244,20 @@ public class ForkchoiceUpdatedHandler(
         if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
         if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
 
-        IReadOnlyList<Block>? blocks = EnsureNewHead(newHeadHeader, out string? setHeadErrorMsg);
-        if (setHeadErrorMsg is not null)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
-            return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
-        }
-
         if (IsOnMainChainBehindFinalized(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
             return result;
         }
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
-        bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
-        if (shouldUpdateHead)
+        bool shouldUpdateHead = !newHeadTheSameAsCurrentHead;
+        // TryUpdateMainChain walks back to the current main chain itself, loading blocks one at a time, and
+        // returns false (without mutating) if a predecessor is missing - the same gate the old TryGetBranch gave.
+        if (shouldUpdateHead && !_blockTree.TryUpdateMainChain(newHeadHeader, wereProcessed: true, forceUpdateHeadBlock: true))
         {
-            _blockTree.UpdateMainChain(blocks!, true, true);
-        }
-
-        bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
-        if (nonZeroFinalizedBlockHash)
-        {
-            _manualBlockFinalizationManager.MarkFinalized(newHeadHeader, finalizedHeader!);
+            string setHeadErrorMsg = $"Block's {newHeadHeader} main chain predecessor cannot be found and it will not be set as head.";
+            if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
+            return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
         if (shouldUpdateHead)
@@ -391,23 +380,6 @@ public class ForkchoiceUpdatedHandler(
         return header;
     }
 
-    private IReadOnlyList<Block>? EnsureNewHead(BlockHeader newHeadHeader, out string? errorMessage)
-    {
-        errorMessage = null;
-        if (_blockTree.Head!.Hash == newHeadHeader.Hash)
-        {
-            return null;
-        }
-
-        if (!TryGetBranch(newHeadHeader, out IReadOnlyList<Block> branchOfBlocks))
-        {
-            errorMessage = $"Block's {newHeadHeader} main chain predecessor cannot be found and it will not be set as head.";
-            if (_logger.IsWarn) _logger.Warn(errorMessage);
-        }
-
-        return branchOfBlocks;
-    }
-
     protected virtual BlockHeader? ValidateBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
         errorMessage = null;
@@ -422,36 +394,6 @@ public class ForkchoiceUpdatedHandler(
             errorMessage = $"Block {blockHash} not found.";
         }
         return blockHeader;
-    }
-
-
-    protected virtual bool TryGetBranch(BlockHeader newHeadHeader, out IReadOnlyList<Block> blocks)
-    {
-        Block? newHeadBlock = _blockTree.FindBlock(newHeadHeader.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (newHeadBlock is null)
-        {
-            blocks = [];
-            return false;
-        }
-
-        List<Block> blocksList = [newHeadBlock];
-        Block? predecessor = newHeadBlock;
-
-        while (true)
-        {
-            predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-            if (predecessor is null)
-            {
-                blocks = [];
-                return false;
-            }
-            if (_blockTree.IsMainChain(predecessor.Header)) break;
-            blocksList.Add(predecessor);
-        }
-
-        blocksList.Reverse();
-        blocks = blocksList;
-        return true;
     }
 
     private void ReorgBeaconChainDuringSync(BlockHeader newHeadHeader, BlockInfo newHeadBlockInfo)

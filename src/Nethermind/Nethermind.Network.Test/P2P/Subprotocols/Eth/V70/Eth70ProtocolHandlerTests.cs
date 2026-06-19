@@ -120,8 +120,8 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Default_size_limits_match_eth_protocol_limits()
     {
-        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL * 1024 * 1024));
-        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL * 1024 * 1024));
+        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo((ulong)(2 * MemorySizes.MiB)));
+        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo((ulong)(10 * MemorySizes.MiB)));
     }
 
     [Test]

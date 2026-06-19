@@ -46,7 +46,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(10 * MaxCodeSize, MaxCodeSize)]
     [TestCase(100 * MaxCodeSize, MaxCodeSize)]
     [TestCase(1000 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(0, 1024 * 1024)]
+    [TestCase(0, MemorySizes.MiB)]
     // Note: Int32.MaxValue was removed as a test case because after word alignment
     // it exceeds the maximum allowed memory size and correctly returns out-of-gas.
     public void MemoryCost(int destination, int memoryAllocation)

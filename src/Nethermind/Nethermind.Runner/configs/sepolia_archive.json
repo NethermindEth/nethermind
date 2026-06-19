@@ -35,5 +35,8 @@
   },
   "Pruning": {
     "Mode": "None"
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

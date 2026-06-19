@@ -7,12 +7,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager) : IPersistence
+public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null) : IPersistence
 {
-    private readonly WriteBufferAdjuster _adjuster = new(db);
+    private readonly WriteBufferAdjuster _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
-    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, logManager.GetClassLogger<RocksDbPersistence>());
-    private int _slotEncodingPersisted = 0;
+    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<RocksDbPersistence>());
 
     public void Flush() => db.Flush();
 
@@ -105,8 +104,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             {
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
-                BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
-                BasePersistence.RecordSlotEncodingOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _slotEncodingPersisted, _rlpWrapSlots);
+                if (_rlpWrapSlots)
+                    BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();
