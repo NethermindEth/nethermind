@@ -28,6 +28,12 @@ public static class NumericConverterHelper
             ThrowNullAssignment(typeof(T).Name);
         }
 
+        // Fast path for the canonical zero — skips TryParse for the most common JSON-RPC value.
+        if (s.SequenceEqual("0x0"u8))
+        {
+            return T.Zero;
+        }
+
         if (s.StartsWith("0x"u8))
         {
             s = s[2..];

@@ -13,18 +13,8 @@ public class NullableRawLongConverter : JsonConverter<long?>
 {
     private readonly LongConverter _converter = new();
 
-    public override long? Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        if (reader.TokenType == JsonTokenType.Null)
-        {
-            return null;
-        }
-
-        return _converter.Read(ref reader, typeToConvert, options);
-    }
+    public override long? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.Null ? null : _converter.Read(ref reader, typeToConvert, options);
 
     public override void Write(
         Utf8JsonWriter writer,
@@ -46,18 +36,8 @@ public class NullableRawULongConverter : JsonConverter<ulong?>
 {
     private readonly ULongConverter _converter = new();
 
-    public override ulong? Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        if (reader.TokenType == JsonTokenType.Null)
-        {
-            return null;
-        }
-
-        return _converter.Read(ref reader, typeToConvert, options);
-    }
+    public override ulong? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.Null ? null : _converter.Read(ref reader, typeToConvert, options);
 
     public override void Write(
         Utf8JsonWriter writer,

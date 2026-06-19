@@ -30,7 +30,7 @@ namespace Nethermind.Api
         public DumpOptions AutoDump { get; set; } = DumpOptions.Default;
 
         public string RpcDbUrl { get; set; } = string.Empty;
-        public long? MemoryHint { get; set; }
+        public ulong? MemoryHint { get; set; }
         public long? BadBlocksStored { get; set; } = 100;
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;

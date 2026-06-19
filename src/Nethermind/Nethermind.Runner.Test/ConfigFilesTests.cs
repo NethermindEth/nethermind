@@ -91,17 +91,17 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
-    [TestCase("mainnet archive", 4096000000)]
-    [TestCase("mainnet ^archive", 1024000000)]
-    [TestCase("volta archive", 768000000)]
-    [TestCase("volta ^archive", 768000000)]
-    [TestCase("gnosis archive", 1024000000)]
-    [TestCase("gnosis ^archive", 768000000)]
-    [TestCase("poacore archive", 1024000000)]
-    [TestCase("poacore ^archive", 768000000)]
-    [TestCase("spaceneth.json", 64000000)]
-    [TestCase("spaceneth_persistent.json", 128000000)]
-    public void Memory_hint_values_are_correct(string configWildcard, long expectedValue) => Test<IInitConfig, long?>(configWildcard, static c => c.MemoryHint, expectedValue);
+    [TestCase("mainnet archive", 4096000000UL)]
+    [TestCase("mainnet ^archive", 1024000000UL)]
+    [TestCase("volta archive", 768000000UL)]
+    [TestCase("volta ^archive", 768000000UL)]
+    [TestCase("gnosis archive", 1024000000UL)]
+    [TestCase("gnosis ^archive", 768000000UL)]
+    [TestCase("poacore archive", 1024000000UL)]
+    [TestCase("poacore ^archive", 768000000UL)]
+    [TestCase("spaceneth.json", 64000000UL)]
+    [TestCase("spaceneth_persistent.json", 128000000UL)]
+    public void Memory_hint_values_are_correct(string configWildcard, ulong expectedValue) => Test<IInitConfig, ulong?>(configWildcard, static c => c.MemoryHint, expectedValue);
 
     [TestCase("*")]
     public void Metrics_disabled_by_default(string configWildcard)
@@ -334,7 +334,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IBlocksConfig, ulong?>("*", static c => c.TargetBlockGasLimit, (configFile, value) =>
         {
             if (value is not null)
-                Assert.That(value.Value, Is.LessThanOrEqualTo((ulong)defaultConfig.MaxGasLimit), configFile);
+                Assert.That(value.Value, Is.LessThanOrEqualTo(defaultConfig.MaxGasLimit), configFile);
         });
     }
 

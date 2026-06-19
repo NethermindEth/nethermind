@@ -95,5 +95,5 @@ public interface IBlocksConfig : IConfig
                       "Used to inherit some RLP limits. ",
         DefaultValue = "1000000000",
         HiddenFromDocs = true)]
-    long MaxGasLimit { get; set; }
+    ulong MaxGasLimit { get; set; }
 }
