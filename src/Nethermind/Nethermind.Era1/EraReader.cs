@@ -96,8 +96,6 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
                 }
 
                 // Note: Header.Hash is calculated by HeaderDecoder.
-                // Cast to int is safe: blockCount fits in int (checked above), and the difference
-                // between a block number and startBlock is bounded by blockCount.
                 blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
             }
         }, cancellation)).ToPooledList(verifyConcurrency);

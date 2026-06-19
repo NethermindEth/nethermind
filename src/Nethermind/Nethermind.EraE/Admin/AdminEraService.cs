@@ -19,16 +19,13 @@ public sealed class AdminEraService(
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
 
-    public ResultWrapper<string> ExportHistory(string destination, long from, long to)
+    public ResultWrapper<string> ExportHistory(string destination, ulong from, ulong to)
     {
-        if (from < 0 || to < 0)
-            return ResultWrapper<string>.Fail("from and to must be non-negative.", ErrorCodes.InvalidParams);
-
         if (Interlocked.Exchange(ref _canEnterExport, 0) != 1)
             return ResultWrapper<string>.Fail("An export job is already running.");
 
         _ = EraJobRunner.RunProtected(
-            ct => eraExporter.Export(destination, (ulong)from, (ulong)to, ct),
+            ct => eraExporter.Export(destination, from, to, ct),
             $"EraE export was cancelled. Archives in '{destination}' may be incomplete.",
             "EraE export error",
             _logger,
@@ -38,16 +35,13 @@ public sealed class AdminEraService(
         return ResultWrapper<string>.Success("Started EraE export task.");
     }
 
-    public ResultWrapper<string> ImportHistory(string source, long from, long to, string? accumulatorFile)
+    public ResultWrapper<string> ImportHistory(string source, ulong from, ulong to, string? accumulatorFile)
     {
-        if (from < 0 || to < 0)
-            return ResultWrapper<string>.Fail("from and to must be non-negative.", ErrorCodes.InvalidParams);
-
         if (Interlocked.Exchange(ref _canEnterImport, 0) != 1)
             return ResultWrapper<string>.Fail("An import job is already running.");
 
         _ = EraJobRunner.RunProtected(
-            ct => eraImporter.Import(source, (ulong)from, (ulong)to, accumulatorFile, ct),
+            ct => eraImporter.Import(source, from, to, accumulatorFile, ct),
             $"EraE import was cancelled. State from '{source}' may be incomplete.",
             "EraE import error",
             _logger,

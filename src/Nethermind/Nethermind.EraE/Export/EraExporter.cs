@@ -35,7 +35,7 @@ public sealed class EraExporter(
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
-    private readonly ulong _eraSize = eraConfig.MaxEraSize is > 0UL and <= (ulong)EraWriter.MaxEraSize
+    private readonly ulong _eraSize = eraConfig.MaxEraSize is > 0UL and <= EraWriter.MaxEraSize
         ? eraConfig.MaxEraSize
         : throw new ArgumentException($"MaxEraSize must be between 1 and {EraWriter.MaxEraSize} (SLOTS_PER_HISTORICAL_ROOT). Got {eraConfig.MaxEraSize}.");
 
@@ -70,14 +70,14 @@ public sealed class EraExporter(
             fileSystem.Directory.CreateDirectory(destinationPath);
 
         using ProgressReporter progress = new("EraE export", logManager, to - from + 1);
-        long totalProcessed = 0;
+        ulong totalProcessed = 0;
 
         ulong startEpoch = from / _eraSize;
         ulong endEpoch = to / _eraSize;
         ulong epochCount = endEpoch - startEpoch + 1;
 
-        using ArrayPoolList<long> epochIdxs = new((int)epochCount);
-        for (long i = 0; i < (long)epochCount; i++) epochIdxs.Add(i);
+        using ArrayPoolList<ulong> epochIdxs = new((int)epochCount);
+        for (ulong i = 0; i < epochCount; i++) epochIdxs.Add(i);
 
         using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
@@ -109,10 +109,10 @@ public sealed class EraExporter(
 
         if (_logger.IsInfo) _logger.Info($"Finished EraE export from {from} to {to}");
 
-        async Task WriteEpoch(long epochIdx, CancellationToken cancel)
+        async Task WriteEpoch(ulong epochIdx, CancellationToken cancel)
         {
             int idx = (int)epochIdx;
-            ulong epoch = startEpoch + (ulong)epochIdx;
+            ulong epoch = startEpoch + epochIdx;
             // Each epoch covers [epoch * eraSize, epoch * eraSize + eraSize - 1].
             // Clamp to [from, to] to handle partial first and last epochs.
             ulong epochBlockStart = epoch * _eraSize;
@@ -157,7 +157,7 @@ public sealed class EraExporter(
 
                     await eraWriter.Add(block, receipts, cancel);
                     lastBlockHash = block.Hash!;
-                    progress.Update((ulong)Interlocked.Increment(ref totalProcessed));
+                    progress.Update(Interlocked.Increment(ref totalProcessed));
                 }
 
                 (accumulator, sha256) = await eraWriter.Finalize(cancel);
@@ -217,7 +217,7 @@ public sealed class EraExporter(
         ArrayPoolList<string> fileNames,
         Dictionary<string, ValueHash256> cachedChecksums,
         Dictionary<string, ValueHash256> cachedAccumulators,
-        ref long totalProcessed)
+        ref ulong totalProcessed)
     {
         string? existingFile = null;
         foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*"))
@@ -258,7 +258,7 @@ public sealed class EraExporter(
             checksums[idx] = reader.CalculateChecksum();
         }
 
-        Interlocked.Add(ref totalProcessed, (long)(writeTo - writeFrom + 1));
+        Interlocked.Add(ref totalProcessed, writeTo - writeFrom + 1);
         if (_logger.IsDebug) _logger.Debug($"Skipping already exported epoch {epoch}.");
         return true;
     }

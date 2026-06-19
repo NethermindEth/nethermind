@@ -179,11 +179,7 @@ public sealed class E2StoreReader : IDisposable
 
         _componentIndexTlvStart = indexEntryStart;
 
-        // ComponentIndex is int64 on disk; negative starting_number is an invalid archive.
-        long startingNumberRaw = ReadInt64(indexEntryStart + EntryHeaderSize);
-        if (startingNumberRaw < 0)
-            throw new EraFormatException($"Negative starting block number {startingNumberRaw} in EraE ComponentIndex.");
-        _startBlock = (ulong)startingNumberRaw;
+        _startBlock = ReadUInt64(indexEntryStart + EntryHeaderSize);
 
         _indexLoaded = true;
     }
@@ -242,5 +238,12 @@ public sealed class E2StoreReader : IDisposable
         Span<byte> buff = stackalloc byte[8];
         RandomAccess.Read(_file, buff, position);
         return BinaryPrimitives.ReadInt64LittleEndian(buff);
+    }
+
+    private ulong ReadUInt64(long position)
+    {
+        Span<byte> buff = stackalloc byte[8];
+        RandomAccess.Read(_file, buff, position);
+        return BinaryPrimitives.ReadUInt64LittleEndian(buff);
     }
 }

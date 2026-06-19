@@ -181,7 +181,7 @@ public class EraExporterTests
     [Test]
     public async Task Export_WithPostMergeChain_ProducesEpochWithNoTdProofOrAccumulatorEntries()
     {
-        const int chainLength = 16;
+        const ulong chainLength = 16;
         await using IContainer container = EraETestModule.BuildContainerBuilderWithPostMergeBlockTreeOfLength(chainLength).Build();
 
         string tmpDirectory = container.ResolveTempDirPath();

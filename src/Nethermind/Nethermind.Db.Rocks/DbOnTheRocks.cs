@@ -1666,7 +1666,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // stalled by compaction instead of a flush.
         // The buffer is not compressed unlike l0File, so to account for it, its size needs to be slightly larger.
         ulong targetFileSize = 16UL.MiB;
-        ulong bufferSize = targetFileSize / (ulong)_perTableDbConfig.CompressibilityHint;
+        ulong bufferSize = (ulong)(targetFileSize / _perTableDbConfig.CompressibilityHint);
         ulong l0FileSize = targetFileSize * (ulong)_minWriteBufferToMerge;
         ulong maxBufferNumber = (ulong)Environment.ProcessorCount;
 

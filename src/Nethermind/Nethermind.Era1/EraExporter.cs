@@ -59,15 +59,12 @@ public class EraExporter(
         }
 
         using ProgressReporter progress = new("Era export", logManager, to - from + 1);
-        long totalProcessed = 0;
+        ulong totalProcessed = 0;
 
-        // Cast to long is safe: epoch numbers are small ordinals (thousands at most).
         ulong era1Size = _era1Size;
         ulong startEpoch = from / era1Size;
-        // Ceiling division without floating point, all ulong.
         ulong epochCount = (to - from + era1Size) / era1Size;
 
-        // Cast to int is safe: epochCount is bounded by chain length / era size, well within int range.
         using ArrayPoolList<ulong> epochIdxs = new((int)epochCount);
         for (ulong i = 0; i < epochCount; i++)
         {
@@ -108,7 +105,6 @@ public class EraExporter(
 
             string filePath = Path.Combine(
                 destinationPath,
-                // Cast to long is safe: epoch ordinals are small and well within long range.
                 EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
             ValueHash256 accumulator;
@@ -134,13 +130,12 @@ public class EraExporter(
                     }
 
                     await eraWriter.Add(block, receipts, cancellation);
-                    progress.Update((ulong)Interlocked.Increment(ref totalProcessed));
+                    progress.Update(Interlocked.Increment(ref totalProcessed));
                 }
 
                 (accumulator, sha256) = await eraWriter.Finalize(cancellation);
             }
 
-            // Cast to int is safe: epochIdx is bounded by epochCount which was already cast to int above.
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
             fileNames[(int)epochIdx] = Path.GetFileName(filePath);

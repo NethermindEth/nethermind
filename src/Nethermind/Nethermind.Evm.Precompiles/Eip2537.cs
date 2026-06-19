@@ -164,9 +164,9 @@ internal static partial class Eip2537
         (519, 524) // 128
     ];
 
-    internal static int DiscountForG1(int k) => k >= 128 ? _maxDiscountG1 : _discountTable[k].g1;
+    internal static ulong DiscountForG1(ulong k) => (ulong)(k >= 128 ? _maxDiscountG1 : _discountTable[(int)k].g1);
 
-    internal static int DiscountForG2(int k) => k >= 128 ? _maxDiscountG2 : _discountTable[k].g2;
+    internal static ulong DiscountForG2(ulong k) => (ulong)(k >= 128 ? _maxDiscountG2 : _discountTable[(int)k].g2);
 
     internal static Result TryDecodeRaw(this G1 p, ReadOnlySpan<byte> raw)
     {

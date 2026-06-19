@@ -25,7 +25,7 @@ public class HttpRemoteEraClientIntegrationTests
 
     // Epoch 0 is the smallest file (~3.5 MB) and its filename is immutable (historical data).
     private const string Epoch0Filename = "sepolia-00000-8e3e7dc9.erae";
-    private const int Epoch0 = 0;
+    private const uint Epoch0 = 0;
     private const int MaxEraSize = 8192;
 
     private TempPath _downloadDir = null!;
@@ -48,11 +48,10 @@ public class HttpRemoteEraClientIntegrationTests
     [Test]
     public async Task FetchManifest_WithSepoliaServer_ParsesAllEntries()
     {
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
+        IReadOnlyDictionary<uint, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
 
         Assert.That(manifest, Is.Not.Empty);
-        Assert.That(manifest.Keys.Min(), Is.EqualTo(0), "epoch 0 must be the first entry");
-        Assert.That(manifest.Keys.All(epoch => epoch >= 0), Is.True);
+        Assert.That(manifest.Keys.Min(), Is.EqualTo(0u), "epoch 0 must be the first entry");
 
         Assert.That(manifest.ContainsKey(Epoch0), Is.True);
         Assert.That(manifest[Epoch0].Filename, Is.EqualTo(Epoch0Filename), "epoch 0 filename is immutable — if this fails the server format has changed");
@@ -67,7 +66,7 @@ public class HttpRemoteEraClientIntegrationTests
     [Test]
     public async Task DownloadEpochZero_WithSepoliaServer_PassesSha256Verification()
     {
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
+        IReadOnlyDictionary<uint, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
         RemoteEraEntry epoch0Entry = manifest[Epoch0];
 
         string destinationPath = Path.Join(_downloadDir.Path, epoch0Entry.Filename);
@@ -84,7 +83,7 @@ public class HttpRemoteEraClientIntegrationTests
     [Test]
     public async Task FindBlockAndReceipts_WithRealSepoliaEpochZero_ReturnsCorrectBlock()
     {
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
+        IReadOnlyDictionary<uint, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
         RemoteEraEntry epoch0Entry = manifest[Epoch0];
 
         // Pre-download so the decorator serves from cache (avoids double download in this test)

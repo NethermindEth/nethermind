@@ -42,7 +42,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
     // The Merge was ~15 Sep 2022 (1663224162s). We use a round timestamp well past both.
     private const ulong PostMergeGenesisTimestamp = 1_663_000_000;
 
-    public static ContainerBuilder BuildContainerBuilderWithPostMergeBlockTreeOfLength(int length)
+    public static ContainerBuilder BuildContainerBuilderWithPostMergeBlockTreeOfLength(ulong length)
     {
         // Set genesis timestamp past beacon-chain genesis so SlotTime.GetSlot succeeds on all blocks.
         Block genesis = Build.A.Block.Genesis.WithTimestamp(PostMergeGenesisTimestamp).WithPostMergeRules().TestObject;
@@ -56,12 +56,12 @@ public class EraETestModule(bool useRealValidator = false) : Module
             {
                 blockTreeBuilder
                     .WithTransactions(ctx.Resolve<IReceiptStorage>())
-                    .OfChainLength(length);
+                    .OfChainLength((int)length);
 
                 // Post-merge blocks have TotalDifficulty=0, which never satisfies
                 // HeadImprovementRequirementsSatisfied (0 < MainnetTTD). Force-update head
                 // so the exporter can resolve blockTree.Head correctly.
-                Block? lastBlock = blockTreeBuilder.BlockTree.FindBlock((ulong)(length - 1), BlockTreeLookupOptions.None);
+                Block? lastBlock = blockTreeBuilder.BlockTree.FindBlock(length - 1, BlockTreeLookupOptions.None);
                 if (lastBlock is not null)
                     blockTreeBuilder.BlockTree.TryUpdateMainChain(lastBlock.Header, true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { lastBlock });
             });
@@ -78,7 +78,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
         return testCtx;
     }
 
-    public static async Task<IContainer> CreateExportedPostMergeEraEnv(int chainLength = 16)
+    public static async Task<IContainer> CreateExportedPostMergeEraEnv(ulong chainLength = 16)
     {
         IContainer testCtx = BuildContainerBuilderWithPostMergeBlockTreeOfLength(chainLength).Build();
         // Start from block 1: genesis is pre-merge in all block trees.

@@ -34,9 +34,6 @@ public sealed class EraStore : IEraStore
     private readonly int _maxOpenFile;
     private readonly ConcurrentDictionary<int, (long Epoch, EraReader Reader)> _openedReader = new();
 
-    // Changed int → uint: era size is always a small positive count (e.g. 8192),
-    // never negative, so uint is the honest type and avoids the (ulong) cast in
-    // GetEpochNumber without overstating the range as ulong.
     private readonly ulong _maxEraSize;
     private readonly int _verifyConcurrency;
     private volatile bool _disposed;
@@ -68,8 +65,6 @@ public sealed class EraStore : IEraStore
         _blockValidator = blockValidator;
         _trustedAccumulators = trustedAccumulators;
         _validator = validator;
-        // Boundary cast — safe: validated > 0 immediately above, and era sizes
-        // are small counts (e.g. 8192) that trivially fit in uint.
         _maxEraSize = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
         _verifyConcurrency = verifyConcurrency == 0 ? Environment.ProcessorCount : verifyConcurrency;
@@ -113,9 +108,6 @@ public sealed class EraStore : IEraStore
         });
     }
 
-    // uint promotes cleanly to ulong in the division — no cast needed.
-    // The (long) cast on the result is a necessary boundary: epoch dictionary
-    // keys are long throughout this file.
     private long GetEpochNumber(ulong blockNumber) => (long)(blockNumber / _maxEraSize);
 
     private EraReader GetReader(long epoch) => !_epochs.TryGetValue(epoch, out string? path)

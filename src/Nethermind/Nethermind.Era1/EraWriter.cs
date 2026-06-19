@@ -15,7 +15,7 @@ public class EraWriter : IDisposable
 {
     public const int MaxEra1Size = 8192;
 
-    private long _startNumber;
+    private ulong _startNumber;
     private bool _firstBlock = true;
     private long _totalWritten;
     private readonly ArrayPoolList<long> _entryIndexes;
@@ -62,7 +62,7 @@ public class EraWriter : IDisposable
 
         if (_firstBlock)
         {
-            _startNumber = (long)block.Number;
+            _startNumber = block.Number;
             _totalWritten += await WriteVersion();
             _firstBlock = false;
         }
@@ -108,7 +108,7 @@ public class EraWriter : IDisposable
         int length = 16 + _entryIndexes.Count * 8;
         using ArrayPoolList<byte> blockIndex = new(length, length);
         Span<byte> blockIndexSpan = blockIndex.AsSpan();
-        WriteInt64(blockIndexSpan, 0, _startNumber);
+        WriteInt64(blockIndexSpan, 0, (long)_startNumber);
 
         //era1:= Version | block-tuple ... | other-entries ... | Accumulator | BlockIndex
         //block-index := starting-number | index | index | index... | count

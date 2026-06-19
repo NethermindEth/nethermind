@@ -75,7 +75,7 @@ public class RemoteEraStoreDecoratorTests
             .Returns((null, null));
 
         _client.FetchManifestAsync(Arg.Any<CancellationToken>())
-            .Returns(new Dictionary<int, RemoteEraEntry>());
+            .Returns(new Dictionary<uint, RemoteEraEntry>());
 
         using RemoteEraStoreDecorator sut = CreateDecorator(localStore, maxEraSize: 16);
 
@@ -90,7 +90,7 @@ public class RemoteEraStoreDecoratorTests
         byte[] wrongHash = new byte[32];
 
         _client.FetchManifestAsync(Arg.Any<CancellationToken>())
-            .Returns(new Dictionary<int, RemoteEraEntry> { [0] = new(filename, wrongHash) });
+            .Returns(new Dictionary<uint, RemoteEraEntry> { [0] = new(filename, wrongHash) });
         _client.DownloadFileAsync(filename, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
@@ -170,7 +170,7 @@ public class RemoteEraStoreDecoratorTests
         byte[] sha256 = SHA256.HashData(await File.ReadAllBytesAsync(eraFile));
 
         _client.FetchManifestAsync(Arg.Any<CancellationToken>())
-            .Returns(new Dictionary<int, RemoteEraEntry> { [(int)epoch] = new(filename, sha256) }); // BOUNDARY CAST: manifest key is int by upstream API design; epoch fits safely in int
+            .Returns(new Dictionary<uint, RemoteEraEntry> { [(uint)epoch] = new(filename, sha256) });
         _client.DownloadFileAsync(filename, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => CopyFile(eraFile, callInfo.ArgAt<string>(1)));
 
@@ -184,7 +184,7 @@ public class RemoteEraStoreDecoratorTests
         byte[] sha256 = new byte[32];
 
         _client.FetchManifestAsync(Arg.Any<CancellationToken>())
-            .Returns(new Dictionary<int, RemoteEraEntry> { [0] = new(filename, sha256) });
+            .Returns(new Dictionary<uint, RemoteEraEntry> { [0] = new(filename, sha256) });
 
         string escapedPath = Path.GetFullPath(Path.Join(_downloadDir.Path, filename));
         using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16);

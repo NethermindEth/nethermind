@@ -25,14 +25,14 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
 
-    public ulong FirstBlock => (ulong)e2.First;
-    public ulong LastBlock => (ulong)e2.LastBlock;
+    public ulong FirstBlock => e2.First;
+    public ulong LastBlock => e2.LastBlock;
 
     public EraReader(string fileName) : this(new E2StoreReader(fileName)) { }
 
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        for (ulong blockNumber = (ulong)e2.First; blockNumber <= (ulong)e2.LastBlock; blockNumber++)
+        for (ulong blockNumber = e2.First; blockNumber <= e2.LastBlock; blockNumber++)
         {
             (Block block, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, cancellation);
             yield return (block, receipts);

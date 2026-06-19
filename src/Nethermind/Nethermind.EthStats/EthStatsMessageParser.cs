@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Buffers.Text;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
@@ -34,6 +35,7 @@ internal static class EthStatsMessageParser
     private const string NodePong = "node-pong";
     private const int StackBufferThreshold = 512;
 
+    [SkipLocalsInit]
     public static bool TryParse(string? message, out EthStatsIncomingMessage incomingMessage)
     {
         incomingMessage = new EthStatsIncomingMessage(string.Empty, EthStatsIncomingMessageType.Unknown, null, null);
@@ -311,6 +313,7 @@ internal static class EthStatsMessageParser
         }
     }
 
+    [SkipLocalsInit]
     private static bool TryParseUInt64String(ref Utf8JsonReader reader, out ulong value)
     {
         // An unsigned 64-bit integer is at most 20 ASCII bytes ("18446744073709551615")
@@ -335,6 +338,7 @@ internal static class EthStatsMessageParser
         return Utf8Parser.TryParse(raw, out value, out int consumed) && consumed == raw.Length;
     }
 
+    [SkipLocalsInit]
     private static bool TryParseInt64String(ref Utf8JsonReader reader, out long value)
     {
         // A signed 64-bit integer is at most 20 ASCII bytes ("-9223372036854775808"); anything

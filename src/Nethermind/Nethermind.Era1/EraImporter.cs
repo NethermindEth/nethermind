@@ -79,7 +79,6 @@ public class EraImporter(
         if (from > to && to != 0)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to})");
 
-        // blockTree.Head?.Number is now ulong; +1 is safe as head will never be ulong.MaxValue.
         ulong headp1 = (blockTree.Head?.Number ?? 0UL) + 1UL;
         if (from > headp1)
         {
@@ -120,7 +119,6 @@ public class EraImporter(
         CurrentPacer = pacer;
         ulong blockNumber = from;
 
-        // blockTree.Head?.Number is ulong; +1 is safe (head never reaches ulong.MaxValue in practice).
         ulong suggestFromBlock = (blockTree.Head?.Number ?? 0UL) + 1UL;
         if (syncConfig.FastSync && suggestFromBlock == 1UL)
         {
@@ -188,7 +186,6 @@ public class EraImporter(
             {
                 throw new EraImportException($"Unable to find receipt for block {blockNumber}");
             }
-            // block.Number is ulong; no cast needed.
             if (block.Number != blockNumber)
             {
                 throw new EraImportException($"Unexpected block number. Expected {blockNumber}. Got {block.Number}");

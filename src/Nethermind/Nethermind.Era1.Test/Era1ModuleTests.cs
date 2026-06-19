@@ -297,14 +297,14 @@ public class Era1ModuleTests
         }
     }
 
-    [TestCase(true, 0L, 0L, 1000UL, 1001L, 9999L)]
-    [TestCase(true, 0L, 2000L, 1000UL, 1001L, 2000L)]
-    [TestCase(true, 3000L, 0L, 5000UL, 5001L, 9999L)]
-    [TestCase(true, 0L, 0L, 0UL, null, 0L)]
-    [TestCase(false, 0L, 0L, 0UL, 1L, 9999L)]
-    [TestCase(false, 0L, 0L, 2000UL, 2001L, 9999L)]
+    [TestCase(true, 0UL, 0UL, 1000UL, 1001UL, 9999UL)]
+    [TestCase(true, 0UL, 2000UL, 1000UL, 1001UL, 2000UL)]
+    [TestCase(true, 3000UL, 0UL, 5000UL, 5001UL, 9999UL)]
+    [TestCase(true, 0UL, 0UL, 0UL, null, 0UL)]
+    [TestCase(false, 0UL, 0UL, 0UL, 1UL, 9999UL)]
+    [TestCase(false, 0UL, 0UL, 2000UL, 2001UL, 9999UL)]
     [CancelAfter(120_000)] // macOS ARM runners need more time for 10k-block chain
-    public async Task EraExportAndImport(bool fastSync, long start, long end, ulong headBlockNumber, long? expectedMinSuggestedBlock, long expectedMaxSuggestedBlock, CancellationToken cancellationToken)
+    public async Task EraExportAndImport(bool fastSync, ulong start, ulong end, ulong headBlockNumber, ulong? expectedMinSuggestedBlock, ulong expectedMaxSuggestedBlock, CancellationToken cancellationToken)
     {
         const int ChainLength = 10000;
         await using IContainer outCtx = await EraTestModule.CreateExportedEraEnvWithCompleteBlockBuilder(ChainLength, cancellationToken: cancellationToken);
@@ -331,8 +331,8 @@ public class Era1ModuleTests
             })
             .AddSingleton<IEraConfig>(new EraConfig()
             {
-                From = (ulong)start,
-                To = (ulong)end,
+                From = start,
+                To = end,
                 ImportDirectory = tmpDir,
                 TrustedAccumulatorFile = Path.Join(tmpDir, EraExporter.AccumulatorFileName),
                 MaxEra1Size = 16,

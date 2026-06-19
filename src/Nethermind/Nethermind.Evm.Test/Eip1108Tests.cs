@@ -12,7 +12,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
 {
     protected override ulong BlockNumber => (ulong)((long)MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment);
 
-    private int _blockNumberAdjustment;
+    private long _blockNumberAdjustment;
 
     [TearDown]
     public override void TearDown()
@@ -22,9 +22,9 @@ public class Eip1108Tests : VirtualMachineTestsBase
         _blockNumberAdjustment = 0;
     }
 
-    [TestCase(-1, 500L, Description = "Before Istanbul")]
-    [TestCase(0, 150L, Description = "After Istanbul")]
-    public void Test_add(int blockAdjustment, long expectedPrecompileGas)
+    [TestCase(-1L, 500UL, Description = "Before Istanbul")]
+    [TestCase(0L, 150UL, Description = "After Istanbul")]
+    public void Test_add(long blockAdjustment, ulong expectedPrecompileGas)
     {
         _blockNumberAdjustment = blockAdjustment;
         byte[] code = Prepare.EvmCode
@@ -32,12 +32,12 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + (ulong)expectedPrecompileGas);
+        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + expectedPrecompileGas);
     }
 
-    [TestCase(-1, 50000L, 40000L, Description = "Before Istanbul")]
-    [TestCase(0, 10000L, 6000L, Description = "After Istanbul")]
-    public void Test_mul(int blockAdjustment, long gasLimit, long expectedPrecompileGas)
+    [TestCase(-1L, 50000L, 40000UL, Description = "Before Istanbul")]
+    [TestCase(0L, 10000L, 6000UL, Description = "After Istanbul")]
+    public void Test_mul(long blockAdjustment, long gasLimit, ulong expectedPrecompileGas)
     {
         _blockNumberAdjustment = blockAdjustment;
         byte[] code = Prepare.EvmCode
@@ -45,12 +45,12 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + (ulong)expectedPrecompileGas);
+        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + expectedPrecompileGas);
     }
 
-    [TestCase(-1, 180000L, Description = "Before Istanbul")]
-    [TestCase(0, 79000L, Description = "After Istanbul")]
-    public void Test_pairing(int blockAdjustment, long expectedPrecompileGas)
+    [TestCase(-1L, 180000UL, Description = "Before Istanbul")]
+    [TestCase(0L, 79000UL, Description = "After Istanbul")]
+    public void Test_pairing(long blockAdjustment, ulong expectedPrecompileGas)
     {
         _blockNumberAdjustment = blockAdjustment;
         byte[] code = Prepare.EvmCode
@@ -58,6 +58,6 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + (ulong)expectedPrecompileGas);
+        AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + expectedPrecompileGas);
     }
 }

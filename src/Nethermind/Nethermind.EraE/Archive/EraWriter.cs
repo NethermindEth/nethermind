@@ -239,7 +239,7 @@ public sealed class EraWriter : IDisposable
             using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
             Span<byte> span = indexBytes.AsSpan();
 
-            WriteInt64(span, 0, (long)_startNumber);
+            WriteUInt64(span, 0, _startNumber);
 
             for (int i = 0; i < blockCount; i++)
             {
@@ -367,4 +367,7 @@ public sealed class EraWriter : IDisposable
 
     private static void WriteInt64(Span<byte> destination, int off, long value) =>
         BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, IndexFieldSize), value);
+
+    private static void WriteUInt64(Span<byte> destination, int off, ulong value) =>
+        BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(off, IndexFieldSize), value);
 }

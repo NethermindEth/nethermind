@@ -26,8 +26,8 @@ public partial class Bls12381G2MsmPrecompile : IPrecompile<Bls12381G2MsmPrecompi
 
     public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        int k = inputData.Length / ItemSize;
-        return 22500UL * (ulong)k * (ulong)Eip2537.DiscountForG2(k) / 1000UL;
+        ulong k = (uint)(inputData.Length / ItemSize);
+        return 22500UL * k * Eip2537.DiscountForG2(k) / 1000UL;
     }
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);

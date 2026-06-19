@@ -256,10 +256,10 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Null);
         }
 
-        [TestCase(-1)]
-        [TestCase(10000)]
-        [TestCase(10001)]
-        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException(int errorMargin)
+        [TestCase(ulong.MaxValue)]
+        [TestCase(10000UL)]
+        [TestCase(10001UL)]
+        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException(ulong errorMargin)
         {
             Transaction tx = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(tx).TestObject;
@@ -273,17 +273,17 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            sut.Estimate(tx, block.Header, tracer, out string? err, (ulong)errorMargin);
+            sut.Estimate(tx, block.Header, tracer, out string? err, errorMargin);
             Assert.That(err, Is.Not.Null);
         }
 
-        [TestCase(Transaction.BaseTxGasCost, GasEstimator.DefaultErrorMargin, false)]
-        [TestCase(Transaction.BaseTxGasCost, 100, false)]
-        [TestCase(Transaction.BaseTxGasCost, 1000, false)]
-        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimator.DefaultErrorMargin, true)]
-        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimator.DefaultErrorMargin, true)]
-        [TestCase(Transaction.BaseTxGasCost + 123456789, 123, true)]
-        public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(uint totalGas, int errorMargin, bool fail)
+        [TestCase(Transaction.BaseTxGasCost, (ulong)GasEstimator.DefaultErrorMargin, false)]
+        [TestCase(Transaction.BaseTxGasCost, 100UL, false)]
+        [TestCase(Transaction.BaseTxGasCost, 1000UL, false)]
+        [TestCase(Transaction.BaseTxGasCost + 10000, (ulong)GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 20000, (ulong)GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 123456789, 123UL, true)]
+        public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(uint totalGas, ulong errorMargin, bool fail)
         {
             Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
@@ -297,7 +297,7 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            ulong result = sut.Estimate(tx, block.Header, tracer, out string? err, (ulong)errorMargin);
+            ulong result = sut.Estimate(tx, block.Header, tracer, out string? err, errorMargin);
 
             if (fail)
             {
@@ -312,7 +312,7 @@ namespace Nethermind.Evm.Test.Tracing
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(err, Is.Null);
-                    Assert.That((double)result, Is.EqualTo((double)totalGas).Within((double)totalGas * (errorMargin / 10000d + 1)));
+                    Assert.That((double)result, Is.EqualTo((double)totalGas).Within(totalGas * (errorMargin / 10000d + 1)));
                 }
             }
         }

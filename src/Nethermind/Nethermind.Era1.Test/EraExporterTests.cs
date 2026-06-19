@@ -13,15 +13,15 @@ namespace Nethermind.Era1.Test;
 
 public class EraExporterTests
 {
-    [TestCase(1, 0, 1 - 1, 1UL, 1)]
-    [TestCase(3, 0, 3 - 1, 1UL, 3)]
-    [TestCase(16, 0, 16 - 1, 16UL, 1)]
-    [TestCase(16, 0, 0, 16UL, 1)]
-    [TestCase(32, 0, 32 - 1, 16UL, 2)]
-    [TestCase(32, 8, 0, 16UL, 2)]
-    [TestCase(48, 8, 40 - 1, 16UL, 2)]
-    [TestCase(64 * 2 + 1, 0, 64 * 2 + 1 - 1, 64UL, 3)]
-    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_WithFileName(int chainLength, int start, int end, ulong size, int expectedNumberOfFiles)
+    [TestCase(1, 0UL, 1UL - 1, 1UL, 1)]
+    [TestCase(3, 0UL, 3UL - 1, 1UL, 3)]
+    [TestCase(16, 0UL, 16UL - 1, 16UL, 1)]
+    [TestCase(16, 0UL, 0UL, 16UL, 1)]
+    [TestCase(32, 0UL, 32UL - 1, 16UL, 2)]
+    [TestCase(32, 8UL, 0UL, 16UL, 2)]
+    [TestCase(48, 8UL, 40UL - 1, 16UL, 2)]
+    [TestCase(64 * 2 + 1, 0UL, 64UL * 2 + 1 - 1, 64UL, 3)]
+    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_WithFileName(int chainLength, ulong start, ulong end, ulong size, int expectedNumberOfFiles)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
             .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
@@ -29,7 +29,7 @@ public class EraExporterTests
 
         string tmpDirectory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
-        await sut.Export(tmpDirectory, (ulong)start, (ulong)end);
+        await sut.Export(tmpDirectory, start, end);
 
         int fileCount = container.Resolve<IFileSystem>().Directory.GetFiles(tmpDirectory).Length;
         int metaFile = 2;
