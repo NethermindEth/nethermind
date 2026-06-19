@@ -52,8 +52,8 @@ public sealed class KademliaAdapter(
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
     private readonly IKademliaDistance<Hash256> _distance = distance;
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaAdapter>();
-    private readonly LruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions", static session => session.Dispose());
-    private readonly LruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges", static sentChallenge => sentChallenge.Dispose());
+    private readonly DisposingLruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions");
+    private readonly DisposingLruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges");
     private readonly Queue<SentChallengeExpiry> _sentChallengeExpiries = new();
     private readonly Lock _sentChallengeExpiriesLock = new();
     private long _lastSentChallengeTrimMilliseconds;
