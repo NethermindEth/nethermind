@@ -445,11 +445,13 @@ public struct EvmPooledMemory
     }
 
     private const int MinRentSize = 1_024;
-    private const int MaxCachedArrayLength = 1 << 16;
+    private const int MaxCachedArrayLength = 1 << 20;
+    private const int MaxCachedArrayBytes = 4 << 20;
     private const int CleanCacheSlots = 16;
 
     [ThreadStatic] private static byte[]?[]? _cleanArrays;
     [ThreadStatic] private static int _cleanArrayCount;
+    [ThreadStatic] private static int _cleanArrayBytes;
 
     private static byte[] RentClean(int minLength)
     {
@@ -461,6 +463,7 @@ public struct EvmPooledMemory
             if (candidate.Length >= minLength)
             {
                 _cleanArrayCount = cleanArrayCount;
+                _cleanArrayBytes -= candidate.Length;
                 cache[i] = cache[cleanArrayCount];
                 cache[cleanArrayCount] = null;
                 return candidate;
@@ -476,11 +479,12 @@ public struct EvmPooledMemory
             return;
 
         byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
-        if (_cleanArrayCount < CleanCacheSlots)
-        {
-            ClearDirtyRange(array, dirtyStart, dirtyEnd);
-            cache[_cleanArrayCount++] = array;
-        }
+        if (_cleanArrayCount >= CleanCacheSlots || _cleanArrayBytes + array.Length > MaxCachedArrayBytes)
+            return;
+
+        ClearDirtyRange(array, dirtyStart, dirtyEnd);
+        cache[_cleanArrayCount++] = array;
+        _cleanArrayBytes += array.Length;
     }
 
     private static void ClearDirtyRange(byte[] array, ulong dirtyStart, ulong dirtyEnd)
