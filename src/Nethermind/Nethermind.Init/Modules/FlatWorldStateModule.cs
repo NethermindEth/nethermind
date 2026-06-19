@@ -66,7 +66,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatSnapTrieFactory>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
-                (int)ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
+                ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
             .AddSingleton<FlatTreeSyncStore>()
             .AddSingleton<FlatFullStateFinder>()
 

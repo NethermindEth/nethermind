@@ -26,12 +26,13 @@ namespace Nethermind.Core.Test.Builders
             Timestamp = 0,
         };
 
-        // Nonce is ulong — nonces are non-negative and fit well within ulong range
         public TransactionBuilder<T> WithNonce(ulong nonce)
         {
             TestObjectInternal.Nonce = nonce;
             return this;
         }
+
+        public TransactionBuilder<T> WithNonce(int nonce) => WithNonce((ulong)nonce);
 
         public TransactionBuilder<T> WithHash(Hash256? hash)
         {

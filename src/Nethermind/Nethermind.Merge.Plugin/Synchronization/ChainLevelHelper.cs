@@ -37,7 +37,7 @@ public class ChainLevelHelper(
             // A gap is expected when forward sync hasn't reached `blockNumber` yet (best beacon header
             // still below it) or when backward beacon sync hasn't reached it yet (lowest beacon header
             // still above it). Trigger a new beacon sync to close the gap.
-            bool aboveBeaconCoverage = (_blockTree.BestSuggestedBeaconHeader?.Number ?? ulong.MinValue) < blockNumber;
+            bool aboveBeaconCoverage = (_blockTree.BestSuggestedBeaconHeader?.Number ?? 0UL) < blockNumber;
             bool belowBeaconCoverage = (_blockTree.LowestInsertedBeaconHeader?.Number ?? ulong.MaxValue) > blockNumber;
             bool expectedDuringSync = aboveBeaconCoverage || belowBeaconCoverage;
 

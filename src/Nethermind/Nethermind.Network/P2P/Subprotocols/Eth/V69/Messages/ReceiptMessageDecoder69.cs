@@ -35,19 +35,16 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
             txReceipt.StatusCode = firstItem[0];
-            // safe: DecodePositiveLong guarantees a non-negative result
-            txReceipt.GasUsedTotal = (ulong)ctx.DecodePositiveLong();
+            txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
         else if (firstItem.Length is >= 1 and <= 4)
         {
-            // safe: ToPositiveLong guarantees a non-negative result
-            txReceipt.GasUsedTotal = (ulong)firstItem.ToPositiveLong();
+            txReceipt.GasUsedTotal = firstItem.ToULong();
         }
         else
         {
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-            // safe: DecodePositiveLong guarantees a non-negative result
-            txReceipt.GasUsedTotal = (ulong)ctx.DecodePositiveLong();
+            txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;

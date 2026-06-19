@@ -182,9 +182,7 @@ public class StartingSyncPivotUpdater : IDisposable
             BlockHeader? header = await peer.GetHeadBlockHeader(hash256, token);
             // Only accept a header that is actually the requested block; a peer must not substitute another.
             return header is not null && header.Hash == hash256 ? header : null;
-        }, type)) is { } h
-            ? h.Number
-            : null;
+        }, type))?.Number;
 
     protected async Task<BlockHeader?> TryGetFromPeers<T>(T id, CancellationToken cancellationToken,
         Func<ISyncPeer, T, CancellationToken, Task<BlockHeader?>> getHeader, string? type = Pivot)

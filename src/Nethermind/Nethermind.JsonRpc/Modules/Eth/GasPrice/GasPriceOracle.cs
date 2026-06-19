@@ -90,16 +90,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         {
             IEnumerable<Block> GetBlocks(ulong currentBlockNumber)
             {
-                while (true)
+                do
                 {
                     if (_logger.IsTrace) _logger.Trace($"GasPriceOracle - searching for block number {currentBlockNumber}");
                     yield return _blockFinder.FindBlock(currentBlockNumber)!;
-                    if (currentBlockNumber == 0)
-                    {
-                        break;
-                    }
-                    currentBlockNumber--;
-                }
+                } while (currentBlockNumber-- != 0);
             }
 
             return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction);

@@ -75,7 +75,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         tx.SenderAddress = From ?? throw new ArgumentNullException(nameof(From));
         tx.To = To;
         tx.Mint = Mint ?? 0;
-        tx.Value = (ulong)(Value ?? throw new ArgumentNullException(nameof(Value)));
+        tx.Value = Value ?? throw new ArgumentNullException(nameof(Value));
         tx.IsOPSystemTransaction = IsSystemTx ?? false;
         tx.Data = Input ?? throw new ArgumentNullException(nameof(Input));
 

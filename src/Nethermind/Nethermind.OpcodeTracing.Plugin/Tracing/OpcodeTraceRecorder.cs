@@ -6,6 +6,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
@@ -105,7 +106,7 @@ public sealed class OpcodeTraceRecorder(
 
             // Initialize progress tracker
             _progress = new TracingProgress(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
-            _lastProcessedBlock = _traceConfig.EffectiveStartBlock > 0 ? _traceConfig.EffectiveStartBlock - 1 : 0;
+            _lastProcessedBlock = _traceConfig.EffectiveStartBlock.SaturatingSub(1);
 
             if (_logger.IsInfo)
             {

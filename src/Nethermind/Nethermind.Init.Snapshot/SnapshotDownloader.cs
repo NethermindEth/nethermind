@@ -69,10 +69,10 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         await using FileStream fileStream = new(destinationPath, fileMode, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
 
-        long initialProgress = fileMode == FileMode.Append ? existingSize : 0;
+        ulong initialProgress = fileMode == FileMode.Append ? (ulong)existingSize : 0UL;
         using ProgressReporter progress = new("Snapshot download", logManager, (ulong)(totalSize ?? 0), ProgressInterval);
         progress.Logger.SetFormat(FormatBytes(totalSize));
-        progress.Update((ulong)initialProgress);
+        progress.Update(initialProgress);
 
         if (bytesToSkip > 0)
             await SkipBytesAsync(contentStream, bytesToSkip, cancellationToken).ConfigureAwait(false);
@@ -181,13 +181,12 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
 
     private static Func<ProgressLogger, string> FormatBytes(long? totalBytes) =>
         totalBytes is null
-            ? static logger => $"Snapshot download {HumanReadableSize((long)logger.CurrentValue)}"
-            : logger => $"Snapshot download {HumanReadableSize((long)logger.CurrentValue)} out of {HumanReadableSize(totalBytes.Value)}";
+            ? static logger => $"Snapshot download {HumanReadableSize(logger.CurrentValue)}"
+            : logger => $"Snapshot download {HumanReadableSize(logger.CurrentValue)} out of {HumanReadableSize((ulong)totalBytes.Value)}";
 
-    private static string HumanReadableSize(long byteCount) =>
+    private static string HumanReadableSize(ulong byteCount) =>
         byteCount switch
         {
-            < 0 => throw new ArgumentOutOfRangeException(nameof(byteCount), "Cannot be negative"),
             < MemorySizes.KiB => $"{byteCount:0.##}B",
             < MemorySizes.MiB => $"{(float)byteCount / MemorySizes.KiB:0.##}KB",
             < MemorySizes.GiB => $"{(float)byteCount / MemorySizes.MiB:0.##}MB",

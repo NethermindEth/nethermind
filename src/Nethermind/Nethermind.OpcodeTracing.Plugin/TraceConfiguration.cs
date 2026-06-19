@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.OpcodeTracing.Plugin;
 
 /// <summary>
@@ -142,9 +144,7 @@ public sealed record TraceConfiguration
             {
                 // Retrospective and RetrospectiveExecution: recent N blocks from chain tip
                 effectiveEnd = currentChainTip;
-                effectiveStart = currentChainTip >= config.RecentBlocks.Value - 1
-                    ? currentChainTip - config.RecentBlocks.Value + 1
-                    : 0;
+                effectiveStart = currentChainTip.SaturatingSub(config.RecentBlocks.Value - 1);
 
                 if (effectiveStart == 0 && config.RecentBlocks.Value > currentChainTip + 1)
                 {

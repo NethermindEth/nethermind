@@ -74,7 +74,7 @@ public class PruningTrieStateFactory(
             dbProvider,
             logManager,
             pruningConfig,
-            new LastNStateRootTracker(blockTree, (int)syncConfig.SnapServingMaxDepth));
+            new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         disposeStack.Push(mainWorldTrieStore);
 
