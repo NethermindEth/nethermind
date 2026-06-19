@@ -48,7 +48,7 @@ public class TxPoolSourceTests
         TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit });
 
         IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader(), long.MaxValue);
-        ulong blobsCount = txs.Aggregate(0UL, (sum, tx) => sum + tx.GetBlobCount());
+        ulong blobsCount = txs.Aggregate(0UL, (sum, tx) => sum + (ulong)tx.GetBlobCount());
 
         Assert.That(blobsCount, Is.LessThanOrEqualTo((ulong)Cancun.Instance.MaxProductionBlobCount(customBlobLimit)));
     }

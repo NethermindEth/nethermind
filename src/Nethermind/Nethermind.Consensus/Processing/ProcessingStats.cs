@@ -225,7 +225,7 @@ namespace Nethermind.Consensus.Processing
                 transactionCount += transactions.Length;
                 for (int j = 0; j < transactions.Length; j++)
                 {
-                    blobCount += transactions[j].GetBlobCount();
+                    blobCount += (ulong)transactions[j].GetBlobCount();
                 }
             }
 

@@ -19,13 +19,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations;
 
 public class TotalDifficultyFixMigrationTest
 {
-    [TestCase(null, 4, 15)]
-    [TestCase(5, 4, 15)]
-    [TestCase(9, 9, 55)]
-    [TestCase(3, 3, 10)]
-    [TestCase(3, 4, -1)]
-    [TestCase(4, 1, -1)]
-    public async Task Should_fix_td_when_broken(long? lastBlock, long brokenLevel, long expectedTd)
+    [TestCase(null, 4UL, 15UL)]
+    [TestCase(5UL, 4UL, 15UL)]
+    [TestCase(9UL, 9UL, 55UL)]
+    [TestCase(3UL, 3UL, 10UL)]
+    [TestCase(3UL, 4UL, ulong.MaxValue)]
+    [TestCase(4UL, 1UL, ulong.MaxValue)]
+    public async Task Should_fix_td_when_broken(ulong? lastBlock, ulong brokenLevel, ulong expectedTd)
     {
         ulong numberOfBlocks = 10;
         ulong firstBlock = 3;
@@ -63,16 +63,15 @@ public class TotalDifficultyFixMigrationTest
         {
             FixTotalDifficulty = true,
             FixTotalDifficultyStartingBlock = firstBlock,
-            // lastBlock is long? from TestCase; null means "no upper bound", negative means sentinel for "broken level out of range"
-            // Safe cast: test cases only pass non-negative values or null here when meaningful
-            FixTotalDifficultyLastBlock = lastBlock.HasValue ? (ulong?)lastBlock.Value : null
+            FixTotalDifficultyLastBlock = lastBlock
         };
         TotalDifficultyFixMigration migration = new(chainLevelInfoRepository, blockTree, syncConfig, new TestLogManager());
 
-        // Break level — brokenLevel is long from TestCase; safe to cast since array is sized by ulong numberOfBlocks
-        // and brokenLevel is always within [0, numberOfBlocks) in valid test cases
-        ulong brokenLevelUlong = (ulong)brokenLevel;
-        levels[brokenLevelUlong].BlockInfos[0].TotalDifficulty = 9999;
+        // Sentinel: brokenLevel == ulong.MaxValue means "broken level out of range".
+        if (brokenLevel < numberOfBlocks)
+        {
+            levels[brokenLevel].BlockInfos[0].TotalDifficulty = 9999;
+        }
 
         // Run
         await migration.Run(CancellationToken.None);
@@ -80,13 +79,10 @@ public class TotalDifficultyFixMigrationTest
         // Check level fixed
         for (ulong i = 0; i < numberOfBlocks; ++i)
         {
-            // brokenLevel may be a sentinel negative value in some test cases (meaning "not in range"),
-            // so compare as long to handle that gracefully
-            ulong? lastBlockUlong = lastBlock.HasValue ? (ulong?)lastBlock.Value : null;
-            bool isBroken = brokenLevel >= 0
-                && i == brokenLevelUlong
-                && firstBlock <= brokenLevelUlong
-                && brokenLevelUlong <= (lastBlockUlong ?? numberOfBlocks);
+            bool isBroken = brokenLevel < numberOfBlocks
+                && i == brokenLevel
+                && firstBlock <= brokenLevel
+                && brokenLevel <= (lastBlock ?? numberOfBlocks);
 
             if (isBroken)
             {

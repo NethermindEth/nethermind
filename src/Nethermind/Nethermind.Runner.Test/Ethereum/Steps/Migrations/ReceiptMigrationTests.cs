@@ -59,10 +59,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             // Insert the blocks
             int txIndex = 0;
-            for (int i = 1; i < chainLength; i++)
+            for (ulong i = 1; i < (ulong)chainLength; i++)
             {
-                // Safe: i is a loop counter in [1, chainLength), always a valid non-negative block number.
-                Block block = blockTree.FindBlock((ulong)i);
+                Block block = blockTree.FindBlock(i);
                 inMemoryReceiptStorage.Insert(block, new[] {
                     Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject,
                     Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject
@@ -75,7 +74,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             TestMemDb defaultDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Default);
 
             // Put the last block receipt encoding
-            // Safe: chainLength - 1 is a small positive integer well within ulong range.
             Block lastBlock = blockTree.FindBlock((ulong)(chainLength - 1));
             TxReceipt[] receipts = inMemoryReceiptStorage.Get(lastBlock);
             using (NettyRlpStream nettyStream = receiptArrayStorageDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage))

@@ -56,8 +56,8 @@ namespace Nethermind.Core
             public bool IsAboveInitCode(IReleaseSpec spec) =>
                 tx.IsContractCreation && spec.IsEip3860Enabled && tx.DataLength > spec.MaxInitCodeSize;
 
-            public ulong GetBlobGas() => tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
-            public ulong GetBlobCount() => (ulong)(tx.BlobVersionedHashes?.Length ?? 0);
+            public ulong GetBlobGas() => (ulong)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
+            public int GetBlobCount() => tx.BlobVersionedHashes?.Length ?? 0;
 
             public void CapGasLimit(ulong? gasCap)
             {

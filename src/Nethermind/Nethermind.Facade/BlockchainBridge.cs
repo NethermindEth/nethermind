@@ -419,8 +419,6 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.Zero;
 
             //Ignore nonce on all CallAndRestore calls
-            // CAST NOTE: GetNonce returns UInt256 (IStateReader interface). Transaction.Nonce is ulong.
-            // Nonce values beyond ulong.MaxValue are not realistically reachable.
             transaction.Nonce = nonceReader.GetNonce(blockHeader, transaction.SenderAddress);
 
             BlockHeader callHeader = blockHeader.Clone();

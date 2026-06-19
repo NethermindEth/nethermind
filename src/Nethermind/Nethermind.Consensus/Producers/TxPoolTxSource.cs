@@ -165,7 +165,7 @@ namespace Nethermind.Consensus.Producers
             ArrayPoolList<(Transaction tx, ulong blobChain)>? candidates = null;
             foreach ((Transaction blobTx, ulong blobChain) in blobTransactions)
             {
-                ulong txBlobCount = blobTx.GetBlobCount();
+                ulong txBlobCount = (ulong)blobTx.GetBlobCount();
                 if (txBlobCount > (ulong)maxBlobs)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
@@ -264,7 +264,7 @@ namespace Nethermind.Consensus.Producers
                 }
 
                 // How many blobs does this tx actually consume?
-                ulong blobCount = tx.GetBlobCount();
+                ulong blobCount = (ulong)tx.GetBlobCount();
                 // If this tx has explicit dependencies (i.e. it requires k prior blobs
                 // from the *same address* to be in the block before it), include them here.
                 // We'll need a capacity of blobDependenciesCount slots *plus* its own blobCount.
@@ -335,7 +335,7 @@ namespace Nethermind.Consensus.Producers
                 if (isChosen[i * maxCapacity + remainingCapacity])
                 {
                     Transaction tx = candidateTxs[i].tx;
-                    ulong blobCount = tx.GetBlobCount();
+                    ulong blobCount = (ulong)tx.GetBlobCount();
                     selectedBlobTxs.Add(tx);
                     remainingCapacity -= (int)blobCount;
                 }
@@ -382,7 +382,7 @@ namespace Nethermind.Consensus.Producers
             Order(pendingTransactions, comparer, filter, gasLimit);
 
         private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
-            OrderCore(pendingTransactions, comparer, static tx => tx.GetBlobCount(), filter, (ulong)maxBlobs);
+            OrderCore(pendingTransactions, comparer, static tx => (ulong)tx.GetBlobCount(), filter, (ulong)maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);

@@ -48,7 +48,7 @@ public static class BlobGasCalculator
         {
             if (tx.SupportsBlobs)
             {
-                blobCount += tx.GetBlobCount();
+                blobCount += (ulong)tx.GetBlobCount();
             }
         }
 

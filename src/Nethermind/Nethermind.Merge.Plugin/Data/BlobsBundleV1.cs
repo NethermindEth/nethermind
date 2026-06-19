@@ -20,7 +20,7 @@ public class BlobsBundleV1
         int blobsCount = 0;
         foreach (Transaction? tx in block.Transactions)
         {
-            blobsCount += (int)(tx?.GetBlobCount() ?? 0UL);
+            blobsCount += tx?.GetBlobCount() ?? 0;
         }
 
         Commitments = new byte[blobsCount][];

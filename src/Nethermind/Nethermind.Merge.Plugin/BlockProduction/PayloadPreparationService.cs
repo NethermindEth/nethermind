@@ -355,7 +355,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 UInt256 gas = 0;
                 foreach (Transaction tx in block.Transactions)
                 {
-                    ulong blobCount = tx.GetBlobCount();
+                    ulong blobCount = (ulong)tx.GetBlobCount();
                     if (blobCount > 0UL)
                     {
                         blobs += blobCount;
