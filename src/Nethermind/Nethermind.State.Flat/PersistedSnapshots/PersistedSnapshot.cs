@@ -27,7 +27,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// On-disk vocabulary (column tags, sub-tags, metadata keys, value markers) is defined in
 /// <see cref="PersistedSnapshotTags"/>; the columnar layout is documented there.
 /// </remarks>
-public sealed class PersistedSnapshot : RefCountingDisposable
+public sealed class PersistedSnapshot : SmallRefCountingDisposable
 {
 
     // Window pre-faulted (one MADV_POPULATE_READ) at the tail of the bound on an address-bound

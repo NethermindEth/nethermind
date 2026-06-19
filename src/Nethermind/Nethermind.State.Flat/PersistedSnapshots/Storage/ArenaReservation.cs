@@ -10,7 +10,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// coordinates lifecycle (eviction, punch-hole, tracker bookkeeping) with the owning
 /// <see cref="IArenaManager"/> on disposal.
 /// </summary>
-public sealed class ArenaReservation : RefCountingDisposable
+public sealed class ArenaReservation : SmallRefCountingDisposable
 {
     private readonly IArenaManager _arenaManager;
     // The owning file. Held directly so read-path operations skip the manager's id →
