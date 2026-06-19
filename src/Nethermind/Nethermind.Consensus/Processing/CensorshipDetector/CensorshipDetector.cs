@@ -205,7 +205,6 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                 if (isCensored)
                 {
                     Metrics.NumberOfPotentiallyCensoredBlocks++;
-                    // Safe cast: block numbers fit well within long range for any realistic chain
                     Metrics.LastPotentiallyCensoredBlockNumber = block.Number;
                     DetectMultiBlockCensorship(blockNumberHash, blockCensorshipInfo);
                 }
@@ -229,7 +228,6 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         {
             _censoredBlocks.Add(block);
             Metrics.NumberOfCensoredBlocks++;
-            // Safe cast: block numbers fit well within long range for any realistic chain
             Metrics.LastCensoredBlockNumber = block.Number;
             if (_logger.IsInfo) _logger.Info($"Censorship detected for block {block.Number} with hash {block.Hash!}");
         }

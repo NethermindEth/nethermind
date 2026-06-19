@@ -528,7 +528,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (!readonlyChain)
         {
-            // Safe cast: block numbers fit well within long range for any realistic chain
             Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
         }
 
