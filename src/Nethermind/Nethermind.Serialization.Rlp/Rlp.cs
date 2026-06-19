@@ -845,8 +845,12 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 ReadOnlySpan<byte> theSpan = DecodeByteArraySpan(RlpLimit.L32);
-                byte[] keccakByte = new byte[32];
-                theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
+                // Stack buffer instead of a heap byte[32]; Hash256(ReadOnlySpan) copies inline.
+                // Explicit Clear() because the project uses [SkipLocalsInit] (stackalloc is not
+                // zero-initialized), and the leading (32 - len) bytes must stay zero padding.
+                Span<byte> keccakByte = stackalloc byte[32];
+                keccakByte.Clear();
+                theSpan.CopyTo(keccakByte.Slice(32 - theSpan.Length));
                 return new Hash256(keccakByte);
             }
 
