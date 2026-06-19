@@ -134,6 +134,14 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
+
+        public bool SetAccountReadTracking(bool trackAccountReads)
+        {
+            bool previous = _stateProvider.TrackAccountReads;
+            _stateProvider.TrackAccountReads = trackAccountReads;
+            return previous;
+        }
+
         public void WarmUp(AccessList? accessList)
         {
             if (accessList?.IsEmpty == false)

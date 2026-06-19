@@ -196,6 +196,20 @@ namespace Nethermind.Evm.TransactionProcessing
         [SkipLocalsInit]
         private TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas)
         {
+            bool previousAccountReadTracking = WorldState.SetAccountReadTracking(tracer.IsTracingState);
+            try
+            {
+                return ExecuteWithAccountReadTracking(tx, tracer, opts, header, spec, in intrinsicGas);
+            }
+            finally
+            {
+                WorldState.SetAccountReadTracking(previousAccountReadTracking);
+            }
+        }
+
+        [SkipLocalsInit]
+        private TransactionResult ExecuteWithAccountReadTracking(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas)
+        {
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
             // commit - is for standard execute, we will commit the state after execution

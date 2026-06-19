@@ -48,6 +48,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
     private readonly List<Change> _changes = new(Resettable.StartCapacity);
     internal IWorldStateScopeProvider.IScope? _tree;
+    internal bool TrackAccountReads { get; set; } = true;
 
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
@@ -752,17 +753,19 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
     private Account? GetAndAddToCache(Address address)
     {
-        if (_nullAccountReads.Contains(address)) return null;
+        if (TrackAccountReads && _nullAccountReads.Contains(address)) return null;
 
         Account? account = GetState(address);
-        if (account is not null)
+        if (TrackAccountReads)
         {
-            PushJustCache(address, account);
-        }
-        else
-        {
-            // just for tracing - potential perf hit, maybe a better solution?
-            _nullAccountReads.Add(address);
+            if (account is not null)
+            {
+                PushJustCache(address, account);
+            }
+            else
+            {
+                _nullAccountReads.Add(address);
+            }
         }
 
         return account;
@@ -792,6 +795,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     {
         StackList<int> stack = SetupCache(address);
         if (changeType == ChangeType.Touch
+            && stack.Count != 0
             && _changes[stack.Peek()]!.ChangeType == ChangeType.Touch)
         {
             return;

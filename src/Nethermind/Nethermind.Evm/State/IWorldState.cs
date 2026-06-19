@@ -81,6 +81,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void Reset(bool resetBlockChanges = true);
 
     /// <summary>
+    /// Sets whether read-only account accesses are journaled for state trace reporting.
+    /// </summary>
+    /// <returns>The previous read tracking setting.</returns>
+    bool SetAccountReadTracking(bool trackAccountReads) => true;
+
+    /// <summary>
     /// Creates a restartable snapshot.
     /// </summary>
     /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>

@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -54,6 +56,27 @@ public class StateProviderTests(bool useFlat)
         }
 
         public void Dispose() => _container?.Dispose();
+    }
+
+    private sealed class RecordingWorldStateTracer : IWorldStateTracer
+    {
+        public bool IsTracingState => true;
+        public bool IsTracingStorage => false;
+        public List<Address> AccountReads { get; } = [];
+
+        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
+
+        public void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
+
+        public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
+
+        public void ReportAccountRead(Address address) => AccountReads.Add(address);
+
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
+
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+
+        public void ReportStorageRead(in StorageCell storageCell) { }
     }
 
     [Test]
@@ -239,6 +262,63 @@ public class StateProviderTests(bool useFlat)
         provider.GetBalance(_address1); // justcache
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance); // touch
         Assert.DoesNotThrow(() => provider.Commit(SpuriousDragon.Instance, tracer));
+    }
+
+    [Test]
+    public void Account_read_tracking_setting_returns_previous_value()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+
+        Assert.That(provider.SetAccountReadTracking(false), Is.True);
+        Assert.That(provider.SetAccountReadTracking(true), Is.False);
+        Assert.That(provider.SetAccountReadTracking(true), Is.True);
+    }
+
+    [Test]
+    public void Account_read_tracking_disabled_preserves_updates_and_restore()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        provider.CreateAccount(_address1, 10);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.SetAccountReadTracking(false), Is.True);
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        provider.GetBalance(_address1);
+        provider.AddToBalance(_address1, 5, SpuriousDragon.Instance);
+
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)15));
+
+        provider.Restore(snapshot);
+
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)10));
+
+        provider.SetAccountReadTracking(true);
+        provider.AddToBalance(_address1, 2, SpuriousDragon.Instance);
+        provider.Commit(SpuriousDragon.Instance);
+
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)12));
+    }
+
+    [Test]
+    public void Account_read_tracking_enabled_reports_read_only_account()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        RecordingWorldStateTracer tracer = new();
+
+        provider.CreateAccount(_address1, 10);
+        provider.Commit(Frontier.Instance);
+
+        provider.GetBalance(_address1);
+        provider.Commit(SpuriousDragon.Instance, tracer);
+
+        Assert.That(tracer.AccountReads, Contains.Item(_address1));
     }
 
     [Test]

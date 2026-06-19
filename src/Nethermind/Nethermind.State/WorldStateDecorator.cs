@@ -83,6 +83,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Reset(bool resetBlockChanges = true)
         => State.Reset(resetBlockChanges);
 
+    public virtual bool SetAccountReadTracking(bool trackAccountReads)
+        => State.SetAccountReadTracking(trackAccountReads);
+
     public virtual Snapshot TakeSnapshot(bool newTransactionStart = false)
         => State.TakeSnapshot(newTransactionStart);
 
