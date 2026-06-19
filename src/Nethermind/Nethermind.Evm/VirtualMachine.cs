@@ -80,7 +80,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
-    protected readonly Stack<VmState<TGasPolicy>> _stateStack = new();
+    // Pre-sized to the EVM max call depth (1024, EIP-150) so this never resizes during a
+    // transaction. The VirtualMachine is reused across transactions; if the backing grew inside a
+    // per-tx scratch scope it would be reclaimed at the reset, dangling the persistent VM.
+    protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(1025);
 
     protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
