@@ -27,6 +27,8 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
     private ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
+    private int _changedSlotCount;
+    private int _selfDestructedAccountCount;
 
     private bool _trieChanged = false;
 
@@ -69,6 +71,8 @@ public sealed class SnapshotBundle : IDisposable
         _changedStorageNodes = _currentPooledContent.StorageNodes;
         _changedStateNodes = _currentPooledContent.StateNodes;
         _selfDestructedAccountAddresses = _currentPooledContent.SelfDestructedStorageAddresses;
+        _changedSlotCount = _changedSlots.Count;
+        _selfDestructedAccountCount = _selfDestructedAccountAddresses.Count;
     }
 
     public Account? GetAccount(Address address) => DoGetAccount(address, false);
@@ -95,12 +99,17 @@ public sealed class SnapshotBundle : IDisposable
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
         HashedKey<Address> key = new(address);
+        int snapshotCount = _snapshots.Count;
+        int readOnlySnapshotCount = _readOnlySnapshotBundle.SnapshotCount;
 
-        if (_selfDestructedAccountAddresses.ContainsKey(key)) return _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount;
-
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        if (Volatile.Read(ref _selfDestructedAccountCount) != 0 && _selfDestructedAccountAddresses.ContainsKey(key))
         {
-            if (_snapshots[i].HasSelfDestruct(key)) return i + _readOnlySnapshotBundle.SnapshotCount;
+            return snapshotCount + readOnlySnapshotCount;
+        }
+
+        for (int i = snapshotCount - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].HasSelfDestruct(key)) return i + readOnlySnapshotCount;
         }
 
         return _readOnlySnapshotBundle.DetermineSelfDestructSnapshotIdx(address);
@@ -125,19 +134,22 @@ public sealed class SnapshotBundle : IDisposable
 
     private byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, in ValueHash256 accountPath, bool hasAccountPath)
     {
-        if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
+        if (Volatile.Read(ref _changedSlotCount) != 0 && _changedSlots.TryGetValue(key, out SlotValue? slotValue))
         {
             return slotValue?.ToEvmBytes();
         }
 
+        int snapshotCount = _snapshots.Count;
+        int readOnlySnapshotCount = _readOnlySnapshotBundle.SnapshotCount;
+
         // Self-destructed at the point of the latest change
-        if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
+        if (selfDestructStateIdx == snapshotCount + readOnlySnapshotCount)
         {
             return null;
         }
 
-        int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        int currentBundleSelfDestructIdx = selfDestructStateIdx - readOnlySnapshotCount;
+        for (int i = snapshotCount - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStorage(key, out slotValue))
             {
@@ -344,12 +356,23 @@ public sealed class SnapshotBundle : IDisposable
         HashedKey<(Address, UInt256)> key = new((address, index));
         if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
         {
-            _changedSlots[key] = null;
+            SetChangedSlot(key, null);
         }
         else
         {
-            _changedSlots[key] = SlotValue.FromSpanWithoutLeadingZero(value);
+            SetChangedSlot(key, SlotValue.FromSpanWithoutLeadingZero(value));
         }
+    }
+
+    private void SetChangedSlot(HashedKey<(Address, UInt256)> key, SlotValue? value)
+    {
+        if (_changedSlots.TryAdd(key, value))
+        {
+            Interlocked.Increment(ref _changedSlotCount);
+            return;
+        }
+
+        _changedSlots[key] = value;
     }
 
     // Also called SelfDestruct
@@ -362,7 +385,10 @@ public sealed class SnapshotBundle : IDisposable
         // it skips persistence, but probably need to make sure it does not send it at all in the first place.
         bool isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
 
-        _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
+        if (_selfDestructedAccountAddresses.TryAdd(address, isNewAccount))
+        {
+            Interlocked.Increment(ref _selfDestructedAccountCount);
+        }
 
         if (!isNewAccount)
         {
@@ -392,7 +418,10 @@ public sealed class SnapshotBundle : IDisposable
 
             foreach (HashedKey<(Address, UInt256)> key in slotKeysToRemove)
             {
-                _changedSlots.TryRemove(key, out _);
+                if (_changedSlots.TryRemove(key, out _))
+                {
+                    Interlocked.Decrement(ref _changedSlotCount);
+                }
             }
         }
     }
@@ -444,6 +473,7 @@ public sealed class SnapshotBundle : IDisposable
             _transientResource.Reset();
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
+            ExpandCurrentPooledContent();
 
             return (null, null);
         }
