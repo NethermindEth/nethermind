@@ -33,7 +33,7 @@ public class VmState<TGasPolicy> : IDisposable
     public ulong StateGasRefundAdvanced;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
-    public ulong Refund { get; set; }
+    public long Refund { get; set; }
     public int DataStackHead;
     public ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }

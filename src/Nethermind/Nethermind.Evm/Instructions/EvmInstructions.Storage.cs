@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -392,7 +391,7 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        ulong sClearRefunds = spec.GasCosts.SClearRefund;
+        long sClearRefunds = (long)spec.GasCosts.SClearRefund;
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -401,7 +400,7 @@ public static partial class EvmInstructions
             {
                 vmState.Refund += sClearRefunds;
                 if (vm.TxTracer.IsTracingRefunds)
-                    vm.TxTracer.ReportRefund((long)sClearRefunds);
+                    vm.TxTracer.ReportRefund(sClearRefunds);
             }
         }
         // When setting a non-zero value over an existing zero, apply the difference in gas costs.
@@ -506,7 +505,7 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        ulong sClearRefunds = gasCosts.SClearRefund;
+        long sClearRefunds = (long)gasCosts.SClearRefund;
 
         if (newSameAsCurrent)
         {
@@ -536,7 +535,7 @@ public static partial class EvmInstructions
                     {
                         vmState.Refund += sClearRefunds;
                         if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund((long)sClearRefunds);
+                            vm.TxTracer.ReportRefund(sClearRefunds);
                     }
                 }
             }
@@ -551,21 +550,16 @@ public static partial class EvmInstructions
                     // Adjust refunds based on a change from or to a zero value.
                     if (currentIsZero)
                     {
-                        // EIP-2200/3529 invariant: the matching `Refund += sClearRefunds` ran earlier in
-                        // the same tx, so Refund >= sClearRefunds. Saturating guards against an unsigned
-                        // wrap silently granting the maximum post-cap refund. Consensus-relevant.
-                        Debug.Assert(vmState.Refund >= sClearRefunds,
-                            "EIP-2200/3529 refund accumulator went below the per-slot clear amount.");
-                        vmState.Refund = vmState.Refund.SaturatingSub(sClearRefunds);
+                        vmState.Refund -= sClearRefunds;
                         if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund(-(long)sClearRefunds);
+                            vm.TxTracer.ReportRefund(-sClearRefunds);
                     }
 
                     if (newIsZero)
                     {
                         vmState.Refund += sClearRefunds;
                         if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund((long)sClearRefunds);
+                            vm.TxTracer.ReportRefund(sClearRefunds);
                     }
                 }
 
@@ -573,17 +567,17 @@ public static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
-                    ulong refundFromReversal = gasCosts.RefundFromReversal(originalIsZero);
+                    long refundFromReversal = (long)gasCosts.RefundFromReversal(originalIsZero);
 
                     if (TEip8037.IsActive && originalIsZero)
                     {
                         vm.CreditStateGasRefund(ref gas, TGasPolicy.GetStorageSetStateCost(in gas));
-                        refundFromReversal = GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
+                        refundFromReversal = (long)(GasCostOf.SSetRegular - GasCostOf.WarmStateRead);
                     }
 
                     vmState.Refund += refundFromReversal;
                     if (vm.TxTracer.IsTracingRefunds)
-                        vm.TxTracer.ReportRefund((long)refundFromReversal);
+                        vm.TxTracer.ReportRefund(refundFromReversal);
                 }
             }
         }

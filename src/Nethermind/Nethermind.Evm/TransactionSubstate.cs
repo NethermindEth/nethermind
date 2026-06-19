@@ -51,7 +51,7 @@ public readonly ref struct TransactionSubstate
     public EvmExceptionType EvmExceptionType { get; }
     public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
-    public ulong Refund { get; }
+    public long Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs;
     public JournalSet<Address>? DestroyList => _destroyList;
 
@@ -68,7 +68,7 @@ public readonly ref struct TransactionSubstate
     }
 
     public TransactionSubstate(ReadOnlyMemory<byte> bytes,
-        ulong refund,
+        long refund,
         JournalSet<Address>? destroyList,
         JournalCollection<LogEntry>? logs,
         bool shouldRevert,
