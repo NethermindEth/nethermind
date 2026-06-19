@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using NSubstitute;
 using NUnit.Framework;
@@ -14,29 +13,29 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 
 public class NodeHealthTrackerTests
 {
-    private const string Self = "self";
-    private const string Remote = "remote";
-    private const string Stale = "stale";
+    private const int Self = 0;
+    private const int Remote = 1;
+    private const int Stale = 2;
 
-    private static (NodeHealthTracker<Hash256, string, Hash256> Tracker, RoutingTableStub Routing, IKademliaMessageSender<Hash256, string> Sender) CreateTracker(
-        string? toRefresh = null,
+    private static (NodeHealthTracker<int, int, int> Tracker, RoutingTableStub Routing, IKademliaMessageSender<int, int> Sender) CreateTracker(
+        int? toRefresh = null,
         int failureThreshold = 5,
         TimeSpan? refreshPingTimeout = null,
-        IKademliaMessageSender<Hash256, string>? sender = null)
+        IKademliaMessageSender<int, int>? sender = null)
     {
-        RoutingTableStub routing = new() { ToRefresh = toRefresh ?? string.Empty };
-        sender ??= Substitute.For<IKademliaMessageSender<Hash256, string>>();
-        KademliaConfig<string> config = new()
+        RoutingTableStub routing = new() { ToRefresh = toRefresh };
+        sender ??= Substitute.For<IKademliaMessageSender<int, int>>();
+        KademliaConfig<int> config = new()
         {
             CurrentNodeId = Self,
             NodeRequestFailureThreshold = failureThreshold,
         };
         if (refreshPingTimeout is { } timeout) config.RefreshPingTimeout = timeout;
 
-        NodeHealthTracker<Hash256, string, Hash256> tracker = new(
+        NodeHealthTracker<int, int, int> tracker = new(
             config,
             routing,
-            StringNodeHashProvider.Instance,
+            IntNodeHashProvider.Instance,
             sender);
         return (tracker, routing, sender);
     }
@@ -44,12 +43,12 @@ public class NodeHealthTrackerTests
     [Test]
     public void OnIncomingMessageFrom_ShouldRefreshSelfWithSelfNode_WhenFullBucketSelectsSelf()
     {
-        (NodeHealthTracker<Hash256, string, Hash256> tracker, RoutingTableStub routing, _) = CreateTracker(toRefresh: Self);
+        (NodeHealthTracker<int, int, int> tracker, RoutingTableStub routing, _) = CreateTracker(toRefresh: Self);
 
         tracker.OnIncomingMessageFrom(Remote);
 
         Assert.That(routing.AddCalls, Has.Count.EqualTo(2));
-        Assert.That(routing.AddCalls[1].Hash, Is.EqualTo(IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Self))));
+        Assert.That(routing.AddCalls[1].Hash, Is.EqualTo(Self));
         Assert.That(routing.AddCalls[1].Node, Is.EqualTo(Self));
     }
 
@@ -57,36 +56,34 @@ public class NodeHealthTrackerTests
     [CancelAfter(10000)]
     public async Task TryRefresh_ShouldRemoveStaleNode_WhenPingTimesOut(CancellationToken token)
     {
-        IKademliaMessageSender<Hash256, string> sender = Substitute.For<IKademliaMessageSender<Hash256, string>>();
+        IKademliaMessageSender<int, int> sender = Substitute.For<IKademliaMessageSender<int, int>>();
         sender.Ping(Stale, Arg.Any<CancellationToken>())
             .Returns(false);
 
-        (NodeHealthTracker<Hash256, string, Hash256> tracker, RoutingTableStub routing, _) = CreateTracker(
+        (NodeHealthTracker<int, int, int> tracker, RoutingTableStub routing, _) = CreateTracker(
             toRefresh: Stale,
             sender: sender);
 
         tracker.OnIncomingMessageFrom(Remote);
 
-        Hash256 staleHash = IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Stale));
-        await AssertEventuallyAsync(() => routing.RemoveCalls.Contains(staleHash), token);
+        await AssertEventuallyAsync(() => routing.RemoveCalls.Contains(Stale), token);
     }
 
     [Test]
     [CancelAfter(10000)]
     public async Task TryRefresh_ShouldKeepNode_WhenPingSucceeds(CancellationToken token)
     {
-        IKademliaMessageSender<Hash256, string> sender = Substitute.For<IKademliaMessageSender<Hash256, string>>();
+        IKademliaMessageSender<int, int> sender = Substitute.For<IKademliaMessageSender<int, int>>();
         sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(true);
 
-        (NodeHealthTracker<Hash256, string, Hash256> tracker, RoutingTableStub routing, _) = CreateTracker(
+        (NodeHealthTracker<int, int, int> tracker, RoutingTableStub routing, _) = CreateTracker(
             toRefresh: Stale,
             sender: sender);
 
         tracker.OnIncomingMessageFrom(Remote);
 
-        Hash256 staleHash = IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Stale));
-        await AssertEventuallyAsync(() => routing.HasAddedNode(staleHash), token);
-        Assert.That(routing.RemoveCalls, Does.Not.Contain(staleHash));
+        await AssertEventuallyAsync(() => routing.HasAddedNode(Stale), token);
+        Assert.That(routing.RemoveCalls, Does.Not.Contain(Stale));
     }
 
     [TestCase(false)]
@@ -96,7 +93,7 @@ public class NodeHealthTrackerTests
     {
         TaskCompletionSource pingStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource pingCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        IKademliaMessageSender<Hash256, string> sender = Substitute.For<IKademliaMessageSender<Hash256, string>>();
+        IKademliaMessageSender<int, int> sender = Substitute.For<IKademliaMessageSender<int, int>>();
         sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(async call =>
         {
             CancellationToken pingToken = call.Arg<CancellationToken>();
@@ -113,7 +110,7 @@ public class NodeHealthTrackerTests
             }
         });
 
-        (NodeHealthTracker<Hash256, string, Hash256> tracker, RoutingTableStub routing, _) = CreateTracker(
+        (NodeHealthTracker<int, int, int> tracker, RoutingTableStub routing, _) = CreateTracker(
             toRefresh: Stale,
             refreshPingTimeout: TimeSpan.FromSeconds(10),
             sender: sender);
@@ -131,20 +128,20 @@ public class NodeHealthTrackerTests
         }
 
         await pingCancelled.Task.WaitAsync(token);
-        Assert.That(routing.RemoveCalls, Does.Not.Contain(IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Stale))));
+        Assert.That(routing.RemoveCalls, Does.Not.Contain(Stale));
     }
 
     [Test]
     public void OnRequestFailed_ShouldClearFailureCount_WhenNodeIsRemoved()
     {
-        (NodeHealthTracker<Hash256, string, Hash256> tracker, RoutingTableStub routing, _) = CreateTracker(failureThreshold: 1);
+        (NodeHealthTracker<int, int, int> tracker, RoutingTableStub routing, _) = CreateTracker(failureThreshold: 1);
 
         tracker.OnRequestFailed(Remote);
         tracker.OnRequestFailed(Remote);
         tracker.OnRequestFailed(Remote);
 
         Assert.That(routing.RemoveCalls, Has.Count.EqualTo(1));
-        Assert.That(routing.RemoveCalls[0], Is.EqualTo(IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Remote))));
+        Assert.That(routing.RemoveCalls[0], Is.EqualTo(Remote));
     }
 
     private static async Task AssertEventuallyAsync(Func<bool> condition, CancellationToken token)
@@ -157,22 +154,15 @@ public class NodeHealthTrackerTests
         Assert.Fail("Condition not met within timeout.");
     }
 
-    private sealed class StringNodeHashProvider : INodeHashProvider<string, Hash256>
+    private sealed class RoutingTableStub : IRoutingTable<int, int>
     {
-        public static readonly StringNodeHashProvider Instance = new();
+        public int? ToRefresh { get; init; }
 
-        public Hash256 GetHash(string node) => IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(node));
-    }
+        public List<(int Hash, int Node)> AddCalls { get; } = [];
 
-    private sealed class RoutingTableStub : IRoutingTable<string, Hash256>
-    {
-        public string ToRefresh { get; init; } = string.Empty;
+        public List<int> RemoveCalls { get; } = [];
 
-        public List<(Hash256 Hash, string Node)> AddCalls { get; } = [];
-
-        public List<Hash256> RemoveCalls { get; } = [];
-
-        public BucketAddResult TryAddOrRefresh(in Hash256 hash, string item, out string? toRefresh)
+        public BucketAddResult TryAddOrRefresh(in int hash, int item, out int toRefresh)
         {
             bool isFirstAdd;
             lock (AddCalls)
@@ -181,21 +171,21 @@ public class NodeHealthTrackerTests
                 isFirstAdd = AddCalls.Count == 1;
             }
 
-            if (isFirstAdd)
+            if (isFirstAdd && ToRefresh is not null)
             {
-                toRefresh = ToRefresh;
+                toRefresh = ToRefresh.Value;
                 return BucketAddResult.Full;
             }
 
-            toRefresh = null;
+            toRefresh = default;
             return BucketAddResult.Refreshed;
         }
 
-        public bool HasAddedNode(Hash256 hash)
+        public bool HasAddedNode(int hash)
         {
             lock (AddCalls)
             {
-                foreach ((Hash256 h, string _) in AddCalls)
+                foreach ((int h, int _) in AddCalls)
                 {
                     if (h == hash) return true;
                 }
@@ -203,34 +193,34 @@ public class NodeHealthTrackerTests
             return false;
         }
 
-        public bool Remove(in Hash256 hash)
+        public bool Remove(in int hash)
         {
             lock (RemoveCalls) RemoveCalls.Add(hash);
             return true;
         }
 
-        public string[] GetKNearestNeighbour(Hash256 hash, bool excludeSelf = false) =>
+        public int[] GetKNearestNeighbour(int hash, bool excludeSelf = false) =>
             throw new NotSupportedException();
 
-        public string[] GetKNearestNeighbourExcluding(Hash256 hash, Hash256 exclude, bool excludeSelf = false) =>
+        public int[] GetKNearestNeighbourExcluding(int hash, int exclude, bool excludeSelf = false) =>
             throw new NotSupportedException();
 
-        public string[] GetAllAtDistance(int i) => throw new NotSupportedException();
+        public int[] GetAllAtDistance(int i) => throw new NotSupportedException();
 
-        public IEnumerable<(Hash256 Prefix, int Distance, KBucket<string, Hash256> Bucket)> IterateBuckets() =>
+        public IEnumerable<(int Prefix, int Distance, KBucket<int, int> Bucket)> IterateBuckets() =>
             throw new NotSupportedException();
 
-        public string? GetByHash(Hash256 nodeId) => throw new NotSupportedException();
+        public int GetByHash(int nodeId) => throw new NotSupportedException();
 
         public void LogDebugInfo() => throw new NotSupportedException();
 
-        public event EventHandler<string>? OnNodeAdded
+        public event EventHandler<int>? OnNodeAdded
         {
             add { }
             remove { }
         }
 
-        public event EventHandler<string>? OnNodeRemoved
+        public event EventHandler<int>? OnNodeRemoved
         {
             add { }
             remove { }

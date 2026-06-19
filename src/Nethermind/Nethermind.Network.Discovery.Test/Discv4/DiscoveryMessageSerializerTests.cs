@@ -283,8 +283,8 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void NeighborsMessage_Drops_Empty_List_Node_Entries()
     {
-        // A misbehaving peer can encode a node entry as an RLP empty list (0xc0), which
-        // DecodeArray materializes as a null node; such entries must never reach consumers.
+        // A misbehaving peer can encode a node entry as an RLP empty list (0xc0);
+        // such entries must be skipped instead of reaching consumers.
         byte[] ip = [192, 168, 1, 2];
         byte[] id = TestItem.PublicKeyA.Bytes;
         const int port = 30303;
