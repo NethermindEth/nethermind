@@ -346,9 +346,15 @@ public class PersistedSnapshotCompactor(
                 if (!_schedule.IsCompactSizeBoundary(snapshotTo.BlockNumber) && !_schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber))
                 {
                     // Sub-CompactSize intermediate. The bundle priority means this is never queried
-                    // unless there's a deep reorg, so drop its freshly-written pages from the cache +
-                    // tracker; they would otherwise sit hot until the snapshot is pruned.
-                    compacted.Demote();
+                    // unless there's a deep reorg, so its large merged bloom is pure overhead. Re-register
+                    // an equivalent snapshot over the same reservation carrying the AlwaysTrue sentinel;
+                    // the original's big bloom is freed by its CleanUp once any in-flight reader drains
+                    // (refcount 0). Also drop the freshly-written pages from the cache + tracker; they
+                    // would otherwise sit hot until the snapshot is pruned. The twin's metadata reads run
+                    // before Demote advises those pages cold.
+                    using PersistedSnapshot demoted = new(from, to, compacted.Reservation, blobs, tier, bloom: null);
+                    demoted.Demote();
+                    snapshotRepository.ReplacePersistedSnapshot(to, demoted, tier);
                 }
                 else
                 {

@@ -86,6 +86,16 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
         snapshot.AcquireLease();
     }
 
+    public bool Replace(in StateId to, PersistedSnapshot replacement)
+    {
+        using Lock.Scope scope = _lock.EnterScope();
+        if (!_byTo.TryGetValue(to, out PersistedSnapshot? old)) return false;
+        replacement.AcquireLease();
+        _byTo[to] = replacement;
+        old.Dispose();
+        return true;
+    }
+
     /// <summary>Remove the entry at <paramref name="to"/> (catalog + index + leases) under this
     /// bucket's lock. Returns <c>true</c> when an entry was present.</summary>
     public bool RemoveExact(in StateId to)

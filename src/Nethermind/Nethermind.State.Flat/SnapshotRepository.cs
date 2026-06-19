@@ -496,6 +496,10 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         BucketFor(tier).Add(snapshot.To, snapshot);
     }
 
+    /// <inheritdoc />
+    public bool ReplacePersistedSnapshot(in StateId to, PersistedSnapshot replacement, SnapshotTier tier) =>
+        BucketFor(tier).Replace(to, replacement);
+
     /// <summary>
     /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket for
     /// <paramref name="tier"/> (must be a <c>Persisted*</c> value). Caller disposes the lease.
