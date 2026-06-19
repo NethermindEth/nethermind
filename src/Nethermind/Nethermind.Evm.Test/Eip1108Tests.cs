@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Test;
 
 public class Eip1108Tests : VirtualMachineTestsBase
 {
-    protected override ulong BlockNumber => (ulong)((long)MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment);
+    protected override ulong BlockNumber => unchecked(MainnetSpecProvider.IstanbulBlockNumber + (ulong)_blockNumberAdjustment);
 
     private long _blockNumberAdjustment;
 

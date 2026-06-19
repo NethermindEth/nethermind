@@ -237,7 +237,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         ulong lastKnown = latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
-            // CAST NOTE: firstBlock.BlockOverrides.Number is ulong and > 0, so subtracting 1 is safe.
             Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
             if (searchResult is not null)
             {

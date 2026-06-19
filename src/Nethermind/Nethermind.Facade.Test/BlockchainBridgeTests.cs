@@ -217,11 +217,11 @@ public class BlockchainBridgeTests
             Arg.Any<ITxTracer>());
     }
 
-    [TestCase(7)]
-    [TestCase(0)]
-    public void Bridge_head_is_correct(long headNumber)
+    [TestCase(7UL)]
+    [TestCase(0UL)]
+    public void Bridge_head_is_correct(ulong headNumber)
     {
-        Block head = Build.A.Block.WithNumber((ulong)headNumber).TestObject;
+        Block head = Build.A.Block.WithNumber(headNumber).TestObject;
         Block bestSuggested = Build.A.Block.WithNumber(8UL).TestObject;
 
         _blockTree.Head.Returns(head);
@@ -566,12 +566,12 @@ public class BlockchainBridgeTests
 
         Address sender = TestItem.AddressA;
         UInt256 baseFee = 146_283_608_928UL;
-        UInt256 maxFeePerGas = 140_000_000_000UL;
+        ulong maxFeePerGas = 140_000_000_000UL;
         Transaction descriptiveTx = new()
         {
             GasLimit = 56786,
             SenderAddress = sender,
-            DecodedMaxFeePerGas = (ulong)maxFeePerGas,
+            DecodedMaxFeePerGas = maxFeePerGas,
             Type = TxType.EIP1559
         };
         yield return new TestCaseData(

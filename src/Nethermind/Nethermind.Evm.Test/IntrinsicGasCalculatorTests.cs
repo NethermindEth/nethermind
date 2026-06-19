@@ -43,13 +43,13 @@ namespace Nethermind.Evm.Test
             yield return (new List<object> { Address.Zero, (UInt256)1, Address.Zero, (UInt256)1 }, 8600UL);
         }
 
-        public static IEnumerable<(byte[] Data, int OldCost, int NewCost, int FloorCost)> DataTestCaseSource()
+        public static IEnumerable<(byte[] Data, ulong OldCost, ulong NewCost, ulong FloorCost)> DataTestCaseSource()
         {
-            yield return ([0], 4, 4, 21010);
-            yield return ([1], 68, 16, 21040);
-            yield return ([0, 0, 1], 76, 24, 21060);
-            yield return ([1, 1, 0], 140, 36, 21090);
-            yield return ([0, 0, 1, 1], 144, 40, 21100);
+            yield return ([0], 4UL, 4UL, 21010UL);
+            yield return ([1], 68UL, 16UL, 21040UL);
+            yield return ([0, 0, 1], 76UL, 24UL, 21060UL);
+            yield return ([1, 1, 0], 140UL, 36UL, 21090UL);
+            yield return ([0, 0, 1, 1], 144UL, 40UL, 21100UL);
         }
         [TestCaseSource(nameof(TestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, ulong Cost, string Description) testCase)
@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCaseSource(nameof(DataTestCaseSource))]
-        public void Intrinsic_cost_of_data_is_calculated_properly((byte[] Data, int OldCost, int NewCost, int FloorCost) testCase)
+        public void Intrinsic_cost_of_data_is_calculated_properly((byte[] Data, ulong OldCost, ulong NewCost, ulong FloorCost) testCase)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved().WithData(testCase.Data).TestObject;
 
@@ -115,8 +115,8 @@ namespace Nethermind.Evm.Test
                 bool isAfterRepricing = options.HasFlag(GasOptions.AfterRepricing);
                 bool floorCostEnabled = options.HasFlag(GasOptions.FloorCostEnabled);
 
-                Assert.That(gas.Standard, Is.EqualTo(21000UL + (ulong)(isAfterRepricing ? testCase.NewCost : testCase.OldCost)), $"{spec.Name}: {testCase.Data.ToHexString()}");
-                Assert.That(gas.FloorGas, Is.EqualTo((ulong)(floorCostEnabled ? testCase.FloorCost : 0)));
+                Assert.That(gas.Standard, Is.EqualTo(21000UL + (isAfterRepricing ? testCase.NewCost : testCase.OldCost)), $"{spec.Name}: {testCase.Data.ToHexString()}");
+                Assert.That(gas.FloorGas, Is.EqualTo(floorCostEnabled ? testCase.FloorCost : 0UL));
 
                 Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(
                         Standard: 21000UL + (ulong)(isAfterRepricing ? testCase.NewCost : testCase.OldCost),

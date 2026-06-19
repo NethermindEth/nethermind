@@ -16,8 +16,6 @@ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvid
 {
     public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
     {
-        // CAST NOTE: BestKnownNumber is ulong; safe to cast to long for blockhash lookup since
-        // block numbers reachable by the blockhash opcode are well within long range.
         ulong bestKnown = blockTree.BestKnownNumber;
         return bestKnown < number && blockTree.BestSuggestedHeader is not null
             ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, bestKnown, spec)

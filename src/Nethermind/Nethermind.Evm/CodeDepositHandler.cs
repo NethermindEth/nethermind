@@ -33,13 +33,14 @@ namespace Nethermind.Evm
                 return false;
             }
 
+            ulong length = (ulong)byteCodeLength;
             if (!spec.IsEip8037Enabled)
             {
-                regularCost = GasCostOf.CodeDeposit * (ulong)byteCodeLength;
+                regularCost = GasCostOf.CodeDeposit * length;
                 return true;
             }
 
-            ulong words = EvmCalculations.Div32Ceiling((ulong)byteCodeLength, out bool outOfGas);
+            ulong words = EvmCalculations.Div32Ceiling(length, out bool outOfGas);
             if (outOfGas)
             {
                 regularCost = ulong.MaxValue;
@@ -48,7 +49,7 @@ namespace Nethermind.Evm
             }
 
             regularCost = GasCostOf.CodeDepositRegularPerWord * words;
-            stateCost = GasCostOf.CodeDepositState * (ulong)byteCodeLength;
+            stateCost = GasCostOf.CodeDepositState * length;
             return true;
         }
 
@@ -63,13 +64,14 @@ namespace Nethermind.Evm
                 return false;
             }
 
+            ulong length = (ulong)byteCodeLength;
             if (!spec.IsEip8037Enabled)
             {
-                regularCost = GasCostOf.CodeDeposit * (ulong)byteCodeLength;
+                regularCost = GasCostOf.CodeDeposit * length;
                 return true;
             }
 
-            ulong words = EvmCalculations.Div32Ceiling((ulong)byteCodeLength, out bool outOfGas);
+            ulong words = EvmCalculations.Div32Ceiling(length, out bool outOfGas);
             if (outOfGas)
             {
                 regularCost = ulong.MaxValue;

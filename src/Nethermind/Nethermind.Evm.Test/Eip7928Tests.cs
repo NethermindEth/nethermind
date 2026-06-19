@@ -989,7 +989,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         CallOutputTracer tracer = new();
         TransactionResult res = processor.Execute(tx, tracer);
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
-        UInt256 gasUsed = (UInt256)tracer.GasSpent;
+        ulong gasUsed = tracer.GasSpent;
         AccountChangesAtIndex? senderChanges = bal.GetAccountChanges(TestItem.AddressA);
         AccountChangesAtIndex? victimChanges = bal.GetAccountChanges(_callTargetAddress);
 

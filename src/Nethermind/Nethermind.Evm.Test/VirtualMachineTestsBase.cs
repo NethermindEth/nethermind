@@ -29,7 +29,7 @@ public abstract class VirtualMachineTestsBase
     protected const string SampleHexData1 = "a01234";
     protected const string SampleHexData2 = "b15678";
     protected const string HexZero = "00";
-    protected const ulong DefaultBlockGasLimit = 8000000; // was: long — no negative gas limits exist
+    protected const ulong DefaultBlockGasLimit = 8000000;
 
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
@@ -95,7 +95,6 @@ public abstract class VirtualMachineTestsBase
         return tracer.BuildResult();
     }
 
-    // gasLimit is ulong — gas limits are non-negative by definition
     protected GethLikeTxTrace ExecuteAndTrace(ulong gasLimit, params byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);

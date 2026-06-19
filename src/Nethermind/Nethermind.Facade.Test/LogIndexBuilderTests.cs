@@ -163,7 +163,7 @@ public class LogIndexBuilderTests
     [Test]
     [CancelAfter(60_000)]
     public async Task Should_SyncToBarrier(
-        [Values(1, 10)] int minBarrier,
+        [Values(1UL, 10UL)] ulong minBarrier,
         [Values(1, 16, MaxBlock)] int batchSize,
         [Values(
             new[] { -1, -1 }, // -1 is treated as null
@@ -177,10 +177,10 @@ public class LogIndexBuilderTests
     )
     {
         _config.MaxBatchSize = batchSize;
-        _syncConfig.AncientReceiptsBarrier = (ulong)minBarrier;
+        _syncConfig.AncientReceiptsBarrier = minBarrier;
         Assert.That(_syncConfig.AncientReceiptsBarrierCalc, Is.EqualTo(minBarrier));
 
-        int expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? minBarrier : Math.Min(synced[0], minBarrier);
+        int expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? (int)minBarrier : Math.Min(synced[0], (int)minBarrier);
         TestLogIndexStorage storage = new()
         {
             MinBlockNumber = synced[0] < 0 ? null : synced[0],
@@ -230,13 +230,13 @@ public class LogIndexBuilderTests
     [Test]
     [Sequential]
     public async Task Should_CompleteImmediately_IfAlreadySynced(
-        [Values(1, 10, 10, 10)] int minBarrier,
+        [Values(1UL, 10UL, 10UL, 10UL)] ulong minBarrier,
         [Values(0, 00, 05, 10)] int minBlock
     )
     {
-        Assert.That(minBlock, Is.LessThanOrEqualTo(minBarrier));
+        Assert.That((ulong)minBlock, Is.LessThanOrEqualTo(minBarrier));
 
-        _syncConfig.AncientReceiptsBarrier = (ulong)minBarrier;
+        _syncConfig.AncientReceiptsBarrier = minBarrier;
         LogIndexBuilder builder = GetService(new FailingLogIndexStorage(0, new("Should not set new receipts."))
         {
             MinBlockNumber = minBlock,

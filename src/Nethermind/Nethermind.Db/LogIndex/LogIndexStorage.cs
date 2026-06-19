@@ -184,7 +184,7 @@ namespace Nethermind.Db.LogIndex
 
         private readonly ILogger _logger;
 
-        private readonly int _maxReorgDepth;
+        private readonly ulong _maxReorgDepth;
 
         private readonly AllMergeOperators _mergeOperators;
         private readonly ICompressor _compressor;
@@ -512,7 +512,7 @@ namespace Nethermind.Db.LogIndex
             return (min, max);
         }
 
-        private int? GetLastReorgableBlockNumber() => _maxBlock - _maxReorgDepth;
+        private int? GetLastReorgableBlockNumber() => _maxBlock - (int)_maxReorgDepth;
 
         private static bool IsBlockNewer(int next, int? lastMin, int? lastMax, bool isBackwardSync) => isBackwardSync
             ? lastMin is null || next < lastMin

@@ -626,12 +626,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ulong newAccountStateCost = TGasPolicy.GetNewAccountStateCost(in gasAvailable);
             ulong perAuthBaseStateCost = TGasPolicy.GetPerAuthBaseStateCost(in gasAvailable);
-            int maxRefunds = tx.AuthorizationList.Length;
+            ulong maxRefunds = (ulong)tx.AuthorizationList.Length;
             if (!TryCalculate8037DelegationRefund(
                     newAccountStateCost,
                     perAuthBaseStateCost,
-                    (ulong)maxRefunds,
-                    (ulong)maxRefunds,
+                    maxRefunds,
+                    maxRefunds,
                     out _))
             {
                 TraceLogInvalidTx(tx, "AUTHORIZATION_REFUND_OVERFLOW");

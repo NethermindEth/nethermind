@@ -51,7 +51,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private readonly CancellationTokenSource _cancellationSource = new();
     private CancellationToken CancellationToken => _cancellationSource.Token;
 
-    private ulong MaxReorgDepth => (ulong)_config.MaxReorgDepth!.Value;
+    private ulong MaxReorgDepth => _config.MaxReorgDepth!.Value;
     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ILogIndexStorage _logIndexStorage;
@@ -101,9 +101,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private void StartProcessing(bool isForward)
     {
-        // Do not start backward sync if the target is already reached.
-        // null MinBlockNumber means nothing is indexed yet — do not skip.
-        // Explicit null-check before ulong widening avoids wrapping a negative int to a huge ulong.
+        // Skip backward sync if storage already reached the target. Null MinBlockNumber
+        // means nothing indexed yet — must not skip.
         if (!isForward && _logIndexStorage.MinBlockNumber is { } minStored && (ulong)minStored <= MinTargetBlockNumber)
         {
             MarkCompleted(false);
@@ -129,8 +128,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
 
-            // Explicit null-pattern before widening: avoids InvalidOperationException on null,
-            // and prevents a negative int from wrapping to a huge ulong.
             TrySetPivot(_logIndexStorage.MaxBlockNumber is { } storedMax ? (ulong)storedMax : null);
             TrySetPivot(_blockTree.SyncPivot.BlockNumber);
 
@@ -228,10 +225,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (_pivotSource.Task.IsCompleted)
             return false;
 
-        if (number < MinTargetBlockNumber)
-            number = MinTargetBlockNumber;
-        if (number > MaxTargetBlockNumber)
-            number = MaxTargetBlockNumber;
+        number = Math.Clamp(number, MinTargetBlockNumber, MaxTargetBlockNumber);
 
         if (number is 0)
             return false;
@@ -248,14 +242,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private void OnReceiptsInserted(object? sender, ReceiptsEventArgs args)
     {
-        // BlockNumber is now ulong; TrySetPivot already accepts ulong?.
-        ulong next = args.BlockHeader.Number;
-        if (TrySetPivot(next))
+        if (TrySetPivot(args.BlockHeader.Number))
             _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
     }
 
-    // CAST NOTE: LogIndexStorage uses int block numbers by design (performance). BestKnownNumber
-    // is ulong; the subtraction is guarded by Math.Max so the result is always >= 0 and fits in ulong.
     public ulong MaxTargetBlockNumber => _blockTree.BestKnownNumber >= MaxReorgDepth
         ? _blockTree.BestKnownNumber - MaxReorgDepth
         : 0UL;
@@ -337,8 +327,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         UpdateProgress();
 
-        // Cast to int is safe: MinTargetBlockNumber is derived from AncientReceiptsBarrierCalc which
-        // is a chain config value well within int range. MinBlockNumber is int by LogIndex design.
         if (_logIndexStorage.MinBlockNumber <= (int)MinTargetBlockNumber)
             MarkCompleted(false);
     }
@@ -351,15 +339,11 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
             ProcessingQueue queue = Direction(isForward).Queue!;
 
-            // Cast to int is safe here: LogIndex storage uses int block numbers for performance.
-            // pivotNumber is bounded by MaxTargetBlockNumber which is derived from BestKnownNumber
-            // and will not exceed int.MaxValue in practice (~2 billion blocks).
             int start = GetNextBlockNumber(isForward) ?? (isForward ? (int)pivotNumber : (int)pivotNumber - 1);
 
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
-                // Cast to int is safe: MinTargetBlockNumber fits in int (see MinTargetBlockNumber property).
                 if (!isForward && start < (int)MinTargetBlockNumber)
                 {
                     if (_logger.IsTrace)
@@ -370,9 +354,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 int batchSize = _config.MaxBatchSize;
                 int end = isForward ? start + batchSize - 1 : start - batchSize + 1;
-                // Cast to int is safe: MinTargetBlockNumber/MaxTargetBlockNumber are bounded within int range for LogIndex.
-                end = Math.Max(end, (int)MinTargetBlockNumber);
-                end = Math.Min(end, (int)MaxTargetBlockNumber);
+                end = Math.Clamp(end, (int)MinTargetBlockNumber, (int)MaxTargetBlockNumber);
 
                 // from - inclusive, to - exclusive
                 (int from, int to) = isForward
@@ -414,13 +396,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (forward.Progress is { HasEnded: false } forwardProgress)
         {
             ulong bestKnown = _blockTree.BestKnownNumber;
-            // Guard against underflow: BestKnownNumber - MaxReorgDepth - pivotNumber + 1
-            ulong forwardTarget = bestKnown >= MaxReorgDepth + pivotNumber
+            forwardProgress.TargetValue = bestKnown >= MaxReorgDepth + pivotNumber
                 ? bestKnown - MaxReorgDepth - pivotNumber + 1UL
                 : 0UL;
-            forwardProgress.TargetValue = forwardTarget;
-            // Guard against underflow: storage may not have caught up to pivotNumber yet.
-            // (ulong)max is safe: LogIndex MaxBlockNumber is a non-negative int by design.
             forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max && (ulong)max >= pivotNumber
                 ? (ulong)max - pivotNumber + 1UL
                 : 0UL);
@@ -430,14 +408,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         ref DirectionState backward = ref Direction(isForward: false);
         if (backward.Progress is { HasEnded: false } backwardProgress)
         {
-            // Both pivotNumber and MinTargetBlockNumber are ulong; no cast needed.
-            // Guard against underflow: MinTargetBlockNumber should never exceed pivotNumber in normal
-            // operation, but we defend explicitly to avoid wrapping on ulong subtraction.
             backwardProgress.TargetValue = pivotNumber >= MinTargetBlockNumber
                 ? pivotNumber - MinTargetBlockNumber
                 : 0UL;
-            // (ulong)min is safe: LogIndex MinBlockNumber is a non-negative int by design.
-            // Guard against underflow: min should never exceed pivotNumber in normal operation.
             backwardProgress.Update(_logIndexStorage.MinBlockNumber is { } min && pivotNumber >= (ulong)min
                 ? pivotNumber - (ulong)min
                 : 0UL);
@@ -471,9 +444,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (to - from > buffer.Length)
             throw new InvalidOperationException($"{GetLogPrefix()}: buffer size is too small: {buffer.Length} / {to - from}");
 
-        // LogIndex uses int block numbers internally for performance. The checked cast from int to
-        // ulong is safe here because 'from' and 'to' are always non-negative LogIndex int values
-        // (bounded by MinTargetBlockNumber / MaxTargetBlockNumber checks in DoQueueBlocks).
         int nextIndex = isForward ? from : to - 1;
         if (!TryGetBlockReceipts((ulong)nextIndex, out buffer[0]))
             return ReadOnlySpan<BlockReceipts>.Empty;
@@ -485,25 +455,19 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         }, i =>
         {
             int bufferIndex = isForward ? i - from : to - 1 - i;
-            // Cast to ulong is safe: i is a non-negative LogIndex int block number (see above).
             if (buffer[bufferIndex] == default)
                 TryGetBlockReceipts((ulong)i, out buffer[bufferIndex]);
         });
 
-        // Array.IndexOf returns int; -1 means no default element found (full buffer valid).
         int endIndex = Array.IndexOf(buffer, default);
         return endIndex < 0 ? buffer : buffer.AsSpan(..endIndex);
     }
 
     // TODO: move to IReceiptStorage?
-    // CAST NOTE: blockNumber is a LogIndex int block number promoted to ulong at the call site.
-    // LogIndex intentionally keeps int internally for performance; the caller is responsible for
-    // ensuring the value is non-negative before widening (guaranteed by DoQueueBlocks bounds checks).
     private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts)
     {
         blockReceipts = default;
 
-        // BlockNumber is now ulong throughout the codebase; no cast needed here.
         if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
         {
             return false;
@@ -511,7 +475,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (!block.Header.HasTransactions)
         {
-            // Cast back to int is safe: blockNumber originates from a LogIndex int (see above).
             blockReceipts = new((int)blockNumber, []);
             return true;
         }
@@ -523,7 +486,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             return false; // block should have transactions but nothing in storage
         }
 
-        // Cast back to int is safe: blockNumber originates from a LogIndex int (see above).
         blockReceipts = new((int)blockNumber, receipts);
         return true;
     }

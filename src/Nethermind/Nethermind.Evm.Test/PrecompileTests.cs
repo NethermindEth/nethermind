@@ -20,7 +20,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     where TTests : PrecompileTests<TPrecompile, TTests>, IPrecompileTests
 {
     [method: JsonConstructor]
-    public record TestCase(ReadOnlyMemory<byte> Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError)
+    public record TestCase(ReadOnlyMemory<byte> Input, byte[]? Expected, string Name, ulong? Gas, string? ExpectedError)
     {
         public IReleaseSpec Spec { get; internal set; } = DefaultSpec;
 
@@ -93,7 +93,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
 
             if (testCase.Gas is not null)
             {
-                Assert.That((long)gas, Is.EqualTo(testCase.Gas), reason);
+                Assert.That(gas, Is.EqualTo(testCase.Gas), reason);
             }
         }
     }

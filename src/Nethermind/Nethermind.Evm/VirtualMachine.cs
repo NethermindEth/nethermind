@@ -479,8 +479,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
         else if (!chargedCodeDeposit && _txTracer.IsTracingActions)
         {
-            // Cast note: 0UL is the canonical gas value here — no gas remains after a failed-but-non-halting
-            // deposit. ReportActionEnd takes ulong; using 0UL avoids any implicit narrowing ambiguity.
             _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
         }
     }
@@ -660,9 +658,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ulong pendingRefund = amount - appliedRefund;
         if (pendingRefund > 0)
         {
-            // The restored state gas may have been paid by an ancestor frame. It is still
-            // immediately spendable in the restoring frame, but the state-gas-used reduction
-            // must propagate upward separately so child state gas is not erased on return.
+            // Restored state gas paid by an ancestor frame stays spendable here; the
+            // state-gas-used reduction must propagate upward separately.
             TGasPolicy.AddStateGasRefundToReservoir(ref gas, pendingRefund, trackSpillRefund);
             vmState.StateGasRefundPending += pendingRefund;
             vmState.StateGasRefundAdvanced += pendingRefund;
@@ -995,7 +992,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        // Both fields are ulong after IPrecompile.BaseGasCost / DataGasCost interface migration.
         ulong baseGasCost = precompile.BaseGasCost(spec);
         ulong dataGasCost = precompile.DataGasCost(callData, spec);
 
@@ -1017,9 +1013,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        // Guard against addition overflow before summing into UpdateGas.
-        // The previous form — (ulong)a + (ulong)b > ulong.MaxValue — was tautologically false:
-        // the addition already happened in ulong and silently wrapped before the comparison.
+        // Guard against ulong overflow before summing into UpdateGas.
         if (baseGasCost > ulong.MaxValue - dataGasCost ||
             !TGasPolicy.UpdateGas(ref gas, baseGasCost + dataGasCost))
         {

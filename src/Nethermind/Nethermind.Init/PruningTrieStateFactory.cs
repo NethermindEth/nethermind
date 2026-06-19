@@ -122,7 +122,7 @@ public class MainPruningTrieStoreFactory
 
         if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < syncConfig.SnapServingMaxDepth)
         {
-            logIndexConfig.MaxReorgDepth ??= (int)pruningConfig.PruningBoundary;
+            logIndexConfig.MaxReorgDepth ??= pruningConfig.PruningBoundary;
 
             if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than {syncConfig.SnapServingMaxDepth}. Setting to {syncConfig.SnapServingMaxDepth}.");
             pruningConfig.PruningBoundary = syncConfig.SnapServingMaxDepth;

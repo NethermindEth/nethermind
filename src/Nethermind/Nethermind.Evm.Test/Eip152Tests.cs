@@ -13,12 +13,9 @@ public class Eip152Tests : VirtualMachineTestsBase
 {
     private const int InputLength = 213;
 
-    protected override ulong BlockNumber =>
-        _blockNumberAdjustment >= 0
-            ? MainnetSpecProvider.IstanbulBlockNumber + (ulong)_blockNumberAdjustment
-            : MainnetSpecProvider.IstanbulBlockNumber - (ulong)-_blockNumberAdjustment;
+    protected override ulong BlockNumber => unchecked(MainnetSpecProvider.IstanbulBlockNumber + (ulong)_blockNumberAdjustment);
 
-    private int _blockNumberAdjustment;
+    private long _blockNumberAdjustment;
 
     [TearDown]
     public override void TearDown()

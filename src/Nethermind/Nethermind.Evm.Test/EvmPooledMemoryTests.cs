@@ -24,36 +24,36 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
-    [TestCase(32, 1)]
-    [TestCase(0, 0)]
-    [TestCase(33, 2)]
-    [TestCase(64, 2)]
-    [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
-    public void Div32Ceiling(int input, int expectedResult)
+    [TestCase(32UL, 1UL)]
+    [TestCase(0UL, 0UL)]
+    [TestCase(33UL, 2UL)]
+    [TestCase(64UL, 2UL)]
+    [TestCase((ulong)int.MaxValue, (ulong)(int.MaxValue / 32 + 1))]
+    public void Div32Ceiling(ulong input, ulong expectedResult)
     {
-        ulong result = EvmCalculations.Div32Ceiling((ulong)input);
+        ulong result = EvmCalculations.Div32Ceiling(input);
         TestContext.Out.WriteLine($"Memory cost (gas): {result}");
-        Assert.That(result, Is.EqualTo((ulong)expectedResult));
+        Assert.That(result, Is.EqualTo(expectedResult));
     }
 
     private const int MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
 
-    [TestCase(0, 0)]
-    [TestCase(0, 32)]
-    [TestCase(0, 256)]
-    [TestCase(0, 2048)]
-    [TestCase(0, MaxCodeSize)]
-    [TestCase(10 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(100 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(1000 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(0, MemorySizes.MiB)]
+    [TestCase(0UL, 0UL)]
+    [TestCase(0UL, 32UL)]
+    [TestCase(0UL, 256UL)]
+    [TestCase(0UL, 2048UL)]
+    [TestCase(0UL, (ulong)MaxCodeSize)]
+    [TestCase(10UL * MaxCodeSize, (ulong)MaxCodeSize)]
+    [TestCase(100UL * MaxCodeSize, (ulong)MaxCodeSize)]
+    [TestCase(1000UL * MaxCodeSize, (ulong)MaxCodeSize)]
+    [TestCase(0UL, (ulong)MemorySizes.MiB)]
     // Note: Int32.MaxValue was removed as a test case because after word alignment
     // it exceeds the maximum allowed memory size and correctly returns out-of-gas.
-    public void MemoryCost(int destination, int memoryAllocation)
+    public void MemoryCost(ulong destination, ulong memoryAllocation)
     {
         EvmPooledMemory memory = new();
-        UInt256 dest = (UInt256)destination;
-        ulong result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation, out bool outOfGas);
+        UInt256 dest = destination;
+        ulong result = memory.CalculateMemoryCost(in dest, memoryAllocation, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
         TestContext.Out.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");
     }
@@ -132,7 +132,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     public void CalculateMemoryCost_MaxAllowedSize_ShouldReturnExpectedCostForBothLengthOverloads()
     {
         decimal maxWords = EvmPooledMemory.MaxMemoryWords;
-        ulong expectedCost = (ulong)decimal.ToInt64(
+        ulong expectedCost = decimal.ToUInt64(
             maxWords * GasCostOf.Memory +
             decimal.Floor((maxWords * maxWords) / 512m));
 

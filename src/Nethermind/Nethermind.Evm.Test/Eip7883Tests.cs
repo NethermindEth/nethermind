@@ -21,7 +21,7 @@ public class Eip7883Tests
 
         IReleaseSpec? spec = test.FusakaEnabled ? Osaka.Instance : Prague.Instance;
         ulong gas = ModExpPrecompile.Instance.DataGasCost(inputData, spec);
-        Assert.That(gas, Is.EqualTo((ulong)test.Result));
+        Assert.That(gas, Is.EqualTo(test.Result));
     }
 
     public class Eip7883TestCase
@@ -31,7 +31,7 @@ public class Eip7883Tests
         public UInt256 BaseLength { get; set; }
         public UInt256 ExpLength { get; set; }
         public UInt256 ModulusLength { get; set; }
-        public long Result { get; set; }
+        public ulong Result { get; set; }
         public override string ToString() => $"Lp: {Lp}, " +
                    $"FusakaEnabled: {FusakaEnabled}, " +
                    $"BaseLength: {BaseLength}, " +
@@ -44,67 +44,67 @@ public class Eip7883Tests
     {
         // eip enabled test cases
         yield return new Eip7883TestCase
-        { Lp = 1, FusakaEnabled = true, BaseLength = 32, ExpLength = 32, ModulusLength = 32, Result = 4080L };
+        { Lp = 1, FusakaEnabled = true, BaseLength = 32, ExpLength = 32, ModulusLength = 32, Result = 4080UL };
         yield return new Eip7883TestCase
-        { Lp = 2, FusakaEnabled = true, BaseLength = 32, ExpLength = 32, ModulusLength = 1024, Result = 8355840L };
+        { Lp = 2, FusakaEnabled = true, BaseLength = 32, ExpLength = 32, ModulusLength = 1024, Result = 8355840UL };
         yield return new Eip7883TestCase
-        { Lp = 3, FusakaEnabled = true, BaseLength = 32, ExpLength = 1024, ModulusLength = 32, Result = 258032L };
+        { Lp = 3, FusakaEnabled = true, BaseLength = 32, ExpLength = 1024, ModulusLength = 32, Result = 258032UL };
         yield return new Eip7883TestCase
-        { Lp = 4, FusakaEnabled = true, BaseLength = 1024, ExpLength = 32, ModulusLength = 32, Result = 8355840L };
+        { Lp = 4, FusakaEnabled = true, BaseLength = 1024, ExpLength = 32, ModulusLength = 32, Result = 8355840UL };
         yield return new Eip7883TestCase
-        { Lp = 5, FusakaEnabled = true, BaseLength = 32, ExpLength = 1024, ModulusLength = 1024, Result = 528449536L };
+        { Lp = 5, FusakaEnabled = true, BaseLength = 32, ExpLength = 1024, ModulusLength = 1024, Result = 528449536UL };
         yield return new Eip7883TestCase
-        { Lp = 6, FusakaEnabled = true, BaseLength = 10000, ExpLength = 1024, ModulusLength = 32, Result = 50396875000L };
+        { Lp = 6, FusakaEnabled = true, BaseLength = 10000, ExpLength = 1024, ModulusLength = 32, Result = 50396875000UL };
         yield return new Eip7883TestCase
-        { Lp = 7, FusakaEnabled = true, BaseLength = 1024, ExpLength = 10000, ModulusLength = 1024, Result = 5234458624L };
+        { Lp = 7, FusakaEnabled = true, BaseLength = 1024, ExpLength = 10000, ModulusLength = 1024, Result = 5234458624UL };
         yield return new Eip7883TestCase
-        { Lp = 8, FusakaEnabled = true, BaseLength = 1024, ExpLength = 1024, ModulusLength = 10000, Result = 50396875000L };
+        { Lp = 8, FusakaEnabled = true, BaseLength = 1024, ExpLength = 1024, ModulusLength = 10000, Result = 50396875000UL };
         yield return new Eip7883TestCase        // testing exponent >32bytes
-        { Lp = 9, FusakaEnabled = true, BaseLength = 8, ExpLength = 81, ModulusLength = 8, Result = 16624L };
+        { Lp = 9, FusakaEnabled = true, BaseLength = 8, ExpLength = 81, ModulusLength = 8, Result = 16624UL };
         yield return new Eip7883TestCase        // testing base/modulo below 32 bytes
-        { Lp = 10, FusakaEnabled = true, BaseLength = 8, ExpLength = 8, ModulusLength = 8, Result = 1008L };
+        { Lp = 10, FusakaEnabled = true, BaseLength = 8, ExpLength = 8, ModulusLength = 8, Result = 1008UL };
         yield return new Eip7883TestCase        // testing 3x general pricing mechanism
-        { Lp = 11, FusakaEnabled = true, BaseLength = 32, ExpLength = 5, ModulusLength = 32, Result = 624L };
+        { Lp = 11, FusakaEnabled = true, BaseLength = 32, ExpLength = 5, ModulusLength = 32, Result = 624UL };
         yield return new Eip7883TestCase        // testing bump of min price
-        { Lp = 12, FusakaEnabled = true, BaseLength = 32, ExpLength = 1, ModulusLength = 32, Result = 500L };
+        { Lp = 12, FusakaEnabled = true, BaseLength = 32, ExpLength = 1, ModulusLength = 32, Result = 500UL };
         yield return new Eip7883TestCase        // testing base >32bytes
-        { Lp = 13, FusakaEnabled = true, BaseLength = 40, ExpLength = 8, ModulusLength = 32, Result = 3150L };
+        { Lp = 13, FusakaEnabled = true, BaseLength = 40, ExpLength = 8, ModulusLength = 32, Result = 3150UL };
         yield return new Eip7883TestCase        // testing modulo >32bytes
-        { Lp = 14, FusakaEnabled = true, BaseLength = 32, ExpLength = 8, ModulusLength = 40, Result = 3150L };
+        { Lp = 14, FusakaEnabled = true, BaseLength = 32, ExpLength = 8, ModulusLength = 40, Result = 3150UL };
         yield return new Eip7883TestCase        // testing base&modulo >32bytes
-        { Lp = 15, FusakaEnabled = true, BaseLength = 40, ExpLength = 8, ModulusLength = 40, Result = 3150L };
+        { Lp = 15, FusakaEnabled = true, BaseLength = 40, ExpLength = 8, ModulusLength = 40, Result = 3150UL };
 
         // eip disabled test cases
         yield return new Eip7883TestCase
-        { Lp = 101, FusakaEnabled = false, BaseLength = 32, ExpLength = 32, ModulusLength = 32, Result = 1360L };
+        { Lp = 101, FusakaEnabled = false, BaseLength = 32, ExpLength = 32, ModulusLength = 32, Result = 1360UL };
         yield return new Eip7883TestCase
-        { Lp = 102, FusakaEnabled = false, BaseLength = 32, ExpLength = 32, ModulusLength = 10000, Result = 132812500L };
+        { Lp = 102, FusakaEnabled = false, BaseLength = 32, ExpLength = 32, ModulusLength = 10000, Result = 132812500UL };
         yield return new Eip7883TestCase
-        { Lp = 103, FusakaEnabled = false, BaseLength = 32, ExpLength = 10000, ModulusLength = 32, Result = 426661L };
+        { Lp = 103, FusakaEnabled = false, BaseLength = 32, ExpLength = 10000, ModulusLength = 32, Result = 426661UL };
         yield return new Eip7883TestCase
-        { Lp = 104, FusakaEnabled = false, BaseLength = 10000, ExpLength = 32, ModulusLength = 32, Result = 132812500L };
+        { Lp = 104, FusakaEnabled = false, BaseLength = 10000, ExpLength = 32, ModulusLength = 32, Result = 132812500UL };
         yield return new Eip7883TestCase
-        { Lp = 105, FusakaEnabled = false, BaseLength = 32, ExpLength = 10000, ModulusLength = 10000, Result = 41666145833L };
+        { Lp = 105, FusakaEnabled = false, BaseLength = 32, ExpLength = 10000, ModulusLength = 10000, Result = 41666145833UL };
         yield return new Eip7883TestCase
-        { Lp = 106, FusakaEnabled = false, BaseLength = 10000, ExpLength = 10000, ModulusLength = 32, Result = 41666145833L };
+        { Lp = 106, FusakaEnabled = false, BaseLength = 10000, ExpLength = 10000, ModulusLength = 32, Result = 41666145833UL };
         yield return new Eip7883TestCase
-        { Lp = 107, FusakaEnabled = false, BaseLength = 10000, ExpLength = 32, ModulusLength = 10000, Result = 132812500L };
+        { Lp = 107, FusakaEnabled = false, BaseLength = 10000, ExpLength = 32, ModulusLength = 10000, Result = 132812500UL };
         yield return new Eip7883TestCase
-        { Lp = 108, FusakaEnabled = false, BaseLength = 10000, ExpLength = 10000, ModulusLength = 10000, Result = 41666145833L };
+        { Lp = 108, FusakaEnabled = false, BaseLength = 10000, ExpLength = 10000, ModulusLength = 10000, Result = 41666145833UL };
         yield return new Eip7883TestCase
-        { Lp = 109, FusakaEnabled = false, BaseLength = 8, ExpLength = 81, ModulusLength = 8, Result = 215L };
+        { Lp = 109, FusakaEnabled = false, BaseLength = 8, ExpLength = 81, ModulusLength = 8, Result = 215UL };
         yield return new Eip7883TestCase
-        { Lp = 110, FusakaEnabled = false, BaseLength = 8, ExpLength = 8, ModulusLength = 8, Result = 200L };
+        { Lp = 110, FusakaEnabled = false, BaseLength = 8, ExpLength = 8, ModulusLength = 8, Result = 200UL };
         yield return new Eip7883TestCase
-        { Lp = 111, FusakaEnabled = false, BaseLength = 32, ExpLength = 5, ModulusLength = 32, Result = 208L };
+        { Lp = 111, FusakaEnabled = false, BaseLength = 32, ExpLength = 5, ModulusLength = 32, Result = 208UL };
         yield return new Eip7883TestCase
-        { Lp = 112, FusakaEnabled = false, BaseLength = 32, ExpLength = 1, ModulusLength = 32, Result = 200L };
+        { Lp = 112, FusakaEnabled = false, BaseLength = 32, ExpLength = 1, ModulusLength = 32, Result = 200UL };
         yield return new Eip7883TestCase
-        { Lp = 113, FusakaEnabled = false, BaseLength = 40, ExpLength = 8, ModulusLength = 32, Result = 525L };
+        { Lp = 113, FusakaEnabled = false, BaseLength = 40, ExpLength = 8, ModulusLength = 32, Result = 525UL };
         yield return new Eip7883TestCase
-        { Lp = 114, FusakaEnabled = false, BaseLength = 32, ExpLength = 8, ModulusLength = 40, Result = 525L };
+        { Lp = 114, FusakaEnabled = false, BaseLength = 32, ExpLength = 8, ModulusLength = 40, Result = 525UL };
         yield return new Eip7883TestCase
-        { Lp = 115, FusakaEnabled = false, BaseLength = 40, ExpLength = 8, ModulusLength = 40, Result = 525L };
+        { Lp = 115, FusakaEnabled = false, BaseLength = 40, ExpLength = 8, ModulusLength = 40, Result = 525UL };
     }
 
     private static ReadOnlyMemory<byte> PrepareInput(UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)

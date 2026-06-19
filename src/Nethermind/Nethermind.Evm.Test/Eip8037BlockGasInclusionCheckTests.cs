@@ -170,14 +170,14 @@ public class Eip8037BlockGasInclusionCheckTests
         }
     }
 
-    [TestCase(300L, 100L, TestName = "Calculate_block_regular_gas_floor_clamps_low_regular_gas")]
-    [TestCase(0L, 0L, TestName = "Calculate_block_regular_gas_allows_negative_execution_intermediate")]
-    public void Calculate_block_regular_gas_clamps_to_floor(long initialRegular, long remainingRegular)
+    [TestCase(300UL, 100UL, TestName = "Calculate_block_regular_gas_floor_clamps_low_regular_gas")]
+    [TestCase(0UL, 0UL, TestName = "Calculate_block_regular_gas_allows_negative_execution_intermediate")]
+    public void Calculate_block_regular_gas_clamps_to_floor(ulong initialRegular, ulong remainingRegular)
     {
         ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
             intrinsicRegularGas: 21_000,
-            initialRegularGas: (ulong)initialRegular,
-            remainingRegularGas: (ulong)remainingRegular,
+            initialRegularGas: initialRegular,
+            remainingRegularGas: remainingRegular,
             stateGasSpill: 200,
             stateGasSpillReclassified: 0,
             floorGas: 53_000);
