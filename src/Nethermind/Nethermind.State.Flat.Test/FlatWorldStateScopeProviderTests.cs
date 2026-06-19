@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -31,6 +34,7 @@ public class FlatWorldStateScopeProviderTests
     {
         private readonly ContainerBuilder _containerBuilder;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly Lazy<WarmReadPool>? _warmReadPool;
 
         private IContainer? _container;
         private IContainer Container => _container ??= _containerBuilder.Build();
@@ -41,9 +45,13 @@ public class FlatWorldStateScopeProviderTests
         public Snapshot? LastCommittedSnapshot { get; set; }
         public TransientResource? LastCreatedCachedResource { get; set; }
 
-        public TestContext(FlatDbConfig? config = null)
+        public TestContext(FlatDbConfig? config = null, bool withWarmReadPool = false)
         {
             config ??= new FlatDbConfig();
+            if (withWarmReadPool)
+            {
+                _warmReadPool = new Lazy<WarmReadPool>(() => new WarmReadPool(1));
+            }
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
@@ -96,10 +104,21 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
                 .ExternallyOwned();
 
-        private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
+        private void ConfigureFlatWorldStateScope()
+        {
+            if (_warmReadPool is not null)
+            {
+                _containerBuilder.RegisterType<FlatWorldStateScope>()
+                    .SingleInstance()
+                    .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
+                    .WithParameter(new NamedParameter("warmReadPool", _warmReadPool));
+                return;
+            }
+
+            _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
-                .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
-                ;
+                .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)));
+        }
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
 
@@ -111,6 +130,10 @@ public class FlatWorldStateScopeProviderTests
             if (LastCreatedCachedResource is not null) ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, LastCreatedCachedResource);
 
             _container?.Dispose();
+            if (_warmReadPool?.IsValueCreated == true)
+            {
+                _warmReadPool.Value.Dispose();
+            }
             _cancellationTokenSource.Dispose();
         }
 
@@ -133,6 +156,24 @@ public class FlatWorldStateScopeProviderTests
                 ResourcePool,
                 ResourcePool.Usage.MainBlockProcessing));
         }
+    }
+
+    private sealed class RecordingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    {
+        public List<(StorageCell Cell, byte[] Value)> Slots { get; } = [];
+
+        public void OnAccountRead(Address address, Account? account) { }
+
+        public void OnStorageRead(in StorageCell storageCell, byte[] value) =>
+            Slots.Add((storageCell, value));
+
+        public bool StillNeeded(Address address, out Account? account)
+        {
+            account = null;
+            return true;
+        }
+
+        public bool StillNeeded(in StorageCell storageCell) => true;
     }
 
 
@@ -853,6 +894,39 @@ public class FlatWorldStateScopeProviderTests
         // Should complete well within 5 seconds when nothing is in flight.
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(disposeTask.IsCompletedSuccessfully, Is.True);
+    }
+
+    [Test]
+    public async Task HintBal_WithSink_ReadsSlotsThroughAccountPath()
+    {
+        using TestContext ctx = new(withWarmReadPool: true);
+
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        ValueHash256 accountPath = address.ToAccountPath;
+        Account account = new(0, 0, TestItem.KeccakA, Keccak.OfAnEmptyString);
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+
+        SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero([0x12]);
+        ctx.PersistenceReader.TryGetSlot(in accountPath, slot, ref Arg.Any<SlotValue>())
+            .Returns(x =>
+            {
+                x[2] = outValue;
+                return true;
+            });
+
+        ReadOnlyBlockAccessList bal = new(
+            [new ReadOnlyAccountChanges(address, [], [slot], [], [], [])],
+            itemCount: 2);
+        RecordingBalSink sink = new();
+
+        await ctx.Scope.HintBal(bal, sink);
+
+        ctx.PersistenceReader.Received(1).TryGetSlot(in accountPath, slot, ref Arg.Any<SlotValue>());
+        ctx.PersistenceReader.DidNotReceive().TryGetSlot(address, slot, ref Arg.Any<SlotValue>());
+        Assert.That(sink.Slots, Has.Count.EqualTo(1));
+        Assert.That(sink.Slots[0].Cell, Is.EqualTo(new StorageCell(address, in slot)));
+        Assert.That(sink.Slots[0].Value, Is.EqualTo(new byte[] { 0x12 }));
     }
 
 }

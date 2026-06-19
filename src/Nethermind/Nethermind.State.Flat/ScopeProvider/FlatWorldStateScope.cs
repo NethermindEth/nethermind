@@ -274,18 +274,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (totalSlots == 0) return;
 
-        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+        using ArrayPoolList<(Address Address, ValueHash256 AccountPath, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
         int idx = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
             if (accounts[i] is null) continue;
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
+            ValueHash256 accountPath = address.ToAccountPath;
             int selfDestructIdx = selfDestructIdxs[i];
             foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
-                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+                jobs[idx++] = (address, accountPath, selfDestructIdx, slotChanges.Key);
             foreach (UInt256 readKey in ac.StorageReads)
-                jobs[idx++] = (address, selfDestructIdx, readKey);
+                jobs[idx++] = (address, accountPath, selfDestructIdx, readKey);
         }
 
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
@@ -296,16 +297,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         pool.Run(idx, workers, j =>
         {
             if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+            (Address address, ValueHash256 accountPath, int selfDestructIdx, UInt256 slot) = jobs[j];
+            ReadSlotToSink(sink, address, in accountPath, in slot, selfDestructIdx);
         }, parallelOptions.CancellationToken);
     }
 
-    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
+    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in ValueHash256 accountPath, in UInt256 slot, int selfDestructIdx)
     {
         StorageCell cell = new(address, in slot);
         if (!sink.StillNeeded(in cell)) return;
-        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
+        byte[]? raw = _snapshotBundle.GetSlot(address, in accountPath, in slot, selfDestructIdx);
         sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
     }
 
