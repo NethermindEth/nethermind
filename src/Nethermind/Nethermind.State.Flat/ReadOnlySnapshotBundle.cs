@@ -87,6 +87,15 @@ public sealed class ReadOnlySnapshotBundle(
 
     public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
     {
+        ValueHash256 accountPath = ValueKeccak.Zero;
+        return GetSlot(selfDestructStateIdx, key, in accountPath, hasAccountPath: false);
+    }
+
+    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, in ValueHash256 accountPath) =>
+        GetSlot(selfDestructStateIdx, key, in accountPath, hasAccountPath: true);
+
+    private byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, in ValueHash256 accountPath, bool hasAccountPath)
+    {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -108,7 +117,14 @@ public sealed class ReadOnlySnapshotBundle(
         SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
+        if (hasAccountPath && !persistenceReader.IsPreimageMode)
+        {
+            persistenceReader.TryGetSlot(in accountPath, key.Key.Item2, ref outSlotValue);
+        }
+        else
+        {
+            persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
+        }
         byte[]? value = outSlotValue.ToEvmBytes();
 
         if (recordDetailedMetrics)

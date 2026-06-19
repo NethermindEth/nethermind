@@ -292,6 +292,7 @@ public static class BasePersistence
     {
         public Account? GetAccount(Address address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+        public bool TryGetSlot(in ValueHash256 accountPath, in UInt256 slot, ref SlotValue outValue);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
@@ -409,6 +410,14 @@ public static class BasePersistence
             return TryGetSlotRaw(address.ToAccountPath, slotHash, ref outValue);
         }
 
+        public bool TryGetSlot(in ValueHash256 accountPath, in UInt256 slot, ref SlotValue outValue)
+        {
+            ValueHash256 slotHash = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+
+            return TryGetSlotRaw(in accountPath, slotHash, ref outValue);
+        }
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
@@ -449,6 +458,9 @@ public static class BasePersistence
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
+
+        public bool TryGetSlot(in ValueHash256 accountPath, in UInt256 slot, ref SlotValue outValue) =>
+            _flatReader.TryGetSlot(in accountPath, in slot, ref outValue);
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStateRlp(path, flags);

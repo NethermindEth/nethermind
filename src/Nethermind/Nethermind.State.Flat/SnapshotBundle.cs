@@ -111,7 +111,20 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         HashedKey<(Address, UInt256)> key = new((address, index));
+        ValueHash256 accountPath = ValueKeccak.Zero;
+        return GetSlot(selfDestructStateIdx, key, in accountPath, hasAccountPath: false);
+    }
 
+    public byte[]? GetSlot(Address address, in ValueHash256 accountPath, in UInt256 index, int selfDestructStateIdx)
+    {
+        GuardDispose();
+
+        HashedKey<(Address, UInt256)> key = new((address, index));
+        return GetSlot(selfDestructStateIdx, key, in accountPath, hasAccountPath: true);
+    }
+
+    private byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, in ValueHash256 accountPath, bool hasAccountPath)
+    {
         if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
         {
             return slotValue?.ToEvmBytes();
@@ -138,7 +151,9 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
+        return hasAccountPath
+            ? _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, in accountPath)
+            : _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)

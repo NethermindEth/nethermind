@@ -218,6 +218,14 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             return TryGetSlotRaw(fakeHash, fakeSlotHash, ref outValue);
         }
 
+        public bool TryGetSlot(in ValueHash256 accountPath, in UInt256 slot, ref SlotValue outValue)
+        {
+            ValueHash256 fakeSlotHash = ValueKeccak.Zero;
+            slot.ToBigEndian(fakeSlotHash.BytesAsSpan);
+
+            return TryGetSlotRaw(in accountPath, fakeSlotHash, ref outValue);
+        }
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             throw new InvalidOperationException("Raw operation not available in preimage mode");
 

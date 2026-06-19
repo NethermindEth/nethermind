@@ -31,6 +31,9 @@ public interface IPersistence
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+
+        // Same as above, but uses an already-computed account path.
+        bool TryGetSlot(in ValueHash256 accountPath, in UInt256 slot, ref SlotValue outValue);
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
