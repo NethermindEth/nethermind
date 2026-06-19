@@ -736,10 +736,14 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     public bool WarmUp(Address address)
         => GetState(address) is not null;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref ChangeTrace GetOrAddBlockChange(AddressAsKey key, out bool exists)
+        => ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, key, out exists);
+
     private Account? GetState(Address address)
     {
         AddressAsKey addressAsKey = address;
-        ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(addressAsKey, out bool exists);
         if (!exists)
         {
             Metrics.IncrementStateTreeReads();
@@ -762,7 +766,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             EvmMetrics.IncrementAccountDeleted();
         }
 
-        ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }
