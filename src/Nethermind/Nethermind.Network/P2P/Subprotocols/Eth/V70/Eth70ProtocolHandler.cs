@@ -112,8 +112,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 }
 
                 long requestedStartIndex = blockIndex == 0 ? getReceiptsMessage.FirstBlockReceiptIndex : 0;
-                // ulong (not uint) so an adversarial negative long isn't truncated.
-                if ((ulong)requestedStartIndex > (uint)receipts.Length)
+                if (requestedStartIndex < 0 || requestedStartIndex > receipts.Length)
                 {
                     throw new SubprotocolException($"Invalid firstBlockReceiptIndex {requestedStartIndex} for block receipts length {receipts.Length}");
                 }

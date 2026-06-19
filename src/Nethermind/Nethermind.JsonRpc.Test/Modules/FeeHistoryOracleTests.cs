@@ -502,7 +502,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree? blockTree = null,
             IReceiptStorage? receiptStorage = null,
             ISpecProvider? specProvider = null,
-            int? maxDistFromHead = null,
+            ulong? maxDistFromHead = null,
             IReleaseSpec? spec = null)
         {
             ISpecProvider provider;
@@ -524,7 +524,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockTree ?? Substitute.For<IBlockTree>(),
                 receiptStorage ?? Substitute.For<IReceiptStorage>(),
                 provider,
-                (ulong?)maxDistFromHead);
+                maxDistFromHead);
         }
     }
 }

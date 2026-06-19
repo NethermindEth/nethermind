@@ -1497,19 +1497,19 @@ public class TraceRpcModuleTests
         return (context, new BlockParameter(context.Blockchain.BlockTree.Head!.Number));
     }
 
-    private static long ModExpGasUsed(
+    private static ulong ModExpGasUsed(
         Context context, BlockParameter block, string forkName) =>
-        (long)context.TraceRpcModule
+        context.TraceRpcModule
             .trace_block(block, forkName)
             .Data.First(t => t.Type == "call").Result!.GasUsed;
 
-    [TestCase(nameof(Istanbul), 13056L, "pre-EIP-2565 formula: 32^2 * 255 / 20 = 13056")]
-    [TestCase(nameof(Berlin), 1360L, "EIP-2565 formula: ceil(32/8)^2 * 255 / 3 = 16 * 255 / 3 = 1360")]
-    public async Task trace_block_modexp_gas_cost_respects_fork_override(string forkName, long expectedGas, string reason)
+    [TestCase(nameof(Istanbul), 13056UL, "pre-EIP-2565 formula: 32^2 * 255 / 20 = 13056")]
+    [TestCase(nameof(Berlin), 1360UL, "EIP-2565 formula: ceil(32/8)^2 * 255 / 3 = 16 * 255 / 3 = 1360")]
+    public async Task trace_block_modexp_gas_cost_respects_fork_override(string forkName, ulong expectedGas, string reason)
     {
         (Context context, BlockParameter block) = await BuildModExpBlockAsync();
 
-        long gasUsed = ModExpGasUsed(context, block, forkName);
+        ulong gasUsed = ModExpGasUsed(context, block, forkName);
 
         Assert.That(gasUsed, Is.EqualTo(expectedGas), reason);
     }
@@ -1519,9 +1519,9 @@ public class TraceRpcModuleTests
     {
         (Context context, BlockParameter block) = await BuildModExpBlockAsync();
 
-        long firstIstanbulGas = ModExpGasUsed(context, block, nameof(Istanbul));
+        ulong firstIstanbulGas = ModExpGasUsed(context, block, nameof(Istanbul));
         ModExpGasUsed(context, block, nameof(Berlin));
-        long secondIstanbulGas = ModExpGasUsed(context, block, nameof(Istanbul));
+        ulong secondIstanbulGas = ModExpGasUsed(context, block, nameof(Istanbul));
 
         Assert.That(secondIstanbulGas, Is.EqualTo(firstIstanbulGas),
             "the Berlin override from the intervening call must not leak into subsequent calls");
