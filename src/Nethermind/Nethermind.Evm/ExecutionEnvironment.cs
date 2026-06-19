@@ -17,7 +17,11 @@ namespace Nethermind.Evm
     /// </summary>
     public sealed class ExecutionEnvironment : IDisposable
     {
+#if ZK_EVM
+        private static readonly ZkPool<ExecutionEnvironment> _pool = new();
+#else
         private static readonly ConcurrentQueue<ExecutionEnvironment> _pool = new();
+#endif
         private UInt256 _value;
 
         /// <summary>
@@ -69,7 +73,15 @@ namespace Nethermind.Evm
             in UInt256 value,
             in ReadOnlyMemory<byte> inputData)
         {
-            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment pooled) ? pooled : new ExecutionEnvironment();
+            ExecutionEnvironment env;
+            if (_pool.TryDequeue(out ExecutionEnvironment pooled))
+            {
+                env = pooled;
+            }
+            else
+            {
+                env = new ExecutionEnvironment();
+            }
             env.CodeInfo = codeInfo;
             env.ExecutingAccount = executingAccount;
             env.Caller = caller;

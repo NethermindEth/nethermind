@@ -80,12 +80,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
-    protected readonly Stack<VmState<TGasPolicy>> _stateStack = new();
+    // Pre-sized to the EVM max call depth (1024, EIP-150) so this never resizes during a
+    // transaction. The VirtualMachine is reused across transactions; if the backing grew inside a
+    // per-tx scratch scope it would be reclaimed at the reset, dangling the persistent VM.
+    protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(1025);
 
     protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
 
     protected ITxTracer _txTracer = NullTxTracer.Instance;
+#if ZK_EVM
+    // ITxTracer.IsTracingActions is read per CALL / per precompile-call (9 hot sites). The
+    // tracer is fixed per execution and its tracing flags are constant, so cache the bool once
+    // (set in ExecuteTransaction) to drop the per-call interface dispatch. Same pattern as the
+    // cached IReleaseSpec flags.
+    private bool _isTracingActionsCached;
+#endif
 
     private ICodeInfoRepository _codeInfoRepository;
 
@@ -98,6 +108,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public IReleaseSpec Spec => _blockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
+#if ZK_EVM
+    private bool IsTracingActionsFast => _isTracingActionsCached;
+#else
+    private bool IsTracingActionsFast => _txTracer.IsTracingActions;
+#endif
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
@@ -145,6 +160,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
+#if ZK_EVM
+        _isTracingActionsCached = txTracer.IsTracingActions;
+#endif
         _worldState = worldState;
 
         // Reset Parity touch bug state to prevent cross-transaction leakage.
@@ -179,7 +197,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // If the current state represents a precompiled contract, handle it separately.
                 if (_currentState.IsPrecompile)
                 {
-                    callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure, out substateError);
+                    callResult = ExecutePrecompile(_currentState, IsTracingActionsFast, out failure, out substateError);
                     if (failure is not null)
                     {
                         // Jump to the failure handler if a precompile error occurred.
@@ -193,7 +211,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         AddTransferLog(_currentState);
 
                         // Start transaction tracing for non-continuation frames if tracing is enabled.
-                        if (_txTracer.IsTracingActions)
+                        if (IsTracingActionsFast)
                         {
                             TraceTransactionActionStart(_currentState);
                         }
@@ -236,7 +254,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // If the current execution state is the top-level call, finalize tracing and return the result.
                 if (_currentState.IsTopLevel)
                 {
-                    if (_txTracer.IsTracingActions)
+                    if (IsTracingActionsFast)
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
@@ -360,7 +378,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             }
         }
 
-        if (_txTracer.IsTracingActions)
+        if (IsTracingActionsFast)
         {
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
         }
@@ -446,7 +464,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             {
                 _currentState.Gas = gasAfterCodeDeposit;
                 _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
-                if (_txTracer.IsTracingActions)
+                if (IsTracingActionsFast)
                 {
                     _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - regularDepositCost, callCodeOwner, code);
                 }
@@ -472,12 +490,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _previousCallResult = BytesZero;
             previousStateSucceeded = false;
 
-            if (_txTracer.IsTracingActions)
+            if (IsTracingActionsFast)
             {
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
-        else if (!chargedCodeDeposit && _txTracer.IsTracingActions)
+        else if (!chargedCodeDeposit && IsTracingActionsFast)
         {
             _txTracer.ReportActionEnd(0L, callCodeOwner, code);
         }
@@ -521,7 +539,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
         // If transaction tracing is enabled, report the revert action along with the available gas and output bytes.
-        if (_txTracer.IsTracingActions)
+        if (IsTracingActionsFast)
         {
             _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGas(previousState.Gas), outputBytes);
         }
@@ -1075,6 +1093,95 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected static string GetErrorString(IPrecompile precompile, string? error)
         => $"Precompile {precompile.GetStaticName()} failed with error: {error}";
 
+#if ZK_EVM
+    /// <summary>
+    /// Inline handling of a CALL whose target is a precompile. Precompiles run
+    /// no bytecode, so instead of handing a child frame to the ExecuteTransaction
+    /// dispatch loop we run the precompile and resume the calling frame here.
+    /// Mirrors the loop's frame-finished handling for the (non-create) case.
+    /// </summary>
+    internal EvmExceptionType InlinePrecompileCall<TTracingInst>(
+        ExecutionEnvironment callEnv,
+        TGasPolicy childGas,
+        long outputDestination,
+        long outputLength,
+        ExecutionType executionType,
+        bool isStatic,
+        scoped in Snapshot snapshot,
+        scoped ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        VmState<TGasPolicy> parent = _currentState;
+        VmState<TGasPolicy> child = VmState<TGasPolicy>.RentFrame(
+            gas: childGas,
+            outputDestination: outputDestination,
+            outputLength: outputLength,
+            executionType: executionType,
+            isStatic: isStatic,
+            isCreateOnPreExistingAccount: false,
+            env: callEnv,
+            stateForAccessLists: in parent.AccessTracker,
+            snapshot: in snapshot);
+
+        CallResult callResult = ExecutePrecompile(child, IsTracingActionsFast, out Exception? failure, out _);
+
+        if (failure is not null)
+        {
+            // Precompile hard failure (out of gas): mirror HandleFailure + PopAndRestoreParentState.
+            _worldState.Restore(child.Snapshot);
+            RevertParityTouchBugAccount();
+            RemoveAdvancedStateGasRefund(child, ref child.Gas);
+            TGasPolicy.RestoreChildStateGasOnHalt(ref parent.Gas, in child.Gas);
+            child.Dispose();
+            ReturnDataBuffer = Array.Empty<byte>();
+            return stack.PushZero<TTracingInst>();
+        }
+
+        bool reverted = callResult.ShouldRevert;
+        if (!reverted)
+        {
+            IncorporateChildStateGasRefunds(child);
+            TGasPolicy.Refund(ref parent.Gas, in child.Gas);
+        }
+        else
+        {
+            TGasPolicy.UpdateGasUp(ref parent.Gas, TGasPolicy.GetRemainingGas(in child.Gas));
+            RemoveAdvancedStateGasRefund(child, ref child.Gas);
+            TGasPolicy.RestoreChildStateGas(ref parent.Gas, in child.Gas);
+        }
+
+        ReturnDataBuffer = callResult.Output;
+        EvmExceptionType push = stack.PushBytes<TTracingInst>(
+            (reverted ? StatusCode.FailureBytes : StatusCode.SuccessBytes).Span);
+
+        if (push == EvmExceptionType.None && outputLength > 0 && callResult.Output.Length > 0)
+        {
+            ZeroPaddedSpan outSlice = callResult.Output.Span
+                .SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)outputLength));
+            UInt256 dest = (ulong)outputDestination;
+            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)outSlice.Length, parent))
+            {
+                push = EvmExceptionType.OutOfGas;
+            }
+            else
+            {
+                parent.Memory.TrySave(in dest, outSlice);
+            }
+        }
+
+        if (reverted)
+        {
+            _worldState.Restore(child.Snapshot);
+        }
+        else
+        {
+            child.CommitToParent(parent);
+        }
+        child.Dispose();
+        return push;
+    }
+#endif
+
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,
     /// stack initialization, and memory updates. It then dispatches the bytecode execution using a
@@ -1257,37 +1364,86 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
+#if !ZK_EVM
+            // Diagnostic opcode counter (Metrics.IncrementOpCodes). Skipped on the ZisK guest:
+            // metrics are not part of the proof output, so this per-opcode increment is pure cost.
             int opCodeCount = 0;
+#endif
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             ref Instruction code = ref Unsafe.As<byte, Instruction>(ref stack.Code);
             uint codeLength = (uint)stack.CodeLength;
             // Call depth does not change during dispatch; hoist outside the loop so a no-op
             // OnBeforeInstructionTrace doesn't force a per-instruction VmState.Env chase.
             int callDepth = VmState.Env.CallDepth;
-            while ((uint)programCounter < codeLength)
+#if ZK_EVM
+            // Hoisted once per frame for the hot-opcode dispatch fast path below: PUSH0 is
+            // spec-gated (EIP-3855), so we only inline it when enabled; otherwise it falls
+            // through to the per-spec table (which maps it to BadInstruction).
+            bool push0Enabled = BlockExecutionContext.Spec.IncludePush0Instruction;
+#endif
+            // Mirror programCounter in a plain (non-address-exposed) local so the
+            // hot loop keeps it in a register. programCounter is only synced
+            // around the opcode-handler call, which takes it by ref.
+            int pc = programCounter;
+            while ((uint)pc < codeLength)
             {
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
+                programCounter = pc;
                 debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+                pc = programCounter;
 #endif
                 // Fetch the current instruction from the code section.
-                Instruction instruction = Unsafe.Add(ref code, programCounter);
+                Instruction instruction = Unsafe.Add(ref code, pc);
 
                 // If cancellation is enabled and cancellation has been requested, throw an exception.
                 if (TCancelable.IsActive && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
                 // Call gas policy hook before instruction execution.
-                TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
+                TGasPolicy.OnBeforeInstructionTrace(in gas, pc, instruction, callDepth);
 
                 // If tracing is enabled, start an instruction trace.
                 if (TTracingInst.IsActive)
-                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
+                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), pc, in stack);
 
                 // Advance the program counter to point to the next instruction.
-                programCounter++;
+                pc++;
+#if !ZK_EVM
                 opCodeCount++;
+#endif
+                programCounter = pc;
 
+#if ZK_EVM
+                // Hot-opcode dispatch fast path. The function-pointer table forces a `calli`
+                // (opaque indirect call) per opcode; a direct call lets the JIT inline these
+                // tiny handlers, removing the per-opcode call entirely. Ordered by measured
+                // frequency on precompile-call loops (PUSH0 37%, PUSH1 25%, GAS 12.5%, POP
+                // 12.5% — ~87% of executed opcodes), so the common case hits in <=4 compares;
+                // everything else (incl. the heavy STATICCALL) falls to the per-spec table.
+                // Behaviour-identical to the table dispatch: same handlers, same args/pc state.
+                if (push0Enabled && Instruction.PUSH0 == instruction)
+                {
+                    exceptionType = EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                }
+                else if (Instruction.PUSH1 == instruction)
+                {
+                    exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                }
+                else if (Instruction.GAS == instruction)
+                {
+                    exceptionType = EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                }
+                else if (Instruction.POP == instruction)
+                {
+                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                }
+                else
+                {
+                    delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType> opcodeMethod = opcodeMethods[(int)instruction];
+                    exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
+                }
+#else
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
                 {
@@ -1301,11 +1457,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
                 }
+#endif
+                // Resync: an opcode (JUMP/JUMPI) may have moved the counter.
+                pc = programCounter;
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (TGasPolicy.GetRemainingGas(in gas) < 0)
                 {
+#if !ZK_EVM
                     OpCodeCount += opCodeCount;
+#endif
                     goto OutOfGas;
                 }
 
@@ -1325,7 +1486,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     break;
             }
 
+#if !ZK_EVM
             OpCodeCount += opCodeCount;
+#endif
         }
 
         // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.

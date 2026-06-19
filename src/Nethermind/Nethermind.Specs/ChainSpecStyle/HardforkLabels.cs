@@ -36,7 +36,16 @@ public static partial class HardforkLabels
     public static IReadOnlyList<IHardforkLabel> All { get; } = BuildAll();
 
     /// <summary>Implemented by the source generator; emits the explicit <c>Block</c>/<c>Time</c> registrations.</summary>
+#if ZK_EVM
+    // The HardforkLabelsGenerator is not wired into the ZisK guest build (the guest builds its
+    // spec from an embedded chain_config and never enumerates the label registry), so the
+    // generated partial impl is absent there — stub it. Mainline keeps the source-generated
+    // partial; replacing it with this stub unconditionally left HardforkLabels.All empty and
+    // broke ChainSpec transition building (Eip4844/BlobSchedule), failing the .NET test suites.
+    private static IReadOnlyList<IHardforkLabel> BuildAll() => System.Array.Empty<IHardforkLabel>();
+#else
     private static partial IReadOnlyList<IHardforkLabel> BuildAll();
+#endif
 
     /// <summary>
     /// Expands every hardfork label that <paramref name="source"/> carries — looked up in either
