@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Json;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
@@ -329,8 +330,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             1, // STOP [34]
         }; */
 
-        static string Slot(string index) => "0x" + index.PadLeft(64, '0');
-        string ZeroWord = "0x" + HexZero.PadLeft(64, '0');
+        UInt256 zero = UInt256.Zero;
 
         using (Assert.EnterMultipleScope())
         {
@@ -346,23 +346,23 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
             // Depth 1: first SSTORE shows only slot 0x2; second SSTORE shows the cumulative {0x2, 0x3}.
             Assert.That(trace.Entries[2].Opcode, Is.EqualTo("SSTORE"), "SSTORE 0x2 opcode");
-            Assert.That(trace.Entries[2].Storage, Is.EquivalentTo(new Dictionary<string, string>
+            Assert.That(trace.Entries[2].Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256>
             {
-                [Slot("2")] = ZeroWord,
+                [(UInt256)2] = zero,
             }), "SSTORE 0x2 snapshot");
 
             Assert.That(trace.Entries[5].Opcode, Is.EqualTo("SSTORE"), "SSTORE 0x3 opcode");
-            Assert.That(trace.Entries[5].Storage, Is.EquivalentTo(new Dictionary<string, string>
+            Assert.That(trace.Entries[5].Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256>
             {
-                [Slot("2")] = ZeroWord,
-                [Slot("3")] = ZeroWord,
+                [(UInt256)2] = zero,
+                [(UInt256)3] = zero,
             }), "SSTORE 0x3 cumulative snapshot");
 
             // Depth 2 is a fresh frame: it shows only its own slot 0x1 and does not inherit the parent's 0x2/0x3.
             Assert.That(trace.Entries[16].Opcode, Is.EqualTo("SSTORE"), "SSTORE 0x1 opcode");
-            Assert.That(trace.Entries[16].Storage, Is.EquivalentTo(new Dictionary<string, string>
+            Assert.That(trace.Entries[16].Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256>
             {
-                [Slot("1")] = ZeroWord,
+                [(UInt256)1] = zero,
             }), "SSTORE 0x1 snapshot (no parent slots inherited)");
         }
     }
@@ -485,20 +485,21 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        static string Word(string hex) => "0x" + hex.PadLeft(64, '0');
-        Dictionary<string, string> slot1Only = new() { [Word("1")] = Word(val1) };
-        Dictionary<string, string> cumulativeBoth = new() { [Word("1")] = Word(val1), [Word("2")] = Word(val2) };
+        UInt256 v1 = (UInt256)0x11;
+        UInt256 v2 = (UInt256)0x22;
+        Dictionary<UInt256, UInt256> slot1Only = new() { [(UInt256)1] = v1 };
+        Dictionary<UInt256, UInt256> cumulativeBoth = new() { [(UInt256)1] = v1, [(UInt256)2] = v2 };
 
         // Across the two invocations the four SSTORE snapshots must be, in order:
         //   inv1 SSTORE 0x1 -> {0x1}             (only the first slot written so far)
         //   inv1 SSTORE 0x2 -> {0x1, 0x2}
         //   inv2 SSTORE 0x1 -> {0x1, 0x2}        (cumulative; NOT cleared on the first call's return)
         //   inv2 SSTORE 0x2 -> {0x1, 0x2}
-        Dictionary<string, string>[] expectedSstoreSnapshots = [slot1Only, cumulativeBoth, cumulativeBoth, cumulativeBoth];
+        Dictionary<UInt256, UInt256>[] expectedSstoreSnapshots = [slot1Only, cumulativeBoth, cumulativeBoth, cumulativeBoth];
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-        List<Dictionary<string, string>> memorySnapshots = trace.Entries
+        List<Dictionary<UInt256, UInt256>> memorySnapshots = trace.Entries
             .Where(e => e.Opcode == "SSTORE")
             .Select(e => e.Storage)
             .ToList();
@@ -526,8 +527,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        static string Word(string hex) => "0x" + hex.PadLeft(64, '0');
-        Dictionary<string, string> expected = new() { [Word("1")] = Word(val) };
+        Dictionary<UInt256, UInt256> expected = new() { [(UInt256)1] = (UInt256)0x42 };
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 

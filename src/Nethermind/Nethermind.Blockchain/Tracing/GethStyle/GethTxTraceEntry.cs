@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -34,7 +35,8 @@ public class GethTxTraceEntry
 
     public string[]? Memory { get; set; }
 
-    public Dictionary<string, string>? Storage { get; set; }
+    [JsonConverter(typeof(StorageHexConverter))]
+    public Dictionary<UInt256, UInt256>? Storage { get; set; }
 
     internal virtual void UpdateMemorySize(ulong size) { }
 }

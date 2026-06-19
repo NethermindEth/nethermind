@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -16,7 +15,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
 
-    private readonly Dictionary<AddressAsKey, Dictionary<string, string>> _storageByAddress = [];
+    private readonly Dictionary<AddressAsKey, Dictionary<UInt256, UInt256>> _storageByAddress = [];
 
     public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
     {
@@ -59,18 +58,13 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         if (CurrentTraceEntry is null)
             return;
 
-        if (!_storageByAddress.TryGetValue(address, out Dictionary<string, string>? contractStorage))
+        if (!_storageByAddress.TryGetValue(address, out Dictionary<UInt256, UInt256>? contractStorage))
         {
             _storageByAddress[address] = contractStorage = [];
         }
 
-        byte[] bigEndian = new byte[32];
-        storageIndex.ToBigEndian(bigEndian);
+        contractStorage[storageIndex] = new UInt256(value, isBigEndian: true);
 
-        contractStorage[bigEndian.ToHexString(true)] = new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left)
-            .ToArray()
-            .ToHexString(true);
-
-        CurrentTraceEntry.Storage = new Dictionary<string, string>(contractStorage);
+        CurrentTraceEntry.Storage = new Dictionary<UInt256, UInt256>(contractStorage);
     }
 }
