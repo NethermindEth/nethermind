@@ -83,6 +83,12 @@ public class PrewarmerScopeProvider(
                 address,
                 isPrewarmer);
 
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new StorageTreeWrapper(
+                baseScope.CreateStorageTree(address, storageRoot),
+                storageCache,
+                address,
+                isPrewarmer);
+
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
             if (!_measureMetric)

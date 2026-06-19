@@ -243,13 +243,16 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         }
 
         internal StorageTree LookupStorageTree(Address address)
+            => LookupStorageTree(address, Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash);
+
+        internal StorageTree LookupStorageTree(Address address, Hash256 storageRoot)
         {
             if (_storages.TryGetValue(address, out StorageTree storageTree))
             {
                 return storageTree;
             }
 
-            storageTree = _scopeProvider.CreateStorageTree(address, Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash);
+            storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
             _storages[address] = storageTree;
             return storageTree;
         }
@@ -257,6 +260,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         public void ClearLoadedAccounts() => _loadedAccounts.Clear();
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => LookupStorageTree(address);
+
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address, Hash256 storageRoot) => LookupStorageTree(address, storageRoot);
     }
 
     private class WorldStateWriteBatch(

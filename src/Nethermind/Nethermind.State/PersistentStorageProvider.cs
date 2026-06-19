@@ -467,7 +467,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void CreateStorageTree()
         {
-            _backend = _provider._currentScope.CreateStorageTree(_address);
+            Hash256 storageRoot = _provider._stateProvider.GetStorageRoot(_address);
+            _backend = _provider._currentScope.CreateStorageTree(_address, storageRoot);
 
             bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
             if (isEmpty && !_wasWritten)

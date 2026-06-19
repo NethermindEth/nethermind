@@ -40,6 +40,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);
 
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address, Hash256 storageRoot) => baseScope.CreateStorageTree(address, storageRoot);
+
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => baseScope.StartWriteBatch(estimatedAccountNum);
 
         public void Commit(long blockNumber)

@@ -337,12 +337,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => CreateStorageTreeImpl(address);
 
+    public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address, Hash256 storageRoot) => CreateStorageTreeImpl(address, storageRoot);
+
     private FlatStorageTree CreateStorageTreeImpl(Address address)
+        => CreateStorageTreeImpl(address, Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash);
+
+    private FlatStorageTree CreateStorageTreeImpl(Address address, Hash256 storageRoot)
     {
         ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
         if (exists) return storage!;
 
-        Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
         storage = new FlatStorageTree(
             this,
             _warmer,

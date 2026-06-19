@@ -55,6 +55,14 @@ public interface IWorldStateScopeProvider
         IStorageTree CreateStorageTree(Address address);
 
         /// <summary>
+        /// Create a per address storage tree when the current storage root is already known.
+        /// </summary>
+        /// <param name="address"></param>
+        /// <param name="storageRoot"></param>
+        /// <returns></returns>
+        IStorageTree CreateStorageTree(Address address, Hash256 storageRoot) => CreateStorageTree(address);
+
+        /// <summary>
         /// Begin a write batch to update the world state.
         /// </summary>
         /// <param name="estimatedAccountNum">For optimization, estimated account number.</param>

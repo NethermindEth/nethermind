@@ -89,6 +89,8 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
     public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
+    internal Hash256 GetStorageRoot(Address address) => GetState(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+
     public bool IsDeadAccount(Address address)
     {
         Account? account = GetThroughCache(address);
