@@ -11,6 +11,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Serialization.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -509,19 +510,8 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
                 Assert.That(memorySnapshots[i], Is.EquivalentTo(expectedSstoreSnapshots[i]), $"in-memory SSTORE snapshot[{i}]");
         }
 
-        // The streaming tracer must produce identical storage snapshots for the same execution.
-        JsonElement[] streamedEntries = ExecuteStreamingTracerEntries(code);
-        List<Dictionary<string, string>> streamedSnapshots = streamedEntries
-            .Where(e => e.GetProperty("op").GetString() == "SSTORE")
-            .Select(ToStorageDictionary)
-            .ToList();
-
-        Assert.That(streamedSnapshots, Has.Count.EqualTo(expectedSstoreSnapshots.Length), "streaming: expected four SSTORE entries");
-        using (Assert.EnterMultipleScope())
-        {
-            for (int i = 0; i < expectedSstoreSnapshots.Length; i++)
-                Assert.That(streamedSnapshots[i], Is.EquivalentTo(expectedSstoreSnapshots[i]), $"streaming SSTORE snapshot[{i}]");
-        }
+        // The streaming and in-memory tracers must produce identical full entry JSON for the same execution.
+        AssertStreamingMatchesInMemory(code);
     }
 
     [Test]
@@ -544,17 +534,28 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         GethTxTraceEntry sload = trace.Entries.Single(e => e.Opcode == "SLOAD");
         Assert.That(sload.Storage, Is.EquivalentTo(expected), "in-memory SLOAD snapshot");
 
-        // The streaming tracer must emit the same storage on the SLOAD step.
-        JsonElement streamedSload = ExecuteStreamingTracerEntries(code).Single(e => e.GetProperty("op").GetString() == "SLOAD");
-        Assert.That(ToStorageDictionary(streamedSload), Is.EquivalentTo(expected), "streaming SLOAD snapshot");
+        // The streaming tracer must emit the same full entry JSON, including the SLOAD storage snapshot.
+        AssertStreamingMatchesInMemory(code);
     }
 
-    private static Dictionary<string, string> ToStorageDictionary(JsonElement entry)
+    /// <summary>
+    /// Asserts the in-memory and streaming Geth tracers produce identical <c>structLogs</c> for the same code,
+    /// comparing each entry's full JSON (not just storage). Property order is ignored.
+    /// </summary>
+    private void AssertStreamingMatchesInMemory(byte[] code)
     {
-        Dictionary<string, string> storage = [];
-        foreach (JsonProperty property in entry.GetProperty("storage").EnumerateObject())
-            storage[property.Name] = property.Value.GetString()!;
-        return storage;
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        using JsonDocument inMemoryDoc = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        JsonElement[] inMemory = inMemoryDoc.RootElement.GetProperty("structLogs").EnumerateArray().ToArray();
+        JsonElement[] streamed = ExecuteStreamingTracerEntries(code);
+
+        Assert.That(inMemory.Length, Is.EqualTo(streamed.Length), "entry count");
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < inMemory.Length; i++)
+                Assert.That(JsonElement.DeepEquals(inMemory[i], streamed[i]), Is.True,
+                    $"entry[{i}] differs\n in-memory: {inMemory[i].GetRawText()}\n streaming: {streamed[i].GetRawText()}");
+        }
     }
 
     /// <summary>
@@ -568,7 +569,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
         {
-            GethLikeTxDirectStreamingTracer tracer = new(transaction, GethTraceOptions.Default, writer, pipeWriter: null, CancellationToken.None);
+            GethLikeTxDirectStreamingTracer tracer = new(transaction, GethTraceOptions.Default with { EnableMemory = true }, writer, pipeWriter: null, CancellationToken.None);
             writer.WriteStartArray();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
             tracer.BuildResult();
