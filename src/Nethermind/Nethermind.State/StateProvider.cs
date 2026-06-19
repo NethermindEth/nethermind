@@ -30,7 +30,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 {
     private static readonly UInt256 _zero = UInt256.Zero;
 
-    private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = [];
+    private readonly Dictionary<AddressAsKey, CacheEntry> _intraTxCache = [];
+    private readonly List<AddressAsKey> _intraTxCacheTouched = new(Resettable.StartCapacity);
+    private int _intraTxCacheRound = 1;
     private readonly Dictionary<AddressAsKey, int> _committedThisRound = [];
     private readonly HashSet<AddressAsKey> _nullAccountReads = [];
     // Only guarding against hot duplicates within the current block; the cross-block
@@ -374,7 +376,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         {
             int nextPosition = lastIndex - i;
             ref readonly Change change = ref changes[nextPosition];
-            StackList<int> stack = _intraTxCache[change!.Address];
+            StackList<int> stack = GetCache(change!.Address);
 
             int actualPosition = stack.Pop();
             if (actualPosition != nextPosition) ThrowUnexpectedPosition(lastIndex, i, actualPosition);
@@ -389,10 +391,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 else
                 {
                     // Remove address entry entirely if no more changes
-                    if (_intraTxCache.Remove(change.Address, out StackList<int>? removed))
-                    {
-                        removed.Return();
-                    }
+                    RemoveCache(change.Address, stack);
                 }
             }
         }
@@ -406,7 +405,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         {
             snapshot++;
             _changes.Add(kept);
-            _intraTxCache[kept.Address].Push(snapshot);
+            GetCache(kept.Address).Push(snapshot);
         }
         _keptInCache.Clear();
 
@@ -439,7 +438,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     // used by Arbitrum
     public void CreateEmptyAccountIfDeletedOrNew(Address address)
     {
-        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        if (TryGetCache(address, out StackList<int>? value))
         {
             //we only want to persist empty accounts if they were deleted or created as empty
             //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
@@ -533,7 +532,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 continue;
             }
 
-            StackList<int> stack = _intraTxCache[change.Address];
+            StackList<int> stack = GetCache(change.Address);
             int forAssertion = stack.Pop();
             if (forAssertion != stepsBack - i)
             {
@@ -616,7 +615,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         _changes.Clear();
         AdvanceCommitRound(resetBlockChanges: false);
         _nullAccountReads.Clear();
-        _intraTxCache.ResetAndClear();
+        ResetIntraTxCache(resetBlockChanges: false);
 
         codeFlushTask.GetAwaiter().GetResult();
 
@@ -775,7 +774,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     }
 
     internal Account? GetThroughCache(Address address) =>
-        _intraTxCache.TryGetValue(address, out StackList<int> value)
+        TryGetCache(address, out StackList<int>? value)
             ? _changes[value.Peek()].Account
             : GetAndAddToCache(address);
 
@@ -823,14 +822,111 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
     private StackList<int> SetupCache(Address address)
     {
-        ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
-        if (!exists)
+        ref CacheEntry entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out _);
+        if (entry.Round == _intraTxCacheRound && entry.Stack is not null)
         {
-            value = StackList<int>.Rent();
+            return entry.Stack;
         }
 
-        return value;
+        entry.Stack = StackList<int>.Rent();
+        entry.Round = _intraTxCacheRound;
+        if (entry.ListedRound != _intraTxCacheRound)
+        {
+            entry.ListedRound = _intraTxCacheRound;
+            _intraTxCacheTouched.Add(address);
+        }
+
+        return entry.Stack;
     }
+
+    private bool TryGetCache(AddressAsKey address, [NotNullWhen(true)] out StackList<int>? stack)
+    {
+        if (_intraTxCache.TryGetValue(address, out CacheEntry entry)
+            && entry.Round == _intraTxCacheRound
+            && entry.Stack is not null)
+        {
+            stack = entry.Stack;
+            return true;
+        }
+
+        stack = null;
+        return false;
+    }
+
+    private StackList<int> GetCache(AddressAsKey address)
+    {
+        if (TryGetCache(address, out StackList<int>? stack))
+        {
+            return stack;
+        }
+
+        ThrowMissingCache(address);
+        return null!;
+    }
+
+    private void RemoveCache(AddressAsKey address, StackList<int> stack)
+    {
+        ref CacheEntry entry = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, address);
+        if (!Unsafe.IsNullRef(ref entry)
+            && entry.Round == _intraTxCacheRound
+            && ReferenceEquals(entry.Stack, stack))
+        {
+            entry.Stack = null;
+            entry.Round = 0;
+            stack.Return();
+        }
+    }
+
+    private void ResetIntraTxCache(bool resetBlockChanges)
+    {
+        ReturnActiveCaches();
+        if (resetBlockChanges)
+        {
+            _intraTxCache.Clear();
+            _intraTxCacheTouched.Clear();
+            _intraTxCacheRound = 1;
+        }
+        else
+        {
+            AdvanceIntraTxCacheRound();
+        }
+    }
+
+    private void ReturnActiveCaches()
+    {
+        ReadOnlySpan<AddressAsKey> touchedAddresses = CollectionsMarshal.AsSpan(_intraTxCacheTouched);
+        for (int i = 0; i < touchedAddresses.Length; i++)
+        {
+            AddressAsKey address = touchedAddresses[i];
+            ref CacheEntry entry = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, address);
+            if (!Unsafe.IsNullRef(ref entry)
+                && entry.Round == _intraTxCacheRound
+                && entry.Stack is not null)
+            {
+                entry.Stack.Return();
+                entry.Stack = null;
+                entry.Round = 0;
+            }
+        }
+
+        _intraTxCacheTouched.Clear();
+    }
+
+    private void AdvanceIntraTxCacheRound()
+    {
+        if (_intraTxCacheRound == int.MaxValue)
+        {
+            _intraTxCache.Clear();
+            _intraTxCacheRound = 1;
+            return;
+        }
+
+        _intraTxCacheRound++;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowMissingCache(Address address) =>
+        throw new InvalidOperationException($"Missing state cache entry for {address}");
 
     public ArrayPoolList<AddressAsKey>? ChangedAddresses()
     {
@@ -859,7 +955,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             _blockChanges.Clear();
             _codeBatch?.Clear();
         }
-        _intraTxCache.ResetAndClear();
+        ResetIntraTxCache(resetBlockChanges);
         AdvanceCommitRound(resetBlockChanges);
         _nullAccountReads.Clear();
         _changes.Clear();
@@ -914,6 +1010,13 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         public readonly ChangeType ChangeType = type;
 
         public bool IsNull => ChangeType == ChangeType.Null;
+    }
+
+    private struct CacheEntry
+    {
+        public StackList<int>? Stack;
+        public int Round;
+        public int ListedRound;
     }
 
     internal struct ChangeTrace(Account? before, Account? after)
