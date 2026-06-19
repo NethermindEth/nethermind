@@ -86,7 +86,32 @@ namespace Nethermind.Evm.Benchmark
             return [.. code];
         }
 
+        // MSTORE/MLOAD-heavy straight-line glue at fixed offsets (memory expands once, then cheap),
+        // so the per-op cost is the boundary-op dispatch path, not memory growth — the real-block
+        // shape the arithmetic-only workloads above miss.
+        private static readonly byte[] MemoryHeavy = BuildMemoryHeavy();
+
+        private static byte[] BuildMemoryHeavy()
+        {
+            List<byte> code = [];
+            for (int i = 0; i < 100; i++)
+            {
+                code.AddRange([
+                    (byte)Instruction.PUSH1, 0xAA, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE,
+                    (byte)Instruction.PUSH1, 0xBB, (byte)Instruction.PUSH1, 0x20, (byte)Instruction.MSTORE,
+                    (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MLOAD,
+                    (byte)Instruction.PUSH1, 0x20, (byte)Instruction.MLOAD,
+                    (byte)Instruction.ADD,
+                    (byte)Instruction.PUSH1, 0x40, (byte)Instruction.MSTORE,
+                ]);
+            }
+
+            code.Add((byte)Instruction.STOP);
+            return [.. code];
+        }
+
         private ExecutionEnvironment _straightLineEnvironment;
+        private ExecutionEnvironment _memoryHeavyEnvironment;
 
         private readonly IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.OsakaActivation);
         private readonly ITxTracer _txTracer = NullTxTracer.Instance;
@@ -138,6 +163,16 @@ namespace Nethermind.Evm.Benchmark
                 value: 0,
                 inputData: default
             );
+
+            _memoryHeavyEnvironment = ExecutionEnvironment.Rent(
+                executingAccount: Address.Zero,
+                codeSource: Address.Zero,
+                caller: Address.Zero,
+                codeInfo: new CodeInfo(MemoryHeavy),
+                callDepth: 0,
+                value: 0,
+                inputData: default
+            );
         }
 
         [GlobalCleanup]
@@ -145,6 +180,7 @@ namespace Nethermind.Evm.Benchmark
         {
             _environment.Dispose();
             _straightLineEnvironment.Dispose();
+            _memoryHeavyEnvironment.Dispose();
             _stateScope.Dispose();
             StreamInterpreter.Enabled = Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
         }
@@ -164,6 +200,15 @@ namespace Nethermind.Evm.Benchmark
             // Fresh frame per invocation: a reused VmState resumes at end-of-code and measures nothing.
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
                 EthereumGasPolicy.FromLong(100_000_000), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+            _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
+            _stateProvider.Reset();
+        }
+
+        [Benchmark]
+        public void ExecuteMemoryHeavy()
+        {
+            using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
+                EthereumGasPolicy.FromLong(100_000_000), ExecutionType.TRANSACTION, _memoryHeavyEnvironment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }

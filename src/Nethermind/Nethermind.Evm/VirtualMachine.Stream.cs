@@ -285,6 +285,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
                 }
 
+                // Fast path for single-byte, dynamic-gas memory ops: they never redirect control flow,
+                // so direct dispatch (no table calli) + sequential advance (no pcToEntry landing
+                // recompute). The general boundary epilogue below is pure overhead for these cheap ops
+                // and dominated them — a boundary op always resets the open block, so metered stays off.
+                if (instruction is Instruction.MSTORE or Instruction.MLOAD or Instruction.MCOPY)
+                {
+                    if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
+                        ThrowStreamOperationCanceledException();
+
+                    TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
+                    opCodeCount++;
+
+                    int mpc = entry.Pc + 1;
+                    exceptionType = instruction switch
+                    {
+                        Instruction.MSTORE => EvmInstructions.InstructionMStore<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                        Instruction.MLOAD => EvmInstructions.InstructionMLoad<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                        _ => EvmInstructions.InstructionMCopy<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                    };
+
+                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                    {
+                        OpCodeCount += opCodeCount;
+                        goto OutOfGas;
+                    }
+
+                    TGasPolicy.OnAfterInstructionTrace(in gas);
+                    if (exceptionType != EvmExceptionType.None) break;
+
+                    metered = false;
+                    programCounter = entry.Pc + entry.Advance;
+                    entryIndex++;
+                    continue;
+                }
+
                 // Boundary op: standard handler + epilogue. Structured control flow only —
                 // backward gotos make the loop irreducible and the JIT stops optimizing it.
                 programCounter = entry.Pc;
