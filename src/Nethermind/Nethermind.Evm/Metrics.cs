@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -49,62 +50,134 @@ public class Metrics
 {
     private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
 
+    private sealed class OpcodeCounters
+    {
+        public long MainCodeDbCache;
+        public long OtherCodeDbCache;
+        public long MainOpCodes;
+        public long OtherOpCodes;
+        public long MainSelfDestructs;
+        public long OtherSelfDestructs;
+        public long MainCalls;
+        public long OtherCalls;
+        public long MainSLoadOpcode;
+        public long OtherSLoadOpcode;
+        public long MainSStoreOpcode;
+        public long OtherSStoreOpcode;
+        public long MainEmptyCalls;
+        public long OtherEmptyCalls;
+        public long MainCreates;
+        public long OtherCreates;
+        public long MainContractsAnalysed;
+        public long OtherContractsAnalysed;
+        public OpcodeCounters? Next;
+    }
+
+    private static OpcodeCounters? s_allOpcodeCounters;
+
+    [ThreadStatic]
+    private static OpcodeCounters? t_opcodeCounters;
+
+    private static OpcodeCounters ThreadCounters
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => t_opcodeCounters ?? CreateThreadCounters();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static OpcodeCounters CreateThreadCounters()
+    {
+        OpcodeCounters counters = new();
+        OpcodeCounters? head;
+        do
+        {
+            head = s_allOpcodeCounters;
+            counters.Next = head;
+        } while (!ReferenceEquals(Interlocked.CompareExchange(ref s_allOpcodeCounters, counters, head), head));
+
+        return t_opcodeCounters = counters;
+    }
+
+    private static long SumOpcodeCounters(Func<OpcodeCounters, long> selector)
+    {
+        long sum = 0;
+        for (OpcodeCounters? counters = s_allOpcodeCounters; counters is not null; counters = counters.Next)
+        {
+            sum += selector(counters);
+        }
+
+        return sum;
+    }
+
     [CounterMetric]
     [Description("Number of Code DB cache reads.")]
-    public static long CodeDbCache => _mainCodeDbCache + _otherCodeDbCache;
-    private static long _mainCodeDbCache;
-    private static long _otherCodeDbCache;
+    public static long CodeDbCache => SumOpcodeCounters(static c => c.MainCodeDbCache + c.OtherCodeDbCache);
     [Description("Number of Code DB cache reads on main processing thread.")]
-    public static long MainThreadCodeDbCache => _mainCodeDbCache;
-    internal static void IncrementCodeDbCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache : ref _otherCodeDbCache);
+    public static long MainThreadCodeDbCache => SumOpcodeCounters(static c => c.MainCodeDbCache);
+    internal static void IncrementCodeDbCache()
+    {
+        OpcodeCounters counters = ThreadCounters;
+        if (IsBlockProcessingThread) counters.MainCodeDbCache++; else counters.OtherCodeDbCache++;
+    }
+
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
     public static long EvmExceptions { get; set; }
 
     [CounterMetric]
     [Description("Number of opcodes executed.")]
-    public static long OpCodes => _mainOpCodes + _otherOpCodes;
-    private static long _mainOpCodes;
-    private static long _otherOpCodes;
+    public static long OpCodes => SumOpcodeCounters(static c => c.MainOpCodes + c.OtherOpCodes);
     [Description("Number of opcodes executed on main processing thread.")]
-    public static long MainThreadOpCodes => _mainOpCodes;
-    public static void IncrementOpCodes(int count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainOpCodes : ref _otherOpCodes, count);
+    public static long MainThreadOpCodes => SumOpcodeCounters(static c => c.MainOpCodes);
+    public static void IncrementOpCodes(int count)
+    {
+        OpcodeCounters counters = ThreadCounters;
+        if (IsBlockProcessingThread) counters.MainOpCodes += count; else counters.OtherOpCodes += count;
+    }
 
     [CounterMetric]
     [Description("Number of SELFDESTRUCT calls.")]
-    public static long SelfDestructs => _mainSelfDestructs + _otherSelfDestructs;
-    private static long _mainSelfDestructs;
-    private static long _otherSelfDestructs;
+    public static long SelfDestructs => SumOpcodeCounters(static c => c.MainSelfDestructs + c.OtherSelfDestructs);
     [Description("Number of SELFDESTRUCT calls on main processing thread.")]
-    public static long MainThreadSelfDestructs => _mainSelfDestructs;
-    public static void IncrementSelfDestructs() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSelfDestructs : ref _otherSelfDestructs);
+    public static long MainThreadSelfDestructs => SumOpcodeCounters(static c => c.MainSelfDestructs);
+    public static void IncrementSelfDestructs()
+    {
+        OpcodeCounters counters = ThreadCounters;
+        if (IsBlockProcessingThread) counters.MainSelfDestructs++; else counters.OtherSelfDestructs++;
+    }
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
-    public static long Calls => _mainCalls + _otherCalls;
-    private static long _mainCalls;
-    private static long _otherCalls;
+    public static long Calls => SumOpcodeCounters(static c => c.MainCalls + c.OtherCalls);
     [Description("Number of calls to other contracts on main processing thread.")]
-    public static long MainThreadCalls => _mainCalls;
-    public static void IncrementCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCalls : ref _otherCalls);
+    public static long MainThreadCalls => SumOpcodeCounters(static c => c.MainCalls);
+    public static void IncrementCalls()
+    {
+        OpcodeCounters counters = ThreadCounters;
+        if (IsBlockProcessingThread) counters.MainCalls++; else counters.OtherCalls++;
+    }
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
-    public static long SloadOpcode => _mainSLoadOpcode + _otherSLoadOpcode;
-    private static long _mainSLoadOpcode;
-    private static long _otherSLoadOpcode;
+    public static long SloadOpcode => SumOpcodeCounters(static c => c.MainSLoadOpcode + c.OtherSLoadOpcode);
     [Description("Number of SLOAD opcodes executed on main processing thread.")]
-    public static long MainThreadSLoadOpcode => _mainSLoadOpcode;
-    public static void IncrementSLoadOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSLoadOpcode : ref _otherSLoadOpcode);
+    public static long MainThreadSLoadOpcode => SumOpcodeCounters(static c => c.MainSLoadOpcode);
+    public static void IncrementSLoadOpcode()
+    {
+        OpcodeCounters counters = ThreadCounters;
+        if (IsBlockProcessingThread) counters.MainSLoadOpcode++; else counters.OtherSLoadOpcode++;
+    }
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
-    public static long SstoreOpcode => _mainSStoreOpcode + _otherSStoreOpcode;
-    private static long _mainSStoreOpcode;
-    private static long _otherSStoreOpcode;
+    public static long SstoreOpcode => SumOpcodeCounters(static c => c.MainSStoreOpcode + c.OtherSStoreOpcode);
     [Description("Number of SSTORE opcodes executed on main processing thread.")]
-    public static long MainThreadSStoreOpcode => _mainSStoreOpcode;
-    public static void IncrementSStoreOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode : ref _otherSStoreOpcode);
+    public static long MainThreadSStoreOpcode => SumOpcodeCounters(static c => c.MainSStoreOpcode);
+    public static void IncrementSStoreOpcode()
+    {
+        OpcodeCounters counters = ThreadCounters;
+        if (IsBlockProcessingThread) counters.MainSStoreOpcode++; else counters.OtherSStoreOpcode++;
+    }
 
     [Description("Number of TLOAD opcodes executed.")]
     public static long TloadOpcode { get; set; }
@@ -120,29 +193,35 @@ public class Metrics
 
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
-    public static long EmptyCalls => _mainEmptyCalls + _otherEmptyCalls;
-    private static long _mainEmptyCalls;
-    private static long _otherEmptyCalls;
+    public static long EmptyCalls => SumOpcodeCounters(static c => c.MainEmptyCalls + c.OtherEmptyCalls);
     [Description("Number of calls made to addresses without code on main processing thread.")]
-    public static long MainThreadEmptyCalls => _mainEmptyCalls;
-    public static void IncrementEmptyCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEmptyCalls : ref _otherEmptyCalls);
+    public static long MainThreadEmptyCalls => SumOpcodeCounters(static c => c.MainEmptyCalls);
+    public static void IncrementEmptyCalls()
+    {
+        OpcodeCounters counters = ThreadCounters;
+        if (IsBlockProcessingThread) counters.MainEmptyCalls++; else counters.OtherEmptyCalls++;
+    }
 
     [CounterMetric]
     [Description("Number of contract create calls.")]
-    public static long Creates => _mainCreates + _otherCreates;
-    private static long _mainCreates;
-    private static long _otherCreates;
+    public static long Creates => SumOpcodeCounters(static c => c.MainCreates + c.OtherCreates);
     [Description("Number of contract create calls on main processing thread.")]
-    public static long MainThreadCreates => _mainCreates;
-    public static void IncrementCreates() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCreates : ref _otherCreates);
+    public static long MainThreadCreates => SumOpcodeCounters(static c => c.MainCreates);
+    public static void IncrementCreates()
+    {
+        OpcodeCounters counters = ThreadCounters;
+        if (IsBlockProcessingThread) counters.MainCreates++; else counters.OtherCreates++;
+    }
 
     [Description("Number of contracts' code analysed for jump destinations.")]
-    public static long ContractsAnalysed => _mainContractsAnalysed + _otherContractsAnalysed;
-    private static long _mainContractsAnalysed;
-    private static long _otherContractsAnalysed;
+    public static long ContractsAnalysed => SumOpcodeCounters(static c => c.MainContractsAnalysed + c.OtherContractsAnalysed);
     [Description("Number of contracts' code analysed for jump destinations on main processing thread.")]
-    public static long MainThreadContractsAnalysed => _mainContractsAnalysed;
-    public static void IncrementContractsAnalysed() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainContractsAnalysed : ref _otherContractsAnalysed);
+    public static long MainThreadContractsAnalysed => SumOpcodeCounters(static c => c.MainContractsAnalysed);
+    public static void IncrementContractsAnalysed()
+    {
+        OpcodeCounters counters = ThreadCounters;
+        if (IsBlockProcessingThread) counters.MainContractsAnalysed++; else counters.OtherContractsAnalysed++;
+    }
 
     // Cross-client execution metrics gated by ExecutionMetricsFlag.
     // Each Increment* method short-circuits when ExecutionMetricsFlag.IsActive is false:

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -631,7 +630,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 using (IWorldStateScopeProvider.ICodeSetter batch = codeDb.BeginCodeWrite())
                 {
                     // Insert ordered for improved performance
-                    foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict.OrderBy(static kvp => kvp.Key))
+                    using ArrayPoolListRef<KeyValuePair<Hash256AsKey, byte[]>> entries = dict.ToPooledListRef();
+                    entries.Sort(static (a, b) => a.Key.CompareTo(b.Key));
+                    foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in entries)
                         batch.Set(kvp.Key.Value, kvp.Value);
                 }
 
