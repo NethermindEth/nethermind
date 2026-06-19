@@ -227,10 +227,10 @@ namespace Nethermind.Store.Test.Proofs
             StateTree tree = CreateTwoAccountTree(account1, account2);
 
             AccountProof proof = CollectProof(tree, TestItem.AddressA);
-            Assert.That(proof.Nonce, Is.EqualTo((UInt256)account1.Nonce));
+            Assert.That(proof.Nonce, Is.EqualTo(account1.Nonce));
 
             AccountProof proof2 = CollectProof(tree, TestItem.AddressB);
-            Assert.That(proof2.Nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(proof2.Nonce, Is.EqualTo(0UL));
         }
 
         [Test]
@@ -402,7 +402,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Balance, Is.EqualTo((UInt256)0));
-            Assert.That(proof.Nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(proof.Nonce, Is.EqualTo(0UL));
             Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
             Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
         }
@@ -421,7 +421,7 @@ namespace Nethermind.Store.Test.Proofs
             Assert.Multiple(() =>
             {
                 Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
-                Assert.That(proof.Nonce, Is.EqualTo(UInt256.Zero));
+                Assert.That(proof.Nonce, Is.EqualTo(0UL));
                 Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
                 Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
             });
@@ -587,7 +587,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             AccountProof accountProof = collector.BuildResult();
             Assert.That(accountProof.Address, Is.EqualTo(address));
             Assert.That(accountProof.Balance, Is.EqualTo((UInt256)accountIndex));
-            Assert.That(accountProof.Nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(accountProof.Nonce, Is.EqualTo(0UL));
             Assert.That(accountProof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
             if (accountIndex != 0) Assert.That(accountProof.StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
             Assert.That(accountProof.StorageProofs.Length, Is.EqualTo(accountIndex));
@@ -661,7 +661,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 AccountProof accountProof = collector.BuildResult();
                 Assert.That(accountProof.Address, Is.EqualTo(addressesWithStorage[i].Address));
                 Assert.That(accountProof.Balance, Is.EqualTo((UInt256)i));
-                Assert.That(accountProof.Nonce, Is.EqualTo(UInt256.Zero));
+                Assert.That(accountProof.Nonce, Is.EqualTo(0UL));
                 Assert.That(accountProof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
                 if (i != 0) Assert.That(accountProof.StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
                 Assert.That(accountProof.StorageProofs.Length, Is.EqualTo(i));

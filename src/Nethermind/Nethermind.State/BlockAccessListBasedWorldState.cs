@@ -185,7 +185,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         bool exists = parentReader.TryGetAccount(address, out account);
         ulong nonce = exists ? account.Nonce : 0;
-        ulong balance = exists ? (ulong)account.Balance : 0UL;
+        UInt256 balance = exists ? account.Balance : UInt256.Zero;
         ValueHash256 storageRoot = exists ? account.StorageRoot : Keccak.EmptyTreeHash.ValueHash256;
         ValueHash256 codeHash = exists ? account.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
 
@@ -198,9 +198,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         if (accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balanceChange))
         {
-            // BalanceChange.Value is UInt256; Account.Balance is ulong. Cast is safe —
-            // total ETH supply is well below 2^64 Wei.
-            balance = (ulong)balanceChange.Value;
+            balance = balanceChange.Value;
             hasPriorChange = true;
         }
 

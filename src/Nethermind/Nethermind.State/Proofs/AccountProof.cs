@@ -26,7 +26,7 @@ namespace Nethermind.State.Proofs
 
         public Hash256 CodeHash { get; set; } = Keccak.OfAnEmptyString;
 
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
 
         public Hash256 StorageRoot { get; set; } = Keccak.EmptyTreeHash;
 
@@ -103,7 +103,8 @@ namespace Nethermind.State.Proofs
             hashConverter.Write(writer, value.CodeHash, options);
 
             writer.WritePropertyName("nonce"u8);
-            uint256Converter.Write(writer, value.Nonce, options);
+            JsonConverter<ulong> ulongConverter = (JsonConverter<ulong>)options.GetConverter(typeof(ulong));
+            ulongConverter.Write(writer, value.Nonce, options);
 
             writer.WritePropertyName("storageHash"u8);
             hashConverter.Write(writer, value.StorageRoot, options);

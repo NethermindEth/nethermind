@@ -317,7 +317,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             Account? account = _stateProvider.GetThroughCache(address);
             accountExists = account is not null;
-            return accountExists && (account!.IsContract || !(account.Nonce == 0) || !_persistentStorageProvider.IsStorageEmpty(address));
+            return accountExists && (account!.IsContract || account.Nonce != 0 || !_persistentStorageProvider.IsStorageEmpty(address));
         }
 
         public bool IsDeadAccount(Address address)

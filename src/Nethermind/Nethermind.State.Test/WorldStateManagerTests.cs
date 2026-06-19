@@ -76,7 +76,7 @@ public class WorldStateManagerTests
     [Test]
     public void ShouldAnnounceReorgOnDispose()
     {
-        int lastBlock = 256;
+        ulong lastBlock = 256;
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IConfigProvider configProvider = new ConfigProvider();
@@ -84,8 +84,8 @@ public class WorldStateManagerTests
         configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         ulong reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
         IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
-        manualFinalizedStateProvider.FinalizedBlockNumber.Returns((ulong)lastBlock - reorgDepth);
-        manualFinalizedStateProvider.GetFinalizedStateRootAt((ulong)lastBlock - reorgDepth)
+        manualFinalizedStateProvider.FinalizedBlockNumber.Returns(lastBlock - reorgDepth);
+        manualFinalizedStateProvider.GetFinalizedStateRootAt(lastBlock - reorgDepth)
             .Returns(new Hash256("0xec6063a04d48f4b2258f36efaef76a23ba61875f5303fcf8ede2f5d160def35d"));
 
         {
@@ -107,11 +107,11 @@ public class WorldStateManagerTests
                 stateRoot = worldState.StateRoot;
             }
 
-            for (int i = 2; i <= lastBlock; i++)
+            for (ulong i = 2; i <= lastBlock; i++)
             {
                 BlockHeader baseBlock = Build.A.BlockHeader
                     .WithStateRoot(stateRoot)
-                    .WithNumber((ulong)(i - 1))
+                    .WithNumber(i - 1)
                     .TestObject;
 
                 // Model production: the driver clears prewarmer caches between blocks; do the same here.
@@ -120,13 +120,13 @@ public class WorldStateManagerTests
                 {
                     worldState.IncrementNonce(TestItem.AddressA, 1);
                     worldState.Commit(Cancun.Instance);
-                    worldState.CommitTree((ulong)i);
+                    worldState.CommitTree(i);
                     stateRoot = worldState.StateRoot;
                 }
             }
         }
 
-        blockTree.Received().BestPersistedState = (ulong)lastBlock - reorgDepth;
+        blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
     }
 
     [Test]

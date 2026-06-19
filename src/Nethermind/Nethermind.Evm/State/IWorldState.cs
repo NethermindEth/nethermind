@@ -141,6 +141,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="blockNumber"></param>
     void CommitTree(ulong blockNumber);
 
+    void CommitTree(int blockNumber) => CommitTree((ulong)blockNumber);
+
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
     void ResetTransient();
