@@ -105,6 +105,13 @@ public sealed class NodeFilter
         _cache.Set(GetKey(ipAddress, exactOnly), Environment.TickCount64);
     }
 
+    /// <summary>
+    /// Removes a previously recorded address so that the next <see cref="TryAccept"/> call for the
+    /// same address succeeds. Used to permit reconnection after a session ends.
+    /// </summary>
+    public void Remove(IPAddress ipAddress, bool exactOnly = false)
+        => _cache?.Delete(GetKey(ipAddress, exactOnly));
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private IpSubnetKey GetKey(IPAddress ipAddress, bool exactOnly)
         => _exactMatchOnly || exactOnly

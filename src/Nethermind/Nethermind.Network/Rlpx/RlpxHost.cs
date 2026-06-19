@@ -501,6 +501,15 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
+            // Release the peer's IP from the filter so it can reconnect immediately.
+            // For inbound sessions the filter entry was created by ShouldRejectInbound; clearing it here
+            // prevents the 5-minute window from blocking legitimate reconnection after a dropped session.
+            if (session.Node?.Address?.Address is { } remoteIp)
+            {
+                bool exactOnly = session.Node.IsStatic || session.Node.IsBootnode;
+                _nodeFilter.Remove(remoteIp, exactOnly);
+            }
+
             subscription.DetachSession();
             _sessionMonitor.RemoveSession(session);
             try
