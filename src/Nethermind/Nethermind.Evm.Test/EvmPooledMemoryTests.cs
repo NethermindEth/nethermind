@@ -200,6 +200,21 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
+    public void Dispose_ClearsDirtyRangeBeforeReusingCachedArray()
+    {
+        UInt256 location = 4096;
+        EvmPooledMemory dirtyMemory = new();
+        Assert.That(dirtyMemory.TrySaveByte(in location, 0x7f), Is.True);
+        dirtyMemory.Dispose();
+
+        EvmPooledMemory reusedMemory = new();
+        UInt256 length = 1;
+        Assert.That(reusedMemory.TryLoadSpan(in location, in length, out Span<byte> value), Is.True);
+        Assert.That(value[0], Is.Zero);
+        reusedMemory.Dispose();
+    }
+
+    [Test]
     public void LoadSpan_LocationExceedsULong_ShouldReturnOutOfGas()
     {
         EvmPooledMemory memory = new();
