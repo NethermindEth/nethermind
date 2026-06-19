@@ -1197,4 +1197,57 @@ public class PersistedSnapshotCompactorTests
                 "PersistedLargeCompacted must not resolve from the compacted bucket");
         });
     }
+
+    /// <summary>
+    /// A demoted sub-<c>CompactSize</c> intermediate is re-registered over the same reservation carrying the
+    /// <see cref="BloomFilter.AlwaysTrue"/> sentinel — its large merged bloom is freed by the original
+    /// snapshot's <c>CleanUp</c> once the compactor releases its lease — while still reading back correctly.
+    /// A <c>&gt;CompactSize</c> large-boundary merge is warmed instead and keeps its real (populated) bloom.
+    /// Regression for the demote-frees-the-bloom optimisation.
+    /// </summary>
+    [Test]
+    public void Demote_ReplacesIntermediateWithAlwaysTrueBloom_BoundaryKeepsRealBloom()
+    {
+        // CompactSize=4: block 2's window (0,2] spans 2 (< 4) → demoted intermediate; block 8's window
+        // (0,8] spans 8 (> 4) → warmed large boundary.
+        using FlatTestContainer tier = NewTier(compactSize: 4);
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        StateId[] states = new StateId[9];
+        states[0] = prev;
+        for (int i = 1; i <= 8; i++)
+        {
+            states[i] = new StateId(i, Keccak.Compute($"s{i}"));
+            SnapshotContent c = new();
+            c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
+            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            prev = states[i];
+        }
+
+        compactor.DoCompactSnapshot(states[2]); // sub-CompactSize intermediate → demoted
+        compactor.DoCompactSnapshot(states[8]); // >CompactSize large-boundary → warmed
+
+        Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? intermediate), Is.True);
+        using (intermediate)
+        {
+            Assert.Multiple(() =>
+            {
+                // Sentinel: one 64-byte cache line, zero keys added — a real merge over the window's two
+                // accounts would carry Count >= 2 and a larger allocation.
+                Assert.That(intermediate!.Bloom.Count, Is.EqualTo(0), "demoted intermediate must carry the AlwaysTrue sentinel");
+                Assert.That(intermediate.Bloom.DataBytes, Is.EqualTo(64), "sentinel is a single cache line");
+                // Reads still resolve correctly through the sentinel (it just stops pre-filtering).
+                Assert.That(intermediate.TryGetAccount(TestItem.Addresses[0], out Account? a1), Is.True);
+                Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
+                Assert.That(intermediate.TryGetAccount(TestItem.Addresses[1], out Account? a2), Is.True);
+                Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
+            });
+        }
+
+        Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? large), Is.True);
+        using (large)
+            Assert.That(large!.Bloom.Count, Is.GreaterThan(0), "a warmed large-boundary merge keeps its real bloom");
+    }
 }

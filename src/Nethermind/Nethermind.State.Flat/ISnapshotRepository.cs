@@ -41,6 +41,12 @@ public interface ISnapshotRepository
     /// persisted/compacted snapshot writes one; a snapshot reloaded from the catalog does not.</summary>
     void AddPersistedSnapshot(PersistedSnapshot snapshot, SnapshotTier tier);
 
+    /// <summary>Atomically swap the snapshot registered at <paramref name="to"/> in <paramref name="tier"/>'s
+    /// bucket for <paramref name="replacement"/>, which must wrap the same on-disk reservation. The previous
+    /// entry's bucket lease is released so its <c>CleanUp</c> runs once any in-flight reader drains. Returns
+    /// <c>false</c> (leaving <paramref name="replacement"/> unregistered) when no entry is present.</summary>
+    bool ReplacePersistedSnapshot(in StateId to, PersistedSnapshot replacement, SnapshotTier tier);
+
     /// <summary>Lease every persisted base snapshot tiling <c>(from, to]</c>. Caller disposes the list.</summary>
     PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);
 
