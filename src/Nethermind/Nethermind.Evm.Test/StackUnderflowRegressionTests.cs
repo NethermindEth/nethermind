@@ -20,6 +20,8 @@ public class StackUnderflowRegressionTests : VirtualMachineTestsBase
         new object[] { Instruction.TSTORE, Prepare.EvmCode.PushData(0).Op(Instruction.TSTORE).Done },
         new object[] { Instruction.LOG1, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.LOG1).Done },
         new object[] { Instruction.CREATE2, Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE2).Done },
+        // Index 0 is in-range, so SIGNEXTEND skips the out-of-range short-circuit and peeks the missing value.
+        new object[] { Instruction.SIGNEXTEND, Prepare.EvmCode.PushData(0).Op(Instruction.SIGNEXTEND).Done },
     ];
 
     [TestCaseSource(nameof(UnderflowCases))]
