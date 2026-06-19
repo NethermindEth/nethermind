@@ -293,6 +293,10 @@ namespace Nethermind.Consensus.Processing
                 blockData.PerTxTicks = PerTxTimingCollector.Snapshot();
             }
 
+            // Snapshot on the block-processing thread; GenerateReport runs on a ThreadPool thread where
+            // the flag's own value would not be visible.
+            blockData.UsedParallelExecution = BlockProcessor.ParallelBlockValidationTransactionsExecutor.LastBlockUsedParallelExecution;
+
             CaptureReportData(blockData);
         }
 
@@ -478,7 +482,24 @@ namespace Nethermind.Consensus.Processing
             double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
             double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
-            string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N3} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N3}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N3}) .. {Evm.Metrics.BlockMaxGasPrice:N3}" : "";
+            string blockGas = "";
+            if (Evm.Metrics.BlockMinGasPrice != float.MaxValue)
+            {
+                float minGas = Evm.Metrics.BlockMinGasPrice;
+                float medianGas = Math.Max(minGas, Evm.Metrics.BlockEstMedianGasPrice);
+                float aveGas = Evm.Metrics.BlockAveGasPrice;
+                float maxGas = Evm.Metrics.BlockMaxGasPrice;
+                // Step the unit down (gwei -> mwei -> kwei -> wei) so small gas prices stay visible at :N3
+                // instead of all rendering 0.000 on low-base-fee chains.
+                (string unit, float scale) = minGas switch
+                {
+                    0f or >= 0.001f => ("gwei", 1f),
+                    >= 0.000_001f => ("mwei", 1_000f),
+                    >= 0.000_000_001f => ("kwei", 1_000_000f),
+                    _ => ("wei", 1_000_000_000f),
+                };
+                blockGas = $"⛽ Gas {unit}: {minGas * scale:N3} .. {whiteText}{medianGas * scale:N3}{resetColor} ({aveGas * scale:N3}) .. {maxGas * scale:N3}";
+            }
             string mgasColor = whiteText;
 
             NewProcessingStatistics?.Invoke(this, new BlockStatistics()
@@ -581,13 +602,16 @@ namespace Nethermind.Consensus.Processing
                     _ => $"       {bps,10:F2} Blk/s "
                 };
 
+                // Execution-mode indicator: chains for parallel BAL validation, link for sequential.
+                string execMode = data.UsedParallelExecution ? " ⛓️" : " 🔗";
+
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
                 else
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
             }
 
@@ -808,6 +832,7 @@ namespace Nethermind.Consensus.Processing
                 data.GasUsed = 0;
                 data.TransactionCount = 0;
                 data.BlobCount = 0;
+                data.UsedParallelExecution = false;
 
                 // Reset the slow-block Delta* fields too. They're only written when the threshold
                 // is enabled (UpdateStats line ~270), so if a pooled instance was returned without
@@ -851,6 +876,7 @@ namespace Nethermind.Consensus.Processing
             public long GasUsed;
             public long TransactionCount;
             public long BlobCount;
+            public bool UsedParallelExecution;
             public long CurrentOpCodes;
             public long CurrentSLoadOps;
             public long CurrentSStoreOps;

@@ -31,6 +31,11 @@ public partial class BlockProcessor
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
         : IBlockProcessor.IBlockTransactionsExecutor
     {
+        // Whether the most recent block ran the parallel BAL path. Written here on the block-processing
+        // thread and snapshotted into BlockData by ProcessingStats (also on that thread) for the report
+        // line; volatile so any other reader sees the latest value without a torn/cached read.
+        public static volatile bool LastBlockUsedParallelExecution;
+
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
         private readonly IncrementalValidationWorkItem _incrementalValidationWorkItem = new();
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
@@ -48,13 +53,16 @@ public partial class BlockProcessor
         {
             if (!balManager.Enabled)
             {
+                LastBlockUsedParallelExecution = false;
                 return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
             }
 
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            TxReceipt[] receipts = !block.IsGenesis && balManager.ParallelExecutionEnabled
+            bool parallel = !block.IsGenesis && balManager.ParallelExecutionEnabled;
+            LastBlockUsedParallelExecution = parallel;
+            TxReceipt[] receipts = parallel
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
 
