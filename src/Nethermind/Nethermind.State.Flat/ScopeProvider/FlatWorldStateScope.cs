@@ -31,8 +31,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
+    private readonly PreservedPatriciaTrie? _preservedPatriciaTrie;
+    private readonly PreservedPatriciaTrie.Rebinder? _stateTreeRebinder;
+    private readonly PreservedStorageTries? _preservedStorageTries;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private List<FlatStorageTree>? _preservableStorages;
     private bool _isDisposed = false;
+    private Hash256? _lastCommittedStateRoot;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
     // tasks within the trie warmer's ring buffer.
@@ -55,28 +60,39 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
+        PreservedPatriciaTrie? preservedPatriciaTrie = null,
+        PreservedStorageTries? preservedStorageTries = null,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
+        _preservedPatriciaTrie = preservedPatriciaTrie;
+        _preservedStorageTries = preservedStorageTries;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
-        _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
+        Hash256 stateRoot = currentStateId.StateRoot.ToCommitment();
+        if (preservedPatriciaTrie is not null && preservedPatriciaTrie.TryTake(stateRoot, snapshotBundle, _concurrencyQuota, out StateTree reusedTree))
         {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
+            _stateTree = reusedTree;
+        }
+        else
+        {
+            StateTrieStoreAdapter adapter = new(snapshotBundle, _concurrencyQuota);
+            _stateTreeRebinder = preservedPatriciaTrie is not null ? adapter.Rebind : null;
+            _stateTree = new(adapter, logManager)
+            {
+                RootHash = stateRoot
+            };
+        }
 
         _warmupStateTree = new(
             new StateTrieStoreWarmerAdapter(snapshotBundle),
             logManager
         )
         {
-            RootHash = currentStateId.StateRoot.ToCommitment()
+            RootHash = stateRoot
         };
 
         _configuration = configuration;
@@ -93,8 +109,35 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
         WaitForOutstandingWarmups();
+        ReturnPreservedStorageTries();
+        ReturnPreservedPatriciaTrie();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
+    }
+
+    private void ReturnPreservedStorageTries()
+    {
+        if (_preservableStorages is null) return;
+
+        foreach (FlatStorageTree storage in _preservableStorages)
+        {
+            storage.Preserve();
+        }
+
+        _preservableStorages.Clear();
+    }
+
+    private void ReturnPreservedPatriciaTrie()
+    {
+        if (_preservedPatriciaTrie is null) return;
+
+        if (_lastCommittedStateRoot is not null && _stateTree.RootHash == _lastCommittedStateRoot)
+        {
+            _preservedPatriciaTrie.StoreAnchored(_stateTree, _stateTreeRebinder, _lastCommittedStateRoot);
+            return;
+        }
+
+        _preservedPatriciaTrie.TryStoreCleared();
     }
 
     private void CancelHintBal()
@@ -142,7 +185,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         Account? account = _snapshotBundle.GetAccount(address);
 
-        HintGet(address, account);
+        HintPrewarm(address);
 
         if (_configuration.VerifyWithTrie)
         {
@@ -158,7 +201,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintGet(Address address, Account? account)
     {
-        _snapshotBundle.SetAccount(address, account);
+        _snapshotBundle.CacheAccount(address, account);
+        HintPrewarm(address);
+    }
+
+    private void HintPrewarm(Address address)
+    {
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
@@ -205,12 +253,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
 
-                    Account? account = sink is null && storageChangeCount == 0
-                        ? null
-                        : _snapshotBundle.GetAccount(address);
+                    Account? account = null;
+                    bool accountStillNeeded = sink is null || sink.StillNeeded(address, out account);
 
-                    if (sink is not null && sink.StillNeeded(address, out _))
+                    if (accountStillNeeded && (sink is not null || storageChangeCount != 0))
+                    {
+                        account = _snapshotBundle.GetAccount(address);
+                    }
+
+                    if (sink is not null && accountStillNeeded)
+                    {
                         sink.OnAccountRead(address, account);
+                    }
 
                     if (account is null) return;
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
@@ -226,6 +280,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             _concurrencyQuota,
                             storageRoot,
                             address,
+                            preservedStorageTries: null,
                             _logManager);
 
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
@@ -356,6 +411,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _concurrencyQuota,
             storageRoot,
             address,
+            _preservedStorageTries,
             _logManager);
 
         return storage;
@@ -375,10 +431,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
         _stateTree.Commit();
 
-        _storages.Clear();
-
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
+        if (shouldAddSnapshot && _preservedStorageTries is not null && _storages.Count != 0)
+        {
+            _preservableStorages ??= new List<FlatStorageTree>(_storages.Count);
+            _preservableStorages.AddRange(_storages.Values);
+        }
+
+        _storages.Clear();
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
 
         if (shouldAddSnapshot)
@@ -395,6 +456,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         _currentStateId = newStateId;
+        _lastCommittedStateRoot = newStateId.StateRoot.ToCommitment();
         _pausePrewarmer = false;
     }
 

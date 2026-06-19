@@ -84,16 +84,20 @@ public sealed class SnapshotBundle : IDisposable
         HashedKey<Address> key = new(address);
 
         if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc)) return acc;
+        if (!excludeChanged && _transientResource.TryGetAccount(key, out acc)) return acc;
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetAccount(key, out acc))
             {
+                if (!excludeChanged) _transientResource.SetAccount(key, acc);
                 return acc;
             }
         }
 
-        return _readOnlySnapshotBundle.GetAccount(address, key);
+        acc = _readOnlySnapshotBundle.GetAccount(address, key);
+        if (!excludeChanged) _transientResource.SetAccount(key, acc);
+        return acc;
     }
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
@@ -347,6 +351,9 @@ public sealed class SnapshotBundle : IDisposable
 
     public void SetAccount(Address address, Account? account) =>
         _changedAccounts[address] = account;
+
+    public void CacheAccount(Address address, Account? account) =>
+        _transientResource.SetAccount(address, account);
 
     public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {

@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
@@ -22,6 +24,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 {
     public record Size(long PrewarmedAddressSize, int NodesCacheSize);
 
+    public ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
 
@@ -31,6 +34,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public void Reset()
     {
+        Accounts.NoResizeClear();
         Nodes.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
@@ -70,6 +74,10 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     }
 
     public void Dispose() => PrewarmedAddresses.Dispose();
+
+    public bool TryGetAccount(HashedKey<Address> address, out Account? account) => Accounts.TryGetValue(address, out account);
+
+    public void SetAccount(HashedKey<Address> address, Account? account) => Accounts[address] = account;
 
     public bool TryGetStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(null, path, hash, out node);
 

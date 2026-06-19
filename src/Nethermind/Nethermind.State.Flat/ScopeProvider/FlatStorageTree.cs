@@ -26,6 +26,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private UInt256 _lastIndex;
     private byte[]? _lastValue;
     private bool _hasLastValue;
+    private readonly PreservedStorageTries? _preservedStorageTries;
+    private readonly PreservedStorageTries.Rebinder _storageTreeRebinder;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -39,6 +41,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         ConcurrencyController concurrencyQuota,
         Hash256 storageRoot,
         Address address,
+        PreservedStorageTries? preservedStorageTries,
         ILogManager logManager)
     {
         _scope = scope;
@@ -46,15 +49,25 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _bundle = bundle;
         _address = address;
         _addressHash = address.ToAccountPath.ToHash256();
+        _preservedStorageTries = preservedStorageTries;
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
         StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
-
-        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
+        if (preservedStorageTries is not null
+            && preservedStorageTries.TryTake(address, storageRoot, bundle, concurrencyQuota, out StorageTree reusedTree, out PreservedStorageTries.Rebinder rebinder))
         {
-            RootHash = storageRoot
-        };
+            _tree = reusedTree;
+            _storageTreeRebinder = rebinder;
+        }
+        else
+        {
+            _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
+            {
+                RootHash = storageRoot
+            };
+            _storageTreeRebinder = storageTrieAdapter.Rebind;
+        }
 
         // Set the rootref manually. Cut the call to find nodes by about 1/4th.
         _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
@@ -156,6 +169,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     }
 
     public void CommitTree() => _tree.Commit();
+
+    public void Preserve() => _preservedStorageTries?.Store(_address, _tree, _storageTreeRebinder, _tree.RootHash);
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {

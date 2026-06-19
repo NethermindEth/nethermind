@@ -248,6 +248,33 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void AccountReads_AreCachedWithoutBeingCommittedAsChanges()
+    {
+        using TestContext ctx = new();
+
+        Address readAddress = TestItem.AddressA;
+        Address changedAddress = TestItem.AddressB;
+        Account readAccount = TestItem.GenerateRandomAccount();
+        Account changedAccount = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(readAddress).Returns(readAccount);
+
+        Assert.That(ctx.Scope.Get(readAddress), Is.EqualTo(readAccount));
+        Assert.That(ctx.Scope.Get(readAddress), Is.EqualTo(readAccount));
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = ctx.Scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(changedAddress, changedAccount);
+        }
+        ctx.Scope.Commit(1);
+
+        ctx.PersistenceReader.Received(1).GetAccount(readAddress);
+        Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(readAddress, out _), Is.False);
+        Assert.That(ctx.LastCommittedSnapshot.TryGetAccount(changedAddress, out Account? committedAccount), Is.True);
+        Assert.That(committedAccount, Is.EqualTo(changedAccount));
+    }
+
+    [Test]
     public void TestAccountAndSlotFromWrittenBatch()
     {
         using TestContext ctx = new();

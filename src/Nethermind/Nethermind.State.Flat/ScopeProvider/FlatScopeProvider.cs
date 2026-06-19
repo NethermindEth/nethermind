@@ -20,6 +20,12 @@ public class FlatScopeProvider(
     : IWorldStateScopeProvider, IDisposable
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+    private readonly PreservedPatriciaTrie? _preservedPatriciaTrie = configuration.PreservePatriciaTrie && !isReadOnly
+        ? new PreservedPatriciaTrie()
+        : null;
+    private readonly PreservedStorageTries? _preservedStorageTries = configuration.PreservePatriciaTrie && !isReadOnly
+        ? new PreservedStorageTries()
+        : null;
 
     private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
     {
@@ -44,6 +50,8 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             warmReadPool: _warmReadPool,
+            preservedPatriciaTrie: _preservedPatriciaTrie,
+            preservedStorageTries: _preservedStorageTries,
             isReadOnly: isReadOnly);
     }
 

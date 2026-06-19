@@ -14,22 +14,31 @@ internal sealed class StateTrieStoreAdapter(
     ConcurrencyController concurrencyQuota
 ) : AbstractMinimalTrieStore
 {
+    private SnapshotBundle _bundle = bundle;
+    private ConcurrencyController _concurrencyQuota = concurrencyQuota;
+
+    public void Rebind(SnapshotBundle newBundle, ConcurrencyController newQuota)
+    {
+        _bundle = newBundle;
+        _concurrencyQuota = newQuota;
+    }
+
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        TrieNode node = bundle.FindStateNodeOrUnknown(path, hash);
+        TrieNode node = _bundle.FindStateNodeOrUnknown(path, hash);
         return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStateRlp(path, hash, flags);
+        _bundle.TryLoadStateRlp(path, hash, flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        new Committer(bundle, concurrencyQuota);
+        new Committer(_bundle, _concurrencyQuota);
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
         if (address is null) return this;
-        return new StorageTrieStoreAdapter(bundle, concurrencyQuota, address);
+        return new StorageTrieStoreAdapter(_bundle, _concurrencyQuota, address);
     }
 
     private class Committer(SnapshotBundle bundle, ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
@@ -68,17 +77,27 @@ internal sealed class StorageTrieStoreAdapter(
     Hash256AsKey addressHash
 ) : AbstractMinimalTrieStore
 {
+    private SnapshotBundle _bundle = bundle;
+    private ConcurrencyController _concurrencyQuota = concurrencyQuota;
+    private readonly Hash256AsKey _addressHash = addressHash;
+
+    public void Rebind(SnapshotBundle newBundle, ConcurrencyController newQuota)
+    {
+        _bundle = newBundle;
+        _concurrencyQuota = newQuota;
+    }
+
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        TrieNode node = bundle.FindStorageNodeOrUnknown(addressHash, path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        TrieNode node = _bundle.FindStorageNodeOrUnknown(_addressHash, path, hash);
+        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {_addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+        _bundle.TryLoadStorageRlp(_addressHash, in path, hash, flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        new Committer(bundle, addressHash, concurrencyQuota);
+        new Committer(_bundle, _addressHash, _concurrencyQuota);
 
     private class Committer(SnapshotBundle bundle, Hash256AsKey addressHash, ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
     {
