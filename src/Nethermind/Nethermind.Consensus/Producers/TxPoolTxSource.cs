@@ -212,7 +212,6 @@ namespace Nethermind.Consensus.Producers
                 int leftoverCapacity = maxBlobs - selectedBlobTxs.Count;
                 if (countOfRemainingBlobs <= (ulong)leftoverCapacity)
                 {
-                    // We can take all, no optimal picking needed.
                     foreach ((Transaction tx, ulong blobChain) tx in candidates.AsSpan())
                     {
                         selectedBlobTxs.Add(tx.tx);
@@ -220,7 +219,6 @@ namespace Nethermind.Consensus.Producers
                 }
                 else
                 {
-                    // Are more blobs than spaces, select optimal set to include
                     ChooseBestBlobTransactions(candidates, leftoverCapacity, baseFee, selectedBlobTxs);
                 }
             }

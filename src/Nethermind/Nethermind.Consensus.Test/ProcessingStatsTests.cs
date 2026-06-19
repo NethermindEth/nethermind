@@ -54,7 +54,7 @@ public class ProcessingStatsTests
             AssertStats(stats, blockCount: 2, blockFrom: 1, blockTo: 2, processingMs: 500, mGasPerSecond: 10);
         });
 
-    private static void AssertStats(BlockStatistics stats, long blockCount, long blockFrom, long blockTo, double processingMs, double mGasPerSecond)
+    private static void AssertStats(BlockStatistics stats, long blockCount, ulong blockFrom, ulong blockTo, double processingMs, double mGasPerSecond)
     {
         using (Assert.EnterMultipleScope())
         {

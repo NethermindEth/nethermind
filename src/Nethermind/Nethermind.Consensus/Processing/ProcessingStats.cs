@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Processing
     {
         public long BlockCount { get; set; }
         public ulong BlockFrom { get; set; }
-        public long BlockTo { get; set; }
+        public ulong BlockTo { get; set; }
         public double ProcessingMs { get; set; }
         public double SlotMs { get; set; }
         [JsonPropertyName("mgasPerSecond")]
@@ -486,7 +486,7 @@ namespace Nethermind.Consensus.Processing
             {
                 BlockCount = chunkBlocks,
                 BlockFrom = chunkFirstBlockNumber,
-                BlockTo = (long)block.Number,
+                BlockTo = block.Number,
 
                 ProcessingMs = chunkMs,
                 SlotMs = runMs,

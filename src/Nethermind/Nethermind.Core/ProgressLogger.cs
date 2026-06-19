@@ -20,8 +20,6 @@ namespace Nethermind.Core
         private readonly ILogger _logger;
         private readonly Action<string>? _logAction;
         private string _prefix;
-        // State tuple uses ulong for block-number fields (CurrentValue, TargetValue) and long for
-        // CurrentQueued (uses -1 as "not enabled" sentinel) and _skipped (same sentinel).
         private (ulong, ulong, long, long) _lastReportState = (0UL, 0UL, 0L, 0L);
         private Func<ProgressLogger, string>? _formatter;
 
@@ -43,7 +41,6 @@ namespace Nethermind.Core
             };
         }
 
-        /// <summary>Update the current progress value (a block number, always non-negative).</summary>
         public void Update(ulong value)
         {
             UtcEndTime = null;
@@ -85,10 +82,6 @@ namespace Nethermind.Core
             }
         }
 
-        /// <summary>
-        /// Reset progress tracking.  Both <paramref name="startValue"/> and <paramref name="total"/> are block
-        /// numbers (ulong) so no cast is required at call sites that deal with block heights.
-        /// </summary>
         public void Reset(ulong startValue, ulong total)
         {
             LastMeasurement = UtcEndTime = _timestamper.UtcNow;
@@ -101,7 +94,6 @@ namespace Nethermind.Core
 
         private long _skipped = -1;
 
-        // All four block-number fields are ulong — block numbers are never negative.
         private ulong StartValue { get; set; }
 
         private DateTime? UtcStartTime { get; set; }
@@ -115,10 +107,7 @@ namespace Nethermind.Core
 
         public ulong CurrentValue { get; private set; }
 
-        /// <summary>
-        /// Number of items currently in the processing queue.  Uses -1 as "feature disabled" sentinel,
-        /// so this must remain long rather than ulong.
-        /// </summary>
+        // -1 sentinel = queue tracking disabled.
         public long CurrentQueued { get; set; } = -1;
 
         private TimeSpan Elapsed => (UtcEndTime ?? _timestamper.UtcNow) - (UtcStartTime ?? DateTime.MinValue);
@@ -134,9 +123,6 @@ namespace Nethermind.Core
                     return 0M;
                 }
 
-                // CurrentValue >= StartValue for monotonically-increasing progress; the cast to decimal
-                // is required because ulong subtraction yields ulong which cannot be implicitly divided
-                // by a decimal.
                 return (decimal)(CurrentValue - StartValue) / timePassed;
             }
         }
@@ -176,8 +162,6 @@ namespace Nethermind.Core
                     return 0M;
                 }
 
-                // CurrentValue >= LastValue for monotonically-increasing progress; explicit cast
-                // required for the same reason as TotalPerSecond above.
                 return (decimal)(CurrentValue - LastValue) / timePassed;
             }
         }
@@ -197,8 +181,6 @@ namespace Nethermind.Core
 
         private string DefaultFormatter() => GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
 
-        // `current` and `total` are ulong (block numbers); `queue` stays long because it uses -1 as
-        // a sentinel meaning "queue tracking is not enabled for this progress logger".
         private static string GenerateReport(string prefix, ulong current, ulong total, long queue, decimal speed, decimal skippedPerSecond)
         {
             float percentage = Math.Clamp(current / (float)Math.Max(total, 1UL), 0, 1);

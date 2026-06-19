@@ -82,16 +82,15 @@ namespace Nethermind.Consensus.Validators
             parent = orphaned ? null : parent!;
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
-            return ValidateFieldLimit(header, ref error)
-                   && ValidateHash(header, ref error)
+            return ValidateHash(header, ref error)
                    && ValidateExtraData(header, spec = _specProvider.GetSpec(header), isUncle, ref error)
                    && (orphaned || ValidateParent(header, parent, ref error))
-                   && (orphaned || ValidateBlockNumber(header, parent, ref error))
-                   && (orphaned || ValidateTimestamp(header, parent, ref error))
-                   && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
                    && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
                    && (orphaned || ValidateSeal(header, parent, isUncle, ref error))
                    && ValidateGasUsed(header, ref error)
+                   && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
+                   && (orphaned || ValidateTimestamp(header, parent, ref error))
+                   && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
                    && ValidateRequestsHash(header, spec, ref error)
@@ -209,11 +208,6 @@ namespace Nethermind.Consensus.Validators
 
             return result;
         }
-
-        protected virtual bool ValidateFieldLimit(BlockHeader blockHeader, ref string? error) =>
-            // Number, GasLimit and GasUsed are ulong — they can never be negative.
-            // This method is kept for subclass extensibility; no checks are needed at this level.
-            true;
 
         protected virtual bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
         {

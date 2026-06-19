@@ -233,12 +233,12 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
 
     public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken)
     {
-        const int length = (int)BlockhashCache.MaxDepth + 1;
+        const ulong length = BlockhashCache.MaxDepth + 1;
         Hash256[] result = new Hash256[length];
         result[0] = blockHeader.Hash;
-        for (int i = 1; i < length; i++)
+        for (ulong i = 1; i < length; i++)
         {
-            if (_numberToHeader.TryGetValue(blockHeader.Number - (ulong)i, out BlockHeader header))
+            if (_numberToHeader.TryGetValue(blockHeader.Number - i, out BlockHeader header))
             {
                 result[i] = header.Hash;
             }

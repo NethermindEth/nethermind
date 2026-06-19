@@ -15,7 +15,7 @@ namespace Nethermind.BalRecorder;
 public class SlotStore(string directory, string extension = "bin") : IDisposable
 {
     private SlotFile? _file;
-    private long _fileEra = -1;
+    private ulong? _fileEra;
     private readonly Lock _lock = new();
 
     private string FilePath(ulong era) => Path.Combine(directory, $"{era:D8}.{extension}");
@@ -26,13 +26,13 @@ public class SlotStore(string directory, string extension = "bin") : IDisposable
         int slot = (int)(blockNumber % SlotFile.SlotsPerFile);
         lock (_lock)
         {
-            if (_fileEra != (long)era)
+            if (_fileEra != era)
             {
                 string path = FilePath(era);
                 if (!File.Exists(path)) return false;
                 _file?.Dispose();
                 _file = new SlotFile(path);
-                _fileEra = (long)era;
+                _fileEra = era;
             }
             return _file!.TryRead(slot, action, arg);
         }
@@ -44,12 +44,12 @@ public class SlotStore(string directory, string extension = "bin") : IDisposable
         int slot = (int)(blockNumber % SlotFile.SlotsPerFile);
         lock (_lock)
         {
-            if (_fileEra != (long)era)
+            if (_fileEra != era)
             {
                 _file?.Dispose();
                 Directory.CreateDirectory(directory);
                 _file = new SlotFile(FilePath(era));
-                _fileEra = (long)era;
+                _fileEra = era;
             }
             return _file!.TryWrite(slot, data);
         }
@@ -61,7 +61,7 @@ public class SlotStore(string directory, string extension = "bin") : IDisposable
         {
             _file?.Dispose();
             _file = null;
-            _fileEra = -1;
+            _fileEra = null;
         }
     }
 }
