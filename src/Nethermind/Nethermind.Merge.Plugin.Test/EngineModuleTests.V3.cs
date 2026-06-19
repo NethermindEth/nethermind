@@ -877,7 +877,7 @@ public partial class EngineModuleTests
             yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), true)
             {
                 TestName = "ForkchoiceUpdatedV3 To Request Shanghai Payload, Zero Beacon Root",
-                ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
+                ExpectedResult = MergeErrorCodes.UnsupportedFork,
             };
             yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), false)
             {

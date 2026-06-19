@@ -163,11 +163,11 @@ public class PayloadAttributes
         if (actualVersion != timestampVersion)
         {
             error = $"{methodName}{timestampVersion} expected";
-            // actualVersion > timestampVersion: attributes carry fields from a more advanced fork than the
-            // (e.g. BeaconRoot sent at a pre-Cancun timestamp via FCUv2) is InvalidPayloadAttributes
-            bool unsupportedFork = timestampVersion >= PayloadAttributesVersions.V2 &&
-                actualVersion < timestampVersion &&
-                fcuVersion != timestampVersion;
+            bool unsupportedFork = timestampVersion >= PayloadAttributesVersions.V2 && (
+                // attrs from a newer fork AND FCU version is also too new for this timestamp
+                actualVersion > timestampVersion ? fcuVersion > timestampVersion
+                // attrs from an older fork AND the FCU version doesn't match either
+                : fcuVersion != timestampVersion);
             return unsupportedFork
                 ? PayloadAttributesValidationResult.UnsupportedFork
                 : PayloadAttributesValidationResult.InvalidPayloadAttributes;
