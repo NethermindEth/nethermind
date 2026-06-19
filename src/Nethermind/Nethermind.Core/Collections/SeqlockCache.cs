@@ -43,7 +43,7 @@ public sealed class SeqlockCache<TKey, TValue>
     where TValue : class?
 {
     /// <summary>
-    /// Default number of set-index bits: 16384 sets x 2 ways = 32768 total entries.
+    /// Default number of set-index bits: 16384 sets × 2 ways = 32768 total entries.
     /// </summary>
     public const int DefaultSetsBits = 14;
 

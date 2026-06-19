@@ -353,13 +353,18 @@ public partial class BlockProcessor
         {
             TxReceipt[] result = new TxReceipt[len];
             long cumulativeGas = 0;
+            Bloom blockBloom = new();
             for (int i = 0; i < len; i++)
             {
                 result[i] = receiptsTracers[i].TxReceipts[0];
                 result[i].Index = i;
                 cumulativeGas += result[i].GasUsed;
                 result[i].GasUsedTotal = cumulativeGas;
+                result[i].CalculateBloom();
+                blockBloom.Accumulate(result[i].Bloom!);
             }
+
+            block.Header.Bloom = blockBloom;
 
             return result;
         }

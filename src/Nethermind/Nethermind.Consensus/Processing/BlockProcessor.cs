@@ -218,7 +218,7 @@ public partial class BlockProcessor(
         {
             for (int i = 0; i < receipts.Length; i++)
             {
-                EnsureBloom(receipts[i]);
+                receipts[i].CalculateBloom();
             }
 
             return;
@@ -231,7 +231,7 @@ public partial class BlockProcessor(
             receipts,
             static (i, receipts) =>
             {
-                EnsureBloom(receipts[i]);
+                receipts[i].CalculateBloom();
                 return receipts;
             });
     }
@@ -278,10 +278,6 @@ public partial class BlockProcessor(
         public static void AddTicks(long ticks) => Evm.Metrics.IncrementBloomsTime(ticks);
         public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void EnsureBloom(TxReceipt receipt)
-        => _ = receipt.Bloom;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void SetAccountChanges(Block block)
