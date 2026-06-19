@@ -107,33 +107,4 @@ class Program
 
         IO.WriteOutput(output);
     }
-
-    static bool _handlingException;
-
-    [UnmanagedCallersOnly(EntryPoint = "ZkvmThrow")]
-    static unsafe void HandleException(void* exception)
-    {
-        if (_handlingException || StatelessExecutor.FailureOutput.IsEmpty)
-            Environment.Exit(1);
-
-        _handlingException = true;
-
-        if (exception is null)
-        {
-            IO.PrintLine("An unknown error occurred.");
-        }
-        else
-        {
-            // SAFETY: a non-null `exception` is guaranteed by the runtime
-            // to point to a valid managed exception object.
-            nint ptr = (nint)exception;
-            Exception ex = Unsafe.As<nint, Exception>(ref ptr);
-
-            IO.PrintLine($"{ex.GetType().FullName}: {ex.Message}");
-        }
-
-        WriteOutput(StatelessExecutor.FailureOutput.Span);
-
-        Environment.Exit(0);
-    }
 }
