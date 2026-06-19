@@ -354,63 +354,33 @@ public class Metrics
     public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted.Value;
     public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted.Value);
 
-    internal static long BlockTransactions { get; set; }
-
-    private static float _blockAveGasPrice;
-    internal static float BlockAveGasPrice
-    {
-        get => _blockAveGasPrice;
-        set
-        {
-            _blockAveGasPrice = value;
-            if (value != 0)
-            {
-                GasPriceAve = value;
-            }
-        }
-    }
-
-    private static float _blockMinGasPrice = float.MaxValue;
-    internal static float BlockMinGasPrice
-    {
-        get => _blockMinGasPrice;
-        set
-        {
-            _blockMinGasPrice = value;
-            if (_blockMinGasPrice != float.MaxValue)
-            {
-                GasPriceMin = value;
-            }
-        }
-    }
-
-    private static float _blockMaxGasPrice;
-    internal static float BlockMaxGasPrice
-    {
-        get => _blockMaxGasPrice;
-        set
-        {
-            _blockMaxGasPrice = value;
-            if (value != 0)
-            {
-                GasPriceMax = value;
-            }
-        }
-    }
-
+    // Block gas-price aggregates are updated once per transaction and, under parallel BAL validation, by
+    // many workers concurrently. They are kept lock-free by packing two interdependent values into one
+    // long updated with a single CAS: _minMaxGasPriceBits holds (min, max); _countAveGasPriceBits holds
+    // (count, running average) - packing count+ave together keeps the running mean exact under contention.
+    private static long _minMaxGasPriceBits = PackFloats(float.MaxValue, 0f);
+    private static long _countAveGasPriceBits;
+    // Order-dependent streaming estimate (already non-deterministic under parallelism); its own CAS.
     private static float _blockEstMedianGasPrice;
-    internal static float BlockEstMedianGasPrice
-    {
-        get => _blockEstMedianGasPrice;
-        set
-        {
-            _blockEstMedianGasPrice = value;
-            if (value != 0)
-            {
-                GasPriceMedian = value;
-            }
-        }
-    }
+
+    internal static long BlockTransactions => LoInt(Volatile.Read(ref _countAveGasPriceBits));
+    internal static float BlockAveGasPrice => HiFloat(Volatile.Read(ref _countAveGasPriceBits));
+    internal static float BlockMinGasPrice => LoFloat(Volatile.Read(ref _minMaxGasPriceBits));
+    internal static float BlockMaxGasPrice => HiFloat(Volatile.Read(ref _minMaxGasPriceBits));
+    internal static float BlockEstMedianGasPrice => Volatile.Read(ref _blockEstMedianGasPrice);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long PackFloats(float lo, float hi)
+        => (uint)BitConverter.SingleToInt32Bits(lo) | ((long)(uint)BitConverter.SingleToInt32Bits(hi) << 32);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long PackCountAve(int count, float ave)
+        => (uint)count | ((long)(uint)BitConverter.SingleToInt32Bits(ave) << 32);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float LoFloat(long bits) => BitConverter.Int32BitsToSingle((int)bits);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float HiFloat(long bits) => BitConverter.Int32BitsToSingle((int)(bits >> 32));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int LoInt(long bits) => (int)bits;
 
     /// <summary>
     /// Gets block gas price data for external access. Returns (min, estMedian, ave, max).
@@ -418,10 +388,8 @@ public class Metrics
     /// </summary>
     public static (float Min, float EstMedian, float Ave, float Max)? GetBlockGasPrices()
     {
-        if (_blockMinGasPrice == float.MaxValue)
-            return null;
-
-        return (_blockMinGasPrice, _blockEstMedianGasPrice, _blockAveGasPrice, _blockMaxGasPrice);
+        float min = BlockMinGasPrice;
+        return min == float.MaxValue ? null : (min, BlockEstMedianGasPrice, BlockAveGasPrice, BlockMaxGasPrice);
     }
 
     [GaugeMetric]
@@ -442,24 +410,17 @@ public class Metrics
 
     public static void ResetBlockStats()
     {
-        lock (_gasPriceLock)
-        {
-            BlockTransactions = 0;
-            BlockAveGasPrice = 0.0f;
-            BlockMaxGasPrice = 0.0f;
-            BlockEstMedianGasPrice = 0.0f;
-            BlockMinGasPrice = float.MaxValue;
-        }
+        Volatile.Write(ref _minMaxGasPriceBits, PackFloats(float.MaxValue, 0f));
+        Volatile.Write(ref _countAveGasPriceBits, 0L);
+        Volatile.Write(ref _blockEstMedianGasPrice, 0f);
     }
-
-    // Serializes the once-per-tx gas-price aggregate update so parallel BAL workers don't race on it.
-    private static readonly Lock _gasPriceLock = new();
 
     /// <summary>Folds a transaction's effective gas price into the per-block aggregates.</summary>
     /// <remarks>
-    /// Gas prices at or above <see cref="ulong.MaxValue"/> wei/gas (~18.4 ETH) are not meaningful for
-    /// these metrics, so the rare wider value is skipped rather than paying the multi-limb
-    /// <see cref="UInt256"/> to <see cref="double"/> conversion on the hot path.
+    /// Lock-free: parallel BAL workers each call this once per transaction. Gas prices at or above
+    /// <see cref="ulong.MaxValue"/> wei/gas (~18.4 ETH) are not meaningful for these metrics, so the rare
+    /// wider value is skipped rather than paying the multi-limb <see cref="UInt256"/> to
+    /// <see cref="double"/> conversion.
     /// </remarks>
     internal static void UpdateBlockGasPrice(in UInt256 effectiveGasPrice)
     {
@@ -467,14 +428,43 @@ public class Metrics
 
         float gasPrice = (float)(effectiveGasPrice.u0 / 1_000_000_000.0);
 
-        lock (_gasPriceLock)
+        long mm = Volatile.Read(ref _minMaxGasPriceBits);
+        while (true)
         {
-            BlockMinGasPrice = Math.Min(gasPrice, BlockMinGasPrice);
-            BlockMaxGasPrice = Math.Max(gasPrice, BlockMaxGasPrice);
-            BlockAveGasPrice = (BlockAveGasPrice * BlockTransactions + gasPrice) / (BlockTransactions + 1);
-            BlockEstMedianGasPrice += BlockAveGasPrice * 0.01f * float.Sign(gasPrice - BlockEstMedianGasPrice);
-            BlockTransactions++;
+            long updated = PackFloats(MathF.Min(LoFloat(mm), gasPrice), MathF.Max(HiFloat(mm), gasPrice));
+            if (updated == mm) break;
+            long prev = Interlocked.CompareExchange(ref _minMaxGasPriceBits, updated, mm);
+            if (prev == mm) break;
+            mm = prev;
         }
+
+        float newAve;
+        long ca = Volatile.Read(ref _countAveGasPriceBits);
+        while (true)
+        {
+            int count = LoInt(ca);
+            newAve = (HiFloat(ca) * count + gasPrice) / (count + 1);
+            long prev = Interlocked.CompareExchange(ref _countAveGasPriceBits, PackCountAve(count + 1, newAve), ca);
+            if (prev == ca) break;
+            ca = prev;
+        }
+
+        float median = Volatile.Read(ref _blockEstMedianGasPrice);
+        while (true)
+        {
+            float updated = median + newAve * 0.01f * float.Sign(gasPrice - median);
+            if (updated == median) break;
+            float prev = Interlocked.CompareExchange(ref _blockEstMedianGasPrice, updated, median);
+            if (prev == median) break;
+            median = prev;
+        }
+
+        // Latest-block Prometheus gauges; last-writer-wins is fine for a gauge.
+        GasPriceMin = BlockMinGasPrice;
+        if (BlockMaxGasPrice != 0) GasPriceMax = BlockMaxGasPrice;
+        if (newAve != 0) GasPriceAve = newAve;
+        float curMedian = BlockEstMedianGasPrice;
+        if (curMedian != 0) GasPriceMedian = curMedian;
     }
 
     /// <summary>
@@ -483,7 +473,7 @@ public class Metrics
     /// </summary>
     /// <remarks>
     /// Skips zero-base-fee chains (pre-EIP-1559, some rollups, genesis): rendering "0.000" there is
-    /// less informative than the prior blank output.
+    /// less informative than the prior blank output. Called after workers join, so the CAS is uncontended.
     /// </remarks>
     internal static void SeedBlockGasPriceIfEmpty(in UInt256 baseFee)
     {
@@ -491,14 +481,15 @@ public class Metrics
 
         float gasPrice = (float)(baseFee.u0 / 1_000_000_000.0);
 
-        lock (_gasPriceLock)
-        {
-            if (BlockMinGasPrice != float.MaxValue) return; // a transaction already contributed
+        long empty = PackFloats(float.MaxValue, 0f);
+        if (Interlocked.CompareExchange(ref _minMaxGasPriceBits, PackFloats(gasPrice, gasPrice), empty) != empty)
+            return; // a transaction already contributed
 
-            BlockMinGasPrice = gasPrice;
-            BlockMaxGasPrice = gasPrice;
-            BlockAveGasPrice = gasPrice;
-            BlockEstMedianGasPrice = gasPrice;
-        }
+        Volatile.Write(ref _countAveGasPriceBits, PackCountAve(0, gasPrice));
+        Volatile.Write(ref _blockEstMedianGasPrice, gasPrice);
+        GasPriceMin = gasPrice;
+        GasPriceMax = gasPrice;
+        GasPriceAve = gasPrice;
+        GasPriceMedian = gasPrice;
     }
 }
