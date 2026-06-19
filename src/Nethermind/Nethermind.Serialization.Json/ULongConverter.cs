@@ -20,22 +20,9 @@ public class ULongConverter : JsonConverter<ulong>
     {
         ArgumentNullException.ThrowIfNull(s);
 
-        if (s == Nethermind.Core.Extensions.Bytes.ZeroHexValue)
-        {
-            return 0UL;
-        }
-
-        if (s.StartsWith("0x0"))
-        {
-            throw new JsonException("hex to ulong");
-        }
-
         if (s.StartsWith("0x"))
         {
-            Span<char> withZero = new(new char[s.Length - 1]);
-            withZero[0] = '0';
-            s.AsSpan(2).CopyTo(withZero[1..]);
-            return ulong.Parse(withZero, NumberStyles.AllowHexSpecifier);
+            return ulong.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
         }
 
         return ulong.Parse(s, NumberStyles.Integer);
@@ -76,6 +63,6 @@ public class ULongConverter : JsonConverter<ulong>
     public override ulong ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
-        return NumericConverterHelper.ParseLax<ulong>(hex);
+        return NumericConverterHelper.Parse<ulong>(hex);
     }
 }

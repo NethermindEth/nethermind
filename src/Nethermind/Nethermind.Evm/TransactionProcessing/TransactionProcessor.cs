@@ -1626,7 +1626,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ulong stateReservoir = TGasPolicy.GetStateReservoir(in gas);
             ulong stateGasSpillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
             ulong totalSub = stateReservoir + stateGasSpillBurned;
-            ulong returnedSpillNotInReservoir = TGasPolicy.GetStateGasSpill(in gas) > totalSub ? TGasPolicy.GetStateGasSpill(in gas) - totalSub : 0UL;
+            ulong returnedSpillNotInReservoir = TGasPolicy.GetStateGasSpill(in gas).SaturatingSub(totalSub);
             ulong refundedSpill = TGasPolicy.GetStateGasSpillRefunded(in gas);
             ulong refundedSpillNotInReservoir = Math.Min(returnedSpillNotInReservoir, refundedSpill);
             ulong createStateGas = TGasPolicy.GetCreateStateCost(in gas);

@@ -28,39 +28,6 @@ public static class NumericConverterHelper
             ThrowNullAssignment(typeof(T).Name);
         }
 
-        if (s.SequenceEqual("0x0"u8))
-        {
-            return T.Zero;
-        }
-
-        if (s.StartsWith("0x"u8))
-        {
-            s = s[2..];
-            if (T.TryParse(s, NumberStyles.AllowHexSpecifier, null, out T value))
-            {
-                return value;
-            }
-        }
-        else if (T.TryParse(s, NumberStyles.Integer, null, out T value))
-        {
-            return value;
-        }
-
-        ThrowHexConversion(typeof(T).Name);
-        return default;
-    }
-
-    /// <summary>
-    /// Parse a UTF-8 span that may be hex ("0x...") or decimal into <typeparamref name="T"/> without strict leading zero checks.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T ParseLax<T>(ReadOnlySpan<byte> s) where T : struct, INumberBase<T>
-    {
-        if (s.Length == 0)
-        {
-            ThrowNullAssignment(typeof(T).Name);
-        }
-
         if (s.StartsWith("0x"u8))
         {
             s = s[2..];
