@@ -11,8 +11,9 @@ namespace Nethermind.Taiko.Test.ZkGas;
 
 /// <summary>
 /// Test-owned mirror of the Unzen ZK gas multiplier tables shipped in
-/// <c>Chains/taiko-alethia.json</c> under <c>unzenZkGasSchedules</c>. Tests pin against these
-/// copies so a chainspec edit must also update this file — drift surfaces as a failing assertion.
+/// <c>Chains/taiko-alethia.json</c> and <c>Chains/taiko-hoodi.json</c> under
+/// <c>unzenZkGasSchedules</c>. Tests pin against these copies so a chainspec edit must also
+/// update this file — drift surfaces as a failing assertion.
 /// </summary>
 public static class ZkGasTestSchedules
 {

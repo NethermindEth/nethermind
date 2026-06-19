@@ -26,7 +26,7 @@ public class BlockBodyDecoderTests
     // check for RlpLimitException specifically, which should fire before decoding, so 0xC0 placeholders are fine here.
     [TestCase(60_000, 0, null, TestName = "transactions")]
     [TestCase(0, 3, null, TestName = "uncles")]
-    [TestCase(0, 0, 1_001, TestName = "withdrawals")]
+    [TestCase(0, 0, 64_001, TestName = "withdrawals")]
     public void Decode_count_over_limit_throws(int txCount, int uncleCount, int? withdrawalCount) =>
         Assert.Throws<RlpLimitException>(() => DecodeBody(BuildBodyStream(txCount, uncleCount, withdrawalCount)));
 

@@ -73,30 +73,33 @@ public static class AccessListTransactionForRpcTests
 
     public static void ValidateSchema(JsonElement json)
     {
-        Assert.That(json.GetProperty("type").GetString(), Does.Match("^0x1$"));
-        Assert.That(json.GetProperty("nonce").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("to").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
-        Assert.That(json.GetProperty("gas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("value").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("input").GetString(), Does.Match("^0x[0-9a-f]*$"));
-        Assert.That(json.GetProperty("gasPrice").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
-        foreach (JsonElement item in accessList)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(item.GetProperty("address").GetString(), Does.Match("^0x[0-9a-fA-F]{40}$"));
-            foreach (JsonElement key in item.GetProperty("storageKeys").EnumerateArray())
+            Assert.That(json.GetProperty("type").GetString(), Does.Match("^0x1$"));
+            Assert.That(json.GetProperty("nonce").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("to").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
+            Assert.That(json.GetProperty("gas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("value").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("input").GetString(), Does.Match("^0x[0-9a-f]*$"));
+            Assert.That(json.GetProperty("gasPrice").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
+            foreach (JsonElement item in accessList)
             {
-                Assert.That(key.GetString(), Does.Match("^0x[0-9a-f]{64}$"));
+                Assert.That(item.GetProperty("address").GetString(), Does.Match("^0x[0-9a-fA-F]{40}$"));
+                foreach (JsonElement key in item.GetProperty("storageKeys").EnumerateArray())
+                {
+                    Assert.That(key.GetString(), Does.Match("^0x[0-9a-f]{64}$"));
+                }
             }
+            Assert.That(json.GetProperty("chainId").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            string? yParity = json.GetProperty("yParity").GetString();
+            Assert.That(yParity, Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            if (json.TryGetProperty("v", out JsonElement v))
+            {
+                Assert.That(v.GetString(), Is.EqualTo(yParity));
+            }
+            Assert.That(json.GetProperty("r").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("s").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         }
-        Assert.That(json.GetProperty("chainId").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        string? yParity = json.GetProperty("yParity").GetString();
-        Assert.That(yParity, Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        if (json.TryGetProperty("v", out JsonElement v))
-        {
-            Assert.That(v.GetString(), Is.EqualTo(yParity));
-        }
-        Assert.That(json.GetProperty("r").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("s").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
     }
 }

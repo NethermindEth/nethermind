@@ -179,7 +179,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = CreateSerializationPayload(chain);
 
         //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
@@ -234,7 +234,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
         //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
@@ -275,7 +275,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
         //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
@@ -749,17 +749,18 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// Regression test: eth_simulateV1 with validation:true and a sender address that has deployed
-    /// code (EIP-3607) must return -38024 (SenderIsNotEoa).
+    /// Regression test for the Hive <c>ethSimulate-simple-send-from-contract-with-validation</c> case:
+    /// eth_simulateV1 must allow a state-overridden contract address as the <c>from</c> sender even
+    /// when <c>validation:true</c>. EIP-3607 must not be enforced inside simulate.
     /// </summary>
     [Test]
-    public async Task eth_simulateV1_sender_is_not_eoa_returns_spec_error_code()
+    public async Task eth_simulateV1_contract_sender_with_state_override_succeeds_when_validation_enabled()
     {
         OverridableReleaseSpec spec = new(London.Instance) { IsEip3607Enabled = true };
         TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
         TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
 
-        // Override TestItem.AddressC with contract code — makes it a non-EOA sender.
+        // Override TestItem.AddressC with contract code and balance — the simulate call uses it as sender.
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
@@ -796,7 +797,9 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.SenderIsNotEoa));
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
     }
 
     /// <summary>

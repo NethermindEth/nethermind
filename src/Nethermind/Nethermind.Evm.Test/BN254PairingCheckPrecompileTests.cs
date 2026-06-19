@@ -110,4 +110,10 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
 
     [TestCaseSource(nameof(MultiPairBoundaryCases))]
     public void Multi_pair_boundary(string input, string output, bool status) => RunTest(input, output, status);
+
+    // A point at infinity in the first pair must be skipped, leaving the remaining pairing product unchanged.
+    // Complements the boundary cases above, which only place infinity pairs at the tail or use all-infinity input.
+    [Test]
+    public void Pairing_with_leading_infinity_pair_is_skipped_and_result_unchanged() =>
+        RunTest(InfinityPairs(1) + TwoPairsProductOne, ResultOne, true);
 }

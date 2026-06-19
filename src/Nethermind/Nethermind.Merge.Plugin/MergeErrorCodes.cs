@@ -31,9 +31,14 @@ public static class MergeErrorCodes
     public const int TooLargeRequest = -38004;
 
     /// <summary>
-    /// Payload attributes are invalid or inconsistent.
+    /// Requested fork is not supported by this EL.
     /// </summary>
     public const int UnsupportedFork = -38005;
+
+    /// <summary>
+    /// Reorg depth exceeds the EL's limit.
+    /// </summary>
+    public const int ReorgTooDeep = -38006;
 
     /// <summary>
     /// EIP-7805 (FOCIL): the parent block referenced by <c>engine_getInclusionListV1</c>

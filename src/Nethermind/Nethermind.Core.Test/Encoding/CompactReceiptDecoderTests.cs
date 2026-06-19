@@ -128,17 +128,20 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
             decoder.DecodeStructRef(ref ctx, RlpBehaviors.Storage, out TxReceiptStructRef deserialized);
 
-            Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
-            Assert.That(deserialized.BlockHash.Bytes.Length, Is.EqualTo(0));
-            Assert.That(deserialized.BlockNumber, Is.EqualTo(0), "block number");
-            Assert.That(deserialized.Index, Is.EqualTo(0), "index");
-            Assert.That(deserialized.ContractAddress.Bytes.Length, Is.EqualTo(0));
-            Assert.That(deserialized.Sender.ToString(), Is.EqualTo(txReceipt.Sender.ToString()), "sender");
-            Assert.That(deserialized.GasUsed, Is.EqualTo(0), "gas used");
-            Assert.That(deserialized.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
-            Assert.That(deserialized.Bloom.Bytes.Length, Is.EqualTo(0));
-            Assert.That(deserialized.Recipient.Bytes.Length, Is.EqualTo(0));
-            Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
+                Assert.That(deserialized.BlockHash.Bytes.Length, Is.EqualTo(0));
+                Assert.That(deserialized.BlockNumber, Is.EqualTo(0), "block number");
+                Assert.That(deserialized.Index, Is.EqualTo(0), "index");
+                Assert.That(deserialized.ContractAddress.Bytes.Length, Is.EqualTo(0));
+                Assert.That(deserialized.Sender.ToString(), Is.EqualTo(txReceipt.Sender.ToString()), "sender");
+                Assert.That(deserialized.GasUsed, Is.EqualTo(0), "gas used");
+                Assert.That(deserialized.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
+                Assert.That(deserialized.Bloom.Bytes.Length, Is.EqualTo(0));
+                Assert.That(deserialized.Recipient.Bytes.Length, Is.EqualTo(0));
+                Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            }
         }
 
         [Test]
@@ -203,11 +206,9 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(receipts);
-            using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
-            {
-                byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
-                Assert.That(nettyBytes, Is.EqualTo(rlp.Bytes));
-            }
+            using NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts);
+            byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
+            Assert.That(nettyBytes, Is.EqualTo(rlp.Bytes));
         }
 
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
@@ -235,32 +236,38 @@ namespace Nethermind.Core.Test.Encoding
 
         private void AssertStorageReceipt(TxReceipt txReceipt, TxReceipt? deserialized)
         {
-            Assert.That(deserialized?.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
-            Assert.That(deserialized?.BlockHash, Is.EqualTo(null), "block hash");
-            Assert.That(deserialized?.BlockNumber, Is.EqualTo(0), "block number");
-            Assert.That(deserialized?.Index, Is.EqualTo(0), "index");
-            Assert.That(deserialized?.ContractAddress, Is.EqualTo(null), "contract");
-            Assert.That(deserialized?.Sender, Is.EqualTo(txReceipt.Sender), "sender");
-            Assert.That(deserialized?.GasUsed, Is.EqualTo(0), "gas used");
-            Assert.That(deserialized?.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
-            Assert.That(deserialized?.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
-            Assert.That(deserialized?.Recipient, Is.EqualTo(null), "recipient");
-            Assert.That(deserialized?.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deserialized?.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
+                Assert.That(deserialized?.BlockHash, Is.EqualTo(null), "block hash");
+                Assert.That(deserialized?.BlockNumber, Is.EqualTo(0), "block number");
+                Assert.That(deserialized?.Index, Is.EqualTo(0), "index");
+                Assert.That(deserialized?.ContractAddress, Is.EqualTo(null), "contract");
+                Assert.That(deserialized?.Sender, Is.EqualTo(txReceipt.Sender), "sender");
+                Assert.That(deserialized?.GasUsed, Is.EqualTo(0), "gas used");
+                Assert.That(deserialized?.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
+                Assert.That(deserialized?.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
+                Assert.That(deserialized?.Recipient, Is.EqualTo(null), "recipient");
+                Assert.That(deserialized?.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            }
         }
 
         private void AssertStorageLegacyReceipt(TxReceipt txReceipt, TxReceipt deserialized)
         {
-            Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
-            Assert.That(deserialized.BlockHash, Is.EqualTo(txReceipt.BlockHash), "block hash");
-            Assert.That(deserialized.BlockNumber, Is.EqualTo(txReceipt.BlockNumber), "block number");
-            Assert.That(deserialized.Index, Is.EqualTo(txReceipt.Index), "index");
-            Assert.That(deserialized.ContractAddress, Is.EqualTo(txReceipt.ContractAddress), "contract");
-            Assert.That(deserialized.Sender, Is.EqualTo(txReceipt.Sender), "sender");
-            Assert.That(deserialized.GasUsed, Is.EqualTo(txReceipt.GasUsed), "gas used");
-            Assert.That(deserialized.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
-            Assert.That(deserialized.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
-            Assert.That(deserialized.Recipient, Is.EqualTo(txReceipt.Recipient), "recipient");
-            Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
+                Assert.That(deserialized.BlockHash, Is.EqualTo(txReceipt.BlockHash), "block hash");
+                Assert.That(deserialized.BlockNumber, Is.EqualTo(txReceipt.BlockNumber), "block number");
+                Assert.That(deserialized.Index, Is.EqualTo(txReceipt.Index), "index");
+                Assert.That(deserialized.ContractAddress, Is.EqualTo(txReceipt.ContractAddress), "contract");
+                Assert.That(deserialized.Sender, Is.EqualTo(txReceipt.Sender), "sender");
+                Assert.That(deserialized.GasUsed, Is.EqualTo(txReceipt.GasUsed), "gas used");
+                Assert.That(deserialized.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
+                Assert.That(deserialized.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
+                Assert.That(deserialized.Recipient, Is.EqualTo(txReceipt.Recipient), "recipient");
+                Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            }
         }
 
     }

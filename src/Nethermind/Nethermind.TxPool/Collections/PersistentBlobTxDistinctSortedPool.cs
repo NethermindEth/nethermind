@@ -95,9 +95,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
     }
 
     public override int TryGetBlobsAndProofsV1(
-        byte[][] requestedBlobVersionedHashes,
-        byte[]?[] blobs,
-        ReadOnlyMemory<byte[]>[] proofs)
+         byte[][] requestedBlobVersionedHashes,
+         Span<byte[]?> blobs,
+         Span<ReadOnlyMemory<byte[]>> proofs)
     {
         int found = 0;
         int missCount = 0;

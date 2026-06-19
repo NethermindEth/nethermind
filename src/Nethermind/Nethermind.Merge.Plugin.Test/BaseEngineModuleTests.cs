@@ -285,8 +285,6 @@ public abstract partial class BaseEngineModuleTests
             return bc;
         }
 
-        public IManualBlockFinalizationManager BlockFinalizationManager => Container.Resolve<IManualBlockFinalizationManager>();
-
         public IBlockImprovementContextFactory BlockImprovementContextFactory =>
             Container.Resolve<IBlockImprovementContextFactory>();
 

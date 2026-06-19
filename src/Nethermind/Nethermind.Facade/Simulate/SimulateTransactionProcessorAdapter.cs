@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -40,6 +41,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _currentTxIndex = 0;
-        transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+        BlockExecutionContext ctx = new(blockExecutionContext.Header, blockExecutionContext.Spec.WithoutEip3607());
+        transactionProcessor.SetBlockExecutionContext(in ctx);
     }
 }

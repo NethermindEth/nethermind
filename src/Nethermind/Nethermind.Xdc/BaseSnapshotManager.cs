@@ -126,8 +126,8 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     {
         if (!e.WereProcessed)
             return;
-        foreach (Block block in e.Blocks)
-            UpdateMasterNodes((XdcBlockHeader)block.Header);
+        foreach (BlockHeader header in e.Headers)
+            UpdateMasterNodes((XdcBlockHeader)header);
     }
 
     private void UpdateMasterNodes(XdcBlockHeader header)
