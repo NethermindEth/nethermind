@@ -9,7 +9,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     public class ChainSpecEthereumSealJson
     {
-        [JsonConverter(typeof(ULongRawJsonConverter))]
+        [JsonConverter(typeof(ULongConverter))]
         public ulong Nonce { get; set; }
         public Hash256 MixHash { get; set; }
     }

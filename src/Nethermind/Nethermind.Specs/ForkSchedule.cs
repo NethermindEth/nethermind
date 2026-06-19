@@ -104,7 +104,7 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
         ForkActivation[] result = new ForkActivation[count];
         prepend.CopyTo(result);
         int index = prepend.Length;
-        int timestampIndex = 0;
+        ulong timestampIndex = 0;
         for (int i = 1; i < _entries.Count; i++)
         {
             ForkSpec fork = _entries[i];
@@ -116,7 +116,7 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
             else if (fork.Timestamp is { } timestamp)
             {
                 ulong blockForTimestamp = incrementBlockPerTimestampFork
-                    ? postMergeBlock + (ulong)timestampIndex
+                    ? postMergeBlock + timestampIndex
                     : postMergeBlock;
                 result[index++] = (blockForTimestamp, timestamp);
                 timestampIndex++;

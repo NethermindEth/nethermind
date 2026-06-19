@@ -210,8 +210,6 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             beneficiary,
             difficulty,
             0,
-            // Pre-existing cast: UInt256 -> ulong. Safe for any valid genesis gas limit
-            // (would only overflow above ~1.8x10^19, which is physically impossible).
             gasLimit,
             timestamp,
             extraData)

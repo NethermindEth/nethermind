@@ -39,9 +39,7 @@ public class BlockRewardConverter : JsonConverter<SortedDictionary<ulong, UInt25
                     throw new ArgumentException("Cannot deserialize dictionary.");
                 }
 
-                UInt256 property =
-                    UInt256Converter.ReadHex(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
-                ulong key = (ulong)property;
+                ulong key = ULongConverter.FromString(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
                 reader.Read();
                 if (reader.TokenType != JsonTokenType.String)
                 {

@@ -275,7 +275,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
         chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
         chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
-        // null when Eip1283DisableTransition is absent (chain never had a Constantinople/fix split).
         chainSpec.ConstantinopleBlockNumber =
             chainSpec.Parameters.Eip1283DisableTransition is null
                 ? null
@@ -469,7 +468,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                 if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out byte[] codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
-                    (ulong)account.Value.Nonce,
+                    account.Value.Nonce,
                     codeHash,
                     account.Value.Constructor,
                     account.Value.GetConvertedStorage());
@@ -478,7 +477,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             {
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
-                    (ulong)account.Value.Nonce,
+                    account.Value.Nonce,
                     account.Value.Code,
                     account.Value.Constructor,
                     account.Value.GetConvertedStorage());

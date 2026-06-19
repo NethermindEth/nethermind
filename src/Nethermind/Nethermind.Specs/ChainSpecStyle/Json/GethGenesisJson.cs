@@ -19,7 +19,7 @@ public class GethGenesisJson
 
     public Dictionary<Address, GethGenesisAllocJson>? Alloc { get; set; }
 
-    [JsonConverter(typeof(ULongRawJsonConverter))]
+    [JsonConverter(typeof(ULongConverter))]
     public ulong Nonce { get; set; }
 
     public ulong? Timestamp { get; set; }
