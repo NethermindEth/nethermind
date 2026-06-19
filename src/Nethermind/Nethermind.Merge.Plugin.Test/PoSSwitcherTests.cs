@@ -197,8 +197,6 @@ namespace Nethermind.Merge.Plugin.Test
         public void Can_load_parameters_after_the_restart()
         {
             using MemDb metadataDb = new();
-            // ERROR FIX (line 208): terminalBlock is used in assertions against MergeBlockNumber?.BlockNumber
-            // which is now ulong. Changed type from int to ulong so terminalBlock + 1 is unambiguously ulong.
             ulong terminalBlock = 4;
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = 5000000;
@@ -207,7 +205,6 @@ namespace Nethermind.Merge.Plugin.Test
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
 
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(false));
-            // WithNumber and WithParent still take long; cast terminalBlock at the call site.
             Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(terminalBlock).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
             blockTree.SuggestBlock(block);
             blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });

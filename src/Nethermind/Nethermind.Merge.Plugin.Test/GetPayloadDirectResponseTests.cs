@@ -426,7 +426,6 @@ public class GetPayloadDirectResponseTests
         BalKind balKind,
         ulong? slotNumber)
     {
-        // ERROR FIX (line 365): WithNumber now takes ulong; changed int literal 12 to ulong literal 12UL.
         Block block = Build.A.Block
             .WithPostMergeRules()
             .WithNumber(12UL)

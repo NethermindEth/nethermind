@@ -214,7 +214,6 @@ public static class SszCodec
     public static (ulong start, ulong count) DecodeGetPayloadBodiesByRangeRequest(ReadOnlySequence<byte> buf)
     {
         GetPayloadBodiesByRangeRequestWire.Decode(buf, out GetPayloadBodiesByRangeRequestWire wire);
-        // wire.Start and wire.Count are SSZ uint64 fields — already ulong, no cast needed.
         return (wire.Start, wire.Count);
     }
 

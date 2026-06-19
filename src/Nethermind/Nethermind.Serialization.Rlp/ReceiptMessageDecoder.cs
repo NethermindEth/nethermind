@@ -42,8 +42,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else if (firstItem.Length is >= 1 and <= 4)
             {
-                // safe: ToPositiveLong guarantees a non-negative result
-                txReceipt.GasUsedTotal = (ulong)firstItem.ToPositiveLong();
+                txReceipt.GasUsedTotal = firstItem.ToULong();
             }
             else
             {
