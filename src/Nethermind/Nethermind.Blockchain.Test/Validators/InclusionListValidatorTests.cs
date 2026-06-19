@@ -357,6 +357,30 @@ public class InclusionListValidatorTests
     }
 
     [Test]
+    public void Intrinsic_gas_too_low_il_tx_is_treated_as_not_appendable()
+    {
+        // EEST regression (test_block_with_intrinsic_gas_too_low_pending_il_tx_is_valid):
+        // a tx whose GasLimit is below the intrinsic cost cannot execute, so the block
+        // omitting it must not trip INCLUSION_LIST_UNSATISFIED.
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(20_999) // below the 21,000 base tx intrinsic
+            .WithGasPrice(10.GWei)
+            .WithNonce(0)
+            .WithValue(1.Ether)
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithInclusionListTransactions([tx])
+            .TestObject;
+
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
+    }
+
+    [Test]
     public void Duplicate_il_entries_do_not_cause_spurious_rejection_when_block_includes_tx()
     {
         // Spec disallows duplicates, but adversarial input must not cause false rejection.
