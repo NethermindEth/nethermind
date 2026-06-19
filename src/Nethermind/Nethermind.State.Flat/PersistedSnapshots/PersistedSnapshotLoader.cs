@@ -68,7 +68,7 @@ public sealed class PersistedSnapshotLoader(
         // orphans from a mid-write crash.
         blobs.SweepUnreferenced();
 
-        ReconstructBloom();
+        ReconstructBloom(entries);
     }
 
     private void LoadSnapshotsParallel(List<CatalogEntry> entries)
@@ -120,66 +120,46 @@ public sealed class PersistedSnapshotLoader(
     }
 
     /// <summary>
-    /// Build the unified bloom for every loaded snapshot and re-register it carrying that bloom,
-    /// replacing the AlwaysTrue placeholder each was constructed with. After this pass every snapshot
-    /// that can be assembled into a bundle — base, compacted, or CompactSized — carries the precise
-    /// bloom built from its own on-disk image, so reads through it are filtered. Each bloom is sized
-    /// exactly to its source's key count.
+    /// Rebuild a bloom only for each widest snapshot covering the persisted tier and share it across its
+    /// range, so the narrower contained snapshots adopt it instead of each carrying its own — mirroring
+    /// the runtime layout a large compaction leaves behind. Snapshots no widest one covers keep their
+    /// AlwaysTrue placeholder (correct — never a false negative — just unfiltered).
     /// </summary>
     /// <remarks>
-    /// Snapshots are built widest-first (largest <c>To - From</c> range) so the heaviest
-    /// bloom-builds enter the parallel queue first — LPT-style scheduling that minimises
-    /// wallclock when work sizes vary. The build is read-only and independent per snapshot, so it
-    /// parallelises freely; the placeholder is then swapped out by re-registering an equivalent
-    /// snapshot (over the same reservation) carrying the real bloom — the bloom is fixed at
-    /// construction, so there is no in-place mutation.
+    /// Assembles the widest-first chain via the main read-path <see cref="ISnapshotRepository.AssembleSnapshots"/>
+    /// (its <c>EdgePriority</c> leads with the large skip-pointers), so the chain tiles
+    /// <c>(committed, head]</c> with the fewest, widest snapshots. The committed base it targets is the
+    /// oldest loaded snapshot's <c>From</c>. The few wide blooms are rebuilt in parallel; chain ranges are
+    /// disjoint, so the per-range <see cref="ISnapshotRepository.ShareBloomAcrossRange"/> calls don't collide.
     /// </remarks>
-    private void ReconstructBloom()
+    private void ReconstructBloom(List<CatalogEntry> entries)
     {
-        if (!BloomEnabled) return;
+        if (!BloomEnabled || entries.Count == 0) return;
+        if (repository.GetLastSnapshotId() is not StateId head) return;
 
-        // The catalog is keyed by (To, depth), so a base, a compacted, and a CompactSized can
-        // all coexist at the same To across the three buckets — each is an independently
-        // assemblable snapshot and gets its own bloom.
-        List<PersistedSnapshot> snapshots = [.. repository.PersistedSnapshots];
+        // The persisted tier sits on the committed base — the oldest loaded snapshot's From.
+        StateId committed = entries[0].From;
+        foreach (CatalogEntry e in entries)
+            if (e.From.BlockNumber < committed.BlockNumber) committed = e.From;
+        if (head == committed) return;
 
-        snapshots.Sort(static (a, b) =>
-            (b.To.BlockNumber - b.From.BlockNumber).CompareTo(a.To.BlockNumber - a.From.BlockNumber));
+        // Widest-first chain from head down to the committed base; .InMemory is empty at reload.
+        int estimatedSize = (int)Math.Clamp(head.BlockNumber - committed.BlockNumber, 4, 4096);
+        AssembledSnapshotResult assembled = repository.AssembleSnapshots(head, committed, estimatedSize);
+        assembled.InMemory.Dispose();
+        using PersistedSnapshotList widest = assembled.Persisted;
 
-        ProgressLogger? bloomLog = null;
-        Timer? heartbeat = null;
-        if (snapshots.Count > ParallelLoadThreshold && _logger.IsInfo)
+        // Build the (few, wide) blooms in parallel and share each across its range. A fresh bloom
+        // (refcount 1) is leased by each snapshot ShareBloomAcrossRange re-registers; the local lease is
+        // released on dispose, leaving the shared snapshots holding theirs.
+        Parallel.ForEach(widest, snap =>
         {
-            bloomLog = new ProgressLogger("Persisted snapshot bloom rebuild", logManager);
-            bloomLog.Reset(0, snapshots.Count);
-            heartbeat = new Timer(ProgressLogIntervalMs);
-            heartbeat.Elapsed += (_, _) => bloomLog.LogProgress();
-            heartbeat.Start();
-        }
-
-        try
-        {
-            long built = 0;
-            Parallel.ForEach(snapshots, snap =>
-            {
-                RefCountedBloomFilter bloom;
-                using (WholeReadSession session = snap.BeginWholeReadSession())
-                    bloom = new RefCountedBloomFilter(PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey));
-
-                // The bloom is fixed at construction, so swap the AlwaysTrue placeholder by re-registering
-                // an equivalent snapshot over the same reservation carrying the real bloom; the placeholder's
-                // CleanUp frees its sentinel once it drains. Same reservation → no new mmap, the ctor just
-                // re-leases it and the referenced blob arenas.
-                using PersistedSnapshot rebuilt = new(snap.From, snap.To, snap.Reservation, blobs, snap.Tier, bloom);
-                repository.ReplacePersistedSnapshot(snap.To, rebuilt, snap.Tier);
-                if (bloomLog is not null) bloomLog.Update(Interlocked.Increment(ref built));
-            });
-            bloomLog?.LogProgress();
-        }
-        finally
-        {
-            heartbeat?.Dispose();
-        }
+            RefCountedBloomFilter bloom;
+            using (WholeReadSession session = snap.BeginWholeReadSession())
+                bloom = new RefCountedBloomFilter(PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey));
+            using (bloom)
+                repository.ShareBloomAcrossRange(snap.From, snap.To, bloom, blobs);
+        });
     }
 
     /// <inheritdoc/>

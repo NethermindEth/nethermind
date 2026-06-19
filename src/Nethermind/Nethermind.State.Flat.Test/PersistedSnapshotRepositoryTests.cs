@@ -341,13 +341,13 @@ public class PersistedSnapshotRepositoryTests
     }
 
     /// <summary>
-    /// Regression for the ReconstructBloom pass inside LoadFromCatalog: after a restart,
-    /// every loaded snapshot must carry its own real bloom (built from its on-disk image),
-    /// not the AlwaysTrue placeholder it was constructed with. The CompactSized covering
-    /// (0, 4] holds every address written across the four bases; each base holds its own.
+    /// Regression for the ReconstructBloom pass inside LoadFromCatalog: after a restart, a bloom is
+    /// rebuilt only for the widest snapshot covering each range and shared across it. The CompactSized
+    /// covering (0, 4] holds every address written across the four bases, and each contained base adopts
+    /// that one wide bloom (the same instance) rather than the AlwaysTrue placeholder or its own.
     /// </summary>
     [Test]
-    public void LoadFromCatalog_ReconstructsBloom_PerSnapshot()
+    public void LoadFromCatalog_ReconstructsBloom_SharedFromWidest()
     {
         StateId[] ids = new StateId[5];
         ids[0] = new(0, Keccak.EmptyTreeHash);
@@ -377,33 +377,28 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo2.TryLeasePersistedState(ids[4], SnapshotTier.PersistedCompactSized, out PersistedSnapshot? compactSizedAt4), Is.True);
         using (compactSizedAt4)
         {
-            // The CompactSized's bloom is built from its own merged HSST — it covers (0, 4]
-            // and therefore holds every address written across the four bases.
-            BloomFilter compactSizedBloom = compactSizedAt4!.Bloom;
-            Assert.That(compactSizedBloom.Count, Is.GreaterThan(0),
-                "ReconstructBloom must have built a real bloom for the CompactSized");
+            // The widest snapshot covering (0, 4] — the chain's starting snapshot. Its bloom is rebuilt
+            // from its own merged HSST and holds every address written across the four bases.
+            BloomFilter shared = compactSizedAt4!.Bloom;
+            Assert.That(shared.Count, Is.GreaterThan(0),
+                "ReconstructBloom must have built a real bloom for the widest (starting) snapshot");
             Assert.That(compactSizedAt4.From.BlockNumber, Is.EqualTo(0));
             Assert.That(compactSizedAt4.To.BlockNumber, Is.EqualTo(4));
             for (int i = 1; i <= 4; i++)
             {
                 ulong key = PersistedSnapshotBloomBuilder.AddressKey(TestItem.Addresses[i - 1]);
-                Assert.That(compactSizedBloom.MightContain(key), Is.True,
-                    $"AddressKey for base {i} must be in the CompactSized's merged bloom");
+                Assert.That(shared.MightContain(key), Is.True,
+                    $"AddressKey for base {i} must be in the widest snapshot's merged bloom");
             }
-        }
 
-        // Each base also carries its own real bloom built from its single address.
-        for (int i = 1; i <= 4; i++)
-        {
-            Assert.That(repo2.TryLeasePersistedState(ids[i], SnapshotTier.PersistedBase, out PersistedSnapshot? baseAt), Is.True,
-                $"base at ids[{i}] must round-trip under v7");
-            using (baseAt)
+            // Each contained base adopts the widest snapshot's bloom (the same instance), not its own.
+            for (int i = 1; i <= 4; i++)
             {
-                Assert.That(baseAt!.Bloom.Count, Is.GreaterThan(0),
-                    $"ReconstructBloom must have built a real bloom for base {i}");
-                ulong key = PersistedSnapshotBloomBuilder.AddressKey(TestItem.Addresses[i - 1]);
-                Assert.That(baseAt.Bloom.MightContain(key), Is.True,
-                    $"base {i}'s own address must be in its bloom");
+                Assert.That(repo2.TryLeasePersistedState(ids[i], SnapshotTier.PersistedBase, out PersistedSnapshot? baseAt), Is.True,
+                    $"base at ids[{i}] must round-trip under v7");
+                using (baseAt)
+                    Assert.That(ReferenceEquals(baseAt!.Bloom, shared), Is.True,
+                        $"base {i} must share the widest snapshot's bloom");
             }
         }
     }
@@ -458,7 +453,7 @@ public class PersistedSnapshotRepositoryTests
     /// partitions, reload in session 2, and verify the parallel construction + serial
     /// sorted-set rebuild preserves: snapshot count, per-bucket leasability, ordered-id
     /// invariants (the From/To chain reachable via <c>LeaseBaseSnapshotsInRange</c>), and the
-    /// ReconstructBloom end-state (every loaded snapshot carries its own real bloom).
+    /// ReconstructBloom end-state (snapshots in a compacted range share that range's bloom).
     /// Stays below <c>ParallelLoadThreshold</c> so the progress logger is bypassed —
     /// that codepath is a one-line gate we trust by inspection.
     /// </summary>
@@ -507,14 +502,17 @@ public class PersistedSnapshotRepositoryTests
         using (PersistedSnapshotList chain = repo2.LeaseBaseSnapshotsInRange(ids[0], ids[N]))
             Assert.That(chain.Count, Is.EqualTo(N), "every base must be reachable via the From chain");
 
-        // Bloom end-state: ReconstructBloom builds a real per-snapshot bloom for the base at
-        // ids[1] and for the CompactSized covering (0, 8].
-        Assert.That(repo2.TryLeasePersistedState(ids[1], SnapshotTier.PersistedBase, out PersistedSnapshot? baseAt1), Is.True);
-        using (baseAt1)
-            Assert.That(baseAt1!.Bloom.Count, Is.GreaterThan(0), "base ids[1] must have a real bloom");
+        // Bloom end-state: a bloom is rebuilt for the widest snapshot covering each range and shared
+        // across it — base ids[1] adopts the CompactSized covering (0, 8] rather than carrying its own.
         Assert.That(repo2.TryLeasePersistedState(ids[8], SnapshotTier.PersistedCompactSized, out PersistedSnapshot? compactSizedAt8), Is.True);
         using (compactSizedAt8)
+        {
             Assert.That(compactSizedAt8!.Bloom.Count, Is.GreaterThan(0), "CompactSized at ids[8] must have a real bloom");
+            Assert.That(repo2.TryLeasePersistedState(ids[1], SnapshotTier.PersistedBase, out PersistedSnapshot? baseAt1), Is.True);
+            using (baseAt1)
+                Assert.That(ReferenceEquals(baseAt1!.Bloom, compactSizedAt8.Bloom), Is.True,
+                    "base ids[1] must share the CompactSized's bloom");
+        }
     }
 
     // With bloom disabled (bits-per-key 0) the loader's Convert path uses the AlwaysTrue
