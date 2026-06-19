@@ -33,6 +33,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
+    private StorageCell _lastReadStorageCell;
+    private byte[]? _lastReadValue;
+    private bool _lastReadTracksOriginal;
 
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
@@ -56,7 +59,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
+    public void SetBackendScope(IWorldStateScopeProvider.IScope scope)
+    {
+        ClearCurrentValueCache();
+        _currentScope = scope;
+    }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
@@ -69,11 +76,47 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell, trackOriginal: false);
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
+    {
+        if (_lastReadValue is not null && _lastReadStorageCell.Equals(in storageCell))
+        {
+            return _lastReadValue;
+        }
 
-    public ReadOnlySpan<byte> GetAndTrackOriginal(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell, trackOriginal: true);
+        byte[] value = TryGetCachedValue(storageCell, out byte[]? bytes)
+            ? bytes!
+            : LoadFromTree(storageCell, trackOriginal: false);
+        CacheCurrentValue(storageCell, value, tracksOriginal: false);
+
+        return value;
+    }
+
+    public ReadOnlySpan<byte> GetAndTrackOriginal(in StorageCell storageCell)
+    {
+        if (TryGetCachedValue(storageCell, out byte[]? bytes))
+        {
+            CacheCurrentValue(storageCell, bytes!, tracksOriginal: true);
+            return bytes!;
+        }
+
+        if (_lastReadValue is not null && _lastReadStorageCell.Equals(in storageCell))
+        {
+            if (!_lastReadTracksOriginal && !storageCell.IsHash)
+            {
+                PushToRegistryOnly(storageCell, _lastReadValue);
+                _lastReadTracksOriginal = true;
+            }
+
+            return _lastReadValue;
+        }
+
+        byte[] value = LoadFromTree(storageCell, trackOriginal: true);
+        CacheCurrentValue(storageCell, value, tracksOriginal: !storageCell.IsHash);
+
+        return value;
+    }
+
+    protected override void ClearCurrentValueCache() => _lastReadValue = null;
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -271,6 +314,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public void ClearStorageMap()
     {
         _storages.Clear();
+        ClearCurrentValueCache();
         InvalidateStorageMemo();
     }
 
@@ -305,7 +349,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell, bool trackOriginal) =>
+    private void CacheCurrentValue(in StorageCell storageCell, byte[] value, bool tracksOriginal)
+    {
+        _lastReadStorageCell = storageCell;
+        _lastReadValue = value;
+        _lastReadTracksOriginal = tracksOriginal;
+    }
+
+    private byte[] LoadFromTree(in StorageCell storageCell, bool trackOriginal) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell, trackOriginal);
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
@@ -513,7 +564,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
         }
 
-        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell, bool trackOriginal)
+        public byte[] LoadFromTree(in StorageCell storageCell, bool trackOriginal)
         {
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)

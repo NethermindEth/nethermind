@@ -38,7 +38,11 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public virtual void Set(in StorageCell storageCell, byte[] newValue) => PushUpdate(in storageCell, newValue);
+        public virtual void Set(in StorageCell storageCell, byte[] newValue)
+        {
+            ClearCurrentValueCache();
+            PushUpdate(in storageCell, newValue);
+        }
 
         /// <summary>
         /// Creates a restartable snapshot.
@@ -76,6 +80,8 @@ namespace Nethermind.State
             {
                 return;
             }
+
+            ClearCurrentValueCache();
 
             for (int i = 0; i < currentPosition - snapshot; i++)
             {
@@ -162,6 +168,7 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
+            ClearCurrentValueCache();
             _changes.Clear();
             _intraBlockCache.ResetAndClear();
             _transactionChangesSnapshots.Clear();
@@ -197,6 +204,8 @@ namespace Nethermind.State
         /// <returns>Value at location</returns>
         protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
 
+        protected virtual void ClearCurrentValueCache() { }
+
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
@@ -230,6 +239,8 @@ namespace Nethermind.State
         /// <param name="address">Contract address</param>
         public virtual void ClearStorage(Address address)
         {
+            ClearCurrentValueCache();
+
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block
             foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraBlockCache)
