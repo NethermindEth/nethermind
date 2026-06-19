@@ -128,8 +128,6 @@ public partial class BlockProcessor
             {
                 try
                 {
-                    balManager.WaitForBalWarmup();
-
                     // Iterations: 0 = ApplyStateChanges, 1..len = tx (scheduled order =
                     // _txExecutionOrder[i-1]; balIndex = scheduledTxIndex+1). Pre-execution
                     // (StoreBeaconRoot + ApplyBlockhashStateChanges) ran sequentially in
