@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool NeedToWaitForHeader { get; set; }
         public bool VerifyTrieOnStateSyncFinished { get; set; }
         public bool TrieHealing { get; set; } = true;
-        public int StateMaxDistanceFromHead { get; set; } = 128;
+        public ulong StateMaxDistanceFromHead { get; set; } = 128;
         public ulong StateMinDistanceFromHead { get; set; } = 32;
         public bool GCOnFeedFinished { get; set; } = true;
         /// <summary>

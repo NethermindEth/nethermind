@@ -20,17 +20,17 @@ public class SyncStatusListTests
     [Test]
     public void Out_of_range_access_throws()
     {
-        FastBlockStatusList list = new(1);
+        FastBlockStatusList list = new(1UL);
 
-        FastBlockStatus a = list[0];
-        list.TrySet(0, a);
+        FastBlockStatus a = list[0UL];
+        list.TrySet(0UL, a);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[-1]; });
-            Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[1]; });
-            Assert.Throws<IndexOutOfRangeException>(() => { list.TrySet(-1, FastBlockStatus.Pending); });
-            Assert.Throws<IndexOutOfRangeException>(() => { list.TrySet(1, FastBlockStatus.Pending); });
+            Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[ulong.MaxValue]; });
+            Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[1UL]; });
+            Assert.Throws<IndexOutOfRangeException>(() => { list.TrySet(ulong.MaxValue, FastBlockStatus.Pending); });
+            Assert.Throws<IndexOutOfRangeException>(() => { list.TrySet(1UL, FastBlockStatus.Pending); });
         }
     }
 
@@ -40,7 +40,7 @@ public class SyncStatusListTests
         const int length = 4096;
 
         FastBlockStatusList list = CreateFastBlockStatusList(length, false);
-        for (int i = 0; i < length; i++)
+        for (ulong i = 0; i < length; i++)
         {
             Assert.That((FastBlockStatus)(i % 3), Is.EqualTo(list[i]));
         }
@@ -99,7 +99,8 @@ public class SyncStatusListTests
             FastBlockStatusList list = CreateFastBlockStatusList(len);
             Parallel.For(0, len, (i) =>
             {
-                Assert.That((FastBlockStatus)(i % 3), Is.EqualTo(list[i]));
+                ulong idx = (ulong)i;
+                Assert.That((FastBlockStatus)(idx % 3), Is.EqualTo(list[idx]));
             });
         }
     }
@@ -112,7 +113,8 @@ public class SyncStatusListTests
         for (int len = 0; len < length; len++)
         {
             FastBlockStatusList list = CreateFastBlockStatusList(len, false);
-            for (int i = 0; i < len; i++)
+            ulong ulen = (ulong)len;
+            for (ulong i = 0; i < ulen; i++)
             {
                 switch (list[i])
                 {
@@ -150,8 +152,9 @@ public class SyncStatusListTests
         for (int len = 0; len < length; len++)
         {
             FastBlockStatusList list = CreateFastBlockStatusList(len);
-            Parallel.For(0, len, (i) =>
+            Parallel.For(0, len, (rawI) =>
             {
+                ulong i = (ulong)rawI;
                 switch (list[i])
                 {
                     case FastBlockStatus.Pending:

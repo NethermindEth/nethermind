@@ -21,9 +21,9 @@ namespace Nethermind.Synchronization.FastSync
 
         public BlockHeader? GetPivotHeader()
         {
-            // BestSuggestedHeader.Number is ulong; StateMinDistanceFromHead is ulong.
-            // Cast to long for arithmetic; safe for realistic chain heights.
-            if (_bestHeader is null || (long)((blockTree.BestSuggestedHeader?.Number ?? 0UL) + syncConfig.StateMinDistanceFromHead) - (long)_bestHeader.Number >= syncConfig.StateMaxDistanceFromHead)
+            ulong target = (blockTree.BestSuggestedHeader?.Number ?? 0UL) + syncConfig.StateMinDistanceFromHead;
+            ulong best = _bestHeader?.Number ?? 0UL;
+            if (_bestHeader is null || (target > best && target - best >= syncConfig.StateMaxDistanceFromHead))
             {
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
@@ -33,7 +33,8 @@ namespace Nethermind.Synchronization.FastSync
 
         public void UpdateHeaderForcefully()
         {
-            if (_bestHeader is null || (long)((blockTree.BestSuggestedHeader?.Number ?? 0UL) + syncConfig.StateMinDistanceFromHead) > (long)_bestHeader.Number)
+            ulong target = (blockTree.BestSuggestedHeader?.Number ?? 0UL) + syncConfig.StateMinDistanceFromHead;
+            if (_bestHeader is null || target > _bestHeader.Number)
             {
                 TrySetNewBestHeader("too many empty responses");
             }

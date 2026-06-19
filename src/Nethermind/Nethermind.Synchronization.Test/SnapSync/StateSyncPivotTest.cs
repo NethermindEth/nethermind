@@ -12,18 +12,18 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 
 public class StateSyncPivotTest
 {
-    [TestCase(1000, 1000, 10, 100, 1000, 0)]
-    [TestCase(900, 1000, 10, 50, 1000, 0)]
-    [TestCase(900, 1000, 10, 100, 1000, 0)]
-    [TestCase(900, 900, 32, 100, 900, 0)]
-    [TestCase(0, 300, 32, 100, 301, 300)]
+    [TestCase(1000UL, 1000UL, 10UL, 100UL, 1000UL, 0UL)]
+    [TestCase(900UL, 1000UL, 10UL, 50UL, 1000UL, 0UL)]
+    [TestCase(900UL, 1000UL, 10UL, 100UL, 1000UL, 0UL)]
+    [TestCase(900UL, 900UL, 32UL, 100UL, 900UL, 0UL)]
+    [TestCase(0UL, 300UL, 32UL, 100UL, 301UL, 300UL)]
     public void Will_set_new_best_header_some_distance_from_best_suggested(
-        int originalBestSuggested,
-        int newBestSuggested,
-        int minDistance,
-        int maxDistance,
-        int newPivotHeader,
-        int syncPivot
+        ulong originalBestSuggested,
+        ulong newBestSuggested,
+        ulong minDistance,
+        ulong maxDistance,
+        ulong newPivotHeader,
+        ulong syncPivot
     )
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -33,17 +33,17 @@ public class StateSyncPivotTest
         Synchronization.FastSync.StateSyncPivot stateSyncPivot = new(blockTree,
             new TestSyncConfig()
             {
-                PivotNumber = (ulong)syncPivot,
+                PivotNumber = syncPivot,
                 FastSync = true,
-                StateMinDistanceFromHead = (ulong)minDistance,
+                StateMinDistanceFromHead = minDistance,
                 StateMaxDistanceFromHead = maxDistance,
             }, LimboLogs.Instance);
-        blockTree.SyncPivot = ((ulong)syncPivot, Keccak.Zero);
+        blockTree.SyncPivot = (syncPivot, Keccak.Zero);
 
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber((ulong)originalBestSuggested).TestObject);
+        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(originalBestSuggested).TestObject);
         Assert.That(stateSyncPivot.GetPivotHeader(), Is.Not.Null);
 
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber((ulong)newBestSuggested).TestObject);
-        Assert.That(stateSyncPivot.GetPivotHeader()?.Number, Is.EqualTo((ulong)newPivotHeader));
+        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(newBestSuggested).TestObject);
+        Assert.That(stateSyncPivot.GetPivotHeader()?.Number, Is.EqualTo(newPivotHeader));
     }
 }

@@ -72,9 +72,9 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             if (pricing?.Length > 0)
             {
                 string key = pricing[0].Key;
-                // Block numbers in built-in pricing keys are always non-negative; parse as ulong
-                // directly. Hex keys are parsed via Convert then cast — safe for any valid block number.
-                return ulong.TryParse(key, out ulong transition) ? transition : (ulong)Convert.ToInt64(key, 16);
+                return ulong.TryParse(key, out ulong transition)
+                    ? transition
+                    : ulong.Parse(key, System.Globalization.NumberStyles.AllowHexSpecifier);
             }
 
             return null;

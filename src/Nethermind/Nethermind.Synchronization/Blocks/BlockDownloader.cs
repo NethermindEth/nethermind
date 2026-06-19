@@ -691,7 +691,7 @@ namespace Nethermind.Synchronization.Blocks
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
                 if (isFastSyncTransition)
                 {
-                    ulong bestFullState = (ulong)_fullStateFinder.FindBestFullState();
+                    ulong bestFullState = _fullStateFinder.FindBestFullState();
                     shouldProcess = firstBlock > bestFullState && bestFullState != 0;
                     if (!shouldProcess)
                     {

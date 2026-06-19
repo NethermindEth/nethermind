@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public SyncStatusList(IBlockTree blockTree, ulong pivotNumber, ulong? lowestInserted, ulong lowerBound)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _statuses = new FastBlockStatusList((long)pivotNumber + 1);
+            _statuses = new FastBlockStatusList(pivotNumber + 1);
 
             LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
             _lowerBound = lowerBound;
@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     continue;
                 }
 
-                if (_statuses.TrySet((long)currentNumber, FastBlockStatus.Sent, out FastBlockStatus status))
+                if (_statuses.TrySet(currentNumber, FastBlockStatus.Sent, out FastBlockStatus status))
                 {
                     if (_cache.TryGet(currentNumber, out BlockInfo blockInfo))
                     {
@@ -173,7 +173,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public void MarkInserted(ulong blockNumber)
         {
-            if (_statuses.TrySet((long)blockNumber, FastBlockStatus.Inserted))
+            if (_statuses.TrySet(blockNumber, FastBlockStatus.Inserted))
             {
                 Interlocked.Increment(ref _queueSize);
             }
@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public void MarkPending(BlockInfo blockInfo)
         {
-            if (_statuses.TrySet((long)blockInfo.BlockNumber, FastBlockStatus.Pending))
+            if (_statuses.TrySet(blockInfo.BlockNumber, FastBlockStatus.Pending))
             {
                 _cache.Set(blockInfo.BlockNumber, blockInfo);
             }

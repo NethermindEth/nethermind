@@ -182,7 +182,7 @@ public interface ISyncConfig : IConfig
     bool VerifyTrieOnStateSyncFinished { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
-    int StateMaxDistanceFromHead { get; set; }
+    ulong StateMaxDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
     ulong StateMinDistanceFromHead { get; set; }

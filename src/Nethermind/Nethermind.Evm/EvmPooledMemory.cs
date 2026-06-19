@@ -347,14 +347,15 @@ public struct EvmPooledMemory
         Debug.Assert(newSize <= MaxMemorySize);
         Debug.Assert(Size % WordSize == 0);
 
-        long newActiveWords = (long)((newSize + (WordSize - 1UL)) >> 5);
-        long activeWords = (long)(Size >> 5);
+        ulong newActiveWords = (newSize + (WordSize - 1UL)) >> 5;
+        ulong activeWords = Size >> 5;
 
         // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
-        // in long -- so the outOfGas propagation that older revisions carried is unreachable.
-        ulong cost = (ulong)(newActiveWords - activeWords) * GasCostOf.Memory +
-            (ulong)((newActiveWords * newActiveWords) >> 9) -
-            (ulong)((activeWords * activeWords) >> 9);
+        // in ulong -- so the outOfGas propagation that older revisions carried is unreachable.
+        // newActiveWords >= activeWords by the gating condition in UpdateSize, so the subtractions are safe.
+        ulong cost = (newActiveWords - activeWords) * GasCostOf.Memory +
+            ((newActiveWords * newActiveWords) >> 9) -
+            ((activeWords * activeWords) >> 9);
 
         UpdateSize(newSize, rentIfNeeded: false);
 
