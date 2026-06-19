@@ -7,7 +7,11 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+#if !ZK_EVM
+using System.Buffers;
+#endif
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -426,6 +430,13 @@ public struct EvmPooledMemory
     [ThreadStatic] private static byte[]?[]? _cleanArrays;
     [ThreadStatic] private static int _cleanArrayCount;
 
+#if !ZK_EVM
+    private const int MaxSharedArrayLength = 1 << 20;             // 1 MiB: ArrayPool<byte>.Shared ceiling
+    private const int MaxLargePooledArrayLength = 4 * 1024 * 1024; // 4 MiB ceiling for the bounded pool
+    private static readonly ArrayPool<byte> _largeArrayPool =
+        ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
+#endif
+
     private static byte[] RentClean(int minLength)
     {
         byte[]?[]? cache = _cleanArrays;
@@ -442,13 +453,23 @@ public struct EvmPooledMemory
             }
         }
 
+        if (minLength > MaxCachedArrayLength)
+        {
+            byte[] pooled = RentLarge(minLength);
+            Array.Clear(pooled);
+            return pooled;
+        }
+
         return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
     }
 
     private static void ReturnClean(byte[] array, int dirtyLength)
     {
         if (array.Length > MaxCachedArrayLength)
+        {
+            ReturnLarge(array);
             return;
+        }
 
         byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
         if (_cleanArrayCount < CleanCacheSlots)
@@ -457,6 +478,25 @@ public struct EvmPooledMemory
             cache[_cleanArrayCount++] = array;
         }
     }
+
+#if ZK_EVM
+    private static byte[] RentLarge(int minLength) => SafeArrayPool<byte>.Shared.Rent(minLength);
+
+    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
+#else
+    private static byte[] RentLarge(int minLength)
+        => minLength > MaxSharedArrayLength
+            ? _largeArrayPool.Rent(minLength)
+            : SafeArrayPool<byte>.Shared.Rent(minLength);
+
+    private static void ReturnLarge(byte[] array)
+    {
+        if (array.Length > MaxSharedArrayLength)
+            _largeArrayPool.Return(array);
+        else
+            SafeArrayPool<byte>.Shared.Return(array);
+    }
+#endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
