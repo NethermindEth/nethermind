@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
@@ -13,6 +14,20 @@ namespace Nethermind.State;
 
 internal sealed partial class PersistentStorageProvider
 {
+    private static readonly ParallelOptions[] _parallelOptionsByDegree = CreateParallelOptionsByDegree();
+
+    private static ParallelOptions[] CreateParallelOptionsByDegree()
+    {
+        int maxDegree = RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16.MaxDegreeOfParallelism;
+        ParallelOptions[] options = new ParallelOptions[maxDegree + 1];
+        for (int i = 1; i <= maxDegree; i++)
+        {
+            options[i] = new ParallelOptions { MaxDegreeOfParallelism = i };
+        }
+
+        return options;
+    }
+
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         if (_toUpdateRoots.Count >= 3)
@@ -43,10 +58,11 @@ internal sealed partial class PersistentStorageProvider
         // Schedule larger changes first to help balance the work
         storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
+        ParallelOptions parallelOptions = _parallelOptionsByDegree[Math.Min(storages.Count, _parallelOptionsByDegree.Length - 1)];
         ParallelUnbalancedWork.For(
             0,
             storages.Count,
-            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            parallelOptions,
             (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {
