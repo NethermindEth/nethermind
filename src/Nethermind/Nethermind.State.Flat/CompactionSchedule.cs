@@ -45,16 +45,10 @@ public sealed class CompactionSchedule : ICompactionSchedule
     public ulong NextFullCompactionAfter(ulong from)
     {
         if (_compactSize <= 1) return ulong.MaxValue;
-
-        // Sentinel: caller has no meaningful "from" block; no next compaction
-        // can be computed, so propagate the sentinel rather than wrapping into
-        // broken signed arithmetic.
         if (from == ulong.MaxValue) return ulong.MaxValue;
 
         ulong mod = (from + _offset) % _compactSize;
         ulong distance = mod == 0 ? _compactSize : _compactSize - mod;
-        // Practically unreachable at realistic chain heights, but explicit so a degenerate
-        // `from` near ulong.MaxValue doesn't wrap into a wildly-wrong "next" boundary.
         return from > ulong.MaxValue - distance ? ulong.MaxValue : from + distance;
     }
 

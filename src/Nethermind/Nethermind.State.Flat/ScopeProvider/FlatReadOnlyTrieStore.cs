@@ -36,7 +36,7 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     public bool HasRoot(Hash256 stateRoot) => true;
 
     public bool HasRoot(Hash256 stateRoot, ulong blockNumber) =>
-        flatDbManager.HasStateForBlock(new StateId(blockNumber, stateRoot)); // Safe: ulong block numbers are well within long range
+        flatDbManager.HasStateForBlock(new StateId(blockNumber, stateRoot));
 
     public IDisposable BeginScope(BlockHeader? baseBlock)
     {

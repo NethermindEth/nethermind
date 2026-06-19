@@ -28,9 +28,9 @@ public class PersistenceManager(
     ILogManager logManager) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
-    private readonly int _minReorgDepth = configuration.MinReorgDepth;
-    private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
-    private readonly int _compactSize = configuration.CompactSize;
+    private readonly ulong _minReorgDepth = (ulong)configuration.MinReorgDepth;
+    private readonly ulong _maxReorgDepth = (ulong)configuration.MaxReorgDepth;
+    private readonly ulong _compactSize = (ulong)configuration.CompactSize;
     private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
@@ -116,30 +116,23 @@ public class PersistenceManager(
         StateId currentPersistedState = GetCurrentPersistedStateId();
         ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
 
-        // Non-trivial: subtraction of two ulongs. Safe here because lastSnapshotNumber is the
-        // tip of the in-memory chain which is always >= currentPersistedState.BlockNumber by
-        // invariant. If the invariant is violated the result would wrap; the subsequent
-        // comparisons against _minReorgDepth / _maxReorgDepth (int) would then be nonsensical.
-        // A Debug.Assert guards this in debug builds.
         Debug.Assert(currentPersistedState == StateId.PreGenesis || lastSnapshotNumber >= currentPersistedState.BlockNumber,
             "Latest snapshot must be at or ahead of the last persisted block.");
         ulong inMemoryStateDepth = currentPersistedState == StateId.PreGenesis
             ? lastSnapshotNumber + 1
             : lastSnapshotNumber - currentPersistedState.BlockNumber;
 
-        if (inMemoryStateDepth - (ulong)_compactSize < (ulong)_minReorgDepth)
+        if (inMemoryStateDepth - _compactSize < _minReorgDepth)
         {
-            // Keep some state in memory
             return null;
         }
 
         Snapshot? snapshotToPersist;
 
-        // NextFullCompactionAfter now returns ulong to match block number type.
         ulong nextCompactedBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
         if (nextCompactedBoundary > finalizedBlockNumber)
         {
-            if (inMemoryStateDepth <= (ulong)_maxReorgDepth)
+            if (inMemoryStateDepth <= _maxReorgDepth)
             {
                 // Unfinalized, and still under max reorg depth
                 return null;
@@ -255,13 +248,10 @@ public class PersistenceManager(
 
     internal void PersistSnapshot(Snapshot snapshot)
     {
-        // Non-trivial: subtraction of two ulongs. Safe by invariant — snapshot.To always
-        // follows snapshot.From on the canonical chain. The ! null-forgiving operators from
-        // the old code are removed since BlockNumber is now a non-nullable ulong.
         ulong compactLength = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
 
         // Usually at the start of the application
-        if (compactLength != (ulong)_compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
+        if (compactLength != _compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
 
         long sw = Stopwatch.GetTimestamp();
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
