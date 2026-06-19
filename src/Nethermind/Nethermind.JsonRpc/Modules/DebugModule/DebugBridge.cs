@@ -255,8 +255,6 @@ public class DebugBridge : IDebugBridge
             }
         }
 
-        // NOTE: gasLimit is ulong? since Transaction.GasLimit and TransactionForRpc.Gas are ulong.
-        // GethLikeTxTrace.Gas is also ulong. No overflow risk here.
         static GethLikeTxTrace? CreateFailTrace(ulong? gasLimit) => new() { Failed = true, Gas = gasLimit ?? 0UL, ReturnValue = [] };
     }
 }

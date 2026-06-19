@@ -14,7 +14,7 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("The number of the oldest block access list stored.")]
-    public static ulong OldestStoredBlockAccessListBlockNumber { get; set; }
+    public static ulong? OldestStoredBlockAccessListBlockNumber { get; set; }
 
     [CounterMetric]
     [Description("The number of the historical blocks that have been pruned (since restart).")]

@@ -167,8 +167,6 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────────
-
     private ulong? CalculateRollingCutoff(uint retentionEpochs)
     {
         ulong? head = _blockTree.Head?.Number;

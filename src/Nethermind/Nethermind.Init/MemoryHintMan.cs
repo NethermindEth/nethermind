@@ -34,8 +34,8 @@ namespace Nethermind.Init
             ITxPoolConfig txPoolConfig,
             uint cpuCount)
         {
-            ulong? memoryHint = initConfig.MemoryHint is { } h ? (ulong)h : null;
-            TotalMemory = memoryHint ?? 1UL.GB;
+            ulong? memoryHint = initConfig.MemoryHint;
+            TotalMemory = memoryHint ?? 1UL.GiB;
             ValidateCpuCount(cpuCount);
 
             checked
@@ -44,7 +44,7 @@ namespace Nethermind.Init
 
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
                 if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / 1000 / 1000,5} MB");
-                _remainingMemory = memoryHint ?? 1UL.GB;
+                _remainingMemory = memoryHint ?? 1UL.GiB;
                 _remainingMemory -= GeneralMemory;
                 if (_logger.IsInfo) _logger.Info($"  General memory:     {GeneralMemory / 1000 / 1000,5} MB");
                 AssignPeersMemory(networkConfig);
