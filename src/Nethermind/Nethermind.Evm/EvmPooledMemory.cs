@@ -431,8 +431,9 @@ public struct EvmPooledMemory
     [ThreadStatic] private static int _cleanArrayCount;
 
 #if !ZK_EVM
-    private const int MaxSharedArrayLength = 1 << 20;             // 1 MiB: ArrayPool<byte>.Shared ceiling
-    private const int MaxLargePooledArrayLength = 4 * 1024 * 1024; // 4 MiB ceiling for the bounded pool
+    private const int MaxSharedArrayLength = 1 << 20;
+    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
+    private const int MaxLargePooledArrayLength = 1 << 22;
     private static readonly ArrayPool<byte> _largeArrayPool =
         ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
 #endif
