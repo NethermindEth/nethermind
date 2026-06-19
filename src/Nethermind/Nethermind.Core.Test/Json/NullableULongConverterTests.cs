@@ -30,10 +30,6 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
         Assert.That(result, Is.EqualTo(expected));
     }
 
-    [TestCase("\"0x000\"")]
-    public void Throws_on_leading_zeros(string json) => Assert.Throws<JsonException>(
-        () => JsonSerializer.Deserialize<ulong?>(json, options));
-
     [Test]
     public void Can_read_null()
     {

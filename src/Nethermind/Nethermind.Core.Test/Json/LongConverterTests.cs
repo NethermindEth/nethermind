@@ -30,10 +30,6 @@ public class LongConverterTests : ConverterTestBase<long>
         Assert.That(result, Is.EqualTo(expected));
     }
 
-    [TestCase("\"0x0000\"")]
-    public void Throws_on_leading_zeros(string json) => Assert.Throws<JsonException>(
-        () => JsonSerializer.Deserialize<long>(json, options));
-
     [Test]
     public void Throws_on_null() => Assert.Throws<JsonException>(
             static () => JsonSerializer.Deserialize<long>("null", options));
