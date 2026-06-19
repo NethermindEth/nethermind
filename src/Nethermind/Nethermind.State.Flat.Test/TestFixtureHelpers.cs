@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -106,7 +107,7 @@ internal static class TestFixtureHelpers
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
         if (leaseBlobIds) LeaseBlobIdsFromHsst(reservation, blobs);
-        return new PersistedSnapshot(from, to, reservation, blobs, SnapshotTier.PersistedBase);
+        return new PersistedSnapshot(from, to, reservation, blobs, SnapshotTier.PersistedBase, RefCountedBloomFilter.AlwaysTrue());
     }
 
     /// <summary>

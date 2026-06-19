@@ -60,24 +60,20 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     public StateId From { get; }
     public StateId To { get; }
 
-    // Unified bloom gating all reads of this snapshot (address / slot / self-destruct keys and
-    // state- / storage-trie paths in one filter). Owned by the snapshot — the keep-alive lease
-    // keeps it alive and CleanUp disposes it. Defaults to the AlwaysTrue sentinel (never a false
-    // negative) until the real filter is set via SetBloom at convert / merge time or on reload.
-    private BloomFilter _bloom;
-    public BloomFilter Bloom => _bloom;
+    /// <summary>The persisted tier (bucket) this snapshot belongs to.</summary>
+    internal SnapshotTier Tier { get; }
 
-    /// <summary>
-    /// Swap in the unified bloom for this snapshot, disposing whatever filter it carried
-    /// before. Used by the reload path, which constructs every snapshot first (with the
-    /// AlwaysTrue placeholder) and only then rebuilds the real blooms.
-    /// </summary>
-    public void SetBloom(BloomFilter bloom)
-    {
-        BloomFilter previous = Interlocked.Exchange(ref _bloom, bloom);
-        Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, bloom.DataBytes - previous.DataBytes);
-        previous.Dispose();
-    }
+    // Unified bloom gating all reads of this snapshot (address / slot / self-destruct keys and
+    // state- / storage-trie paths in one filter), held through a ref-counted owner so a large
+    // compaction can share one filter across the snapshots it contains. Fixed at construction;
+    // CleanUp releases this snapshot's lease on the owner. The reload path constructs each snapshot
+    // with the AlwaysTrue sentinel, then replaces it with one carrying the real bloom.
+    private readonly RefCountedBloomFilter _bloom;
+    public BloomFilter Bloom => _bloom.Filter;
+
+    /// <summary>The ref-counted bloom owner, for re-registering a twin over this snapshot that shares
+    /// another snapshot's bloom (the twin adopts a lease on that owner).</summary>
+    internal RefCountedBloomFilter BloomRef => _bloom;
 
     /// <summary>
     /// The contiguous trie-RLP region this snapshot occupies in its blob arena, used to prefetch
@@ -119,20 +115,21 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     /// </summary>
     /// <param name="tier">The persisted tier this snapshot belongs to, for the per-(tier, size)
     /// <see cref="Metrics.ActivePersistedSnapshotCount"/> gauge.</param>
-    /// <param name="bloom">The unified bloom this snapshot takes ownership of, disposed with
-    /// the snapshot. <c>null</c> installs the AlwaysTrue sentinel — correct (no false
-    /// negatives) but unfiltered — for callers that populate the real bloom later via
-    /// <see cref="SetBloom"/>.</param>
+    /// <param name="bloom">The ref-counted bloom owner; this snapshot adopts one of its leases and
+    /// releases it on <c>CleanUp</c>. Pass a fresh <see cref="RefCountedBloomFilter"/> for a private
+    /// bloom (or <see cref="RefCountedBloomFilter.AlwaysTrue"/> for a placeholder later replaced by
+    /// re-registering the snapshot with its real bloom), or a lease on an existing owner to share one
+    /// bloom across snapshots.</param>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
-        BlobArenaManager blobManager, SnapshotTier tier, BloomFilter? bloom = null)
+        BlobArenaManager blobManager, SnapshotTier tier, RefCountedBloomFilter bloom)
     {
         From = from;
         To = to;
+        Tier = tier;
         _reservation = reservation;
         _label = new PersistedSnapshotLabel(tier.MetricTierLabel(), to.BlockNumber - from.BlockNumber);
         _blobManager = blobManager;
-        _bloom = bloom ?? BloomFilter.AlwaysTrue();
-        Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, _bloom.DataBytes);
+        _bloom = bloom;
         _reservation.AcquireLease();
 
         // Walk the on-disk ref_ids stream once and lease each referenced blob arena file.
@@ -198,7 +195,6 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
                 _blobManager.GetFile(e.Current).Dispose();
                 released++;
             }
-            Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, -_bloom.DataBytes);
             _bloom.Dispose();
             _reservation.Dispose();
             throw;
@@ -567,7 +563,6 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         }
         _reservation.Dispose();
 
-        Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, -_bloom.DataBytes);
         _bloom.Dispose();
 
         Metrics.ActivePersistedSnapshotCount.AddBy(_label, -1);

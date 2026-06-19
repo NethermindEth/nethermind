@@ -1199,17 +1199,59 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// A demoted sub-<c>CompactSize</c> intermediate is re-registered over the same reservation carrying the
-    /// <see cref="BloomFilter.AlwaysTrue"/> sentinel — its large merged bloom is freed by the original
-    /// snapshot's <c>CleanUp</c> once the compactor releases its lease — while still reading back correctly.
-    /// A <c>&gt;CompactSize</c> large-boundary merge is warmed instead and keeps its real (populated) bloom.
-    /// Regression for the demote-frees-the-bloom optimisation.
+    /// A demoted sub-<c>CompactSize</c> intermediate that no wider compaction has covered keeps its real,
+    /// populated merged bloom — <c>Demote</c> only advises its pages cold. Regression for reverting the
+    /// AlwaysTrue-sentinel-on-demote behaviour.
     /// </summary>
     [Test]
-    public void Demote_ReplacesIntermediateWithAlwaysTrueBloom_BoundaryKeepsRealBloom()
+    public void Demote_KeepsIntermediateRealBloom()
     {
-        // CompactSize=4: block 2's window (0,2] spans 2 (< 4) → demoted intermediate; block 8's window
-        // (0,8] spans 8 (> 4) → warmed large boundary.
+        // CompactSize=4: block 2's window (0,2] spans 2 (< 4) → demoted intermediate. No large boundary
+        // is compacted, so nothing shares over it.
+        using FlatTestContainer tier = NewTier(compactSize: 4);
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        StateId[] states = new StateId[3];
+        states[0] = prev;
+        for (int i = 1; i <= 2; i++)
+        {
+            states[i] = new StateId(i, Keccak.Compute($"s{i}"));
+            SnapshotContent c = new();
+            c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
+            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            prev = states[i];
+        }
+
+        compactor.DoCompactSnapshot(states[2]); // sub-CompactSize intermediate → demoted, keeps its real bloom
+
+        Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? intermediate), Is.True);
+        using (intermediate)
+        {
+            Assert.Multiple(() =>
+            {
+                // A real merge over the window's two accounts carries keys (Count > 0), unlike the
+                // Count==0 AlwaysTrue sentinel the reverted demote path installed.
+                Assert.That(intermediate!.Bloom.Count, Is.GreaterThan(0), "demoted intermediate must keep its real bloom");
+                Assert.That(intermediate.TryGetAccount(TestItem.Addresses[0], out Account? a1), Is.True);
+                Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
+                Assert.That(intermediate.TryGetAccount(TestItem.Addresses[1], out Account? a2), Is.True);
+                Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
+            });
+        }
+    }
+
+    /// <summary>
+    /// A <c>&gt;CompactSize</c> large-boundary merge adopts its own (superset) bloom across every persisted
+    /// snapshot fully contained in its <c>(from, to]</c> window — base, sub-<c>CompactSize</c> intermediate
+    /// and CompactSized alike. Each contained snapshot ends up reference-equal to the big merge's bloom (so
+    /// its own bloom is freed) and still reads back correctly. Regression for bloom sharing.
+    /// </summary>
+    [Test]
+    public void LargeBoundary_SharesBloomAcrossContainedSnapshots()
+    {
+        // CompactSize=4: block 8's window (0,8] spans 8 (> 4) → large boundary → shares its bloom.
         using FlatTestContainer tier = NewTier(compactSize: 4);
         SnapshotRepository repo = tier.Repository;
         PersistedSnapshotCompactor compactor = tier.Compactor;
@@ -1226,28 +1268,82 @@ public class PersistedSnapshotCompactorTests
             prev = states[i];
         }
 
-        compactor.DoCompactSnapshot(states[2]); // sub-CompactSize intermediate → demoted
-        compactor.DoCompactSnapshot(states[8]); // >CompactSize large-boundary → warmed
+        compactor.DoCompactSnapshot(states[2]);     // sub-CompactSize intermediate (small compacted)
+        compactor.DoCompactCompactSized(states[4]); // CompactSize boundary → CompactSized
+        compactor.DoCompactSnapshot(states[8]);     // large boundary → shares its bloom across (0,8]
 
-        Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? intermediate), Is.True);
-        using (intermediate)
+        Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? big), Is.True);
+        using (big)
         {
-            Assert.Multiple(() =>
+            BloomFilter shared = big!.Bloom;
+            Assert.That(shared.Count, Is.GreaterThan(0), "the large merge keeps a real, populated bloom");
+
+            // The sub-CompactSize intermediate and the CompactSized both adopt the shared bloom.
+            AssertShares(repo, states[2], SnapshotTier.PersistedSmallCompacted, shared);
+            AssertShares(repo, states[4], SnapshotTier.PersistedCompactSized, shared);
+
+            // Every contained base snapshot adopts the shared bloom and still resolves its account.
+            for (int i = 1; i <= 8; i++)
             {
-                // Sentinel: one 64-byte cache line, zero keys added — a real merge over the window's two
-                // accounts would carry Count >= 2 and a larger allocation.
-                Assert.That(intermediate!.Bloom.Count, Is.EqualTo(0), "demoted intermediate must carry the AlwaysTrue sentinel");
-                Assert.That(intermediate.Bloom.DataBytes, Is.EqualTo(64), "sentinel is a single cache line");
-                // Reads still resolve correctly through the sentinel (it just stops pre-filtering).
-                Assert.That(intermediate.TryGetAccount(TestItem.Addresses[0], out Account? a1), Is.True);
-                Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
-                Assert.That(intermediate.TryGetAccount(TestItem.Addresses[1], out Account? a2), Is.True);
-                Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
-            });
+                Assert.That(repo.TryLeasePersistedState(states[i], SnapshotTier.PersistedBase, out PersistedSnapshot? baseSnap), Is.True);
+                using (baseSnap)
+                {
+                    Assert.That(ReferenceEquals(baseSnap!.Bloom, shared), Is.True, $"base {i} should share the big merge's bloom");
+                    Assert.That(baseSnap.TryGetAccount(TestItem.Addresses[i - 1], out Account? a), Is.True, $"account from block {i} must still resolve");
+                    Assert.That(a!.Balance, Is.EqualTo((UInt256)(i * 100)));
+                }
+            }
         }
 
-        Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? large), Is.True);
-        using (large)
-            Assert.That(large!.Bloom.Count, Is.GreaterThan(0), "a warmed large-boundary merge keeps its real bloom");
+        static void AssertShares(SnapshotRepository repo, StateId at, SnapshotTier tier, BloomFilter shared)
+        {
+            Assert.That(repo.TryLeasePersistedState(at, tier, out PersistedSnapshot? s), Is.True, $"{tier} at {at.BlockNumber} must exist");
+            using (s)
+                Assert.That(ReferenceEquals(s!.Bloom, shared), Is.True, $"{tier} at {at.BlockNumber} should share the big merge's bloom");
+        }
+    }
+
+    /// <summary>
+    /// A snapshot extending below the big merge's <c>from</c> (its keys are not a subset of the merge's
+    /// window) must NOT adopt the merge's bloom — sharing it would yield false negatives. Builds a [0,8]
+    /// large skip-pointer, then a [4,16] big merge clamped to persistence block 4, and asserts the [0,8]
+    /// snapshot keeps its own bloom.
+    /// </summary>
+    [Test]
+    public void LargeBoundary_DoesNotShareBloomIntoSnapshotExtendingBelowFrom()
+    {
+        // CompactSize=1 makes every block a boundary; MaxCompactSize=16 so block 16's window is [0, 16].
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 256 * 1024,
+            blobFileSizeBytes: 4 * 1024 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(
+                ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 16 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId[] states = new StateId[17];
+        states[0] = new StateId(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 16; i++)
+            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+
+        // Build base [0..8], then the [0,8] large-compacted skip-pointer.
+        for (int i = 1; i <= 8; i++)
+            BuildBase(tier, states, i);
+        compactor.DoCompactSnapshot(states[8], persistedBlockNumber: 0);
+
+        // Build base [9..16], then the [0,16] window clamped to persistence point 4 → big merge is [4,16].
+        for (int i = 9; i <= 16; i++)
+            BuildBase(tier, states, i);
+        compactor.DoCompactSnapshot(states[16], persistedBlockNumber: 4);
+
+        Assert.That(repo.TryLeasePersistedState(states[16], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? big), Is.True);
+        using (big)
+        {
+            Assert.That(big!.From.BlockNumber, Is.EqualTo(4), "precondition: the big merge is clamped to From=4");
+            Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? below), Is.True);
+            using (below)
+                Assert.That(ReferenceEquals(below!.Bloom, big.Bloom), Is.False,
+                    "a [0,8] snapshot extending below from=4 must keep its own bloom");
+        }
     }
 }

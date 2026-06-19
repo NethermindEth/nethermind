@@ -111,25 +111,28 @@ public sealed class PersistedSnapshotLoader(
 
         // The ctor walks its own ref_ids metadata and leases each blob arena file (rolling back on
         // partial failure) and takes its own lease on the reservation, so we drop ours right after.
-        // The bloom is the AlwaysTrue placeholder — ReconstructBloom replaces it once every snapshot
-        // is in place. The `using` drops the construction lease at the end; the bucket keeps its own.
-        using PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, blobs, entry.Tier, BloomFilter.AlwaysTrue());
+        // The bloom is the AlwaysTrue placeholder — ReconstructBloom replaces this snapshot with one
+        // carrying the real bloom once every snapshot is in place. The `using` drops the construction
+        // lease at the end; the bucket keeps its own.
+        using PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, blobs, entry.Tier, RefCountedBloomFilter.AlwaysTrue());
         reservation.Dispose();
         repository.AddPersistedSnapshot(snapshot, entry.Tier);
     }
 
     /// <summary>
-    /// Build and attach the unified bloom for every loaded snapshot, replacing the AlwaysTrue
-    /// placeholder each was constructed with. After this pass every snapshot that can be assembled
-    /// into a bundle — base, compacted, or CompactSized — carries the precise bloom built from its own
-    /// on-disk image, so reads through it are filtered. Each bloom is sized exactly to its source's key count.
+    /// Build the unified bloom for every loaded snapshot and re-register it carrying that bloom,
+    /// replacing the AlwaysTrue placeholder each was constructed with. After this pass every snapshot
+    /// that can be assembled into a bundle — base, compacted, or CompactSized — carries the precise
+    /// bloom built from its own on-disk image, so reads through it are filtered. Each bloom is sized
+    /// exactly to its source's key count.
     /// </summary>
     /// <remarks>
     /// Snapshots are built widest-first (largest <c>To - From</c> range) so the heaviest
     /// bloom-builds enter the parallel queue first — LPT-style scheduling that minimises
-    /// wallclock when work sizes vary. The build is read-only and independent per snapshot,
-    /// so it parallelises freely; <see cref="PersistedSnapshot.SetBloom"/> is the only mutation
-    /// and touches just the snapshot it is called on.
+    /// wallclock when work sizes vary. The build is read-only and independent per snapshot, so it
+    /// parallelises freely; the placeholder is then swapped out by re-registering an equivalent
+    /// snapshot (over the same reservation) carrying the real bloom — the bloom is fixed at
+    /// construction, so there is no in-place mutation.
     /// </remarks>
     private void ReconstructBloom()
     {
@@ -159,8 +162,16 @@ public sealed class PersistedSnapshotLoader(
             long built = 0;
             Parallel.ForEach(snapshots, snap =>
             {
-                using WholeReadSession session = snap.BeginWholeReadSession();
-                snap.SetBloom(PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey));
+                RefCountedBloomFilter bloom;
+                using (WholeReadSession session = snap.BeginWholeReadSession())
+                    bloom = new RefCountedBloomFilter(PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey));
+
+                // The bloom is fixed at construction, so swap the AlwaysTrue placeholder by re-registering
+                // an equivalent snapshot over the same reservation carrying the real bloom; the placeholder's
+                // CleanUp frees its sentinel once it drains. Same reservation → no new mmap, the ctor just
+                // re-leases it and the referenced blob arenas.
+                using PersistedSnapshot rebuilt = new(snap.From, snap.To, snap.Reservation, blobs, snap.Tier, bloom);
+                repository.ReplacePersistedSnapshot(snap.To, rebuilt, snap.Tier);
                 if (bloomLog is not null) bloomLog.Update(Interlocked.Increment(ref built));
             });
             bloomLog?.LogProgress();
@@ -219,7 +230,7 @@ public sealed class PersistedSnapshotLoader(
         // Build the persisted snapshot (its ctor takes its own reservation + blob leases, so we drop
         // ours), record the catalog entry, then index it. AddPersistedSnapshot takes the bucket's own
         // lease, so we drop this construction lease once indexing (and optional validation) is done.
-        PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, blobs, SnapshotTier.PersistedBase, bloom);
+        PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, blobs, SnapshotTier.PersistedBase, new RefCountedBloomFilter(bloom));
         reservation.Dispose();
         _catalog.Add(new CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
         repository.AddPersistedSnapshot(persisted, SnapshotTier.PersistedBase);

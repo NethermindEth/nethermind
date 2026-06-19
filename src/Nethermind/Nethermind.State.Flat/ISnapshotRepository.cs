@@ -4,6 +4,8 @@
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 
 namespace Nethermind.State.Flat;
 
@@ -46,6 +48,14 @@ public interface ISnapshotRepository
     /// entry's bucket lease is released so its <c>CleanUp</c> runs once any in-flight reader drains. Returns
     /// <c>false</c> (leaving <paramref name="replacement"/> unregistered) when no entry is present.</summary>
     bool ReplacePersistedSnapshot(in StateId to, PersistedSnapshot replacement, SnapshotTier tier);
+
+    /// <summary>Adopt <paramref name="sharedBloom"/> (a correct superset pre-filter) across every persisted
+    /// snapshot fully contained in <c>(from, to]</c>, freeing each one's own bloom. Walks the base parent
+    /// chain from <paramref name="to"/> back to <paramref name="from"/>; at each block re-registers a twin
+    /// over the same reservation carrying a lease on the shared bloom. Best-effort and lock-free across
+    /// buckets — a racing prune just leaves a snapshot with its own bloom. Pure live-memory optimization:
+    /// blooms are not persisted, so reload rebuilds independent blooms.</summary>
+    void ShareBloomAcrossRange(StateId from, StateId to, RefCountedBloomFilter sharedBloom, BlobArenaManager blobs);
 
     /// <summary>Lease every persisted base snapshot tiling <c>(from, to]</c>. Caller disposes the list.</summary>
     PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);

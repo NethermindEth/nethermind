@@ -13,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 
 namespace Nethermind.State.Flat;
 
@@ -550,6 +551,54 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             current = snapshot.From;
         }
         return result;
+    }
+
+    /// <inheritdoc />
+    public void ShareBloomAcrossRange(StateId from, StateId to, RefCountedBloomFilter sharedBloom, BlobArenaManager blobs)
+    {
+        StateId current = to;
+        while (current.BlockNumber > from.BlockNumber)
+        {
+            // Advance pointer is the base chain only: a compacted snapshot's From can dip below `from`,
+            // and following it would walk out of the window. A gap in the base chain simply stops the
+            // walk (the unreached snapshots keep their own bloom — correct, just less memory reclaimed).
+            if (!_base.TryGet(current, out PersistedSnapshot? baseSnap)) break;
+            StateId baseParent = baseSnap.From; // From is immutable; safe to read without a lease
+
+            // At this block, every bucket may hold a snapshot ending here; share the contained ones.
+            ShareBloomAt(current, from, to, sharedBloom, blobs, SnapshotTier.PersistedBase);
+            ShareBloomAt(current, from, to, sharedBloom, blobs, SnapshotTier.PersistedSmallCompacted);
+            ShareBloomAt(current, from, to, sharedBloom, blobs, SnapshotTier.PersistedLargeCompacted);
+            ShareBloomAt(current, from, to, sharedBloom, blobs, SnapshotTier.PersistedCompactSized);
+
+            if (baseParent == current) break; // self-loop guard
+            current = baseParent;
+        }
+    }
+
+    /// <summary>
+    /// Re-register the snapshot ending at <paramref name="at"/> in <paramref name="tier"/>'s bucket as a
+    /// twin over the same reservation carrying a lease on <paramref name="sharedBloom"/>, so its own
+    /// bloom is freed once it drains. Skips the snapshot already on the shared bloom and any extending
+    /// below <paramref name="from"/> (whose keys the shared bloom does not cover — sharing it would
+    /// produce false negatives).
+    /// </summary>
+    private void ShareBloomAt(in StateId at, in StateId from, in StateId to,
+        RefCountedBloomFilter sharedBloom, BlobArenaManager blobs, SnapshotTier tier)
+    {
+        // Lease before reading the entry's fields so it cannot drain mid-build; the twin takes its own
+        // reservation + blob leases in its ctor, so it is independent of this probe lease.
+        if (!TryLeasePersistedState(at, tier, out PersistedSnapshot? s)) return;
+        using (s)
+        {
+            if (ReferenceEquals(s.BloomRef, sharedBloom)) return;   // the big snapshot itself / already shared
+            if (s.From.BlockNumber < from.BlockNumber) return;      // extends below window → not a subset
+            if (s.To.BlockNumber > to.BlockNumber) return;          // belt-and-suspenders (true on a backward walk)
+            sharedBloom.AcquireLease();
+            using PersistedSnapshot twin = new(s.From, s.To, s.Reservation, blobs, tier, sharedBloom);
+            // false on a racing prune → twin's `using` drops the cloned bloom lease, self-healing.
+            ReplacePersistedSnapshot(at, twin, tier);
+        }
     }
 
     /// <summary>
