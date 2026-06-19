@@ -7,6 +7,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Facade.Find
@@ -23,12 +24,8 @@ namespace Nethermind.Facade.Find
 
             for (int i = 0; i < LogScanCutoffChunks; i++)
             {
-                bool atGenesis = false;
-                // headBlockNumber is ulong; chunk arithmetic is safe since we clamp to 0.
-                ulong startBlockNumber = end.BlockNumber!.Value > LogScanChunkSize
-                    ? end.BlockNumber!.Value - LogScanChunkSize
-                    : 0;
-                atGenesis = end.BlockNumber!.Value <= LogScanChunkSize;
+                ulong startBlockNumber = end.BlockNumber!.Value.SaturatingSub((ulong)LogScanChunkSize);
+                bool atGenesis = end.BlockNumber!.Value <= LogScanChunkSize;
 
                 BlockParameter start = new(startBlockNumber);
                 LogFilter logFilter = new(0, start, end, addressFilter, topicsFilter);

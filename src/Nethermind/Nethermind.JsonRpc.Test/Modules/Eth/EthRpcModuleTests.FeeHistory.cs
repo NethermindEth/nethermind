@@ -41,7 +41,7 @@ public partial class EthRpcModuleTests
         Block[] blocks = Enumerable.Range(0, excessBlobGas.Length)
          .Select((i) => Build.A.Block.WithHeader(
              Build.A.BlockHeader
-                 .WithNumber((ulong)i)
+                 .WithNumber(i)
                  .WithParentHash(new Hash256(Math.Max(0, i - 1).ToString("X").PadLeft(64, '0')))
                  .WithExcessBlobGas(excessBlobGas[i])
                  .WithBlobGasUsed(blobGasUsed[i])
@@ -50,7 +50,7 @@ public partial class EthRpcModuleTests
 
 
         IBlockTree blockFinder = Substitute.For<IBlockTree>();
-        blockFinder.Head.Returns(Build.A.Block.WithNumber((ulong)(excessBlobGas.Length - 1)).TestObject);
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(excessBlobGas.Length - 1).TestObject);
         blockFinder.FindBlock(Arg.Any<BlockParameter>(), Arg.Any<bool>())
             .Returns(ci => blocks[(int)(((BlockParameter)ci[0]).BlockNumber ?? 0)]);
         blockFinder.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())

@@ -128,6 +128,8 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
+    public BlockHeaderBuilder WithNumber(int blockNumber) => WithNumber((ulong)blockNumber);
+
     public BlockHeaderBuilder WithTotalDifficulty(long totalDifficulty)
     {
         TestObjectInternal.TotalDifficulty = (ulong)totalDifficulty;

@@ -37,6 +37,8 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithNumber(int number) => WithNumber((ulong)number);
+
         public BlockBuilder WithBaseFeePerGas(UInt256 baseFeePerGas)
         {
             TestObjectInternal.Header.BaseFeePerGas = baseFeePerGas;

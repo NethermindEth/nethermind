@@ -68,9 +68,6 @@ public class SnapshotCompactor(
         if (!isFullCompaction)
         {
             // Save memory by removing the compacted state from previous compaction.
-            // Cast _compactSize (int) to ulong: safe because config guarantees _compactSize > 0
-            // and blockNumber >= (ulong)_compactSize in any valid sync state (we only compact
-            // already-downloaded blocks). No underflow is possible in practice.
             foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - (ulong)_compactSize))
             {
                 if (_snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
@@ -79,9 +76,6 @@ public class SnapshotCompactor(
             }
         }
 
-        // Cast compactSize (int) to ulong: safe because compactSize > 1 is already verified
-        // above and blockNumber is always >= compactSize (compaction only runs once blocks
-        // are available). No underflow possible.
         ulong startingBlockNumber = blockNumber - (ulong)compactSize;
         SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
 
@@ -94,7 +88,6 @@ public class SnapshotCompactor(
                 return SnapshotPooledList.Empty();
             }
 
-            // Both sides are now ulong — no ambiguous operator.
             if (snapshots[0].From.BlockNumber != startingBlockNumber)
             {
                 // Could happen especially at start where the block may not be aligned, but not a big problem.

@@ -39,8 +39,6 @@ public class IndexedLogFinder(
 
     private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
     {
-        // CAST NOTE: indexRange uses int for log-index storage (kept as int for performance).
-        // Block numbers in the index fit in int (max ~2 billion blocks).
         if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
         {
             foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
@@ -49,8 +47,6 @@ public class IndexedLogFinder(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // EnumerateBlockNumbersFor returns IEnumerable<long> (log-index contract kept as long for performance).
-        // Block numbers from the index are non-negative so the cast is safe.
         IEnumerable<ulong> indexBlockNumbers = _logIndexStorage
             .EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
             .Select(static n => (ulong)n);

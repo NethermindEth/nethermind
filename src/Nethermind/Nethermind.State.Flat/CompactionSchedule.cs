@@ -19,12 +19,10 @@ public sealed class CompactionSchedule : ICompactionSchedule
         IFlatDbConfig config,
         ILogManager logManager)
     {
-        // Validate using the raw int value before storing.
         int cs = config.CompactSize;
         if (cs > 1 && (cs & (cs - 1)) != 0)
             throw new ArgumentException("Compact size must be a power of 2");
 
-        // Safe: validated above — cs is 1 or a small positive power-of-2.
         _compactSize = (ulong)cs;
 
         ILogger logger = logManager.GetClassLogger<CompactionSchedule>();
@@ -39,11 +37,8 @@ public sealed class CompactionSchedule : ICompactionSchedule
         ulong shifted = blockNumber + _offset;
 
         // Isolate the lowest set bit via two's-complement identity: x & (~x + 1).
-        // No overflow risk: shifted == 0 is excluded by the guard above.
         ulong lowestBit = shifted & (~shifted + 1UL);
 
-        // _compactSize is a small power-of-2 (≤ int.MaxValue by construction),
-        // so Math.Min never returns a value that overflows int.
         return (int)Math.Min(lowestBit, _compactSize);
     }
 
@@ -88,8 +83,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
             return generated;
         }
 
-        // Boundary cast — on-disk RLP format uses long for backward-compatibility.
-        // Decode as long first so we can detect DB corruption (negative values).
+        // On-disk RLP format uses long for backward compatibility; decode as long to detect corrupt negatives.
         long decoded = stored.AsRlpValueContext().DecodeLong();
         if (decoded < 0)
         {
@@ -98,20 +92,15 @@ public sealed class CompactionSchedule : ICompactionSchedule
         }
 
         if (logger.IsInfo) logger.Info($"Loaded FlatDb compaction offset {decoded}");
-        // Boundary cast — safe: negativity excluded by the guard immediately above.
         return (ulong)decoded;
     }
 
     private ulong GenerateAndPersist(IDb metadataDb)
     {
-        // Generate in [0, int.MaxValue) so the value encodes cleanly as a
-        // non-negative long in the on-disk RLP format.
+        // Generate in [0, int.MaxValue) so the value encodes cleanly as a non-negative long
+        // in the on-disk RLP format (kept as long for database backward compatibility).
         long offset = Random.Shared.NextInt64(0, int.MaxValue);
-
-        // Keep the on-disk encoding as long (RLP) for database compatibility.
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset).Bytes);
-
-        // Boundary cast — safe: NextInt64(0, int.MaxValue) is always in [0, 2³¹ − 1].
         return (ulong)offset;
     }
 }
