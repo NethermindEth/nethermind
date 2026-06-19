@@ -176,11 +176,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherAccountWrites;
     internal static long MainThreadAccountWrites => _mainAccountWrites.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementAccountWrites()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountWrites.Value : ref _otherAccountWrites.Value);
-    }
+    internal static void AddAccountWrites(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainAccountWrites.Value : ref _otherAccountWrites.Value, count);
 
     [CounterMetric]
     [Description("Number of accounts deleted during execution.")]
@@ -189,11 +185,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherAccountDeleted;
     internal static long MainThreadAccountDeleted => _mainAccountDeleted.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementAccountDeleted()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountDeleted.Value : ref _otherAccountDeleted.Value);
-    }
+    internal static void AddAccountDeleted(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainAccountDeleted.Value : ref _otherAccountDeleted.Value, count);
 
     [CounterMetric]
     [Description("Number of storage slot writes during execution.")]
@@ -202,11 +194,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherStorageWrites;
     internal static long MainThreadStorageWrites => _mainStorageWrites.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementStorageWrites()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageWrites.Value : ref _otherStorageWrites.Value);
-    }
+    internal static void AddStorageWrites(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageWrites.Value : ref _otherStorageWrites.Value, count);
 
     [CounterMetric]
     [Description("Number of storage slots deleted during execution.")]
@@ -228,11 +216,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherCodeWrites;
     internal static long MainThreadCodeWrites => _mainCodeWrites.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementCodeWrites()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeWrites.Value : ref _otherCodeWrites.Value);
-    }
+    internal static void AddCodeWrites(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeWrites.Value : ref _otherCodeWrites.Value, count);
 
     [CounterMetric]
     [Description("Total bytes of code written during execution.")]
@@ -241,11 +225,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherCodeBytesWritten;
     internal static long MainThreadCodeBytesWritten => _mainCodeBytesWritten.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementCodeBytesWritten(int bytes)
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeBytesWritten.Value : ref _otherCodeBytesWritten.Value, bytes);
-    }
+    internal static void AddCodeBytesWritten(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeBytesWritten.Value : ref _otherCodeBytesWritten.Value, count);
 
     [CounterMetric]
     [Description("Number of EIP-7702 delegations set during execution.")]

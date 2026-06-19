@@ -36,7 +36,7 @@ namespace Nethermind.Db
         // Exposed so consumers (e.g. ProcessingStats) can compute block-level deltas that exclude
         // background prewarmer activity, which runs with IsBlockProcessingThread = false.
         internal static long MainThreadStateTreeCache => _mainStateTreeCacheHits.Value;
-        internal static void IncrementStateTreeCacheHits() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeCacheHits.Value : ref _otherStateTreeCacheHits.Value);
+        internal static void AddStateTreeCacheHits(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateTreeCacheHits.Value : ref _otherStateTreeCacheHits.Value, count);
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
@@ -44,7 +44,7 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _mainStateTreeReads;
         private static CacheLinePaddedLong _otherStateTreeReads;
         internal static long MainThreadStateTreeReads => _mainStateTreeReads.Value;
-        internal static void IncrementStateTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeReads.Value : ref _otherStateTreeReads.Value);
+        internal static void AddStateTreeReads(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateTreeReads.Value : ref _otherStateTreeReads.Value, count);
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]
@@ -75,7 +75,7 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _mainStorageTreeCache;
         private static CacheLinePaddedLong _otherStorageTreeCache;
         internal static long MainThreadStorageTreeCache => _mainStorageTreeCache.Value;
-        internal static void IncrementStorageTreeCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeCache.Value : ref _otherStorageTreeCache.Value);
+        internal static void AddStorageTreeCache(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageTreeCache.Value : ref _otherStorageTreeCache.Value, count);
 
         [CounterMetric]
         [Description("Number of storage trie reads.")]
@@ -83,7 +83,7 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _mainStorageTreeReads;
         private static CacheLinePaddedLong _otherStorageTreeReads;
         internal static long MainThreadStorageTreeReads => _mainStorageTreeReads.Value;
-        internal static void IncrementStorageTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeReads.Value : ref _otherStorageTreeReads.Value);
+        internal static void AddStorageTreeReads(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageTreeReads.Value : ref _otherStorageTreeReads.Value, count);
 
         [CounterMetric]
         [Description("Number of storage reader reads.")]

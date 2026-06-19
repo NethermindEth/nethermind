@@ -33,6 +33,10 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
+        // Per-scope, single-threaded counter accumulator shared with the providers and the scope
+        // (see BeginScope), folded into the global Metrics in Commit/EndScope to avoid per-increment
+        // cross-thread Interlocked contention during prewarm / parallel-BAL execution.
+        private readonly LocalMetrics _localMetrics = new();
         private IWorldStateScopeProvider.IScope? _currentScope;
         private bool _isInScope;
         private readonly ILogger _logger;
@@ -51,8 +55,8 @@ namespace Nethermind.State
             ILogManager? logManager)
         {
             ScopeProvider = scopeProvider;
-            _stateProvider = new StateProvider(logManager);
-            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
+            _stateProvider = new StateProvider(logManager, _localMetrics);
+            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
         }
@@ -231,7 +235,7 @@ namespace Nethermind.State
 
             try
             {
-                _currentScope = ScopeProvider.BeginScope(baseBlock);
+                _currentScope = ScopeProvider.BeginScope(baseBlock, _localMetrics);
                 _stateProvider.SetScope(_currentScope);
                 _persistentStorageProvider.SetBackendScope(_currentScope);
             }
@@ -254,6 +258,8 @@ namespace Nethermind.State
             {
                 if (_currentScope is not null)
                 {
+                    // Fold any counters accumulated outside a Commit (e.g. prewarmer read warming) before the scope closes.
+                    _localMetrics.Flush();
                     Reset();
                     _stateProvider.SetScope(null);
                     _currentScope.Dispose();
@@ -342,6 +348,10 @@ namespace Nethermind.State
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);
             }
+
+            // Fold this scope's accumulated counters into the global metrics. Runs per-tx commit and
+            // at block-end on the block-processing thread, keeping ProcessingStats' MainThread* deltas current.
+            _localMetrics.Flush();
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)

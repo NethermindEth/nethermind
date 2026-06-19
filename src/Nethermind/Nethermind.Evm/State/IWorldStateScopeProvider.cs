@@ -17,7 +17,14 @@ namespace Nethermind.Evm.State;
 public interface IWorldStateScopeProvider
 {
     bool HasRoot(BlockHeader? baseBlock);
-    IScope BeginScope(BlockHeader? baseBlock);
+
+    /// <param name="metrics">
+    /// Per-scope counter accumulator owned by the calling world state. Scopes that record state/storage
+    /// access metrics (e.g. the prewarmer) increment it instead of the global counters to avoid
+    /// cross-thread contention; the world state folds it into the globals at commit/scope end. Scopes
+    /// that do not record these metrics ignore it.
+    /// </param>
+    IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
 
     public interface IScope : IDisposable
     {
