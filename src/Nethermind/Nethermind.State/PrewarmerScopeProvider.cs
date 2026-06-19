@@ -196,11 +196,19 @@ public class PrewarmerScopeProvider(
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+        private UInt256 _lastIndex;
+        private byte[]? _lastValue;
+        private bool _hasLastValue;
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
         public byte[] Get(in UInt256 index)
         {
+            if (_hasLastValue && _lastIndex.Equals(index))
+            {
+                return _lastValue!;
+            }
+
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
@@ -215,10 +223,22 @@ public class PrewarmerScopeProvider(
                 preBlockCache.Set(in storageCell, value);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
+
+            _lastIndex = index;
+            _lastValue = value;
+            _hasLastValue = true;
             return value;
         }
 
-        public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);
+        public void HintSet(in UInt256 index, byte[]? value)
+        {
+            if (_hasLastValue && _lastIndex.Equals(index))
+            {
+                _lastValue = value ?? StorageTree.ZeroBytes;
+            }
+
+            baseStorageTree.HintSet(in index, value);
+        }
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {

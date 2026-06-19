@@ -23,6 +23,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
+    private UInt256 _lastIndex;
+    private byte[]? _lastValue;
+    private bool _hasLastValue;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -67,6 +70,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public byte[] Get(in UInt256 index)
     {
+        if (!_config.VerifyWithTrie && _hasLastValue && _lastIndex.Equals(index))
+        {
+            return _lastValue!;
+        }
+
         byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
         if (value is null || value.Length == 0)
         {
@@ -82,6 +90,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             }
         }
 
+        _lastIndex = index;
+        _lastValue = value;
+        _hasLastValue = true;
         return value!;
     }
 
@@ -126,13 +137,22 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
-    private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(UInt256 slot, byte[] value)
+    {
+        _bundle.SetChangedSlot(_address, slot, value);
+
+        _lastIndex = slot;
+        _lastValue = value.Length == 0 ? StorageTree.ZeroBytes : value;
+        _hasLastValue = true;
+    }
 
     public void SelfDestruct()
     {
         _bundle.Clear(_address, _addressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         _tree.RootHash = Keccak.EmptyTreeHash;
+        _hasLastValue = false;
+        _lastValue = null;
     }
 
     public void CommitTree() => _tree.Commit();
