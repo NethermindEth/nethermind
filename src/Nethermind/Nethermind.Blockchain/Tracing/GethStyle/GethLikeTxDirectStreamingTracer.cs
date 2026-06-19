@@ -54,7 +54,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
 
-    private readonly Dictionary<Address, PooledDictionary<UInt256, UInt256>> _storageByAddress = [];
+    private readonly Dictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = [];
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
     private int _entriesSinceLastFlush;

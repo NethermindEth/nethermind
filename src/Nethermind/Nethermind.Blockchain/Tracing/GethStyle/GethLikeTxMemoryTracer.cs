@@ -16,7 +16,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
 
-    private readonly Dictionary<Address, Dictionary<string, string>> _storageByAddress = [];
+    private readonly Dictionary<AddressAsKey, Dictionary<string, string>> _storageByAddress = [];
 
     public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
     {
