@@ -925,8 +925,14 @@ namespace Nethermind.Network
                 => _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
         }
 
+        /// <remarks>
+        /// Static and bootnode peers bypass the IP filter so that a single failed attempt does not block reconnection
+        /// for the full filter timeout window. Their retry cadence is governed by <see cref="IsConnectionDelayed"/>
+        /// and the outgoing rate-limiter instead.
+        /// </remarks>
         private bool ShouldContactPeer(Peer peer)
-            => _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
+            => peer.Node.IsStatic || peer.Node.IsBootnode
+               || _rlpxHost.ShouldContact(peer.Node.Address.Address);
 
         /// <summary>
         /// Fast-path guard for the peer-added event: checks throttle before the IP filter
