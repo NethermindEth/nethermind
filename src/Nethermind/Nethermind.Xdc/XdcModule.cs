@@ -131,6 +131,7 @@ public class XdcModule : Module
             .AddMessageSerializer<PingMsg, XdcPingMsgSerializer>()
 
             .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
+            .AddLast<IP2PCapabilityResolver, XdcP2PCapabilityResolver>()
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             // block processing

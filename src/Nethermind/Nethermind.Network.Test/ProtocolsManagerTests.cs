@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Numerics;
 using DotNetty.Transport.Channels;
@@ -68,6 +69,7 @@ public class ProtocolsManagerTests
             Substitute.For<IProtocolValidator>(),
             Substitute.For<INetworkStorage>(),
             [],
+            [],
             LimboLogs.Instance);
 
         rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(session));
@@ -83,6 +85,61 @@ public class ProtocolsManagerTests
         Assert.That(session.AddedDisconnectedHandler, Is.Null);
         Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
         Assert.That(session.RemovedDisconnectedHandler, Is.Null);
+    }
+
+    [Test]
+    public void Advertised_capabilities_apply_resolver_additions_and_removals()
+    {
+        ProtocolsManager manager = BuildManagerWithResolvers(
+            new FakeCapabilityResolver(caps => caps.Add(new Capability(Protocol.Eth, 69))),
+            new FakeCapabilityResolver(caps => caps.Remove(new Capability(Protocol.Eth, 68))));
+
+        // Default eth/68 removed, eth/69 added by the resolvers.
+        Assert.That(manager.GetHighestProtocolVersion(Protocol.Eth), Is.EqualTo(69));
+    }
+
+    [Test]
+    public void Advertised_capabilities_are_cached_and_rebuilt_on_resolver_change()
+    {
+        FakeCapabilityResolver resolver = new(caps => caps.Add(new Capability(Protocol.Snap, 1)));
+        ProtocolsManager manager = BuildManagerWithResolvers(resolver);
+
+        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+        Assert.That(resolver.ResolveCount, Is.EqualTo(1), "advertised capabilities should be cached across calls");
+
+        resolver.RaiseChanged();
+
+        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+        Assert.That(resolver.ResolveCount, Is.EqualTo(2), "cache should rebuild after a resolver signals a change");
+    }
+
+    private static ProtocolsManager BuildManagerWithResolvers(params IP2PCapabilityResolver[] resolvers) =>
+        new(
+            Substitute.For<ISyncPeerPool>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IDiscoveryApp>(),
+            Substitute.For<IRlpxHost>(),
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<IProtocolValidator>(),
+            Substitute.For<INetworkStorage>(),
+            [],
+            resolvers,
+            LimboLogs.Instance);
+
+    private sealed class FakeCapabilityResolver(Action<ISet<Capability>> resolve) : IP2PCapabilityResolver
+    {
+        public int ResolveCount { get; private set; }
+
+        public void Resolve(ISet<Capability> capabilities)
+        {
+            ResolveCount++;
+            resolve(capabilities);
+        }
+
+        public event Action? Changed;
+
+        public void RaiseChanged() => Changed?.Invoke();
     }
 
     public class Context
@@ -161,6 +218,7 @@ public class ProtocolsManagerTests
                 _protocolValidator,
                 _peerStorage,
                 BuildProtocolHandlerFactories(),
+                [],
                 LimboLogs.Instance);
         }
 

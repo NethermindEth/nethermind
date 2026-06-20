@@ -39,6 +39,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Core.Container;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
@@ -306,6 +307,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
+                .AddLast<IP2PCapabilityResolver>(_ => new PostMergeCapabilitiesResolver())
                 ;
         }
         else
@@ -320,20 +322,19 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         IContainer container = builder.Build();
 
-        if (isPostMerge)
-        {
-            EnablePostMergeEthCapabilities(container.Resolve<IProtocolsManager>());
-        }
-
         return container;
     }
 
-    private static void EnablePostMergeEthCapabilities(IProtocolsManager protocolsManager)
+    private sealed class PostMergeCapabilitiesResolver : IP2PCapabilityResolver
     {
-        ArgumentNullException.ThrowIfNull(protocolsManager);
-        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth69));
-        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth70));
-        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth71));
+        public event Action? Changed { add { } remove { } }
+
+        public void Resolve(ISet<Capability> capabilities)
+        {
+            capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth69));
+            capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth70));
+            capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth71));
+        }
     }
 
     private static void EnableBlockAccessListsFromGenesis(ChainSpec spec)

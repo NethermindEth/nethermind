@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -41,7 +42,9 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly ILogger _logger;
         private readonly IProtocolHandlerFactory[] _factories;
-        private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
+        private readonly IP2PCapabilityResolver[] _capabilityResolvers;
+        private readonly Lock _capabilitiesLock = new();
+        private Capability[]? _cachedCapabilities;
         private readonly EventHandler<SessionEventArgs> _onSessionCreated;
         private readonly EventHandler<EventArgs> _onSessionInitialized;
         private readonly SessionDisconnectedEventHandler _onSessionDisconnected;
@@ -55,6 +58,7 @@ namespace Nethermind.Network
             IProtocolValidator protocolValidator,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             IProtocolHandlerFactory[] factories,
+            IP2PCapabilityResolver[] capabilityResolvers,
             ILogManager logManager)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -67,6 +71,11 @@ namespace Nethermind.Network
 
             // Order is already set by OrderedComponents<T> (AddFirst/AddLast)
             _factories = factories;
+            _capabilityResolvers = capabilityResolvers;
+            foreach (IP2PCapabilityResolver resolver in _capabilityResolvers)
+            {
+                resolver.Changed += InvalidateCapabilities;
+            }
             _onSessionCreated = SessionCreated;
             _onSessionInitialized = SessionInitialized;
             _onSessionDisconnected = SessionDisconnected;
@@ -165,9 +174,10 @@ namespace Nethermind.Network
         {
             session.PingSender = handler;
 
-            foreach (Capability capability in _capabilities)
+            Capability[] capabilities = GetAdvertisedCapabilities();
+            for (int i = 0; i < capabilities.Length; i++)
             {
-                session.AddSupportedCapability(capability);
+                session.AddSupportedCapability(capabilities[i]);
             }
         }
 
@@ -338,20 +348,10 @@ namespace Nethermind.Network
             _discoveryApp.AddNodeToDiscovery(session.Node);
         }
 
-        public void AddSupportedCapability(Capability capability) => _capabilities.Add(capability);
-
-        public void RemoveSupportedCapability(Capability capability)
-        {
-            if (_capabilities.Remove(capability))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Removed supported capability: {capability}");
-            }
-        }
-
         public int GetHighestProtocolVersion(string protocol)
         {
             int highestVersion = 0;
-            foreach (Capability capability in _capabilities)
+            foreach (Capability capability in GetAdvertisedCapabilities())
             {
                 if (capability.ProtocolCode == protocol)
                 {
@@ -360,6 +360,41 @@ namespace Nethermind.Network
             }
 
             return highestVersion;
+        }
+
+        private void InvalidateCapabilities()
+        {
+            lock (_capabilitiesLock)
+            {
+                _cachedCapabilities = null;
+            }
+        }
+
+        /// <summary>
+        /// Returns the capabilities to advertise, computed from <see cref="DefaultCapabilities"/> and the registered
+        /// <see cref="IP2PCapabilityResolver"/>s. The result is cached and only recomputed when a resolver signals a
+        /// change via <see cref="IP2PCapabilityResolver.Changed"/>, keeping the per-session path allocation-free.
+        /// </summary>
+        private Capability[] GetAdvertisedCapabilities()
+        {
+            Capability[]? cached = Volatile.Read(ref _cachedCapabilities);
+            if (cached is not null) return cached;
+
+            lock (_capabilitiesLock)
+            {
+                if (_cachedCapabilities is null)
+                {
+                    HashSet<Capability> capabilities = DefaultCapabilities.ToHashSet();
+                    foreach (IP2PCapabilityResolver resolver in _capabilityResolvers)
+                    {
+                        resolver.Resolve(capabilities);
+                    }
+
+                    Volatile.Write(ref _cachedCapabilities, capabilities.ToArray());
+                }
+
+                return _cachedCapabilities;
+            }
         }
     }
 }

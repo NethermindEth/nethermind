@@ -15,10 +15,8 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 
@@ -59,7 +57,6 @@ public class InitializeNetwork : IStep
     private readonly IEnode _enode;
     private readonly INethermindPlugin[] _plugins;
     private readonly Lazy<IProtocolsManager> _protocolsManager;
-    private readonly Lazy<SnapCapabilitySwitcher> _snapCapabilitySwitcher;
 
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
@@ -84,7 +81,6 @@ public class InitializeNetwork : IStep
         IEnode enode,
         INethermindPlugin[] plugins,
         Lazy<IProtocolsManager> protocolsManager,
-        Lazy<SnapCapabilitySwitcher> snapCapabilitySwitcher,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
@@ -105,7 +101,6 @@ public class InitializeNetwork : IStep
         _enode = enode;
         _plugins = plugins;
         _protocolsManager = protocolsManager;
-        _snapCapabilitySwitcher = snapCapabilitySwitcher;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
@@ -151,12 +146,6 @@ public class InitializeNetwork : IStep
                 _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
             }
         });
-
-        if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
-        {
-            _snapCapabilitySwitcher.Value.EnableSnapCapabilityUntilSynced();
-        }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -259,12 +248,9 @@ public class InitializeNetwork : IStep
 
     protected virtual async Task InitPeer()
     {
-        IProtocolsManager protocolsManager = _protocolsManager.Value;
+        // Force creation so the protocols manager subscribes to session events before the RLPx listener starts.
+        _ = _protocolsManager.Value;
 
-        if (_syncConfig.SnapServingEnabled == true)
-        {
-            protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        }
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.

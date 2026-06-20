@@ -176,7 +176,6 @@ public class NetworkModuleTest
         await initializeNetwork.RunInitPeer();
 
         Assert.That(callOrder, Is.EqualTo(new[] { "plugin", "rlpx" }));
-        protocolsManager.DidNotReceive().RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
     }
 
     private IEnumerable<(Type MessageType, Type SerializerType)> FindSerializersInAssembly(Assembly assembly)
@@ -250,7 +249,6 @@ public class NetworkModuleTest
                 Substitute.For<IEnode>(),
                 plugins,
                 new Lazy<IProtocolsManager>(() => protocolsManager),
-                new Lazy<SnapCapabilitySwitcher>(() => null!),
                 networkConfig,
                 syncConfig,
                 Substitute.For<IInitConfig>(),
