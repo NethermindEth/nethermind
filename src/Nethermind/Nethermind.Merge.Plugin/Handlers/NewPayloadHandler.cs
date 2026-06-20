@@ -270,8 +270,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// when it catches an <c>InvalidBlockException</c>: bumps the bad-block metrics, marks the chain
     /// as invalid in <see cref="IInvalidChainTracker"/>, and forwards the block to the
     /// <c>BadBlockStore</c> so it surfaces in <c>debug_getBadBlocks</c>.
-    /// Pre-process rejection sites (hash mismatch, failed orphan validation, failed suggested-block
-    /// validation) previously skipped all three.
+    /// Pre-process rejection sites (failed orphan validation, failed suggested-block
+    /// validation) previously skipped these two.
     /// </remarks>
     private void RecordBadBlock(Block block)
     {
