@@ -87,7 +87,9 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of storage reader reads.")]
-        public static long StorageReaderReads { get; set; }
+        public static long StorageReaderReads => _storageReaderReads.Value;
+        private static CacheLinePaddedLong _storageReaderReads;
+        internal static void IncrementStorageReaderReads() => Interlocked.Increment(ref _storageReaderReads.Value);
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]

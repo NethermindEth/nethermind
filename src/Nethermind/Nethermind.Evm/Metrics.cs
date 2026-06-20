@@ -108,9 +108,6 @@ public class Metrics
     public static long MainThreadSStoreOpcode => _mainSStoreOpcode.Value;
     public static void IncrementSStoreOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode.Value : ref _otherSStoreOpcode.Value);
 
-    [Description("Number of EXP opcodes executed.")]
-    public static long ExpOpcode { get; set; }
-
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
     public static long EmptyCalls => _mainEmptyCalls.Value + _otherEmptyCalls.Value;
