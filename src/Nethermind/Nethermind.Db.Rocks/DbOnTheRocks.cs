@@ -1500,7 +1500,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         _reader.Dispose();
 
-        if (_perTableDbConfig.FlushOnExit) InnerFlush(false);
+        if (_perTableDbConfig.FlushOnExit != FlushOnExitMode.None)
+            InnerFlush(onlyWal: _perTableDbConfig.FlushOnExit == FlushOnExitMode.WalOnly);
         ReleaseUnmanagedResources();
 
         _dbsByPath.Remove(_fullPath!, out _);
