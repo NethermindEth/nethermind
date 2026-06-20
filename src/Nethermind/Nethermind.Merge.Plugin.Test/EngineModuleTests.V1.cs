@@ -459,8 +459,8 @@ public partial class EngineModuleTests
         Hash256 genesisHash = chain.BlockTree.HeadHash;
         await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
 
-        // Build block 2 on block 1 (BuildAndGetPayloadResult sees block1 as head), 
-        // then corrupt BlockHash to genesisHash 
+        // Build block 2 on block 1 (BuildAndGetPayloadResult sees block1 as head),
+        // then corrupt BlockHash to genesisHash
         ExecutionPayload block2 = await BuildAndGetPayloadResult(chain, rpc);
         Hash256 realBlock2Hash = block2.BlockHash!;
         block2.BlockHash = genesisHash;
