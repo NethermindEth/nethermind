@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
+using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -48,6 +49,7 @@ namespace Nethermind.Consensus.Processing
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
             {
+                Metrics.ResetBlockStats();
                 balManager.NextTransaction();
 
                 // We start with high number as don't want to resize too much
@@ -87,6 +89,10 @@ namespace Nethermind.Consensus.Processing
                 {
                     blockToProduce.Transactions = includedTx.ToArray();
                 }
+
+                Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
+                Metrics.PublishBlockGasPriceGauges();
+
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
