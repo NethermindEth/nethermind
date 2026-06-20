@@ -101,7 +101,6 @@ public class MergePluginTests
                 LimboLogs.Instance))
             .AddSingleton(Substitute.For<IRpcModuleProvider>())
             .AddSingleton(Substitute.For<IBlockProcessingQueue>())
-            // Override the real ProtocolsManager with a substitute so tests can assert on capability calls.
             .AddSingleton(Substitute.For<IProtocolsManager>())
             .OnBuild(ctx =>
             {
