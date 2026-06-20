@@ -449,6 +449,34 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task executePayloadV1_invalid_hash_does_not_poison_chain_tracker()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        // Submit two blocks so SetChildParent registers both hashes in the chain tracker.
+        ExecutionPayload block1 = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
+        await rpc.engine_newPayloadV1(block1);
+
+        ExecutionPayload block2 = CreateBlockRequest(chain, block1, TestItem.AddressA);
+        await rpc.engine_newPayloadV1(block2);
+
+        // Build block 3 but claim BlockHash = block1's hash.
+        ExecutionPayload block3 = CreateBlockRequest(chain, block2, TestItem.AddressA);
+        Hash256 realBlock3Hash = block3.BlockHash!;
+        block3.BlockHash = block1.BlockHash;
+
+        ResultWrapper<PayloadStatusV1> invalidResult = await rpc.engine_newPayloadV1(block3);
+        Assert.That(invalidResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+
+        // Without the fix, OnInvalidBlock(block1Hash, block2Hash) would mark block1 invalid and
+        // propagate to block2, causing block3 to be rejected as "part of an invalid chain".
+        block3.BlockHash = realBlock3Hash;
+        ResultWrapper<PayloadStatusV1> validResult = await rpc.engine_newPayloadV1(block3);
+        Assert.That(validResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+    }
+
+    [Test]
     public async Task executePayloadV1_invalid_orphan_records_bad_block()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();

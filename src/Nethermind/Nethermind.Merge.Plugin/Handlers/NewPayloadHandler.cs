@@ -132,7 +132,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
             Nethermind.Blockchain.Metrics.BadBlocks++;
             if (block.IsByNethermindNode()) Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
-            //RecordBadBlocks() is not called here as OnInvalidBlock is intentionally skipped here —
+            // RecordBadBlock() is not called here as OnInvalidBlock is intentionally skipped here —
             // block.Hash is unverified at this point and must not be used to poison the chain tracker.
             block.Header.Hash = actualHash;
             _blockTree.ReportBadBlock(block);
