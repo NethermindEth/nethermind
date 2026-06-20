@@ -445,13 +445,7 @@ public struct EvmPooledMemory
 
         if (minLength > MaxCachedArrayLength)
         {
-            // Large buffers (Multicall memory, big returndata) would otherwise be fresh LOH allocations
-            // discarded every frame. Pool them through the runtime's per-core, low-contention shared pool
-            // rather than a hand-rolled cache: no per-thread large-array retention, no second pool to
-            // replicate. It may hand back a buffer dirtied by an earlier user, and RentSlow marks the whole
-            // array as zeroed, so clear the full length first. Buffers above the shared pool's 1 MB ceiling
-            // fall through to a plain allocation.
-            byte[] pooled = SafeArrayPool<byte>.Shared.Rent(minLength);
+            byte[] pooled = RentLarge(minLength);
             Array.Clear(pooled);
             return pooled;
         }
@@ -463,9 +457,7 @@ public struct EvmPooledMemory
     {
         if (array.Length > MaxCachedArrayLength)
         {
-            // Large buffers only ever come from the shared pool above, so return them there for reuse
-            // instead of dropping them to GC. Cleared on rent rather than here to avoid double-zeroing.
-            SafeArrayPool<byte>.Shared.Return(array);
+            ReturnLarge(array);
             return;
         }
 
@@ -476,6 +468,31 @@ public struct EvmPooledMemory
             cache[_cleanArrayCount++] = array;
         }
     }
+
+#if ZK_EVM
+    private static byte[] RentLarge(int minLength) => SafeArrayPool<byte>.Shared.Rent(minLength);
+
+    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
+#else
+    private const int MaxSharedArrayLength = 1 << 20;
+    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
+    private const int MaxLargePooledArrayLength = 1 << 22;
+    private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
+        System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
+
+    private static byte[] RentLarge(int minLength)
+        => minLength > MaxSharedArrayLength
+            ? _largeArrayPool.Rent(minLength)
+            : SafeArrayPool<byte>.Shared.Rent(minLength);
+
+    private static void ReturnLarge(byte[] array)
+    {
+        if (array.Length > MaxSharedArrayLength)
+            _largeArrayPool.Return(array);
+        else
+            SafeArrayPool<byte>.Shared.Return(array);
+    }
+#endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
