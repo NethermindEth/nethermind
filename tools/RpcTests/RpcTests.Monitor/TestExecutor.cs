@@ -102,9 +102,13 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
 
         static string GetErrorMessage(HttpRequestMessage request, HttpResponseMessage? response, string? content)
         {
+            // strip url to host only to hide API key, if any
+            Uri? uri = request.RequestUri;
+            string host = uri is null ? "<no url>" : uri.Port == 80 ? uri.Host : $"{uri.Host}:{uri.Port}";
+
             string message =
                 $"""
-                 Failed to {request.Method} {request.RequestUri}
+                 Failed to {request.Method} {host}
                  Got {(response is null ? "no response" : $"{(int)response.StatusCode} {response.StatusCode}")}
                  """;
 
