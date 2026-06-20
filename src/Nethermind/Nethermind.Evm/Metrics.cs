@@ -461,6 +461,8 @@ public class Metrics
         if (Interlocked.CompareExchange(ref _minMaxGasPriceBits, PackFloats(gasPrice, gasPrice), empty) != empty)
             return; // a transaction already contributed
 
+        // Only ever called after all tx workers have joined, so no concurrent UpdateBlockGasPrice can
+        // observe the gap between the CAS above and these non-atomic seed writes.
         Volatile.Write(ref _countAveGasPriceBits, PackCountAve(0, gasPrice));
         Volatile.Write(ref _blockEstMedianGasPrice, gasPrice);
     }

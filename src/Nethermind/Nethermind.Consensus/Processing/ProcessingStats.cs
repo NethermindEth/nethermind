@@ -479,12 +479,15 @@ namespace Nethermind.Consensus.Processing
             double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
             string blockGas = "";
-            if (Evm.Metrics.BlockMinGasPrice != float.MaxValue)
+            // Read the stable gauges (published once per block, never reset) rather than the transient
+            // per-block aggregates: GenerateReport runs on the ThreadPool and can fire after the next
+            // block's ResetBlockStats has already cleared the transient values.
+            if (Evm.Metrics.GasPriceMax != 0f)
             {
-                float minGas = Evm.Metrics.BlockMinGasPrice;
-                float medianGas = Math.Max(minGas, Evm.Metrics.BlockEstMedianGasPrice);
-                float aveGas = Evm.Metrics.BlockAveGasPrice;
-                float maxGas = Evm.Metrics.BlockMaxGasPrice;
+                float minGas = Evm.Metrics.GasPriceMin;
+                float medianGas = Math.Max(minGas, Evm.Metrics.GasPriceMedian);
+                float aveGas = Evm.Metrics.GasPriceAve;
+                float maxGas = Evm.Metrics.GasPriceMax;
                 // Step the unit down (gwei -> mwei -> kwei -> wei) so small gas prices stay visible at :N3
                 // instead of all rendering 0.000 on low-base-fee chains.
                 (string unit, float scale) = minGas switch
@@ -507,10 +510,10 @@ namespace Nethermind.Consensus.Processing
                 ProcessingMs = chunkMs,
                 SlotMs = runMs,
                 MGasPerSecond = mgasPerSecond,
-                MinGas = Evm.Metrics.BlockMinGasPrice,
-                MedianGas = Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice),
-                AveGas = Evm.Metrics.BlockAveGasPrice,
-                MaxGas = Evm.Metrics.BlockMaxGasPrice,
+                MinGas = Evm.Metrics.GasPriceMin,
+                MedianGas = Math.Max(Evm.Metrics.GasPriceMin, Evm.Metrics.GasPriceMedian),
+                AveGas = Evm.Metrics.GasPriceAve,
+                MaxGas = Evm.Metrics.GasPriceMax,
                 GasLimit = block.GasLimit
             });
 
