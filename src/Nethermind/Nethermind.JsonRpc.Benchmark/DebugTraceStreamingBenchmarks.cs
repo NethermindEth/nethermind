@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Benchmark;
