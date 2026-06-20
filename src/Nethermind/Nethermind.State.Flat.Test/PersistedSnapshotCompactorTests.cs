@@ -1346,4 +1346,69 @@ public class PersistedSnapshotCompactorTests
                     "a [0,8] snapshot extending below from=4 must keep its own bloom");
         }
     }
+
+    /// <summary>
+    /// Sizing the merged bloom must count a filter shared by several sources only once. A large
+    /// compaction adopts its (superset) bloom across the snapshots it contains, so a later compaction
+    /// can assemble several sources that all point at that one filter — each reporting its whole-window
+    /// key count. Summing per source inflates <c>bloomCapacity</c> (and thus the merged filter) by the
+    /// number of sharers. Builds a [0,8] large skip-pointer that shares its bloom across bases [1,8],
+    /// then a [4,16] merge clamped to persistence 4 assembling bases [5,16] — bases [5,8] share the
+    /// [0,8] bloom — and asserts the merged filter's capacity equals the deduplicated source-bloom sum,
+    /// not the inflated per-source sum.
+    /// </summary>
+    [Test]
+    public void LargeBoundary_MergedBloomCapacity_DeduplicatesSharedSourceBloom()
+    {
+        // CompactSize=1 makes every block a boundary; MaxCompactSize=16 so block 16's window is [0, 16].
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 256 * 1024,
+            blobFileSizeBytes: 4 * 1024 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(
+                ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 16 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId[] states = new StateId[17];
+        states[0] = new StateId(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 16; i++)
+            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+
+        // Build base [0..8], then the [0,8] large-compacted skip-pointer — it shares its bloom over [1,8].
+        for (int i = 1; i <= 8; i++)
+            BuildBase(tier, states, i);
+        compactor.DoCompactSnapshot(states[8], persistedBlockNumber: 0);
+
+        // Build base [9..16]; the [0,16] window clamps to persistence 4, so the merge spans [4,16] and
+        // assembles bases [5,16] — bases [5,8] still carry the shared [0,8] bloom.
+        for (int i = 9; i <= 16; i++)
+            BuildBase(tier, states, i);
+
+        // Capture the source blooms the merge will see, BEFORE it runs and replaces them with its own
+        // shared bloom. dedupedSum counts each distinct filter once (the [0,8] bloom across bases [5,8]);
+        // naiveSum is the buggy per-source sum that double-counts it.
+        long dedupedSum = 0, naiveSum = 0;
+        HashSet<BloomFilter> distinct = [];
+        for (int i = 5; i <= 16; i++)
+        {
+            Assert.That(repo.TryLeasePersistedState(states[i], SnapshotTier.PersistedBase, out PersistedSnapshot? src), Is.True);
+            using (src)
+            {
+                naiveSum += src!.Bloom.Count;
+                if (distinct.Add(src.Bloom)) dedupedSum += src.Bloom.Count;
+            }
+        }
+        Assert.That(distinct.Count, Is.LessThan(12), "precondition: bases [5,8] must share one bloom, so fewer than 12 distinct filters");
+        Assert.That(dedupedSum, Is.LessThan(naiveSum), "precondition: the shared bloom is double-counted by a naive per-source sum");
+
+        compactor.DoCompactSnapshot(states[16], persistedBlockNumber: 4);
+
+        Assert.That(repo.TryLeasePersistedState(states[16], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? big), Is.True);
+        using (big)
+        {
+            Assert.That(big!.From.BlockNumber, Is.EqualTo(4), "precondition: the merge is clamped to From=4");
+            Assert.That(big.Bloom.Capacity, Is.EqualTo(dedupedSum),
+                "merged bloom capacity must count the shared source bloom once, not once per sharer");
+        }
+    }
 }

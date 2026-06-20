@@ -285,6 +285,11 @@ public class PersistedSnapshotCompactor(
         {
             long estimatedSize = 0;
             long bloomCapacity = 0;
+            // A large compaction adopts one bloom across the snapshots it contains, so the assembled
+            // sources can share a single filter that already reports the whole window's key count.
+            // Dedup by owner so a shared bloom is counted once instead of once per source — otherwise
+            // bloomCapacity (and the merged filter) is inflated by the number of sharers.
+            HashSet<RefCountedBloomFilter> countedBlooms = [];
             for (int i = 0; i < n; i++)
             {
                 // Session dispose madvises the source's mmap range cold — the compacted
@@ -296,7 +301,8 @@ public class PersistedSnapshotCompactor(
                 // Each source carries its own bloom; sum their key counts to size the merge.
                 // The AlwaysTrue placeholder reports Count == 0, so a not-yet-built source just
                 // contributes nothing — same as the old manager's sentinel did.
-                bloomCapacity += snapshots[i].Bloom.Count;
+                if (countedBlooms.Add(snapshots[i].BloomRef))
+                    bloomCapacity += snapshots[i].Bloom.Count;
             }
 
             // Bloom-disabled or empty-capacity case uses an AlwaysTrue sentinel so the
