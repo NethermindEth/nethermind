@@ -13,71 +13,39 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
+public sealed class FlatStorageTree(
+    FlatWorldStateScope scope,
+    ITrieWarmer trieCacheWarmer,
+    SnapshotBundle bundle,
+    IFlatDbConfig config,
+    ConcurrencyController concurrencyQuota,
+    Hash256 storageRoot,
+    Address address,
+    PreservedStorageTries? preservedStorageTries,
+    ILogManager logManager) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
-    private readonly StorageTree _tree;
-    private readonly StorageTree _warmupStorageTree;
-    private readonly Address _address;
-    private readonly IFlatDbConfig _config;
-    private readonly ITrieWarmer _trieCacheWarmer;
-    private readonly FlatWorldStateScope _scope;
-    private readonly SnapshotBundle _bundle;
-    private readonly Hash256 _addressHash;
+    private StorageTree? _tree;
+    private StorageTree? _warmupStorageTree;
+    private readonly Address _address = address;
+    private readonly IFlatDbConfig _config = config;
+    private readonly ITrieWarmer _trieCacheWarmer = trieCacheWarmer;
+    private readonly FlatWorldStateScope _scope = scope;
+    private readonly SnapshotBundle _bundle = bundle;
+    private readonly ConcurrencyController _concurrencyQuota = concurrencyQuota;
+    private readonly Hash256 _addressHash = address.ToAccountPath.ToHash256();
+    private Hash256 _storageRoot = storageRoot;
     private UInt256 _lastIndex;
     private byte[]? _lastValue;
     private bool _hasLastValue;
-    private readonly PreservedStorageTries? _preservedStorageTries;
-    private readonly PreservedStorageTries.Rebinder _storageTreeRebinder;
+    private readonly PreservedStorageTries? _preservedStorageTries = preservedStorageTries;
+    private PreservedStorageTries.Rebinder? _storageTreeRebinder;
+    private readonly ILogManager _logManager = logManager;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
-    private int _selfDestructKnownStateIdx;
+    private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
-    public FlatStorageTree(
-        FlatWorldStateScope scope,
-        ITrieWarmer trieCacheWarmer,
-        SnapshotBundle bundle,
-        IFlatDbConfig config,
-        ConcurrencyController concurrencyQuota,
-        Hash256 storageRoot,
-        Address address,
-        PreservedStorageTries? preservedStorageTries,
-        ILogManager logManager)
-    {
-        _scope = scope;
-        _trieCacheWarmer = trieCacheWarmer;
-        _bundle = bundle;
-        _address = address;
-        _addressHash = address.ToAccountPath.ToHash256();
-        _preservedStorageTries = preservedStorageTries;
-        _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
-
-        StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
-        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
-        if (preservedStorageTries is not null
-            && preservedStorageTries.TryTake(address, storageRoot, bundle, concurrencyQuota, out StorageTree reusedTree, out PreservedStorageTries.Rebinder rebinder))
-        {
-            _tree = reusedTree;
-            _storageTreeRebinder = rebinder;
-        }
-        else
-        {
-            _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
-            {
-                RootHash = storageRoot
-            };
-            _storageTreeRebinder = storageTrieAdapter.Rebind;
-        }
-
-        // Set the rootref manually. Cut the call to find nodes by about 1/4th.
-        _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
-        _warmupStorageTree.SetRootHash(storageRoot, false);
-        _warmupStorageTree.RootRef = _tree.RootRef;
-
-        _config = config;
-    }
-
-    public Hash256 RootHash => _tree.RootHash;
+    public Hash256 RootHash => _tree?.RootHash ?? _storageRoot;
 
     internal bool IsDisposed => _scope.IsDisposed;
 
@@ -96,10 +64,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         if (_config.VerifyWithTrie)
         {
-            byte[] treeValue = _tree.Get(index);
+            byte[] treeValue = EnsureStorageTree().Get(index);
             if (!Bytes.AreEqual(treeValue, value))
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
 
@@ -139,7 +107,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             ValueHash256 key = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, ref key);
 
-            _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+            EnsureWarmupStorageTree().WarmUpPath(key.BytesAsSpan);
             return true;
         }
         finally
@@ -163,20 +131,25 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         _bundle.Clear(_address, _addressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
-        _tree.RootHash = Keccak.EmptyTreeHash;
+        _storageRoot = Keccak.EmptyTreeHash;
+        if (_tree is not null) _tree.RootHash = Keccak.EmptyTreeHash;
         _hasLastValue = false;
         _lastValue = null;
     }
 
-    public void CommitTree() => _tree.Commit();
+    public void CommitTree() => _tree?.Commit();
 
-    public void Preserve() => _preservedStorageTries?.Store(_address, _tree, _storageTreeRebinder, _tree.RootHash);
+    public void Preserve()
+    {
+        if (_preservedStorageTries is null || _tree is null || _storageTreeRebinder is null) return;
+        _preservedStorageTries.Store(_address, _tree, _storageTreeRebinder, _tree.RootHash);
+    }
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch = new(
                 estimatedEntries,
-                _tree,
+                EnsureStorageTree(),
                 onRootUpdated,
                 _address,
                 commit: true);
@@ -204,5 +177,39 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
 
         public void Dispose() => storageTreeBulkWriteBatch.Dispose();
+    }
+
+    private StorageTree EnsureStorageTree()
+    {
+        if (_tree is not null) return _tree;
+
+        StorageTrieStoreAdapter storageTrieAdapter = new(_bundle, _concurrencyQuota, _addressHash);
+        if (_preservedStorageTries is not null
+            && _preservedStorageTries.TryTake(_address, _storageRoot, _bundle, _concurrencyQuota, out StorageTree reusedTree, out PreservedStorageTries.Rebinder rebinder))
+        {
+            _tree = reusedTree;
+            _storageTreeRebinder = rebinder;
+        }
+        else
+        {
+            _tree = new StorageTree(storageTrieAdapter, _storageRoot, _logManager)
+            {
+                RootHash = _storageRoot
+            };
+            _storageTreeRebinder = _preservedStorageTries is not null ? storageTrieAdapter.Rebind : null;
+        }
+
+        return _tree;
+    }
+
+    private StorageTree EnsureWarmupStorageTree()
+    {
+        if (_warmupStorageTree is not null) return _warmupStorageTree;
+
+        StorageTree tree = EnsureStorageTree();
+        _warmupStorageTree = new StorageTree(new StorageTrieStoreWarmerAdapter(_bundle, _addressHash), _logManager);
+        _warmupStorageTree.SetRootHash(tree.RootHash, false);
+        _warmupStorageTree.RootRef = tree.RootRef;
+        return _warmupStorageTree;
     }
 }
