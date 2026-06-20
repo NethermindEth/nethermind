@@ -32,8 +32,9 @@ public sealed class LocalMetrics
     public long StateSkippedWrites;
     public long StorageTreeCache;
     public long StorageTreeReads;
-    public long StorageTreeWrites;
-    public long StorageSkippedWrites;
+    // Note: storage trie write/skipped counters are NOT here - they are reported from
+    // ParallelUnbalancedWork worker finalizers (PersistentStorageProvider.ReportMetrics) and so go
+    // straight to the atomic global Db.Metrics, which a non-atomic per-scope accumulator cannot.
 
     // Execution write counters — gated by ExecutionMetricsFlag, matching Metrics.Increment*.
     public long AccountWrites;
@@ -54,10 +55,6 @@ public sealed class LocalMetrics
     public void IncrementStorageTreeCache() => StorageTreeCache++;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void IncrementStorageTreeReads() => StorageTreeReads++;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void IncrementStorageTreeWrites(long count) => StorageTreeWrites += count;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void IncrementStorageSkippedWrites(long count) => StorageSkippedWrites += count;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void IncrementStorageWrites()
@@ -97,8 +94,6 @@ public sealed class LocalMetrics
         StateSkippedWrites = 0;
         StorageTreeCache = 0;
         StorageTreeReads = 0;
-        StorageTreeWrites = 0;
-        StorageSkippedWrites = 0;
         AccountWrites = 0;
         AccountDeleted = 0;
         StorageWrites = 0;

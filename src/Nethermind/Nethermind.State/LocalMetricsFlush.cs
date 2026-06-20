@@ -26,8 +26,6 @@ internal static class LocalMetricsFlush
         if (m.StateSkippedWrites != 0) DbMetrics.IncrementStateSkippedWrites(m.StateSkippedWrites);
         if (m.StorageTreeCache != 0) DbMetrics.AddStorageTreeCache(m.StorageTreeCache);
         if (m.StorageTreeReads != 0) DbMetrics.AddStorageTreeReads(m.StorageTreeReads);
-        if (m.StorageTreeWrites != 0) DbMetrics.IncrementStorageTreeWrites(m.StorageTreeWrites);
-        if (m.StorageSkippedWrites != 0) DbMetrics.IncrementStorageSkippedWrites(m.StorageSkippedWrites);
 
         if (m.AccountWrites != 0) EvmMetrics.AddAccountWrites(m.AccountWrites);
         if (m.AccountDeleted != 0) EvmMetrics.AddAccountDeleted(m.AccountDeleted);

@@ -252,13 +252,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    private void ReportMetrics(int writes, int skipped)
+    // Static + atomic on purpose: called from ParallelUnbalancedWork worker finalizers
+    // (see PersistentStorageProvider.std.cs), so it must not touch the non-atomic per-scope LocalMetrics.
+    private static void ReportMetrics(int writes, int skipped)
     {
         if (skipped > 0)
-            _metrics.IncrementStorageSkippedWrites(skipped);
+            Db.Metrics.IncrementStorageSkippedWrites(skipped);
 
         if (writes > 0)
-            _metrics.IncrementStorageTreeWrites(writes);
+            Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
     public void ClearStorageMap()
