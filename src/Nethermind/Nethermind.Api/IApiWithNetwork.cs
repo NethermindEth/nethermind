@@ -3,11 +3,8 @@
 
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Network;
-using Nethermind.Network.Rlpx;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.ParallelSync;
 
