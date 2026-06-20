@@ -26,9 +26,17 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
             yield return head;
     }
 
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromMinutes(1),
+        TimeSpan.FromMinutes(2),
+        TimeSpan.FromMinutes(5)
+    ];
+
     private async Task ProduceWithRetryAsync(ChannelWriter<BlockInfo> writer, CancellationToken ct)
     {
-        int retryDelaySec = 1;
+        int failureCount = 0;
         try
         {
             while (!ct.IsCancellationRequested)
@@ -36,10 +44,14 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
                 try
                 {
                     await ConnectAndProduceAsync(writer, ct);
-                    retryDelaySec = 1;
+                    failureCount = 0;
 
                     if (!ct.IsCancellationRequested)
                         Console.Error.WriteLine("WebSocket disconnected, reconnecting...");
+
+                    // reached in case of a clean disconnect
+                    await Task.Delay(TimeSpan.FromSeconds(1), ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                    continue;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -47,13 +59,15 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
                 }
                 catch (Exception ex)
                 {
-                    errorReporter.Report("WebSocket connection error", ex);
+                    // reduce disconnect spamming in case if node is down/restarting
+                    if (failureCount >= RetryDelays.Length)
+                        errorReporter.Report("WebSocket connection error", ex);
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(retryDelaySec), ct)
-                    .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                TimeSpan delay = RetryDelays[Math.Min(failureCount, RetryDelays.Length - 1)];
+                failureCount++;
 
-                retryDelaySec = Math.Min(retryDelaySec * 2, 60);
+                await Task.Delay(delay, ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
         }
         finally
