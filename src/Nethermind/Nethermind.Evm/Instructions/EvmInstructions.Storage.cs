@@ -37,9 +37,6 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Increment the opcode metric for TLOAD.
-        Metrics.TloadOpcode++;
-
         // Deduct the fixed gas cost for TLOAD.
         TGasPolicy.Consume(ref gas, GasCostOf.TLoad);
 
@@ -86,9 +83,6 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionTStore<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Increment the opcode metric for TSTORE.
-        Metrics.TstoreOpcode++;
-
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Disallow storage modification during static calls.
@@ -290,9 +284,6 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Increment the opcode metric for MCOPY.
-        Metrics.MCopyOpcode++;
-
         // Pop destination, source, and length values; if any are missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c)) goto StackUnderflow;
 

@@ -108,15 +108,6 @@ public class Metrics
     public static long MainThreadSStoreOpcode => _mainSStoreOpcode.Value;
     public static void IncrementSStoreOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode.Value : ref _otherSStoreOpcode.Value);
 
-    [Description("Number of TLOAD opcodes executed.")]
-    public static long TloadOpcode { get; set; }
-
-    [Description("Number of TSTORE opcodes executed.")]
-    public static long TstoreOpcode { get; set; }
-
-    [Description("Number of MCOPY opcodes executed.")]
-    public static long MCopyOpcode { get; set; }
-
     [Description("Number of EXP opcodes executed.")]
     public static long ExpOpcode { get; set; }
 
