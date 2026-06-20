@@ -345,7 +345,12 @@ public class Metrics
     // Block gas-price aggregates are updated once per transaction and, under parallel BAL validation, by
     // many workers concurrently. They are kept lock-free by packing two interdependent values into one
     // long updated with a single CAS: _minMaxGasPriceBits holds (min, max); _countAveGasPriceBits holds
-    // (count, running average) - packing count+ave together keeps the running mean exact under contention.
+    // (count, running average) - packing count+ave together keeps the transaction count exact under
+    // contention (the float average still carries normal accumulation rounding).
+    // These three are intentionally NOT cache-line padded: every worker CASes all three once per tx, so
+    // they are true-shared (the per-location contention is inherent and padding cannot remove it); padding
+    // would only separate them from each other while tripling the lines each tx touches. The once-per-tx
+    // frequency makes this immaterial next to the per-access counters the padding above targets.
     private static long _minMaxGasPriceBits = PackFloats(float.MaxValue, 0f);
     private static long _countAveGasPriceBits;
     // Order-dependent streaming estimate (already non-deterministic under parallelism); its own CAS.
