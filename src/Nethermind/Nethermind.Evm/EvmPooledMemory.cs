@@ -7,9 +7,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-#if !ZK_EVM
-using System.Buffers;
-#endif
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
@@ -430,14 +427,6 @@ public struct EvmPooledMemory
     [ThreadStatic] private static byte[]?[]? _cleanArrays;
     [ThreadStatic] private static int _cleanArrayCount;
 
-#if !ZK_EVM
-    private const int MaxSharedArrayLength = 1 << 20;
-    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
-    private const int MaxLargePooledArrayLength = 1 << 22;
-    private static readonly ArrayPool<byte> _largeArrayPool =
-        ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
-#endif
-
     private static byte[] RentClean(int minLength)
     {
         byte[]?[]? cache = _cleanArrays;
@@ -485,6 +474,12 @@ public struct EvmPooledMemory
 
     private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
 #else
+    private const int MaxSharedArrayLength = 1 << 20;
+    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
+    private const int MaxLargePooledArrayLength = 1 << 22;
+    private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
+        System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
+
     private static byte[] RentLarge(int minLength)
         => minLength > MaxSharedArrayLength
             ? _largeArrayPool.Rent(minLength)
