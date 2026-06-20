@@ -342,15 +342,9 @@ public class Metrics
     public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted.Value;
     public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted.Value);
 
-    // Block gas-price aggregates are updated once per transaction and, under parallel BAL validation, by
-    // many workers concurrently. They are kept lock-free by packing two interdependent values into one
-    // long updated with a single CAS: _minMaxGasPriceBits holds (min, max); _countAveGasPriceBits holds
-    // (count, running average) - packing count+ave together keeps the transaction count exact under
-    // contention (the float average still carries normal accumulation rounding).
-    // These three are intentionally NOT cache-line padded: every worker CASes all three once per tx, so
-    // they are true-shared (the per-location contention is inherent and padding cannot remove it); padding
-    // would only separate them from each other while tripling the lines each tx touches. The once-per-tx
-    // frequency makes this immaterial next to the per-access counters the padding above targets.
+    // Lock-free per-tx block gas-price aggregates: each packs two interdependent values into one long
+    // CAS'd atomically - (min, max) and (count, running average). Not cache-line padded: they are
+    // true-shared (every worker CASes all three per tx), so padding cannot reduce the inherent contention.
     private static long _minMaxGasPriceBits = PackFloats(float.MaxValue, 0f);
     private static long _countAveGasPriceBits;
     // Order-dependent streaming estimate (already non-deterministic under parallelism); its own CAS.
@@ -408,12 +402,10 @@ public class Metrics
         Volatile.Write(ref _blockEstMedianGasPrice, 0f);
     }
 
-    /// <summary>Folds a transaction's effective gas price into the per-block aggregates.</summary>
+    /// <summary>Folds a transaction's effective gas price into the per-block aggregates (lock-free).</summary>
     /// <remarks>
-    /// Lock-free: parallel BAL workers each call this once per transaction. Gas prices at or above
-    /// <see cref="ulong.MaxValue"/> wei/gas (~18.4 ETH) are not meaningful for these metrics, so the rare
-    /// wider value is skipped rather than paying the multi-limb <see cref="UInt256"/> to
-    /// <see cref="double"/> conversion.
+    /// Prices >= <see cref="ulong.MaxValue"/> wei/gas (~18.4 ETH) are not meaningful and are skipped,
+    /// avoiding the multi-limb <see cref="UInt256"/>-to-<see cref="double"/> conversion.
     /// </remarks>
     internal static void UpdateBlockGasPrice(in UInt256 effectiveGasPrice)
     {
@@ -451,18 +443,14 @@ public class Metrics
             if (prev == median) break;
             median = prev;
         }
-        // Gauges are not published here: a slow parallel worker could overwrite them with a stale view.
-        // PublishBlockGasPriceGauges() publishes once from the final aggregates after workers join.
+        // Gauges published once by PublishBlockGasPriceGauges after workers join, not here (a slow
+        // worker could otherwise leave a stale value).
     }
 
     /// <summary>
-    /// Seeds the block gas-price aggregates with the block base fee when no user transaction
-    /// contributed (empty or system-only block), so the report shows a meaningful value.
+    /// Seeds the gas-price aggregates with the block base fee when no transaction contributed (empty /
+    /// system-only block). Skips zero base fee (pre-EIP-1559, genesis) - "0.000" is less useful than blank.
     /// </summary>
-    /// <remarks>
-    /// Skips zero-base-fee chains (pre-EIP-1559, some rollups, genesis): rendering "0.000" there is
-    /// less informative than the prior blank output. Called after workers join, so the CAS is uncontended.
-    /// </remarks>
     internal static void SeedBlockGasPriceIfEmpty(in UInt256 baseFee)
     {
         if (!baseFee.IsUint64 || baseFee.IsZero) return;

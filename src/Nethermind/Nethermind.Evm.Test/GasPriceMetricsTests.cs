@@ -39,25 +39,22 @@ public class GasPriceMetricsTests
         Assert.That(prices.Value.Ave, Is.InRange(1.0f, 100.0f));
     }
 
-    [Test]
-    public void Seed_uses_base_fee_when_no_transaction_contributed()
+    // A non-zero base fee seeds all four aggregates; a zero base fee stays blank (no "0.000").
+    [TestCase(2u, 2.0f)]
+    [TestCase(0u, null)]
+    public void Seed_uses_base_fee_only_when_non_zero(ulong gwei, float? expected)
     {
-        Metrics.SeedBlockGasPriceIfEmpty(Gwei(2));
+        Metrics.SeedBlockGasPriceIfEmpty(Gwei(gwei));
 
         (float Min, float EstMedian, float Ave, float Max)? prices = Metrics.GetBlockGasPrices();
+        if (expected is null)
+        {
+            Assert.That(prices, Is.Null);
+            return;
+        }
+
         Assert.That(prices, Is.Not.Null);
-        Assert.That(prices!.Value.Min, Is.EqualTo(2.0f));
-        Assert.That(prices.Value.Max, Is.EqualTo(2.0f));
-        Assert.That(prices.Value.Ave, Is.EqualTo(2.0f));
-        Assert.That(prices.Value.EstMedian, Is.EqualTo(2.0f));
-    }
-
-    [Test]
-    public void Seed_does_not_render_zero_base_fee()
-    {
-        Metrics.SeedBlockGasPriceIfEmpty(UInt256.Zero);
-
-        Assert.That(Metrics.GetBlockGasPrices(), Is.Null, "zero base fee stays blank rather than showing 0.000");
+        Assert.That(prices!.Value, Is.EqualTo((expected.Value, expected.Value, expected.Value, expected.Value)));
     }
 
     [Test]

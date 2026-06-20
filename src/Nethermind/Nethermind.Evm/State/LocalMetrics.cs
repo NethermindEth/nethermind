@@ -6,37 +6,27 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Evm.State;
 
 /// <summary>
-/// Per-scope, single-threaded accumulator for execution metric counters incremented from the
-/// world-state layer (state/storage trie reads, cache hits, writes, and the execution write
-/// counters).
+/// Per-scope accumulator for world-state metric counters, flushed into the global <see cref="Metrics"/> /
+/// <c>Db.Metrics</c> by the owning <c>WorldState</c> at commit and scope end.
 /// </summary>
 /// <remarks>
-/// A world-state scope is only ever touched by one thread at a time, so increments here are plain
-/// non-atomic adds. This avoids the cross-thread <see cref="System.Threading.Interlocked"/>
-/// contention that arises when many prewarm / parallel-BAL workers update the same global counter
-/// line. The owning <c>WorldState</c> folds these into the global <see cref="Metrics"/> /
-/// <c>Db.Metrics</c> counters once per boundary (per-tx commit and scope end) via its flush, then
-/// calls <see cref="Reset"/>. The execution write counters mirror the
-/// <see cref="ExecutionMetricsFlag"/> gating of their <see cref="Metrics"/> counterparts so a
-/// <c>NETHERMIND_NO_EXECUTION_METRICS</c> build still elides them.
+/// A scope is only ever touched by one thread, so increments are plain non-atomic adds - avoiding the
+/// per-access cross-thread <see cref="System.Threading.Interlocked"/> contention during prewarm /
+/// parallel-BAL. Write counters mirror the <see cref="ExecutionMetricsFlag"/> gating of their globals.
 /// </remarks>
 public sealed class LocalMetrics
 {
-    // Field order mirrors the declaration order of the static Db.Metrics / Evm.Metrics counters so
-    // the flush adds across them in progressive memory order rather than jumping back and forth.
-
-    // Db state/storage trie counters — always recorded (not gated).
+    // Field order matches the global declaration order so the flush walks memory forward.
     public long StateTreeCacheHits;
     public long StateTreeReads;
     public long StateTreeWrites;
     public long StateSkippedWrites;
     public long StorageTreeCache;
     public long StorageTreeReads;
-    // Note: storage trie write/skipped counters are NOT here - they are reported from
-    // ParallelUnbalancedWork worker finalizers (PersistentStorageProvider.ReportMetrics) and so go
-    // straight to the atomic global Db.Metrics, which a non-atomic per-scope accumulator cannot.
+    // Storage write/skipped counters are deliberately absent: reported from parallel worker finalizers,
+    // so they go straight to the atomic global Db.Metrics (see PersistentStorageProvider.ReportMetrics).
 
-    // Execution write counters — gated by ExecutionMetricsFlag, matching Metrics.Increment*.
+    // Execution write counters - gated by ExecutionMetricsFlag, matching Metrics.Increment*.
     public long AccountWrites;
     public long AccountDeleted;
     public long StorageWrites;

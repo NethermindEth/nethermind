@@ -598,9 +598,8 @@ namespace Nethermind.Consensus.Processing
                     _ => $"       {bps,10:F2} Blk/s "
                 };
 
-                // Execution-mode indicator: chains for parallel BAL validation, link for sequential.
-                // BlockAccessList is null until BAL (Amsterdam) activates, so a parallel-configured node
-                // still shows sequential pre-fork, when the parallel path does not actually run.
+                // Exec-mode indicator: chains for parallel BAL, link for sequential. BlockAccessList is
+                // null pre-Amsterdam, so a parallel-configured node correctly shows sequential pre-fork.
                 string execMode = _parallelExecution && block.BlockAccessList is not null ? " ⛓️" : " 🔗";
 
                 if (recoveryQueue > 0 || processingQueue > 0)
