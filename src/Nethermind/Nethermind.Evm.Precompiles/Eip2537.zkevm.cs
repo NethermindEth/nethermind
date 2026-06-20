@@ -39,7 +39,7 @@ internal static partial class Eip2537
     /// <param name="source">Must have <see cref="LenFp"/> bytes length.</param>
     /// <param name="destination">Must have <see cref="LenFpTrimmed"/> bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryDecodeFpChecked(ReadOnlySpan<byte> source, Span<byte> destination)
+    internal static bool TryDecodeFp(ReadOnlySpan<byte> source, Span<byte> destination)
     {
         ReadOnlySpan<byte> value = source[LenFpPad..];
 
@@ -51,32 +51,26 @@ internal static partial class Eip2537
         return true;
     }
 
-    /// <param name="source">Must have <see cref="LenFp"/> bytes length.</param>
-    /// <param name="destination">Must have <see cref="LenFpTrimmed"/> bytes length.</param>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool TryDecodeFp(ReadOnlySpan<byte> source, Span<byte> destination)
-        => TryDecodeFpChecked(source, destination);
-
     /// <param name="source">Must have <see cref="LenFp"/> * 2 bytes length.</param>
     /// <param name="destination">Must have <see cref="LenFpTrimmed"/> * 2 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeFp2(ReadOnlySpan<byte> source, Span<byte> destination)
-        => TryDecodeFpChecked(source[..LenFp], destination)
-        && TryDecodeFpChecked(source[LenFp..], destination[LenFpTrimmed..]);
+        => TryDecodeFp(source[..LenFp], destination)
+        && TryDecodeFp(source[LenFp..], destination[LenFpTrimmed..]);
 
     /// <param name="source">Must have <see cref="LenFp"/> * 2 bytes length.</param>
     /// <param name="destination">Must have <see cref="LenFpTrimmed"/> * 2 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeG1(ReadOnlySpan<byte> source, Span<byte> destination)
-        => TryDecodeFpChecked(source[..LenFp], destination)
-        && TryDecodeFpChecked(source[LenFp..], destination[LenFpTrimmed..]);
+        => TryDecodeFp(source[..LenFp], destination)
+        && TryDecodeFp(source[LenFp..], destination[LenFpTrimmed..]);
 
     /// <param name="source">Must have <see cref="LenFp"/> * 4 bytes length.</param>
     /// <param name="destination">Must have <see cref="LenFpTrimmed"/> * 4 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeG2(ReadOnlySpan<byte> source, Span<byte> destination)
-        => TryDecodeFpChecked(source[..LenFp], destination)
-        && TryDecodeFpChecked(source[LenFp..(2 * LenFp)], destination[LenFpTrimmed..(2 * LenFpTrimmed)])
-        && TryDecodeFpChecked(source[(2 * LenFp)..(3 * LenFp)], destination[(2 * LenFpTrimmed)..(3 * LenFpTrimmed)])
-        && TryDecodeFpChecked(source[(3 * LenFp)..], destination[(3 * LenFpTrimmed)..]);
+        => TryDecodeFp(source[..LenFp], destination)
+        && TryDecodeFp(source[LenFp..(2 * LenFp)], destination[LenFpTrimmed..(2 * LenFpTrimmed)])
+        && TryDecodeFp(source[(2 * LenFp)..(3 * LenFp)], destination[(2 * LenFpTrimmed)..(3 * LenFpTrimmed)])
+        && TryDecodeFp(source[(3 * LenFp)..], destination[(3 * LenFpTrimmed)..]);
 }
