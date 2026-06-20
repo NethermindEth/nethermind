@@ -32,7 +32,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
@@ -255,8 +254,7 @@ public class NetworkModuleTest
                 Substitute.For<IEnode>(),
                 plugins,
                 new Lazy<IProtocolsManager>(() => protocolsManager),
-                new Lazy<ISyncModeSelector>(() => Substitute.For<ISyncModeSelector>()),
-                new Lazy<IDisposableStack>(() => Substitute.For<IDisposableStack>()),
+                new Lazy<SnapCapabilitySwitcher>(() => null!),
                 networkConfig,
                 syncConfig,
                 Substitute.For<IInitConfig>(),

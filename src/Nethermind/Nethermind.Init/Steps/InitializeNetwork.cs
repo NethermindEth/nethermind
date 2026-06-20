@@ -20,7 +20,6 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Init.Steps;
@@ -60,8 +59,7 @@ public class InitializeNetwork : IStep
     private readonly IEnode _enode;
     private readonly INethermindPlugin[] _plugins;
     private readonly Lazy<IProtocolsManager> _protocolsManager;
-    private readonly Lazy<ISyncModeSelector> _syncModeSelector;
-    private readonly Lazy<IDisposableStack> _disposeStack;
+    private readonly Lazy<SnapCapabilitySwitcher> _snapCapabilitySwitcher;
 
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
@@ -86,8 +84,7 @@ public class InitializeNetwork : IStep
         IEnode enode,
         INethermindPlugin[] plugins,
         Lazy<IProtocolsManager> protocolsManager,
-        Lazy<ISyncModeSelector> syncModeSelector,
-        Lazy<IDisposableStack> disposeStack,
+        Lazy<SnapCapabilitySwitcher> snapCapabilitySwitcher,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
@@ -108,8 +105,7 @@ public class InitializeNetwork : IStep
         _enode = enode;
         _plugins = plugins;
         _protocolsManager = protocolsManager;
-        _syncModeSelector = syncModeSelector;
-        _disposeStack = disposeStack;
+        _snapCapabilitySwitcher = snapCapabilitySwitcher;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
@@ -158,10 +154,7 @@ public class InitializeNetwork : IStep
 
         if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
         {
-            SnapCapabilitySwitcher snapCapabilitySwitcher =
-                new(_protocolsManager.Value, _syncModeSelector.Value, _logManager);
-            _disposeStack.Value.Push(snapCapabilitySwitcher);
-            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            _snapCapabilitySwitcher.Value.EnableSnapCapabilityUntilSynced();
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
