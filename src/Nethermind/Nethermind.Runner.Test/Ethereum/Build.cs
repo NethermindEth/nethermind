@@ -17,7 +17,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.KeyStore;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
