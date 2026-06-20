@@ -65,14 +65,16 @@ public sealed class SnapshotContent : IDisposable, IResettable
 {
     private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
     private static int LockPartitions => Nethermind.Core.Collections.CollectionExtensions.LockPartitions;
+    private static int InitialStateNodeCapacity => Math.Max(LockPartitions, 2048);
+    private static int InitialStorageNodeCapacity => Math.Max(LockPartitions, 4096);
 
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new(LockPartitions, LockPartitions);
-    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new(LockPartitions, LockPartitions);
+    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new(LockPartitions, InitialStateNodeCapacity);
+    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new(LockPartitions, InitialStorageNodeCapacity);
 
     public void Reset()
     {
