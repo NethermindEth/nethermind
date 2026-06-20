@@ -24,6 +24,7 @@ public sealed class RefCountedBloomFilter : SmallRefCountingDisposable
     {
         _filter = filter;
         Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, filter.DataBytes);
+        Interlocked.Increment(ref Metrics._persistedSnapshotBloomCount);
     }
 
     /// <summary>A freshly-owned <see cref="BloomFilter.AlwaysTrue"/> sentinel — correct (no false
@@ -37,6 +38,7 @@ public sealed class RefCountedBloomFilter : SmallRefCountingDisposable
     protected override void CleanUp()
     {
         Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, -_filter.DataBytes);
+        Interlocked.Decrement(ref Metrics._persistedSnapshotBloomCount);
         _filter.Dispose();
     }
 }

@@ -119,6 +119,18 @@ public static class Metrics
         set => Volatile.Write(ref _persistedSnapshotBloomMemory, value);
     }
 
+    // Backed by a field so callers can update via Interlocked.Increment/Decrement(ref ...).
+    internal static long _persistedSnapshotBloomCount;
+
+    [DetailedMetric]
+    [GaugeMetric]
+    [Description("Number of live persisted-snapshot bloom filters (one per RefCountedBloomFilter; a bloom shared across snapshots counts once)")]
+    public static long PersistedSnapshotBloomCount
+    {
+        get => Volatile.Read(ref _persistedSnapshotBloomCount);
+        set => Volatile.Write(ref _persistedSnapshotBloomCount, value);
+    }
+
     [DetailedMetric]
     [CounterMetric]
     [Description("Number of persisted snapshot compactions performed")]
