@@ -350,7 +350,7 @@ public class EthereumRunnerTests
             initConfig.BaseDbPath = tempPath.Path;
 
             IDbConfig dbConfig = configProvider.GetConfig<IDbConfig>();
-            dbConfig.FlushOnExit = false;
+            dbConfig.FlushOnExit = FlushOnExitMode.None;
 
             INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
             int port = basePort + testIndex;
