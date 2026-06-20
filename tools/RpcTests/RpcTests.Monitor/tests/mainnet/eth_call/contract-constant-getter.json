@@ -1,0 +1,30 @@
+[
+  {
+    "run": "EveryBlocks(11)",
+    "test": {
+      // WETH (0xC02aaA39..756Cc2) is non-upgradeable and has no
+      // SELFDESTRUCT, so its `decimals()` getter returns the constant 18 (0x12) at any block -
+      // exercising execution of deployed bytecode returning a constant result (distinct from the
+      // trivial "0x" of a plain transfer), without the destructibility that broke the greet test.
+      "description": "WETH decimals() returns the constant 18 (0x12)"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "eth_call",
+      "params": [
+        {
+          "to": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          // decimals()
+          "data": "0x313ce567"
+        },
+        "{{Hex(RecentBlock)}}"
+      ],
+      "id": "{{Request.Number}}"
+    },
+    "response": {
+      "id": "{{Request.Number}}",
+      "jsonrpc": "2.0",
+      "result": "0x0000000000000000000000000000000000000000000000000000000000000012"
+    }
+  }
+]

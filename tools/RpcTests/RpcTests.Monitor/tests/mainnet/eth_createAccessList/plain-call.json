@@ -1,0 +1,32 @@
+[
+  {
+    "run": "EveryBlocks(5)",
+    "test": {
+      // A plain ETH transfer touches no contract storage, so the access list is always empty and
+      // the intrinsic cost is always 21000 (0x5208) - invariant across blocks.
+      "description": "rpc-tests/integration/mainnet/eth_createAccessList/test_01.json"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "eth_createAccessList",
+      "params": [
+        {
+          "from": "0xEF04bc7821433f080461BBAE815182E3d7bBb61A",
+          "to": "0x4debB0dF4da8D1f51EF67B727c3F1c0eCC7ed009",
+          "value": "0x229322"
+          // gas/gasPrice omitted: the historical gasPrice is below today's base fee.
+        },
+        "{{Hex(RecentBlock)}}"
+      ],
+      "id": "{{Request.Number}}"
+    },
+    "response": {
+      "id": "{{Request.Number}}",
+      "jsonrpc": "2.0",
+      "result": {
+        "accessList": [],
+        "gasUsed": "0x5208"
+      }
+    }
+  }
+]

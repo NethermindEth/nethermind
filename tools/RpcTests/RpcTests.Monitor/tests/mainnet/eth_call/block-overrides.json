@@ -1,0 +1,46 @@
+[
+  {
+    "run": "EveryBlocks(10)",
+    "test": {
+      // Exercises the full eth_call signature: call object + block tag + state overrides + block overrides.
+      // The target 0x4debB0dF.. is a code-less (EOA) account, so balanceOf(..) executes no code and
+      // returns "0x" regardless of state/block - keeping the result invariant while still exercising the
+      // stateOverride (balance) and blockOverrides (number/timestamp/random) plumbing.
+      // NOTE: assumes the target stays code-less (no EIP-7702 delegation).
+      "description": "rpc-tests/integration/mainnet/eth_call/test_32.json"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "eth_call",
+      "params": [
+        {
+          "from": "0xEF04bc7821433f080461BBAE815182E3d7bBb61A",
+          "to": "0x4debB0dF4da8D1f51EF67B727c3F1c0eCC7ed009",
+          "gas": "0x7A1200",
+          "value": "0x0",
+          // balanceOf(0xef04bc7821433f080461bbae815182e3d7bbb61a)
+          "data": "0x70a08231000000000000000000000000ef04bc7821433f080461bbae815182e3d7bbb61a"
+        },
+        "{{Hex(RecentBlock)}}",
+        // stateOverrides
+        {
+          "0xEF04bc7821433f080461BBAE815182E3d7bBb61A": {
+            "balance": "0x2000000000000000000000"
+          }
+        },
+        // blockOverrides
+        {
+          "number": "0x900000",
+          "timestamp": "0x69A1C5C0",
+          "random": "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+        }
+      ],
+      "id": "{{Request.Number}}"
+    },
+    "response": {
+      "id": "{{Request.Number}}",
+      "jsonrpc": "2.0",
+      "result": "0x"
+    }
+  }
+]

@@ -1,0 +1,33 @@
+[
+  {
+    "run": "EveryBlocks(5)",
+    "test": {
+      // ERC-20 approve(spender, amount) on USDC always returns boolean `true`, independent of
+      // the caller's balance, allowance or the block it runs at - so the result stays valid at
+      // any recent block. Exercises non-empty ABI return-value decoding through real contract execution.
+      "description": "rpc-tests/integration/mainnet/eth_call/test_08.json"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "eth_call",
+      "params": [
+        {
+          "from": "0xdb534BAB6b7d0690f412395B18bD3df078ECfe2d",
+          // USDC token
+          "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          // approve(0xa87eaf82f287a2c67cb74130906d5ac01f2f9251, 0x126af740)
+          "data": "0x095ea7b3000000000000000000000000a87eaf82f287a2c67cb74130906d5ac01f2f925100000000000000000000000000000000000000000000000000000000126af740"
+          // gas/gasPrice intentionally omitted: the historical gasPrice is below today's base fee
+          // and would turn the result into a fee-cap error.
+        },
+        "{{Hex(RecentBlock)}}"
+      ],
+      "id": "{{Request.Number}}"
+    },
+    "response": {
+      "id": "{{Request.Number}}",
+      "jsonrpc": "2.0",
+      "result": "0x0000000000000000000000000000000000000000000000000000000000000001"
+    }
+  }
+]
