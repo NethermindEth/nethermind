@@ -21,7 +21,7 @@ namespace Nethermind.Api
         IMessageSerializationService MessageSerializationService { get; }
         IGossipPolicy GossipPolicy { get; set; }
         IPeerManager? PeerManager { get; }
-        IProtocolsManager? ProtocolsManager { get; set; }
+        IProtocolsManager? ProtocolsManager { get; }
         IProtocolValidator ProtocolValidator { get; }
         IRlpxHost RlpxPeer { get; }
 

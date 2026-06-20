@@ -94,7 +94,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.BlockProducer = Substitute.For<IBlockProducer>();
             api.EngineSigner = Substitute.For<ISigner>();
             api.KeyStore = Substitute.For<IKeyStore>();
-            api.ProtocolsManager = Substitute.For<IProtocolsManager>();
             api.TxSender = Substitute.For<ITxSender>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();

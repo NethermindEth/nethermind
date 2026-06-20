@@ -32,6 +32,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
@@ -153,11 +154,9 @@ public class NetworkModuleTest
         SubstitutionContext.Current?.ThreadContext?.DequeueAllArgumentSpecifications();
 
         List<string> callOrder = [];
-        INethermindApi api = Substitute.For<INethermindApi>();
         IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         IProtocolsManager protocolsManager = Substitute.For<IProtocolsManager>();
         INethermindPlugin plugin = new RecordingPlugin(() => callOrder.Add("plugin"));
 
@@ -169,19 +168,12 @@ public class NetworkModuleTest
         staticNodesManager.InitAsync().Returns(Task.CompletedTask);
         trustedNodesManager.InitAsync().Returns(Task.CompletedTask);
 
-        api.BlockTree.Returns(Substitute.For<IBlockTree>());
-        api.SpecProvider.Returns(Substitute.For<ISpecProvider>());
-        api.TxPool.Returns(Substitute.For<ITxPool>());
-        api.RlpxPeer.Returns(rlpxHost);
-        api.StaticNodesManager.Returns(staticNodesManager);
-        api.TrustedNodesManager.Returns(trustedNodesManager);
-        api.WorldStateManager.Returns(worldStateManager);
-        api.Plugins.Returns([plugin]);
-        worldStateManager.HashServer.Returns(Substitute.For<IReadOnlyKeyValueStore>());
-
         TestInitializeNetwork initializeNetwork = new(
-            api,
+            rlpxHost,
+            staticNodesManager,
+            trustedNodesManager,
             protocolsManager,
+            [plugin],
             new NetworkConfig { DisableDiscV4DnsFeeder = true },
             new SyncConfig(),
             LimboLogs.Instance);
@@ -240,29 +232,36 @@ public class NetworkModuleTest
     }
 
     private sealed class TestInitializeNetwork(
-        INethermindApi api,
+        IRlpxHost rlpxHost,
+        IStaticNodesManager staticNodesManager,
+        ITrustedNodesManager trustedNodesManager,
         IProtocolsManager protocolsManager,
+        INethermindPlugin[] plugins,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         ILogManager logManager) : InitializeNetwork(
-                api,
-                Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
                 Substitute.For<ISynchronizer>(),
                 Substitute.For<ISyncPeerPool>(),
                 new NodeSourceToDiscV4Feeder(Substitute.For<INodeSource>(), Substitute.For<IDiscoveryApp>(), Substitute.For<IProcessExitSource>()),
                 Substitute.For<IDiscoveryApp>(),
                 new Lazy<IPeerPool>(() => Substitute.For<IPeerPool>()),
-                Substitute.For<INetworkStorage>(),
-                [],
+                Substitute.For<IBlockTree>(),
+                rlpxHost,
+                Substitute.For<IPeerManager>(),
+                Substitute.For<ISessionMonitor>(),
+                staticNodesManager,
+                trustedNodesManager,
+                Substitute.For<IEnode>(),
+                plugins,
+                new Lazy<IProtocolsManager>(() => protocolsManager),
+                new Lazy<ISyncModeSelector>(() => Substitute.For<ISyncModeSelector>()),
+                new Lazy<IDisposableStack>(() => Substitute.For<IDisposableStack>()),
                 networkConfig,
                 syncConfig,
                 Substitute.For<IInitConfig>(),
-                Substitute.For<IEnode>(),
                 logManager)
     {
         public Task RunInitPeer() => InitPeer();
-
-        protected override IProtocolsManager CreateProtocolManager() => protocolsManager;
     }
 }
