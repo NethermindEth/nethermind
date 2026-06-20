@@ -26,21 +26,6 @@ public sealed class NodeStorageCache
         return _cache.GetOrAdd(in nodeKey, tryLoadRlp);
     }
 
-    /// <summary>
-    /// Gets a cached node RLP, or loads it with a stateful factory without allocating a closure.
-    /// </summary>
-    public byte[]? GetOrAdd<TState>(
-        in NodeKey nodeKey,
-        TState state,
-        SeqlockCache<NodeKey, byte[]>.ValueFactory<TState> tryLoadRlp)
-    {
-        if (!_enabled)
-        {
-            return tryLoadRlp(in nodeKey, state);
-        }
-        return _cache.GetOrAdd(in nodeKey, state, tryLoadRlp);
-    }
-
     public bool ClearCaches()
     {
         bool wasEnabled = _enabled;

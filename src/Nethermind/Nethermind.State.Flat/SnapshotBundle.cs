@@ -18,10 +18,7 @@ namespace Nethermind.State.Flat;
 public sealed class SnapshotBundle : IDisposable
 {
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
-    private static readonly SeqlockCache<NodeKey, byte[]>.ValueFactory<SnapshotBundle> s_loadStateRlpFromPersistence = LoadStateRlpFromPersistence;
-    private static readonly SeqlockCache<NodeKey, byte[]>.ValueFactory<SnapshotBundle> s_loadStorageRlpFromPersistence = LoadStorageRlpFromPersistence;
 
-    private NodeStorageCache? _nodeStorageCache;
 
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
@@ -66,8 +63,6 @@ public sealed class SnapshotBundle : IDisposable
 
         Metrics.ActiveSnapshotBundle++;
     }
-
-    internal void AttachNodeStorageCache(NodeStorageCache nodeStorageCache) => _nodeStorageCache = nodeStorageCache;
 
     private void ExpandCurrentPooledContent()
     {
@@ -316,12 +311,6 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (flags == ReadFlags.None && _nodeStorageCache is not null)
-        {
-            NodeKey key = new(null, in path, hash);
-            return _nodeStorageCache.GetOrAdd(in key, this, s_loadStateRlpFromPersistence);
-        }
-
         return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
     }
 
@@ -329,20 +318,8 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (flags == ReadFlags.None && _nodeStorageCache is not null)
-        {
-            NodeKey key = new(address, in path, hash);
-            return _nodeStorageCache.GetOrAdd(in key, this, s_loadStorageRlpFromPersistence);
-        }
-
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
-
-    private static byte[]? LoadStateRlpFromPersistence(in NodeKey key, SnapshotBundle snapshotBundle) =>
-        snapshotBundle._readOnlySnapshotBundle.TryLoadStateRlp(in key.Path, key.Hash, ReadFlags.None);
-
-    private static byte[]? LoadStorageRlpFromPersistence(in NodeKey key, SnapshotBundle snapshotBundle) =>
-        snapshotBundle._readOnlySnapshotBundle.TryLoadStorageRlp(key.Address!, in key.Path, key.Hash, ReadFlags.None);
 
     // This is called only during trie commit
     public void SetStateNode(in TreePath path, TrieNode newNode)
