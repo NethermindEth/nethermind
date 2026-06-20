@@ -26,11 +26,6 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager, IProtocolRegistrar
     {
-        public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
-        {
-            new(Protocol.Eth, 68),
-        };
-
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
         private readonly ISyncPeerPool _syncPool;
@@ -371,9 +366,10 @@ namespace Nethermind.Network
         }
 
         /// <summary>
-        /// Returns the capabilities to advertise, computed from <see cref="DefaultCapabilities"/> and the registered
-        /// <see cref="IP2PCapabilityResolver"/>s. The result is cached and only recomputed when a resolver signals a
-        /// change via <see cref="IP2PCapabilityResolver.Changed"/>, keeping the per-session path allocation-free.
+        /// Returns the capabilities to advertise, computed by running the registered
+        /// <see cref="IP2PCapabilityResolver"/>s (including <see cref="DefaultP2PCapabilityResolver"/>) over an empty
+        /// set. The result is cached and only recomputed when a resolver signals a change via
+        /// <see cref="IP2PCapabilityResolver.Changed"/>, keeping the per-session path allocation-free.
         /// </summary>
         private Capability[] GetAdvertisedCapabilities()
         {
@@ -384,7 +380,7 @@ namespace Nethermind.Network
             {
                 if (_cachedCapabilities is null)
                 {
-                    HashSet<Capability> capabilities = DefaultCapabilities.ToHashSet();
+                    HashSet<Capability> capabilities = [];
                     foreach (IP2PCapabilityResolver resolver in _capabilityResolvers)
                     {
                         resolver.Resolve(capabilities);

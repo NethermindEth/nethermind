@@ -124,7 +124,7 @@ public class ProtocolsManagerTests
             Substitute.For<IProtocolValidator>(),
             Substitute.For<INetworkStorage>(),
             [],
-            resolvers,
+            [new DefaultP2PCapabilityResolver(), .. resolvers],
             LimboLogs.Instance);
 
     private sealed class FakeCapabilityResolver(Action<ISet<Capability>> resolve) : IP2PCapabilityResolver
@@ -218,7 +218,7 @@ public class ProtocolsManagerTests
                 _protocolValidator,
                 _peerStorage,
                 BuildProtocolHandlerFactories(),
-                [],
+                [new DefaultP2PCapabilityResolver()],
                 LimboLogs.Instance);
         }
 

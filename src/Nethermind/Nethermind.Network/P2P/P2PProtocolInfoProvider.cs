@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P
     {
         public static string DefaultCapabilitiesToString()
         {
-            IEnumerable<string> capabilities = ProtocolsManager.DefaultCapabilities
+            IEnumerable<string> capabilities = DefaultP2PCapabilityResolver.DefaultCapabilities
                 .OrderBy(static x => x.ProtocolCode).ThenByDescending(static x => x.Version)
                 .Select(static x => $"{x.ProtocolCode}/{x.Version}");
             return string.Join(",", capabilities);

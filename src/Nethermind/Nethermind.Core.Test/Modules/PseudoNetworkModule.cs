@@ -18,8 +18,6 @@ public class PseudoNetworkModule() : Module
         builder
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
 
-            // Snap capability is contributed by SnapP2PCapabilityResolver, registered in the production NetworkModule.
-
             // Some config migration
             .AddDecorator<INetworkConfig>((ctx, networkConfig) =>
             {
