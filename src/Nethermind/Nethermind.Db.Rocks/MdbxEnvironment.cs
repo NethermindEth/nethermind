@@ -14,7 +14,7 @@ namespace Nethermind.Db.Rocks;
 internal sealed class MdbxEnvironment : IDisposable
 {
     private const long InitialMapSize = 1L << 30;
-    private const long MaxMapSize = 16L << 40;
+    private const long MaxMapSize = 1L << 40;
     private const long GrowthStep = 1L << 30;
     private const long ShrinkThreshold = 2L << 30;
 
