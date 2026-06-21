@@ -165,7 +165,10 @@ public partial class BlockAccessListManager
             return false;
         }
 
-        ThrowIfStorageReadBudgetExceeded(block, _suggestedChargeableStorageReads - _generatedChargeableStorageReads, validateStorageReads);
+        ulong surplusReads = _suggestedChargeableStorageReads > _generatedChargeableStorageReads
+            ? _suggestedChargeableStorageReads - _generatedChargeableStorageReads
+            : 0ul;
+        ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
         return true;
     }
 
@@ -179,15 +182,15 @@ public partial class BlockAccessListManager
         GeneratedBlockAccessList generated = GeneratedBlockAccessList;
         ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
 
-        int generatedReads = 0;
-        int suggestedReads = 0;
+        ulong generatedReads = 0;
+        ulong suggestedReads = 0;
 
         // Pass 1: every account generated touched must match suggested at this index (O(1)
         // dictionary lookup) or be a tolerated generated-only entry.
         foreach (GeneratedAccountChanges gen in generated.AccountChanges)
         {
             int genReads = IsSystemContract(gen.Address) ? 0 : gen.StorageReads.Count;
-            generatedReads += genReads;
+            generatedReads += (ulong)genReads;
 
             ReadOnlyAccountChanges? sug = suggested.GetAccountChanges(gen.Address);
             if (sug is not null)
@@ -208,14 +211,17 @@ public partial class BlockAccessListManager
         // Tally suggested reads here for the storage-read gas-budget check below.
         foreach (ReadOnlyAccountChanges sug in suggested.AccountChanges)
         {
-            suggestedReads += IsSystemContract(sug.Address) ? 0 : sug.StorageReads.Length;
+            suggestedReads += IsSystemContract(sug.Address) ? 0ul : (ulong)sug.StorageReads.Length;
 
             if (generated.HasAccount(sug.Address)) continue;
 
             if (!sug.HasNoChangesAtIndex(index)) ThrowSurplusChanges(block, sug.Address, index);
         }
 
-        ThrowIfStorageReadBudgetExceeded(block, suggestedReads - generatedReads, validateStorageReads);
+        ulong surplusReads = suggestedReads > generatedReads
+            ? suggestedReads - generatedReads
+            : 0ul;
+        ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
     }
 
     /// <summary>
@@ -261,7 +267,10 @@ public partial class BlockAccessListManager
         }
 
         // Storage-read gas budget — counts already tracked block-cumulative on both sides.
-        ThrowIfStorageReadBudgetExceeded(block, _suggestedChargeableStorageReads - _generatedChargeableStorageReads, validateStorageReads);
+        ulong surplusReads = _suggestedChargeableStorageReads > _generatedChargeableStorageReads
+            ? _suggestedChargeableStorageReads - _generatedChargeableStorageReads
+            : 0ul;
+        ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
     }
 
     /// <summary>
@@ -287,7 +296,7 @@ public partial class BlockAccessListManager
         {
             if (!IsSystemContract(ac.Address))
             {
-                _generatedChargeableStorageReads += ac.StorageReads.Count;
+                _generatedChargeableStorageReads += (ulong)ac.StorageReads.Count;
             }
         }
 
@@ -334,9 +343,9 @@ public partial class BlockAccessListManager
         => hasNoChangesAtIndex
         && ((index == 0 && address == Address.SystemUser && !hasChargeableReads) || hasChargeableReads);
 
-    private void ThrowIfStorageReadBudgetExceeded(Block block, int surplusReads, bool validateStorageReads)
+    private void ThrowIfStorageReadBudgetExceeded(Block block, ulong surplusReads, bool validateStorageReads)
     {
-        if (validateStorageReads && surplusReads > 0 && _gasRemaining < (ulong)(surplusReads * Eip7928Constants.ItemCost))
+        if (validateStorageReads && surplusReads > 0ul && _gasRemaining < surplusReads * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }

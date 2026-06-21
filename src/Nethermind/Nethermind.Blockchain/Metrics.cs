@@ -27,7 +27,7 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Total number of blocks processed")]
-    public static long Blocks { get; set; }
+    public static ulong Blocks { get; set; }
 
     [CounterMetric]
     [Description("Total number of chain reorganizations")]
@@ -77,7 +77,7 @@ public static class Metrics
     [GaugeMetric]
     [Description("The current height of the canonical chain.")]
     [DataMember(Name = "ethereum_blockchain_height")]
-    public static long BlockchainHeight { get; set; }
+    public static ulong BlockchainHeight { get; set; }
 
     //EIP-2159: Common Prometheus Metrics Names for Clients
     [GaugeMetric]

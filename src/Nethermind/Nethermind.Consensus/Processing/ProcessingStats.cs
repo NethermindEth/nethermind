@@ -371,9 +371,8 @@ namespace Nethermind.Consensus.Processing
 
             long chunkBlocks = (_chunkBlocks += data.BlockCount);
 
-            // Safe cast: block numbers fit well within long range for any realistic chain
-            Metrics.Blocks = (long)blockNumber;
-            Metrics.BlockchainHeight = (long)blockNumber;
+            Metrics.Blocks = blockNumber;
+            Metrics.BlockchainHeight = blockNumber;
 
             Metrics.Transactions += data.TransactionCount;
             Metrics.TotalDifficulty = block.TotalDifficulty ?? UInt256.Zero;

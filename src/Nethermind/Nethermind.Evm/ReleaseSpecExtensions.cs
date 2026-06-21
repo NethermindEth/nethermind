@@ -12,10 +12,10 @@ namespace Nethermind.Evm
     {
         extension(IReleaseSpec spec)
         {
-            public int MaxProductionBlobCount(int? blockProductionBlobLimit) =>
+            public ulong MaxProductionBlobCount(int? blockProductionBlobLimit) =>
                 blockProductionBlobLimit >= 0
-                    ? Math.Min(blockProductionBlobLimit.Value, (int)spec.MaxBlobCount)
-                    : (int)spec.MaxBlobCount;
+                    ? Math.Min((ulong)blockProductionBlobLimit.Value, spec.MaxBlobCount)
+                    : spec.MaxBlobCount;
 
             public ulong GetBaseDataCost(Transaction tx) =>
                 tx.IsContractCreation && spec.IsEip3860Enabled

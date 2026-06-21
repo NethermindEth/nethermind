@@ -114,8 +114,8 @@ public class ProcessingStatsTests
         double originalMgas = BlockchainMetrics.Mgas;
         double originalMgasPerSec = BlockchainMetrics.MgasPerSec;
         long originalTransactions = BlockchainMetrics.Transactions;
-        long originalBlocks = BlockchainMetrics.Blocks;
-        long originalBlockchainHeight = BlockchainMetrics.BlockchainHeight;
+        ulong originalBlocks = BlockchainMetrics.Blocks;
+        ulong originalBlockchainHeight = BlockchainMetrics.BlockchainHeight;
         UInt256 originalTotalDifficulty = BlockchainMetrics.TotalDifficulty;
         UInt256 originalLastDifficulty = BlockchainMetrics.LastDifficulty;
         ulong originalGasUsed = BlockchainMetrics.GasUsed;
