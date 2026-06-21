@@ -272,7 +272,8 @@ namespace Nethermind.Init.Steps.Migrations
 
             // It used to be that the tx index is stored in the default column so we are moving it into transactions column
             {
-                using IWriteBatch writeBatch = _receiptsDb.StartWriteBatch().GetColumnBatch(ReceiptsColumns.Default);
+                using IColumnsWriteBatch<ReceiptsColumns> columnsWriteBatch = _receiptsDb.StartWriteBatch();
+                IWriteBatch writeBatch = columnsWriteBatch.GetColumnBatch(ReceiptsColumns.Default);
                 for (int i = 0; i < notNullReceipts.Length; i++)
                 {
                     writeBatch[notNullReceipts[i].TxHash!.Bytes] = null;

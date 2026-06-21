@@ -318,6 +318,22 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Sorted_view_start_before_positions_on_previous_key()
+        {
+            _db[[1]] = [1];
+            _db[[3]] = [3];
+            _db[[5]] = [5];
+
+            using ISortedView view = ((ISortedKeyValueStore)_db).GetViewBetween([0], [9]);
+
+            Assert.That(view.StartBefore([4]), Is.True);
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 3 }));
+            Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(new byte[] { 3 }));
+            Assert.That(view.MoveNext(), Is.True);
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 5 }));
+        }
+
+        [Test]
         public void Smoke_test_large_writes_with_nowal()
         {
             IWriteBatch writeBatch = _db.StartWriteBatch();

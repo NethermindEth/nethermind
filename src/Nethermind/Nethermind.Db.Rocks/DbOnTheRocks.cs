@@ -235,7 +235,7 @@ public partial class DbOnTheRocks : IDb, IMergeableKeyValueStore, ISortedKeyValu
     public void Flush(bool onlyWal = false) =>
         Mdbx.Flush();
 
-    public void Clear() =>
+    public virtual void Clear() =>
         Mdbx.DropTable(_dbi);
 
     public void Compact() =>

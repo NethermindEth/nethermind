@@ -221,9 +221,11 @@ internal enum MdbxCursorOp
     NextDup = 9,
     NextMultiple = 10,
     NextNoDup = 11,
-    Prev = 13,
-    PrevDup = 14,
-    PrevNoDup = 16,
+    Prev = 12,
+    PrevDup = 13,
+    PrevNoDup = 14,
+    Set = 15,
+    SetKey = 16,
     SetRange = 17,
 }
 

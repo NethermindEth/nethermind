@@ -127,10 +127,24 @@ internal sealed class MdbxColumnsWriteBatch<TKey>(
         public void Clear()
         {
             ObjectDisposedException.ThrowIf(_owner._disposed, _owner);
-            _operations.Clear();
+            int writeIndex = 0;
+            for (int readIndex = 0; readIndex < _operations.Count; readIndex++)
+            {
+                MdbxWriteOperation operation = _operations[readIndex];
+                if (operation.Dbi != _dbi)
+                {
+                    _operations[writeIndex++] = operation;
+                }
+            }
+
+            if (writeIndex != _operations.Count)
+            {
+                _operations.RemoveRange(writeIndex, _operations.Count - writeIndex);
+            }
         }
 
-        public void Dispose() =>
-            _owner.Dispose();
+        public void Dispose()
+        {
+        }
     }
 }

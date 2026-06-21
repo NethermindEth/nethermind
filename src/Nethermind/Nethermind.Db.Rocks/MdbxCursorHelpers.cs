@@ -218,12 +218,6 @@ internal sealed class MdbxSortedView : ISortedView
         }
 
         MdbxNative.ThrowOnError(result, "mdbx_cursor_get");
-        byte[] foundKey = MdbxEnvironment.Copy(key);
-        if (MdbxCursorHelpers.Compare(foundKey, target) < 0)
-        {
-            return true;
-        }
-
         result = MdbxNative.CursorGet(_cursor, ref key, ref data, MdbxCursorOp.Prev);
         if (result == MdbxNative.NotFound)
         {

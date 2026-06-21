@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using FastEnumUtility;
-using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
@@ -51,6 +50,23 @@ public sealed class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct,
 
     public new IColumnDbSnapshot<T> CreateSnapshot() =>
         new MdbxColumnDbSnapshot<T>(Mdbx, _columnDbs);
+
+    public override void Clear()
+    {
+        uint[] dbis = GC.AllocateUninitializedArray<uint>(_columnDbs.Count + 1);
+        int count = 0;
+
+        foreach (ColumnDb column in _columnDbs.Values)
+        {
+            if (column.Dbi != MainDbi)
+            {
+                dbis[count++] = column.Dbi;
+            }
+        }
+
+        dbis[count++] = MainDbi;
+        Mdbx.DropTables(dbis, count);
+    }
 
     public override void Dispose() =>
         base.Dispose();

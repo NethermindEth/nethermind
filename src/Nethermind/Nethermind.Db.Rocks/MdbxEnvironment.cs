@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -135,6 +133,15 @@ internal sealed class MdbxEnvironment : IDisposable
 
     public void DropTable(uint dbi) =>
         ExecuteWrite(txn => MdbxNative.ThrowOnError(MdbxNative.Drop(txn, dbi, delete: false), "mdbx_drop"));
+
+    public void DropTables(uint[] dbis, int count) =>
+        ExecuteWrite(txn =>
+        {
+            for (int i = 0; i < count; i++)
+            {
+                MdbxNative.ThrowOnError(MdbxNative.Drop(txn, dbis[i], delete: false), "mdbx_drop");
+            }
+        });
 
     public void Flush() =>
         MdbxNative.ThrowOnError(MdbxNative.EnvSyncEx(Env, force: true, nonblock: false), "mdbx_env_sync_ex");
