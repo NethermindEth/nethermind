@@ -907,9 +907,9 @@ public partial class EthRpcModule(
                 verifyLogIndexResponse ? (logs, token) => VerifyLogsResponse(logs, logFilter, fromBlockHeader, toBlockHeader, token) : null,
                 out timeoutTransferred);
         }
-        catch (ResourceNotFoundException exception)
+        catch (ResourceNotFoundException)
         {
-            return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail("pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
         }
         finally
         {
