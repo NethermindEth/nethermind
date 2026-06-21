@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -55,6 +57,17 @@ namespace Nethermind.Evm.Test
                 Assert.That(success, Is.True);
                 Assert.That(output.ToArray(), Is.EqualTo(Array.Empty<byte>()));
             }
+        }
+
+        // Locks the hand-written limbs of the P-256 group order used by the zkVM precompile's
+        // [1, n-1] scalar range check against the canonical big-endian encoding from SEC 2, 2.4.2.
+        [Test]
+        public void SecP256r1Curve_order_matches_canonical_value()
+        {
+            UInt256 expected = new(
+                Bytes.FromHexString("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551"),
+                isBigEndian: true);
+            Assert.That(SecP256r1Curve.N, Is.EqualTo(expected));
         }
 
         [TestCaseSource(nameof(RandomECDsaInputs))]
