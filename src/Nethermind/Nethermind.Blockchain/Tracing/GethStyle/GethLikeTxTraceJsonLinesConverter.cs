@@ -49,10 +49,10 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WriteNumberValue((byte)value.OpcodeRaw);
 
         writer.WritePropertyName("gas");
-        writer.WriteStringValue($"0x{value.Gas:x}");
+        WriteHexLong(writer, value.Gas);
 
         writer.WritePropertyName("gasCost");
-        writer.WriteStringValue($"0x{value.GasCost:x}");
+        WriteHexLong(writer, value.GasCost);
 
         writer.WritePropertyName("memSize");
         writer.WriteNumberValue(value.MemorySize ?? 0UL);
@@ -100,6 +100,15 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         // to avoid adding comma on writer reuse
         writer.Flush();
         writer.Reset();
+    }
+
+    private static void WriteHexLong(Utf8JsonWriter writer, long v)
+    {
+        Span<char> buf = stackalloc char[18]; // "0x" + up to 16 hex digits
+        buf[0] = '0';
+        buf[1] = 'x';
+        v.TryFormat(buf[2..], out int written, "x");
+        writer.WriteStringValue(buf[..(2 + written)]);
     }
 
     private const int WordSize = 32;
