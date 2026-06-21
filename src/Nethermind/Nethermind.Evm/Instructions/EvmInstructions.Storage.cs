@@ -104,7 +104,7 @@ public static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Pop the 32-byte value from the stack.
-        Span<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytes)) goto StackUnderflow;
 
         // Store either the actual value (if non-zero) or a predefined zero constant.
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
@@ -370,7 +370,8 @@ public static partial class EvmInstructions
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
+        ReadOnlySpan<byte> bytes = bytesSpan;
 
         // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
         bool newIsZero = bytes.IsZero();
@@ -484,7 +485,8 @@ public static partial class EvmInstructions
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
+        ReadOnlySpan<byte> bytes = bytesSpan;
 
         // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
         bool newIsZero = bytes.IsZero();
