@@ -1,0 +1,233 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+namespace Nethermind.Db.Rocks;
+
+internal static class MdbxNative
+{
+    private const string LibraryName = "mdbx";
+
+    internal const int Success = 0;
+    internal const int ResultTrue = -1;
+    internal const int NotFound = -30798;
+
+    internal const uint EnvNoSubDir = 0x4000;
+    internal const uint EnvNoMetaSync = 0x40000;
+    internal const uint EnvNoStickyThreads = 0x200000;
+    internal const uint EnvNoReadAhead = 0x800000;
+    internal const uint EnvNoMemInit = 0x1000000;
+    internal const uint EnvLifoReclaim = 0x4000000;
+
+    internal const uint ReadOnly = 0x20000;
+    internal const uint Create = 0x40000;
+
+    internal const uint PutUpsert = 0;
+
+    private const uint EnvOptionMaxDbs = 0;
+    private const uint EnvOptionMaxReaders = 1;
+
+    static MdbxNative() => NativeLibrary.SetDllImportResolver(typeof(MdbxNative).Assembly, ResolveLibrary);
+
+    internal static void EnsureSupported()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ||
+            RuntimeInformation.ProcessArchitecture != Architecture.X64)
+        {
+            throw new PlatformNotSupportedException("The MDBX backend is supported only on linux-x64.");
+        }
+    }
+
+    private static IntPtr ResolveLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        if (!string.Equals(libraryName, LibraryName, StringComparison.Ordinal))
+        {
+            return IntPtr.Zero;
+        }
+
+        string? configuredPath = Environment.GetEnvironmentVariable("NETHERMIND_MDBX_LIBRARY")
+            ?? Environment.GetEnvironmentVariable("MDBX_LIBRARY_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredPath) && NativeLibrary.TryLoad(configuredPath, out IntPtr configuredHandle))
+        {
+            return configuredHandle;
+        }
+
+        string baseDirectory = AppContext.BaseDirectory;
+        string[] candidates =
+        [
+            Path.Combine(baseDirectory, "runtimes", "linux-x64", "native", "libmdbx.so"),
+            Path.Combine(baseDirectory, "libmdbx.so"),
+            "libmdbx.so",
+            "libmdbx.so.0",
+            LibraryName,
+        ];
+
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            if (NativeLibrary.TryLoad(candidates[i], assembly, searchPath, out IntPtr handle))
+            {
+                return handle;
+            }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    internal static void ThrowOnError(int result, string operation)
+    {
+        if (result == Success)
+        {
+            return;
+        }
+
+        throw new MdbxException(result, $"{operation} failed: {GetErrorMessage(result)}");
+    }
+
+    internal static string GetErrorMessage(int errorCode)
+    {
+        IntPtr message = StrError(errorCode);
+        return message == IntPtr.Zero ? $"MDBX error {errorCode}" : Marshal.PtrToStringUTF8(message) ?? $"MDBX error {errorCode}";
+    }
+
+    internal static byte[] ToUtf8Z(string value)
+    {
+        int byteCount = Encoding.UTF8.GetByteCount(value);
+        byte[] bytes = new byte[byteCount + 1];
+        Encoding.UTF8.GetBytes(value, bytes);
+        return bytes;
+    }
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_env_create")]
+    internal static extern int EnvCreate(out SafeMdbxEnvHandle env);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_env_open")]
+    internal static extern unsafe int EnvOpen(SafeMdbxEnvHandle env, byte* path, uint flags, uint mode);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_env_set_geometry")]
+    internal static extern int EnvSetGeometry(SafeMdbxEnvHandle env, nint sizeLower, nint sizeNow, nint sizeUpper, nint growthStep, nint shrinkThreshold, nint pageSize);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_env_set_option")]
+    private static extern int EnvSetOption(SafeMdbxEnvHandle env, uint option, ulong value);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_env_sync_ex")]
+    internal static extern int EnvSyncEx(SafeMdbxEnvHandle env, [MarshalAs(UnmanagedType.I1)] bool force, [MarshalAs(UnmanagedType.I1)] bool nonblock);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_env_close_ex")]
+    private static extern int EnvCloseEx(IntPtr env, [MarshalAs(UnmanagedType.I1)] bool dontSync);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_txn_begin")]
+    internal static extern int TxnBegin(SafeMdbxEnvHandle env, IntPtr parent, uint flags, out SafeMdbxTxnHandle txn);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_txn_commit")]
+    private static extern int TxnCommit(IntPtr txn);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_txn_abort")]
+    private static extern int TxnAbort(IntPtr txn);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_dbi_open")]
+    internal static extern unsafe int DbiOpen(SafeMdbxTxnHandle txn, byte* name, uint flags, out uint dbi);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_drop")]
+    internal static extern int Drop(SafeMdbxTxnHandle txn, uint dbi, [MarshalAs(UnmanagedType.I1)] bool delete);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_get")]
+    internal static extern int Get(SafeMdbxTxnHandle txn, uint dbi, ref MdbxValue key, out MdbxValue data);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_put")]
+    internal static extern int Put(SafeMdbxTxnHandle txn, uint dbi, ref MdbxValue key, ref MdbxValue data, uint flags);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_del")]
+    internal static extern int Del(SafeMdbxTxnHandle txn, uint dbi, ref MdbxValue key, IntPtr data);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_cursor_open")]
+    internal static extern int CursorOpen(SafeMdbxTxnHandle txn, uint dbi, out SafeMdbxCursorHandle cursor);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_cursor_get")]
+    internal static extern int CursorGet(SafeMdbxCursorHandle cursor, ref MdbxValue key, ref MdbxValue data, MdbxCursorOp operation);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_cursor_close")]
+    private static extern void CursorClose(IntPtr cursor);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_strerror")]
+    private static extern IntPtr StrError(int errorCode);
+
+    internal static void SetMaxDbs(SafeMdbxEnvHandle env, ulong value) =>
+        ThrowOnError(EnvSetOption(env, EnvOptionMaxDbs, value), "mdbx_env_set_option(MDBX_opt_max_db)");
+
+    internal static void SetMaxReaders(SafeMdbxEnvHandle env, ulong value) =>
+        ThrowOnError(EnvSetOption(env, EnvOptionMaxReaders, value), "mdbx_env_set_option(MDBX_opt_max_readers)");
+
+    internal static void Commit(SafeMdbxTxnHandle txn)
+    {
+        int result = TxnCommit(txn.DangerousGetHandle());
+        txn.MarkClosed();
+        ThrowOnError(result, "mdbx_txn_commit");
+    }
+
+    internal sealed class SafeMdbxEnvHandle() : SafeHandleZeroOrMinusOneIsInvalid(ownsHandle: true)
+    {
+        protected override bool ReleaseHandle()
+        {
+            EnvCloseEx(handle, dontSync: false);
+            return true;
+        }
+    }
+
+    internal sealed class SafeMdbxTxnHandle() : SafeHandleZeroOrMinusOneIsInvalid(ownsHandle: true)
+    {
+        internal void MarkClosed() => SetHandleAsInvalid();
+
+        protected override bool ReleaseHandle()
+        {
+            TxnAbort(handle);
+            return true;
+        }
+    }
+
+    internal sealed class SafeMdbxCursorHandle() : SafeHandleZeroOrMinusOneIsInvalid(ownsHandle: true)
+    {
+        protected override bool ReleaseHandle()
+        {
+            CursorClose(handle);
+            return true;
+        }
+    }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct MdbxValue
+{
+    public IntPtr Base;
+    public nuint Length;
+}
+
+internal enum MdbxCursorOp
+{
+    First = 0,
+    FirstDup = 1,
+    GetBoth = 2,
+    GetBothRange = 3,
+    GetCurrent = 4,
+    GetMultiple = 5,
+    Last = 6,
+    LastDup = 7,
+    Next = 8,
+    NextDup = 9,
+    NextMultiple = 10,
+    NextNoDup = 11,
+    Prev = 13,
+    PrevDup = 14,
+    PrevNoDup = 16,
+    SetRange = 17,
+}
+
+internal sealed class MdbxException(int errorCode, string message) : Exception(message)
+{
+    public int ErrorCode { get; } = errorCode;
+}

@@ -34,14 +34,10 @@ jobs:
         run: |
           version=${{ github.event.release.tag_name }}
           json=$(curl -sL ${{ github.event.release.assets_url }})
-          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-arm64.zip"))')
-          arm64_hash=$(curl -sL $arm64_url | sha256sum | awk '{print $1}')
           x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-x64.zip"))')
           x64_hash=$(curl -sL $x64_url | sha256sum | awk '{print $1}')
-          awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url='$arm64_url'"); } 1' debian/postinst
-          awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url='$x64_url'"); } 1' debian/postinst
-          awk -i inplace -v n=1 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$arm64_hash'"); } 1' debian/postinst
-          awk -i inplace -v n=2 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$x64_hash'"); } 1' debian/postinst
+          awk -i inplace '/url/ { sub(/url.*/, "url='$x64_url'"); } 1' debian/postinst
+          awk -i inplace '/hash/ { sub(/hash.*/, "hash='$x64_hash'"); } 1' debian/postinst
 
           changelog="nethermind ($version) jammy; urgency=high\n"
           changelog+="  * Nethermind v$version\n"
@@ -85,7 +81,7 @@ jobs:
   publish-winget:
     name: Publish on Windows Package Manager
     runs-on: windows-latest
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ false }}
     steps:
       - name: Submit package
         env:
@@ -99,7 +95,7 @@ jobs:
   publish-homebrew:
     name: Publish on Homebrew
     runs-on: ubuntu-latest
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ false }}
     env:
       FORMULA: nethermind.rb
     steps:

@@ -60,46 +60,18 @@ jobs:
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
-          for rid in "linux-arm64" "linux-x64" "macos-arm64" "macos-x64" "windows-x64"; do
+          for rid in "linux-x64"; do
             file_name=$(basename *$rid*)
             gpg --no-tty --batch --yes --pinentry-mode loopback \
               --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
               -o "$file_name.asc" -ab "$file_name"
           done
 
-      - name: Upload Nethermind Linux arm64 package
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.PACKAGE_PREFIX }}-linux-arm64-package
-          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
-          retention-days: ${{ env.PACKAGE_RETENTION }}
-
       - name: Upload Nethermind Linux x64 package
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PACKAGE_PREFIX }}-linux-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
-          retention-days: ${{ env.PACKAGE_RETENTION }}
-
-      - name: Upload Nethermind macOS arm64 package
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.PACKAGE_PREFIX }}-macos-arm64-package
-          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
-          retention-days: ${{ env.PACKAGE_RETENTION }}
-
-      - name: Upload Nethermind macOS x64 package
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.PACKAGE_PREFIX }}-macos-x64-package
-          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
-          retention-days: ${{ env.PACKAGE_RETENTION }}
-
-      - name: Upload Nethermind Windows x64 package
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.PACKAGE_PREFIX }}-windows-x64-package
-          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind reference assemblies
@@ -211,7 +183,7 @@ jobs:
 
           for suffix in "" ".chiseled"; do
             tag_suffix=$([[ -z "$suffix" ]] && echo "" || echo "-${suffix:1}")
-            docker buildx build . --platform=linux/amd64,linux/arm64 -f Dockerfile$suffix \
+            docker buildx build . --platform=linux/amd64 -f Dockerfile$suffix \
               ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest$tag_suffix' || '' }} \
               -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \
               --build-arg CI=$CI \

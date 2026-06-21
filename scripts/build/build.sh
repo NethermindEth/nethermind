@@ -13,7 +13,7 @@ echo "Building Nethermind"
 
 dotnet restore --locked-mode
 
-for rid in "linux-arm64" "linux-x64" "osx-arm64" "osx-x64" "win-x64"; do
+for rid in "linux-x64"; do
   echo "  Publishing for $rid"
 
   dotnet publish -c $build_config -r $rid -o $output_path/$rid --no-restore --sc \

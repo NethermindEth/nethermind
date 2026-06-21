@@ -18,15 +18,8 @@ set -e
 
 case "$1" in
   configure)
-    arch=$(dpkg --print-architecture)
-
-    if [[ "$arch" == arm* ]]; then
-      url=to_be_replaced
-      hash=to_be_replaced
-    else
-      url=to_be_replaced
-      hash=to_be_replaced
-    fi
+    url=to_be_replaced
+    hash=to_be_replaced
 
     echo "Downloading $url"
     curl -L -# $url -o nethermind.zip

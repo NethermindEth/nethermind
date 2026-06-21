@@ -15,8 +15,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ConcurrentHashSet" />
-    <PackageReference Include="NonBlocking" />
-    <PackageReference Include="RocksDB" />
+    <None Include="runtimes\linux-x64\native\libmdbx.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="runtimes\linux-x64\native\libmdbx-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="runtimes\linux-x64\native\libmdbx-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

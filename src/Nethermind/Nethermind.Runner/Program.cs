@@ -226,7 +226,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         logger.Debug($"LOH compaction mode: {GCSettings.LargeObjectHeapCompactionMode}");
     }
 
-    if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
+    if (logger.IsInfo) logger.Info($"MDBX: {DbOnTheRocks.GetRocksDbVersion()}");
 
     processExitSource = new(cancellationToken);
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
