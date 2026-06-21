@@ -193,7 +193,7 @@ public class KademliaDiscv4Adapter(
 
         PingMsg msg = new(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address)
         {
-            EnrSequence = nodeRecordProvider.Current.EnrSequence // optional and does not seem to be used anywhere.
+            EnrSequence = (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence // optional and does not seem to be used anywhere.
         };
         session.OnPingSent();
         DiscoveryResponse<PongMsg> response = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, _pingTimeout, token);
@@ -238,7 +238,7 @@ public class KademliaDiscv4Adapter(
         }
 
         Rlp requestRlp = Rlp.Encode(Rlp.Encode(msg.ExpirationTime));
-        await SendMessage(session, new EnrResponseMsg(node.Address, nodeRecordProvider.Current, Keccak.Compute(requestRlp.Bytes)), token);
+        await SendMessage(session, new EnrResponseMsg(node.Address, await nodeRecordProvider.GetCurrentAsync(token), Keccak.Compute(requestRlp.Bytes)), token);
     }
 
     private async Task HandleFindNode(Node node, NodeSession session, FindNodeMsg msg, CancellationToken token)
