@@ -1165,6 +1165,22 @@ public class SszMiddlewareTests
     }
 
     [Test]
+    public async Task NewPayloadWithWitness_malformed_hex_returns_400_not_500()
+    {
+        // Structurally valid JSON, but a hex field carries invalid hex. Nethermind's hex
+        // converters surface this as FormatException/InvalidOperationException rather than
+        // JsonException, so the handler must still map it to 400 instead of leaking a 500.
+        byte[] body = BuildMinimalWitnessRequestBody(blobHashes: new[] { "0xnothex" });
+        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        await _engineModule.DidNotReceive().engine_newPayloadWithWitness(
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
+    }
+
+    [Test]
     public async Task NewPayloadWithWitness_non_post_method_returns_405()
     {
         DefaultHttpContext ctx = MakeGetContext("/new-payload-with-witness");
@@ -1228,7 +1244,7 @@ public class SszMiddlewareTests
         Assert.That(responseBody, Does.Contain("/engine-api/errors/internal"));
     }
 
-    private static byte[] BuildMinimalWitnessRequestBody()
+    private static byte[] BuildMinimalWitnessRequestBody(object? blobHashes = null)
     {
         ExecutionPayloadV4 payload = new()
         {
@@ -1258,7 +1274,7 @@ public class SszMiddlewareTests
             new object?[]
             {
                 payload,
-                Array.Empty<string>(),
+                blobHashes ?? Array.Empty<string>(),
                 TestItem.KeccakA,
                 Array.Empty<string>()
             },

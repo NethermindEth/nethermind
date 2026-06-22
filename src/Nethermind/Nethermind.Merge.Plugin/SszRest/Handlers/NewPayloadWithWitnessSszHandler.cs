@@ -136,7 +136,7 @@ public sealed class NewPayloadWithWitnessSszHandler(
 
             return new NewPayloadV5Params(payload, blobHashes ?? [], parentBeaconBlockRoot, executionRequests);
         }
-        catch (JsonException)
+        catch (Exception e) when (e is JsonException or FormatException or InvalidOperationException or OverflowException or ArgumentException)
         {
             return null;
         }
