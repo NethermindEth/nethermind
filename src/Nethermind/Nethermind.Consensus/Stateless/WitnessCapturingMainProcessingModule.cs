@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
@@ -35,17 +36,17 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
             session => new WitnessExecutionPredicate(() => session.IsActive));
 
         builder.AddDecorator<IWorldState, WitnessCapturingWorldStateProxy>();
-        // Expose the same proxy instance as a typed singleton so the block-processor decorator can
-        // take it directly. Cast through IWorldState because Autofac doesn't model decorator chains
-        // as typed singletons.
-        builder.AddSingleton<WitnessCapturingWorldStateProxy>(ctx =>
-            (WitnessCapturingWorldStateProxy)ctx.Resolve<IWorldState>());
+        // Expose the decorator under its concrete type so the block-processor decorator can take it
+        // directly (Autofac doesn't model decorator chains as typed registrations). The factory's
+        // IWorldState arg is the decorated chain — scoped to match IWorldState's lifetime.
+        builder.AddScoped<WitnessCapturingWorldStateProxy, IWorldState>(
+            static worldState => AsOutermost<IWorldState, WitnessCapturingWorldStateProxy>(worldState));
 
         builder.AddDecorator<IHeaderFinder, WitnessCapturingHeaderFinder>();
-        // Same typed-singleton bridge for the header-finder decorator so the block processor can
-        // grab its undecorated inner via .Inner when building the per-block recorder.
-        builder.AddSingleton<WitnessCapturingHeaderFinder>(ctx =>
-            (WitnessCapturingHeaderFinder)ctx.Resolve<IHeaderFinder>());
+        // Same bridge for the header-finder decorator so the block processor can grab its undecorated
+        // inner via .Inner when building the per-block recorder. Singleton to match IHeaderFinder.
+        builder.AddSingleton<WitnessCapturingHeaderFinder, IHeaderFinder>(
+            static headerFinder => AsOutermost<IHeaderFinder, WitnessCapturingHeaderFinder>(headerFinder));
 
         // Main-pipeline components in this child scope resolve a session-aware decorator that, when
         // capture is armed, routes calls to a non-caching CodeInfoRepository (so every bytecode
@@ -64,4 +65,17 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
 
         builder.AddDecorator<IBlockProcessor, WitnessCapturingBlockProcessor>();
     }
+
+    // The bridges above assume the witness decorator is the outermost wrapper of its service. That
+    // holds today, but a decorator added by a later-running module would shift the outermost instance;
+    // surface that as an actionable startup error rather than an opaque InvalidCastException.
+    private static TDecorator AsOutermost<TService, TDecorator>(TService resolved)
+        where TService : class
+        where TDecorator : class, TService
+        => resolved as TDecorator
+           ?? throw new InvalidOperationException(
+               $"{nameof(WitnessCapturingMainProcessingModule)} expected the outermost {typeof(TService).Name} " +
+               $"to be {typeof(TDecorator).Name}, but resolved {resolved.GetType().Name}. Another decorator was " +
+               $"registered on {typeof(TService).Name} after this module — keep the witness decorator outermost, " +
+               $"or expose it under its concrete type without relying on decorator order.");
 }
