@@ -33,12 +33,18 @@ public class JsonConfigSourceParseNumberTests
             JsonConfigSource source = new(path);
 
             (bool isSetTiny, string? tiny) = source.GetRawValue("SampleConfig", "Tiny");
-            Assert.That(isSetTiny, Is.True);
-            Assert.That(double.Parse(tiny!, System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(0.001));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(isSetTiny, Is.True);
+                Assert.That(double.Parse(tiny!, System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(0.001));
+            }
 
             (bool isSetBig, string? big) = source.GetRawValue("SampleConfig", "Big");
-            Assert.That(isSetBig, Is.True);
-            Assert.That(double.Parse(big!, System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(1.5e10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(isSetBig, Is.True);
+                Assert.That(double.Parse(big!, System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(1.5e10));
+            }
         }
         finally
         {

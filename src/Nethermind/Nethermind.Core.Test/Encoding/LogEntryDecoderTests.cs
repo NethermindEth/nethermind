@@ -52,8 +52,11 @@ public class LogEntryDecoderTests
         Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
         LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
 
-        Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
-        Assert.That(logEntry.Address == decoded.Address, "address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
+            Assert.That(logEntry.Address == decoded.Address, "address");
+        }
 
         Span<byte> buffer = stackalloc byte[32];
         KeccaksIterator iterator = new(decoded.TopicsRlp, buffer);

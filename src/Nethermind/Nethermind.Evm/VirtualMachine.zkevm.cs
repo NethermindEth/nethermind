@@ -11,10 +11,25 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 {
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
 
-    // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
+    // Select and lazily build the opcode dispatch table for the active tracing mode, caching each
+    // mode separately on the spec. Mirrors the std build minus its periodic PGO-driven cache refresh,
+    // which is moot for the AOT-compiled guest.
+    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
+    {
+        if (!TTracingInst.IsActive)
+        {
+            _opcodeMethods =
+                (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])
+                (spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
+        }
+        else
+        {
+            _opcodeMethods =
+                (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])
+                (spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
+        }
+    }
 
     protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        EvmInstructions.GenerateOpCodes<TGasPolicy, OffFlag>(spec);
+        EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 }

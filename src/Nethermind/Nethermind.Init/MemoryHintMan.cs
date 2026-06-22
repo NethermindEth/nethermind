@@ -89,7 +89,7 @@ namespace Nethermind.Init
 
         private long _remainingMemory;
 
-        public long TotalMemory = 1024 * 1024 * 1024;
+        public long TotalMemory = 1.GiB;
         public long GeneralMemory { get; } = 32.MB;
         public long FastBlocksMemory { get; private set; }
         public long DbMemory { get; private set; }

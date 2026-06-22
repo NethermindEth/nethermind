@@ -220,10 +220,15 @@ public sealed class EraExporter(
         ref int totalProcessed)
     {
         string? existingFile = null;
-        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*{EraPathUtils.FileExtension}"))
+        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*"))
         {
-            existingFile = f;
-            break;
+            if (!EraPathUtils.IsEraFile(f)) continue;
+            if (EraPathUtils.IsCanonicalEraFile(f))
+            {
+                existingFile = f;
+                break;
+            }
+            existingFile ??= f;
         }
 
         if (existingFile is null)

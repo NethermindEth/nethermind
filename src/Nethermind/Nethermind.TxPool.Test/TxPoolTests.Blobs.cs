@@ -88,6 +88,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(blobTx!.GetLength(), Is.GreaterThan((int)txPoolConfig.MaxBlobTxSize));
         }
 
+
         [Test]
         public void blob_pool_size_should_be_correct([Values(true, false)] bool persistentStorageEnabled)
         {
@@ -233,11 +234,14 @@ namespace Nethermind.TxPool.Test
             BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
 
-            Assert.That(_txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction blobTxReturned), Is.False);
-            Assert.That(blobTxReturned, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction blobTxReturned), Is.False);
+                Assert.That(blobTxReturned, Is.Null);
 
-            Assert.That(blobTxStorage.TryGet(TestItem.KeccakA, TestItem.AddressA, UInt256.One, out Transaction blobTxFromDb), Is.False);
-            Assert.That(blobTxFromDb, Is.Null);
+                Assert.That(blobTxStorage.TryGet(TestItem.KeccakA, TestItem.AddressA, UInt256.One, out Transaction blobTxFromDb), Is.False);
+                Assert.That(blobTxFromDb, Is.Null);
+            }
         }
 
         [TestCase(1, null, true)]
@@ -900,15 +904,18 @@ namespace Nethermind.TxPool.Test
 
             if (isTxValid)
             {
-                Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
-                ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
-                Assert.That(wrapper.Version, Is.EqualTo(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0));
-
-                Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
-                if (isPersistentStorage)
+                using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+                    Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
+                    ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
+                    Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
+                    Assert.That(wrapper.Version, Is.EqualTo(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0));
+
+                    Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
+                    if (isPersistentStorage)
+                    {
+                        Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+                    }
                 }
             }
             else
@@ -953,15 +960,18 @@ namespace Nethermind.TxPool.Test
 
             if (isTxValid)
             {
-                Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
-                ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
-                Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
-
-                Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
-                if (isPersistentStorage)
+                using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+                    Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
+                    ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
+                    Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
+                    Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
+
+                    Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
+                    if (isPersistentStorage)
+                    {
+                        Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+                    }
                 }
             }
             else
@@ -1183,11 +1193,14 @@ namespace Nethermind.TxPool.Test
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
-            Assert.That(found, Is.EqualTo(2));
-            Assert.That(blobs[0], Is.Not.Null);
-            Assert.That(blobs[1], Is.Not.Null);
-            Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-            Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.EqualTo(2));
+                Assert.That(blobs[0], Is.Not.Null);
+                Assert.That(blobs[1], Is.Not.Null);
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            }
         }
 
         [Test]
@@ -1220,9 +1233,12 @@ namespace Nethermind.TxPool.Test
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
-            Assert.That(found, Is.EqualTo(1));
-            Assert.That(blobs[0], Is.Not.Null);
-            Assert.That(blobs[1], Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.EqualTo(1));
+                Assert.That(blobs[0], Is.Not.Null);
+                Assert.That(blobs[1], Is.Null);
+            }
         }
 
         [Test]
@@ -1269,11 +1285,14 @@ namespace Nethermind.TxPool.Test
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
-            Assert.That(found, Is.EqualTo(2));
-            Assert.That(blobs[0], Is.Not.Null);
-            Assert.That(blobs[1], Is.Not.Null);
-            Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-            Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.EqualTo(2));
+                Assert.That(blobs[0], Is.Not.Null);
+                Assert.That(blobs[1], Is.Not.Null);
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            }
         }
     }
 }

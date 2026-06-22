@@ -225,7 +225,28 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
     public bool Contains(Hash256 blockHash) => _blocks.ContainsKey(blockHash);
 
-    public void Clear() => _blocks.Clear();
+    public void Clear()
+    {
+        // Wait for an in-flight background pruning task (from a prior tenant of the
+        // WitnessGeneratingBlockProcessingEnvFactory pool) to complete before clearing, so its
+        // PruneBefore doesn't clobber the reset _minBlock after the clear.
+        Task pruneTask = _pruningTask;
+        if (!pruneTask.IsCompleted)
+        {
+            try
+            {
+                pruneTask.GetAwaiter().GetResult();
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Background pruning task ended with error during Clear: {e.Message}");
+            }
+        }
+
+        _blocks.Clear();
+        _flatCache.Clear();
+        Interlocked.Exchange(ref _minBlock, int.MaxValue);
+    }
 
     public void Dispose() => Clear();
 

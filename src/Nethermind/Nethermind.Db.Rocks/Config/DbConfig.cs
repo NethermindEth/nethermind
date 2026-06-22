@@ -82,7 +82,7 @@ public class DbConfig : IDbConfig
     public bool? VerifyChecksum { get; set; } = true;
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
-    public bool FlushOnExit { get; set; } = true;
+    public FlushOnExitMode FlushOnExit { get; set; } = FlushOnExitMode.WalOnly;
 
     public string BadBlocksDbRocksDbOptions { get; set; } = "";
     public string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
@@ -172,10 +172,6 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.filter_policy=null;" +
         "allow_concurrent_memtable_write=false;";
     public string? CodeDbAdditionalRocksDbOptions { get; set; }
-
-    public string BloomDbRocksDbOptions { get; set; } =
-        "max_bytes_for_level_base=16000000;";
-    public string? BloomDbAdditionalRocksDbOptions { get; set; }
 
     public string MetadataDbRocksDbOptions { get; set; } =
         "write_buffer_size=1000000;" +

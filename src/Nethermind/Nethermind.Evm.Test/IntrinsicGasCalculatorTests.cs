@@ -279,31 +279,36 @@ namespace Nethermind.Evm.Test
             Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regularPlusState));
         }
 
-        // EIP-2780 intrinsic-gas vectors. The new-account case matches the normative pseudocode (31,256);
-        // the EIP's stated 31,756 total adds a 500 recipient cold-lookup charged at execution time.
-        public enum Recipient { NewAccount, ExistingEoa, Precompile, SelfTransfer, EmptyZeroValue }
+        // EIP-2780 total fixed-cost vectors (TX_BASE_COST + transfer log + new-account surcharge +
+        // recipient cold/warm touch + value STATE_UPDATE), matching the spec's reference-case table.
+        public enum Recipient { NewAccount, ExistingEoa, Contract, Precompile, SelfTransfer, EmptyZeroValue }
 
-        private const long TxBaseEip2780 = GasCostOf.TransactionEip2780;
-        private const long TransferLogEip2780 = GasCostOf.TransferLogEip2780;
+        private const long TxBaseEip2780 = GasCostOf.TransactionEip2780;        // 4500
+        private const long TransferLogEip2780 = GasCostOf.TransferLogEip2780;   // 1756
+        private const long ColdNoCode = GasCostOf.ColdAccountAccessNoCodeEip2780; // 500
+        private const long ColdCode = GasCostOf.ColdAccountAccess;              // 2600
+        private const long StateUpdate = GasCostOf.StateUpdateEip2780;          // 1000
 
         public static IEnumerable<TestCaseData> Eip2780IntrinsicCases()
         {
-            yield return new TestCaseData(Recipient.NewAccount, (UInt256)1, TxBaseEip2780 + TransferLogEip2780 + GasCostOf.NewAccount)
-                .SetName("Eip2780_intrinsic_value_to_new_account_31256");
+            yield return new TestCaseData(Recipient.NewAccount, (UInt256)1, TxBaseEip2780 + ColdNoCode + GasCostOf.NewAccount + TransferLogEip2780)
+                .SetName("Eip2780_intrinsic_value_to_new_account_31756");
+            yield return new TestCaseData(Recipient.ExistingEoa, (UInt256)1, TxBaseEip2780 + ColdNoCode + StateUpdate + TransferLogEip2780)
+                .SetName("Eip2780_intrinsic_value_to_existing_eoa_7756");
+            yield return new TestCaseData(Recipient.Contract, (UInt256)1, TxBaseEip2780 + ColdCode + StateUpdate + TransferLogEip2780)
+                .SetName("Eip2780_intrinsic_value_to_contract_9856");
             yield return new TestCaseData(Recipient.Precompile, (UInt256)1, TxBaseEip2780 + TransferLogEip2780)
                 .SetName("Eip2780_intrinsic_value_to_precompile_6256");
-            yield return new TestCaseData(Recipient.ExistingEoa, (UInt256)1, TxBaseEip2780 + TransferLogEip2780)
-                .SetName("Eip2780_intrinsic_value_to_existing_eoa_6256");
             yield return new TestCaseData(Recipient.SelfTransfer, (UInt256)1, TxBaseEip2780)
                 .SetName("Eip2780_intrinsic_self_transfer_4500");
-            yield return new TestCaseData(Recipient.EmptyZeroValue, (UInt256)0, TxBaseEip2780)
-                .SetName("Eip2780_intrinsic_zero_value_to_empty_4500");
+            yield return new TestCaseData(Recipient.EmptyZeroValue, (UInt256)0, TxBaseEip2780 + ColdNoCode)
+                .SetName("Eip2780_intrinsic_no_transfer_to_empty_5000");
         }
 
         [TestCaseSource(nameof(Eip2780IntrinsicCases))]
         public void Eip2780_intrinsic_gas_is_calculated_properly(Recipient recipient, UInt256 value, long expectedStandard)
         {
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
             Address to = recipient switch
             {
                 Recipient.Precompile => Address.FromNumber(1), // 0x01 ECRECOVER precompile
@@ -316,6 +321,7 @@ namespace Nethermind.Evm.Test
             IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
             // Only an unfunded recipient is nonexistent per EIP-161 (drives the new-account surcharge).
             state.IsDeadAccount(Arg.Any<Address>()).Returns(recipient is Recipient.NewAccount);
+            state.IsContract(Arg.Any<Address>()).Returns(recipient is Recipient.Contract);
 
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec, 0, state);
 
@@ -324,9 +330,25 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Eip2780_recipient_warm_via_access_list_is_charged_warm_read()
+        {
+            // EIP-2780 test vector 7: a recipient present in the access list is touched at WARM_STATE_READ.
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
+            AccessList accessList = new AccessList.Builder().AddAddress(TestItem.AddressB).Build();
+            Transaction tx = Build.A.Transaction.WithValue(1).WithTo(TestItem.AddressB).WithAccessList(accessList)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+
+            long warmTouch = IntrinsicGasCalculator.Calculate(tx, spec, 0, state).Standard;
+
+            long expected = TxBaseEip2780 + GasCostOf.AccessAccountListEntry + GasCostOf.WarmStateRead + StateUpdate + TransferLogEip2780;
+            Assert.That(warmTouch, Is.EqualTo(expected));
+        }
+
+        [Test]
         public void Eip2780_intrinsic_gas_for_create_charges_transfer_log_only_when_value_positive()
         {
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
             IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
 
             Transaction createZero = Build.A.Transaction.WithValue(0).WithCode(Array.Empty<byte>())
@@ -345,7 +367,7 @@ namespace Nethermind.Evm.Test
         public void Eip2780_reduces_the_calldata_floor_base()
         {
             // Without reducing the floor base, the legacy 21,000 floor would dominate and negate the EIP.
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
             Transaction tx = Build.A.Transaction.WithData([1]).SignedAndResolved().TestObject;
 
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);

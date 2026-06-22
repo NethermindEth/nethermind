@@ -66,10 +66,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip4844Enabled { get; set; } = spec.IsEip4844Enabled;
         public bool IsEip7951Enabled { get; set; } = spec.IsEip7951Enabled;
         public bool IsRip7212Enabled { get; set; } = spec.IsRip7212Enabled;
-        public bool IsOpGraniteEnabled { get; set; } = spec.IsOpGraniteEnabled;
-        public bool IsOpHoloceneEnabled { get; set; } = spec.IsOpHoloceneEnabled;
-        public bool IsOpIsthmusEnabled { get; set; } = spec.IsOpIsthmusEnabled;
-        public bool IsOpJovianEnabled { get; set; } = spec.IsOpJovianEnabled;
         public bool IsEip7623Enabled { get; set; } = spec.IsEip7623Enabled;
         public bool IsEip7976Enabled { get; set; } = spec.IsEip7976Enabled;
         public bool IsEip7981Enabled { get; set; } = spec.IsEip7981Enabled;
@@ -131,6 +127,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7843Enabled => spec.IsEip7843Enabled;
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
+        // Not cached: this test spec is mutated after construction, so GasCosts must reflect current flags.
         public SpecGasCosts GasCosts => new(this);
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }

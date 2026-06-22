@@ -23,6 +23,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -32,6 +33,7 @@ using Microsoft.Extensions.Primitives;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -86,17 +88,41 @@ public class Startup : IStartup
         IConfigProvider? configProvider = sp.GetService<IConfigProvider>() ?? throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
 
+        IJsonRpcUrlCollection? urlCollection = sp.GetService<IJsonRpcUrlCollection>();
+        HashSet<int> engineApiPorts = urlCollection is null
+            ? []
+            : urlCollection.Values
+                .Where(static u => u.IsAuthenticated)
+                .Select(static u => u.Port)
+                .ToHashSet();
+
         services.Configure<KestrelServerOptions>(options =>
         {
             options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
             options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
+
+            options.Limits.Http2.InitialConnectionWindowSize = (int)1.MiB;
+            options.Limits.Http2.InitialStreamWindowSize = (int)1.MiB;
+
             options.ConfigureEndpointDefaults(listenOptions =>
             {
-                listenOptions.Protocols = HttpProtocols.Http1;
-                listenOptions.DisableAltSvcHeader = true;
+                int port = (listenOptions.EndPoint as IPEndPoint)?.Port ?? 0;
+                if (engineApiPorts.Contains(port))
+                {
+                    // Keep HTTP/1.1 + HTTP/2 on the engine port: SSZ-REST uses HTTP/2, while legacy
+                    // Engine API JSON-RPC still relies on HTTP/1.1 and shares the same listener.
+                    listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+                }
+                else
+                {
+                    listenOptions.Protocols = HttpProtocols.Http1;
+                    listenOptions.DisableAltSvcHeader = true;
+                }
             });
         });
         Bootstrap.Instance.RegisterJsonRpcServices(services);
+
+        services.AddSingleton<MatcherPolicy, LocalPortMatcherPolicy>();
 
         services.AddCors(options => options.AddDefaultPolicy(builder => builder
             .AllowAnyMethod()
@@ -202,14 +228,14 @@ public class Startup : IStartup
             builder => builder.UseWebSocketsModules());
         }
 
-        string[] healthHostPatterns = jsonRpcUrlCollection.Values
+        IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
             .Where(url => url.IsModuleEnabled(ModuleType.Health))
-            .Select(url => $"*:{url.Port}")
-            .ToArray();
+            .Select(url => url.Port)
+            .ToHashSet();
 
         app.UseEndpoints(endpoints =>
         {
-            if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
+            if (healthChecksConfig.Enabled && healthPorts.Count > 0)
             {
                 try
                 {
@@ -217,13 +243,13 @@ public class Startup : IStartup
                     {
                         Predicate = _ => true,
                         ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-                    }).RequireHost(healthHostPatterns);
+                    }).RequireLocalPort(healthPorts);
                     if (healthChecksConfig.UIEnabled)
                     {
                         endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")))
-                            .RequireHost(healthHostPatterns);
+                            .RequireLocalPort(healthPorts);
                     }
-                    endpoints.MapDataFeeds(lifetime).RequireHost(healthHostPatterns);
+                    endpoints.MapDataFeeds(lifetime).RequireLocalPort(healthPorts);
                 }
                 catch (Exception e)
                 {
@@ -232,12 +258,12 @@ public class Startup : IStartup
             }
         });
 
-        if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
+        if (healthChecksConfig.Enabled && healthPorts.Count > 0)
         {
             ManifestEmbeddedFileProvider fileProvider = new(typeof(Startup).Assembly, "wwwroot");
 
             app.UseWhen(
-                ctx => jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl url) && url.IsModuleEnabled(ModuleType.Health),
+                ctx => healthPorts.Contains(ctx.Connection.LocalPort),
                 builder =>
                 {
                     builder.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });

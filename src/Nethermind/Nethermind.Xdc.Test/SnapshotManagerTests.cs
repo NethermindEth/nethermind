@@ -177,7 +177,7 @@ internal class SnapshotManagerTests
             .WithNumber(gapNumber).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
-        blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([new Block(header)], true));
+        blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([header], true));
         Snapshot? result = snapshotManager.GetSnapshotByGapNumber(header.Number);
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.HeaderHash, Is.EqualTo(header.Hash!));

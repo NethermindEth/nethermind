@@ -24,7 +24,7 @@ public class FlatWorldStateManager(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
     ILogManager logManager)
-    : IWorldStateManager
+    : IWorldStateManager, IDisposable
 {
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
@@ -84,4 +84,6 @@ public class FlatWorldStateManager(
         _trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
+
+    public void Dispose() => _mainWorldState.Dispose();
 }

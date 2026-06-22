@@ -230,11 +230,9 @@ public class RlpItemListTests
             Assert.That(child0.ReadContent(1).ToArray(), Is.EqualTo(new byte[] { 0x02 }));
         }
 
-        using (IRlpItemList child1 = outer.GetNestedItemList(1))
-        {
-            Assert.That(child1.Count, Is.EqualTo(1));
-            Assert.That(child1.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x03 }));
-        }
+        using IRlpItemList child1 = outer.GetNestedItemList(1);
+        Assert.That(child1.Count, Is.EqualTo(1));
+        Assert.That(child1.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x03 }));
     }
 
     [TestCaseSource(nameof(TestCases))]
@@ -297,12 +295,10 @@ public class RlpItemListTests
         }
 
         // After disposing child0, the next GetNestedItemList should reuse the pooled child.
-        using (IRlpItemList child1 = outer.GetNestedItemList(1))
-        {
-            Assert.That(child1.Count, Is.EqualTo(2));
-            Assert.That(child1.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x33 }));
-            Assert.That(child1.ReadContent(1).ToArray(), Is.EqualTo(new byte[] { 0x44 }));
-        }
+        using IRlpItemList child1 = outer.GetNestedItemList(1);
+        Assert.That(child1.Count, Is.EqualTo(2));
+        Assert.That(child1.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x33 }));
+        Assert.That(child1.ReadContent(1).ToArray(), Is.EqualTo(new byte[] { 0x44 }));
     }
 
     [Test]

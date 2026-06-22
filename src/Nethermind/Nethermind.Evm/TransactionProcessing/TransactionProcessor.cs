@@ -794,16 +794,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
+            // Block production (BuildUp) is excluded: payload builds run concurrently with block import
+            // on the same process-wide gas aggregates, and the gauges describe imported blocks, not candidates.
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
             {
-                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
-
-                Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
-                Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
-
-                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
-                Metrics.BlockTransactions++;
+                Metrics.UpdateBlockGasPrice(effectiveGasPrice);
             }
         }
 
@@ -1020,6 +1015,8 @@ namespace Nethermind.Evm.TransactionProcessing
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
+            UInt256 balance = WorldState.GetBalance(tx.SenderAddress!);
+
             bool validate = ShouldValidateGas(tx, opts);
 
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
@@ -1030,53 +1027,71 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(errorDetail);
             }
 
-            UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
-            if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
+            // mgval = gasLimit * effectiveGasPrice.
+            if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return InsufficientFundsForTransfer(tx, senderBalance);
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                return RequiredBalanceExceeds256Bits(tx);
             }
 
-            bool overflows;
+            // balanceCheck = gasLimit * MaxFeePerGas (EIP-1559) or mgval — the maximum the sender must hold.
+            UInt256 balanceCheck;
             if (spec.IsEip1559Enabled && !tx.IsFree())
             {
-                overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
-                if (overflows || balanceLeft < maxGasFee)
+                if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out balanceCheck))
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                    return InsufficientFundsForGas(tx, senderBalance, tx.MaxFeePerGas);
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                    return RequiredBalanceExceeds256Bits(tx);
+                }
+            }
+            else
+            {
+                balanceCheck = senderReservedGasPayment;
+            }
+
+            // Include tx.Value in the balance requirement.
+            if (UInt256.AddOverflow(balanceCheck, tx.ValueRef, out balanceCheck))
+            {
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                return RequiredBalanceExceeds256Bits(tx);
+            }
+
+            if (tx.SupportsBlobs)
+            {
+                UInt256 blobGas = BlobGasCalculator.CalculateBlobGas(tx);
+
+                // Add blob fee cap to balance check.
+                if (UInt256.MultiplyOverflow(blobGas, (UInt256)tx.MaxFeePerBlobGas!, out UInt256 maxBlobGasFee)
+                    || UInt256.AddOverflow(balanceCheck, maxBlobGasFee, out balanceCheck))
+                {
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                    return RequiredBalanceExceeds256Bits(tx);
                 }
 
-                if (tx.SupportsBlobs)
+                // Compute actual blob fee and add to mgval.
+                if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee))
                 {
-                    overflows = UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(tx), (UInt256)tx.MaxFeePerBlobGas!, out UInt256 maxBlobGasFee);
-                    if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
-                    {
-                        TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                        return InsufficientFundsForGas(tx, senderBalance, effectiveGasPrice);
-                    }
+                    TraceLogInvalidTx(tx, $"BLOB_BASE_FEE_OVERFLOW: ({tx.SenderAddress})_BALANCE = {balance}");
+                    return RequiredBalanceExceeds256Bits(tx);
+                }
+
+                if (tx.MaxFeePerBlobGas < feePerBlobGas)
+                {
+                    TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
+                    return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, feePerBlobGas));
+                }
+
+                if (UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment))
+                {
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                    return RequiredBalanceExceeds256Bits(tx);
                 }
             }
 
-            overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
-            if (!overflows && tx.SupportsBlobs)
+            if (balance < balanceCheck)
             {
-                overflows = !_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee);
-                if (!overflows)
-                {
-                    if (validate && tx.MaxFeePerBlobGas < feePerBlobGas)
-                    {
-                        TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
-                        return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas);
-                    }
-                    overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
-                }
-            }
-
-            if (overflows || senderReservedGasPayment > balanceLeft)
-            {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return InsufficientFundsForGas(tx, senderBalance, effectiveGasPrice);
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                return InsufficientFundsForGas(tx, balance, balanceCheck);
             }
 
             if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
@@ -1084,17 +1099,13 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private static TransactionResult InsufficientFundsForTransfer(Transaction tx, UInt256 senderBalance) =>
-            TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
-                $"insufficient sender balance for transfer: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {tx.Value}");
+        private static TransactionResult RequiredBalanceExceeds256Bits(Transaction tx) =>
+            TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
+                $"insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} required balance exceeds 256 bits");
 
-        private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 gasPrice)
-        {
-            UInt256.MultiplyOverflow((UInt256)tx.GasLimit, gasPrice, out UInt256 gasCost);
-            UInt256.AddOverflow(gasCost, tx.Value, out UInt256 want);
-            return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
-                $"insufficient sender balance for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want}");
-        }
+        private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 want) =>
+            TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
+                $"insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want}");
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -1761,7 +1772,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
         public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "intrinsic gas too low");
         public static readonly TransactionResult GasLimitBelowFloorGas = new(ErrorType.GasLimitBelowFloorGas, errorDescription: "gas below floor data cost");
-        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient sender balance for gas * price + value");
+        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient funds for gas * price + value");
         public static readonly TransactionResult InsufficientSenderBalance = new(ErrorType.InsufficientSenderBalance, errorDescription: "insufficient sender balance for transfer");
         public static readonly TransactionResult MalformedTransaction = new(ErrorType.MalformedTransaction, errorDescription: "malformed");
         public static readonly TransactionResult MinerPremiumNegative = new(ErrorType.MinerPremiumNegative, errorDescription: "miner premium is negative");
@@ -1796,5 +1807,19 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         public static TransactionResult WithDetail(this TransactionResult.ErrorType errorType, string detail) =>
             TransactionResult.WithDetail(errorType, detail);
+
+        /// <summary>
+        /// Composes the user-facing error string from a <see cref="TransactionResult"/> and an optional
+        /// tracer-supplied error. Used by <c>eth_call</c> and <c>proof_call</c> so both report the same
+        /// error strings for the same failures.
+        /// </summary>
+        public static string? GetErrorMessage(this TransactionResult txResult, string? tracerError) => txResult switch
+        {
+            { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert)
+                => txResult.ErrorDescription is { Length: > 0 } d ? d : txResult.EvmExceptionType.GetEvmExceptionDescription(),
+            { TransactionExecuted: true } when tracerError is not null => tracerError,
+            { TransactionExecuted: false, Error: not TransactionResult.ErrorType.None } => txResult.ErrorDescription,
+            _ => null,
+        };
     }
 }
