@@ -14,7 +14,6 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -63,18 +62,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
-            .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
-                ctx.Resolve<IWorldState>(),
-                ctx.Resolve<ISpecProvider>(),
-                ctx.Resolve<IBlockhashProvider>(),
-                ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IBlocksConfig>(),
-                ctx.Resolve<IWithdrawalProcessorFactory>(),
-                ctx.ResolveOptional<PrewarmerEnvFactory>(),
-                ctx.ResolveOptional<PreBlockCaches>(),
-                ctx.ResolveOptional<IReadOnlyTxProcessingEnvFactory>(),
-                // Present only in witness-capable scopes (main pipeline, debug_executionWitness sandbox);
-                isWitnessExecution: ctx.ResolveOptional<WitnessExecutionPredicate>()?.IsActive))
+            .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
             .AddScoped<IProcessingStats, ProcessingStats>()
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))

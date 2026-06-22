@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -47,17 +48,20 @@ public partial class BlockAccessListManager(
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-    Func<bool>? isWitnessExecution = null)
+    WitnessExecutionPredicate? witnessExecutionPredicate = null)
     : IBlockAccessListManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
+    // Present only in witness-capable scopes (main pipeline, debug_executionWitness sandbox, stateless
+    // guest). Drives the parallel-execution gate and the non-caching code-repo choice in the pool.
+    private readonly Func<bool>? _isWitnessExecution = witnessExecutionPredicate?.IsActive;
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, isWitnessExecution));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, _isWitnessExecution));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, isWitnessExecution));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, _isWitnessExecution));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
@@ -134,7 +138,7 @@ public partial class BlockAccessListManager(
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope
-            && isWitnessExecution?.Invoke() is not true;
+            && _isWitnessExecution?.Invoke() is not true;
 
         // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
         // HintBal honours the same opt-in config as the prewarmer path.
