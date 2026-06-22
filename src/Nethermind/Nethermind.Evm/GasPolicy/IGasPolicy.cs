@@ -205,9 +205,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         }
 
         long authCount = authList.Length;
+        // EIP-8038 reprices the per-authorization regular cost (ACCOUNT_WRITE + auth-base).
+        long perAuthRegular = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular;
         return spec.IsEip8037Enabled
             ? (
-                authCount * GasCostOf.PerAuthBaseRegular,
+                authCount * perAuthRegular,
                 authCount * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
             )
             : (authCount * GasCostOf.NewAccount, 0);

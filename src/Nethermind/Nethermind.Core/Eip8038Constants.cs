@@ -49,4 +49,11 @@ public static class Eip8038Constants
 
     /// <summary><c>STORAGE_CLEAR_REFUND = (STORAGE_WRITE + COLD_STORAGE_ACCESS) * 4800 / 5000</c>.</summary>
     public const long StorageClearRefund = (StorageWrite + ColdStorageAccess) * 4800 / 5000; // 12480
+
+    /// <summary>
+    /// EIP-7702 per-authorization regular gas: <c>ACCOUNT_WRITE + REGULAR_PER_AUTH_BASE_COST</c>, where
+    /// the latter is the auth-tuple calldata floor (101 bytes × 16), an ECRECOVER (3000), a cold account
+    /// touch, and two warm accesses.
+    /// </summary>
+    public const long PerAuthBaseRegular = AccountWrite + (101 * 16 + 3000 + ColdAccountAccess + 2 * WarmAccess); // 15816
 }
