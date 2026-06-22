@@ -201,7 +201,7 @@ public partial class BlockTree
     {
         ulong pivotOrLowest = Math.Max(SyncPivot.BlockNumber, LowestInsertedHeader?.Number ?? 0);
         ulong left = (Head?.Number ?? 0) == 0
-            ? (pivotOrLowest > 0 ? pivotOrLowest - 1 : 0)
+            ? pivotOrLowest.SaturatingSub(1)
             : Head.Number;
 
         ulong right = left + BestKnownSearchLimit;
@@ -237,20 +237,20 @@ public partial class BlockTree
     private void LoadBeaconBestKnown()
     {
         ulong left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0);
-        left = left > 0 ? left - 1 : 0;
+        left = left.SaturatingSub(1);
         ulong right = left + BestKnownSearchLimit;
         ulong bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
 
         ulong maxHeadOrLowest = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0);
         left = Math.Max(maxHeadOrLowest, BestSuggestedHeader?.Number ?? 0);
-        left = left > 0 ? left - 1 : 0;
+        left = left.SaturatingSub(1);
 
         right = left + BestKnownSearchLimit;
         ulong bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
 
         ulong? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeULong();
         left = Math.Max(Head?.Number ?? 0, beaconPivotNumber ?? 0);
-        left = left > 0 ? left - 1 : 0;
+        left = left.SaturatingSub(1);
         right = left + BestKnownSearchLimit;
         ulong bestBeaconBodyNumber = BinarySearchBlockNumber(left, right, BodyExists, findBeacon: true) ?? 0;
 

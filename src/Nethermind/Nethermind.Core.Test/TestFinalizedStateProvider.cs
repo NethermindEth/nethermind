@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Core.Test;
@@ -26,7 +27,7 @@ public class TestFinalizedStateProvider(ulong depth) : IFinalizedStateProvider
             {
                 return _manualFinalizedPoint.Number;
             }
-            return TrieStore.LatestCommittedBlockNumber >= depth ? TrieStore.LatestCommittedBlockNumber - depth : 0UL;
+            return TrieStore.LatestCommittedBlockNumber.SaturatingSub(depth);
         }
     }
 

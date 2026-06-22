@@ -489,7 +489,7 @@ public class XdcTestBlockchain : TestBlockchain
         EpochSwitchInfo epochSwitchInfo = EpochSwitchManager.GetEpochSwitchInfo(head)!;
         ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         ulong temp = epochSwitchNumber - epochSwitchNumber % spec.EpochLength;
-        ulong gapNumber = epochSwitchNumber == 0 ? 0UL : (temp > spec.Gap ? temp - spec.Gap : 0UL);
+        ulong gapNumber = epochSwitchNumber == 0 ? 0UL : temp.SaturatingSub(spec.Gap);
 
         VoteDecoder voteDecoder = new();
 
