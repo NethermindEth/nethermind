@@ -23,6 +23,7 @@ public sealed class NodeSource(
     private const int ChannelCapacity = 64;
 
     private readonly ILogger _logger = logManager.GetClassLogger<NodeSource>();
+    private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.IdHash;
     private readonly int _recentNodeLimit = RecentNodeFilter.GetLimit(kademliaConfig.KSize, Hash256KademliaDistance.Instance.MaxDistance, ChannelCapacity);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
@@ -80,6 +81,11 @@ public sealed class NodeSource(
 
         async Task WriteDiscoveredNode(Node node)
         {
+            if (IsExcluded(node))
+            {
+                return;
+            }
+
             if (!discv4Adapter.GetSession(node).HasReceivedPong)
             {
                 if (discv4Adapter.GetSession(node).HasTriedPingRecently)
@@ -111,6 +117,11 @@ public sealed class NodeSource(
 
         void Handler(object? _, Node addedNode)
         {
+            if (IsExcluded(addedNode))
+            {
+                return;
+            }
+
             if (!recentlyWrittenNodes.TryReserve(addedNode.IdHash))
             {
                 return;
@@ -124,4 +135,6 @@ public sealed class NodeSource(
             recentlyWrittenNodes.Release(addedNode.IdHash);
         }
     }
+
+    private bool IsExcluded(Node node) => node.IdHash.Equals(_currentNodeHash);
 }

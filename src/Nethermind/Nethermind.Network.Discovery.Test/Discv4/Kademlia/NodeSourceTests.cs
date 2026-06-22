@@ -49,7 +49,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             };
             _kademliaConfig = new()
             {
-                CurrentNodeId = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303),
+                CurrentNodeId = new Node(TestItem.PublicKeyD, "127.0.0.1", 30303),
                 KSize = 1
             };
 
