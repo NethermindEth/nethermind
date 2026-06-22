@@ -67,7 +67,6 @@ public class TotalDifficultyFixMigrationTest
         };
         TotalDifficultyFixMigration migration = new(chainLevelInfoRepository, blockTree, syncConfig, new TestLogManager());
 
-        // Sentinel: brokenLevel == ulong.MaxValue means "broken level out of range".
         if (brokenLevel < numberOfBlocks)
         {
             levels[brokenLevel].BlockInfos[0].TotalDifficulty = 9999;
