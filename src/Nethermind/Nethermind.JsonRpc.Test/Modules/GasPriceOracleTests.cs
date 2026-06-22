@@ -186,7 +186,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockFinder.FindBlock((ulong)i).Returns(blockWithTwoTx);
             }
 
-            blockFinder.Head.Returns(Build.A.Block.WithNumber((ulong)maxBlock).TestObject);
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(maxBlock).TestObject);
 
             return blockFinder;
         }

@@ -290,7 +290,7 @@ namespace Nethermind.Core.Test.Builders
         {
             Block currentBlock;
             BlockBuilder currentBlockBuilder = Build.A.Block
-                .WithNumber((ulong)(blockIndex + 1))
+                .WithNumber(blockIndex + 1)
                 .WithParent(parent)
                 .WithWithdrawals(withWithdrawals ? [TestItem.WithdrawalA_1Eth] : null)
                 .WithBaseFeePerGas(withWithdrawals ? UInt256.One : UInt256.Zero)
@@ -389,7 +389,7 @@ namespace Nethermind.Core.Test.Builders
                     BlockTree.TryUpdateMainChain(current.Header, true, preloadedBlocks: new[] { current });
                 }
 
-                current = Build.A.Block.WithNumber((ulong)(i + 1)).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+                current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
             }
 
             return this;

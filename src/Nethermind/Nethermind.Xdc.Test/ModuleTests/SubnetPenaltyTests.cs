@@ -223,7 +223,7 @@ internal class SubnetPenaltyTests
         {
             Hash256 parentHash = i == 0 ? Hash256.Zero : headers[i - 1].Hash!;
             XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
-            builder.WithNumber((ulong)i);
+            builder.WithNumber(i);
             builder.WithParentHash(parentHash);
             builder.WithValidators(validatorAddresses);
             builder.WithExtraConsensusData(new ExtraFieldsV2((ulong)i, Build.A.QuorumCertificate().TestObject));
