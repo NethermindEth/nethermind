@@ -116,40 +116,6 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(decoded, Is.EqualTo(testCase.Tx).UsingTransactionComparer());
         }
 
-        [TestCaseSource(nameof(TestCaseSource))]
-        public void Roundtrip_RlpReader_WithMemorySlice((Transaction Tx, string Description) testCase)
-        {
-            byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
-            _txDecoder.Encode(ref writer, testCase.Tx);
-
-            RlpReader decoderContext = new(bytes, true);
-            Transaction? decoded = _txDecoder.Decode(ref decoderContext);
-            decoded!.SenderAddress =
-                new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
-            decoded.Hash = decoded.CalculateHash();
-            Assert.That(decoded, Is.EqualTo(testCase.Tx).UsingTransactionComparer());
-        }
-
-        [TestCaseSource(nameof(TestCaseSource))]
-        public void RlpReader_DecodeWithMemorySlice_ShouldUseSameBuffer((Transaction Tx, string Description) testCase)
-        {
-            if (testCase.Tx.Data.Length == 0) return;
-
-            byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
-            _txDecoder.Encode(ref writer, testCase.Tx);
-
-            RlpReader decoderContext = new(bytes, true);
-            Transaction? decoded = _txDecoder.Decode(ref decoderContext);
-
-            byte[] data1 = decoded!.Data.ToArray();
-            data1.AsSpan().Fill(1);
-            bytes.AsSpan().Fill(1);
-
-            Assert.That(decoded.Data.ToArray(), Is.EqualTo(data1));
-        }
-
         [TestCaseSource(nameof(YoloV3TestCases))]
         public void Roundtrip_yolo_v3((string IncomingRlpHex, Hash256 Hash) testCase)
         {

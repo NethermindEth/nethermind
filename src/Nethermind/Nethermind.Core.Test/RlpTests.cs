@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -508,33 +507,6 @@ namespace Nethermind.Core.Test
             {
                 Assert.That(reEncoded.Bytes, Is.EqualTo(original.Bytes));
                 Assert.That(reEncoded, Is.SameAs(original));
-            }
-        }
-
-        [TestCase(true)]
-        [TestCase(false)]
-        public void RlpContextWithSliceMemory_shouldNotCopyUnderlyingData(bool sliceValue)
-        {
-            byte[] randomBytes = new byte[100];
-            Random.Shared.NextBytes(randomBytes);
-
-            int requiredLength = Rlp.LengthOf(randomBytes) * 3;
-            byte[] encoded = new byte[requiredLength];
-            RlpWriter writer = new(encoded);
-            writer.Encode(randomBytes);
-            writer.Encode(randomBytes);
-            writer.Encode(randomBytes);
-
-            Memory<byte> memory = encoded;
-            RlpReader context = new(memory, sliceValue);
-
-            for (int i = 0; i < 3; i++)
-            {
-                Memory<byte> slice = context.DecodeByteArrayMemory();
-                MemoryMarshal.TryGetArray(slice, out ArraySegment<byte> segment);
-
-                bool isACopy = (segment.Offset == 0 && segment.Count == slice.Length);
-                Assert.That(isACopy, Is.Not.EqualTo(sliceValue));
             }
         }
 

@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startPos = ctx.Position;
             AccountRangeMessage message = new();
             ArrayPoolList<PathWithAccount>? pathsWithAccounts = null;

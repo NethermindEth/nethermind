@@ -53,7 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
 
-            RlpReader ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startingPosition = ctx.Position;
             try
             {

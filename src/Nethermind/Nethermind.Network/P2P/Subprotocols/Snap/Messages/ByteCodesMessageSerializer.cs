@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public ByteCodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startPos = ctx.Position;
             RlpByteArrayList? list = null;
 

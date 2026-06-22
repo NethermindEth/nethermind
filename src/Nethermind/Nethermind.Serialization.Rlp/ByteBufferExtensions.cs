@@ -58,7 +58,7 @@ namespace Nethermind.Serialization.Rlp
         public static RlpByteArrayList DecodeRlpByteArrayList(this IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startPos = ctx.Position;
             RlpByteArrayList? list = null;
 

@@ -134,13 +134,13 @@ public class RlpByteArrayListTests
         {
             Assert.Throws<RlpLimitException>(() =>
             {
-                RlpReader ctx = new(encoded, true);
+                RlpReader ctx = new(encoded);
                 using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
             });
         }
         else
         {
-            RlpReader ctx = new(encoded, true);
+            RlpReader ctx = new(encoded);
             using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
             Assert.That(list.Count, Is.EqualTo(itemCount));
         }
@@ -152,7 +152,7 @@ public class RlpByteArrayListTests
         const int count = 10_000;
         byte[] encoded = EncodeSingleByteItemList(count);
 
-        RlpReader ctx = new(encoded, true);
+        RlpReader ctx = new(encoded);
         using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
         Assert.That(list.Count, Is.EqualTo(count));
     }

@@ -3,7 +3,6 @@
 
 using System;
 using DotNetty.Buffers;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.Rlp;
@@ -31,8 +30,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
 
     public override BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
     {
-        using NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
-        RlpReader ctx = new(memoryOwner.Memory);
+        RlpReader ctx = new(byteBuffer.AsSpan());
         int startPosition = ctx.Position;
         ArrayPoolList<byte[]?>? blockAccessLists = null;
 

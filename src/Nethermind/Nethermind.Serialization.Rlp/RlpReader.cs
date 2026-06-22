@@ -35,21 +35,6 @@ public ref struct RlpReader
         _isNotNull = data.IsNotNull;
     }
 
-    public RlpReader(Memory<byte> memory, bool sliceMemory = false)
-    {
-        Memory = memory;
-        Data = memory.Span;
-        Position = 0;
-        _isNotNull = true;
-
-        // Slicing is opt-in to avoid retaining larger pooled or network buffers through decoded fields.
-        _sliceMemory = sliceMemory;
-    }
-
-    public Memory<byte>? Memory { get; }
-
-    private bool _sliceMemory = false;
-
     public ReadOnlySpan<byte> Data { get; }
 
     public readonly bool IsNull => !_isNotNull;
@@ -59,8 +44,6 @@ public ref struct RlpReader
     public int Position { get; set; }
 
     public readonly int Length => Data.Length;
-
-    public readonly bool ShouldSliceMemory => _sliceMemory;
 
     public readonly bool IsSequenceNext() => Data[Position] >= 192;
 
@@ -131,19 +114,6 @@ public ref struct RlpReader
     public ReadOnlySpan<byte> Read(int length)
     {
         ReadOnlySpan<byte> data = Data.Slice(Position, length);
-        Position += length;
-        return data;
-    }
-
-    public Memory<byte> ReadMemory(int length)
-    {
-        if (_sliceMemory && Memory.HasValue) return ReadSlicedMemory(length);
-        return Read(length).ToArray();
-    }
-
-    private Memory<byte> ReadSlicedMemory(int length)
-    {
-        Memory<byte> data = Memory.Value.Slice(Position, length);
         Position += length;
         return data;
     }
@@ -630,67 +600,6 @@ public ref struct RlpReader
 
         RlpHelpers.ThrowUnexpectedPrefix(prefix);
         return default;
-    }
-
-    public Memory<byte> DecodeByteArrayMemory(RlpLimit? limit = null)
-    {
-        if (!_sliceMemory)
-        {
-            return DecodeByteArraySpan(limit).ToArray();
-        }
-
-        if (Memory is null)
-        {
-            ThrowNotMemoryBacked();
-        }
-
-        int position = Position;
-        int prefix = ReadByte();
-
-        switch (prefix)
-        {
-            case < Rlp.EmptyByteArrayByte:
-                return Memory.Value.Slice(position, 1);
-            case Rlp.EmptyByteArrayByte:
-                return Array.Empty<byte>();
-            case <= 183:
-                {
-                    int length = prefix - 128;
-                    Memory<byte> buffer = ReadSlicedMemory(length);
-                    Span<byte> asSpan = buffer.Span;
-
-                    if (length == 1 && asSpan[0] < 128)
-                    {
-                        RlpHelpers.ThrowNonCanonicalInteger(position);
-                    }
-
-                    return buffer;
-                }
-            case < 192:
-                {
-                    int lengthOfLength = prefix - 183;
-                    if (lengthOfLength > 4)
-                    {
-                        RlpHelpers.ThrowSequenceLengthTooLong();
-                    }
-
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < RlpHelpers.SmallPrefixBarrier)
-                    {
-                        RlpHelpers.ThrowUnexpectedLength(length);
-                    }
-                    GuardLimit(length, limit);
-
-                    return ReadSlicedMemory(length);
-                }
-        }
-
-        RlpHelpers.ThrowUnexpectedPrefix(prefix);
-        return default;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowNotMemoryBacked() => throw new RlpException("Rlp not backed by a Memory<byte>");
-
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
