@@ -34,6 +34,10 @@ internal static class MdbxNative
 
     private const uint EnvOptionMaxDbs = 0;
     private const uint EnvOptionMaxReaders = 1;
+    private const uint EnvOptionRpAugmentLimit = 4;
+    private const uint EnvOptionDpReserveLimit = 6;
+    private const uint EnvOptionTxnDpLimit = 7;
+    private const uint EnvOptionTxnDpInitial = 8;
 
     static MdbxNative() => NativeLibrary.SetDllImportResolver(typeof(MdbxNative).Assembly, ResolveLibrary);
 
@@ -167,6 +171,18 @@ internal static class MdbxNative
 
     internal static void SetMaxReaders(SafeMdbxEnvHandle env, ulong value) =>
         ThrowOnError(EnvSetOption(env, EnvOptionMaxReaders, value), "mdbx_env_set_option(MDBX_opt_max_readers)");
+
+    internal static void SetRpAugmentLimit(SafeMdbxEnvHandle env, ulong value) =>
+        ThrowOnError(EnvSetOption(env, EnvOptionRpAugmentLimit, value), "mdbx_env_set_option(MDBX_opt_rp_augment_limit)");
+
+    internal static void SetDirtyPagesReserveLimit(SafeMdbxEnvHandle env, ulong value) =>
+        ThrowOnError(EnvSetOption(env, EnvOptionDpReserveLimit, value), "mdbx_env_set_option(MDBX_opt_dp_reserve_limit)");
+
+    internal static void SetTransactionDirtyPagesLimit(SafeMdbxEnvHandle env, ulong value) =>
+        ThrowOnError(EnvSetOption(env, EnvOptionTxnDpLimit, value), "mdbx_env_set_option(MDBX_opt_txn_dp_limit)");
+
+    internal static void SetTransactionDirtyPagesInitial(SafeMdbxEnvHandle env, ulong value) =>
+        ThrowOnError(EnvSetOption(env, EnvOptionTxnDpInitial, value), "mdbx_env_set_option(MDBX_opt_txn_dp_initial)");
 
     internal static void Commit(SafeMdbxTxnHandle txn)
     {

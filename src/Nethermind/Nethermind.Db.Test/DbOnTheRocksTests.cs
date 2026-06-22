@@ -299,6 +299,35 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void Mdbx_value_compression_escapes_raw_values_with_compression_marker()
+        {
+            using MdbxValueCompression compression = new(enabled: true, minValueLength: int.MaxValue);
+            byte[] value = [0xFF, (byte)'N', (byte)'M', (byte)'X', 2, 2, 1, 2, 3, 4, 5];
+
+            Assert.That(compression.TryEncode(value, out byte[]? stored, out int storedLength, out MdbxValueEncodingKind encodingKind), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encodingKind, Is.EqualTo(MdbxValueEncodingKind.EscapedRaw));
+                Assert.That(stored, Is.Not.Null);
+                Assert.That(storedLength, Is.EqualTo(value.Length + 5));
+                Assert.That(compression.Decode(stored!.AsSpan(0, storedLength)), Is.EqualTo(value));
+            }
+        }
+
+        [Test]
+        public void Mdbx_database_round_trips_raw_values_with_compression_marker()
+        {
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(".", "Blocks"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+            byte[] key = [0x42];
+            byte[] value = [0xFF, (byte)'N', (byte)'M', (byte)'X', 2, 2, 1, 2, 3, 4, 5];
+
+            db.Set(key, value);
+
+            Assert.That(db.Get(key), Is.EqualTo(value));
+        }
+
         [TestCase("1024", 1024L)]
         [TestCase("1KiB", 1024L)]
         [TestCase("1.5MiB", 1572864L)]
@@ -367,8 +396,53 @@ namespace Nethermind.Db.Test
                 Assert.That(options.EnableCoalesce, Is.True);
                 Assert.That(options.EnableBatchGrouping, Is.True);
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupOperations));
+                Assert.That(options.MaxBatchGroupBytes, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupBytes));
                 Assert.That(options.GrowthStep, Is.EqualTo(MdbxTuningOptions.DefaultGrowthStep));
+                Assert.That(options.MaxReaders, Is.EqualTo(MdbxTuningOptions.DefaultMaxReaders));
+                Assert.That(options.RpAugmentLimit, Is.EqualTo(MdbxTuningOptions.DefaultRpAugmentLimit));
+                Assert.That(options.DirtyPagesReserveLimit, Is.Zero);
+                Assert.That(options.TransactionDirtyPagesLimit, Is.Zero);
+                Assert.That(options.TransactionDirtyPagesInitial, Is.Zero);
             }
+        }
+
+        [Test]
+        public void Mdbx_tuning_accepts_mdbx_page_cache_overrides()
+        {
+            WithEnvironmentVariable("NETHERMIND_MDBX_RP_AUGMENT_LIMIT", "8192", () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                Assert.That(options.RpAugmentLimit, Is.EqualTo(8192));
+            });
+
+            WithEnvironmentVariable("NETHERMIND_MDBX_DIRTY_PAGES_RESERVE_LIMIT", "2048", () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(2048));
+            });
+
+            WithEnvironmentVariable("NETHERMIND_MDBX_TXN_DIRTY_PAGES_LIMIT", "4096", () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(4096));
+            });
+
+            WithEnvironmentVariable("NETHERMIND_MDBX_TXN_DIRTY_PAGES_INITIAL", "1024", () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(1024));
+            });
+
+            WithEnvironmentVariable("NETHERMIND_MDBX_BATCH_GROUP_MAX_BYTES", "32MiB", () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                Assert.That(options.MaxBatchGroupBytes, Is.EqualTo(32L << 20));
+            });
         }
 
         [Test]

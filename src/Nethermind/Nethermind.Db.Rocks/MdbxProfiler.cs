@@ -45,8 +45,16 @@ internal sealed class MdbxProfiler
     private long _batchGroups;
     private long _batchGroupBatches;
     private long _batchGroupOperations;
+    private long _batchGroupBytes;
     private long _maxBatchGroupBatches;
     private long _maxBatchGroupOperations;
+    private long _maxBatchGroupBytes;
+    private long _compressionAttempts;
+    private long _compressionRejected;
+    private long _compressedValues;
+    private long _escapedRawValues;
+    private long _compressionInputBytes;
+    private long _compressionStoredBytes;
 
     [ThreadStatic]
     private static int t_hotPathSampleCounter;
@@ -161,13 +169,37 @@ internal sealed class MdbxProfiler
         UpdateMax(ref _maxQueuedOperations, pendingOperations);
     }
 
-    public void RecordBatchGroup(int batchCount, int operationCount)
+    public void RecordBatchGroup(int batchCount, int operationCount, long byteCount)
     {
         Interlocked.Increment(ref _batchGroups);
         Interlocked.Add(ref _batchGroupBatches, batchCount);
         Interlocked.Add(ref _batchGroupOperations, operationCount);
+        Interlocked.Add(ref _batchGroupBytes, byteCount);
         UpdateMax(ref _maxBatchGroupBatches, batchCount);
         UpdateMax(ref _maxBatchGroupOperations, operationCount);
+        UpdateMax(ref _maxBatchGroupBytes, byteCount);
+    }
+
+    public void RecordValueEncoding(MdbxValueEncodingKind encodingKind, int inputLength, int storedLength)
+    {
+        switch (encodingKind)
+        {
+            case MdbxValueEncodingKind.CompressionRejected:
+                Interlocked.Increment(ref _compressionAttempts);
+                Interlocked.Increment(ref _compressionRejected);
+                Interlocked.Add(ref _compressionInputBytes, inputLength);
+                Interlocked.Add(ref _compressionStoredBytes, inputLength);
+                break;
+            case MdbxValueEncodingKind.Compressed:
+                Interlocked.Increment(ref _compressionAttempts);
+                Interlocked.Increment(ref _compressedValues);
+                Interlocked.Add(ref _compressionInputBytes, inputLength);
+                Interlocked.Add(ref _compressionStoredBytes, storedLength);
+                break;
+            case MdbxValueEncodingKind.EscapedRaw:
+                Interlocked.Increment(ref _escapedRawValues);
+                break;
+        }
     }
 
     public void ReportFinal() =>
@@ -225,8 +257,16 @@ internal sealed class MdbxProfiler
         long batchGroups = Volatile.Read(ref _batchGroups);
         long batchGroupBatches = Volatile.Read(ref _batchGroupBatches);
         long batchGroupOperations = Volatile.Read(ref _batchGroupOperations);
+        long batchGroupBytes = Volatile.Read(ref _batchGroupBytes);
         long maxBatchGroupBatches = Volatile.Read(ref _maxBatchGroupBatches);
         long maxBatchGroupOperations = Volatile.Read(ref _maxBatchGroupOperations);
+        long maxBatchGroupBytes = Volatile.Read(ref _maxBatchGroupBytes);
+        long compressionAttempts = Volatile.Read(ref _compressionAttempts);
+        long compressionRejected = Volatile.Read(ref _compressionRejected);
+        long compressedValues = Volatile.Read(ref _compressedValues);
+        long escapedRawValues = Volatile.Read(ref _escapedRawValues);
+        long compressionInputBytes = Volatile.Read(ref _compressionInputBytes);
+        long compressionStoredBytes = Volatile.Read(ref _compressionStoredBytes);
 
         using Process process = Process.GetCurrentProcess();
         long managedBytes = GC.GetTotalMemory(forceFullCollection: false);
@@ -240,7 +280,7 @@ internal sealed class MdbxProfiler
             _logger.Info(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} batchGroups={batchGroups} avgBatchGroupBatches={Average(batchGroupBatches, batchGroups):F1} avgBatchGroupOps={Average(batchGroupOperations, batchGroups):F1} maxBatchGroupBatches={maxBatchGroupBatches} maxBatchGroupOps={maxBatchGroupOperations} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}{storageStatsText}"));
+                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} batchGroups={batchGroups} avgBatchGroupBatches={Average(batchGroupBatches, batchGroups):F1} avgBatchGroupOps={Average(batchGroupOperations, batchGroups):F1} avgBatchGroupMiB={ToMiB(Average(batchGroupBytes, batchGroups)):F1} maxBatchGroupBatches={maxBatchGroupBatches} maxBatchGroupOps={maxBatchGroupOperations} maxBatchGroupMiB={ToMiB(maxBatchGroupBytes):F1} compressionAttempts={compressionAttempts} compressedValues={compressedValues} compressionRejected={compressionRejected} compressionRejectPct={Percent(compressionRejected, compressionAttempts):F1} escapedRawValues={escapedRawValues} compressionInputMiB={ToMiB(compressionInputBytes):F1} compressionStoredMiB={ToMiB(compressionStoredBytes):F1} compressionSavedMiB={ToMiB(Math.Max(0, compressionInputBytes - compressionStoredBytes)):F1} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}{storageStatsText}"));
         }
     }
 
@@ -283,6 +323,9 @@ internal sealed class MdbxProfiler
         count == 0 ? 0 : (double)value * 100 / count;
 
     private static double ToMiB(long bytes) =>
+        bytes / BytesPerMiB;
+
+    private static double ToMiB(double bytes) =>
         bytes / BytesPerMiB;
 
     private static double ToMiB(ulong bytes) =>

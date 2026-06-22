@@ -25,6 +25,7 @@ internal sealed class MdbxEnvironment : IDisposable
     private readonly MdbxValueCompression _valueCompression;
     private readonly bool _batchGroupingEnabled;
     private readonly int _maxBatchGroupOperations;
+    private readonly long _maxBatchGroupBytes;
     private uint? _statsDbi;
     private bool _batchGroupActive;
     private bool _disposed;
@@ -43,6 +44,7 @@ internal sealed class MdbxEnvironment : IDisposable
         MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger);
         _batchGroupingEnabled = tuning.EnableBatchGrouping;
         _maxBatchGroupOperations = tuning.MaxBatchGroupOperations;
+        _maxBatchGroupBytes = tuning.MaxBatchGroupBytes;
         if (tuning.HasOverrides && logger.IsInfo)
         {
             logger.Info($"MDBX tuning for {Path}: {tuning.Describe()}");
@@ -52,6 +54,22 @@ internal sealed class MdbxEnvironment : IDisposable
         Env = env;
         MdbxNative.SetMaxDbs(Env, tuning.MaxDbs);
         MdbxNative.SetMaxReaders(Env, tuning.MaxReaders);
+        MdbxNative.SetRpAugmentLimit(Env, tuning.RpAugmentLimit);
+        if (tuning.DirtyPagesReserveLimit != 0)
+        {
+            MdbxNative.SetDirtyPagesReserveLimit(Env, tuning.DirtyPagesReserveLimit);
+        }
+
+        if (tuning.TransactionDirtyPagesLimit != 0)
+        {
+            MdbxNative.SetTransactionDirtyPagesLimit(Env, tuning.TransactionDirtyPagesLimit);
+        }
+
+        if (tuning.TransactionDirtyPagesInitial != 0)
+        {
+            MdbxNative.SetTransactionDirtyPagesInitial(Env, tuning.TransactionDirtyPagesInitial);
+        }
+
         int pageSize = IsNewMdbxEnvironment(Path) ? tuning.PageSize : -1;
         MdbxNative.ThrowOnError(
             MdbxNative.EnvSetGeometry(Env, 0, (nint)tuning.InitialMapSize, unchecked((nint)tuning.MaxMapSize), (nint)tuning.GrowthStep, unchecked((nint)tuning.ShrinkThreshold), pageSize),
@@ -257,7 +275,7 @@ internal sealed class MdbxEnvironment : IDisposable
         List<MdbxBatchGroupRequest> group = [];
         while (true)
         {
-            int operationCount = DequeueBatchGroup(group);
+            int operationCount = DequeueBatchGroup(group, out long byteCount);
             if (operationCount == 0)
             {
                 return;
@@ -277,7 +295,7 @@ internal sealed class MdbxEnvironment : IDisposable
                         }
                     }
                 }, operationCount);
-                _profiler?.RecordBatchGroup(group.Count, operationCount);
+                _profiler?.RecordBatchGroup(group.Count, operationCount, byteCount);
             }
             catch (Exception caught)
             {
@@ -289,15 +307,18 @@ internal sealed class MdbxEnvironment : IDisposable
         }
     }
 
-    private int DequeueBatchGroup(List<MdbxBatchGroupRequest> group)
+    private int DequeueBatchGroup(List<MdbxBatchGroupRequest> group, out long byteCount)
     {
         int operationCount = 0;
+        byteCount = 0;
         lock (_batchGroupLock)
         {
             while (_batchGroupQueue.Count > 0)
             {
                 MdbxBatchGroupRequest request = _batchGroupQueue.Peek();
-                if (group.Count > 0 && operationCount + request.OperationCount > _maxBatchGroupOperations)
+                if (group.Count > 0 &&
+                    (operationCount + request.OperationCount > _maxBatchGroupOperations ||
+                    byteCount + request.ByteCount > _maxBatchGroupBytes))
                 {
                     break;
                 }
@@ -305,6 +326,7 @@ internal sealed class MdbxEnvironment : IDisposable
                 _batchGroupQueue.Dequeue();
                 group.Add(request);
                 operationCount += request.OperationCount;
+                byteCount += request.ByteCount;
             }
 
             if (group.Count == 0)
@@ -428,7 +450,7 @@ internal sealed class MdbxEnvironment : IDisposable
 
     public unsafe void Put(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
-        byte[]? storedBuffer = _valueCompression.TryEncode(value, out byte[]? encoded, out int storedLength)
+        byte[]? storedBuffer = _valueCompression.TryEncode(value, out byte[]? encoded, out int storedLength, out MdbxValueEncodingKind encodingKind)
             ? encoded
             : null;
         ReadOnlySpan<byte> storedValue = storedBuffer is null ? value : storedBuffer.AsSpan(0, storedLength);
@@ -441,6 +463,7 @@ internal sealed class MdbxEnvironment : IDisposable
             MdbxValue dataValue = new() { Base = (IntPtr)valuePointer, Length = (nuint)storedValue.Length };
             MdbxNative.ThrowOnError(MdbxNative.Put(txn, dbi, ref keyValue, ref dataValue, MdbxNative.PutUpsert), "mdbx_put");
             _profiler?.RecordPut(key.Length, value.Length);
+            _profiler?.RecordValueEncoding(encodingKind, value.Length, storedValue.Length);
         }
     }
 
@@ -643,6 +666,8 @@ internal enum MdbxWriteKind
 
 internal readonly record struct MdbxWriteOperation(MdbxWriteKind Kind, uint Dbi, byte[] Key, byte[]? Value, IMergeOperator? MergeOperator)
 {
+    public int ApproximateByteLength => Key.Length + (Value?.Length ?? 0);
+
     public static MdbxWriteOperation Set(uint dbi, ReadOnlySpan<byte> key, byte[]? value, IMergeOperator? mergeOperator) =>
         value is null
             ? new MdbxWriteOperation(MdbxWriteKind.Delete, dbi, key.ToArray(), null, mergeOperator)
@@ -663,6 +688,8 @@ internal sealed class MdbxBatchGroupRequest(IReadOnlyList<MdbxWriteOperation> op
 
     public int OperationCount => Operations.Count;
 
+    public long ByteCount { get; } = CalculateByteCount(operations);
+
     public bool IsCompleted { get; private set; }
 
     public void Complete(Exception? exception)
@@ -677,5 +704,16 @@ internal sealed class MdbxBatchGroupRequest(IReadOnlyList<MdbxWriteOperation> op
         {
             ExceptionDispatchInfo.Capture(_exception).Throw();
         }
+    }
+
+    private static long CalculateByteCount(IReadOnlyList<MdbxWriteOperation> operations)
+    {
+        long byteCount = 0;
+        for (int i = 0; i < operations.Count; i++)
+        {
+            byteCount += operations[i].ApproximateByteLength;
+        }
+
+        return byteCount;
     }
 }

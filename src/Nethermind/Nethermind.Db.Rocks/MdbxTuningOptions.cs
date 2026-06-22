@@ -16,11 +16,16 @@ internal readonly record struct MdbxTuningOptions(
     int PageSize,
     ulong MaxDbs,
     ulong MaxReaders,
+    ulong RpAugmentLimit,
+    ulong DirtyPagesReserveLimit,
+    ulong TransactionDirtyPagesLimit,
+    ulong TransactionDirtyPagesInitial,
     bool EnableReadAhead,
     bool EnableWriteMap,
     bool EnableCoalesce,
     bool EnableBatchGrouping,
     int MaxBatchGroupOperations,
+    long MaxBatchGroupBytes,
     bool EnableProfiling,
     int HotPathSampleRate,
     TimeSpan ProfileInterval,
@@ -33,8 +38,10 @@ internal readonly record struct MdbxTuningOptions(
     public const long DefaultShrinkThreshold = 1L << 30;
     public const int DefaultPageSize = 16 * 1024;
     public const ulong DefaultMaxDbs = 512;
-    public const ulong DefaultMaxReaders = 512;
+    public const ulong DefaultMaxReaders = 8192;
+    public const ulong DefaultRpAugmentLimit = 256 * 1024;
     public const int DefaultMaxBatchGroupOperations = 128 * 1024;
+    public const long DefaultMaxBatchGroupBytes = 64L << 20;
 
     private const int DefaultProfileIntervalSeconds = 30;
     private const int DefaultSlowTransactionMilliseconds = 1_000;
@@ -50,11 +57,16 @@ internal readonly record struct MdbxTuningOptions(
         int pageSize = ReadInt32("NETHERMIND_MDBX_PAGE_SIZE", DefaultPageSize, logger, ref hasOverrides);
         ulong maxDbs = ReadUInt64("NETHERMIND_MDBX_MAX_DBS", DefaultMaxDbs, logger, ref hasOverrides);
         ulong maxReaders = ReadUInt64("NETHERMIND_MDBX_MAX_READERS", DefaultMaxReaders, logger, ref hasOverrides);
+        ulong rpAugmentLimit = ReadUInt64("NETHERMIND_MDBX_RP_AUGMENT_LIMIT", DefaultRpAugmentLimit, logger, ref hasOverrides);
+        ulong dirtyPagesReserveLimit = ReadUInt64("NETHERMIND_MDBX_DIRTY_PAGES_RESERVE_LIMIT", 0, logger, ref hasOverrides);
+        ulong transactionDirtyPagesLimit = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_LIMIT", 0, logger, ref hasOverrides);
+        ulong transactionDirtyPagesInitial = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_INITIAL", 0, logger, ref hasOverrides);
         bool enableReadAhead = ReadBool("NETHERMIND_MDBX_READAHEAD", fallback: false, logger, ref hasOverrides);
         bool enableWriteMap = ReadBool("NETHERMIND_MDBX_WRITEMAP", fallback: true, logger, ref hasOverrides);
         bool enableCoalesce = ReadBool("NETHERMIND_MDBX_COALESCE", fallback: true, logger, ref hasOverrides);
         bool enableBatchGrouping = ReadBool("NETHERMIND_MDBX_BATCH_GROUP", fallback: true, logger, ref hasOverrides);
         int maxBatchGroupOperations = ReadInt32("NETHERMIND_MDBX_BATCH_GROUP_MAX_OPS", DefaultMaxBatchGroupOperations, logger, ref hasOverrides);
+        long maxBatchGroupBytes = ReadSize("NETHERMIND_MDBX_BATCH_GROUP_MAX_BYTES", DefaultMaxBatchGroupBytes, logger, ref hasOverrides);
         bool enableProfiling = ReadBool("NETHERMIND_MDBX_PROFILE", fallback: false, logger, ref hasOverrides);
         int hotPathSampleRate = ReadInt32("NETHERMIND_MDBX_PROFILE_HOTPATH_SAMPLE_RATE", DefaultHotPathSampleRate, logger, ref hasOverrides);
         int profileIntervalSeconds = ReadInt32("NETHERMIND_MDBX_PROFILE_INTERVAL_SECONDS", DefaultProfileIntervalSeconds, logger, ref hasOverrides);
@@ -108,6 +120,12 @@ internal readonly record struct MdbxTuningOptions(
             maxBatchGroupOperations = DefaultMaxBatchGroupOperations;
         }
 
+        if (maxBatchGroupBytes <= 0)
+        {
+            Warn(logger, "NETHERMIND_MDBX_BATCH_GROUP_MAX_BYTES must be positive. Using the default value.");
+            maxBatchGroupBytes = DefaultMaxBatchGroupBytes;
+        }
+
         if (hotPathSampleRate <= 0)
         {
             Warn(logger, "NETHERMIND_MDBX_PROFILE_HOTPATH_SAMPLE_RATE must be positive. Using the default value.");
@@ -125,11 +143,16 @@ internal readonly record struct MdbxTuningOptions(
             pageSize,
             maxDbs,
             maxReaders,
+            rpAugmentLimit,
+            dirtyPagesReserveLimit,
+            transactionDirtyPagesLimit,
+            transactionDirtyPagesInitial,
             enableReadAhead,
             enableWriteMap,
             enableCoalesce,
             enableBatchGrouping,
             maxBatchGroupOperations,
+            maxBatchGroupBytes,
             enableProfiling,
             hotPathSampleRate,
             TimeSpan.FromSeconds(profileIntervalSeconds),
@@ -140,7 +163,7 @@ internal readonly record struct MdbxTuningOptions(
     public string Describe() =>
         string.Create(
             CultureInfo.InvariantCulture,
-            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} readAhead={EnableReadAhead} writeMap={EnableWriteMap} coalesce={EnableCoalesce} batchGroup={EnableBatchGrouping} batchGroupMaxOps={MaxBatchGroupOperations} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
+            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} rpAugmentLimit={RpAugmentLimit} dirtyPagesReserveLimit={DirtyPagesReserveLimit} txnDirtyPagesLimit={TransactionDirtyPagesLimit} txnDirtyPagesInitial={TransactionDirtyPagesInitial} readAhead={EnableReadAhead} writeMap={EnableWriteMap} coalesce={EnableCoalesce} batchGroup={EnableBatchGrouping} batchGroupMaxOps={MaxBatchGroupOperations} batchGroupMaxBytes={FormatBytes(MaxBatchGroupBytes)} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
 
     internal static bool TryParseSize(string value, out long result)
     {

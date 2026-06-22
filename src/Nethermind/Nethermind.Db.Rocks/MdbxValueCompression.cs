@@ -17,8 +17,10 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
 {
     private const int LegacyHeaderLength = 9;
     private const int HeaderLength = 10;
+    private const int RawEscapedHeaderLength = 5;
     internal const int DefaultMinValueLength = 256;
     private const int MaxDecodedLength = 1024 * 1024 * 1024;
+    private const byte RawEscapedVersion = 0;
     private const byte LegacySnappyVersion = 1;
     private const byte Version = 2;
     private const byte SnappyCodec = 1;
@@ -29,6 +31,7 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
 
     private readonly ThreadLocal<Compressor> _zstdCompressors = new(() => new Compressor(ZstdCompressionLevel), trackAllValues: true);
     private readonly ThreadLocal<Decompressor> _zstdDecompressors = new(() => new Decompressor(), trackAllValues: true);
+    private readonly ThreadLocal<byte[]> _zstdEncodeBuffers = new(() => [], trackAllValues: false);
     private bool _disposed;
 
     private static ReadOnlySpan<byte> Magic => [0xFF, (byte)'N', (byte)'M', (byte)'X'];
@@ -63,18 +66,22 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
         return new MdbxValueCompression(enabled, minValueLength);
     }
 
-    public bool TryEncode(ReadOnlySpan<byte> value, out byte[]? buffer, out int length)
+    public bool TryEncode(ReadOnlySpan<byte> value, out byte[]? buffer, out int length) =>
+        TryEncode(value, out buffer, out length, out _);
+
+    public bool TryEncode(ReadOnlySpan<byte> value, out byte[]? buffer, out int length, out MdbxValueEncodingKind encodingKind)
     {
         buffer = null;
         length = value.Length;
+        encodingKind = MdbxValueEncodingKind.Raw;
         if (!Enabled || value.Length < MinValueLength)
         {
-            return false;
+            return TryEscapeRaw(value, MdbxValueEncodingKind.Raw, out buffer, out length, out encodingKind);
         }
 
         Compressor compressor = _zstdCompressors.Value!;
         int maxCompressedLength = Compressor.GetCompressBound(value.Length);
-        byte[] candidate = GC.AllocateUninitializedArray<byte>(HeaderLength + maxCompressedLength);
+        byte[] candidate = GetZstdEncodeBuffer(HeaderLength + maxCompressedLength);
         Magic.CopyTo(candidate);
         candidate[4] = Version;
         candidate[5] = ZstdCodec;
@@ -82,17 +89,20 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
 
         if (!compressor.TryWrap(value, candidate.AsSpan(HeaderLength), out int compressedLength))
         {
-            return false;
+            encodingKind = MdbxValueEncodingKind.CompressionRejected;
+            return TryEscapeRaw(value, MdbxValueEncodingKind.CompressionRejected, out buffer, out length, out encodingKind);
         }
 
         int storedLength = HeaderLength + compressedLength;
         if (storedLength >= value.Length)
         {
-            return false;
+            encodingKind = MdbxValueEncodingKind.CompressionRejected;
+            return TryEscapeRaw(value, MdbxValueEncodingKind.CompressionRejected, out buffer, out length, out encodingKind);
         }
 
         buffer = candidate;
         length = storedLength;
+        encodingKind = MdbxValueEncodingKind.Compressed;
         return true;
     }
 
@@ -104,6 +114,11 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
         }
 
         byte version = stored[4];
+        if (version == RawEscapedVersion)
+        {
+            return CopyRaw(stored[RawEscapedHeaderLength..]);
+        }
+
         int expectedLength = version == LegacySnappyVersion
             ? BinaryPrimitives.ReadInt32LittleEndian(stored.Slice(5, sizeof(int)))
             : BinaryPrimitives.ReadInt32LittleEndian(stored.Slice(6, sizeof(int)));
@@ -162,17 +177,49 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
 
     private static bool LooksCompressed(ReadOnlySpan<byte> stored)
     {
-        if (stored.Length <= LegacyHeaderLength || !stored[..Magic.Length].SequenceEqual(Magic))
+        if (stored.Length <= RawEscapedHeaderLength || !stored[..Magic.Length].SequenceEqual(Magic))
         {
             return false;
         }
 
         return stored[4] switch
         {
+            RawEscapedVersion => true,
             LegacySnappyVersion => true,
             Version => stored.Length > HeaderLength,
             _ => false,
         };
+    }
+
+    private static bool TryEscapeRaw(ReadOnlySpan<byte> value, MdbxValueEncodingKind fallbackKind, out byte[]? buffer, out int length, out MdbxValueEncodingKind encodingKind)
+    {
+        if (!value.StartsWith(Magic))
+        {
+            buffer = null;
+            length = value.Length;
+            encodingKind = fallbackKind;
+            return false;
+        }
+
+        buffer = GC.AllocateUninitializedArray<byte>(RawEscapedHeaderLength + value.Length);
+        Magic.CopyTo(buffer);
+        buffer[4] = RawEscapedVersion;
+        value.CopyTo(buffer.AsSpan(RawEscapedHeaderLength));
+        length = buffer.Length;
+        encodingKind = MdbxValueEncodingKind.EscapedRaw;
+        return true;
+    }
+
+    private byte[] GetZstdEncodeBuffer(int length)
+    {
+        byte[] buffer = _zstdEncodeBuffers.Value!;
+        if (buffer.Length < length)
+        {
+            buffer = GC.AllocateUninitializedArray<byte>(length);
+            _zstdEncodeBuffers.Value = buffer;
+        }
+
+        return buffer;
     }
 
     private static byte[] DecodeSnappy(ReadOnlySpan<byte> compressed, int expectedLength, ReadOnlySpan<byte> stored)
@@ -217,6 +264,7 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
         }
 
         _disposed = true;
+        _zstdEncodeBuffers.Dispose();
         DisposeThreadLocalValues(_zstdCompressors);
         DisposeThreadLocalValues(_zstdDecompressors);
     }
@@ -231,4 +279,12 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
 
         threadLocal.Dispose();
     }
+}
+
+internal enum MdbxValueEncodingKind
+{
+    Raw,
+    CompressionRejected,
+    Compressed,
+    EscapedRaw,
 }
