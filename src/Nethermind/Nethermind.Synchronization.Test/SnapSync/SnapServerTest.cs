@@ -192,6 +192,87 @@ public class SnapServerTest
         proofs.Dispose();
     }
 
+    // Refresh re-fetches a single account via GetAccountRange and verifies its storage root against the
+    // state root from the proof. A correct root must verify and propagate the real storage root; a wrong
+    // root must be rejected.
+    [TestCase(true, AddRangeResult.OK)]
+    [TestCase(false, AddRangeResult.DifferentRootHash)]
+    public void TestRefreshAccount(bool useCorrectRoot, AddRangeResult expectedResult)
+    {
+        using ISnapServerContext context = CreateContext();
+        FillWithTestAccounts(context);
+        Hash256 storageRoot = FillAccountWithDefaultStorage(context);
+
+        ValueHash256 path = TestItem.Tree.AccountsWithPaths[0].Path;
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
+        using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
+
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        using AccountsToRefreshRequest request = new()
+        {
+            RootHash = useCorrectRoot ? context.RootHash : TestItem.KeccakA,
+            Paths = new ArrayPoolList<AccountWithStorageStartingHash>(1)
+            {
+                new() { PathAndAccount = stale, StorageStartingHash = ValueKeccak.Zero, StorageHashLimit = Keccak.MaxValue }
+            }
+        };
+
+        AddRangeResult result = context.SnapProvider.RefreshAccounts(request, response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            // On success the stale empty storage root must be replaced by the verified one.
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
+        }
+    }
+
+    // The range proof can omit the leaf node. Verification must still succeed by setting the account from the
+    // returned accounts (not by hashing a proof node), then checking the reconstructed root.
+    [Test]
+    public void TestRefreshAccount_LeafMissingFromProof()
+    {
+        using ISnapServerContext context = CreateContext();
+        FillWithTestAccounts(context);
+        Hash256 storageRoot = FillAccountWithDefaultStorage(context);
+
+        ValueHash256 path = TestItem.Tree.AccountsWithPaths[0].Path;
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
+
+        // Drop the leaf nodes from the proof; the leaves are still present in the returned accounts.
+        ArrayPoolList<byte[]> trimmedProofs = new(proofs.Count);
+        for (int i = 0; i < proofs.Count; i++)
+        {
+            byte[] proof = proofs[i].ToArray();
+            TrieNode node = new(NodeType.Unknown, proof);
+            node.ResolveNode(null!, TreePath.Empty);
+            if (!node.IsLeaf) trimmedProofs.Add(proof);
+        }
+        Assert.That(trimmedProofs.Count, Is.LessThan(proofs.Count), "test setup: expected at least one leaf in the proof");
+        proofs.Dispose();
+
+        using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = new ByteArrayListAdapter(trimmedProofs) };
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        using AccountsToRefreshRequest request = new()
+        {
+            RootHash = context.RootHash,
+            Paths = new ArrayPoolList<AccountWithStorageStartingHash>(1)
+            {
+                new() { PathAndAccount = stale, StorageStartingHash = ValueKeccak.Zero, StorageHashLimit = Keccak.MaxValue }
+            }
+        };
+
+        AddRangeResult result = context.SnapProvider.RefreshAccounts(request, response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(storageRoot));
+        }
+    }
+
     [Test]
     public void TestGetTrieNode_Root()
     {
