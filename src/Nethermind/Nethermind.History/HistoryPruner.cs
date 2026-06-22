@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -176,7 +177,7 @@ public class HistoryPruner : IHistoryPruner
         }
 
         ulong blocksToRetain = retentionEpochs * SlotsPerEpoch;
-        return head.Value >= blocksToRetain ? head.Value - blocksToRetain : 0;
+        return head.Value.SaturatingSub(blocksToRetain);
     }
 
     private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)

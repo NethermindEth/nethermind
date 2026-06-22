@@ -647,7 +647,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         VmState<TGasPolicy> vmState = VmState;
         ulong stateGasFloor = vmState.InitialStateGasUsed;
-        ulong refundableStateGas = TGasPolicy.GetStateGasUsed(in gas) > stateGasFloor ? TGasPolicy.GetStateGasUsed(in gas) - stateGasFloor : 0UL;
+        ulong refundableStateGas = TGasPolicy.GetStateGasUsed(in gas).SaturatingSub(stateGasFloor);
         ulong appliedRefund = Math.Min(amount, refundableStateGas);
 
         if (appliedRefund > 0)

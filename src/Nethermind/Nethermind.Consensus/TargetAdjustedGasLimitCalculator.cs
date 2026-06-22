@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
@@ -25,7 +26,7 @@ namespace Nethermind.Consensus
             {
                 ulong target = targetGasLimit.Value;
                 ulong div = parentGasLimit / spec.GasLimitBoundDivisor;
-                ulong maxGasLimitDifference = div > 1 ? div - 1 : 0UL;
+                ulong maxGasLimitDifference = div.SaturatingSub(1);
                 gasLimit = target > parentGasLimit
                     ? parentGasLimit + Math.Min(target - parentGasLimit, maxGasLimitDifference)
                     : parentGasLimit - Math.Min(parentGasLimit - target, maxGasLimitDifference);

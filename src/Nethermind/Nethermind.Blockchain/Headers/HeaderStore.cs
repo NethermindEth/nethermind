@@ -117,7 +117,7 @@ public class HeaderStore(
         {
             Span<byte> startKey = stackalloc byte[40];
             Span<byte> endKey = stackalloc byte[40];
-            ulong startBlockNumber = endBlockNumber + 1 > (ulong)count ? endBlockNumber - (ulong)count + 1 : 0UL;
+            ulong startBlockNumber = (endBlockNumber + 1).SaturatingSub((ulong)count);
             KeyValueStoreExtensions.GetBlockNumPrefixedKey(startBlockNumber, default, startKey);
             KeyValueStoreExtensions.GetBlockNumPrefixedKey(endBlockNumber + 1, default, endKey);
 

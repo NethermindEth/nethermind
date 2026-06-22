@@ -161,10 +161,9 @@ internal class TrieStoreDirtyNodesCache
             ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
             : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
 
-    // Sentinel value: ulong.MaxValue means "no real block number assigned yet" (node was
-    // just discovered/created, not committed from a numbered block). This replaces the
-    // previous long -1 sentinel. IsNoLongerNeeded treats this as always-live because
-    // ulong.MaxValue will never be < LastPersistedBlockNumber for any real chain height.
+    // Sentinel for "no real block number assigned yet" (node discovered/created without a
+    // numbered commit). IsNoLongerNeeded treats this as always-live since the sentinel is
+    // always above any real chain height.
     private const ulong NoCommitSentinel = ulong.MaxValue;
 
     private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash

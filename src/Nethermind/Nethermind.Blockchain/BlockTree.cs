@@ -1191,7 +1191,7 @@ namespace Nethermind.Blockchain
         {
             BlockHeader? newPivotHeader = FinalizedHash is not null
                 ? FindHeader(FinalizedHash, BlockTreeLookupOptions.RequireCanonical)
-                : FindHeader((Head?.Number ?? 0UL) > Reorganization.MaxDepth ? (Head.Number - Reorganization.MaxDepth) : 0UL, BlockTreeLookupOptions.RequireCanonical);
+                : FindHeader((Head?.Number ?? 0UL).SaturatingSub(Reorganization.MaxDepth), BlockTreeLookupOptions.RequireCanonical);
 
             if (newPivotHeader is null)
             {

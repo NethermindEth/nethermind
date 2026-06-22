@@ -8,6 +8,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -244,7 +245,7 @@ namespace Nethermind.Consensus.AuRa
             private void ClearOldCache(ulong step, int validatorCount)
             {
                 ulong siblingMaliceDetectionPeriod = CacheSizeFullRoundsMultiplier * (ulong)validatorCount;
-                ulong oldestStepToKeep = step > siblingMaliceDetectionPeriod ? step - siblingMaliceDetectionPeriod : 0UL;
+                ulong oldestStepToKeep = step.SaturatingSub(siblingMaliceDetectionPeriod);
                 int index = BinarySearch(oldestStepToKeep);
                 int positiveIndex = index >= 0 ? index : ~index;
                 if (positiveIndex > 0)
