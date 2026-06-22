@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Kademlia;
@@ -152,6 +153,52 @@ public class LookupKNearestNeighbourTests
             token);
 
         Assert.That(result, Is.Not.Empty);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_nodes_should_stream_routing_table_nodes_before_network_lookup_finishes(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1]);
+        TaskCompletionSource requestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using IAsyncEnumerator<int> enumerator = lookup.LookupNodes(
+            Self,
+            8,
+            async (_, findToken) =>
+            {
+                requestStarted.SetResult();
+                await Task.Delay(Timeout.Infinite, findToken);
+                return [];
+            },
+            token).GetAsyncEnumerator(token);
+
+        Assert.That(await enumerator.MoveNextAsync(), Is.True);
+        Assert.That(enumerator.Current, Is.EqualTo(Seed1));
+        await requestStarted.Task.WaitAsync(token);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_nodes_should_stop_when_enough_candidates_are_streamed(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1, Seed2]);
+        int requests = 0;
+
+        List<int> result = await lookup.LookupNodes(
+            Self,
+            1,
+            (_, _) =>
+            {
+                requests++;
+                return Task.FromResult<int[]?>([]);
+            },
+            token).ToListAsync(token);
+
+        Assert.That(result, Is.EqualTo(new[] { Seed1 }));
+        Assert.That(requests, Is.Zero);
     }
 
     [Test]

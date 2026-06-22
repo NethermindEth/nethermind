@@ -53,7 +53,7 @@ public sealed class KademliaAdapter(
     private readonly IKademliaDistance<Hash256> _distance = distance;
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaAdapter>();
     private readonly DisposingLruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions");
-    private readonly DisposingLruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges");
+    private readonly LruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges");
     private readonly Queue<SentChallengeExpiry> _sentChallengeExpiries = new();
     private readonly Lock _sentChallengeExpiriesLock = new();
     private long _lastSentChallengeTrimMilliseconds;
@@ -377,10 +377,17 @@ public sealed class KademliaAdapter(
             return;
         }
 
-        Challenge challenge = packetCodec.DecodeWhoAreYou(in packet);
-        byte[] handshakePacket = packetCodec.EncodeHandshake(pendingRequest.Receiver.Id, challenge, pendingRequest.Message, out Session session);
+        byte[] handshakePacket;
+        Session session;
+        ulong requestedEnrSequence;
+        using (Challenge challenge = packetCodec.DecodeWhoAreYou(in packet))
+        {
+            handshakePacket = packetCodec.EncodeHandshake(pendingRequest.Receiver.Id, challenge, pendingRequest.Message, out session);
+            requestedEnrSequence = challenge.EnrSequence;
+        }
+
         SetSession(new SessionKey(pendingRequest.Receiver.Id.Hash.ValueHash256, endpoint), session);
-        if (_logger.IsTrace) _logger.Trace($"Sending discv5 HANDSHAKE for {pendingRequest.Message.MessageType} {pendingRequest.Message.RequestId} to {endpoint}, bytes: {handshakePacket.Length}, requested ENR seq: {challenge.EnrSequence}.");
+        if (_logger.IsTrace) _logger.Trace($"Sending discv5 HANDSHAKE for {pendingRequest.Message.MessageType} {pendingRequest.Message.RequestId} to {endpoint}, bytes: {handshakePacket.Length}, requested ENR seq: {requestedEnrSequence}.");
         await discoveryHandler.SendAsync(handshakePacket, endpoint);
     }
 
@@ -444,51 +451,31 @@ public sealed class KademliaAdapter(
 
         if (IsExpired(sentChallenge, Environment.TickCount64))
         {
-            sentChallenge.Dispose();
             if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake packet from {endpoint}; matching challenge expired.");
             return;
         }
 
-        try
+        TryGetKnownRecord(nodeId, out NodeRecord? knownRecord);
+        if (!PacketCodec.TryDecode(sentChallenge.Packet, nodeId.Bytes, out Packet challengePacket))
         {
-            TryGetKnownRecord(nodeId, out NodeRecord? knownRecord);
-            if (!packetCodec.TryDecryptHandshake(in packet, sentChallenge.Challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord))
+            if (_logger.IsTrace) _logger.Trace($"Unable to decode matching discv5 WHOAREYOU challenge for {endpoint}.");
+            return;
+        }
+
+        Session session;
+        Discv5Message message;
+        NodeRecord? nodeRecord;
+        using (challengePacket)
+        using (Challenge challenge = packetCodec.DecodeWhoAreYou(in challengePacket))
+        {
+            if (!packetCodec.TryDecryptHandshake(in packet, challenge, knownRecord, out session, out message, out nodeRecord))
             {
                 if (_logger.IsTrace) _logger.Trace($"Unable to decrypt discv5 handshake packet from {endpoint}.");
                 return;
             }
-
-            try
-            {
-                NodeRecord? messageRecord = knownRecord;
-                if (nodeRecord is not null)
-                {
-                    if (!HasExpectedNodeId(nodeRecord, nodeId))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake ENR from {endpoint}; ENR node id does not match packet source.");
-                        return;
-                    }
-
-                    if (IsAcceptableNodeRecord(nodeRecord, nodeId, endpoint.Address.IsLoopbackOrPrivateOrLinkLocal, recordFilter))
-                    {
-                        TrySetKnownRecord(nodeId, nodeRecord, out NodeRecord currentRecord);
-                        messageRecord = currentRecord;
-                    }
-                }
-
-                SetSession(new SessionKey(nodeId, endpoint), session);
-                if (_logger.IsTrace) _logger.Trace($"Received discv5 handshake message {message.MessageType} {message.RequestId} from {endpoint}, ENR included: {nodeRecord is not null}.");
-                await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
-            }
-            finally
-            {
-                message.Dispose();
-            }
         }
-        finally
-        {
-            sentChallenge.Dispose();
-        }
+
+        await HandleHandshakeMessage(endpoint, nodeId, session, message, nodeRecord, knownRecord, token);
     }
 
     private async Task SendWhoAreYou(IPEndPoint endpoint, Packet requestPacket, ValueHash256 nodeId)
@@ -509,10 +496,54 @@ public sealed class KademliaAdapter(
         }
 
         ulong enrSequence = TryGetKnownRecord(nodeId, out NodeRecord? record) ? record.EnrSequence : 0UL;
-        byte[] packet = packetCodec.EncodeWhoAreYou(nodeId.Bytes, requestPacket.Nonce.Span, enrSequence, out Challenge challenge);
-        SetSentChallenge(challengeKey, challenge, packet);
+        byte[] packet = packetCodec.EncodeWhoAreYou(nodeId.Bytes, requestPacket.Nonce.Span, enrSequence);
+        SetSentChallenge(challengeKey, packet);
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 WHOAREYOU challenge to {endpoint}, known ENR seq: {enrSequence}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, endpoint);
+    }
+
+    private async Task HandleHandshakeMessage(
+        IPEndPoint endpoint,
+        ValueHash256 nodeId,
+        Session session,
+        Discv5Message message,
+        NodeRecord? nodeRecord,
+        NodeRecord? knownRecord,
+        CancellationToken token)
+    {
+        bool sessionStored = false;
+        try
+        {
+            NodeRecord? messageRecord = knownRecord;
+            if (nodeRecord is not null)
+            {
+                if (!HasExpectedNodeId(nodeRecord, nodeId))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 handshake ENR from {endpoint}; ENR node id does not match packet source.");
+                    return;
+                }
+
+                if (IsAcceptableNodeRecord(nodeRecord, nodeId, endpoint.Address.IsLoopbackOrPrivateOrLinkLocal, recordFilter))
+                {
+                    TrySetKnownRecord(nodeId, nodeRecord, out NodeRecord currentRecord);
+                    messageRecord = currentRecord;
+                }
+            }
+
+            SetSession(new SessionKey(nodeId, endpoint), session);
+            sessionStored = true;
+            if (_logger.IsTrace) _logger.Trace($"Received discv5 handshake message {message.MessageType} {message.RequestId} from {endpoint}, ENR included: {nodeRecord is not null}.");
+            await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
+        }
+        finally
+        {
+            if (!sessionStored)
+            {
+                session.Dispose();
+            }
+
+            message.Dispose();
+        }
     }
 
     private async Task HandleMessage(PublicKey remotePublicKey, IPEndPoint endpoint, Discv5Message message, CancellationToken token, NodeRecord? nodeRecord = null)
@@ -781,11 +812,11 @@ public sealed class KademliaAdapter(
     internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;
 
-    private void SetSentChallenge(ChallengeKey challengeKey, Challenge challenge, byte[] packet)
+    private void SetSentChallenge(ChallengeKey challengeKey, byte[] packet)
     {
         long now = Environment.TickCount64;
         TryTrimExpiredChallenges(now);
-        _sentChallenges.Set(challengeKey, new SentChallenge(challenge, packet, now));
+        _sentChallenges.Set(challengeKey, new SentChallenge(packet, now));
         lock (_sentChallengeExpiriesLock)
         {
             _sentChallengeExpiries.Enqueue(new SentChallengeExpiry(challengeKey, now));
@@ -815,10 +846,7 @@ public sealed class KademliaAdapter(
                 if (_sentChallenges.TryGet(expiry.Key, out SentChallenge challenge) &&
                     challenge.CreatedAtMilliseconds == expiry.CreatedAtMilliseconds)
                 {
-                    if (_sentChallenges.TryRemove(expiry.Key, out SentChallenge removed))
-                    {
-                        removed.Dispose();
-                    }
+                    _sentChallenges.TryRemove(expiry.Key, out _);
                 }
             }
         }

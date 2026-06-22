@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Nethermind.Logging;
 
 namespace Nethermind.Kademlia;
@@ -33,6 +35,96 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     )
+        => await LookupCore(targetHash, k, findNeighbourOp, null, token);
+
+    public async IAsyncEnumerable<TNode> LookupNodes(
+        TKadKey targetHash,
+        int maxResults,
+        Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
+        [EnumeratorCancellation] CancellationToken token
+    )
+    {
+        if (maxResults <= 0)
+        {
+            yield break;
+        }
+
+        Channel<TNode> results = Channel.CreateUnbounded<TNode>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        int emitted = 0;
+        Task producer = ProduceResults();
+
+        try
+        {
+            await foreach (TNode node in results.Reader.ReadAllAsync(token))
+            {
+                yield return node;
+            }
+
+            await producer;
+        }
+        finally
+        {
+            await cts.CancelAsync();
+            try
+            {
+                await producer;
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+            }
+        }
+
+        async Task ProduceResults()
+        {
+            Exception? error = null;
+            try
+            {
+                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token);
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+            }
+            catch (Exception e)
+            {
+                error = e;
+            }
+            finally
+            {
+                results.Writer.TryComplete(error);
+            }
+        }
+
+        bool Publish(TNode node)
+        {
+            int count = Interlocked.Increment(ref emitted);
+            if (count <= maxResults)
+            {
+                results.Writer.TryWrite(node);
+            }
+
+            if (count >= maxResults)
+            {
+                cts.Cancel();
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    private async Task<TNode[]> LookupCore(
+        TKadKey targetHash,
+        int k,
+        Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
+        Func<TNode, bool>? publishNode,
+        CancellationToken token
+    )
     {
         if (_logger.IsDebug)
         {
@@ -58,23 +150,32 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         // Ordered by highest distance. Added on result. Get popped as result.
         PriorityQueue<(TKadKey, TNode), TKadKey> finalResult = new(comparerReverse);
 
-        foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash))
-        {
-            TKadKey nodeHash = nodeHashProvider.GetHash(node);
-            seen.TryAdd(nodeHash, node);
-            bestSeen.Enqueue((nodeHash, node), nodeHash);
-        }
-
         TaskCompletionSource roundComplete = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int closestNodeRound = 0;
         int currentRound = 0;
         int queryingTask = 0;
         bool finished = false;
 
-        Task[] worker = new Task[config.Alpha];
-        for (int i = 0; i < worker.Length; i++)
+        foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash))
         {
-            worker[i] = Task.Run(async () =>
+            TKadKey nodeHash = nodeHashProvider.GetHash(node);
+            if (!seen.TryAdd(nodeHash, node))
+            {
+                continue;
+            }
+
+            bestSeen.Enqueue((nodeHash, node), nodeHash);
+            if (!TryPublish(node))
+            {
+                Volatile.Write(ref finished, true);
+                break;
+            }
+        }
+
+        Task[] workers = new Task[config.Alpha];
+        for (int i = 0; i < workers.Length; i++)
+        {
+            workers[i] = Task.Run(async () =>
             {
                 while (!Volatile.Read(ref finished))
                 {
@@ -125,18 +226,18 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
 
         // When any of the worker is finished, we consider the whole query as done.
         // This prevent this operation from hanging on a timed out request
-        await Task.WhenAny(worker);
+        await Task.WhenAny(workers);
         Volatile.Write(ref finished, true);
         await cts.CancelAsync();
         try
         {
-            await Task.WhenAll(worker);
+            await Task.WhenAll(workers);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
         }
 
-        return CompileResult();
+        return publishNode is null ? CompileResult() : [];
 
         async Task<TNode[]?> WrappedFindNeighbourOp(TNode node)
         {
@@ -210,6 +311,11 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                     if (!seen.TryAdd(neighbourHash, neighbour)) continue;
 
                     bestSeen.Enqueue((neighbourHash, neighbour), neighbourHash);
+                    if (!TryPublish(neighbour))
+                    {
+                        Volatile.Write(ref finished, true);
+                        break;
+                    }
 
                     if (closestNodeRound < round)
                     {
@@ -263,5 +369,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 return false;
             }
         }
+
+        bool TryPublish(TNode node) => publishNode?.Invoke(node) ?? true;
     }
 }

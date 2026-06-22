@@ -43,6 +43,14 @@ public interface IKademlia<TKey, TNode>
     Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null);
 
     /// <summary>
+    /// Looks up nodes near <paramref name="key"/> and streams newly discovered candidates as soon as they are seen.
+    /// </summary>
+    /// <param name="key">Protocol-specific lookup key.</param>
+    /// <param name="token">Cancellation token for the lookup.</param>
+    /// <param name="maxResults">Optional maximum number of candidates to emit. Defaults to <see cref="KademliaConfig{TNode}.KSize"/>.</param>
+    IAsyncEnumerable<TNode> LookupNodes(TKey key, CancellationToken token, int? maxResults = null);
+
+    /// <summary>
     /// Returns the closest routing-table entries to <paramref name="target"/> without traversing the network.
     /// </summary>
     /// <param name="target">Protocol-specific lookup key.</param>

@@ -15,6 +15,8 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
 public sealed class NodeSource(
     IKademlia<PublicKey, Node> kademlia,
+    IKademliaDiscovery<PublicKey, Node> kademliaDiscovery,
+    IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     IDiscv5RecordFilter recordFilter,
     ILogManager logManager)
@@ -33,6 +35,8 @@ public sealed class NodeSource(
         Channel<Node> channel = Channel.CreateBounded<Node>(ChannelCapacity);
         RecentNodeFilter<Hash256> recentlyWrittenNodes = new(_recentNodeLimit);
         int initialNodes = 0;
+        using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        CancellationToken discoveryToken = disposeCts.Token;
 
         foreach (Node node in kademlia.IterateNodes())
         {
@@ -47,6 +51,7 @@ public sealed class NodeSource(
 
         if (_logger.IsDebug) _logger.Debug($"Discv5 node source emitted {initialNodes} initial nodes from the routing table.");
 
+        Task discoverTask = DiscoverAsync();
         kademlia.OnNodeAdded += Handler;
         try
         {
@@ -58,13 +63,51 @@ public sealed class NodeSource(
         finally
         {
             kademlia.OnNodeAdded -= Handler;
+            await disposeCts.CancelAsync();
+            channel.Writer.TryComplete();
+            try
+            {
+                await discoverTask;
+            }
+            catch (OperationCanceledException) when (discoveryToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        async Task DiscoverAsync()
+        {
+            try
+            {
+                await foreach (Node node in kademliaDiscovery.DiscoverNodes(discoveryConfig.ConcurrentDiscoveryJob, ChannelCapacity, discoveryToken))
+                {
+                    if (!TryReservePeerCandidate(node, out Node? peerCandidate))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        await channel.Writer.WriteAsync(peerCandidate, discoveryToken);
+                    }
+                    catch
+                    {
+                        recentlyWrittenNodes.Release(peerCandidate.IdHash);
+                        throw;
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (discoveryToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error("Discv5 Kademlia discovery node stream failed.", ex);
+            }
         }
 
         void Handler(object? _, Node node)
         {
-            if (IsExcluded(node) ||
-                !TryCreatePeerCandidate(node, out Node? peerCandidate) ||
-                !recentlyWrittenNodes.TryReserve(peerCandidate.IdHash))
+            if (!TryReservePeerCandidate(node, out Node? peerCandidate))
             {
                 return;
             }
@@ -80,6 +123,20 @@ public sealed class NodeSource(
             {
                 _logger.Trace($"Discv5 node source queue is full, dropping discovered node {node:s}.");
             }
+        }
+
+        bool TryReservePeerCandidate(Node node, [NotNullWhen(true)] out Node? peerCandidate)
+        {
+            peerCandidate = null;
+            if (IsExcluded(node) ||
+                !TryCreatePeerCandidate(node, out Node? candidate) ||
+                !recentlyWrittenNodes.TryReserve(candidate.IdHash))
+            {
+                return false;
+            }
+
+            peerCandidate = candidate;
+            return true;
         }
     }
 

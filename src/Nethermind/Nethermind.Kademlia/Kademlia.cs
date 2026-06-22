@@ -82,17 +82,30 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         return _lookupAlgo.Lookup(
             keyHash,
             k ?? _kSize,
-            async (nextNode, token) =>
-            {
-                if (SameAsSelf(nextNode))
-                {
-                    return _routingTable.GetKNearestNeighbour(keyHash);
-                }
-
-                return await _kademliaMessageSender.FindNeighbours(nextNode, key, token);
-            },
+            (nextNode, token) => FindNeighbours(key, keyHash, nextNode, token),
             token
         );
+    }
+
+    public IAsyncEnumerable<TNode> LookupNodes(TKey key, CancellationToken token, int? maxResults = null)
+    {
+        TKadKey keyHash = _keyOperator.GetKeyHash(key);
+        return _lookupAlgo.LookupNodes(
+            keyHash,
+            maxResults ?? _kSize,
+            (nextNode, token) => FindNeighbours(key, keyHash, nextNode, token),
+            token
+        );
+    }
+
+    private async Task<TNode[]?> FindNeighbours(TKey key, TKadKey keyHash, TNode nextNode, CancellationToken token)
+    {
+        if (SameAsSelf(nextNode))
+        {
+            return _routingTable.GetKNearestNeighbour(keyHash);
+        }
+
+        return await _kademliaMessageSender.FindNeighbours(nextNode, key, token);
     }
 
     public async Task Run(CancellationToken token)
@@ -130,7 +143,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
                 // Should be added on Pong.
                 if (await _kademliaMessageSender.Ping(node, token))
                 {
-                    System.Threading.Interlocked.Increment(ref onlineBootNodes);
+                    Interlocked.Increment(ref onlineBootNodes);
                 }
             }
             catch (OperationCanceledException)

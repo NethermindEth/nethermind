@@ -5,12 +5,33 @@ using System.Security.Cryptography;
 
 namespace Nethermind.Network.Discovery.Discv5.Packets;
 
-internal sealed record Challenge(byte[] RequestNonce, byte[] IdNonce, ulong EnrSequence, byte[] ChallengeData) : IDisposable
+internal sealed class Challenge : IDisposable
 {
+    private readonly ReadOnlyMemory<byte> _challengeData;
+    private readonly byte[]? _ownedChallengeData;
+
+    public Challenge(ulong enrSequence, ReadOnlyMemory<byte> challengeData)
+    {
+        EnrSequence = enrSequence;
+        _challengeData = challengeData;
+    }
+
+    public Challenge(ulong enrSequence, byte[] ownedChallengeData)
+    {
+        EnrSequence = enrSequence;
+        _ownedChallengeData = ownedChallengeData;
+        _challengeData = ownedChallengeData;
+    }
+
+    public ulong EnrSequence { get; }
+
+    public ReadOnlySpan<byte> ChallengeData => _challengeData.Span;
+
     public void Dispose()
     {
-        CryptographicOperations.ZeroMemory(RequestNonce);
-        CryptographicOperations.ZeroMemory(IdNonce);
-        CryptographicOperations.ZeroMemory(ChallengeData);
+        if (_ownedChallengeData is not null)
+        {
+            CryptographicOperations.ZeroMemory(_ownedChallengeData);
+        }
     }
 }

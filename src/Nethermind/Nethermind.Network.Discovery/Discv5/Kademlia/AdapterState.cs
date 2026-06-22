@@ -32,7 +32,4 @@ internal readonly record struct NonceKey(ulong Prefix, uint Suffix)
 
 internal sealed record PendingRequest(Node Receiver, Discv5Message Message);
 
-internal readonly record struct SentChallenge(Challenge Challenge, byte[] Packet, long CreatedAtMilliseconds) : IDisposable
-{
-    public void Dispose() => Challenge.Dispose();
-}
+internal readonly record struct SentChallenge(byte[] Packet, long CreatedAtMilliseconds);

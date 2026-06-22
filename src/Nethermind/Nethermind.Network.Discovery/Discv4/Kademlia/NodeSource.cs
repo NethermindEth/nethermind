@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Core.Crypto;
@@ -14,7 +13,7 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
 public sealed class NodeSource(
     IKademlia<PublicKey, Node> kademlia,
-    IIteratorNodeLookup<PublicKey, Node> lookup,
+    IKademliaDiscovery<PublicKey, Node> kademliaDiscovery,
     IKademliaAdapter discv4Adapter,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
@@ -33,95 +32,26 @@ public sealed class NodeSource(
         CancellationToken discoveryToken = disposeCts.Token;
         Channel<Node> ch = Channel.CreateBounded<Node>(ChannelCapacity);
         RecentNodeFilter<ValueHash256> recentlyWrittenNodes = new(_recentNodeLimit);
-        int duplicated = 0;
-        int total = 0;
 
-        async Task DiscoverAsync(PublicKey target)
+        async Task DiscoverAsync()
         {
-            if (_logger.IsDebug) _logger.Debug($"Looking up {target}");
-            bool anyFound = false;
-            int count = 0;
-
-            await foreach (Node node in lookup.Lookup(target, discoveryToken))
+            try
             {
-                if (!discv4Adapter.GetSession(node).HasReceivedPong)
+                await foreach (Node node in kademliaDiscovery.DiscoverNodes(discoveryConfig.ConcurrentDiscoveryJob, ChannelCapacity, discoveryToken))
                 {
-                    if (discv4Adapter.GetSession(node).HasTriedPingRecently)
-                    {
-                        // Tried ping before and did not receive a response
-                        continue;
-                    }
-                    if (!await discv4Adapter.Ping(node, discoveryToken))
-                    {
-                        continue;
-                    }
-                }
-
-                anyFound = true;
-                count++;
-                total++;
-                if (!recentlyWrittenNodes.TryReserve(node.IdHash))
-                {
-                    duplicated++;
-                    continue;
-                }
-
-                try
-                {
-                    await ch.Writer.WriteAsync(node, discoveryToken);
-                }
-                catch
-                {
-                    recentlyWrittenNodes.Release(node.IdHash);
-                    throw;
+                    await WriteDiscoveredNode(node);
                 }
             }
-
-            if (!anyFound)
+            catch (OperationCanceledException) when (discoveryToken.IsCancellationRequested)
             {
-                if (_logger.IsDebug) _logger.Debug($"No node found for {target}");
             }
-            else
+            catch (Exception ex)
             {
-                if (_logger.IsDebug) _logger.Debug($"Found {count} nodes");
+                if (_logger.IsError) _logger.Error("Kademlia discovery node stream failed.", ex);
             }
         }
 
-        Task[] discoverTasks = new Task[discoveryConfig.ConcurrentDiscoveryJob];
-        for (int i = 0; i < discoverTasks.Length; i++)
-        {
-            discoverTasks[i] = Task.Run(async () =>
-            {
-                Random random = new();
-                byte[] randomBytes = new byte[PublicKey.LengthInBytes];
-                while (!discoveryToken.IsCancellationRequested)
-                {
-                    Stopwatch iterationTime = Stopwatch.StartNew();
-
-                    try
-                    {
-                        random.NextBytes(randomBytes);
-                        await DiscoverAsync(new PublicKey(randomBytes));
-
-                        // Prevent high CPU when all node is not reachable due to network connectivity issue.
-                        if (iterationTime.Elapsed < TimeSpan.FromSeconds(1))
-                        {
-                            await Task.Delay(TimeSpan.FromSeconds(1), discoveryToken);
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
-                    }
-                }
-            });
-        }
-
-        Task discoverTask = Task.WhenAll(discoverTasks);
+        Task discoverTask = DiscoverAsync();
 
         try
         {
@@ -147,6 +77,37 @@ public sealed class NodeSource(
         }
 
         yield break;
+
+        async Task WriteDiscoveredNode(Node node)
+        {
+            if (!discv4Adapter.GetSession(node).HasReceivedPong)
+            {
+                if (discv4Adapter.GetSession(node).HasTriedPingRecently)
+                {
+                    return;
+                }
+
+                if (!await discv4Adapter.Ping(node, discoveryToken))
+                {
+                    return;
+                }
+            }
+
+            if (!recentlyWrittenNodes.TryReserve(node.IdHash))
+            {
+                return;
+            }
+
+            try
+            {
+                await ch.Writer.WriteAsync(node, discoveryToken);
+            }
+            catch
+            {
+                recentlyWrittenNodes.Release(node.IdHash);
+                throw;
+            }
+        }
 
         void Handler(object? _, Node addedNode)
         {

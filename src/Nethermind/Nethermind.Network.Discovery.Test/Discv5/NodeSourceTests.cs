@@ -27,11 +27,7 @@ public class NodeSourceTests
     {
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
         kademlia.IterateNodes().Returns(Array.Empty<Node>());
-        NodeSource source = new(
-            kademlia,
-            new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
-            ExecutionLayerDiscv5RecordFilter.Instance,
-            LimboLogs.Instance);
+        NodeSource source = CreateSource(kademlia);
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
         ValueTask<bool> firstMove = enumerator.MoveNextAsync();
@@ -69,11 +65,7 @@ public class NodeSourceTests
     {
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
         kademlia.IterateNodes().Returns(Array.Empty<Node>());
-        NodeSource source = new(
-            kademlia,
-            new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
-            ExecutionLayerDiscv5RecordFilter.Instance,
-            LimboLogs.Instance);
+        NodeSource source = CreateSource(kademlia);
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
         ValueTask<bool> firstMove = enumerator.MoveNextAsync();
@@ -96,8 +88,28 @@ public class NodeSourceTests
         Node executionNode = CreateNode(2);
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
         kademlia.IterateNodes().Returns([consensusOnlyNode, executionNode]);
+        NodeSource source = CreateSource(kademlia);
+
+        await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
+
+        Assert.That(await enumerator.MoveNextAsync(), Is.True);
+        Assert.That(enumerator.Current.Id, Is.EqualTo(TestItem.PrivateKeys[2].PublicKey));
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task DiscoverNodes_ShouldEmitPeerCandidateFromActiveKademliaDiscovery(CancellationToken token)
+    {
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        kademlia.IterateNodes().Returns(Array.Empty<Node>());
+        IKademliaDiscovery<PublicKey, Node> discovery = Substitute.For<IKademliaDiscovery<PublicKey, Node>>();
+        discovery.DiscoverNodes(1, Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(CreateAsyncEnumerable(CreateNode(1, tcpPort: 30303, udpPort: 30304)));
+
         NodeSource source = new(
             kademlia,
+            discovery,
+            new DiscoveryConfig { ConcurrentDiscoveryJob = 1 },
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
             ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
@@ -105,7 +117,26 @@ public class NodeSourceTests
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
 
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        Assert.That(enumerator.Current.Id, Is.EqualTo(TestItem.PrivateKeys[2].PublicKey));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enumerator.Current.Id, Is.EqualTo(TestItem.PrivateKeys[1].PublicKey));
+            Assert.That(enumerator.Current.Port, Is.EqualTo(30303));
+        }
+    }
+
+    private static NodeSource CreateSource(IKademlia<PublicKey, Node> kademlia)
+    {
+        IKademliaDiscovery<PublicKey, Node> discovery = Substitute.For<IKademliaDiscovery<PublicKey, Node>>();
+        discovery.DiscoverNodes(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(CreateAsyncEnumerable<Node>());
+
+        return new NodeSource(
+            kademlia,
+            discovery,
+            new DiscoveryConfig { ConcurrentDiscoveryJob = 0 },
+            new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
+            ExecutionLayerDiscv5RecordFilter.Instance,
+            LimboLogs.Instance);
     }
 
     private static Node CreateNode(int index, int tcpPort = 30303, int udpPort = 30304, bool includeEth2 = false)
@@ -126,4 +157,13 @@ public class NodeSourceTests
 
     private static void RaiseNode(IKademlia<PublicKey, Node> kademlia, Node node) =>
         kademlia.OnNodeAdded += Raise.Event<EventHandler<Node>>(null, node);
+
+    private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(params IEnumerable<T> items)
+    {
+        foreach (T item in items)
+        {
+            await Task.Yield();
+            yield return item;
+        }
+    }
 }

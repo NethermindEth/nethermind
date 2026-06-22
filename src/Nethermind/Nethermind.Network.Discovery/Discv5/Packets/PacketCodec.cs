@@ -62,16 +62,14 @@ public sealed class PacketCodec(
         => EncodePacket(destination.Hash.Bytes, PacketFlag.Ordinary, nonce, _localNodeId.Bytes, encryptionKey, message);
 
     [SkipLocalsInit]
-    internal byte[] EncodeWhoAreYou(ReadOnlySpan<byte> destinationNodeId, ReadOnlySpan<byte> requestNonce, ulong enrSequence, out Challenge challenge)
+    internal byte[] EncodeWhoAreYou(ReadOnlySpan<byte> destinationNodeId, ReadOnlySpan<byte> requestNonce, ulong enrSequence)
     {
-        byte[] idNonce = _cryptoRandom.GenerateRandomBytes(IdNonceSize);
         Span<byte> authData = stackalloc byte[WhoAreYouAuthDataSize];
-        idNonce.CopyTo(authData);
+        Span<byte> idNonce = authData[..IdNonceSize];
+        _cryptoRandom.GenerateRandomBytes(idNonce);
         BinaryPrimitives.WriteUInt64BigEndian(authData[IdNonceSize..], enrSequence);
 
-        byte[] packet = EncodePacket(destinationNodeId, PacketFlag.WhoAreYou, requestNonce, authData, default, null, out byte[] challengeData);
-        challenge = new Challenge(requestNonce.ToArray(), idNonce, enrSequence, challengeData);
-        return packet;
+        return EncodePacket(destinationNodeId, PacketFlag.WhoAreYou, requestNonce, authData, default, null);
     }
 
     [SkipLocalsInit]
@@ -268,9 +266,8 @@ public sealed class PacketCodec(
             throw new RlpException("Invalid WHOAREYOU authdata length.");
         }
 
-        byte[] idNonce = packet.AuthData.Span[..IdNonceSize].ToArray();
         ulong enrSequence = BinaryPrimitives.ReadUInt64BigEndian(packet.AuthData.Span[IdNonceSize..]);
-        return new Challenge(packet.Nonce.ToArray(), idNonce, enrSequence, packet.ChallengeData.ToArray());
+        return new Challenge(enrSequence, packet.ChallengeData);
     }
 
     internal bool TryDecryptHandshake(
@@ -354,24 +351,14 @@ public sealed class PacketCodec(
         ReadOnlySpan<byte> authData,
         ReadOnlySpan<byte> encryptionKey,
         Discv5Message? message)
-        => EncodePacket(destinationNodeId, flag, nonce, authData, encryptionKey, message, out _);
-
-    private byte[] EncodePacket(
-        ReadOnlySpan<byte> destinationNodeId,
-        PacketFlag flag,
-        ReadOnlySpan<byte> nonce,
-        ReadOnlySpan<byte> authData,
-        ReadOnlySpan<byte> encryptionKey,
-        Discv5Message? message,
-        out byte[] messageAd)
     {
         if (message is null)
         {
-            return EncodePacketCore(destinationNodeId, flag, nonce, authData, default, default, out messageAd);
+            return EncodePacketCore(destinationNodeId, flag, nonce, authData, default, default);
         }
 
         using NettyRlpStream encodedMessage = MessageCodec.Encode(message);
-        return EncodePacketCore(destinationNodeId, flag, nonce, authData, encryptionKey, encodedMessage.AsSpan(), out messageAd);
+        return EncodePacketCore(destinationNodeId, flag, nonce, authData, encryptionKey, encodedMessage.AsSpan());
     }
 
     [SkipLocalsInit]
@@ -381,8 +368,7 @@ public sealed class PacketCodec(
         ReadOnlySpan<byte> nonce,
         ReadOnlySpan<byte> authData,
         ReadOnlySpan<byte> encryptionKey,
-        ReadOnlySpan<byte> plaintext,
-        out byte[] messageAd)
+        ReadOnlySpan<byte> plaintext)
     {
         int headerLength = StaticHeaderSize + authData.Length;
         int messageAdLength = MaskingIvSize + headerLength;
@@ -413,9 +399,6 @@ public sealed class PacketCodec(
             }
 
             AesCtrTransform(destinationNodeId[..AesKeySize], maskingIv, messageAdBuffer.Slice(MaskingIvSize, headerLength), packet.AsSpan(MaskingIvSize, headerLength));
-            messageAd = plaintext.IsEmpty
-                ? messageAdBuffer.ToArray()
-                : [];
             return packet;
         }
         finally

@@ -128,14 +128,14 @@ public class CodecTests
         using (packet)
         {
             using PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
-            Challenge challenge = codec.DecodeWhoAreYou(in packet);
+            using Challenge challenge = codec.DecodeWhoAreYou(in packet);
 
             Assert.That(decoded, Is.True);
             Assert.That(packet.Flag, Is.EqualTo(PacketFlag.WhoAreYou));
-            Assert.That(challenge.RequestNonce.ToHexString(true), Is.EqualTo("0x0102030405060708090a0b0c"));
-            Assert.That(challenge.IdNonce.ToHexString(true), Is.EqualTo("0x0102030405060708090a0b0c0d0e0f10"));
+            Assert.That(packet.Nonce.Span.SequenceEqual(Bytes.FromHexString("0x0102030405060708090a0b0c")), Is.True);
+            Assert.That(packet.AuthData.Span[..16].SequenceEqual(Bytes.FromHexString("0x0102030405060708090a0b0c0d0e0f10")), Is.True);
             Assert.That(challenge.EnrSequence, Is.Zero);
-            Assert.That(challenge.ChallengeData, Is.EqualTo(challengeData));
+            Assert.That(challenge.ChallengeData.SequenceEqual(challengeData), Is.True);
         }
     }
 
@@ -175,11 +175,7 @@ public class CodecTests
         bool includesRecord)
     {
         byte[] packetBytes = Bytes.FromHexString(packetHex);
-        Challenge challenge = new(
-            Bytes.FromHexString("0x0102030405060708090a0b0c"),
-            Bytes.FromHexString("0x0102030405060708090a0b0c0d0e0f10"),
-            challengeEnrSequence,
-            Bytes.FromHexString(challengeDataHex));
+        using Challenge challenge = new(challengeEnrSequence, Bytes.FromHexString(challengeDataHex));
         using PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
         NodeRecord? knownRecord = includesRecord ? null : CreateNodeRecord(new PrivateKey(GethNodeAPrivateKey));
 
