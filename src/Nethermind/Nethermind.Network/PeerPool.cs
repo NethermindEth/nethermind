@@ -76,8 +76,11 @@ namespace Nethermind.Network
 
         private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
         {
-            if (Peers.TryGetValue(e.Node.Id, out Peer? peer) && (peer.Node.IsStatic || peer.Node.IsBootnode))
+            if (Peers.TryGetValue(e.Node.Id, out Peer? peer)
+                && (peer.InSession is not null || peer.OutSession is not null))
+            {
                 return;
+            }
 
             TryRemove(e.Node.Id, out _);
         }
