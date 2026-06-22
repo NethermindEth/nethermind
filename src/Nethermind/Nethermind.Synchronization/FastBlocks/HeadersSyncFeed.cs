@@ -86,7 +86,6 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual ProgressLogger HeadersSyncProgressLoggerReport => _syncReport.FastBlocksHeaders;
 
         protected virtual ulong HeadersDestinationNumber => 0;
-        // LowestInsertedBlockHeader.Number is ulong; compare against 1UL. Use ulong max sentinel.
         protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? ulong.MaxValue) <= 1UL;
 
         protected virtual ulong TotalBlocks => _blockTree.SyncPivot.BlockNumber;
@@ -197,8 +196,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
             base.InitializeFeed();
             // null lowest header means nothing inserted yet — without this guard the bar would briefly read 100%.
-            // Both _pivotNumber and LowestInsertedBlockHeader.Number are ulong, so the arithmetic is pure ulong
-            // and no cast is needed when passing to Reset(ulong, ulong).
             ulong currentValue = LowestInsertedBlockHeader is null ? 0UL : (_pivotNumber - LowestInsertedBlockHeader.Number + 1);
             HeadersSyncProgressLoggerReport.Reset(currentValue, TotalBlocks);
         }
@@ -302,7 +299,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual void PostFinishCleanUp()
         {
-            // TotalBlocks is ulong; ProgressLogger.Update now accepts ulong — no cast required.
             HeadersSyncProgressLoggerReport.Update(TotalBlocks);
             HeadersSyncProgressLoggerReport.CurrentQueued = 0;
             HeadersSyncProgressLoggerReport.MarkEnd();
@@ -620,7 +616,6 @@ namespace Nethermind.Synchronization.FastBlocks
             using ArrayPoolList<BlockHeader> headersToAdd = new(response.Length);
             (Hash256 nextHeaderHash, UInt256? nextHeaderTotalDifficulty) = _expectedNextHeader;
 
-            // These are adjusted during iteration; arithmetic is safe for realistic block heights.
             ulong addedLast = batch.StartNumber == 0 ? 0UL : batch.StartNumber - 1UL;
             ulong addedEarliest = batch.EndNumber + 1UL;
             BlockHeader? lowestInsertedHeader = null;
@@ -634,7 +629,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     continue;
                 }
 
-                // Both header.Number and batch.StartNumber are ulong.
                 if (header.Number != batch.StartNumber + (ulong)i)
                 {
                     if (batch.ResponseSourcePeer is not null)
@@ -669,7 +663,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 headersToAdd.Add(header);
 
-                // header.Number is ulong — direct ulong arithmetic.
                 if (header.Number < addedEarliest) addedEarliest = header.Number;
                 if (header.Number > addedLast) addedLast = header.Number;
             }
@@ -754,8 +747,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (LowestInsertedBlockHeader is not null)
             {
-                // Both _pivotNumber and LowestInsertedBlockHeader.Number are ulong. The subtraction yields
-                // ulong directly; ProgressLogger.Update now accepts ulong so no cast is required here.
                 HeadersSyncProgressLoggerReport.Update(_pivotNumber - LowestInsertedBlockHeader.Number + 1);
             }
 
@@ -769,7 +760,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 BlockHeader lowestInserted = LowestInsertedBlockHeader;
                 // response does not carry expected data
-                // header.Number is ulong; lowestInserted.Number is ulong — direct comparison is fine.
                 if (header.Number == lowestInserted?.Number && header.Hash != lowestInserted?.Hash)
                 {
                     if (batch.ResponseSourcePeer is not null)
@@ -791,8 +781,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     // However, if the header hash does match the parent of the LowestInsertedBlockHeader, then its just
                     // `_nextHeaderHash` not updated as the `BlockTree.Insert` has not returned yet.
                     // We just let it go to the dependency graph.
-                    // header.Number is ulong; _pivotNumber is ulong; LowestInsertedBlockHeader.Number is ulong.
-                    // Compute expected previous number: default to (_pivotNumber+1) when no header inserted yet.
+                    // Expected previous number: default to (_pivotNumber+1) when no header inserted yet.
                     ulong expectedPrevNumber = LowestInsertedBlockHeader?.Number ?? (_pivotNumber + 1);
                     if (header.Number == expectedPrevNumber - 1UL && header.Hash != LowestInsertedBlockHeader?.ParentHash)
                     {
@@ -808,7 +797,6 @@ namespace Nethermind.Synchronization.FastBlocks
                         return false;
                     }
 
-                    // header.Number and LowestInsertedBlockHeader.Number are both ulong — direct comparison.
                     if (header.Number == LowestInsertedBlockHeader?.Number)
                     {
                         if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
@@ -823,7 +811,6 @@ namespace Nethermind.Synchronization.FastBlocks
                         return false;
                     }
 
-                    // _dependencies is keyed by ulong — header.Number is ulong, no cast needed.
                     if (_dependencies.ContainsKey(header.Number))
                     {
                         EnqueueBatch(batch, true);

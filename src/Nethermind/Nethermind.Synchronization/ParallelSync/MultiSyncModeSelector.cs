@@ -365,9 +365,6 @@ namespace Nethermind.Synchronization.ParallelSync
             // and we need to sync away from it.
             // Note: its ok if target block height is not accurate as long as full sync downloader does not stop
             //  earlier than this condition below which would cause a hang.
-            // Safe: TotalSyncLag is derived from non-negative config ints, and TargetBlock >= TotalSyncLag is
-            // checked implicitly — if TargetBlock < TotalSyncLag the subtraction wraps to a huge ulong so
-            // Header (a real block number) will never be >= it, giving the correct "not reached" result.
             bool notReachedFullSyncTransition = best.Header < best.TargetBlock - TotalSyncLag;
 
             // Long range catch-up (switching back to fast/state sync when far behind) was removed.
@@ -690,10 +687,8 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         private static bool IsSnapshotInvalid(Snapshot best) =>
-            // All fields are ulong — the only invalid sentinel is a resolver returning a
-            // negative long that was cast to ulong, producing a very large value.  We treat
-            // any value above long.MaxValue as invalid (it would be ~2^63+ blocks, impossible
-            // on any real chain).
+            // Treat values above long.MaxValue as invalid sentinels — they would be ~2^63+ blocks,
+            // unreachable on any real chain; in practice they appear when a resolver returns -1 cast to ulong.
             best.Block > long.MaxValue
             || best.Header > long.MaxValue
             || best.State > long.MaxValue
