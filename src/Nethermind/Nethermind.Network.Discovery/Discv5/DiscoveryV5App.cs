@@ -45,9 +45,12 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         IProcessExitSource processExitSource,
         ILogManager logManager,
         Action<ContainerBuilder>? configureDiscv5Services = null)
-        : base("discv5", networkConfig, processExitSource, logManager.GetClassLogger<DiscoveryV5App>())
+        : base("discv5", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryV5App>())
     {
-        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(ipResolver.ExternalIp);
+        // DiscoveryV5App is resolved during network startup, after SetupKeyStore (a declared dependency of
+        // InitializeNetwork) has already awaited Resolve() and warmed the cache, so this does not block.
+        IPAddress externalIp = ipResolver.Resolve().GetAwaiter().GetResult().ExternalIp;
+        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(externalIp);
 
         List<Node> bootNodes = CreateBootNodes(networkConfig, discoveryConfig);
         ITimestamper timestamper = rootScope.ResolveOptional<ITimestamper>() ?? Timestamper.Default;
@@ -56,7 +59,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         {
             builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
             builder.RegisterInstance(timestamper).As<ITimestamper>();
-            Node currentNode = new(nodeKey.PublicKey, ipResolver.ExternalIp.ToString(), networkConfig.DiscoveryPort, true);
+            Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), networkConfig.DiscoveryPort, true);
             builder
                 .AddModule(new Discv5KademliaModule(currentNode, bootNodes))
                 .AddSingleton<DiscV5Services>();

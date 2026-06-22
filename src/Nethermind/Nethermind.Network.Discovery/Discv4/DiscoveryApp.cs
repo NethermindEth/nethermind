@@ -30,10 +30,11 @@ public class DiscoveryApp : KademliaDiscoveryApp
         IEnode enode,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
+        IIPResolver ipResolver,
         IProcessExitSource processExitSource,
         ILogManager logManager,
         Action<ContainerBuilder>? configureDiscv4Services = null)
-        : base("discv4", networkConfig, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
+        : base("discv4", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
     {
         List<Node> bootNodes = CreateBootNodes(networkConfig.Bootnodes, Logger);
 

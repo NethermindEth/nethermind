@@ -86,8 +86,9 @@ public sealed class PacketCodec(
             out byte[] recipientKey);
 
         byte[] ephemeralPublicKey = ephemeralKey.CompressedPublicKey.Bytes;
-        byte[] record = challenge.EnrSequence < _nodeRecordProvider.Current.EnrSequence
-            ? _nodeRecordProvider.Current.ToRlpBytes()
+        NodeRecord currentNodeRecord = _nodeRecordProvider.GetCurrentAsync().GetAwaiter().GetResult();
+        byte[] record = challenge.EnrSequence < currentNodeRecord.EnrSequence
+            ? currentNodeRecord.ToRlpBytes()
             : [];
 
         int authDataLength = HandshakeAuthDataHeadSize + IdSignatureSize + EphemeralPublicKeySize + record.Length;

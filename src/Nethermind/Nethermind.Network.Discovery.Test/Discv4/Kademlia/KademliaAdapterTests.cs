@@ -111,7 +111,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _receiverSerializationManager = builder.TestObject;
 
             INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
-            nodeRecordProvider.Current.Returns(_selfNodeRecord);
+            nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(_selfNodeRecord));
             _nodeStatsManager = Substitute.For<INodeStatsManager>();
             _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 

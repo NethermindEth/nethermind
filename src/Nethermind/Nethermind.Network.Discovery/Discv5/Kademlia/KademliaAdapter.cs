@@ -105,7 +105,7 @@ public sealed class KademliaAdapter(
     {
         RegisterKnownRecord(receiver);
         ReserveEndpointCheck(receiver);
-        using PingMsg ping = new(CreateRequestId(), nodeRecordProvider.Current.EnrSequence);
+        using PingMsg ping = new(CreateRequestId(), (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
         PongResponseHandler responseHandler = new(receiver);
 
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 PING {ping.RequestId} to {receiver:s}.");
@@ -564,7 +564,7 @@ public sealed class KademliaAdapter(
         switch (message)
         {
             case PingMsg ping:
-                using (PongMsg pong = new(ping.RequestId, nodeRecordProvider.Current.EnrSequence, endpoint.Address, endpoint.Port))
+                using (PongMsg pong = new(ping.RequestId, (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence, endpoint.Address, endpoint.Port))
                 {
                     await SendResponse(remoteNode, pong, token);
                 }
@@ -600,7 +600,8 @@ public sealed class KademliaAdapter(
 
     private async Task HandleFindNode(Node remoteNode, FindNodeMsg findNode, CancellationToken token)
     {
-        NodeRecord[] records = GetFindNodeRecords(findNode.Distances, remoteNode);
+        NodeRecord selfRecord = await nodeRecordProvider.GetCurrentAsync(token);
+        NodeRecord[] records = GetFindNodeRecords(findNode.Distances, remoteNode, selfRecord);
         if (records.Length == 0)
         {
             using NodesMsg emptyResponse = new(findNode.RequestId, 1, []);
@@ -618,7 +619,7 @@ public sealed class KademliaAdapter(
         }
     }
 
-    private NodeRecord[] GetFindNodeRecords(Distances distances, Node requester)
+    private NodeRecord[] GetFindNodeRecords(Distances distances, Node requester, NodeRecord selfRecord)
     {
         using PooledSet<Hash256> seen = new(MaxFindNodeRecords);
         ArrayPoolListRef<NodeRecord> result = new(MaxFindNodeRecords);
@@ -638,7 +639,7 @@ public sealed class KademliaAdapter(
                 {
                     if (!includedSelf)
                     {
-                        result.Add(nodeRecordProvider.Current);
+                        result.Add(selfRecord);
                         includedSelf = true;
                     }
 

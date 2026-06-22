@@ -15,16 +15,33 @@ public sealed class NodeRecordProvider(
     INetworkConfig networkConfig
 ) : INodeRecordProvider
 {
+    private readonly Lock _lock = new();
+    private Task<NodeRecord>? _nodeRecordTask;
 
-    NodeRecord? _nodeRecord = null;
-    public NodeRecord Current => _nodeRecord ??= PrepareNodeRecord();
+    public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
+    {
+        Task<NodeRecord>? task = Volatile.Read(ref _nodeRecordTask);
+        if (task is null)
+        {
+            lock (_lock)
+            {
+                // Build once, guarding concurrent callers (Ping/HandleEnrRequest run from concurrent
+                // discovery handlers). Use CancellationToken.None so the cached ENR isn't faulted by a
+                // single caller's token; per-call cancellation is honored via WaitAsync below.
+                task = _nodeRecordTask ??= PrepareNodeRecord(CancellationToken.None);
+            }
+        }
 
-    private NodeRecord PrepareNodeRecord()
+        return new ValueTask<NodeRecord>(task.WaitAsync(cancellationToken));
+    }
+
+    private async Task<NodeRecord> PrepareNodeRecord(CancellationToken cancellationToken)
     {
         // TODO: Add forkid
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(IdEntry.Instance);
-        selfNodeRecord.SetEntry(new IpEntry(ipResolver.ExternalIp));
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
+        selfNodeRecord.SetEntry(new IpEntry(ip.ExternalIp));
         selfNodeRecord.SetEntry(new TcpEntry(networkConfig.P2PPort));
         selfNodeRecord.SetEntry(new UdpEntry(networkConfig.DiscoveryPort));
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));

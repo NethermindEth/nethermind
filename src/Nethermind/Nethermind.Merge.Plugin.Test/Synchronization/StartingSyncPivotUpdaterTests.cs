@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Blockchain;
@@ -26,9 +29,9 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
     public class StartingSyncPivotUpdaterTests
     {
         private IBlockTree? _blockTree;
-        private ISyncModeSelector? _syncModeSelector;
         private ISyncPeerPool? _syncPeerPool;
         private ISyncConfig? _syncConfig;
+        private ISyncProgressResolver? _syncProgressResolver;
         private IBlockCacheService? _blockCacheService;
         private IBeaconSyncStrategy? _beaconSyncStrategy;
         private IDb? _metadataDb;
@@ -64,34 +67,34 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _blockTree = Build.A.BlockTree()
                 .WithMetadataDb(_metadataDb)
                 .TestObject;
-            _syncModeSelector = Substitute.For<ISyncModeSelector>();
             _syncConfig = new SyncConfig()
             {
-                MaxAttemptsToUpdatePivot = 1
+                FastSync = true,
+                MaxAttemptsToUpdatePivot = 1,
+                MultiSyncModeSelectorLoopTimerMs = 1
             };
+            // Eligibility inputs that MultiSyncModeSelector used to gate UpdatingPivot on are now checked by the updater itself.
+            _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            _syncProgressResolver.FindBestFullState().Returns(0);
             _blockCacheService = new BlockCacheService();
             _beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+            _beaconSyncStrategy.MergeTransitionFinished.Returns(true);
         }
 
-        [Test]
-        public void TrySetFreshPivot_saves_FinalizedHash_in_db()
-        {
-            _ = new StartingSyncPivotUpdater(
-                _blockTree!,
-                _syncModeSelector!,
-                _syncPeerPool!,
-                _syncConfig!,
-                _blockCacheService!,
-                _beaconSyncStrategy!,
-                LimboLogs.Instance
-            );
+        private StartingSyncPivotUpdater CreateUpdater() =>
+            new(_blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, _beaconSyncStrategy!, LimboLogs.Instance);
 
-            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
+        private UnsafeStartingSyncPivotUpdater CreateUnsafeUpdater() =>
+            new(_blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, _beaconSyncStrategy!, LimboLogs.Instance);
+
+        [Test]
+        public async Task TrySetFreshPivot_saves_FinalizedHash_in_db()
+        {
             Hash256 expectedFinalizedHash = _externalPeerBlockTree!.HeadHash;
             long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
             _beaconSyncStrategy!.GetFinalizedHash().Returns(expectedFinalizedHash);
 
-            _syncModeSelector!.Changed += Raise.EventWith(args);
+            await CreateUpdater().EnsureSyncPivot(default);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
             Rlp.ValueDecoderContext ctx = new(storedData!);
@@ -104,51 +107,32 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
         [TestCase(2, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
         [TestCase(ISyncConfig.InfiniteAttempts, ISyncConfig.InfiniteAttempts, TestName = "Infinite_attempts_never_fall_back_to_static_pivot")]
-        public void TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, int expectedFinalConfigValue)
+        public async Task TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, int expectedFinalConfigValue)
         {
             _syncConfig!.MaxAttemptsToUpdatePivot = maxAttempts;
             // Finalized hash unset → TrySetFreshPivot returns null → counts as a failed attempt.
             _beaconSyncStrategy!.GetFinalizedHash().Returns((Hash256?)null);
 
-            _ = new StartingSyncPivotUpdater(
-                _blockTree!,
-                _syncModeSelector!,
-                _syncPeerPool!,
-                _syncConfig!,
-                _blockCacheService!,
-                _beaconSyncStrategy!,
-                LimboLogs.Instance
-            );
+            using CancellationTokenSource cts = new();
+            Task task = CreateUpdater().EnsureSyncPivot(cts.Token);
 
-            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
-            for (int i = 0; i < 100; i++)
-            {
-                _syncModeSelector!.Changed += Raise.EventWith(args);
-            }
+            // Finite attempts: the loop gives up on its own. Infinite attempts: it never completes, so cancel it.
+            await Task.WhenAny(task, Task.Delay(500));
+            cts.Cancel();
+            try { await task; } catch (OperationCanceledException) { }
 
             Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(expectedFinalConfigValue));
         }
 
         [Test]
-        public void TrySetFreshPivot_for_unsafe_updater_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
+        public async Task TrySetFreshPivot_for_unsafe_updater_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
         {
-            _ = new UnsafeStartingSyncPivotUpdater(
-                _blockTree!,
-                _syncModeSelector!,
-                _syncPeerPool!,
-                _syncConfig!,
-                _blockCacheService!,
-                _beaconSyncStrategy!,
-                LimboLogs.Instance
-            );
-
-            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedHeadBlockHash = _externalPeerBlockTree!.HeadHash;
             long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64;
             Hash256 expectedPivotBlockHash = _externalPeerBlockTree!.FindLevel(expectedPivotBlockNumber)!.BlockInfos[0].BlockHash;
             _beaconSyncStrategy!.GetHeadBlockHash().Returns(expectedHeadBlockHash);
 
-            _syncModeSelector!.Changed += Raise.EventWith(args);
+            await CreateUnsafeUpdater().EnsureSyncPivot(default);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
             Rlp.ValueDecoderContext ctx = new(storedData!);
@@ -160,26 +144,16 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         }
 
         [Test]
-        public void TrySetFreshPivot_for_unsafe_updater_ignores_peer_header_with_mismatched_number()
+        public async Task TrySetFreshPivot_for_unsafe_updater_ignores_peer_header_with_mismatched_number()
         {
             long requestedPivotNumber = _externalPeerBlockTree!.Head!.Number - 64;
             Hash256 wrongNumberHash = _externalPeerBlockTree!.FindLevel(requestedPivotNumber + 5)!.BlockInfos[0].BlockHash;
             _syncPeer!.GetBlockHeaders(requestedPivotNumber, 1, 0, default)
                 .ReturnsForAnyArgs(_ => _externalPeerBlockTree!.FindHeaders(wrongNumberHash, 1, 0, default));
 
-            _ = new UnsafeStartingSyncPivotUpdater(
-                _blockTree!,
-                _syncModeSelector!,
-                _syncPeerPool!,
-                _syncConfig!,
-                _blockCacheService!,
-                _beaconSyncStrategy!,
-                LimboLogs.Instance
-            );
-
             _beaconSyncStrategy!.GetHeadBlockHash().Returns(_externalPeerBlockTree!.HeadHash);
 
-            _syncModeSelector!.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.FastSync, SyncMode.UpdatingPivot));
+            await CreateUnsafeUpdater().EnsureSyncPivot(default);
 
             Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
                 "a peer header at a number other than the requested one must not set the pivot");

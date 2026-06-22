@@ -193,7 +193,7 @@ public sealed class KademliaAdapter(
 
         PingMsg msg = new(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address)
         {
-            EnrSequence = nodeRecordProvider.Current.EnrSequence // optional and does not seem to be used anywhere.
+            EnrSequence = (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence // optional and does not seem to be used anywhere.
         };
         session.OnPingSent();
         DiscoveryResponse<PongMsg> response = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, _pingTimeout, token);
@@ -243,7 +243,7 @@ public sealed class KademliaAdapter(
             return false;
         }
 
-        await SendMessage(session, new EnrResponseMsg(node.Address, nodeRecordProvider.Current, new Hash256(requestHash)), token);
+        await SendMessage(session, new EnrResponseMsg(node.Address, await nodeRecordProvider.GetCurrentAsync(token), new Hash256(requestHash)), token);
         return true;
     }
 

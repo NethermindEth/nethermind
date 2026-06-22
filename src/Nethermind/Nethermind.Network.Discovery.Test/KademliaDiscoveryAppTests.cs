@@ -3,6 +3,7 @@
 
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using NUnit.Framework;
@@ -51,6 +52,7 @@ public class KademliaDiscoveryAppTests
     private sealed class TestKademliaDiscoveryApp(bool throwOnStop = false) : KademliaDiscoveryApp(
         "test discovery",
         new NetworkConfig { ExternalIp = "127.0.0.1" },
+        new FixedIpResolver(new NetworkConfig { ExternalIp = "127.0.0.1" }),
         new ProcessExitSource(CancellationToken.None),
         LimboLogs.Instance.GetClassLogger<TestKademliaDiscoveryApp>())
     {

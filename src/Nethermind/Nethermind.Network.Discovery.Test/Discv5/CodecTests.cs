@@ -14,6 +14,7 @@ using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using System;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
@@ -392,6 +393,8 @@ public class CodecTests
 
     private sealed class TestNodeRecordProvider(PrivateKey privateKey) : INodeRecordProvider
     {
-        public NodeRecord Current { get; } = CreateNodeRecord(privateKey);
+        private readonly NodeRecord _current = CreateNodeRecord(privateKey);
+
+        public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default) => new(_current);
     }
 }

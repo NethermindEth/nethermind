@@ -66,6 +66,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IMessageSerializationService, MessageSerializationService>()
             .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
+            .AddSingleton<IProtocolsManager, ProtocolsManager>()
+            .AddSingleton<SnapCapabilitySwitcher>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()

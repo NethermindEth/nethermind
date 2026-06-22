@@ -271,5 +271,7 @@ public class WireTests
         public NodeRecord Current { get; } = includeEndpoint
             ? TestEnrBuilder.BuildSigned(privateKey, endpoint.Address, tcpPort: endpoint.Port, udpPort: endpoint.Port)
             : TestEnrBuilder.BuildSignedWithoutEndpoint(privateKey);
+
+        public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default) => new(Current);
     }
 }

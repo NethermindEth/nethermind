@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -111,7 +113,7 @@ public class KademliaAdapterTests
     private KademliaAdapter CreateAdapter()
     {
         INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
-        nodeRecordProvider.Current.Returns(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback));
+        nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback)));
         _packetCodec?.Dispose();
         _packetCodec = new PacketCodec(
             new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
