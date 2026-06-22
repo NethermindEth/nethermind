@@ -101,10 +101,8 @@ public class E2StoreReader : IDisposable
             throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside the bounds of this index.");
 
         // <offset> * 8 + <count>
-        // Cast to int is safe: _blockCount is bounded by era file size (max ~8192 blocks per era).
         int indexLength = (int)_blockCount * IndexOffsetSize + IndexSectionCount;
 
-        // Cast to long is safe: blockNumber - _startBlock is bounded by _blockCount which fits in int.
         long offsetLocation = indexLength - (long)(blockNumber - _startBlock!.Value) * IndexOffsetSize;
 
         // <header> + <start block> + <the rest of the index>
@@ -125,7 +123,6 @@ public class E2StoreReader : IDisposable
         _blockCount = ReadUInt64(_fileLength - IndexSectionCount);
 
         // <starting block> + <offsets> * 8 + <count>
-        // Cast to int is safe: _blockCount is bounded by era file size (max ~8192 blocks per era).
         int indexLength = IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
 
         // Verify that its a block index
@@ -148,8 +145,6 @@ public class E2StoreReader : IDisposable
         get
         {
             EnsureIndexAvailable();
-            // _blockCount >= 1 is guaranteed by EnsureIndexAvailable (empty era files are invalid),
-            // so this subtraction cannot underflow.
             return First + _blockCount - 1;
         }
     }
@@ -161,7 +156,6 @@ public class E2StoreReader : IDisposable
             EnsureIndexAvailable();
 
             // <index header> + <starting block> + <offset> * 8 + <count>
-            // Cast to int is safe: _blockCount is bounded by era file size (max ~8192 blocks per era).
             int indexLengthIncludingHeader = HeaderSize + IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
 
             // <header> + <the 32 byte hash> + <indexes>

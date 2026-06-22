@@ -30,7 +30,6 @@ namespace Nethermind.TxPool.Filters
                 ? _blobTxs.GetBucketCount(tx.SenderAddress!)
                 : _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
             ulong currentNonce = state.SenderAccount.Nonce;
-            // Cast numberOfSenderTxsInPending to ulong is safe; bucket counts are always non-negative and small.
             ulong nextNonceInOrder = currentNonce + (ulong)numberOfSenderTxsInPending;
             bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;
             if (!isTxNonceNextInOrder)

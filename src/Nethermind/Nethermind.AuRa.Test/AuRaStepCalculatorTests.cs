@@ -83,8 +83,6 @@ namespace Nethermind.AuRa.Test
         {
             DateTimeOffset now = DateTimeOffset.FromUnixTimeSeconds(BaseOffset);
             ManualTimestamper timestamper = new(now.UtcDateTime);
-            // Keys are ulong as required by AuRaStepCalculator; SecondsOffset==0 maps to key 0, otherwise
-            // key = SecondsOffset + now.ToUnixTimeSeconds() — both non-negative, cast is safe.
             Dictionary<ulong, long> stepDurations = secondsDurations.ToDictionary(
                 kvp => kvp.SecondsOffset == 0 ? 0UL : (ulong)(kvp.SecondsOffset + now.ToUnixTimeSeconds()),
                 kvp => kvp.StepDuration);

@@ -594,7 +594,6 @@ public class ContractBasedValidatorTests
         PendingValidators pendingValidators = null;
         if (expectedBlockValidators.HasValue)
         {
-            // expectedBlockValidators is a small positive int; block.Number is ulong; comparison via cast is safe.
             Block block = GetAllBlocks(blockTree).First(b => b.Number == (ulong)expectedBlockValidators.Value);
             pendingValidators = new PendingValidators(block.Number, block.Hash, new[] { TestItem.Addresses[block.Number * 10] });
         }

@@ -179,8 +179,6 @@ namespace Nethermind.AuRa.Test.Validators
                 static (l, pair) => l.CompareTo(pair.Key),
                 out KeyValuePair<ulong, AuRaParameters.Validator> validatorInfo);
 
-            // GetFinalizationLevel returns long? (a block number that has been finalized).
-            // Safe cast to ulong?: finalization levels are always non-negative block numbers.
             ulong? finalizationLevel = finalizedLastValidatorBlockLevel
                 ? blockNumber - 2UL
                 : null;
