@@ -1723,8 +1723,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 initialRegularGas,
                 remainingRegularGas,
                 stateGasSpill,
-                stateGasSpillReclassified,
-                floorGas);
+                stateGasSpillReclassified);
         }
 
         protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
