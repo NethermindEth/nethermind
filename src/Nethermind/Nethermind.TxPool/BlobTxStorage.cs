@@ -186,21 +186,7 @@ public class BlobTxStorage : IBlobTxStorage
 
     private void EncodeAndSaveTxs(in ArrayPoolListRef<Transaction> blockBlobTransactions, IDb db, long blockNumber)
     {
-        int contentLength = 0;
-        for (int i = 0; i < blockBlobTransactions.Count; i++)
-        {
-            contentLength += _txDecoder.GetLength(blockBlobTransactions[i], RlpBehaviors.InMempoolForm);
-        }
-
-        using ArrayPoolSpan<byte> rlp = new(Rlp.LengthOfSequence(contentLength));
-        RlpWriter writer = new(rlp);
-
-        writer.StartSequence(contentLength);
-        for (int i = 0; i < blockBlobTransactions.Count; i++)
-        {
-            _txDecoder.Encode(ref writer, blockBlobTransactions[i], RlpBehaviors.InMempoolForm);
-        }
-
+        using ArrayPoolSpan<byte> rlp = _txDecoder.EncodeToArrayPoolSpan(blockBlobTransactions.AsSpan(), RlpBehaviors.InMempoolForm);
         db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
     }
 }

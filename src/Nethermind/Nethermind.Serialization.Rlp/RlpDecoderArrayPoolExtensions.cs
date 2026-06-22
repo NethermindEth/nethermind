@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -101,6 +102,39 @@ public static class RlpDecoderArrayPoolExtensions
             for (int i = 0; i < items.Count; i++)
             {
                 EncodeNullable(decoder, ref writer, items[i], behaviors);
+            }
+
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Encodes <paramref name="items"/> into a new disposable pooled byte span.
+    /// </summary>
+    public static ArrayPoolSpan<byte> EncodeToArrayPoolSpan<T>(this IRlpDecoder<T> decoder, scoped ReadOnlySpan<T> items, RlpBehaviors behaviors = RlpBehaviors.None)
+    {
+        int totalLength = 0;
+        for (int i = 0; i < items.Length; i++)
+        {
+            totalLength += decoder.GetLength(items[i], behaviors);
+        }
+
+        int bufferLength = Rlp.LengthOfSequence(totalLength);
+
+        ArrayPoolSpan<byte> buffer = new(bufferLength);
+        try
+        {
+            RlpWriter writer = new(buffer);
+            writer.StartSequence(totalLength);
+
+            for (int i = 0; i < items.Length; i++)
+            {
+                decoder.Encode(ref writer, items[i], behaviors);
             }
 
             return buffer;
