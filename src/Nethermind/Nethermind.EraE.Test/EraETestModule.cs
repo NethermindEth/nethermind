@@ -56,7 +56,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
             {
                 blockTreeBuilder
                     .WithTransactions(ctx.Resolve<IReceiptStorage>())
-                    .OfChainLength((int)length);
+                    .OfChainLength(length);
 
                 // Post-merge blocks have TotalDifficulty=0, which never satisfies
                 // HeadImprovementRequirementsSatisfied (0 < MainnetTTD). Force-update head

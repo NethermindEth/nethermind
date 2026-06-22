@@ -1682,7 +1682,7 @@ public class BlockTreeTests
             PivotNumber = pivotNumber
         };
 
-        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength((int)head + 1);
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(head + 1);
 
         BlockTree loadedTree = Build.A.BlockTree()
             .WithoutSettingHead
