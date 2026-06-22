@@ -845,7 +845,6 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
                     }
                     HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
-                    // _dependencies is keyed by ulong — header.Number is ulong, no cast needed.
                     _dependencies[header.Number] = dependentBatch;
                     MarkDirty();
                     if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
