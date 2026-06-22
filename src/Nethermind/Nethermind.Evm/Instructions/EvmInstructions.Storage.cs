@@ -560,12 +560,18 @@ public static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
-                    long refundFromReversal = gasCosts.RefundFromReversal(originalIsZero);
+                    // EIP-8038: restoring a slot to its original value refunds the STORAGE_WRITE
+                    // regular charge taken on the first change; a freshly-created slot (original 0)
+                    // additionally refunds its state gas in-frame.
+                    long refundFromReversal = spec.IsEip8038Enabled
+                        ? Eip8038Constants.StorageWrite
+                        : gasCosts.RefundFromReversal(originalIsZero);
 
                     if (TEip8037.IsActive && originalIsZero)
                     {
                         vm.CreditStateGasRefund(ref gas, TGasPolicy.GetStorageSetStateCost(in gas));
-                        refundFromReversal = GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
+                        if (!spec.IsEip8038Enabled)
+                            refundFromReversal = GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
                     }
 
                     vmState.Refund += refundFromReversal;
