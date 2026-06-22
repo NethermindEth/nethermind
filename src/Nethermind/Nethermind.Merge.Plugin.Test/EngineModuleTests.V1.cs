@@ -467,9 +467,6 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> invalidResult = await rpc.engine_newPayloadV1(block2);
         Assert.That(invalidResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
 
-        // Without the fix, OnInvalidBlock(genesisHash, block1Hash) would mark genesis invalid and
-        // propagate to block1 (its registered child), causing block2 to be rejected as
-        // "part of an invalid chain" even with the correct hash restored.
         block2.BlockHash = realBlock2Hash;
         ResultWrapper<PayloadStatusV1> validResult = await rpc.engine_newPayloadV1(block2);
         Assert.That(validResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
