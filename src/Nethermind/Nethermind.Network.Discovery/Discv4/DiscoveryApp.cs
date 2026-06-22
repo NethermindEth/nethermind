@@ -40,9 +40,11 @@ public class DiscoveryApp : KademliaDiscoveryApp
         _discv4Services = rootScope.BeginLifetimeScope(
             (builder) =>
             {
+                Node currentNode = new(enode.PublicKey, enode.HostIp.ToString(), networkConfig.DiscoveryPort, true);
+
                 builder
-                .AddModule(new KademliaModule(enode.PublicKey, bootNodes))
-                .AddSingleton<DiscV4Services>();
+                    .AddModule(new KademliaModule(currentNode, bootNodes))
+                    .AddSingleton<DiscV4Services>();
 
                 configureDiscv4Services?.Invoke(builder);
             });

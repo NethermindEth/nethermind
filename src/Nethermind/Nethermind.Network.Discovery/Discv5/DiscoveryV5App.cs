@@ -56,8 +56,9 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         {
             builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
             builder.RegisterInstance(timestamper).As<ITimestamper>();
+            Node currentNode = new(nodeKey.PublicKey, ipResolver.ExternalIp.ToString(), networkConfig.DiscoveryPort, true);
             builder
-                .AddModule(new Discv5KademliaModule(nodeKey.PublicKey, bootNodes))
+                .AddModule(new Discv5KademliaModule(currentNode, bootNodes))
                 .AddSingleton<DiscV5Services>();
 
             configureDiscv5Services?.Invoke(builder);

@@ -14,7 +14,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 /// <summary>
 /// Specifies the protocol-specific Kademlia services used by discv5.
 /// </summary>
-public sealed class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(masterNode, bootNodes)
+public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes)
 {
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
         .AddSingleton<IDiscv5RecordFilter>(ExecutionLayerDiscv5RecordFilter.Instance)

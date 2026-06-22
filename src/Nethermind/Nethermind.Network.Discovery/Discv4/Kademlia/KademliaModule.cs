@@ -15,9 +15,9 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 /// Because kademlia can and probably will be reused outside of discv4, this module is meant to be added within a child
 /// lifecycle in <see cref="DiscoveryApp"/> to prevent unexpected conflict.
 /// </summary>
-/// <param name="masterNode"></param>
+/// <param name="currentNode"></param>
 /// <param name="bootNodes"></param>
-public sealed class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(masterNode, bootNodes)
+public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes)
 {
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.

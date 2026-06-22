@@ -9,7 +9,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public abstract class DiscoveryKademliaModuleBase(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : Module
+public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyList<Node> bootNodes) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -20,7 +20,7 @@ public abstract class DiscoveryKademliaModuleBase(PublicKey masterNode, IReadOnl
             .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
             .AddSingleton<IKeyOperator<PublicKey, Node, Hash256>, PublicKeyKeyOperator>()
             .AddSingleton<DiscoveryPersistenceManager>()
-            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(masterNode, bootNodes, discoveryConfig));
+            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(currentNode, bootNodes, discoveryConfig));
     }
 
     protected abstract void RegisterProtocolServices(ContainerBuilder builder);
