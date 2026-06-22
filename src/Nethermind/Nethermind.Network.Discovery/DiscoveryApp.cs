@@ -77,7 +77,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
             (builder) =>
             {
                 builder
-                .AddModule(new DiscV4KademliaModule(enode.PublicKey, bootNodes))
+                .AddModule(new DiscV4KademliaModule(enode, networkConfig, bootNodes))
                 .AddSingleton<DiscV4Services>();
 
                 configureDiscv4Services?.Invoke(builder);
