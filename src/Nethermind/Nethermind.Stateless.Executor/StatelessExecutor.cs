@@ -147,8 +147,8 @@ public static class StatelessExecutor
         {
             if (chainConfig.ChainId == 7095321190UL) // TEMP: chain id of glamsterdam-devnet-5
                 return new SingleReleaseSpecProvider(Amsterdam.Instance, chainConfig.ChainId, chainConfig.ChainId);
-            else
-                throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
+
+            throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
         }
 
         // Empty arrays mean ActiveFork was omitted — use the base provider as-is.
