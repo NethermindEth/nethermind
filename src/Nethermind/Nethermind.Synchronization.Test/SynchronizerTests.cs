@@ -186,10 +186,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-        public void AddBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
+        public void AddBlocksUpTo(ulong i, ulong branchStart = 0, byte branchIndex = 0)
         {
             Block block = Blocks.Last();
-            for (long j = (long)block.Number; j < i; j++)
+            for (ulong j = block.Number; j < i; j++)
             {
                 block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
                     .WithTotalDifficulty(block.TotalDifficulty + 1000000)
@@ -200,10 +200,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             UpdateHead();
         }
 
-        public void AddHighDifficultyBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
+        public void AddHighDifficultyBlocksUpTo(ulong i, ulong branchStart = 0, byte branchIndex = 0)
         {
             Block block = Blocks.Last();
-            for (long j = (long)block.Number; j < i; j++)
+            for (ulong j = block.Number; j < i; j++)
             {
                 block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
                     .WithTotalDifficulty(block.TotalDifficulty + 2000000)

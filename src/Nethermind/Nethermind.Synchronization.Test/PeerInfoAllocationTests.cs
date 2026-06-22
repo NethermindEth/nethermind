@@ -113,7 +113,7 @@ namespace Nethermind.Synchronization.Test
             ArrayPoolList<BlockHeader> headers = new(end - start + 1);
             for (int number = start; number <= end; number++)
             {
-                headers.Add(Build.A.BlockHeader.WithNumber((ulong)number).TestObject);
+                headers.Add(Build.A.BlockHeader.WithNumber(number).TestObject);
             }
 
             return headers;

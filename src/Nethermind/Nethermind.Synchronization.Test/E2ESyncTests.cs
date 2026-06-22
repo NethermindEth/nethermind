@@ -90,12 +90,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
     private const int ChainLength = 1000;
-    private const int HeadPivotDistance = 500;
+    private const ulong HeadPivotDistance = 500;
     private static TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(10);
     private const int BalSyncChainLength = 15_000;
     private const int PartialBalSyncChainLength = 1_000;
     private const int PartialBalActivationBlock = 400;
-    private const int PartialBalSyncHeadPivotDistance = 500;
+    private const ulong PartialBalSyncHeadPivotDistance = 500;
     private const int BalSyncBuildProgressInterval = 1_000;
     private const int BalSyncVerificationProgressInterval = 3_000;
     private static readonly DateTime PostMergeStartTime = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -513,13 +513,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private async Task SetPivot(SyncConfig syncConfig, CancellationToken cancellationToken) =>
         await SetPivot(_server, syncConfig, cancellationToken, HeadPivotDistance);
 
-    private static async Task SetPivot(IContainer server, SyncConfig syncConfig, CancellationToken cancellationToken, int headPivotDistance)
+    private static async Task SetPivot(IContainer server, SyncConfig syncConfig, CancellationToken cancellationToken, ulong headPivotDistance)
     {
         IBlockProcessingQueue blockProcessingQueue = server.Resolve<IBlockProcessingQueue>();
         await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
         IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
         ulong serverHeadNumber = serverBlockTree.Head!.Number;
-        BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - (ulong)headPivotDistance)!;
+        BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - headPivotDistance)!;
         syncConfig.PivotHash = pivot.Hash!.ToString();
         syncConfig.PivotNumber = pivot.Number;
         syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
@@ -711,7 +711,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private interface ITestEnv
     {
         Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation);
-        Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, long finalizedDistanceFromHead);
+        Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, ulong finalizedDistanceFromHead);
         Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken);
     }
 
@@ -746,7 +746,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         }
 
 
-        public virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, long finalizedDistanceFromHead)
+        public virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, ulong finalizedDistanceFromHead)
         {
             await WaitForSyncMode(mode => (mode == SyncMode.WaitingForBlock || mode == SyncMode.None || mode == SyncMode.Full), cancellationToken);
 
@@ -810,10 +810,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await newBlockTask;
         }
 
-        public async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, long finalizedDistanceFromHead)
+        public async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, ulong finalizedDistanceFromHead)
         {
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
-            ulong finalizedBlockNumber = otherBlockTree.Head!.Number > (ulong)finalizedDistanceFromHead ? otherBlockTree.Head!.Number - (ulong)finalizedDistanceFromHead : 0UL;
+            ulong finalizedBlockNumber = otherBlockTree.Head!.Number.SaturatingSub(finalizedDistanceFromHead);
             Block finalizedBlock = otherBlockTree.FindBlock(finalizedBlockNumber)!;
             Block headBlock = otherBlockTree.Head!;
             blockCacheService.TryAddBlock(finalizedBlock);
@@ -1045,7 +1045,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IContainer server,
             Func<IContainer, CancellationToken, Task> verification,
             CancellationToken cancellationToken,
-            long finalizedDistanceFromHead = 250)
+            ulong finalizedDistanceFromHead = 250)
         {
             await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
             {

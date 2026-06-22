@@ -37,20 +37,21 @@ public class ReceiptsSyncFeedTests
     {
         public Scenario(ISpecProvider specProvider, int nonEmptyBlocks, int txPerBlock, int emptyBlocks = 0)
         {
-            Blocks = new Block[(int)_pivotNumber + 1];
+            int pivot = checked((int)_pivotNumber);
+            Blocks = new Block[pivot + 1];
             Blocks[0] = Build.A.Block.Genesis.TestObject;
 
             Block parent = Blocks[0]!;
-            for (int blockNumber = 1; blockNumber <= (int)_pivotNumber; blockNumber++)
+            for (int blockNumber = 1; blockNumber <= pivot; blockNumber++)
             {
                 Block block = Build.A.Block
                     .WithParent(parent)
-                    .WithTransactions(blockNumber > (int)_pivotNumber - nonEmptyBlocks ? txPerBlock : 0, specProvider).TestObject;
+                    .WithTransactions(blockNumber > pivot - nonEmptyBlocks ? txPerBlock : 0, specProvider).TestObject;
 
-                if (blockNumber > (int)_pivotNumber - nonEmptyBlocks - emptyBlocks)
+                if (blockNumber > pivot - nonEmptyBlocks - emptyBlocks)
                     Blocks[blockNumber] = block;
 
-                if (blockNumber == (int)_pivotNumber - nonEmptyBlocks - emptyBlocks + 1)
+                if (blockNumber == pivot - nonEmptyBlocks - emptyBlocks + 1)
                     LowestInsertedBody = block;
 
                 parent = block;

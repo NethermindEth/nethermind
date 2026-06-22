@@ -425,7 +425,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             HeadersSyncBatch batch = new();
             ulong requestSizeU = (ulong)requestSize;
-            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber >= requestSizeU ? _lowestRequestedHeaderNumber - requestSizeU : 0UL);
+            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber.SaturatingSub(requestSizeU));
             batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, requestSizeU);
             _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
