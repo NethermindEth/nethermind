@@ -77,7 +77,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
     {
         Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
 
-        foreach (Node node in _nodes.Select(static kvp => new Node(kvp.Value)))
+        foreach (Node node in _nodes.Select(static kvp => new Node(kvp.Value, isStatic: true)))
         {
             cancellationToken.ThrowIfCancellationRequested();
             yield return node;

@@ -15,6 +15,7 @@ on:
           - ethereum/consensus
           - ethereum/eest
           - ethereum/engine
+          - engine-withdrawals
           - ethereum/graphql
           - ethereum/rpc-compat
           - ethereum/sync
@@ -83,6 +84,8 @@ jobs:
               ]'
               echo 'MATRIX_END'
             } >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event.inputs.test-suite }}" == "engine-withdrawals" ]]; then
+            echo 'matrix=[{"suite":"ethereum/engine","limit":"engine-withdrawals","parallelism":2,"name":"engine-withdrawals"}]' >> "$GITHUB_OUTPUT"
           else
             echo 'matrix=[{"suite":"${{ github.event.inputs.test-suite }}","limit":"${{ github.event.inputs.limit }}","parallelism":${{ github.event.inputs.parallelism || env.DEFAULT_PARALLELISM }}}]' >> "$GITHUB_OUTPUT"
           fi
