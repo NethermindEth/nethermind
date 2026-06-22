@@ -151,6 +151,9 @@ internal static class MdbxNative
     [DllImport(LibraryName, EntryPoint = "mdbx_cursor_get")]
     internal static extern int CursorGet(SafeMdbxCursorHandle cursor, ref MdbxValue key, ref MdbxValue data, MdbxCursorOp operation);
 
+    [DllImport(LibraryName, EntryPoint = "mdbx_dbi_stat")]
+    internal static extern int DbiStat(SafeMdbxTxnHandle txn, uint dbi, out MdbxStat stat, nuint bytes);
+
     [DllImport(LibraryName, EntryPoint = "mdbx_cursor_close")]
     private static extern void CursorClose(IntPtr cursor);
 
@@ -197,6 +200,18 @@ internal static class MdbxNative
             CursorClose(handle);
             return true;
         }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MdbxStat
+    {
+        public uint PageSize;
+        public uint Depth;
+        public ulong BranchPages;
+        public ulong LeafPages;
+        public ulong OverflowPages;
+        public ulong Entries;
+        public ulong ModTxnId;
     }
 }
 

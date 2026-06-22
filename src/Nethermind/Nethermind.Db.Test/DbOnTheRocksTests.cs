@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,6 +18,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using NUnit.Framework;
+using Snappier;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Test
@@ -181,6 +183,40 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Mdbx_value_compression_writes_versioned_zstd_marker()
+        {
+            MdbxValueCompression compression = new(enabled: true);
+            byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
+
+            Assert.That(compression.TryEncode(value, out byte[]? stored, out int storedLength), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stored[4], Is.EqualTo(2));
+                Assert.That(stored[5], Is.EqualTo(2));
+                Assert.That(BinaryPrimitives.ReadInt32LittleEndian(stored.AsSpan(6)), Is.EqualTo(value.Length));
+                Assert.That(compression.Decode(stored.AsSpan(0, storedLength)), Is.EqualTo(value));
+            }
+        }
+
+        [Test]
+        public void Mdbx_value_compression_reads_legacy_snappy_marker()
+        {
+            MdbxValueCompression compression = new(enabled: true);
+            byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
+            byte[] stored = GC.AllocateUninitializedArray<byte>(9 + Snappy.GetMaxCompressedLength(value.Length));
+            stored[0] = 0xFF;
+            stored[1] = (byte)'N';
+            stored[2] = (byte)'M';
+            stored[3] = (byte)'X';
+            stored[4] = 1;
+            BinaryPrimitives.WriteInt32LittleEndian(stored.AsSpan(5), value.Length);
+            int compressedLength = Snappy.Compress(value, stored.AsSpan(9));
+
+            Assert.That(compression.Decode(stored.AsSpan(0, 9 + compressedLength)), Is.EqualTo(value));
+        }
+
+        [Test]
         public void Mdbx_value_compression_honors_no_compression_option()
         {
             DbConfig config = new() { AdditionalRocksDbOptions = "compression=kNoCompression;" };
@@ -241,6 +277,28 @@ namespace Nethermind.Db.Test
         [TestCase("1XB")]
         public void Mdbx_tuning_size_parser_rejects_invalid_values(string value) =>
             Assert.That(MdbxTuningOptions.TryParseSize(value, out _), Is.False);
+
+        [TestCase(4096)]
+        [TestCase(16384)]
+        [TestCase(65536)]
+        public void Mdbx_tuning_accepts_valid_page_size(int pageSize) =>
+            WithEnvironmentVariable("NETHERMIND_MDBX_PAGE_SIZE", pageSize.ToString(), () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                Assert.That(options.PageSize, Is.EqualTo(pageSize));
+            });
+
+        [TestCase(0)]
+        [TestCase(8191)]
+        [TestCase(131072)]
+        public void Mdbx_tuning_rejects_invalid_page_size(int pageSize) =>
+            WithEnvironmentVariable("NETHERMIND_MDBX_PAGE_SIZE", pageSize.ToString(), () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                Assert.That(options.PageSize, Is.EqualTo(MdbxTuningOptions.DefaultPageSize));
+            });
 
         [TestCase("true", true)]
         [TestCase("1", true)]
@@ -335,6 +393,20 @@ namespace Nethermind.Db.Test
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
+
+        private static void WithEnvironmentVariable(string name, string value, Action action)
+        {
+            string? previous = Environment.GetEnvironmentVariable(name);
+            try
+            {
+                Environment.SetEnvironmentVariable(name, value);
+                action();
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, previous);
+            }
+        }
     }
 
     [TestFixture(true)]

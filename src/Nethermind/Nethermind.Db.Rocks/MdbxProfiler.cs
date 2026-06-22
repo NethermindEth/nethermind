@@ -17,6 +17,7 @@ internal sealed class MdbxProfiler
 
     private readonly string _path;
     private readonly ILogger _logger;
+    private readonly Func<MdbxStorageStats?> _statsProvider;
     private readonly long _intervalTicks;
     private readonly long _slowTransactionTicks;
     private readonly int _hotPathSampleRate;
@@ -45,24 +46,25 @@ internal sealed class MdbxProfiler
     [ThreadStatic]
     private static int t_hotPathSampleCounter;
 
-    private MdbxProfiler(string path, ILogger logger, TimeSpan interval, TimeSpan slowTransactionThreshold, int hotPathSampleRate)
+    private MdbxProfiler(string path, ILogger logger, TimeSpan interval, TimeSpan slowTransactionThreshold, int hotPathSampleRate, Func<MdbxStorageStats?> statsProvider)
     {
         _path = path;
         _logger = logger;
+        _statsProvider = statsProvider;
         _intervalTicks = Math.Max(1, ToTicks(interval));
         _slowTransactionTicks = ToTicks(slowTransactionThreshold);
         _hotPathSampleRate = Math.Max(1, hotPathSampleRate);
         _nextReportTimestamp = Stopwatch.GetTimestamp() + _intervalTicks;
     }
 
-    public static MdbxProfiler? Create(string path, MdbxTuningOptions options, ILogger logger)
+    public static MdbxProfiler? Create(string path, MdbxTuningOptions options, ILogger logger, Func<MdbxStorageStats?> statsProvider)
     {
         if (!options.EnableProfiling || !logger.IsInfo)
         {
             return null;
         }
 
-        MdbxProfiler profiler = new(path, logger, options.ProfileInterval, options.SlowTransactionThreshold, options.HotPathSampleRate);
+        MdbxProfiler profiler = new(path, logger, options.ProfileInterval, options.SlowTransactionThreshold, options.HotPathSampleRate, statsProvider);
         logger.Info(
             string.Create(
                 CultureInfo.InvariantCulture,
@@ -176,7 +178,7 @@ internal sealed class MdbxProfiler
         {
             Report(reason);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or MdbxException)
         {
             if (_logger.IsWarn)
             {
@@ -211,13 +213,15 @@ internal sealed class MdbxProfiler
         long managedBytes = GC.GetTotalMemory(forceFullCollection: false);
         long workingSetBytes = process.WorkingSet64;
         long privateBytes = process.PrivateMemorySize64;
+        MdbxStorageStats? storageStats = _statsProvider();
+        string storageStatsText = storageStats is null ? string.Empty : FormatStorageStats(storageStats.Value);
 
         if (_logger.IsInfo)
         {
             _logger.Info(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}"));
+                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}{storageStatsText}"));
         }
     }
 
@@ -261,4 +265,26 @@ internal sealed class MdbxProfiler
 
     private static double ToMiB(long bytes) =>
         bytes / BytesPerMiB;
+
+    private static double ToMiB(ulong bytes) =>
+        bytes / BytesPerMiB;
+
+    private static string FormatStorageStats(MdbxStorageStats stats) =>
+        string.Create(
+            CultureInfo.InvariantCulture,
+            $" pageSize={stats.PageSize} entries={stats.Entries} depth={stats.Depth} branchPages={stats.BranchPages} leafPages={stats.LeafPages} overflowPages={stats.OverflowPages} overflowPct={Percent((long)Math.Min(stats.OverflowPages, (ulong)long.MaxValue), (long)Math.Min(stats.TotalPages, (ulong)long.MaxValue)):F1} usedMiB={ToMiB(stats.UsedBytes):F1} modTxn={stats.ModTxnId}");
+}
+
+internal readonly record struct MdbxStorageStats(
+    uint PageSize,
+    uint Depth,
+    ulong BranchPages,
+    ulong LeafPages,
+    ulong OverflowPages,
+    ulong Entries,
+    ulong ModTxnId)
+{
+    public ulong TotalPages => BranchPages + LeafPages + OverflowPages;
+
+    public ulong UsedBytes => TotalPages * PageSize;
 }

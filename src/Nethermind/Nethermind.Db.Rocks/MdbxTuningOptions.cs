@@ -3,6 +3,7 @@
 
 using System;
 using System.Globalization;
+using System.Numerics;
 using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks;
@@ -12,6 +13,7 @@ internal readonly record struct MdbxTuningOptions(
     long MaxMapSize,
     long GrowthStep,
     long ShrinkThreshold,
+    int PageSize,
     ulong MaxDbs,
     ulong MaxReaders,
     bool EnableReadAhead,
@@ -25,6 +27,7 @@ internal readonly record struct MdbxTuningOptions(
     public const long DefaultMaxMapSize = 1L << 40;
     public const long DefaultGrowthStep = 256L << 20;
     public const long DefaultShrinkThreshold = 1L << 30;
+    public const int DefaultPageSize = 16 * 1024;
     public const ulong DefaultMaxDbs = 512;
     public const ulong DefaultMaxReaders = 512;
 
@@ -39,6 +42,7 @@ internal readonly record struct MdbxTuningOptions(
         long maxMapSize = ReadSize("NETHERMIND_MDBX_MAX_MAP_SIZE", DefaultMaxMapSize, logger, ref hasOverrides);
         long growthStep = ReadSize("NETHERMIND_MDBX_GROWTH_STEP", DefaultGrowthStep, logger, ref hasOverrides);
         long shrinkThreshold = ReadSize("NETHERMIND_MDBX_SHRINK_THRESHOLD", DefaultShrinkThreshold, logger, ref hasOverrides);
+        int pageSize = ReadInt32("NETHERMIND_MDBX_PAGE_SIZE", DefaultPageSize, logger, ref hasOverrides);
         ulong maxDbs = ReadUInt64("NETHERMIND_MDBX_MAX_DBS", DefaultMaxDbs, logger, ref hasOverrides);
         ulong maxReaders = ReadUInt64("NETHERMIND_MDBX_MAX_READERS", DefaultMaxReaders, logger, ref hasOverrides);
         bool enableReadAhead = ReadBool("NETHERMIND_MDBX_READAHEAD", fallback: false, logger, ref hasOverrides);
@@ -71,6 +75,12 @@ internal readonly record struct MdbxTuningOptions(
             shrinkThreshold = DefaultShrinkThreshold;
         }
 
+        if (pageSize < 4096 || pageSize > 65536 || !BitOperations.IsPow2(pageSize))
+        {
+            Warn(logger, "NETHERMIND_MDBX_PAGE_SIZE must be a power of two between 4096 and 65536. Using the default value.");
+            pageSize = DefaultPageSize;
+        }
+
         if (maxDbs == 0)
         {
             Warn(logger, "NETHERMIND_MDBX_MAX_DBS must be positive. Using the default value.");
@@ -97,6 +107,7 @@ internal readonly record struct MdbxTuningOptions(
             maxMapSize,
             growthStep,
             shrinkThreshold,
+            pageSize,
             maxDbs,
             maxReaders,
             enableReadAhead,
@@ -110,7 +121,7 @@ internal readonly record struct MdbxTuningOptions(
     public string Describe() =>
         string.Create(
             CultureInfo.InvariantCulture,
-            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} maxDbs={MaxDbs} maxReaders={MaxReaders} readAhead={EnableReadAhead} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
+            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} readAhead={EnableReadAhead} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
 
     internal static bool TryParseSize(string value, out long result)
     {

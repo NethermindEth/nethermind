@@ -7,16 +7,27 @@ using System.IO;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Snappier;
+using ZstdSharp;
 
 namespace Nethermind.Db.Rocks;
 
 internal sealed class MdbxValueCompression(bool enabled)
 {
-    private const int HeaderLength = 9;
+    private const int LegacyHeaderLength = 9;
+    private const int HeaderLength = 10;
     private const int MinValueLength = 64;
     private const int MaxDecodedLength = 1024 * 1024 * 1024;
-    private const byte Version = 1;
+    private const byte LegacySnappyVersion = 1;
+    private const byte Version = 2;
+    private const byte SnappyCodec = 1;
+    private const byte ZstdCodec = 2;
+    private const int ZstdCompressionLevel = 1;
     private const string EnabledVariable = "NETHERMIND_MDBX_COMPRESSION";
+
+    [ThreadStatic]
+    private static Compressor? t_zstdCompressor;
+    [ThreadStatic]
+    private static Decompressor? t_zstdDecompressor;
 
     private static ReadOnlySpan<byte> Magic => [0xFF, (byte)'N', (byte)'M', (byte)'X'];
 
@@ -56,13 +67,19 @@ internal sealed class MdbxValueCompression(bool enabled)
             return false;
         }
 
-        int maxCompressedLength = Snappy.GetMaxCompressedLength(value.Length);
+        Compressor compressor = t_zstdCompressor ??= new Compressor(ZstdCompressionLevel);
+        int maxCompressedLength = Compressor.GetCompressBound(value.Length);
         byte[] candidate = GC.AllocateUninitializedArray<byte>(HeaderLength + maxCompressedLength);
         Magic.CopyTo(candidate);
         candidate[4] = Version;
-        BinaryPrimitives.WriteInt32LittleEndian(candidate.AsSpan(5), value.Length);
+        candidate[5] = ZstdCodec;
+        BinaryPrimitives.WriteInt32LittleEndian(candidate.AsSpan(6), value.Length);
 
-        int compressedLength = Snappy.Compress(value, candidate.AsSpan(HeaderLength));
+        if (!compressor.TryWrap(value, candidate.AsSpan(HeaderLength), out int compressedLength))
+        {
+            return false;
+        }
+
         int storedLength = HeaderLength + compressedLength;
         if (storedLength >= value.Length)
         {
@@ -81,26 +98,26 @@ internal sealed class MdbxValueCompression(bool enabled)
             return CopyRaw(stored);
         }
 
-        int expectedLength = BinaryPrimitives.ReadInt32LittleEndian(stored.Slice(5, sizeof(int)));
+        byte version = stored[4];
+        int expectedLength = version == LegacySnappyVersion
+            ? BinaryPrimitives.ReadInt32LittleEndian(stored.Slice(5, sizeof(int)))
+            : BinaryPrimitives.ReadInt32LittleEndian(stored.Slice(6, sizeof(int)));
         if (expectedLength < 0 || expectedLength > MaxDecodedLength)
         {
             return CopyRaw(stored);
         }
 
-        ReadOnlySpan<byte> compressed = stored[HeaderLength..];
         try
         {
-            if (Snappy.GetUncompressedLength(compressed) != expectedLength)
+            return version switch
             {
-                return CopyRaw(stored);
-            }
-
-            byte[] decoded = GC.AllocateUninitializedArray<byte>(expectedLength);
-            return Snappy.TryDecompress(compressed, decoded, out int written) && written == expectedLength
-                ? decoded
-                : CopyRaw(stored);
+                LegacySnappyVersion => DecodeSnappy(stored[LegacyHeaderLength..], expectedLength, stored),
+                Version when stored[5] == SnappyCodec => DecodeSnappy(stored[HeaderLength..], expectedLength, stored),
+                Version when stored[5] == ZstdCodec => DecodeZstd(stored[HeaderLength..], expectedLength, stored),
+                _ => CopyRaw(stored),
+            };
         }
-        catch (Exception exception) when (exception is InvalidDataException or InvalidOperationException or ArgumentException)
+        catch (Exception exception) when (exception is InvalidDataException or InvalidOperationException or ArgumentException or ZstdException)
         {
             return CopyRaw(stored);
         }
@@ -117,10 +134,42 @@ internal sealed class MdbxValueCompression(bool enabled)
         return !compression.Equals("kNoCompression", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool LooksCompressed(ReadOnlySpan<byte> stored) =>
-        stored.Length > HeaderLength &&
-        stored[4] == Version &&
-        stored[..Magic.Length].SequenceEqual(Magic);
+    private static bool LooksCompressed(ReadOnlySpan<byte> stored)
+    {
+        if (stored.Length <= LegacyHeaderLength || !stored[..Magic.Length].SequenceEqual(Magic))
+        {
+            return false;
+        }
+
+        return stored[4] switch
+        {
+            LegacySnappyVersion => true,
+            Version => stored.Length > HeaderLength,
+            _ => false,
+        };
+    }
+
+    private static byte[] DecodeSnappy(ReadOnlySpan<byte> compressed, int expectedLength, ReadOnlySpan<byte> stored)
+    {
+        if (Snappy.GetUncompressedLength(compressed) != expectedLength)
+        {
+            return CopyRaw(stored);
+        }
+
+        byte[] decoded = GC.AllocateUninitializedArray<byte>(expectedLength);
+        return Snappy.TryDecompress(compressed, decoded, out int written) && written == expectedLength
+            ? decoded
+            : CopyRaw(stored);
+    }
+
+    private static byte[] DecodeZstd(ReadOnlySpan<byte> compressed, int expectedLength, ReadOnlySpan<byte> stored)
+    {
+        Decompressor decompressor = t_zstdDecompressor ??= new Decompressor();
+        byte[] decoded = GC.AllocateUninitializedArray<byte>(expectedLength);
+        return decompressor.TryUnwrap(compressed, decoded, out int written) && written == expectedLength
+            ? decoded
+            : CopyRaw(stored);
+    }
 
     private static byte[] CopyRaw(ReadOnlySpan<byte> stored)
     {

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Db.Rocks.Config;
@@ -19,6 +20,7 @@ internal sealed class MdbxEnvironment : IDisposable
     private readonly ILogger _logger;
     private readonly MdbxProfiler? _profiler;
     private readonly MdbxValueCompression _valueCompression;
+    private uint? _statsDbi;
     private bool _disposed;
 
     public MdbxEnvironment(string path, IDbConfig dbConfig, IRocksDbConfig rocksDbConfig, ILogger logger)
@@ -42,8 +44,9 @@ internal sealed class MdbxEnvironment : IDisposable
         Env = env;
         MdbxNative.SetMaxDbs(Env, tuning.MaxDbs);
         MdbxNative.SetMaxReaders(Env, tuning.MaxReaders);
+        int pageSize = IsNewMdbxEnvironment(Path) ? tuning.PageSize : -1;
         MdbxNative.ThrowOnError(
-            MdbxNative.EnvSetGeometry(Env, 0, (nint)tuning.InitialMapSize, unchecked((nint)tuning.MaxMapSize), (nint)tuning.GrowthStep, unchecked((nint)tuning.ShrinkThreshold), -1),
+            MdbxNative.EnvSetGeometry(Env, 0, (nint)tuning.InitialMapSize, unchecked((nint)tuning.MaxMapSize), (nint)tuning.GrowthStep, unchecked((nint)tuning.ShrinkThreshold), pageSize),
             "mdbx_env_set_geometry");
 
         uint flags = MdbxNative.EnvNoStickyThreads | MdbxNative.EnvLifoReclaim | MdbxNative.EnvNoMemInit;
@@ -67,7 +70,7 @@ internal sealed class MdbxEnvironment : IDisposable
             }
         }
 
-        _profiler = MdbxProfiler.Create(Path, tuning, logger);
+        _profiler = MdbxProfiler.Create(Path, tuning, logger, TryReadStorageStats);
     }
 
     public string Path { get; }
@@ -93,6 +96,7 @@ internal sealed class MdbxEnvironment : IDisposable
             }
 
             MdbxNative.Commit(txn);
+            _statsDbi ??= dbi;
             return dbi;
         }
     }
@@ -453,6 +457,31 @@ internal sealed class MdbxEnvironment : IDisposable
                 $"Existing RocksDB data was found in '{path}'. The MDBX backend does not migrate RocksDB data; delete this database directory and sync from scratch.");
         }
     }
+
+    private MdbxStorageStats? TryReadStorageStats()
+    {
+        if (_disposed || _statsDbi is not uint dbi)
+        {
+            return null;
+        }
+
+        using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
+        MdbxNative.ThrowOnError(
+            MdbxNative.DbiStat(txn, dbi, out MdbxNative.MdbxStat stat, (nuint)Marshal.SizeOf<MdbxNative.MdbxStat>()),
+            "mdbx_dbi_stat");
+
+        return new MdbxStorageStats(
+            stat.PageSize,
+            stat.Depth,
+            stat.BranchPages,
+            stat.LeafPages,
+            stat.OverflowPages,
+            stat.Entries,
+            stat.ModTxnId);
+    }
+
+    private static bool IsNewMdbxEnvironment(string path) =>
+        !File.Exists(System.IO.Path.Combine(path, "mdbx.dat"));
 }
 
 internal enum MdbxWriteKind
