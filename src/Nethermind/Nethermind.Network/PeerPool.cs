@@ -81,7 +81,13 @@ namespace Nethermind.Network
 
             if (sender is not IStaticNodesManager and not ITrustedNodesManager)
             {
-                lock (peer)
+            // Lock peer to make the session check and TryRemove atomic against AttachSession.
+            // If a session is being concurrently assigned, AttachSession also holds lock(peer),
+            // so only one thread will see null sessions and call TryRemove. Residual: TryGetValue
+            // is outside the lock, so a session assigned between TryGetValue and lock acquisition
+            // leaves the peer alive in ActivePeers but absent from Peers until rediscovery —
+            // strictly better than the original unconditional disconnect.
+            lock (peer)
                 {
                     if (peer.InSession is not null || peer.OutSession is not null || peer.IsAwaitingConnection)
                         return;
