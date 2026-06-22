@@ -170,13 +170,13 @@ public class GasEstimator(
 
     private (long Left, long Right) TryOptimisticEstimate(
         Transaction tx, BlockHeader header, EstimateGasTracer gasTracer,
-        EstimationBounds bounds, double marginMultiplier, CancellationToken token)
+        EstimationBounds bounds, double optimisticMultiplier, CancellationToken token)
     {
         long leftBound = bounds.LeftBound;
         long rightBound = bounds.RightBound;
 
         // Optimistic first guess (Geth approach): reduces binary search iterations in most cases.
-        long optimistic = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginMultiplier);
+        long optimistic = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * optimisticMultiplier);
         if (optimistic > leftBound && optimistic < rightBound)
         {
             if (TryExecute(tx, header, optimistic, gasTracer, token, out _))
