@@ -55,7 +55,11 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     private readonly JumpDestinationAnalyzer? _analyzer;
     private InstructionStream? _stream;
     private int _streamHits;
-    private int _streamBuildScheduled;
+
+    private const int StreamBuildIdle = 0;
+    private const int StreamBuildScheduled = 1;
+    private const int StreamBuildUnavailable = 2;
+    private int _streamBuildState;
 
     // Key into the shared InstructionStreamCache (set by the repository), so a built stream
     // survives this instance's eviction.
@@ -71,18 +75,20 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         InstructionStream? stream = Volatile.Read(ref _stream);
         if (stream is not null)
             return stream;
+        if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
+            return null;
         if (IsEmpty || IsPrecompile)
             return null;
         if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
             return null;
 
-        if (CodeHash != null && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
+        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
         {
             Volatile.Write(ref _stream, cached);
             return cached;
         }
 
-        if (Interlocked.CompareExchange(ref _streamBuildScheduled, 1, 0) == 0)
+        if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
             ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
 
         return null;
@@ -96,6 +102,10 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
             if (CodeHash != default)
                 InstructionStreamCache.Set(CodeHash, stream);
             Interlocked.CompareExchange(ref _stream, stream, null);
+        }
+        else
+        {
+            Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
         }
     }
 
