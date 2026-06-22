@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using System.Threading;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Snappier;
@@ -11,7 +12,7 @@ using ZstdSharp;
 
 namespace Nethermind.Db.Rocks;
 
-internal sealed class MdbxValueCompression(bool enabled)
+internal sealed class MdbxValueCompression(bool enabled) : IDisposable
 {
     private const int LegacyHeaderLength = 9;
     private const int HeaderLength = 10;
@@ -24,10 +25,9 @@ internal sealed class MdbxValueCompression(bool enabled)
     private const int ZstdCompressionLevel = 1;
     private const string EnabledVariable = "NETHERMIND_MDBX_COMPRESSION";
 
-    [ThreadStatic]
-    private static Compressor? t_zstdCompressor;
-    [ThreadStatic]
-    private static Decompressor? t_zstdDecompressor;
+    private readonly ThreadLocal<Compressor> _zstdCompressors = new(() => new Compressor(ZstdCompressionLevel), trackAllValues: true);
+    private readonly ThreadLocal<Decompressor> _zstdDecompressors = new(() => new Decompressor(), trackAllValues: true);
+    private bool _disposed;
 
     private static ReadOnlySpan<byte> Magic => [0xFF, (byte)'N', (byte)'M', (byte)'X'];
 
@@ -67,7 +67,7 @@ internal sealed class MdbxValueCompression(bool enabled)
             return false;
         }
 
-        Compressor compressor = t_zstdCompressor ??= new Compressor(ZstdCompressionLevel);
+        Compressor compressor = _zstdCompressors.Value!;
         int maxCompressedLength = Compressor.GetCompressBound(value.Length);
         byte[] candidate = GC.AllocateUninitializedArray<byte>(HeaderLength + maxCompressedLength);
         Magic.CopyTo(candidate);
@@ -162,9 +162,9 @@ internal sealed class MdbxValueCompression(bool enabled)
             : CopyRaw(stored);
     }
 
-    private static byte[] DecodeZstd(ReadOnlySpan<byte> compressed, int expectedLength, ReadOnlySpan<byte> stored)
+    private byte[] DecodeZstd(ReadOnlySpan<byte> compressed, int expectedLength, ReadOnlySpan<byte> stored)
     {
-        Decompressor decompressor = t_zstdDecompressor ??= new Decompressor();
+        Decompressor decompressor = _zstdDecompressors.Value!;
         byte[] decoded = GC.AllocateUninitializedArray<byte>(expectedLength);
         return decompressor.TryUnwrap(compressed, decoded, out int written) && written == expectedLength
             ? decoded
@@ -181,5 +181,28 @@ internal sealed class MdbxValueCompression(bool enabled)
         byte[] copy = GC.AllocateUninitializedArray<byte>(stored.Length);
         stored.CopyTo(copy);
         return copy;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        DisposeThreadLocalValues(_zstdCompressors);
+        DisposeThreadLocalValues(_zstdDecompressors);
+    }
+
+    private static void DisposeThreadLocalValues<T>(ThreadLocal<T> threadLocal)
+        where T : IDisposable
+    {
+        foreach (T value in threadLocal.Values)
+        {
+            value.Dispose();
+        }
+
+        threadLocal.Dispose();
     }
 }

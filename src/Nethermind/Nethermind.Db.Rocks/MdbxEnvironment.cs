@@ -415,7 +415,6 @@ internal sealed class MdbxEnvironment : IDisposable
             return;
         }
 
-        _disposed = true;
         try
         {
             Flush();
@@ -426,6 +425,8 @@ internal sealed class MdbxEnvironment : IDisposable
         }
 
         _profiler?.ReportFinal();
+        _disposed = true;
+        _valueCompression.Dispose();
         Env.Dispose();
     }
 

@@ -170,7 +170,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void Mdbx_value_compression_round_trips_and_shrinks_compressible_values()
         {
-            MdbxValueCompression compression = new(enabled: true);
+            using MdbxValueCompression compression = new(enabled: true);
             byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
 
             Assert.That(compression.TryEncode(value, out byte[]? stored, out int storedLength), Is.True);
@@ -185,7 +185,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void Mdbx_value_compression_writes_versioned_zstd_marker()
         {
-            MdbxValueCompression compression = new(enabled: true);
+            using MdbxValueCompression compression = new(enabled: true);
             byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
 
             Assert.That(compression.TryEncode(value, out byte[]? stored, out int storedLength), Is.True);
@@ -202,7 +202,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void Mdbx_value_compression_reads_legacy_snappy_marker()
         {
-            MdbxValueCompression compression = new(enabled: true);
+            using MdbxValueCompression compression = new(enabled: true);
             byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
             byte[] stored = GC.AllocateUninitializedArray<byte>(9 + Snappy.GetMaxCompressedLength(value.Length));
             stored[0] = 0xFF;
@@ -221,7 +221,7 @@ namespace Nethermind.Db.Test
         {
             DbConfig config = new() { AdditionalRocksDbOptions = "compression=kNoCompression;" };
             IRocksDbConfig rocksConfig = new PerTableDbConfig(config, "Blocks", validate: false);
-            MdbxValueCompression compression = MdbxValueCompression.Create(
+            using MdbxValueCompression compression = MdbxValueCompression.Create(
                 rocksConfig,
                 LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
                 DbPath);
@@ -234,10 +234,23 @@ namespace Nethermind.Db.Test
         [Test]
         public void Mdbx_value_compression_treats_invalid_marker_as_raw()
         {
-            MdbxValueCompression compression = new(enabled: true);
+            using MdbxValueCompression compression = new(enabled: true);
             byte[] raw = [0xFF, (byte)'N', (byte)'M', (byte)'X', 1, 1, 0, 0, 0, 0];
 
             Assert.That(compression.Decode(raw), Is.EqualTo(raw));
+        }
+
+        [Test]
+        public void Mdbx_value_compression_dispose_is_idempotent_after_context_creation()
+        {
+            MdbxValueCompression compression = new(enabled: true);
+            byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
+
+            Assert.That(compression.TryEncode(value, out byte[]? stored, out int storedLength), Is.True);
+            Assert.That(compression.Decode(stored.AsSpan(0, storedLength)), Is.EqualTo(value));
+
+            Assert.DoesNotThrow(compression.Dispose);
+            Assert.DoesNotThrow(compression.Dispose);
         }
 
         [Test]
