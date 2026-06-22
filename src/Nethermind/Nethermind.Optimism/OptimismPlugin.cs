@@ -77,8 +77,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api.GossipPolicy = ShouldNotGossip.Instance;
-
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
         return Task.CompletedTask;
@@ -208,6 +206,8 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
+
+            .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
 
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()

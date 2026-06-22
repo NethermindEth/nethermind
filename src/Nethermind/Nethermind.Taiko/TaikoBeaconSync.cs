@@ -86,4 +86,11 @@ public sealed class TaikoBeaconSync(
 
     /// <inheritdoc/>
     public Hash256? GetHeadBlockHash() => inner.GetHeadBlockHash();
+
+    /// <inheritdoc/>
+    public event Action? BeaconSyncStopped
+    {
+        add => inner.BeaconSyncStopped += value;
+        remove => inner.BeaconSyncStopped -= value;
+    }
 }

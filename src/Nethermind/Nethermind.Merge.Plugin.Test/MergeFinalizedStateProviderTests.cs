@@ -7,7 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Synchronization;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -22,7 +22,7 @@ public class MergeFinalizedStateProviderTests
     private IBlockTree _blockTree = null!;
     private IFinalizedStateProvider _baseFinalizedStateProvider = null!;
     private MergeFinalizedStateProvider _provider = null!;
-    private IBlockCacheService _blockCacheService;
+    private IBeaconSyncStrategy _beaconSyncStrategy;
 
     [SetUp]
     public void Setup()
@@ -30,8 +30,8 @@ public class MergeFinalizedStateProviderTests
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
         _blockTree = Substitute.For<IBlockTree>();
         _baseFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
-        _blockCacheService = Substitute.For<IBlockCacheService>();
-        _provider = new MergeFinalizedStateProvider(_poSSwitcher, _blockCacheService, _blockTree, _baseFinalizedStateProvider);
+        _beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+        _provider = new MergeFinalizedStateProvider(_poSSwitcher, _beaconSyncStrategy, _blockTree, _baseFinalizedStateProvider);
     }
 
     [Test]
@@ -79,7 +79,7 @@ public class MergeFinalizedStateProviderTests
         BlockHeader finalizedHeader = Build.A.BlockHeader.WithNumber(expectedBlockNumber).WithHash(finalizedHash).TestObject;
         _poSSwitcher.TransitionFinished.Returns(true);
         _blockTree.FinalizedHash.Returns((Hash256?)null);
-        _blockCacheService.FinalizedHash.Returns(finalizedHash);
+        _beaconSyncStrategy.GetFinalizedHash().Returns(finalizedHash);
         _blockTree.FindHeader(finalizedHash).Returns(finalizedHeader);
 
         // Act
@@ -104,7 +104,7 @@ public class MergeFinalizedStateProviderTests
         _poSSwitcher.TransitionFinished.Returns(true);
         _blockTree.FinalizedHash.Returns(blockTreeHash);
         _blockTree.FindHeader(blockTreeHash, BlockTreeLookupOptions.None).Returns(blockTreeHeader);
-        _blockCacheService.FinalizedHash.Returns(blockCacheHash);
+        _beaconSyncStrategy.GetFinalizedHash().Returns(blockCacheHash);
         _blockTree.FindHeader(blockCacheHash).Returns(blockCacheHeader);
 
         // Act
@@ -128,7 +128,7 @@ public class MergeFinalizedStateProviderTests
         _poSSwitcher.TransitionFinished.Returns(true);
         _blockTree.FinalizedHash.Returns(blockTreeHash);
         _blockTree.FindHeader(blockTreeHash, BlockTreeLookupOptions.None).Returns(blockTreeHeader);
-        _blockCacheService.FinalizedHash.Returns(blockCacheHash);
+        _beaconSyncStrategy.GetFinalizedHash().Returns(blockCacheHash);
         _blockTree.FindHeader(blockCacheHash).Returns(blockCacheHeader);
 
         // Act
@@ -150,7 +150,7 @@ public class MergeFinalizedStateProviderTests
         _poSSwitcher.TransitionFinished.Returns(true);
         _blockTree.FinalizedHash.Returns(blockTreeHash);
         _blockTree.FindHeader(blockTreeHash, BlockTreeLookupOptions.None).Returns(blockTreeHeader);
-        _blockCacheService.FinalizedHash.Returns(blockCacheHash);
+        _beaconSyncStrategy.GetFinalizedHash().Returns(blockCacheHash);
         _blockTree.FindHeader(blockCacheHash).Returns((BlockHeader?)null);
 
         // Act
@@ -167,7 +167,7 @@ public class MergeFinalizedStateProviderTests
         long expectedBlockNumber = 150;
         _poSSwitcher.TransitionFinished.Returns(true);
         _blockTree.FinalizedHash.Returns((Hash256?)null);
-        _blockCacheService.FinalizedHash.Returns((Hash256?)null);
+        _beaconSyncStrategy.GetFinalizedHash().Returns((Hash256?)null);
         _baseFinalizedStateProvider.FinalizedBlockNumber.Returns(expectedBlockNumber);
 
         // Act

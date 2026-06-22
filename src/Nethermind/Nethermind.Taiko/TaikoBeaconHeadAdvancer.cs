@@ -9,7 +9,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Taiko;
 
@@ -26,7 +26,7 @@ namespace Nethermind.Taiko;
 /// taiko-geth (and alethia-reth) avoid this by advancing the canonical head pointer as part of
 /// <c>InsertChain(setHead=true)</c> inside their downloader — the EL takes responsibility for its
 /// own canonical head during sync. This class restores the same property in the Nethermind
-/// architecture without touching core: it watches for the cached <see cref="IBlockCacheService.HeadBlockHash"/>
+/// architecture without touching core: it watches for the <see cref="IBeaconSyncStrategy.GetHeadBlockHash"/>
 /// to become processed, then enqueues every missing ancestor for processing and drives the
 /// resulting <c>TryUpdateMainChain</c> sequence to advance <c>Head</c> all the way to that hash.
 /// </remarks>
@@ -36,7 +36,7 @@ public sealed class TaikoBeaconHeadAdvancer : IDisposable
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
 
     private readonly IBlockTree _blockTree;
-    private readonly IBlockCacheService _blockCacheService;
+    private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly Lazy<IBlockProcessingQueue> _processingQueue;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts = new();
@@ -51,12 +51,12 @@ public sealed class TaikoBeaconHeadAdvancer : IDisposable
     /// </remarks>
     public TaikoBeaconHeadAdvancer(
         IBlockTree blockTree,
-        IBlockCacheService blockCacheService,
+        IBeaconSyncStrategy beaconSyncStrategy,
         Lazy<IBlockProcessingQueue> processingQueue,
         ILogManager logManager)
     {
         _blockTree = blockTree;
-        _blockCacheService = blockCacheService;
+        _beaconSyncStrategy = beaconSyncStrategy;
         _processingQueue = processingQueue;
         _logger = logManager.GetClassLogger<TaikoBeaconHeadAdvancer>();
 
@@ -105,7 +105,7 @@ public sealed class TaikoBeaconHeadAdvancer : IDisposable
         Block? target = null;
         long bestNumber = -1L;
 
-        Hash256? cachedHash = _blockCacheService.HeadBlockHash;
+        Hash256? cachedHash = _beaconSyncStrategy.GetHeadBlockHash();
         if (cachedHash is not null && cachedHash != Keccak.Zero)
         {
             Block? cached = _blockTree.FindBlock(cachedHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
