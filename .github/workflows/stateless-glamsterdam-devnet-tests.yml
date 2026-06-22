@@ -68,6 +68,11 @@ jobs:
           # into at most that many chunks and let each job process a chunk.
           MAX_JOBS = 256
 
+          # Per-batch time budget; the job timeout scales with the chunk size but is
+          # capped at GitHub's 360-minute hosted-runner limit.
+          MINUTES_PER_BATCH = 60
+          MAX_TIMEOUT_MINUTES = 360
+
           batches_path, output_path = sys.argv[1:]
           with open(batches_path, encoding="utf-8") as file:
               batches = [json.loads(line) for line in file if line.strip()]
@@ -82,6 +87,7 @@ jobs:
               "include": [
                   {
                       "range": f"{chunk[0]['batchStartBlock']}-{chunk[-1]['batchEndBlock']}",
+                      "timeout": min(MAX_TIMEOUT_MINUTES, len(chunk) * MINUTES_PER_BATCH),
                       "batches": [
                           {"path": batch["path"], "sha256": batch["sha256"]}
                           for batch in chunk
@@ -105,7 +111,7 @@ jobs:
     name: Run blocks ${{ matrix.range }}
     needs: [build, select-batches]
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select-batches.outputs.matrix) }}
