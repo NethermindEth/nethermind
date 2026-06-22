@@ -417,17 +417,23 @@ internal sealed class MdbxEnvironment : IDisposable
 
         try
         {
-            Flush();
-        }
-        catch (Exception exception) when (exception is MdbxException or DllNotFoundException or EntryPointNotFoundException)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Failed to flush MDBX environment {Path}: {exception.Message}");
-        }
+            try
+            {
+                Flush();
+            }
+            catch (Exception exception) when (exception is MdbxException or DllNotFoundException or EntryPointNotFoundException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to flush MDBX environment {Path}: {exception.Message}");
+            }
 
-        _profiler?.ReportFinal();
-        _disposed = true;
-        _valueCompression.Dispose();
-        Env.Dispose();
+            _profiler?.ReportFinal();
+        }
+        finally
+        {
+            _disposed = true;
+            _valueCompression.Dispose();
+            Env.Dispose();
+        }
     }
 
     public void RecordQueuedWrite(ReadOnlySpan<byte> key, byte[]? value, int pendingOperations) =>
