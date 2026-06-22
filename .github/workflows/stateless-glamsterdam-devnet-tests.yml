@@ -61,7 +61,12 @@ jobs:
 
           python3 - "$SUMMARY_DIR/batches.jsonl" "$GITHUB_OUTPUT" <<'PY'
           import json
+          import math
           import sys
+
+          # A GitHub Actions matrix generates at most 256 jobs, so pack the batches
+          # into at most that many chunks and let each job process a chunk.
+          MAX_JOBS = 256
 
           batches_path, output_path = sys.argv[1:]
           with open(batches_path, encoding="utf-8") as file:
@@ -70,14 +75,19 @@ jobs:
           if not batches:
               sys.exit("No block batches found in the catalog")
 
+          chunk_size = math.ceil(len(batches) / MAX_JOBS)
+          chunks = [batches[i:i + chunk_size] for i in range(0, len(batches), chunk_size)]
+
           matrix = {
               "include": [
                   {
-                      "range": f"{batch['batchStartBlock']}-{batch['batchEndBlock']}",
-                      "path": batch["path"],
-                      "sha256": batch["sha256"],
+                      "range": f"{chunk[0]['batchStartBlock']}-{chunk[-1]['batchEndBlock']}",
+                      "batches": [
+                          {"path": batch["path"], "sha256": batch["sha256"]}
+                          for batch in chunk
+                      ],
                   }
-                  for batch in batches
+                  for chunk in chunks
               ]
           }
 
@@ -115,8 +125,7 @@ jobs:
       - name: Run blocks
         env:
           BATCH_RANGE: ${{ matrix.range }}
-          BATCH_PATH: ${{ matrix.path }}
-          BATCH_SHA256: ${{ matrix.sha256 }}
+          BATCHES_JSON: ${{ toJSON(matrix.batches) }}
         run: |
           set -euo pipefail
 
@@ -141,7 +150,7 @@ jobs:
             echo "- Available block artifacts: $artifact_count"
             echo "- Selected batches: all available batches"
             echo "- Matrix batches: $MATRIX_BATCH_COUNT"
-            echo "- Current batch: $BATCH_RANGE"
+            echo "- Current chunk: $BATCH_RANGE"
             echo
             echo "| Block | Hash | Result |"
             echo "| --- | --- | --- |"
@@ -162,81 +171,102 @@ jobs:
             failed=$((failed + 1))
           }
 
-          archive_path="$BATCH_PATH"
-          archive_sha="$(echo "$BATCH_SHA256" | sed 's/^0x//')"
-          archive_name="$(basename "$archive_path")"
-          archive="$SUMMARY_DIR/archives/$archive_name"
-          batch_dir="$SUMMARY_DIR/extracted/${archive_name%.tar.zst}"
+          record_batch_failure() {
+            local batch="$1"
+            local reason="$2"
 
-          echo "Downloading $archive_path"
-          curl -fsSL "$CATALOG_ROOT/$archive_path" -o "$archive"
-          echo "$archive_sha  $archive" | sha256sum --check --status
+            echo "::error title=Stateless batch failed::Batch $batch: $reason"
+            echo "| batch $batch | | failed: $reason |" >> "$summary"
+            failed=$((failed + 1))
+          }
 
-          mkdir -p "$batch_dir"
-          tar --zstd -xf "$archive" -C "$batch_dir"
+          while IFS= read -r batch; do
+            archive_path="$(jq -r '.path' <<< "$batch")"
+            archive_sha="$(jq -r '.sha256' <<< "$batch" | sed 's/^0x//')"
+            archive_name="$(basename "$archive_path")"
+            archive="$SUMMARY_DIR/archives/$archive_name"
+            batch_dir="$SUMMARY_DIR/extracted/${archive_name%.tar.zst}"
 
-          while IFS= read -r artifact; do
-            block_number="$(jq -r '.blockNumber' <<< "$artifact")"
-            block_hash="$(jq -r '.blockHash' <<< "$artifact")"
-            input_sha="$(jq -r '.statelessInputSha256' <<< "$artifact" | sed 's/^0x//')"
-            artifact_path="$(jq -r '.archivePath' <<< "$artifact")"
-            block_json="$SUMMARY_DIR/block-$block_number.json"
-            input_hex_file="$SUMMARY_DIR/block-$block_number.hex"
-            raw_input_file="$SUMMARY_DIR/block-$block_number.raw.ssz"
-            input_file="$guest_dir/bin/$block_number.ssz"
-            log_file="$SUMMARY_DIR/logs/$block_number.log"
-
-            if ! zstd -dc "$batch_dir/$artifact_path" > "$block_json"; then
-              record_failure "$block_number" "$block_hash" "failed to decompress block artifact"
+            echo "Downloading $archive_path"
+            if ! curl -fsSL "$CATALOG_ROOT/$archive_path" -o "$archive"; then
+              record_batch_failure "$archive_name" "failed to download archive"
               continue
             fi
 
-            if ! jq -r '.statelessInputBytes // .stateless_input_bytes // empty' "$block_json" > "$input_hex_file"; then
-              record_failure "$block_number" "$block_hash" "failed to read statelessInputBytes"
+            if ! echo "$archive_sha  $archive" | sha256sum --check --status; then
+              record_batch_failure "$archive_name" "archive checksum mismatch"
               continue
             fi
 
-            if [ ! -s "$input_hex_file" ]; then
-              record_failure "$block_number" "$block_hash" "statelessInputBytes is missing"
+            mkdir -p "$batch_dir"
+            if ! tar --zstd -xf "$archive" -C "$batch_dir"; then
+              record_batch_failure "$archive_name" "failed to extract archive"
               continue
             fi
 
-            if ! python3 -c 'import sys; data = sys.stdin.read().strip(); data = data[2:] if data[:2].lower() == "0x" else data; open(sys.argv[1], "wb").write(bytes.fromhex(data))' "$raw_input_file" < "$input_hex_file"; then
-              record_failure "$block_number" "$block_hash" "failed to decode statelessInputBytes"
-              continue
-            fi
+            while IFS= read -r artifact; do
+              block_number="$(jq -r '.blockNumber' <<< "$artifact")"
+              block_hash="$(jq -r '.blockHash' <<< "$artifact")"
+              input_sha="$(jq -r '.statelessInputSha256' <<< "$artifact" | sed 's/^0x//')"
+              artifact_path="$(jq -r '.archivePath' <<< "$artifact")"
+              block_json="$SUMMARY_DIR/block-$block_number.json"
+              input_hex_file="$SUMMARY_DIR/block-$block_number.hex"
+              raw_input_file="$SUMMARY_DIR/block-$block_number.raw.ssz"
+              input_file="$guest_dir/bin/$block_number.ssz"
+              log_file="$SUMMARY_DIR/logs/$block_number.log"
 
-            if ! echo "$input_sha  $raw_input_file" | sha256sum --check --status; then
-              record_failure "$block_number" "$block_hash" "statelessInputBytes checksum mismatch"
-              continue
-            fi
+              if ! zstd -dc "$batch_dir/$artifact_path" > "$block_json"; then
+                record_failure "$block_number" "$block_hash" "failed to decompress block artifact"
+                continue
+              fi
 
-            if ! python3 -c 'import struct, sys; data = open(sys.argv[1], "rb").read(); padding = (-len(data)) % 8; open(sys.argv[2], "wb").write(struct.pack("<Q", len(data)) + data + bytes(padding))' "$raw_input_file" "$input_file"; then
-              record_failure "$block_number" "$block_hash" "failed to frame statelessInputBytes for Zisk"
-              continue
-            fi
+              if ! jq -r '.statelessInputBytes // .stateless_input_bytes // empty' "$block_json" > "$input_hex_file"; then
+                record_failure "$block_number" "$block_hash" "failed to read statelessInputBytes"
+                continue
+              fi
 
-            echo "Running block $block_number ($block_hash)"
-            set +e
-            timeout 5m make -C "$guest_dir" run INPUT="$block_number.ssz" 2>&1 | tee "$log_file"
-            run_status=${PIPESTATUS[0]}
-            set -e
+              if [ ! -s "$input_hex_file" ]; then
+                record_failure "$block_number" "$block_hash" "statelessInputBytes is missing"
+                continue
+              fi
 
-            output_hex="$(grep -Eio '(0x)?[0-9a-f]{66,}' "$log_file" | sed 's/^0x//' | awk 'length($0) >= 66 { value=$0 } END { print value }' || true)"
+              if ! python3 -c 'import sys; data = sys.stdin.read().strip(); data = data[2:] if data[:2].lower() == "0x" else data; open(sys.argv[1], "wb").write(bytes.fromhex(data))' "$raw_input_file" < "$input_hex_file"; then
+                record_failure "$block_number" "$block_hash" "failed to decode statelessInputBytes"
+                continue
+              fi
 
-            if [ "$run_status" -ne 0 ]; then
-              record_failure "$block_number" "$block_hash" "guest exited $run_status"
-            elif [ -z "$output_hex" ]; then
-              record_failure "$block_number" "$block_hash" "no encoded output found"
-            elif [ "${output_hex:64:2}" != "01" ]; then
-              record_failure "$block_number" "$block_hash" "stateless result was not successful"
-            else
-              echo "| $block_number | \`$block_hash\` | passed |" >> "$summary"
-              passed=$((passed + 1))
-            fi
+              if ! echo "$input_sha  $raw_input_file" | sha256sum --check --status; then
+                record_failure "$block_number" "$block_hash" "statelessInputBytes checksum mismatch"
+                continue
+              fi
 
-            rm -f "$input_file" "$raw_input_file" "$block_json" "$input_hex_file"
-          done < <(jq -c '.artifacts[]' "$batch_dir/manifest.json")
+              if ! python3 -c 'import struct, sys; data = open(sys.argv[1], "rb").read(); padding = (-len(data)) % 8; open(sys.argv[2], "wb").write(struct.pack("<Q", len(data)) + data + bytes(padding))' "$raw_input_file" "$input_file"; then
+                record_failure "$block_number" "$block_hash" "failed to frame statelessInputBytes for Zisk"
+                continue
+              fi
+
+              echo "Running block $block_number ($block_hash)"
+              set +e
+              timeout 5m make -C "$guest_dir" run INPUT="$block_number.ssz" 2>&1 | tee "$log_file"
+              run_status=${PIPESTATUS[0]}
+              set -e
+
+              output_hex="$(grep -Eio '(0x)?[0-9a-f]{66,}' "$log_file" | sed 's/^0x//' | awk 'length($0) >= 66 { value=$0 } END { print value }' || true)"
+
+              if [ "$run_status" -ne 0 ]; then
+                record_failure "$block_number" "$block_hash" "guest exited $run_status"
+              elif [ -z "$output_hex" ]; then
+                record_failure "$block_number" "$block_hash" "no encoded output found"
+              elif [ "${output_hex:64:2}" != "01" ]; then
+                record_failure "$block_number" "$block_hash" "stateless result was not successful"
+              else
+                echo "| $block_number | \`$block_hash\` | passed |" >> "$summary"
+                passed=$((passed + 1))
+              fi
+
+              rm -f "$input_file" "$raw_input_file" "$block_json" "$input_hex_file"
+            done < <(jq -c '.artifacts[]' "$batch_dir/manifest.json")
+          done < <(jq -c '.[]' <<< "$BATCHES_JSON")
 
           {
             echo
