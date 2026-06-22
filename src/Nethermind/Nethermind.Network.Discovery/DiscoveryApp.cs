@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Autofac;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
@@ -73,11 +74,14 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
             bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port));
         }
 
+        IIPResolver.NethermindIp resolvedIp = ipResolver.Resolve().AsTask().GetAwaiter().GetResult();
+        IPEndPoint selfEndpoint = new(resolvedIp.ExternalIp, networkConfig.DiscoveryPort);
+
         _discv4Services = rootScope.BeginLifetimeScope(
             (builder) =>
             {
                 builder
-                .AddModule(new DiscV4KademliaModule(enode.PublicKey, bootNodes))
+                .AddModule(new DiscV4KademliaModule(enode.PublicKey, bootNodes, selfEndpoint))
                 .AddSingleton<DiscV4Services>();
 
                 configureDiscv4Services?.Invoke(builder);

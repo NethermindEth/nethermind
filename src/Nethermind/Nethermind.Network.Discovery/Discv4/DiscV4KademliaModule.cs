@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,7 +17,8 @@ namespace Nethermind.Network.Discovery.Discv4;
 /// </summary>
 /// <param name="masterNode"></param>
 /// <param name="bootNodes"></param>
-public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : Module
+/// <param name="selfEndpoint">The node's own discv4 UDP endpoint, used as SourceAddress in outbound Ping messages.</param>
+public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes, IPEndPoint selfEndpoint) : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
             .AddSingleton<DiscoveryPersistenceManager>()
@@ -35,7 +37,7 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
             .AddSingleton<IKeyOperator<PublicKey, Node>, PublicKeyKeyOperator>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
             {
-                CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true), // It actually only need masterNode.
+                CurrentNodeId = new Node(masterNode, selfEndpoint.Address.ToString(), selfEndpoint.Port, true),
                 KSize = discoveryConfig.BucketSize,
                 Alpha = discoveryConfig.Concurrency,
                 Beta = discoveryConfig.BitsPerHop,
