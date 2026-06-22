@@ -503,9 +503,6 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
-            if (session.Direction == ConnectionDirection.In)
-                _nodeFilter.Delete(session.Node.Address.Address);
-
             subscription.DetachSession();
             _sessionMonitor.RemoveSession(session);
             try
