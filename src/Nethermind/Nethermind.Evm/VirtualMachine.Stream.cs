@@ -13,8 +13,9 @@ namespace Nethermind.Evm;
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 public static class StreamInterpreter
 {
-    // Volatile so a test flipping it in-process is visible to frame-executing threads.
-    public static volatile bool Enabled;
+    // On by default; the gate restricts it to cancelable (eth_call/simulation) frames. Volatile so a test
+    // flipping it in-process is visible to frame-executing threads.
+    public static volatile bool Enabled = true;
 
     // The stream is a compute optimization with no payoff on storage-bound block processing, where it is
     // pure overhead (build cost + retained StreamOp[]). Production engages it only in cancelable call
