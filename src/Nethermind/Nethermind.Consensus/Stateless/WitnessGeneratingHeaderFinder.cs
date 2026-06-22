@@ -42,8 +42,8 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
                 $"Recorded header {_lowestRequestedHeader} is above the executed-against parent {parentHeader.Number}");
 
         // Headers in ascending block-number order — any BLOCKHASH-touched ancestor first, recorded
-        // block last — so the chain is contiguous and replayable. _lowestRequestedHeader stays at
-        // ulong.MaxValue unless BLOCKHASH reached further back during processing.
+        // block last — so the chain is contiguous and replayable. ulong.MaxValue sentinel means
+        // BLOCKHASH never reached further back during processing.
         int count = _lowestRequestedHeader < ulong.MaxValue
             ? (int)(parentHeader.Number - _lowestRequestedHeader + 1)
             : 1;
@@ -55,7 +55,6 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
 
             if (index >= 0)
             {
-                // Count-driven: ulong i-- wraps past 0 when _lowestRequestedHeader == 0.
                 ulong i = parentHeader.Number - 1;
                 while (index >= 0)
                 {

@@ -190,7 +190,7 @@ public static partial class EvmInstructions
 
         if (spec.Use63Over64Rule)
         {
-            // EIP-150: cap fits in ulong, so min(gasLimit, cap) fits without 256-bit math.
+            // EIP-150: only 63/64 of remaining gas is forwarded.
             ulong cap = gasAvailable - gasAvailable / 64;
             gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= cap
                 ? gasLimit.u0
