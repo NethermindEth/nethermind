@@ -478,7 +478,27 @@ namespace Nethermind.Consensus.Processing
             double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
             double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
-            string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N3} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N3}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N3}) .. {Evm.Metrics.BlockMaxGasPrice:N3}" : "";
+            string blockGas = "";
+            // Read the stable gauges (published once per block, never reset) rather than the transient
+            // per-block aggregates: GenerateReport runs on the ThreadPool and can fire after the next
+            // block's ResetBlockStats has already cleared the transient values.
+            if (Evm.Metrics.GasPriceMax != 0f)
+            {
+                float minGas = Evm.Metrics.GasPriceMin;
+                float medianGas = Math.Max(minGas, Evm.Metrics.GasPriceMedian);
+                float aveGas = Evm.Metrics.GasPriceAve;
+                float maxGas = Evm.Metrics.GasPriceMax;
+                // Step the unit down (gwei -> mwei -> kwei -> wei) so small gas prices stay visible at :N3
+                // instead of all rendering 0.000 on low-base-fee chains.
+                (string unit, float scale) = minGas switch
+                {
+                    0f or >= 0.001f => ("gwei", 1f),
+                    >= 0.000_001f => ("mwei", 1_000f),
+                    >= 0.000_000_001f => ("kwei", 1_000_000f),
+                    _ => ("wei", 1_000_000_000f),
+                };
+                blockGas = $"⛽ Gas {unit}: {minGas * scale:N3} .. {whiteText}{medianGas * scale:N3}{resetColor} ({aveGas * scale:N3}) .. {maxGas * scale:N3}";
+            }
             string mgasColor = whiteText;
 
             NewProcessingStatistics?.Invoke(this, new BlockStatistics()
@@ -490,10 +510,10 @@ namespace Nethermind.Consensus.Processing
                 ProcessingMs = chunkMs,
                 SlotMs = runMs,
                 MGasPerSecond = mgasPerSecond,
-                MinGas = Evm.Metrics.BlockMinGasPrice,
-                MedianGas = Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice),
-                AveGas = Evm.Metrics.BlockAveGasPrice,
-                MaxGas = Evm.Metrics.BlockMaxGasPrice,
+                MinGas = Evm.Metrics.GasPriceMin,
+                MedianGas = Math.Max(Evm.Metrics.GasPriceMin, Evm.Metrics.GasPriceMedian),
+                AveGas = Evm.Metrics.GasPriceAve,
+                MaxGas = Evm.Metrics.GasPriceMax,
                 GasLimit = block.GasLimit
             });
 
@@ -581,13 +601,17 @@ namespace Nethermind.Consensus.Processing
                     _ => $"       {bps,10:F2} Blk/s "
                 };
 
+                // Exec-mode indicator: chains for parallel BAL, link for sequential. BlockAccessList is
+                // null pre-Amsterdam, so a parallel-configured node correctly shows sequential pre-fork.
+                string execMode = _parallelExecution && block.BlockAccessList is not null ? " ⛓️" : " 🔗";
+
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
                 else
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
             }
 

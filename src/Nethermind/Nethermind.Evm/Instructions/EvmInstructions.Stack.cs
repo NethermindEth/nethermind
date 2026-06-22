@@ -1103,7 +1103,8 @@ public static partial class EvmInstructions
         Hash256[] topics = new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)
         {
-            topics[i] = new Hash256(stack.PopWord256());
+            if (!stack.PopWord256(out Span<byte> topic)) goto StackUnderflow;
+            topics[i] = new Hash256(topic);
         }
 
         // Create a new log entry with the executing account, log data, and topics.

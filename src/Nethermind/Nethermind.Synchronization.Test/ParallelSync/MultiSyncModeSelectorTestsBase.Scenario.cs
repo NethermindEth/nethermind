@@ -666,12 +666,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder WhenThisNodeIsLoadingBlocksFromDb()
-                {
-                    _overwrites.Add(() => SyncProgressResolver.IsLoadingBlocksFromDb().Returns(true));
-                    return this;
-                }
-
                 public ScenarioBuilder WhenStateAndBestHeaderCanBeBeDifferent(int maxBlockDiff)
                 {
                     _overwrites.Add(() => SyncConfig.HeaderStateDistance = (ulong)maxBlockDiff);
@@ -845,20 +839,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder WhenMergeSyncPivotNotResolvedYet()
-                {
-                    _syncProgressSetups.Add(
-                        () =>
-                        {
-                            SyncConfig.MaxAttemptsToUpdatePivot = 3;
-                            BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-                            BeaconSyncStrategy.MergeTransitionFinished.Returns(true);
-                            return "merge sync pivot not resolved yet";
-                        }
-                    );
-
-                    return this;
-                }
             }
 
             public static ScenarioBuilder GoesLikeThis(bool needToWaitForHeaders) =>

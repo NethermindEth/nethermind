@@ -777,6 +777,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IPayloadPreparationService payloadPreparationService,
         IBlockCacheService blockCacheService,
         IMergeSyncController mergeSyncController,
+        ISyncConfig syncConfig,
         ITestEnv preMergeTestEnv
     ) : ITestEnv
     {
@@ -820,7 +821,16 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             blockCacheService.TryAddBlock(headBlock);
             blockCacheService.FinalizedHash = finalizedBlock.Hash!;
 
-            await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
+            // In fast sync the starting pivot is resolved from the finalized block (before the sync mode
+            // selector starts); wait for that before kicking off beacon header sync. Full sync keeps the
+            // config pivot and never resolves a fresh one, so there is nothing to wait for.
+            if (syncConfig.FastSync)
+            {
+                while (blockTree.SyncPivot.BlockHash != finalizedBlock.Hash)
+                {
+                    await Task.Delay(50, cancellationToken);
+                }
+            }
             mergeSyncController.InitBeaconHeaderSync(headBlock.Header);
 
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken, finalizedDistanceFromHead);

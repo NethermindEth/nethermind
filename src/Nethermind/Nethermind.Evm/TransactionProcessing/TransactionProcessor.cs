@@ -772,16 +772,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
+            // Block production (BuildUp) is excluded: payload builds run concurrently with block import
+            // on the same process-wide gas aggregates, and the gauges describe imported blocks, not candidates.
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
             {
-                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
-
-                Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
-                Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
-
-                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
-                Metrics.BlockTransactions++;
+                Metrics.UpdateBlockGasPrice(effectiveGasPrice);
             }
         }
 

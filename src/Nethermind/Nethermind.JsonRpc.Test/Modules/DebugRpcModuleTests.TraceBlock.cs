@@ -406,6 +406,28 @@ public partial class DebugRpcModuleTests
             $"Streamed JSON differs from serializer output for {traceCount} traces");
     }
 
+    [TestCase("debug_traceBlockByNumber")]
+    [TestCase("debug_traceBlockByHash")]
+    public async Task Debug_traceBlock_returns_error_for_genesis(string method)
+    {
+        using Context context = await Context.Create();
+
+        object? arg = method switch
+        {
+            "debug_traceBlockByNumber" => context.Blockchain.BlockTree.Genesis!.Number,
+            _ => context.Blockchain.BlockTree.Genesis!.Hash
+        };
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, arg, new GethTraceOptions());
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+        JsonElement root = doc.RootElement;
+
+        Assert.That(root.TryGetProperty("error", out JsonElement error), Is.True, "Missing 'error' field");
+        Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("genesis is not traceable"));
+        Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
+    }
+
     [TestCase("debug_traceBlock")]
     [TestCase("debug_traceBlockByNumber")]
     [TestCase("debug_traceBlockByHash")]

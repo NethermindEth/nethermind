@@ -43,22 +43,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.Disconnected);
 
         [Test]
-        public void Load_from_db() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .WhateverTheSyncProgressIs()
-                .WhateverThePeerPoolLooks()
-                .WhenThisNodeIsLoadingBlocksFromDb()
-                .ThenInAnySyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.DbLoad);
-
-        [Test]
-        public void Load_from_without_merge_sync_pivot_resolved() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .WhenMergeSyncPivotNotResolvedYet()
-                .WhateverThePeerPoolLooks()
-                .WhenThisNodeIsLoadingBlocksFromDb()
-                .ThenInAnyFastSyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.DbLoad | SyncMode.UpdatingPivot);
-
-        [Test]
         public void Simple_archive() => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeHasNeverSyncedBefore()
                 .AndGoodPeersAreKnown()

@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -443,13 +444,23 @@ public struct EvmPooledMemory
             }
         }
 
+        if (minLength > MaxCachedArrayLength)
+        {
+            byte[] pooled = RentLarge(minLength);
+            Array.Clear(pooled);
+            return pooled;
+        }
+
         return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
     }
 
     private static void ReturnClean(byte[] array, int dirtyLength)
     {
         if (array.Length > MaxCachedArrayLength)
+        {
+            ReturnLarge(array);
             return;
+        }
 
         byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
         if (_cleanArrayCount < CleanCacheSlots)
@@ -458,6 +469,31 @@ public struct EvmPooledMemory
             cache[_cleanArrayCount++] = array;
         }
     }
+
+#if ZK_EVM
+    private static byte[] RentLarge(int minLength) => SafeArrayPool<byte>.Shared.Rent(minLength);
+
+    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
+#else
+    private const int MaxSharedArrayLength = 1 << 20;
+    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
+    private const int MaxLargePooledArrayLength = 1 << 22;
+    private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
+        System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
+
+    private static byte[] RentLarge(int minLength)
+        => minLength > MaxSharedArrayLength
+            ? _largeArrayPool.Rent(minLength)
+            : SafeArrayPool<byte>.Shared.Rent(minLength);
+
+    private static void ReturnLarge(byte[] array)
+    {
+        if (array.Length > MaxSharedArrayLength)
+            _largeArrayPool.Return(array);
+        else
+            SafeArrayPool<byte>.Shared.Return(array);
+    }
+#endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
