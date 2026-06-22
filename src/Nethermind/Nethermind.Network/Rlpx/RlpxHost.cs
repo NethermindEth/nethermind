@@ -107,7 +107,7 @@ namespace Nethermind.Network.Rlpx
             _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
         }
 
-        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.TryAccept(ip, exactOnly);
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.CanAccept(ip, exactOnly);
 
         public async Task Init()
         {
@@ -257,7 +257,7 @@ namespace Nethermind.Network.Rlpx
 
         /// <summary>
         /// Rejects inbound connections from IPs already seen within the filter window.
-        /// Outgoing connections are filtered earlier by <see cref="ShouldContact"/> before <see cref="ConnectAsync"/>.
+        /// Outgoing connections reserve their filter slot in <see cref="InitializeChannel"/> once the TCP channel is open.
         /// </summary>
         private bool ShouldRejectInbound(ISession session, IChannel channel)
         {
@@ -289,6 +289,12 @@ namespace Nethermind.Network.Rlpx
             if (ShouldRejectInbound(session, channel))
             {
                 return;
+            }
+
+            if (session.Direction == ConnectionDirection.Out
+                && channel.RemoteAddress is IPEndPoint outboundEndpoint)
+            {
+                _nodeFilter.TryAccept(outboundEndpoint.Address);
             }
 
             SetTcpSocketOptions(channel);
