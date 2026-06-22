@@ -134,7 +134,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract bool ConsumeCallValueTransfer(ref TSelf gas);
 
     // EIP-2780 three-tier value-moving call cost replacing the legacy CallValue + NewAccount charges.
-    static abstract bool ConsumeCallValueTransferEip2780(ref TSelf gas, bool isSelfCall, bool recipientEmpty);
+    static abstract bool ConsumeCallValueTransferEip2780(ref TSelf gas, bool isSelfCall, bool recipientEmpty, IReleaseSpec spec);
     static abstract bool ConsumeNewAccountCreation<TEip8037>(ref TSelf gas) where TEip8037 : struct, IFlag;
     static abstract bool ConsumeLogEmission(ref TSelf gas, long topicCount, long dataSize);
     static abstract TSelf Max(in TSelf a, in TSelf b);

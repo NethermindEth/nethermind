@@ -422,10 +422,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static bool ConsumeCallValueTransfer(ref EthereumGasPolicy gas)
         => UpdateGas(ref gas, GasCostOf.CallValue);
 
-    // EIP-2780 value-moving call cost: subsumes the legacy CallValue + NewAccount charges.
+    // EIP-2780 value-moving call cost. Under EIP-8038 a value-bearing call charges a flat CALL_VALUE
+    // (the new-account surcharge moves to a separate NEW_ACCOUNT state charge); the earlier draft used
+    // a three-tier charge keyed on self-call and recipient existence that subsumed the surcharge.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeCallValueTransferEip2780(ref EthereumGasPolicy gas, bool isSelfCall, bool recipientEmpty)
+    public static bool ConsumeCallValueTransferEip2780(ref EthereumGasPolicy gas, bool isSelfCall, bool recipientEmpty, IReleaseSpec spec)
     {
+        if (spec.IsEip8038Enabled)
+            return UpdateGas(ref gas, Eip8038Constants.CallValue);
+
         long cost = isSelfCall ? GasCostOf.CallValueSelfEip2780
             : recipientEmpty ? GasCostOf.CallValueNewAccountEip2780
             : GasCostOf.CallValueExistingEip2780;

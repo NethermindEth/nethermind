@@ -147,7 +147,7 @@ public static partial class EvmInstructions
         if (hasValueTransfer)
         {
             bool valueOutOfGas = spec.IsEip2780Enabled
-                ? !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas, caller == target, state.IsDeadAccount(target))
+                ? !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas, caller == target, state.IsDeadAccount(target), spec)
                 : !TGasPolicy.ConsumeCallValueTransfer(ref gas);
             if (valueOutOfGas) goto OutOfGas;
         }
@@ -172,12 +172,16 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.
-        // EIP-2780 already accounts for account creation inside the value-transfer tier above.
-        bool chargesNewAccount = !spec.IsEip2780Enabled && (spec.ClearEmptyAccountWhenTouched switch
-        {
-            false => !state.AccountExists(target),
-            true => hasValueTransfer && state.IsDeadAccount(target),
-        });
+        // EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost (separate
+        // from the flat CALL_VALUE above). The earlier EIP-2780 draft folded creation into the
+        // value-transfer tier, so it charges nothing extra here.
+        bool chargesNewAccount = spec.IsEip8038Enabled
+            ? hasValueTransfer && state.IsDeadAccount(target)
+            : !spec.IsEip2780Enabled && (spec.ClearEmptyAccountWhenTouched switch
+            {
+                false => !state.AccountExists(target),
+                true => hasValueTransfer && state.IsDeadAccount(target),
+            });
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
 
