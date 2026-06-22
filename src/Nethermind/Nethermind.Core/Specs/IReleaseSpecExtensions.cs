@@ -16,6 +16,7 @@ public static class IReleaseSpecExtensions
         public bool DepositsEnabled => spec.IsEip6110Enabled;
         public bool WithdrawalRequestsEnabled => spec.IsEip7002Enabled;
         public bool ConsolidationRequestsEnabled => spec.IsEip7251Enabled;
+        public bool BuilderRequestsEnabled => spec.IsEip8282Enabled;
         // STATE related
         public bool ClearEmptyAccountWhenTouched => spec.IsEip158Enabled;
         // VM
@@ -58,7 +59,7 @@ public static class IReleaseSpecExtensions
         public bool MCopyIncluded => spec.IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
-        public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled;
+        public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
         /// <summary>
         /// Determines whether the specified address is a precompiled contract for this release specification.
         /// </summary>
