@@ -650,7 +650,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 long refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
                 TGasPolicy.RefundStateGas(ref gasAvailable, stateGasRefund, refundFloor, trackSpillRefund: false);
-                delegationRefunds = 0;
+                // delegationRefunds (existing-authority count) is intentionally NOT zeroed: it flows on to
+                // Refund as codeInsertRefunds to surface the regular ACCOUNT_WRITE refund. The state refund
+                // applied just above is the only state-dimension refund, so ApplyCodeInsertRefunds must not
+                // re-apply it.
                 delegationAuthBaseRefunds = 0;
             }
 
