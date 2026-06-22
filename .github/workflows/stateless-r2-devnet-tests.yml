@@ -25,11 +25,6 @@ on:
         required: false
         default: '360'
         type: string
-      max_parallel:
-        description: Maximum batch jobs to run in parallel
-        required: false
-        default: '8'
-        type: string
   schedule:
     - cron: '12 */12 * * *'
 
@@ -74,14 +69,12 @@ jobs:
       selected_count: ${{ steps.select.outputs.selected_count }}
       selection_label: ${{ steps.select.outputs.selection_label }}
       timeout_minutes: ${{ steps.select.outputs.timeout_minutes }}
-      max_parallel: ${{ steps.select.outputs.max_parallel }}
     env:
       CATALOG_URL: ${{ github.event.inputs.catalog_url || 'https://pub-5345007fbd06486bbb7cbbe9f3112c45.r2.dev/devnets/glamsterdam-devnet-5' }}
       BATCH_COUNT: ${{ github.event.inputs.batch_count || 'all' }}
       SUMMARY_DIR: /tmp/stateless-r2
       DEFAULT_TIMEOUT_MINUTES: ${{ github.event.inputs.timeout_minutes || '90' }}
       ALL_TIMEOUT_MINUTES: ${{ github.event.inputs.all_timeout_minutes || '360' }}
-      MAX_PARALLEL: ${{ github.event.inputs.max_parallel || '8' }}
     steps:
       - name: Select R2 batches
         id: select
@@ -89,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          for value_name in DEFAULT_TIMEOUT_MINUTES ALL_TIMEOUT_MINUTES MAX_PARALLEL; do
+          for value_name in DEFAULT_TIMEOUT_MINUTES ALL_TIMEOUT_MINUTES; do
             value="${!value_name}"
             if ! [[ "$value" =~ ^[1-9][0-9]*$ ]]; then
               echo "$value_name must be a positive integer, got: $value"
@@ -146,11 +139,11 @@ jobs:
           }))
           PY
 
-          python3 - "$SUMMARY_DIR/selection.json" "$GITHUB_OUTPUT" "$MAX_PARALLEL" <<'PY'
+          python3 - "$SUMMARY_DIR/selection.json" "$GITHUB_OUTPUT" <<'PY'
           import json
           import sys
 
-          selection_path, output_path, max_parallel = sys.argv[1:]
+          selection_path, output_path = sys.argv[1:]
           with open(selection_path, encoding="utf-8") as file:
               selection = json.load(file)
 
@@ -159,7 +152,6 @@ jobs:
               "selected_count": str(selection["selected_count"]),
               "selection_label": selection["selection_label"],
               "timeout_minutes": str(selection["timeout_minutes"]),
-              "max_parallel": max_parallel,
           }
 
           with open(output_path, "a", encoding="utf-8") as file:
@@ -174,7 +166,6 @@ jobs:
     timeout-minutes: ${{ fromJSON(needs.select-batches.outputs.timeout_minutes) }}
     strategy:
       fail-fast: false
-      max-parallel: ${{ fromJSON(needs.select-batches.outputs.max_parallel) }}
       matrix: ${{ fromJSON(needs.select-batches.outputs.matrix) }}
     env:
       CATALOG_URL: ${{ github.event.inputs.catalog_url || 'https://pub-5345007fbd06486bbb7cbbe9f3112c45.r2.dev/devnets/glamsterdam-devnet-5' }}
@@ -190,11 +181,6 @@ jobs:
         with:
           name: nethermind
           path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
-
-      - name: Install archive tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq zstd
 
       - name: Run R2 batch
         shell: bash
