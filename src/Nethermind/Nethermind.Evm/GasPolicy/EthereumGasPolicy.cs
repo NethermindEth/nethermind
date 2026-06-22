@@ -259,7 +259,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         if (accessTracker.WarmUp(in storageCell))
             return UpdateGas(ref gas, spec.IsEip8038Enabled ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad);
-        if (storageAccessType == StorageAccessType.SLOAD)
+        // EIP-8038 charges the warm-access cost on SSTORE too (the net-metered charge is dropped);
+        // pre-8038, a warm SSTORE access is free here and the warm cost comes from net metering.
+        if (storageAccessType == StorageAccessType.SLOAD || spec.IsEip8038Enabled)
             return UpdateGas(ref gas, GasCostOf.WarmStateRead);
         return true;
     }
