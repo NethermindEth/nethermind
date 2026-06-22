@@ -66,14 +66,14 @@ namespace Nethermind.Core
         public const ulong AccessStorageListEntry = 1900; // eip-2930
         public const ulong TLoad = WarmStateRead; // eip-1153
         public const ulong TStore = WarmStateRead; // eip-1153
-        public const ulong PerAuthBaseCost = (ulong)Eip7702Constants.PerAuthBaseCost;
+        public const ulong PerAuthBaseCost = Eip7702Constants.PerAuthBaseCost;
         public const ulong TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const ulong TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
         public const ulong CostPerStateByte = 1530; // eip-8037
         public const ulong StateBytesPerStorageSet = 64; // eip-8037
         public const ulong StateBytesPerNewAccount = 120; // eip-8037
-        public const ulong StateBytesPerAuthBase = (ulong)Eip8037Constants.StateBytesPerAuthBase;
+        public const ulong StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
         public const ulong SSetRegular = 2_900;
         public const ulong SSetState = StateBytesPerStorageSet * CostPerStateByte;
         public const ulong CreateRegular = 9_000;
@@ -81,7 +81,7 @@ namespace Nethermind.Core
         public const ulong NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const ulong CodeDepositRegularPerWord = 6;
         public const ulong CodeDepositState = CostPerStateByte;
-        public const ulong PerAuthBaseRegular = (ulong)Eip8037Constants.PerAuthBaseRegularCost;
+        public const ulong PerAuthBaseRegular = Eip8037Constants.PerAuthBaseRegularCost;
         public const ulong PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
         public const ulong PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const ulong BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
