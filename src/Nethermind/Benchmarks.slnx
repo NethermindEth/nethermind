@@ -53,6 +53,7 @@
   </Folder>
   <Project Path="Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj" />
   <Project Path="Nethermind.Benchmark/Nethermind.Benchmark.csproj" />
+  <Project Path="Nethermind.Db.Benchmark/Nethermind.Db.Benchmark.csproj" />
   <Project Path="Nethermind.EthereumTests.Benchmark/Nethermind.EthereumTests.Benchmark.csproj" />
   <Project Path="Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj" />
   <Project Path="Nethermind.JsonRpc.Benchmark/Nethermind.JsonRpc.Benchmark.csproj" />
