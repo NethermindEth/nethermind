@@ -48,29 +48,29 @@ public sealed class WitnessCapturingBlockProcessingEnv(
     IHeaderStore headerStore,
     IBlockValidationModule[] validationModules) : IDisposable
 {
-    private readonly Lazy<Built> _built = new(() =>
+    private readonly Lazy<Graph> _graph = new(() =>
         Build(rootLifetimeScope, worldStateManager, headerStore, validationModules));
 
     /// <summary>The witness-wired block processor; the same instance is reused for every witnessed block.</summary>
-    public IBlockProcessor Processor => _built.Value.Graph.Processor;
+    public IBlockProcessor Processor => _graph.Value.Processor;
 
     /// <summary>Clears the recorder accumulators so the next witnessed block starts from a clean slate.</summary>
     public void ResetForBlock()
     {
-        Graph graph = _built.Value.Graph;
+        Graph graph = _graph.Value;
         graph.Recorder.Reset();
         graph.HeaderRecorder.Reset();
     }
 
     /// <summary>Projects the accesses recorded during the last <see cref="Processor"/> run into a witness.</summary>
-    public Witness GetWitness(BlockHeader parent) => _built.Value.Graph.Recorder.GetWitness(parent);
+    public Witness GetWitness(BlockHeader parent) => _graph.Value.Recorder.GetWitness(parent);
 
     public void Dispose()
     {
-        if (_built.IsValueCreated) _built.Value.Dispose();
+        if (_graph.IsValueCreated) _graph.Value.Dispose();
     }
 
-    private static Built Build(
+    private static Graph Build(
         ILifetimeScope rootLifetimeScope,
         IWorldStateManager worldStateManager,
         IHeaderStore headerStore,
@@ -92,11 +92,8 @@ public sealed class WitnessCapturingBlockProcessingEnv(
 
         ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
             // Recorder over the shared writable state — registered by instance, so the decorator wraps
-            // the captured parent instance rather than re-resolving itself (no cycle). Also exposed as its
-            // concrete type and alongside the header recorder so the Graph bundle below resolves cleanly.
+            // the captured parent instance rather than re-resolving itself (no cycle).
             .AddScoped<IWorldState>(recorder)
-            .AddScoped<WitnessGeneratingWorldState>(recorder)
-            .AddScoped<WitnessHeaderRecorder>(headerRecorder)
             // Recording header finder + scoped blockhash cache so BLOCKHASH header reads are captured.
             .AddScoped<IHeaderFinder>(recordingFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
@@ -115,34 +112,31 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             // The validation transaction executor; everything else (BlockProcessor, validators, beacon
             // root/blockhash/withdrawal/exec-requests processors, VM, tx processor) is inherited from the
             // root registrations and re-resolved here against the overridden world state.
-            .AddModule(validationModules)
-            .AddScoped<Graph>());
+            .AddModule(validationModules));
 
-        return new Built(scope, trieStore, scope.Resolve<Graph>());
-    }
-
-    /// <summary>The DI-resolved witness bundle: the block processor plus the recorders the holder reads.</summary>
-    private sealed class Graph(
-        IBlockProcessor processor,
-        WitnessGeneratingWorldState recorder,
-        WitnessHeaderRecorder headerRecorder)
-    {
-        public IBlockProcessor Processor => processor;
-        public WitnessGeneratingWorldState Recorder => recorder;
-        public WitnessHeaderRecorder HeaderRecorder => headerRecorder;
+        IBlockProcessor processor = scope.Resolve<IBlockProcessor>();
+        return new Graph(scope, trieStore, recorder, headerRecorder, processor);
     }
 
     /// <summary>
-    /// Hand-built owner of the witness scope and the externally-owned witness-walk trie store (the bundle
-    /// itself is resolved from the scope). Disposing both here — rather than from a scope-resolved
-    /// disposable — avoids re-entering scope disposal, mirroring the witness env factory's pooled entry.
+    /// The witness bundle plus the resources whose lifetime it owns: the witness scope and the
+    /// externally-owned witness-walk trie store, both disposed when the env is disposed.
     /// </summary>
-    private sealed record Built(ILifetimeScope Scope, IReadOnlyTrieStore TrieStore, Graph Graph) : IDisposable
+    private sealed class Graph(
+        ILifetimeScope scope,
+        IReadOnlyTrieStore trieStore,
+        WitnessGeneratingWorldState recorder,
+        WitnessHeaderRecorder headerRecorder,
+        IBlockProcessor processor) : IDisposable
     {
+        public WitnessGeneratingWorldState Recorder => recorder;
+        public WitnessHeaderRecorder HeaderRecorder => headerRecorder;
+        public IBlockProcessor Processor => processor;
+
         public void Dispose()
         {
-            Scope.Dispose();
-            TrieStore.Dispose();
+            scope.Dispose();
+            trieStore.Dispose();
         }
     }
 }
