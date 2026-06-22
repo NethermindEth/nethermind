@@ -266,9 +266,8 @@ public class HistoryPruner : IHistoryPruner
 
                 if (_logger.IsInfo)
                 {
-                    // Guarded subtractions: avoid underflow if pointer is ahead of upper bound.
-                    ulong blocksRemaining = blockUpper > _blocksDeletePointer ? blockUpper - _blocksDeletePointer : 0;
-                    ulong balsRemaining = balUpper > _balsDeletePointer ? balUpper - _balsDeletePointer : 0;
+                    ulong blocksRemaining = blockUpper.SaturatingSub(_blocksDeletePointer);
+                    ulong balsRemaining = balUpper.SaturatingSub(_balsDeletePointer);
                     _logger.Info($"Pruning historical blocks up to #{blockUpper} ({blocksRemaining} estimated) and block access lists up to #{balUpper} ({balsRemaining} estimated).");
                 }
 

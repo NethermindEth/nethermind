@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -223,7 +224,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
         ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         ulong epochBase = epochSwitchNumber - (epochSwitchNumber % spec.EpochLength);
-        ulong gapNumber = epochBase >= spec.Gap ? epochBase - spec.Gap : 0UL;
+        ulong gapNumber = epochBase.SaturatingSub(spec.Gap);
 
         if (gapNumber != qc.GapNumber)
         {
@@ -266,7 +267,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             if (current.ExtraConsensusData is null && _logger.IsInfo)
                 _logger.Info($"Block {current.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data; initializing consensus on round 1.");
             latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, current.Number), Array.Empty<Signature>(),
-                    current.Number >= spec.Gap ? current.Number - spec.Gap : 0UL);
+                    current.Number.SaturatingSub(spec.Gap));
             _context.HighestQC = latestQc;
             _context.SetNewRound(1);
         }

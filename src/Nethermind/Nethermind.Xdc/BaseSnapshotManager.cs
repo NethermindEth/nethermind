@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -106,7 +107,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     public TSnapshot? GetSnapshotByBlockNumber(ulong blockNumber, IXdcReleaseSpec spec)
     {
         ulong epochBase = blockNumber - blockNumber % spec.EpochLength;
-        ulong gapBlockNum = epochBase >= spec.Gap ? epochBase - spec.Gap : 0UL;
+        ulong gapBlockNum = epochBase.SaturatingSub(spec.Gap);
         return GetSnapshotByGapNumber(gapBlockNum);
     }
 

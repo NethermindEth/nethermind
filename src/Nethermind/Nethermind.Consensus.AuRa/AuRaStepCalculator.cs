@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa
@@ -73,7 +74,7 @@ namespace Nethermind.Consensus.AuRa
         {
             ulong milliseconds = unixTime.Milliseconds;
             ulong transition = currentStepInfo.TransitionTimestampMilliseconds;
-            ulong timeFromTransition = milliseconds >= transition ? milliseconds - transition : 0UL;
+            ulong timeFromTransition = milliseconds.SaturatingSub(transition);
             ulong timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
             return (long)(currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
         }

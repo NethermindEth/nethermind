@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -275,7 +276,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         {
             ulong currentNumber = currentHeader.Number + 1;
             ulong offset = currentNumber % spec.EpochLength + spec.Gap;
-            gapNumber = currentNumber > offset ? currentNumber - offset : 0UL;
+            gapNumber = currentNumber.SaturatingSub(offset);
         }
         else
         {
