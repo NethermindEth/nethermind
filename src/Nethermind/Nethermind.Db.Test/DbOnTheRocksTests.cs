@@ -165,6 +165,65 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void Mdbx_value_compression_round_trips_and_shrinks_compressible_values()
+        {
+            MdbxValueCompression compression = new(enabled: true);
+            byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
+
+            Assert.That(compression.TryEncode(value, out byte[]? stored, out int storedLength), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storedLength, Is.LessThan(value.Length));
+                Assert.That(compression.Decode(stored.AsSpan(0, storedLength)), Is.EqualTo(value));
+            }
+        }
+
+        [Test]
+        public void Mdbx_value_compression_honors_no_compression_option()
+        {
+            DbConfig config = new() { AdditionalRocksDbOptions = "compression=kNoCompression;" };
+            IRocksDbConfig rocksConfig = new PerTableDbConfig(config, "Blocks", validate: false);
+            MdbxValueCompression compression = MdbxValueCompression.Create(
+                rocksConfig,
+                LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
+                DbPath);
+
+            byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
+
+            Assert.That(compression.TryEncode(value, out _, out _), Is.False);
+        }
+
+        [Test]
+        public void Mdbx_value_compression_treats_invalid_marker_as_raw()
+        {
+            MdbxValueCompression compression = new(enabled: true);
+            byte[] raw = [0xFF, (byte)'N', (byte)'M', (byte)'X', 1, 1, 0, 0, 0, 0];
+
+            Assert.That(compression.Decode(raw), Is.EqualTo(raw));
+        }
+
+        [Test]
+        public void Can_read_raw_values_written_before_mdbx_value_compression()
+        {
+            DbSettings settings = GetRocksDbSettings(".", "Blocks");
+            DbConfig rawConfig = new() { RocksDbOptions = "compression=kNoCompression;" };
+            RocksDbConfigFactory rawFactory = new(rawConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            byte[] key = [1, 2, 3];
+            byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
+
+            using (DbOnTheRocks db = new(DbPath, settings, rawConfig, rawFactory, LimboLogs.Instance))
+            {
+                db.Set(key, value);
+            }
+
+            using (DbOnTheRocks db = new(DbPath, settings, _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance))
+            {
+                Assert.That(db.Get(key), Is.EqualTo(value));
+            }
+        }
+
         [TestCase("1024", 1024L)]
         [TestCase("1KiB", 1024L)]
         [TestCase("1.5MiB", 1572864L)]
@@ -353,6 +412,19 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
 
             Assert.That(_db.KeyExists(new byte[] { 99, 99, 99 }), Is.False);
+        }
+
+        [Test]
+        public void Compressed_sized_value_round_trips_through_all_read_paths()
+        {
+            byte[] key = [1, 2, 3];
+            byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
+
+            _db[key] = value;
+            AssertCanGetViaAllMethod(_db, key, value);
+
+            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+            AssertCanGetViaAllMethod(snapshot, key, value);
         }
 
         [Test]

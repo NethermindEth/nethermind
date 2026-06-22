@@ -19,7 +19,7 @@ internal static class MdbxCursorHelpers
         int result = MdbxNative.CursorGet(cursor, ref key, ref data, MdbxCursorOp.First);
         while (result == MdbxNative.Success)
         {
-            yield return new KeyValuePair<byte[], byte[]?>(MdbxEnvironment.Copy(key), MdbxEnvironment.Copy(data));
+            yield return new KeyValuePair<byte[], byte[]?>(MdbxEnvironment.Copy(key), environment.CopyValue(data));
             result = MdbxNative.CursorGet(cursor, ref key, ref data, MdbxCursorOp.Next);
         }
 
@@ -70,6 +70,7 @@ internal sealed class MdbxSortedView : ISortedView
 {
     private readonly MdbxNative.SafeMdbxTxnHandle _txn;
     private readonly MdbxNative.SafeMdbxCursorHandle _cursor;
+    private readonly MdbxEnvironment _environment;
     private readonly byte[] _lowerBound;
     private readonly byte[] _upperBound;
     private readonly bool _ownsTransaction;
@@ -78,17 +79,19 @@ internal sealed class MdbxSortedView : ISortedView
     private byte[] _currentValue = [];
 
     public MdbxSortedView(MdbxEnvironment environment, uint dbi, ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
-        : this(environment.BeginReadOnlyTransaction(), dbi, firstKeyInclusive, lastKeyExclusive, ownsTransaction: true)
+        : this(environment, environment.BeginReadOnlyTransaction(), dbi, firstKeyInclusive, lastKeyExclusive, ownsTransaction: true)
     {
     }
 
     public MdbxSortedView(
+        MdbxEnvironment environment,
         MdbxNative.SafeMdbxTxnHandle txn,
         uint dbi,
         ReadOnlySpan<byte> firstKeyInclusive,
         ReadOnlySpan<byte> lastKeyExclusive,
         bool ownsTransaction)
     {
+        _environment = environment;
         _lowerBound = firstKeyInclusive.ToArray();
         _upperBound = lastKeyExclusive.ToArray();
         _txn = txn;
@@ -129,7 +132,7 @@ internal sealed class MdbxSortedView : ISortedView
         }
 
         _currentKey = foundKey;
-        _currentValue = MdbxEnvironment.Copy(data);
+        _currentValue = _environment.CopyValue(data);
         _started = true;
         return true;
     }
@@ -179,7 +182,7 @@ internal sealed class MdbxSortedView : ISortedView
         }
 
         _currentKey = nextKey;
-        _currentValue = MdbxEnvironment.Copy(data);
+        _currentValue = _environment.CopyValue(data);
         _started = true;
         return true;
     }

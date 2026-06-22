@@ -18,6 +18,7 @@ internal sealed class MdbxEnvironment : IDisposable
     private readonly object _writeLock = new();
     private readonly ILogger _logger;
     private readonly MdbxProfiler? _profiler;
+    private readonly MdbxValueCompression _valueCompression;
     private bool _disposed;
 
     public MdbxEnvironment(string path, IDbConfig dbConfig, IRocksDbConfig rocksDbConfig, ILogger logger)
@@ -29,6 +30,7 @@ internal sealed class MdbxEnvironment : IDisposable
 
         ThrowIfRocksDbStoreExists(Path);
         Directory.CreateDirectory(Path);
+        _valueCompression = MdbxValueCompression.Create(rocksDbConfig, logger, Path);
 
         MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger);
         if (tuning.HasOverrides && logger.IsInfo)
@@ -241,7 +243,7 @@ internal sealed class MdbxEnvironment : IDisposable
                 }
 
                 MdbxNative.ThrowOnError(result, "mdbx_get");
-                byte[] data = Copy(dataValue);
+                byte[] data = CopyValue(dataValue);
                 _profiler?.RecordGet(hit: true, key.Length, data.Length);
                 return data;
             }
@@ -279,12 +281,17 @@ internal sealed class MdbxEnvironment : IDisposable
 
     public unsafe void Put(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
+        byte[]? storedBuffer = _valueCompression.TryEncode(value, out byte[]? encoded, out int storedLength)
+            ? encoded
+            : null;
+        ReadOnlySpan<byte> storedValue = storedBuffer is null ? value : storedBuffer.AsSpan(0, storedLength);
+
         // MDBX copies key/data into the map before mdbx_put returns; both spans are pinned for that call.
         fixed (byte* keyPointer = key)
-        fixed (byte* valuePointer = value)
+        fixed (byte* valuePointer = storedValue)
         {
             MdbxValue keyValue = new() { Base = (IntPtr)keyPointer, Length = (nuint)key.Length };
-            MdbxValue dataValue = new() { Base = (IntPtr)valuePointer, Length = (nuint)value.Length };
+            MdbxValue dataValue = new() { Base = (IntPtr)valuePointer, Length = (nuint)storedValue.Length };
             MdbxNative.ThrowOnError(MdbxNative.Put(txn, dbi, ref keyValue, ref dataValue, MdbxNative.PutUpsert), "mdbx_put");
             _profiler?.RecordPut(key.Length, value.Length);
         }
@@ -365,6 +372,19 @@ internal sealed class MdbxEnvironment : IDisposable
         }
 
         return data;
+    }
+
+    public byte[] CopyValue(MdbxValue value)
+    {
+        if (value.Base == IntPtr.Zero && value.Length == 0)
+        {
+            return [];
+        }
+
+        unsafe
+        {
+            return _valueCompression.Decode(new ReadOnlySpan<byte>((void*)value.Base, checked((int)value.Length)));
+        }
     }
 
     public long GetDirectorySize()

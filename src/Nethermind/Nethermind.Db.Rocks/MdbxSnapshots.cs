@@ -56,7 +56,7 @@ internal sealed class MdbxKeyValueStoreSnapshot(MdbxEnvironment environment, uin
         {
             return new SnapshotSortedView(
                 this,
-                new MdbxSortedView(_txn, _dbi, firstKeyInclusive, lastKeyExclusive, ownsTransaction: false));
+                new MdbxSortedView(_environment, _txn, _dbi, firstKeyInclusive, lastKeyExclusive, ownsTransaction: false));
         }
         catch
         {

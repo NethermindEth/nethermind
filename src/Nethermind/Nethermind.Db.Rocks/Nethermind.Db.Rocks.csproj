@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+    <PackageReference Include="Snappier" />
 
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Nethermind.Db.Test</_Parameter1>
