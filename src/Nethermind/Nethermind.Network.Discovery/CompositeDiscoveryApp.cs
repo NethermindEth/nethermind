@@ -31,6 +31,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
+        IIPResolver ipResolver,
         ILogManager logManager,
         Func<DiscoveryV5App> discoveryV5Factory, // These two are factory because they are optional.
         Func<DiscoveryApp> discoveryV4Factory,
@@ -38,7 +39,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     )
     {
         _networkConfig = networkConfig;
-        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, discoveryConfig);
+        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), ipResolver, discoveryConfig);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
 
