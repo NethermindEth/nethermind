@@ -62,7 +62,16 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
-            .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
+            .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
+                ctx.Resolve<IWorldState>(),
+                ctx.Resolve<ISpecProvider>(),
+                ctx.Resolve<IBlockhashProvider>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IBlocksConfig>(),
+                ctx.Resolve<IWithdrawalProcessorFactory>(),
+                ctx.ResolveOptional<PrewarmerEnvFactory>(),
+                ctx.ResolveOptional<PreBlockCaches>(),
+                ctx.ResolveOptional<IReadOnlyTxProcessingEnvFactory>()))
             .AddScoped<IProcessingStats, ProcessingStats>()
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))

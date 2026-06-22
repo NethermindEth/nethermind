@@ -6,7 +6,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -48,20 +47,17 @@ public partial class BlockAccessListManager(
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-    WitnessExecutionPredicate? witnessExecutionPredicate = null)
+    bool witnessMode = false)
     : IBlockAccessListManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
-    // Present only in witness-capable scopes (main pipeline, debug_executionWitness sandbox, stateless
-    // guest). Drives the parallel-execution gate and the non-caching code-repo choice in the pool.
-    private readonly Func<bool>? _isWitnessExecution = witnessExecutionPredicate?.IsActive;
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessExecutionPredicate?.IsActive));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, witnessExecutionPredicate?.IsActive));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, witnessMode));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
@@ -129,16 +125,16 @@ public partial class BlockAccessListManager(
         // Parallel execution needs the decoded BAL body (RLP fixtures only carry the hash)
         // and an active state scope (so we can capture the parent state root for workers).
         //
-        // Witness execution forces sequential: parallel workers read pre-state through pooled
-        // parent-reader snapshots that bypass the capturing world-state proxy, so their accesses
-        // would be missing from the witness. Evaluated per block via the predicate so regular
+        // Witness-mode managers force sequential: parallel workers read pre-state through pooled
+        // parent-reader snapshots that bypass the recording world state, so their accesses would be
+        // missing from the witness. Only the witness-processing graph sets witnessMode, so regular
         // blocks on EIP-7928 chains keep parallel execution.
         ParallelExecutionEnabled = Enabled
             && blocksConfig.ParallelExecution
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope
-            && _isWitnessExecution?.Invoke() is not true;
+            && !witnessMode;
 
         // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
         // HintBal honours the same opt-in config as the prewarmer path.

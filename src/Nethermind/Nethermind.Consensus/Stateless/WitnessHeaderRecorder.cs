@@ -11,8 +11,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// Per-capture recorder of header reads. Lives on the <see cref="WitnessCaptureSession"/> while a
-/// capture is armed; the IHeaderFinder decorator ([[witness-capturing-header-finder]]) reports every
+/// Per-capture recorder of header reads. The <see cref="WitnessCapturingHeaderFinder"/> reports every
 /// header lookup here so <see cref="BuildHeaders"/> can emit the contiguous header chain that the
 /// stateless verifier needs.
 /// </summary>

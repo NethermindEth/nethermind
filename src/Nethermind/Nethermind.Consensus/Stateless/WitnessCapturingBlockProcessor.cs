@@ -4,57 +4,34 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// <see cref="IBlockProcessor"/> decorator that, when a witness has been requested for the block
-/// being processed, arms the <see cref="WitnessCaptureSession"/> with fresh per-block recorders for
-/// the duration of one <see cref="ProcessOne"/> call, then projects the recorded set into a
-/// <see cref="Witness"/> and publishes it via <see cref="WitnessRendezvous"/>.
+/// <see cref="IBlockProcessor"/> decorator on the main pipeline that, when a witness has been requested
+/// for the block being processed, routes that single <see cref="ProcessOne"/> to the dedicated
+/// witness-wired processor (<see cref="WitnessCapturingBlockProcessingEnv"/>) instead of the main inner
+/// processor, then projects the recorded accesses into a <see cref="Witness"/> and publishes it via
+/// <see cref="WitnessRendezvous"/>. Every other block flows straight through to the inner processor.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Three complementary capture surfaces are active during each witnessed <c>ProcessOne</c> call,
-/// all gated by the session:
-/// </para>
-/// <list type="number">
-///   <item>
-///     <b><see cref="WitnessCapturingWorldStateProxy"/> / <see cref="WitnessGeneratingWorldState"/></b>
-///     — records every account/slot/bytecode access via <see cref="IWorldState"/> call hooks.
-///     Drives <see cref="WitnessGeneratingWorldState.GetWitness"/>, which runs a tree visitor over
-///     the recorded keys to produce Merkle proofs.
-///   </item>
-///   <item>
-///     <b><see cref="WitnessCapturingHeaderFinder"/> / <see cref="WitnessHeaderRecorder"/></b>
-///     — catches header lookups from the EVM (e.g. BLOCKHASH) and the rest of the processing
-///     pipeline so the witness header chain extends back to whatever the block touched.
-///   </item>
-/// </list>
-/// <para>
-/// All capture state lives on per-call instances installed onto the session — there is no global
-/// armed/disarmed flag, no shared mutable dictionaries, and the session's atomic
-/// <see cref="WitnessCaptureSession.TryArm"/> rejects nested or concurrent capture attempts.
-/// Blocks with no pending request bypass the capture machinery entirely.
-/// </para>
+/// The witness processor shares the main pipeline's writable world state (through a transparent
+/// recorder), so the witnessed block is really imported — it is not re-executed. Selection happens once
+/// per block at this single point; the witness processor's world state, code repository and block-access
+/// -list manager are statically witness-configured, so there are no per-call predicates anywhere below.
 /// </remarks>
 public sealed class WitnessCapturingBlockProcessor(
     IBlockProcessor inner,
-    WitnessCapturingWorldStateProxy proxy,
-    WitnessCapturingHeaderFinder headerFinder,
-    WitnessCaptureSession session,
-    IWorldStateManager worldStateManager,
+    WitnessCapturingBlockProcessingEnv witness,
     WitnessRendezvous rendezvous,
-    IStateReader stateReader,
+    IHeaderFinder headerFinder,
     ILogManager? logManager = null) : IBlockProcessor
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
@@ -85,55 +62,34 @@ public sealed class WitnessCapturingBlockProcessor(
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
         long parentBlockNumber = suggestedBlock.Number - 1;
-        BlockHeader parent = headerFinder.Inner.Get(parentHash, parentBlockNumber)
+        BlockHeader parent = headerFinder.Get(parentHash, parentBlockNumber)
             ?? throw new ArgumentException($"Unable to find parent for block {parentBlockNumber} with hash {parentHash}");
 
-        WitnessHeaderRecorder headerRecorder = new();
-        IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();
-        WitnessGeneratingWorldState recorder = new(
-            proxy.InnerState,
-            stateReader,
-            trieStore,
-            headerRecorder,
-            headerFinder.Inner);
-
-        if (!session.TryArm(recorder, headerRecorder))
-        {
-            // Another capture is in progress for some other block on this session. Skip capture
-            // for this one rather than risking interleaved recording.
-            if (_logger.IsWarn) _logger.Warn($"{nameof(WitnessCapturingBlockProcessor)}: session already armed when processing {blockHash}; skipping capture.");
-            trieStore.Dispose();
-            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
-        }
+        witness.ResetForBlock();
 
         try
         {
-            (Block Block, TxReceipt[] Receipts) result = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+            (Block Block, TxReceipt[] Receipts) result = witness.Processor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
             if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
                 return result; // request was cancelled while we were processing — nothing to publish.
 
-            Witness? witness = null;
+            Witness? capturedWitness = null;
             try
             {
-                witness = recorder.GetWitness(parent);
+                capturedWitness = witness.GetWitness(parent);
             }
             catch (Exception ex)
             {
                 if (_logger.IsError) _logger.Error($"{nameof(WitnessCapturingBlockProcessor)}: witness build failed for block {blockHash}", ex);
             }
-            tcs!.SetResult(witness);
+            tcs!.SetResult(capturedWitness);
             return result;
         }
         catch
         {
             rendezvous.CancelWitnessRequest(blockHash!);
             throw;
-        }
-        finally
-        {
-            session.Disarm();
-            trieStore.Dispose();
         }
     }
 }

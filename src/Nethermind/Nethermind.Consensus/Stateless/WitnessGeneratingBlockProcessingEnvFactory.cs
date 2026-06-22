@@ -8,8 +8,12 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -34,7 +38,7 @@ public interface IWitnessGeneratingBlockProcessingEnvFactory
 /// </summary>
 /// <remarks>
 /// Each rent returns a fully-wired env (own WorldState stack, capturing trie-store wrapper, header
-/// finder, per-entry <see cref="WitnessCaptureSession"/>, Autofac child scope). The first rent on an
+/// finder, Autofac child scope). The first rent on an
 /// empty pool pays full construction cost; subsequent rents reuse a pooled entry. Entries are reset on
 /// return (so a pooled entry never pins its last call's witness buffers) and the pool is soft-capped —
 /// surplus and poisoned entries are disposed rather than pooled. Disposing the factory drains the pool.
@@ -77,7 +81,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         // Per-entry session + recorders. The session is armed once for the entry's lifetime (the env's
         // components are wired directly, not via the main-pipeline proxy); Reset() clears the recorder
         // data between rents while leaving the session armed at the same recorder instances.
-        WitnessCaptureSession session = new();
         WitnessHeaderRecorder headerRecorder = new();
 
         IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();
@@ -86,13 +89,11 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             new TrieStoreScopeProvider(trieStore, readOnlyDbProvider.CodeDb, logManager), logManager);
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
-        WitnessCapturingHeaderFinder capturingHeaderFinder = new(headerStore, session);
+        WitnessCapturingHeaderFinder capturingHeaderFinder = new(headerStore, headerRecorder);
         // Proof-collection walks go through the global (non-capturing) reader; the capturing trieStore
         // serves execution-path reads (not account proof collection). headerStore is the undecorated source BuildHeaders walks.
         WitnessGeneratingWorldState witnessWorldState = new(
             baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
-
-        session.TryArm(witnessWorldState, headerRecorder);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder => builder
             .AddScoped<IStateReader>(stateReader)
@@ -104,7 +105,14 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
             // The whole sandbox re-execution records a witness, so its BlockAccessListManager runs in
             // witness mode unconditionally (sequential + non-caching code reads).
-            .AddScoped<WitnessExecutionPredicate>(new WitnessExecutionPredicate(static () => true))
+            .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
+                ctx.Resolve<IWorldState>(),
+                ctx.Resolve<ISpecProvider>(),
+                ctx.Resolve<IBlockhashProvider>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IBlocksConfig>(),
+                ctx.Resolve<IWithdrawalProcessorFactory>(),
+                witnessMode: true))
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
 
