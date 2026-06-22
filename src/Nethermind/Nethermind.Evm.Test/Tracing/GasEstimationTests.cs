@@ -1290,10 +1290,10 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err, errorMargin: 0);
 
             Assert.That(err, Is.Null);
-            Assert.That(result, Is.GreaterThan(0));
+            Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
         }
 
         [Test]
@@ -1321,6 +1321,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
+            Assert.That(err, Is.Null, err);
             Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
         }
 
