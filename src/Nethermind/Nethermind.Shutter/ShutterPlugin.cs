@@ -99,7 +99,7 @@ public class ShutterPluginModule : Module
             shutterConfig,
             validatorsInfo,
             TimeSpan.FromSeconds(blocksConfig!.SecondsPerSlot),
-            ctx.Resolve<IIPResolver>().ExternalIp
+            ctx.Resolve<IIPResolver>()
         );
     }
 }

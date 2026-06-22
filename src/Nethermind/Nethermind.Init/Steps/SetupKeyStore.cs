@@ -15,7 +15,7 @@ using System.Linq;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(ResolveIps))]
+    [RunnerStepDependencies]
     public class SetupKeyStore(INethermindApi api) : IStep
     {
         public Task Execute(CancellationToken cancellationToken)
