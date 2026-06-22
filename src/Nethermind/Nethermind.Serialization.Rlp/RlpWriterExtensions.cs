@@ -357,7 +357,9 @@ public static class RlpWriterExtensions
             }
             else
             {
-                writer.Encode(Encoding.ASCII.GetBytes(value));
+                using ArrayPoolSpan<byte> bytes = new(value.Length);
+                Encoding.ASCII.GetBytes(value.AsSpan(), bytes);
+                writer.Encode(bytes);
             }
         }
 

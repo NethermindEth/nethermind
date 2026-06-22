@@ -84,7 +84,7 @@ public class ReceiptTrieTests
     {
         TrieNode node = new(NodeType.Unknown, proof.Last());
         node.ResolveNode(Substitute.For<ITrieNodeResolver>(), TreePath.Empty);
-        RlpReader ctx = new(node.Value.ToArray());
+        RlpReader ctx = new(node.Value.AsSpan());
         TxReceipt receipt = _decoder.Decode(ref ctx);
         Assert.That(receipt.Bloom, Is.Not.Null);
 

@@ -131,18 +131,13 @@ public sealed class EraWriter : IDisposable
 
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
-        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots = null;
+        AddEncodedPayloads(block, receipts, rlpBehaviors, spec.IsEip658Enabled);
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
             long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * MillisecondsPerSecond);
-            roots = await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
-        }
-
-        AddEncodedPayloads(block, receipts, rlpBehaviors, spec.IsEip658Enabled);
-
-        if (isPostMerge)
-        {
+            (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots =
+                await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
             _blocksRootContext!.ProcessBlock(block, roots?.BeaconBlockRoot, roots?.StateRoot);
         }
         else
@@ -399,56 +394,38 @@ public sealed class EraWriter : IDisposable
         payloads.Clear();
     }
 
-    private static void DisposeAddedOrOwned(
-        ArrayPoolList<ArrayPoolSpan<byte>> payloads,
-        int originalCount,
-        ArrayPoolSpan<byte> payload,
-        bool ownsPayload)
-    {
-        if (payloads.Count > originalCount)
-        {
-            payloads[^1].Dispose();
-            payloads.RemoveAt(payloads.Count - 1);
-        }
-        else if (ownsPayload)
-        {
-            payload.Dispose();
-        }
-    }
-
     private void AddEncodedPayloads(Block block, TxReceipt[] receipts, RlpBehaviors rlpBehaviors, bool isEip658)
     {
         ArrayPoolSpan<byte> headerRlp = _headerDecoder.EncodeToArrayPoolSpan(block.Header, rlpBehaviors);
-        ArrayPoolSpan<byte> bodyRlp = default;
-        ArrayPoolSpan<byte> receiptRlp = default;
-
-        bool ownsHeader = true;
-        bool ownsBody = false;
-        bool ownsReceipt = false;
-
-        int headersCount = _headers.Count;
-        int bodiesCount = _bodies.Count;
-        int receiptsCount = _receipts.Count;
-
         try
         {
-            bodyRlp = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
-            ownsBody = true;
-            receiptRlp = EncodeSlimReceipts(receipts, isEip658);
-            ownsReceipt = true;
-
             _headers.Add(headerRlp);
-            ownsHeader = false;
-            _bodies.Add(bodyRlp);
-            ownsBody = false;
-            _receipts.Add(receiptRlp);
-            ownsReceipt = false;
         }
         catch
         {
-            DisposeAddedOrOwned(_headers, headersCount, headerRlp, ownsHeader);
-            DisposeAddedOrOwned(_bodies, bodiesCount, bodyRlp, ownsBody);
-            DisposeAddedOrOwned(_receipts, receiptsCount, receiptRlp, ownsReceipt);
+            headerRlp.Dispose();
+            throw;
+        }
+
+        ArrayPoolSpan<byte> bodyRlp = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
+        try
+        {
+            _bodies.Add(bodyRlp);
+        }
+        catch
+        {
+            bodyRlp.Dispose();
+            throw;
+        }
+
+        ArrayPoolSpan<byte> receiptRlp = EncodeSlimReceipts(receipts, isEip658);
+        try
+        {
+            _receipts.Add(receiptRlp);
+        }
+        catch
+        {
+            receiptRlp.Dispose();
             throw;
         }
     }

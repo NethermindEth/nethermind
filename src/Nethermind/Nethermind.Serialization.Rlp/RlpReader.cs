@@ -285,9 +285,10 @@ public ref struct RlpReader
         }
 
         ReadOnlySpan<byte> theSpan = DecodeByteArraySpan(RlpLimit.L32);
-        byte[] keccakByte = new byte[32];
-        theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
-        return new Hash256(keccakByte);
+        Span<byte> keccakBytes = stackalloc byte[32];
+        keccakBytes.Clear();
+        theSpan.CopyTo(keccakBytes[(32 - theSpan.Length)..]);
+        return new Hash256(keccakBytes);
     }
 
     public void DecodeKeccakStructRef(out Hash256StructRef keccak)
@@ -376,8 +377,7 @@ public ref struct RlpReader
             RlpHelpers.ThrowUnexpectedPrefix(prefix);
         }
 
-        byte[] buffer = Read(20).ToArray();
-        return new Address(buffer);
+        return new Address(Read(20));
     }
 
     public void DecodeAddressStructRef(out AddressStructRef address)
