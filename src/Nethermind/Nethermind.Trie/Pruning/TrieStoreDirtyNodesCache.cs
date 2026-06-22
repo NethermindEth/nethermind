@@ -428,9 +428,8 @@ internal class TrieStoreDirtyNodesCache
         writeBatch?.Set(key.Address, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
     }
 
-    // Non-trivial: lastCommit is ulong; NoCommitSentinel (ulong.MaxValue) is never < LastPersistedBlockNumber
-    // for any real chain height (~20M blocks as of 2025), so sentinel nodes are always treated as live here,
-    // which is the correct behaviour — they were never committed to a numbered block.
+    // NoCommitSentinel (ulong.MaxValue) is never < LastPersistedBlockNumber, so sentinel nodes
+    // are always treated as live here — correct, since they were never committed to a numbered block.
     bool CanDelete(in Key key, ulong lastCommit, Hash256? currentlyPersistingKeccak)
     {
         // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
