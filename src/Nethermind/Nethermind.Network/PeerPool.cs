@@ -77,8 +77,10 @@ namespace Nethermind.Network
 
         private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
         {
-            if (sender is not IStaticNodesManager and not ITrustedNodesManager
-                && Peers.TryGetValue(e.Node.Id, out Peer? peer))
+            if (!Peers.TryGetValue(e.Node.Id, out Peer? peer))
+                return;
+
+            if (sender is not IStaticNodesManager and not ITrustedNodesManager)
             {
                 lock (peer)
                 {
