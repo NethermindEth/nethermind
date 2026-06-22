@@ -26,19 +26,25 @@ internal sealed class MdbxWriteBatch(MdbxEnvironment environment, uint dbi, IMer
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _operations.Add(MdbxWriteOperation.Set(_dbi, key, value, _mergeOperator));
+        MdbxWriteOperation operation = MdbxWriteOperation.Set(_dbi, key, value, _mergeOperator);
+        _operations.Add(operation);
+        _environment.RecordQueuedWrite(operation.Key, operation.Value, _operations.Count);
     }
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _operations.Add(MdbxWriteOperation.PutSpan(_dbi, key, value, _mergeOperator));
+        MdbxWriteOperation operation = MdbxWriteOperation.PutSpan(_dbi, key, value, _mergeOperator);
+        _operations.Add(operation);
+        _environment.RecordQueuedWrite(operation.Key, operation.Value.AsSpan(), _operations.Count);
     }
 
     public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _operations.Add(MdbxWriteOperation.Merge(_dbi, key, value, _mergeOperator));
+        MdbxWriteOperation operation = MdbxWriteOperation.Merge(_dbi, key, value, _mergeOperator);
+        _operations.Add(operation);
+        _environment.RecordQueuedWrite(operation.Key, operation.Value.AsSpan(), _operations.Count);
     }
 
     public void Clear()
@@ -109,19 +115,25 @@ internal sealed class MdbxColumnsWriteBatch<TKey>(
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             ObjectDisposedException.ThrowIf(_owner._disposed, _owner);
-            _operations.Add(MdbxWriteOperation.Set(_dbi, key, value, _mergeOperator));
+            MdbxWriteOperation operation = MdbxWriteOperation.Set(_dbi, key, value, _mergeOperator);
+            _operations.Add(operation);
+            _owner._environment.RecordQueuedWrite(operation.Key, operation.Value, _operations.Count);
         }
 
         public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
             ObjectDisposedException.ThrowIf(_owner._disposed, _owner);
-            _operations.Add(MdbxWriteOperation.PutSpan(_dbi, key, value, _mergeOperator));
+            MdbxWriteOperation operation = MdbxWriteOperation.PutSpan(_dbi, key, value, _mergeOperator);
+            _operations.Add(operation);
+            _owner._environment.RecordQueuedWrite(operation.Key, operation.Value.AsSpan(), _operations.Count);
         }
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
             ObjectDisposedException.ThrowIf(_owner._disposed, _owner);
-            _operations.Add(MdbxWriteOperation.Merge(_dbi, key, value, _mergeOperator));
+            MdbxWriteOperation operation = MdbxWriteOperation.Merge(_dbi, key, value, _mergeOperator);
+            _operations.Add(operation);
+            _owner._environment.RecordQueuedWrite(operation.Key, operation.Value.AsSpan(), _operations.Count);
         }
 
         public void Clear()

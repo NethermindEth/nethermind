@@ -165,6 +165,41 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [TestCase("1024", 1024L)]
+        [TestCase("1KiB", 1024L)]
+        [TestCase("1.5MiB", 1572864L)]
+        [TestCase("2GiB", 2147483648L)]
+        [TestCase("3GB", 3000000000L)]
+        public void Mdbx_tuning_size_parser_supports_expected_units(string value, long expected)
+        {
+            Assert.That(MdbxTuningOptions.TryParseSize(value, out long result), Is.True);
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        [TestCase("")]
+        [TestCase("abc")]
+        [TestCase("-1")]
+        [TestCase("1XB")]
+        public void Mdbx_tuning_size_parser_rejects_invalid_values(string value) =>
+            Assert.That(MdbxTuningOptions.TryParseSize(value, out _), Is.False);
+
+        [TestCase("true", true)]
+        [TestCase("1", true)]
+        [TestCase("on", true)]
+        [TestCase("false", false)]
+        [TestCase("0", false)]
+        [TestCase("off", false)]
+        public void Mdbx_tuning_bool_parser_supports_expected_values(string value, bool expected)
+        {
+            Assert.That(MdbxTuningOptions.TryParseBool(value, out bool result), Is.True);
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        [TestCase("")]
+        [TestCase("maybe")]
+        public void Mdbx_tuning_bool_parser_rejects_invalid_values(string value) =>
+            Assert.That(MdbxTuningOptions.TryParseBool(value, out _), Is.False);
+
         [Test]
         public void HyperClockCacheWrapper_is_a_noop_compatibility_wrapper()
         {

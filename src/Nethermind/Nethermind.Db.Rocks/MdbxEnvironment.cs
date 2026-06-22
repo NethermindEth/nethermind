@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -13,13 +15,9 @@ namespace Nethermind.Db.Rocks;
 
 internal sealed class MdbxEnvironment : IDisposable
 {
-    private const long InitialMapSize = 64L << 20;
-    private const long MaxMapSize = 1L << 40;
-    private const long GrowthStep = 256L << 20;
-    private const long ShrinkThreshold = 1L << 30;
-
     private readonly object _writeLock = new();
     private readonly ILogger _logger;
+    private readonly MdbxProfiler? _profiler;
     private bool _disposed;
 
     public MdbxEnvironment(string path, IDbConfig dbConfig, IRocksDbConfig rocksDbConfig, ILogger logger)
@@ -32,15 +30,26 @@ internal sealed class MdbxEnvironment : IDisposable
         ThrowIfRocksDbStoreExists(Path);
         Directory.CreateDirectory(Path);
 
+        MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger);
+        if (tuning.HasOverrides && logger.IsInfo)
+        {
+            logger.Info($"MDBX tuning for {Path}: {tuning.Describe()}");
+        }
+
         MdbxNative.ThrowOnError(MdbxNative.EnvCreate(out MdbxNative.SafeMdbxEnvHandle env), "mdbx_env_create");
         Env = env;
-        MdbxNative.SetMaxDbs(Env, 512);
-        MdbxNative.SetMaxReaders(Env, 512);
+        MdbxNative.SetMaxDbs(Env, tuning.MaxDbs);
+        MdbxNative.SetMaxReaders(Env, tuning.MaxReaders);
         MdbxNative.ThrowOnError(
-            MdbxNative.EnvSetGeometry(Env, 0, (nint)InitialMapSize, unchecked((nint)MaxMapSize), (nint)GrowthStep, unchecked((nint)ShrinkThreshold), -1),
+            MdbxNative.EnvSetGeometry(Env, 0, (nint)tuning.InitialMapSize, unchecked((nint)tuning.MaxMapSize), (nint)tuning.GrowthStep, unchecked((nint)tuning.ShrinkThreshold), -1),
             "mdbx_env_set_geometry");
 
-        uint flags = MdbxNative.EnvNoStickyThreads | MdbxNative.EnvLifoReclaim | MdbxNative.EnvNoMemInit | MdbxNative.EnvNoReadAhead;
+        uint flags = MdbxNative.EnvNoStickyThreads | MdbxNative.EnvLifoReclaim | MdbxNative.EnvNoMemInit;
+        if (!tuning.EnableReadAhead)
+        {
+            flags |= MdbxNative.EnvNoReadAhead;
+        }
+
         if (!dbConfig.WriteAheadLogSync || !rocksDbConfig.WriteAheadLogSync)
         {
             flags |= MdbxNative.EnvNoMetaSync;
@@ -55,6 +64,8 @@ internal sealed class MdbxEnvironment : IDisposable
                 MdbxNative.ThrowOnError(MdbxNative.EnvOpen(Env, pathPointer, flags, Convert.ToUInt32("640", 8)), "mdbx_env_open");
             }
         }
+
+        _profiler = MdbxProfiler.Create(Path, tuning, logger);
     }
 
     public string Path { get; }
@@ -93,25 +104,75 @@ internal sealed class MdbxEnvironment : IDisposable
 
     public void ExecuteRead(Action<MdbxNative.SafeMdbxTxnHandle> action)
     {
-        using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
-        action(txn);
+        long started = _profiler?.StartReadTransaction() ?? 0;
+        try
+        {
+            using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
+            action(txn);
+        }
+        finally
+        {
+            if (_profiler is not null)
+            {
+                _profiler.RecordReadTransaction(started);
+            }
+        }
     }
 
     public TResult ExecuteRead<TResult>(Func<MdbxNative.SafeMdbxTxnHandle, TResult> action)
     {
-        using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
-        return action(txn);
+        long started = _profiler?.StartReadTransaction() ?? 0;
+        try
+        {
+            using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
+            return action(txn);
+        }
+        finally
+        {
+            if (_profiler is not null)
+            {
+                _profiler.RecordReadTransaction(started);
+            }
+        }
     }
 
-    public void ExecuteWrite(Action<MdbxNative.SafeMdbxTxnHandle> action)
+    public void ExecuteWrite(Action<MdbxNative.SafeMdbxTxnHandle> action) =>
+        ExecuteWrite(action, operationCount: 1);
+
+    public void ExecuteWrite(Action<MdbxNative.SafeMdbxTxnHandle> action, int operationCount)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        lock (_writeLock)
+        if (_profiler is null)
         {
+            lock (_writeLock)
+            {
+                using MdbxNative.SafeMdbxTxnHandle txn = BeginWriteTransaction();
+                action(txn);
+                MdbxNative.Commit(txn);
+            }
+
+            return;
+        }
+
+        bool lockTaken = false;
+        long waitStarted = Stopwatch.GetTimestamp();
+        long lockAcquired = 0;
+        try
+        {
+            Monitor.Enter(_writeLock, ref lockTaken);
+            lockAcquired = Stopwatch.GetTimestamp();
             using MdbxNative.SafeMdbxTxnHandle txn = BeginWriteTransaction();
             action(txn);
             MdbxNative.Commit(txn);
+        }
+        finally
+        {
+            if (lockTaken)
+            {
+                Monitor.Exit(_writeLock);
+                _profiler.RecordWriteTransaction(lockAcquired - waitStarted, Stopwatch.GetTimestamp() - lockAcquired, operationCount);
+            }
         }
     }
 
@@ -128,7 +189,7 @@ internal sealed class MdbxEnvironment : IDisposable
             {
                 ApplyOperation(txn, operations[i]);
             }
-        });
+        }, operations.Count);
     }
 
     public void DropTable(uint dbi) =>
@@ -141,7 +202,7 @@ internal sealed class MdbxEnvironment : IDisposable
             {
                 MdbxNative.ThrowOnError(MdbxNative.Drop(txn, dbis[i], delete: false), "mdbx_drop");
             }
-        });
+        }, count);
 
     public void Flush() =>
         MdbxNative.ThrowOnError(MdbxNative.EnvSyncEx(Env, force: true, nonblock: false), "mdbx_env_sync_ex");
@@ -175,11 +236,14 @@ internal sealed class MdbxEnvironment : IDisposable
                 int result = MdbxNative.Get(txn, dbi, ref keyValue, out MdbxValue dataValue);
                 if (result == MdbxNative.NotFound)
                 {
+                    _profiler?.RecordGet(hit: false, key.Length, valueBytes: 0);
                     return null;
                 }
 
                 MdbxNative.ThrowOnError(result, "mdbx_get");
-                return Copy(dataValue);
+                byte[] data = Copy(dataValue);
+                _profiler?.RecordGet(hit: true, key.Length, data.Length);
+                return data;
             }
         }
     }
@@ -222,6 +286,7 @@ internal sealed class MdbxEnvironment : IDisposable
             MdbxValue keyValue = new() { Base = (IntPtr)keyPointer, Length = (nuint)key.Length };
             MdbxValue dataValue = new() { Base = (IntPtr)valuePointer, Length = (nuint)value.Length };
             MdbxNative.ThrowOnError(MdbxNative.Put(txn, dbi, ref keyValue, ref dataValue, MdbxNative.PutUpsert), "mdbx_put");
+            _profiler?.RecordPut(key.Length, value.Length);
         }
     }
 
@@ -238,6 +303,8 @@ internal sealed class MdbxEnvironment : IDisposable
                 {
                     MdbxNative.ThrowOnError(result, "mdbx_del");
                 }
+
+                _profiler?.RecordDelete();
             }
         }
     }
@@ -259,6 +326,7 @@ internal sealed class MdbxEnvironment : IDisposable
         byte[] keyCopy = key.ToArray();
         byte[]? existing = Get(txn, dbi, key);
         byte[] valueCopy = value.ToArray();
+        _profiler?.RecordMerge();
 
         // Merge operands are copied or consumed before FullMerge returns; pinned arrays do not escape this block.
         unsafe
@@ -333,8 +401,15 @@ internal sealed class MdbxEnvironment : IDisposable
             if (_logger.IsWarn) _logger.Warn($"Failed to flush MDBX environment {Path}: {exception.Message}");
         }
 
+        _profiler?.ReportFinal();
         Env.Dispose();
     }
+
+    public void RecordQueuedWrite(ReadOnlySpan<byte> key, byte[]? value, int pendingOperations) =>
+        _profiler?.RecordQueuedWrite(key.Length, value?.Length ?? 0, pendingOperations);
+
+    public void RecordQueuedWrite(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, int pendingOperations) =>
+        _profiler?.RecordQueuedWrite(key.Length, value.Length, pendingOperations);
 
     private MdbxNative.SafeMdbxTxnHandle BeginWriteTransaction()
     {
