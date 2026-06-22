@@ -386,12 +386,7 @@ namespace Nethermind.Xdc
         private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
             epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
 
-        private bool IsSynced()
-        {
-            if (_blockTree.Head is null) return false;
-            BlockHeader? bestSuggested = _blockTree.FindBestSuggestedHeader();
-            if (bestSuggested is null) return true;
-            return _blockTree.Head.Number >= bestSuggested.Number;
-        }
+        // TODO: consider using a another sync indicator
+        private bool IsSynced() => !_blockTree.IsSyncing().isSyncing && _blockTree.Head is not null;
     }
 }

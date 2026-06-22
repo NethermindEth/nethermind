@@ -298,17 +298,17 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnSuccess_WhenValidRange()
     {
         // Arrange
-        long begin = 100;
-        long end = 200;
+        ulong begin = 100;
+        ulong end = 200;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().TestObject;
-        beginHeader.Number = (ulong)begin;
+        beginHeader.Number = begin;
 
         XdcBlockHeader endHeader = Build.A.XdcBlockHeader().TestObject;
-        endHeader.Number = (ulong)end;
+        endHeader.Number = end;
 
-        _blockTree.FindHeader((ulong)begin).Returns(beginHeader);
-        _blockTree.FindHeader((ulong)end).Returns(endHeader);
+        _blockTree.FindHeader(begin).Returns(beginHeader);
+        _blockTree.FindHeader(end).Returns(endHeader);
 
         EpochSwitchInfo[] epochSwitchInfos = new[]
         {
@@ -331,10 +331,10 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenBeginHeaderNotFound()
     {
         // Arrange
-        long begin = 100;
-        long end = 200;
+        ulong begin = 100;
+        ulong end = 200;
 
-        _blockTree.FindHeader((ulong)begin).Returns((BlockHeader?)null);
+        _blockTree.FindHeader(begin).Returns((BlockHeader?)null);
 
         // Act
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
@@ -348,14 +348,14 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenEndHeaderNotFound()
     {
         // Arrange
-        long begin = 100;
-        long end = 200;
+        ulong begin = 100;
+        ulong end = 200;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().TestObject;
-        beginHeader.Number = (ulong)begin;
+        beginHeader.Number = begin;
 
-        _blockTree.FindHeader((ulong)begin).Returns(beginHeader);
-        _blockTree.FindHeader((ulong)end).Returns((BlockHeader?)null);
+        _blockTree.FindHeader(begin).Returns(beginHeader);
+        _blockTree.FindHeader(end).Returns((BlockHeader?)null);
 
         // Act
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
@@ -369,17 +369,17 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenBeginGreaterThanEnd()
     {
         // Arrange
-        long begin = 200;
-        long end = 100;
+        ulong begin = 200;
+        ulong end = 100;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().TestObject;
-        beginHeader.Number = (ulong)begin;
+        beginHeader.Number = begin;
 
         XdcBlockHeader endHeader = Build.A.XdcBlockHeader().TestObject;
-        endHeader.Number = (ulong)end;
+        endHeader.Number = end;
 
-        _blockTree.FindHeader((ulong)begin).Returns(beginHeader);
-        _blockTree.FindHeader((ulong)end).Returns(endHeader);
+        _blockTree.FindHeader(begin).Returns(beginHeader);
+        _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
@@ -393,17 +393,17 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenRangeExceedsLimit()
     {
         // Arrange
-        long begin = 100;
-        long end = 50_101;
+        ulong begin = 100;
+        ulong end = 50_101;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().TestObject;
-        beginHeader.Number = (ulong)begin;
+        beginHeader.Number = begin;
 
         XdcBlockHeader endHeader = Build.A.XdcBlockHeader().TestObject;
-        endHeader.Number = (ulong)end;
+        endHeader.Number = end;
 
-        _blockTree.FindHeader((ulong)begin).Returns(beginHeader);
-        _blockTree.FindHeader((ulong)end).Returns(endHeader);
+        _blockTree.FindHeader(begin).Returns(beginHeader);
+        _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
@@ -417,17 +417,17 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenHeadersAreNotXdcHeaders()
     {
         // Arrange
-        long begin = 100;
-        long end = 200;
+        ulong begin = 100;
+        ulong end = 200;
 
         BlockHeader beginHeader = Build.A.BlockHeader.TestObject;
-        beginHeader.Number = (ulong)begin;
+        beginHeader.Number = begin;
 
         BlockHeader endHeader = Build.A.BlockHeader.TestObject;
-        endHeader.Number = (ulong)end;
+        endHeader.Number = end;
 
-        _blockTree.FindHeader((ulong)begin).Returns(beginHeader);
-        _blockTree.FindHeader((ulong)end).Returns(endHeader);
+        _blockTree.FindHeader(begin).Returns(beginHeader);
+        _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
         ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
@@ -806,14 +806,13 @@ public class RpcModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
-
     [Test]
     public void GetRewardByAccount_ShouldReturnSuccess_WhenRewardsExist()
     {
         // Arrange
         Address account = TestItem.AddressA;
-        const long begin = 100;
-        const long end = 200;
+        const ulong begin = 100;
+        const ulong end = 200;
         const ulong epoch1 = 120;
         const ulong epoch2 = 180;
 
@@ -871,8 +870,8 @@ public class RpcModuleTests
     {
         // Arrange
         Address account = TestItem.AddressA;
-        const long begin = 100;
-        const long end = 200;
+        const ulong begin = 100;
+        const ulong end = 200;
         const ulong requestedEpoch = 120;
         const ulong oldestRetained = 150;
         const ulong newestRetained = 300;
@@ -910,8 +909,8 @@ public class RpcModuleTests
     {
         // Arrange
         Address account = TestItem.AddressA;
-        const long begin = 100;
-        const long end = 200;
+        const ulong begin = 100;
+        const ulong end = 200;
         const ulong epoch = 120;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().WithNumber(begin).TestObject;
@@ -942,8 +941,8 @@ public class RpcModuleTests
     {
         // Arrange
         Address account = TestItem.AddressA;
-        const long begin = 100;
-        const long end = 200;
+        const ulong begin = 100;
+        const ulong end = 200;
 
         BlockHeader beginHeader = Build.A.BlockHeader.WithNumber(begin).TestObject;
         BlockHeader endHeader = Build.A.BlockHeader.WithNumber(end).TestObject;

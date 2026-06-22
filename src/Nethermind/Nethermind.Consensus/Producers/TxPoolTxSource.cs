@@ -209,8 +209,8 @@ namespace Nethermind.Consensus.Producers
             using (candidates)
             {
                 // We have leftover candidates. Check how many blob slots remain.
-                int leftoverCapacity = (int)(maxBlobs - (ulong)selectedBlobTxs.Count);
-                if (countOfRemainingBlobs <= (ulong)leftoverCapacity)
+                ulong leftoverCapacity = maxBlobs - (ulong)selectedBlobTxs.Count;
+                if (countOfRemainingBlobs <= leftoverCapacity)
                 {
                     foreach ((Transaction tx, ulong blobChain) tx in candidates.AsSpan())
                     {
@@ -219,7 +219,7 @@ namespace Nethermind.Consensus.Producers
                 }
                 else
                 {
-                    ChooseBestBlobTransactions(candidates, leftoverCapacity, baseFee, selectedBlobTxs);
+                    ChooseBestBlobTransactions(candidates, (int)leftoverCapacity, baseFee, selectedBlobTxs);
                 }
             }
         }
@@ -264,11 +264,11 @@ namespace Nethermind.Consensus.Producers
                 }
 
                 // How many blobs does this tx actually consume?
-                ulong blobCount = (ulong)tx.GetBlobCount();
+                int blobCount = tx.GetBlobCount();
                 // If this tx has explicit dependencies (i.e. it requires k prior blobs
                 // from the *same address* to be in the block before it), include them here.
                 // We'll need a capacity of blobDependenciesCount slots *plus* its own blobCount.
-                ulong blobCapacityNeeded = blobChain + blobCount;
+                int blobCapacityNeeded = (int)blobChain + blobCount;
                 // Compute the total fee this tx contributes (premium * gas used).
                 // Use actual gas used (SpentGas) when available as the tx may be using over-estimated gaslimit
                 ulong feeValue = (ulong)premiumPerGas * tx.SpentGas;
@@ -307,13 +307,14 @@ namespace Nethermind.Consensus.Producers
 
                 // Iterate backward from maxBlobCapacity down to blobCount (from high to low to avoid overwrite)
                 // so we only compute for valid capacities that can fit this transaction.
-                for (int capacity = leftoverCapacity; capacity >= (int)blobCapacityNeeded; capacity--)
+                for (int capacity = leftoverCapacity; capacity >= blobCapacityNeeded; capacity--)
                 {
+                    int previousCapacity = capacity - blobCount;
                     // We subtract only tx's own blobCount from capacity,
                     // because the dpFees index represents total blobs used;
                     // dependencies are "paid for" by only allowing this path
                     // if dependencyIndex was chosen at the smaller capacity.
-                    ulong candidateFee = dpFees[capacity - (int)blobCount] + feeValue;
+                    ulong candidateFee = dpFees[previousCapacity] + feeValue;
                     // If this improves the max fee at [capacity], record it
                     if (candidateFee >= dpFees[capacity])
                     {
@@ -322,7 +323,7 @@ namespace Nethermind.Consensus.Producers
                         isChosen[i * maxCapacity + capacity] = dependencyIndex < 0 ||
                             // with a dependency: only mark this tx as chosen
                             // if *its* predecessor was also marked in the smaller capacity.
-                            isChosen[dependencyIndex * maxCapacity + (capacity - (int)blobCount)];
+                            isChosen[dependencyIndex * maxCapacity + previousCapacity];
                     }
                 }
             }
@@ -335,9 +336,9 @@ namespace Nethermind.Consensus.Producers
                 if (isChosen[i * maxCapacity + remainingCapacity])
                 {
                     Transaction tx = candidateTxs[i].tx;
-                    ulong blobCount = (ulong)tx.GetBlobCount();
+                    int blobCount = tx.GetBlobCount();
                     selectedBlobTxs.Add(tx);
-                    remainingCapacity -= (int)blobCount;
+                    remainingCapacity -= blobCount;
                 }
             }
 

@@ -9,6 +9,7 @@ using Nethermind.Xdc.Test.Helpers;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.Test;
 
@@ -106,7 +107,7 @@ internal class XdcStateSyncSnapshotManagerTests
         int[] resultNumbers = result.Select(r => (int)r.Number).ToArray();
 
         Assert.That(resultNumbers, Is.EqualTo(expectedGapBlockNumbers));
-        snapshotManager.Received(1).StoreSnapshot(Arg.Is<Nethermind.Xdc.Types.Snapshot>(s =>
+        snapshotManager.Received(1).StoreSnapshot(Arg.Is<Snapshot>(s =>
             s.BlockNumber == switchBlock - gap &&
             s.NextEpochCandidates.SequenceEqual(masternodeAddresses)));
     }

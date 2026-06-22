@@ -56,15 +56,15 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return ResultWrapper<EpochNumInfo>.Success(info);
     }
 
-    public ResultWrapper<ulong[]> GetEpochNumbersBetween(long begin, long end)
+    public ResultWrapper<ulong[]> GetEpochNumbersBetween(ulong begin, ulong end)
     {
-        BlockHeader beginHeader = tree.FindHeader((ulong)begin);
+        BlockHeader beginHeader = tree.FindHeader(begin);
         if (beginHeader is null)
         {
             return ResultWrapper<ulong[]>.Fail($"illegal begin block number {begin}");
         }
 
-        BlockHeader endHeader = tree.FindHeader((ulong)end);
+        BlockHeader endHeader = tree.FindHeader(end);
         if (endHeader is null)
         {
             return ResultWrapper<ulong[]>.Fail($"illegal end block number {end}");
@@ -274,15 +274,15 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
     }
 
-    public ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, long begin, long end)
+    public ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, ulong begin, ulong end)
     {
-        BlockHeader? beginHeader = tree.FindHeader((ulong)begin);
+        BlockHeader? beginHeader = tree.FindHeader(begin);
         if (beginHeader is null)
         {
             return ResultWrapper<AccountRewardResponse>.Fail($"illegal begin block number {begin}");
         }
 
-        BlockHeader? endHeader = tree.FindHeader((ulong)end);
+        BlockHeader? endHeader = tree.FindHeader(end);
         if (endHeader is null)
         {
             return ResultWrapper<AccountRewardResponse>.Fail($"illegal end block number {end}");
@@ -636,12 +636,12 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             XDCXListingAddress = spec.XDCXAddressBinary,
             ConsensusConfigs = new XDPoSConfig
             {
-                Epoch = (int)spec.EpochLength,
-                Gap = (int)spec.Gap,
-                Period = (int)spec.MinePeriod,
-                Reward = (int)spec.Reward,
-                SwitchEpoch = (int)spec.SwitchEpoch,
-                SwitchBlock = (long)spec.SwitchBlock,
+                Epoch = spec.EpochLength,
+                Gap = spec.Gap,
+                Period = spec.MinePeriod,
+                Reward = spec.Reward,
+                SwitchEpoch = spec.SwitchEpoch,
+                SwitchBlock = spec.SwitchBlock,
                 V2Configs = spec.V2Configs
             }
         };
