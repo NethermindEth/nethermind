@@ -586,7 +586,6 @@ public class ContractBasedValidatorTests
                 return new object[] { new Address[] { TestItem.Addresses[addressIndex] } };
             });
 
-        // lastLevelFinalized is a small non-negative int from test parameters; cast to ulong is safe.
         _blockFinalizationManager.GetLastLevelFinalizedBy(blockTree.Head.ParentHash).Returns((ulong)lastLevelFinalized);
 
         validator.OnBlockProcessingStart(blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None));

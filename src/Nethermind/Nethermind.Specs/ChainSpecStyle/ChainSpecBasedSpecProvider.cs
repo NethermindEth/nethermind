@@ -43,7 +43,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
             }
 
-            // All block-number properties on ChainSpec and ChainParameters are now ulong?.
             AddTransitions(transitionBlockNumbers, _chainSpec, static n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);

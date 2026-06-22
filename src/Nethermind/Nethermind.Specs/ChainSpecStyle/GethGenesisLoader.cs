@@ -377,8 +377,6 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         public SortedDictionary<ulong, UInt256>? BlockReward { get; } = BuildBlockRewardSchedule(config);
         public IDictionary<ulong, ulong>? DifficultyBombDelays { get; } = BuildDifficultyBombDelays(config);
 
-        // NOTE: IChainSpecEngineParameters.AddTransitions and ApplyToReleaseSpec signatures must
-        // also be updated to ulong as part of this migration.
         public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
         {
             if (DifficultyBombDelays is not null)
