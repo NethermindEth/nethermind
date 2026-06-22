@@ -926,7 +926,10 @@ namespace Nethermind.Network
         }
 
         private bool ShouldContactPeer(Peer peer)
-            => _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
+            // Static and bootnode peers are explicitly configured — always allow connection attempts
+            // regardless of NodeFilter state to ensure they are reliably dialed and retried.
+            => peer.Node.IsStatic || peer.Node.IsBootnode
+               || _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: false);
 
         /// <summary>
         /// Fast-path guard for the peer-added event: checks throttle before the IP filter
