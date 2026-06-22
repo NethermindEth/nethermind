@@ -827,9 +827,9 @@ public partial class EthRpcModule(
 
             return GetLogsResponse(filterLogs, timeout, verifyLogsResponse: null, out timeoutTransferred);
         }
-        catch (ResourceNotFoundException exception)
+        catch (ResourceNotFoundException)
         {
-            return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail("pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
         }
         finally
         {
@@ -1154,7 +1154,7 @@ public partial class EthRpcModule(
         ReadOnlyBlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Number, block.Hash);
 
         return bal is null ?
-            ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
+            ResultWrapper<ReadOnlyBlockAccessList?>.Fail("pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<ReadOnlyBlockAccessList?>.Success(bal);
     }
 
