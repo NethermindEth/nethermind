@@ -110,7 +110,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IWitnessGeneratingBlockProcessingEnv env = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
         IBlockhashCache blockhashCache = envLifetimeScope.Resolve<IBlockhashCache>();
-        return new PooledEntry(envLifetimeScope, readOnlyDbProvider, headerRecorder, witnessWorldState, blockhashCache, env);
+        return new PooledEntry(envLifetimeScope, trieStore, readOnlyDbProvider, headerRecorder, witnessWorldState, blockhashCache, env);
     }
 
     private void Return(PooledEntry entry)
@@ -120,7 +120,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         // tolerated when threads race past the check; root-scope disposal still reclaims any straggler.
         if (_disposed || Volatile.Read(ref _poolCount) >= MaxPoolSize)
         {
-            entry.Scope.Dispose();
+            entry.Dispose();
             return;
         }
 
@@ -132,7 +132,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         }
         catch
         {
-            entry.Scope.Dispose();
+            entry.Dispose();
             return;
         }
 
@@ -146,7 +146,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             while (_pool.TryPop(out PooledEntry? stale))
             {
                 Interlocked.Decrement(ref _poolCount);
-                stale.Scope.Dispose();
+                stale.Dispose();
             }
         }
     }
@@ -157,20 +157,29 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         while (_pool.TryPop(out PooledEntry? entry))
         {
             Interlocked.Decrement(ref _poolCount);
-            entry.Scope.Dispose();
+            entry.Dispose();
         }
     }
 
     private sealed class PooledEntry(
         ILifetimeScope scope,
+        IReadOnlyTrieStore trieStore,
         IReadOnlyDbProvider dbProvider,
         WitnessHeaderRecorder headerRecorder,
         WitnessGeneratingWorldState worldState,
         IBlockhashCache blockhashCache,
-        IWitnessGeneratingBlockProcessingEnv env)
+        IWitnessGeneratingBlockProcessingEnv env) : IDisposable
     {
         public ILifetimeScope Scope { get; } = scope;
         public IWitnessGeneratingBlockProcessingEnv Env { get; } = env;
+
+        /// <summary>Tears down the entry: the Autofac scope (and everything it owns) first, then the
+        /// manually-created read-only trie store the scope's components borrowed.</summary>
+        public void Dispose()
+        {
+            Scope.Dispose();
+            trieStore.Dispose();
+        }
 
         /// <summary>Wipes per-call accumulators so the entry is safe for the next rent.</summary>
         /// <remarks>

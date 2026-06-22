@@ -12,6 +12,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -88,10 +89,11 @@ public sealed class WitnessCapturingBlockProcessor(
             ?? throw new ArgumentException($"Unable to find parent for block {parentBlockNumber} with hash {parentHash}");
 
         WitnessHeaderRecorder headerRecorder = new();
+        IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();
         WitnessGeneratingWorldState recorder = new(
             proxy.InnerState,
             stateReader,
-            worldStateManager.CreateReadOnlyTrieStore(),
+            trieStore,
             headerRecorder,
             headerFinder.Inner);
 
@@ -100,6 +102,7 @@ public sealed class WitnessCapturingBlockProcessor(
             // Another capture is in progress for some other block on this session. Skip capture
             // for this one rather than risking interleaved recording.
             if (_logger.IsWarn) _logger.Warn($"{nameof(WitnessCapturingBlockProcessor)}: session already armed when processing {blockHash}; skipping capture.");
+            trieStore.Dispose();
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
 
@@ -130,6 +133,7 @@ public sealed class WitnessCapturingBlockProcessor(
         finally
         {
             session.Disarm();
+            trieStore.Dispose();
         }
     }
 }
