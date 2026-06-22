@@ -836,7 +836,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         return false;
                     }
-                    // Use ulong.MaxValue as "not visited" sentinel for lastNumber.
                     ulong lastNumber = ulong.MaxValue;
                     for (int j = 0; j < response.Length; j++)
                     {
