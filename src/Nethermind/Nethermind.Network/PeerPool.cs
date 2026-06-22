@@ -17,6 +17,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using Nethermind.Network.StaticNodes;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -76,19 +77,17 @@ namespace Nethermind.Network
 
         private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
         {
-            if (!Peers.TryGetValue(e.Node.Id, out Peer? peer))
+            if (sender is not StaticNodesManager and not TrustedNodesManager
+                && Peers.TryGetValue(e.Node.Id, out Peer? peer))
             {
-                TryRemove(e.Node.Id, out _);
-                return;
+                lock (peer)
+                {
+                    if (peer.InSession is not null || peer.OutSession is not null)
+                        return;
+                }
             }
 
-            lock (peer)
-            {
-                if (peer.InSession is not null || peer.OutSession is not null)
-                    return;
-
-                TryRemove(e.Node.Id, out _);
-            }
+            TryRemove(e.Node.Id, out _);
         }
 
         public Peer GetOrAdd(Node node) => Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));
