@@ -446,7 +446,6 @@ public partial class EngineModuleTests
         // Hash-mismatched payloads are not stored in debug_getBadBlocks: block.Hash is the
         // caller-supplied (unverified) value, and ReportBadBlock would write it to _invalidBlocks,
         // which would prevent the legitimate block from being inserted if the CL later sends
-        // the same content with the correct BlockHash.
         IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
         Assert.That(badBlockStore.GetAll(), Is.Empty);
     }
