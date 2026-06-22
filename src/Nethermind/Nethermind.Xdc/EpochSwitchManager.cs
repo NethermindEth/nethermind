@@ -209,9 +209,6 @@ internal class EpochSwitchManager(
                 {
                     end = header.Number;
                     // Shorten the search range by stepping back at most (round % epoch) blocks.
-                    // The subtraction is safe: round % epoch < epoch, and epoch is bounded by
-                    // reasonable chain parameters, so underflow past start is guarded by the
-                    // Math.Max clamp below.
                     ulong roundOffset = round % epoch;
                     start = end >= roundOffset ? Math.Max(start, end - roundOffset) : start;
                 }

@@ -89,8 +89,6 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                 HashSet<Address> penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
                 HashSet<Hash256> blockHashes = [];
-                // RangeReturnSigner is ulong; clamp to listBlockHash.Count (int) before use as
-                // a loop bound. The cast to int is safe: listBlockHash.Count is always <= int.MaxValue.
                 int startRange = (int)Math.Min(currentSpec.RangeReturnSigner, (ulong)listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)
@@ -143,8 +141,6 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
 
                 HashSet<Hash256> blockHashes = [];
                 Dictionary<Address, int> txSignerMap = [];
-                // EpochLength is ulong; clamp to listBlockHash.Count (int) before use as a loop
-                // bound. The cast to int is safe: listBlockHash.Count is always <= int.MaxValue.
                 int startRange = (int)Math.Min(currentSpec.EpochLength, (ulong)listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)

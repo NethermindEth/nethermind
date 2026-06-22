@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
@@ -24,10 +25,8 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
 
         UInt256 blkNumber = new(tx.Data.Span.Slice(4, 32), true);
 
-        // Compute the lower bound defensively: if headerNumber < EpochLength * 2, the
-        // subtraction would underflow ulong, so treat the lower bound as 0 in that case.
         ulong epochWindow = xdcSpec.EpochLength * 2;
-        UInt256 lowerBound = headerNumber > epochWindow ? headerNumber - epochWindow : UInt256.Zero;
+        UInt256 lowerBound = headerNumber.SaturatingSub(epochWindow);
 
         if (blkNumber > headerNumber || blkNumber <= lowerBound)
         {

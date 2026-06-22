@@ -212,9 +212,7 @@ internal class TrieStoreDirtyNodesCache
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static NodeRecord MergeRecords(NodeRecord current, NodeRecord candidate)
     {
-        // Preserve the higher LastCommit. Both are ulong; a real block number always wins
-        // over the sentinel (NoCommitSentinel / ulong.MaxValue). If both are real block numbers,
-        // the higher block number wins.
+        // Keep the higher real block number; a real block number always beats NoCommitSentinel.
         ulong lastCommit = current.LastCommit;
         if (lastCommit == NoCommitSentinel)
         {

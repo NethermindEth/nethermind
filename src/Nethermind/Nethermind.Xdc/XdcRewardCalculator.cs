@@ -144,7 +144,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             h = (XdcBlockHeader)_blockTree.FindHeader(parentHash!, blockIdx) ?? throw new InvalidOperationException($"Header with hash {parentHash} not found");
             if (epochCount == 0 && !h.BaseFeePerGas.IsZero)
             {
-                // h.GasUsed is ulong; widening cast to UInt256 is safe (no overflow possible).
                 UInt256 burnedInBlock = h.BaseFeePerGas * (UInt256)h.GasUsed;
                 burnedInOneEpoch += burnedInBlock;
             }

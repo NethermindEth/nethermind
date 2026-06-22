@@ -131,7 +131,6 @@ namespace Nethermind.AuRa.Test.Validators
 
             ulong GetFinalizedIndex(int j)
             {
-                // Safe: finalization indices are derived from block numbers, always non-negative.
                 ulong finalizedIndex = innerValidatorsFirstBlockCalls.Values.ElementAt(j);
                 return finalizedIndex == 1 ? finalizedIndex : finalizedIndex + (ulong)blocksToFinalization;
             }
