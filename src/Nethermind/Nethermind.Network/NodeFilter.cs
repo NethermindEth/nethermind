@@ -105,6 +105,14 @@ public sealed class NodeFilter
         _cache.Set(GetKey(ipAddress, exactOnly), Environment.TickCount64);
     }
 
+    /// <summary>
+    /// Removes the filter entry for <paramref name="ipAddress"/>, allowing an immediate new connection
+    /// attempt from that address. Call this when a session disconnects so the peer can reconnect
+    /// without waiting for the full filter timeout window.
+    /// </summary>
+    public void Delete(IPAddress ipAddress, bool exactOnly = false)
+        => _cache?.Delete(GetKey(ipAddress, exactOnly));
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private IpSubnetKey GetKey(IPAddress ipAddress, bool exactOnly)
         => _exactMatchOnly || exactOnly

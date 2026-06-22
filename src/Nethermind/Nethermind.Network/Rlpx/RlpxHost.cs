@@ -503,6 +503,13 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
+            // Remove the NodeFilter entry so the peer can reconnect immediately rather than
+            // being blocked for the full filter timeout window. The RefreshNodeFilter mechanism
+            // enforces uniqueness while a session is active; the timeout exists as a backstop
+            // for connections that die without being tracked, not to delay legitimate reconnects.
+            if (session.Direction == ConnectionDirection.In)
+                _nodeFilter.Delete(session.Node.Address.Address);
+
             subscription.DetachSession();
             _sessionMonitor.RemoveSession(session);
             try
