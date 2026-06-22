@@ -59,9 +59,9 @@ public partial class BlockAccessListManager(
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, _isWitnessExecution));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessExecutionPredicate?.IsActive));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, _isWitnessExecution));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, witnessExecutionPredicate?.IsActive));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
