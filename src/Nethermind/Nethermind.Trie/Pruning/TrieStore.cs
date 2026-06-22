@@ -771,12 +771,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             ulong finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
-            // SAFETY: Casting ulong block numbers to long is safe because block numbers are well within the positive range of a signed 64-bit integer,
-            // and we perform signed subtraction to allow negative boundary results (representing a boundary prior to block 0).
-            long pruningBoundaryBlock = (long)_commitSetQueue.MaxBlockNumber!.Value - (long)_maxDepth;
-            long effectiveFinalizedBlock = Math.Min(pruningBoundaryBlock, (long)finalizedBlockNumber);
-            effectiveFinalizedBlock = Math.Max(0, effectiveFinalizedBlock);
-            ulong effectiveFinalizedBlockNumber = (ulong)effectiveFinalizedBlock;
+            // Saturating subtraction: when _maxDepth exceeds MaxBlockNumber the pruning boundary
+            // is conceptually "before block 0" — we clamp to 0 just like the old signed long arithmetic.
+            ulong pruningBoundaryBlock = _commitSetQueue.MaxBlockNumber!.Value.SaturatingSub(_maxDepth);
+            ulong effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlock, finalizedBlockNumber);
 
             if (effectiveFinalizedBlockNumber < _commitSetQueue.MinBlockNumber!.Value)
             {

@@ -395,7 +395,6 @@ public class HistoryPruner : IHistoryPruner
                 {
                     foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
                     {
-                        // blockNumber param is ulong? — ulong is implicitly nullable here.
                         Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, number);
                         if (block is null)
                         {
