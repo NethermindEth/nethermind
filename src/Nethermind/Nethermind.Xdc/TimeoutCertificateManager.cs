@@ -229,7 +229,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         ulong currentBlockNumber = currentBlock.Number;
         ulong epochLength = _specProvider.GetXdcSpec(currentHeader, timeout.Round).EpochLength;
 
-        // Math.Abs has no ulong overload; compute absolute difference without risk of underflow.
         ulong gapDiff = timeout.GapNumber > currentBlockNumber
             ? timeout.GapNumber - currentBlockNumber
             : currentBlockNumber - timeout.GapNumber;

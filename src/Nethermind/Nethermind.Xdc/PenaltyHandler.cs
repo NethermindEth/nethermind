@@ -41,8 +41,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         List<Hash256> listBlockHash = [parentHash];
         Dictionary<Address, int> minerStatistics = [];
 
-        // Loop down from (number - 1) to 1. Since parentNumber is ulong, we use > 0
-        // to avoid wrapping past 0 — block 0 is genesis and never an epoch switch body block.
+        // Walk down to (but not past) block 1; block 0 is genesis and never an epoch switch body block.
         ulong parentNumber = number - 1;
         Hash256 currentHash = parentHash;
         while (parentNumber > 0)

@@ -1647,7 +1647,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         // Sentinel ulong.MaxValue means "always newer than any real block boundary",
         // i.e. nodes added via the commit buffer are always considered live.
-        // Previously this was encoded as long -1 before NodeRecord.LastCommit became ulong.
         private ulong _minCommitBlockNumber;
 
         public CommitBuffer(TrieStore trieStore, ulong minCommitBlockNumber)

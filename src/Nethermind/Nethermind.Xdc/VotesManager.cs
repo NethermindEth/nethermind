@@ -214,7 +214,6 @@ internal class VotesManager(
         ulong voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
         ulong currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
 
-        // Math.Abs has no ulong overload; compute absolute difference without risk of underflow.
         ulong blockDiff = voteBlockNumber > currentBlockNumber
             ? voteBlockNumber - currentBlockNumber
             : currentBlockNumber - voteBlockNumber;

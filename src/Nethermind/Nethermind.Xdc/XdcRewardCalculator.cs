@@ -135,8 +135,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         ulong mergeSignRange = spec.MergeSignRange;
 
         XdcBlockHeader h = epochHeader;
-        // Loop from (number - 1) down to block 0. The ulong loop variable cannot go below 0,
-        // so we use a while loop with a check at the end to prevent underflow.
         ulong blockIdx = number - 1;
         while (true)
         {
