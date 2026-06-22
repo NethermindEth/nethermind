@@ -538,7 +538,26 @@ public ref struct RlpReader
         return result;
     }
 
-    public byte[] DecodeByteArray(RlpLimit? limit = null, int size = -1) => Rlp.ByteSpanToArray(DecodeByteArraySpan(limit, size));
+    public byte[] DecodeByteArray(RlpLimit? limit = null, int size = -1)
+    {
+        ReadOnlySpan<byte> span = DecodeByteArraySpan(limit, size);
+        if (span.Length == 0)
+        {
+            return [];
+        }
+
+        if (span.Length == 1)
+        {
+            int value = span[0];
+            byte[][] arrays = RlpHelpers.SingleByteArrays;
+            if ((uint)value < (uint)arrays.Length)
+            {
+                return arrays[value];
+            }
+        }
+
+        return span.ToArray();
+    }
 
     public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null, int size = -1)
     {

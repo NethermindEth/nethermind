@@ -105,26 +105,6 @@ namespace Nethermind.Serialization.Rlp
             return Decode<T>(ref reader, rlpBehaviors);
         }
 
-        internal static byte[] ByteSpanToArray(ReadOnlySpan<byte> span)
-        {
-            if (span.Length == 0)
-            {
-                return [];
-            }
-
-            if (span.Length == 1)
-            {
-                int value = span[0];
-                byte[][] arrays = RlpHelpers.SingleByteArrays;
-                if ((uint)value < (uint)arrays.Length)
-                {
-                    return arrays[value];
-                }
-            }
-
-            return span.ToArray();
-        }
-
         public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
