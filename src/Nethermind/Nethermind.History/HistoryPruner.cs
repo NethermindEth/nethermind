@@ -542,8 +542,7 @@ public class HistoryPruner : IHistoryPruner
 
         if (_blocksDeletePointer != _lastSavedBlocksDeletePointer)
         {
-            // Safe cast: block delete pointer is a realistic chain height, well within long.MaxValue.
-            // Rlp.Encode(long) is used for backward-compatibility with existing persisted values.
+            // On-disk format kept as long for backward compatibility with existing persisted values.
             _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode((long)_blocksDeletePointer).Bytes);
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
             if (_logger.IsDebug) _logger.Debug($"Persisting oldest block stored = #{_blocksDeletePointer} to disk.");
@@ -551,7 +550,6 @@ public class HistoryPruner : IHistoryPruner
 
         if (_balsDeletePointer != _lastSavedBalsDeletePointer)
         {
-            // Safe cast: same rationale as above.
             _metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode((long)_balsDeletePointer).Bytes);
             _lastSavedBalsDeletePointer = _balsDeletePointer;
             if (_logger.IsDebug) _logger.Debug($"Persisting oldest BAL stored = #{_balsDeletePointer} to disk.");

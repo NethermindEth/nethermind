@@ -138,7 +138,6 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 Author => BlockRewardType.Block,
                 External => BlockRewardType.External,
                 EmptyStep => BlockRewardType.EmptyStep,
-                // Safe cast: uncle - uncleOffset is always non-negative here since the pattern only matches uncle >= uncleOffset
                 ushort uncle when IsValidDistance((ulong)(uncle - uncleOffset)) => BlockRewardType.Uncle,
                 _ => throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind)),
             };

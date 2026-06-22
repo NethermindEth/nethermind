@@ -46,7 +46,6 @@ namespace Nethermind.Consensus.AuRa
             else
             {
                 TimeSpan timeToNextStep = new(GetTimeToNextStepInTicks(epoch, currentStepInfo));
-                // Safe cast: StepDuration is capped at UInt16.MaxValue (65535) so fits in long
                 return timeToNextStep + TimeSpan.FromSeconds((long)currentStepInfo.StepDuration * (long)(step - currentStep - 1));
             }
         }

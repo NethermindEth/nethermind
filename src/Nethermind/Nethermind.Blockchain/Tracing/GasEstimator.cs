@@ -172,7 +172,6 @@ public class GasEstimator(
         ulong rightBound = bounds.RightBound;
 
         // Optimistic first guess (Geth approach): reduces binary search iterations in most cases.
-        // GasSpent, TotalRefund, CallStipend are ulong; cast to long is safe as values fit within long.MaxValue
         ulong optimistic = (gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginMultiplier;
         if (optimistic > leftBound && optimistic < rightBound)
         {

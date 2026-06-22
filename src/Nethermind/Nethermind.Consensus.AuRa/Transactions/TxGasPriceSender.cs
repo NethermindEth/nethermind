@@ -24,7 +24,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
         public async ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
-            // Safe cast: gas prices exceeding ulong.MaxValue (~1.8e19 wei/gas) are economically impossible
             ulong gasPriceEstimated = (ulong)(gasPrice * _percentDelta / 100);
             tx.DecodedMaxFeePerGas = gasPriceEstimated;
             tx.GasPrice = gasPriceEstimated;
