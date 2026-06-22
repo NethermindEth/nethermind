@@ -400,23 +400,22 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long GetCodeInsertRegularRefund(int codeInsertRefunds, IReleaseSpec spec) =>
-        spec.IsEip8037Enabled || codeInsertRefunds <= 0
-            ? 0
-            : (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
+    public static long GetCodeInsertRegularRefund(int codeInsertRefunds, IReleaseSpec spec)
+    {
+        if (codeInsertRefunds <= 0) return 0;
+        // EIP-8038: per existing-authority EIP-7702 refund, the worst-case ACCOUNT_WRITE charged in the
+        // intrinsic is returned to the regular-gas refund counter (the NEW_ACCOUNT/AUTH_BASE state refunds
+        // are applied separately in Apply8037DelegationRefunds).
+        if (spec.IsEip8038Enabled) return Eip8038Constants.AccountWrite * codeInsertRefunds;
+        if (spec.IsEip8037Enabled) return 0;
+        return (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor)
-    {
-        if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
-        {
-            long stateGasRefund = checked(GetNewAccountStateCost(in gas) * codeInsertRefunds);
-            long refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
-            RefundStateGas(ref gas, stateGasRefund, refundFloor, trackSpillRefund: false);
-        }
-
-        return GetCodeInsertRegularRefund(codeInsertRefunds, spec);
-    }
+        // Under EIP-8037 the per-authorization state refund is applied pre-execution in
+        // Apply8037DelegationRefunds; only the regular refund is surfaced for the refund counter here.
+        => GetCodeInsertRegularRefund(codeInsertRefunds, spec);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeCallValueTransfer(ref EthereumGasPolicy gas)
