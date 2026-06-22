@@ -45,11 +45,12 @@ public static class Eip8037BlockGasInclusionCheck
         long initialRegularGas,
         long remainingRegularGas,
         long stateGasSpill,
-        long stateGasSpillReclassified,
-        long floorGas)
+        long stateGasSpillReclassified)
     {
+        // EIP-7778/EIP-8037: the block's regular-gas dimension is the pre-refund regular gas actually
+        // consumed. The EIP-7623/7976 calldata floor is a minimum charge on the sender (tx_gas_used /
+        // receipts) only and must NOT inflate the block gasUsed.
         long executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill + stateGasSpillReclassified;
-        long blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
-        return Math.Max(blockRegularGas, floorGas);
+        return intrinsicRegularGas + executionRegularGasUsed;
     }
 }
