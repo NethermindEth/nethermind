@@ -236,12 +236,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         };
     }
 
-    // EIP-2780 prices a cold touch of a code-less account cheaper than one with code.
-    // EIP-8038 otherwise reprices the cold account-access cost.
+    // EIP-8038 reprices the (flat) cold account-access cost. devnet-6 dropped the earlier
+    // EIP-2780 two-tier no-code discount, so the touch is independent of whether the account has code.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static long ColdAccountAccessCost(IReleaseSpec spec, bool hasCode) =>
-        spec.IsEip2780Enabled && !hasCode ? GasCostOf.ColdAccountAccessNoCodeEip2780
-        : spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess
+        spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess
         : GasCostOf.ColdAccountAccess;
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
@@ -529,7 +528,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static long CreateCost(Transaction tx, IReleaseSpec spec) =>
         tx.IsContractCreation && spec.IsEip2Enabled
-            ? (spec.IsEip8037Enabled ? GasCostOf.CreateRegular : GasCostOf.TxCreate)
+            ? (spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
+                : spec.IsEip8037Enabled ? GasCostOf.CreateRegular
+                : GasCostOf.TxCreate)
             : 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -541,72 +542,33 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         spec.GetBaseDataCost(tx) + tokensInCallData * GasCostOf.TxDataZero;
 
     /// <summary>
-    /// EIP-2780 charges on top of TX_BASE_COST: the EIP-7708 transfer log, the new-account surcharge,
-    /// and the recipient cold/warm touch plus its value-transfer STATE_UPDATE.
+    /// EIP-2780 recipient charge on top of TX_BASE_COST. For a non-self call: a flat
+    /// <c>COLD_ACCOUNT_ACCESS</c> touch, plus (for a value transfer) the EIP-7708 transfer log and
+    /// <c>TX_VALUE_COST</c> recipient balance write. For a CREATE: only the transfer log when value is sent
+    /// (the <c>CREATE_ACCESS</c> regular cost and <c>NEW_ACCOUNT</c> state cost are added by
+    /// <see cref="CreateCost"/>/<see cref="CreateStateCost"/>).
     /// </summary>
     /// <remarks>
-    /// The recipient touch overrides EIP-2929's "all tx addresses are warm" rule. It is priced here
-    /// (where pre-state is available) rather than mid-execution; the recipient remains pre-warmed, so
-    /// no opcode re-charges it. Requires <paramref name="worldState"/> for the state-dependent parts.
+    /// Mirrors EELS <c>calculate_intrinsic_cost</c>: the recipient touch is a flat cold charge independent of
+    /// the recipient's existence, code, or access-list membership (so no <paramref name="worldState"/> lookup),
+    /// overriding EIP-2929's "all tx addresses are warm" rule. The recipient stays pre-warmed for execution.
     /// </remarks>
     private static long Eip2780ExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
     {
         if (!spec.IsEip2780Enabled) return 0;
 
-        bool isCreate = tx.IsContractCreation;
-        Address? to = tx.To;
         bool hasValue = !tx.Value.IsZero;
-        bool senderIsRecipient = !isCreate && tx.SenderAddress == to;
 
-        long cost = 0;
-        // EIP-7708 transfer log on the top-level value transfer; CREATE endows a distinct address.
-        if (hasValue && (isCreate || !senderIsRecipient))
-            cost += GasCostOf.TransferLogEip2780;
+        if (tx.IsContractCreation)
+            return hasValue ? GasCostOf.TransferLogEip2780 : 0;
 
-        if (isCreate || to is null || worldState is null) return cost;
+        // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.
+        if (tx.SenderAddress == tx.To) return 0;
 
-        bool isPrecompile = spec.IsPrecompile(to);
-        bool recipientDead = worldState.IsDeadAccount(to);
-
-        // New-account surcharge: value transfer to a nonexistent, non-precompile recipient.
-        if (hasValue && !isPrecompile && recipientDead)
-            cost += GasCostOf.NewAccount;
-
-        // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST;
-        // precompiles are warm at tx start and charged zero.
-        if (!senderIsRecipient && !isPrecompile)
-        {
-            cost += RecipientTouchCost(spec, worldState, to, AccessListAddresses(tx));
-            // The new-account surcharge already covers the recipient leaf write.
-            if (hasValue && !recipientDead)
-                cost += GasCostOf.StateUpdateEip2780;
-        }
+        long cost = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
+        if (hasValue)
+            cost += GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
 
         return cost;
-    }
-
-    private static long RecipientTouchCost(IReleaseSpec spec, IReadOnlyStateProvider worldState, Address to, IReadOnlySet<Address>? accessList)
-    {
-        long cost = accessList?.Contains(to) == true
-            ? GasCostOf.WarmStateRead
-            : worldState.IsContract(to) ? GasCostOf.ColdAccountAccess : GasCostOf.ColdAccountAccessNoCodeEip2780;
-
-        // EIP-7702: a delegated recipient also touches its delegation target (always carries code).
-        // The EVM warms (does not gas-charge) this target for the top-level frame, so this is the sole charge.
-        if (spec.IsEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(to).AsSpan(), out Address? target))
-            cost += accessList?.Contains(target) == true ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess;
-
-        return cost;
-    }
-
-    private static IReadOnlySet<Address>? AccessListAddresses(Transaction tx)
-    {
-        if (tx.AccessList is null) return null;
-        HashSet<Address> set = [];
-        foreach ((Address address, _) in tx.AccessList)
-        {
-            set.Add(address);
-        }
-        return set;
     }
 }
