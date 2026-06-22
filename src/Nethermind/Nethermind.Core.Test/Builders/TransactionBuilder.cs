@@ -79,7 +79,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        // GasLimit is ulong — gas limits are never negative
         public TransactionBuilder<T> WithGasLimit(ulong gasLimit)
         {
             TestObjectInternal.GasLimit = gasLimit;

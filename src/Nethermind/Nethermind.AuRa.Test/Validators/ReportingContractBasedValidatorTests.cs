@@ -119,12 +119,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.ContractBasedValidator.ValidatorContract.EmitInitiateChange().Returns(initChangeTransaction);
 
             Transaction[] transactions = context.Validator.GetTransactions(parent, 3000000).ToArray();
-            // parentBlockNumber - startReportBlockNumber is ulong; Math.Max needs a common type.
-            // Both operands unified as ulong; result cast to int is safe because it is bounded
-            // above by validatorsToReport which is a small non-negative int.
-            ulong gap = parentBlockNumber >= startReportBlockNumber
-                ? parentBlockNumber - startReportBlockNumber
-                : 0UL;
+            ulong gap = parentBlockNumber.SaturatingSub(startReportBlockNumber);
             int addedMaliciousTransactions = (int)Math.Min((ulong)validatorsToReport, gap);
             Assert.That(transactions.Length, Is.EqualTo(Math.Min(ReportingContractBasedValidator.MaxReportsPerBlock, isPosDao ? addedMaliciousTransactions : 0) + (initChangeTransactionAdded ? 1 : 0)));
             if (initChangeTransactionAdded)
@@ -211,7 +206,6 @@ namespace Nethermind.AuRa.Test.Validators
                 ITxPool txPool = Substitute.For<ITxPool>();
                 IWorldState stateProvider = Substitute.For<IWorldState>();
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                // GetNonce now returns ulong; use 1UL instead of UInt256.One.
                 stateProvider.GetNonce(ReportingValidatorContract.NodeAddress).Returns(1UL);
 
                 Validator = new ReportingContractBasedValidator(
