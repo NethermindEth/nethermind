@@ -291,14 +291,6 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
-            // For outbound connections ShouldContact now uses CanAccept (read-only) so the
-            // NodeFilter slot must be reserved here instead, once the channel is actually open.
-            if (session.Direction == ConnectionDirection.Out
-                && channel.RemoteAddress is IPEndPoint outboundEndpoint)
-            {
-                _nodeFilter.TryAccept(outboundEndpoint.Address);
-            }
-
             SetTcpSocketOptions(channel);
 
             TrackSessionActivity(session);
@@ -511,17 +503,11 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
-            // Null the activity observer first so no concurrent Touch call can re-insert the
-            // NodeFilter entry between the Delete below and the next TryAccept for the same IP.
+            if (session.Direction == ConnectionDirection.In)
+                _nodeFilter.Delete(session.Node.Address.Address);
+
             subscription.DetachSession();
             _sessionMonitor.RemoveSession(session);
-
-            // Remove the NodeFilter entry so the peer can reconnect immediately rather than
-            // being blocked for the full filter timeout window. Use RemoteHost rather than
-            // session.Node.Address.Address to avoid InvalidOperationException for sessions
-            // that disconnected before the P2P handshake set RemoteNodeId.
-            if (session.RemoteHost is { } remoteHost && IPAddress.TryParse(remoteHost, out IPAddress? remoteIp))
-                _nodeFilter.Delete(remoteIp);
             try
             {
                 SessionDisconnected?.Invoke(this, session, args);
