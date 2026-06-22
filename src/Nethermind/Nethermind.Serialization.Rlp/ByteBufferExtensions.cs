@@ -4,7 +4,6 @@
 using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
@@ -53,41 +52,6 @@ namespace Nethermind.Serialization.Rlp
             for (int i = 0; i < bytes.Length; i++)
             {
                 buffer.WriteByte(bytes[i]);
-            }
-        }
-
-        public static bool TryWriteRlpByteArrayList(this IByteBuffer byteBuffer, IByteArrayList list)
-        {
-            if (list is not IRlpWrapper rlpWrapper) return false;
-            byteBuffer.WriteRlpWrapper(rlpWrapper);
-            return true;
-        }
-
-        public static void WriteRlpWrapper(this IByteBuffer byteBuffer, IRlpWrapper rlpWrapper)
-        {
-            byteBuffer.EnsureWritable(rlpWrapper.RlpLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            rlpWrapper.Write(ref writer);
-        }
-
-        public static void WriteRlpByteArrayList(this IByteBuffer byteBuffer, IByteArrayList list)
-        {
-            if (byteBuffer.TryWriteRlpByteArrayList(list))
-                return;
-
-            int contentLength = 0;
-            for (int i = 0; i < list.Count; i++)
-            {
-                contentLength += Rlp.LengthOf(list[i]);
-            }
-
-            int length = Rlp.LengthOfSequence(contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
-            for (int i = 0; i < list.Count; i++)
-            {
-                writer.Encode(list[i]);
             }
         }
 

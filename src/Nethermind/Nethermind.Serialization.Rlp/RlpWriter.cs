@@ -66,10 +66,7 @@ public ref struct ByteBufferRlpWriter(IByteBuffer byteBuffer) : IRlpWriteBackend
         }
         else
         {
-            for (int i = 0; i < bytesToWrite.Length; i++)
-            {
-                _byteBuffer.WriteByte(bytesToWrite[i]);
-            }
+            _byteBuffer.WriteBytes(bytesToWrite);
         }
 
         _position += bytesToWrite.Length;

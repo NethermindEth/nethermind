@@ -87,19 +87,6 @@ public class RlpByteArrayListTests
     }
 
     [TestCaseSource(nameof(TestCases))]
-    public void ByteBuffer_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
-    {
-        using RlpByteArrayList list = CreateList(items);
-        byte[] expected = EncodeItems(items);
-
-        using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
-        byteBuffer.WriteRlpByteArrayList(list);
-
-        Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
-        Assert.That(byteBuffer.AsSpan().ToArray(), Is.EqualTo(expected));
-    }
-
-    [TestCaseSource(nameof(TestCases))]
     public void ByteBuffer_RlpWriter_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
     {
         using RlpByteArrayList list = CreateList(items);

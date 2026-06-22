@@ -93,7 +93,8 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
             int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
             byte[] originalContent = new byte[noSigSequenceLength];
             RlpWriter writer = new(originalContent);
-            WriteOriginalContent(ref writer, noSigContentLength, reader.Read(noSigContentLength));
+            writer.StartSequence(noSigContentLength);
+            writer.WriteEncodedRlp(reader.Read(noSigContentLength));
             reader.Position = startPosition;
             nodeRecord.OriginalContentRlp = originalContent;
         }
@@ -103,14 +104,6 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
 
         return nodeRecord;
     }
-
-    private static void WriteOriginalContent<TWriter>(ref TWriter writer, int contentLength, ReadOnlySpan<byte> content)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        writer.StartSequence(contentLength);
-        writer.Write(content);
-    }
-
     /// <summary>
     /// Verifies if the public key recovered from the <see cref="Signature"/> of this record matches
     /// the one that is included in the <value>Secp256k1</value> entry.
