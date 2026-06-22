@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Core.JsonConverters;
 
 namespace Nethermind.Evm;
 
@@ -15,7 +17,9 @@ public class BlockOverride
     public ulong? Time { get; set; }
     public ulong? GasLimit { get; set; }
     public Address? FeeRecipient { get; set; }
+    [JsonConverter(typeof(NullableQuantityUInt256Converter))]
     public UInt256? BaseFeePerGas { get; set; }
+    [JsonConverter(typeof(NullableQuantityUInt256Converter))]
     public UInt256? BlobBaseFee { get; set; }
 
     public void ApplyOverrides(BlockHeader result)

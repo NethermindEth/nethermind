@@ -203,6 +203,7 @@ namespace Nethermind.Serialization.Json
                         return;
 
                     _strictHexFormat = value;
+                    Core.JsonConverters.JsonRpcQuantityFormat.StrictMode = value;
                     RefreshGlobalOptionsNoLock();
                 }
             }

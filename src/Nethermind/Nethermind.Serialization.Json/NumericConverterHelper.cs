@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Serialization.Json;
 
@@ -36,6 +37,11 @@ internal static class NumericConverterHelper
         if (s.StartsWith("0x"u8))
         {
             s = s[2..];
+            // EIP-1474: QUANTITY hex strings must not have leading zero digits.
+            if (EthereumJsonSerializer.StrictHexFormat && s.Length > 1 && s[0] == (byte)'0')
+            {
+                ThrowLeadingZero();
+            }
             if (T.TryParse(s, NumberStyles.AllowHexSpecifier, null, out T value))
             {
                 return value;
@@ -89,6 +95,10 @@ internal static class NumericConverterHelper
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowHexConversion(string typeName) =>
         throw new JsonException($"hex to {typeName}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowLeadingZero() =>
+        throw new SafePublicMessageFormatException("hex number with leading zero digits");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNotSupportedConversion() =>
