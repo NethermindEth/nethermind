@@ -262,8 +262,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         if (currentIdx == request.StartIndex)
                         {
-                            // Cancelled before processing any transaction — dispose and bail out.
-                            // Rescheduling would just loop (cancelled again immediately).
+                            // Cancelled before processing any transaction; rescheduling would just loop. Disposal handled in finally.
                             return ValueTask.CompletedTask;
                         }
 

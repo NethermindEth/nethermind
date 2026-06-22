@@ -260,6 +260,7 @@ public class Eth68ProtocolHandler(ISession session,
         {
             if (!ValidateSizeAndType(transactionsSpan[i]))
             {
+                // [0, startIdx) were already handled in a prior scheduler slot.
                 for (int j = startIdx; j < transactionsSpan.Length; j++)
                 {
                     transactionsSpan[j].ClearPreHash();
