@@ -556,8 +556,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// </summary>
     /// <remarks>
     /// Mirrors EELS <c>calculate_intrinsic_cost</c>: the recipient touch is a flat cold charge independent of
-    /// the recipient's existence, code, or access-list membership (so no <paramref name="worldState"/> lookup),
-    /// overriding EIP-2929's "all tx addresses are warm" rule. The recipient stays pre-warmed for execution.
+    /// the recipient's existence or code, overriding EIP-2929's "all tx addresses are warm" rule; the recipient
+    /// stays pre-warmed for execution. A delegated recipient (EIP-7702) additionally touches its delegation
+    /// target — priced here from <paramref name="worldState"/> since the top-level frame only warms it.
     /// </remarks>
     private static long Eip2780ExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
     {
@@ -571,10 +572,29 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.
         if (tx.SenderAddress == tx.To) return 0;
 
-        long cost = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
+        long coldAccess = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
+        long cost = coldAccess;
         if (hasValue)
             cost += GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
 
+        // EIP-7702: calling a delegated recipient also touches its delegation target. The EVM warms
+        // (does not gas-charge) that target for the top-level frame, so it is priced here instead.
+        if (spec.IsEip7702Enabled && worldState is not null && tx.To is not null
+            && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(tx.To).AsSpan(), out Address? target))
+        {
+            cost += TxAccessListContains(tx, target) ? GasCostOf.WarmStateRead : coldAccess;
+        }
+
         return cost;
+    }
+
+    private static bool TxAccessListContains(Transaction tx, Address address)
+    {
+        if (tx.AccessList is null) return false;
+        foreach ((Address entry, _) in tx.AccessList)
+        {
+            if (entry == address) return true;
+        }
+        return false;
     }
 }
