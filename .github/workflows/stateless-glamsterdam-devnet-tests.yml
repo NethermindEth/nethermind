@@ -1,35 +1,17 @@
-name: Stateless R2 devnet tests
+name: Stateless glamsterdam-devnet tests
 
 on:
   push:
     branches: [feature/stateless-devnet-tests]
   workflow_dispatch:
-    inputs:
-      catalog_url:
-        description: Public R2 catalog root, index.html URL, or manifest.json URL
-        required: false
-        default: https://pub-5345007fbd06486bbb7cbbe9f3112c45.r2.dev/devnets/glamsterdam-devnet-5
-        type: string
-      batch_count:
-        description: Number of latest complete batches to run, or all
-        required: false
-        default: all
-        type: string
-      timeout_minutes:
-        description: Timeout per batch job
-        required: false
-        default: '90'
-        type: string
-      all_timeout_minutes:
-        description: Timeout per batch job when batch_count is all
-        required: false
-        default: '360'
-        type: string
   schedule:
     - cron: '12 */12 * * *'
 
 permissions:
   contents: read
+
+env:
+  CATALOG_ROOT: https://pub-5345007fbd06486bbb7cbbe9f3112c45.r2.dev/devnets/glamsterdam-devnet-5
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -45,9 +27,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
 
       - name: Build Nethermind
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
@@ -67,58 +46,26 @@ jobs:
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       selected_count: ${{ steps.select.outputs.selected_count }}
-      selection_label: ${{ steps.select.outputs.selection_label }}
-      timeout_minutes: ${{ steps.select.outputs.timeout_minutes }}
     env:
-      CATALOG_URL: ${{ github.event.inputs.catalog_url || 'https://pub-5345007fbd06486bbb7cbbe9f3112c45.r2.dev/devnets/glamsterdam-devnet-5' }}
-      BATCH_COUNT: ${{ github.event.inputs.batch_count || 'all' }}
       SUMMARY_DIR: /tmp/stateless-r2
-      DEFAULT_TIMEOUT_MINUTES: ${{ github.event.inputs.timeout_minutes || '90' }}
-      ALL_TIMEOUT_MINUTES: ${{ github.event.inputs.all_timeout_minutes || '360' }}
     steps:
       - name: Select R2 batches
         id: select
-        shell: bash
         run: |
           set -euo pipefail
-
-          for value_name in DEFAULT_TIMEOUT_MINUTES ALL_TIMEOUT_MINUTES; do
-            value="${!value_name}"
-            if ! [[ "$value" =~ ^[1-9][0-9]*$ ]]; then
-              echo "$value_name must be a positive integer, got: $value"
-              exit 1
-            fi
-          done
-
-          catalog="${CATALOG_URL%/}"
-          catalog="${catalog%/index.html}"
-          catalog="${catalog%/manifest.json}"
 
           rm -rf "$SUMMARY_DIR"
           mkdir -p "$SUMMARY_DIR"
 
-          curl -fsSL "$catalog/batches.jsonl" -o "$SUMMARY_DIR/batches.jsonl"
+          curl -fsSL "$CATALOG_ROOT/batches.jsonl" -o "$SUMMARY_DIR/batches.jsonl"
 
-          python3 - "$SUMMARY_DIR/batches.jsonl" "$BATCH_COUNT" "$DEFAULT_TIMEOUT_MINUTES" "$ALL_TIMEOUT_MINUTES" > "$SUMMARY_DIR/selection.json" <<'PY'
+          python3 - "$SUMMARY_DIR/batches.jsonl" "$GITHUB_OUTPUT" <<'PY'
           import json
           import sys
 
-          batches_path, batch_count, default_timeout, all_timeout = sys.argv[1:]
+          batches_path, output_path = sys.argv[1:]
           with open(batches_path, encoding="utf-8") as file:
               batches = [json.loads(line) for line in file if line.strip()]
-
-          if batch_count.lower() == "all":
-              selected = batches
-              timeout = all_timeout
-              selection_label = "all available batches"
-          else:
-              if not batch_count.isdigit() or int(batch_count) < 1:
-                  raise SystemExit(f"batch_count must be a positive integer or 'all', got: {batch_count}")
-
-              requested = int(batch_count)
-              selected = batches[-requested:]
-              timeout = default_timeout
-              selection_label = f"latest {len(selected)} batch(es)"
 
           matrix = {
               "include": [
@@ -127,31 +74,13 @@ jobs:
                       "path": batch["path"],
                       "sha256": batch["sha256"],
                   }
-                  for batch in selected
+                  for batch in batches
               ]
           }
 
-          print(json.dumps({
-              "matrix": matrix,
-              "selected_count": len(selected),
-              "selection_label": selection_label,
-              "timeout_minutes": timeout,
-          }))
-          PY
-
-          python3 - "$SUMMARY_DIR/selection.json" "$GITHUB_OUTPUT" <<'PY'
-          import json
-          import sys
-
-          selection_path, output_path = sys.argv[1:]
-          with open(selection_path, encoding="utf-8") as file:
-              selection = json.load(file)
-
           outputs = {
-              "matrix": json.dumps(selection["matrix"], separators=(",", ":")),
-              "selected_count": str(selection["selected_count"]),
-              "selection_label": selection["selection_label"],
-              "timeout_minutes": str(selection["timeout_minutes"]),
+              "matrix": json.dumps(matrix, separators=(",", ":")),
+              "selected_count": str(len(batches)),
           }
 
           with open(output_path, "a", encoding="utf-8") as file:
@@ -163,15 +92,13 @@ jobs:
     name: Run R2 batch ${{ matrix.range }}
     needs: [build, select-batches]
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ fromJSON(needs.select-batches.outputs.timeout_minutes) }}
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select-batches.outputs.matrix) }}
     env:
-      CATALOG_URL: ${{ github.event.inputs.catalog_url || 'https://pub-5345007fbd06486bbb7cbbe9f3112c45.r2.dev/devnets/glamsterdam-devnet-5' }}
       SUMMARY_DIR: /tmp/stateless-r2-${{ matrix.range }}
-      SELECTED_BATCHES: ${{ needs.select-batches.outputs.selection_label }}
-      SELECTED_BATCH_COUNT: ${{ needs.select-batches.outputs.selected_count }}
+      MATRIX_BATCH_COUNT: ${{ needs.select-batches.outputs.selected_count }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -183,21 +110,16 @@ jobs:
           path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
 
       - name: Run R2 batch
-        shell: bash
         run: |
           set -euo pipefail
 
           guest_dir="src/Nethermind/Nethermind.Stateless.ZiskGuest"
 
-          catalog="${CATALOG_URL%/}"
-          catalog="${catalog%/index.html}"
-          catalog="${catalog%/manifest.json}"
-
           rm -rf "$SUMMARY_DIR"
           mkdir -p "$SUMMARY_DIR"/{archives,extracted,logs}
           summary="$SUMMARY_DIR/summary.md"
 
-          curl -fsSL "$catalog/manifest.json" -o "$SUMMARY_DIR/manifest.json"
+          curl -fsSL "$CATALOG_ROOT/manifest.json" -o "$SUMMARY_DIR/manifest.json"
 
           network="$(jq -r '.network' "$SUMMARY_DIR/manifest.json")"
           artifact_count="$(jq -r '.batches.artifactCount' "$SUMMARY_DIR/manifest.json")"
@@ -206,12 +128,12 @@ jobs:
           {
             echo "# Stateless R2 devnet tests"
             echo
-            echo "- Catalog: $catalog"
+            echo "- Catalog: $CATALOG_ROOT"
             echo "- Network: $network"
             echo "- Available batches: $batch_total"
             echo "- Available block artifacts: $artifact_count"
-            echo "- Selected batches: $SELECTED_BATCHES"
-            echo "- Matrix batches: $SELECTED_BATCH_COUNT"
+            echo "- Selected batches: all available batches"
+            echo "- Matrix batches: $MATRIX_BATCH_COUNT"
             echo "- Current batch: ${{ matrix.range }}"
             echo
             echo "| Block | Hash | Result |"
@@ -240,7 +162,7 @@ jobs:
           batch_dir="$SUMMARY_DIR/extracted/${archive_name%.tar.zst}"
 
           echo "Downloading $archive_path"
-          curl -fsSL "$catalog/$archive_path" -o "$archive"
+          curl -fsSL "$CATALOG_ROOT/$archive_path" -o "$archive"
           echo "$archive_sha  $archive" | sha256sum --check --status
 
           mkdir -p "$batch_dir"
