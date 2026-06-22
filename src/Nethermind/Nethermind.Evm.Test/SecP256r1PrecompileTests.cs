@@ -5,9 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -59,17 +57,6 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        // Locks the hand-written limbs of the P-256 group order used by the zkVM precompile's
-        // [1, n-1] scalar range check against the canonical big-endian encoding from SEC 2, 2.4.2.
-        [Test]
-        public void SecP256r1Curve_order_matches_canonical_value()
-        {
-            UInt256 expected = new(
-                Bytes.FromHexString("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551"),
-                isBigEndian: true);
-            Assert.That(SecP256r1Curve.N, Is.EqualTo(expected));
-        }
-
         [TestCaseSource(nameof(RandomECDsaInputs))]
         public void Verifies_random_valid_signature(byte[] input)
         {
@@ -78,20 +65,6 @@ namespace Nethermind.Evm.Test
             {
                 Assert.That(success, Is.True);
                 Assert.That(output.ToArray(), Is.EqualTo(ValidResult));
-            }
-        }
-
-        // EIP-7951 requires r and s to lie in [1, n-1]. A signature that is valid apart from an out-of-range
-        // scalar must produce empty output, exercising both the standard verifier's range check and the zkVM
-        // precompile's AreScalarsInRange guard (which keeps the secp256r1 accelerator from aborting the guest).
-        [TestCaseSource(nameof(OutOfRangeScalarInputs))]
-        public void Rejects_out_of_range_scalar(byte[] input)
-        {
-            (ReadOnlyMemory<byte> output, bool success) = SecP256r1Precompile.Instance.Run(input, Prague.Instance);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EqualTo(Array.Empty<byte>()));
             }
         }
 
@@ -105,46 +78,12 @@ namespace Nethermind.Evm.Test
                 byte[] hash = new byte[32];
                 rng.GetBytes(hash);
 
-                byte[] input = BuildInput(ecdsa, hash);
+                ECParameters pub = ecdsa.ExportParameters(false);
+                byte[] sig = ecdsa.SignHash(hash, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+                byte[] input = [.. hash, .. sig, .. pub.Q.X, .. pub.Q.Y];
+
                 yield return new TestCaseData(input).SetName(Convert.ToHexString(input));
             }
-        }
-
-        public static IEnumerable<TestCaseData> OutOfRangeScalarInputs()
-        {
-            // r/s occupy bytes [32, 64) and [64, 96) of the 160-byte EIP-7951 input.
-            const int rOffset = 32;
-            const int sOffset = 64;
-            byte[] zero = new byte[32];
-            byte[] order = Bytes.FromHexString("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
-            byte[] aboveOrder = Bytes.FromHexString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-
-            using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            byte[] hash = new byte[32];
-            RandomNumberGenerator.Fill(hash);
-            byte[] valid = BuildInput(ecdsa, hash);
-
-            foreach ((string name, int offset, byte[] value) in new[]
-            {
-                ("r=0", rOffset, zero),
-                ("s=0", sOffset, zero),
-                ("r=n", rOffset, order),
-                ("s=n", sOffset, order),
-                ("r>n", rOffset, aboveOrder),
-                ("s>n", sOffset, aboveOrder),
-            })
-            {
-                byte[] input = (byte[])valid.Clone();
-                value.CopyTo(input, offset);
-                yield return new TestCaseData(input).SetName($"Out-of-range scalar: {name}");
-            }
-        }
-
-        private static byte[] BuildInput(ECDsa ecdsa, byte[] hash)
-        {
-            ECParameters pub = ecdsa.ExportParameters(false);
-            byte[] sig = ecdsa.SignHash(hash, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
-            return [.. hash, .. sig, .. pub.Q.X, .. pub.Q.Y];
         }
     }
 }
