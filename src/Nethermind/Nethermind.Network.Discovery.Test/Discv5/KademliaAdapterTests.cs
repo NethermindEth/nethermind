@@ -117,7 +117,6 @@ public class KademliaAdapterTests
         _packetCodec?.Dispose();
         _packetCodec = new PacketCodec(
             new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
-            nodeRecordProvider,
             new CryptoRandom(),
             new EthereumEcdsa(0));
 

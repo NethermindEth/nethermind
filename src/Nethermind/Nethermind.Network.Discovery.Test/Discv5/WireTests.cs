@@ -209,7 +209,6 @@ public class WireTests
             handler,
             new PacketCodec(
                 new InsecureProtectedPrivateKey(privateKey),
-                nodeRecordProvider,
                 new CryptoRandom(),
                 new EthereumEcdsa(0)),
             nodeRecordProvider,

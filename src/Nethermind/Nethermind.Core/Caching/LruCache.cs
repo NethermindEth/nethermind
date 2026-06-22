@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 
@@ -256,9 +255,10 @@ namespace Nethermind.Core.Caching
             return array;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetValues()
         {
+            using McsLock.Disposable lockRelease = _lock.Acquire();
+
             int i = 0;
             TValue[] array = new TValue[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)

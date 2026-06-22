@@ -18,7 +18,6 @@ namespace Nethermind.Network.Discovery.Discv5.Packets;
 
 public sealed class PacketCodec(
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
-    INodeRecordProvider nodeRecordProvider,
     ICryptoRandom cryptoRandom,
     IEcdsa ecdsa) : IDisposable
 {
@@ -47,7 +46,6 @@ public sealed class PacketCodec(
     private readonly PrivateKey _privateKey = nodeKey.Unprotect();
     private readonly PublicKey _publicKey = nodeKey.PublicKey;
     private readonly ValueHash256 _localNodeId = nodeKey.PublicKey.Hash.ValueHash256;
-    private readonly INodeRecordProvider _nodeRecordProvider = nodeRecordProvider;
     private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
     private readonly IEcdsa _ecdsa = ecdsa;
     private readonly ObjectPool<Aes> _decodeMaskingAesPool = CreateDecodeMaskingAesPool(nodeKey.PublicKey.Hash.Bytes[..AesKeySize]);
@@ -73,7 +71,7 @@ public sealed class PacketCodec(
     }
 
     [SkipLocalsInit]
-    internal byte[] EncodeHandshake(PublicKey destination, Challenge challenge, Discv5Message message, out Session session)
+    internal byte[] EncodeHandshake(PublicKey destination, Challenge challenge, Discv5Message message, NodeRecord currentNodeRecord, out Session session)
     {
         using PrivateKey ephemeralKey = new PrivateKeyGenerator(_cryptoRandom).Generate();
         DeriveKeys(
@@ -86,7 +84,6 @@ public sealed class PacketCodec(
             out byte[] recipientKey);
 
         byte[] ephemeralPublicKey = ephemeralKey.CompressedPublicKey.Bytes;
-        NodeRecord currentNodeRecord = _nodeRecordProvider.GetCurrentAsync().GetAwaiter().GetResult();
         byte[] record = challenge.EnrSequence < currentNodeRecord.EnrSequence
             ? currentNodeRecord.ToRlpBytes()
             : [];

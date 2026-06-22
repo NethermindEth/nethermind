@@ -382,7 +382,8 @@ public sealed class KademliaAdapter(
         ulong requestedEnrSequence;
         using (Challenge challenge = packetCodec.DecodeWhoAreYou(in packet))
         {
-            handshakePacket = packetCodec.EncodeHandshake(pendingRequest.Receiver.Id, challenge, pendingRequest.Message, out session);
+            NodeRecord currentNodeRecord = await nodeRecordProvider.GetCurrentAsync(token);
+            handshakePacket = packetCodec.EncodeHandshake(pendingRequest.Receiver.Id, challenge, pendingRequest.Message, currentNodeRecord, out session);
             requestedEnrSequence = challenge.EnrSequence;
         }
 
@@ -705,6 +706,13 @@ public sealed class KademliaAdapter(
     private void RegisterKnownRecord(Node node)
     {
         if (string.IsNullOrEmpty(node.Enr))
+        {
+            return;
+        }
+
+        ValueHash256 nodeId = node.Id.Hash.ValueHash256;
+        if (TryGetKnownRecord(nodeId, out NodeRecord? knownRecord) &&
+            knownRecord.EnrString == node.Enr)
         {
             return;
         }

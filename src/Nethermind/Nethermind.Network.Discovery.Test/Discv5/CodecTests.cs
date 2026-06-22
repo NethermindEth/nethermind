@@ -14,7 +14,6 @@ using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using System;
 using System.Net;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
@@ -361,7 +360,6 @@ public class CodecTests
     private static PacketCodec CreateCodec(PrivateKey privateKey)
         => new(
             new InsecureProtectedPrivateKey(privateKey),
-            new TestNodeRecordProvider(privateKey),
             new CryptoRandom(),
             new EthereumEcdsa(0));
 
@@ -389,12 +387,5 @@ public class CodecTests
         Span<byte> actual = stackalloc byte[RequestId.MaxLength];
         requestId.CopyTo(actual);
         Assert.That(actual[..requestId.Length].SequenceEqual(expected), Is.True);
-    }
-
-    private sealed class TestNodeRecordProvider(PrivateKey privateKey) : INodeRecordProvider
-    {
-        private readonly NodeRecord _current = CreateNodeRecord(privateKey);
-
-        public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default) => new(_current);
     }
 }
