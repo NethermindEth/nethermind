@@ -167,7 +167,7 @@ public partial class BlockProducerBaseTests
                 IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                 Block startingBlock = blockTree.Head!;
                 Assert.That(startingBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
-                ulong limit = _eip1559TransitionBlock > 0ul ? _eip1559TransitionBlock - 1ul : 0ul;
+                ulong limit = _eip1559TransitionBlock.SaturatingSub(1ul);
                 for (ulong i = startingBlock.Number; i < limit; ++i)
                 {
                     await _testRpcBlockchain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);

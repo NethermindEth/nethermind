@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -688,9 +689,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
         ulong intrinsicStateGas = GasCostOf.CreateState;
         const ulong innerRevertSpill = 4_174ul;
 
-        ulong initialReservoir = txGasLimit > intrinsicStateGas + 16_777_216ul ? txGasLimit - intrinsicStateGas - 16_777_216ul : 0ul;
+        ulong initialReservoir = txGasLimit.SaturatingSub(intrinsicStateGas + 16_777_216ul);
         ulong expectedBlockRegularBeforeFix = txGasLimit - intrinsicStateGas - initialReservoir;
-        ulong effectiveStateGas = intrinsicStateGas > innerRevertSpill ? intrinsicStateGas - innerRevertSpill : 0ul;
+        ulong effectiveStateGas = intrinsicStateGas.SaturatingSub(innerRevertSpill);
         ulong blockRegular = txGasLimit - effectiveStateGas - initialReservoir;
         ulong blockState = effectiveStateGas;
 

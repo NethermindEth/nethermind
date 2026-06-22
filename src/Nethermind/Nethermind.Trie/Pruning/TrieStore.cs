@@ -1242,7 +1242,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             // in such case we would try to continue at Head - 1200010
             // because head is loaded if there is no persistence checkpoint
             // so we need to force the persistence checkpoint
-            ulong baseBlock = LatestCommittedBlockNumber > 0 ? LatestCommittedBlockNumber - 1 : 0;
+            ulong baseBlock = LatestCommittedBlockNumber.SaturatingSub(1);
             LastPersistedBlockNumber = baseBlock;
             shouldAnnounceReorgBoundary = true;
         }

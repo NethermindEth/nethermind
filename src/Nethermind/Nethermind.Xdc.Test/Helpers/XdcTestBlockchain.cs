@@ -9,6 +9,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -572,7 +573,7 @@ public class XdcTestBlockchain : TestBlockchain
         EpochSwitchInfo switchInfo = EpochSwitchManager.GetEpochSwitchInfo(header.Hash!)!;
 
         ulong baseBlockNum = switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % headSpec.EpochLength;
-        ulong gap = baseBlockNum >= headSpec.Gap ? baseBlockNum - headSpec.Gap : 0UL;
+        ulong gap = baseBlockNum.SaturatingSub(headSpec.Gap);
         PrivateKey[] masterNodes = TakeRandomMasterNodes(headSpec, switchInfo);
         QuorumCertificate headQc = XdcTestHelper.CreateQc(new BlockRoundInfo(header.Hash!, header.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, header.Number), gap,
             masterNodes);
