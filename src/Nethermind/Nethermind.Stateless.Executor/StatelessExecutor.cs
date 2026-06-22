@@ -12,7 +12,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
@@ -142,7 +144,12 @@ public static class StatelessExecutor
     private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
     {
         if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider))
-            throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
+        {
+            if (chainConfig.ChainId == 7095321190UL) // TEMP: chain id of glamsterdam-devnet-5
+                return new SingleReleaseSpecProvider(Amsterdam.Instance, chainConfig.ChainId, chainConfig.ChainId);
+            else
+                throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
+        }
 
         // Empty arrays mean ActiveFork was omitted — use the base provider as-is.
         if (chainConfig.ActiveFork.Fork == 0 &&
