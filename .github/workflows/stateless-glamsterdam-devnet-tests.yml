@@ -210,6 +210,11 @@ jobs:
               continue
             fi
 
+            if ! jq -e '.artifacts | type == "array" and length > 0' "$batch_dir/manifest.json" > /dev/null 2>&1; then
+              record_batch_failure "$archive_name" "missing or empty block manifest"
+              continue
+            fi
+
             while IFS= read -r artifact; do
               block_number="$(jq -r '.blockNumber' <<< "$artifact")"
               block_hash="$(jq -r '.blockHash' <<< "$artifact")"
