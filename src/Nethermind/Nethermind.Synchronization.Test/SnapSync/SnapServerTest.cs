@@ -273,6 +273,40 @@ public class SnapServerTest
         }
     }
 
+    // A non-existent account is a terminal no-op only when its absence is *proven* by the verified range -
+    // the storage root must be left untouched and the refresh must not retry.
+    [Test]
+    public void TestRefreshAccount_VerifiedNotFound()
+    {
+        using ISnapServerContext context = CreateContext();
+        FillWithTestAccounts(context);
+
+        // A path immediately before an existing account: the account is absent, but the next account proves it.
+        ValueHash256 path = TestItem.Tree.AccountsWithPaths[1].Path.DecrementPath();
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
+        using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
+
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        using AccountsToRefreshRequest request = new()
+        {
+            RootHash = context.RootHash,
+            Paths = new ArrayPoolList<AccountWithStorageStartingHash>(1)
+            {
+                new() { PathAndAccount = stale, StorageStartingHash = ValueKeccak.Zero, StorageHashLimit = Keccak.MaxValue }
+            }
+        };
+
+        AddRangeResult result = context.SnapProvider.RefreshAccounts(request, response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            // Absent account: nothing adopted, storage root unchanged.
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+        }
+    }
+
     [Test]
     public void TestGetTrieNode_Root()
     {

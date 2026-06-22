@@ -15,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 
@@ -308,8 +307,10 @@ namespace Nethermind.Synchronization.SnapSync
         {
             account = null;
             IReadOnlyList<PathWithAccount> accounts = response.PathAndAccounts;
+            // An empty response carries no range to verify, so the account's absence cannot be proven here -
+            // retry rather than concluding (unproven) that it was deleted.
             if (accounts.Count == 0)
-                return response.Proofs.Count == 0 ? RefreshVerifyResult.Expired : RefreshVerifyResult.NotFound;
+                return RefreshVerifyResult.Expired;
 
             AddRangeResult result;
             try
@@ -319,15 +320,18 @@ namespace Nethermind.Synchronization.SnapSync
                 ISnapTrieFactory factory = new PatriciaSnapTrieFactory(new NodeStorage(new MemDb()), logManager);
                 result = SnapProviderHelper.VerifyAccountRange(factory, stateRoot, path, path.IncrementPath(), accounts, response.Proofs);
             }
-            catch (Exception e) when (e is TrieException or TrieNodeException or RlpException)
+            catch (Exception)
             {
+                // The proof is untrusted P2P data: any failure assembling or decoding it (trie, RLP, bounds, etc.)
+                // means the proof is invalid, never a crash of the sync task.
                 return RefreshVerifyResult.InvalidProof;
             }
 
             if (result != AddRangeResult.OK)
                 return RefreshVerifyResult.InvalidProof;
 
-            // Filter to the requested account; the response also carries at least one account past the limit.
+            // The verified range proves which accounts exist around [path, path + 1]; filter to the requested one.
+            // Its absence here is therefore a proven non-existence (deleted account), not an unverified guess.
             for (int i = 0; i < accounts.Count; i++)
             {
                 if (accounts[i].Path == path)
