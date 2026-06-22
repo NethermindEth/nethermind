@@ -67,6 +67,9 @@ jobs:
           with open(batches_path, encoding="utf-8") as file:
               batches = [json.loads(line) for line in file if line.strip()]
 
+          if not batches:
+              sys.exit("No block batches found in the catalog")
+
           matrix = {
               "include": [
                   {
@@ -110,6 +113,10 @@ jobs:
           path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
 
       - name: Run blocks
+        env:
+          BATCH_RANGE: ${{ matrix.range }}
+          BATCH_PATH: ${{ matrix.path }}
+          BATCH_SHA256: ${{ matrix.sha256 }}
         run: |
           set -euo pipefail
 
@@ -134,7 +141,7 @@ jobs:
             echo "- Available block artifacts: $artifact_count"
             echo "- Selected batches: all available batches"
             echo "- Matrix batches: $MATRIX_BATCH_COUNT"
-            echo "- Current batch: ${{ matrix.range }}"
+            echo "- Current batch: $BATCH_RANGE"
             echo
             echo "| Block | Hash | Result |"
             echo "| --- | --- | --- |"
@@ -155,8 +162,8 @@ jobs:
             failed=$((failed + 1))
           }
 
-          archive_path="${{ matrix.path }}"
-          archive_sha="$(echo "${{ matrix.sha256 }}" | sed 's/^0x//')"
+          archive_path="$BATCH_PATH"
+          archive_sha="$(echo "$BATCH_SHA256" | sed 's/^0x//')"
           archive_name="$(basename "$archive_path")"
           archive="$SUMMARY_DIR/archives/$archive_name"
           batch_dir="$SUMMARY_DIR/extracted/${archive_name%.tar.zst}"
