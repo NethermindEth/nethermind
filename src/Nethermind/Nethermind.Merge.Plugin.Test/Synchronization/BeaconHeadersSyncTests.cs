@@ -401,8 +401,6 @@ public class BeaconHeadersSyncTests
         Assert.That(request, Is.Null);
     }
 
-    // ERROR FIX (line 410): bestPointer changed from long to ulong to match BestKnownNumber
-    // and the ulong arithmetic used throughout this method and BuildHeadersSyncBatches.
     private async void BuildAndProcessHeaderSyncBatches(
         Context ctx,
         BlockTree blockTree,
@@ -455,11 +453,8 @@ public class BeaconHeadersSyncTests
             Assert.That(batch, Is.Not.Null);
             BuildHeadersSyncBatchResponse(batch, syncedBlockTree);
             ctx.Feed.HandleResponse(batch);
-            // ERROR FIX (lines 446, 448): Operator '-' is ambiguous between ulong and int.
-            // batch.RequestSize is int; cast to ulong so the subtraction resolves unambiguously.
-            lowestHeaderNumber = lowestHeaderNumber - (ulong)batch!.RequestSize < endLowestBeaconHeader
-                ? endLowestBeaconHeader
-                : lowestHeaderNumber - (ulong)batch.RequestSize;
+            lowestHeaderNumber = lowestHeaderNumber.SaturatingSub((ulong)batch!.RequestSize);
+            if (lowestHeaderNumber < endLowestBeaconHeader) lowestHeaderNumber = endLowestBeaconHeader;
 
             BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
             Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(lowestHeader?.Number));

@@ -313,7 +313,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             return UInt256.Zero;
         }
 
-        // Widening casts from ulong to UInt256 — safe, no overflow possible.
         UInt256 signatures = (UInt256)signatureCount;
         UInt256 total = (UInt256)totalSignatures;
 
