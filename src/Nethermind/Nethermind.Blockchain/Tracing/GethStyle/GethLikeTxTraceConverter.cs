@@ -134,7 +134,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             {
                 if (!runningByAddress.TryGetValue(delta.Address, out Dictionary<UInt256, UInt256>? map))
                     runningByAddress[delta.Address] = map = [];
-                map?[delta.Key] = delta.Value;
+                map[delta.Key] = delta.Value;
                 entry.Storage = map;
                 JsonSerializer.Serialize(writer, entry, options);
                 entry.Storage = null;
