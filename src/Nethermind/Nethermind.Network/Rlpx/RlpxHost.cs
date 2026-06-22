@@ -35,7 +35,7 @@ namespace Nethermind.Network.Rlpx
 
         private bool _isInitialized;
         public int LocalPort { get; }
-        private string? LocalIp { get; }
+        private readonly IPAddress _localIp;
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -63,6 +63,7 @@ namespace Nethermind.Network.Rlpx
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
             INetworkConfig networkConfig,
+            IIPResolver ipResolver,
             ILogManager logManager,
             IChannelFactory? channelFactory = null)
         {
@@ -89,7 +90,10 @@ namespace Nethermind.Network.Rlpx
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _handshakeService = handshakeService;
             LocalPort = networkConfig.P2PPort;
-            LocalIp = networkConfig.LocalIp;
+            // RlpxHost is injected as Lazy<> into InitializeNetwork, whose async Initialize() runs after its
+            // SetupKeyStore dependency has awaited Resolve() and warmed the cache, so this does not block.
+            IIPResolver.NethermindIp ips = ipResolver.Resolve().GetAwaiter().GetResult();
+            _localIp = ips.LocalIp;
             _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
             _connectTimeout = TimeSpan.FromMilliseconds(networkConfig.ConnectTimeoutMs);
             _channelFactory = channelFactory;
@@ -100,8 +104,7 @@ namespace Nethermind.Network.Rlpx
             _markDisconnectedAfterCloseDelay = MarkDisconnectedAfterCloseDelay;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
-            IPAddress? currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? ip) ? ip : null;
-            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, currentIp);
+            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
         }
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.TryAccept(ip, exactOnly);
@@ -137,9 +140,8 @@ namespace Nethermind.Network.Rlpx
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new InboundChannelInitializer(this));
 
-                Task<IChannel> openTask = NetworkHelper.HandlePortTakenError(() => LocalIp is null
-                        ? bootstrap.BindAsync(LocalPort)
-                        : bootstrap.BindAsync(IPAddress.Parse(LocalIp), LocalPort),
+                Task<IChannel> openTask = NetworkHelper.HandlePortTakenError(
+                    () => bootstrap.BindAsync(_localIp, LocalPort),
                     LocalPort);
 
                 _bootstrapChannel = await openTask.ContinueWith(t =>
