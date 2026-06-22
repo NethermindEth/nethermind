@@ -19,6 +19,8 @@ namespace Nethermind.Merge.Plugin.SszRest;
 
 public static class SszCodec
 {
+    private const int ValidationErrorMaxBytes = 1024;
+
     /// <summary>Encode directly into the writer's buffer (no intermediate alloc); returns bytes written.</summary>
     private static int EncodeToWriter<T>(T value, IBufferWriter<byte> writer) where T : ISszCodec<T>
     {
@@ -34,7 +36,6 @@ public static class SszCodec
 
     public static int EncodeNewPayloadWithWitnessResponse(PayloadStatusV1 ps, Witness? witness, IBufferWriter<byte> writer)
     {
-        const int ValidationErrorMax = 8192;
         const int FixedHeaderBytes = 1 + 4 + 4 + 4;
 
         bool hasLvh = ps.LatestValidHash is not null;
@@ -43,8 +44,8 @@ public static class SszCodec
         byte[] errorBytes = ps.ValidationError is not null
             ? Encoding.UTF8.GetBytes(ps.ValidationError)
             : [];
-        if (errorBytes.Length > ValidationErrorMax)
-            errorBytes = TruncateUtf8(errorBytes, ValidationErrorMax);
+        if (errorBytes.Length > ValidationErrorMaxBytes)
+            errorBytes = TruncateUtf8(errorBytes, ValidationErrorMaxBytes);
         bool hasError = ps.ValidationError is not null;
         int errorLen = hasError ? 1 + errorBytes.Length : 1;
 
@@ -447,7 +448,6 @@ public static class SszCodec
 
     private static PayloadStatusWire BuildPayloadStatusWire(PayloadStatusV1 ps)
     {
-        const int MaxErrorBytes = 1024;
         SszValidationError[] error;
         if (ps.ValidationError is null)
         {
@@ -456,7 +456,7 @@ public static class SszCodec
         else
         {
             byte[] errorBytes = Encoding.UTF8.GetBytes(ps.ValidationError);
-            if (errorBytes.Length > MaxErrorBytes) errorBytes = errorBytes[..MaxErrorBytes];
+            if (errorBytes.Length > ValidationErrorMaxBytes) errorBytes = errorBytes[..ValidationErrorMaxBytes];
             error = [new SszValidationError { Bytes = errorBytes }];
         }
 
