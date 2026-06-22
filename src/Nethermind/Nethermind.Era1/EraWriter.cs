@@ -81,7 +81,7 @@ public class EraWriter : IDisposable
         using ArrayPoolSpan<byte> bodyBytes = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, behaviors);
         _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, bodyBytes.AsMemory(), cancellation);
 
-        using ArrayPoolSpan<byte> receiptBytes = _receiptDecoder.EncodeToArrayPoolSpan(receipts, behaviors);
+        using ArrayPoolSpan<byte> receiptBytes = _receiptDecoder.EncodeToArrayPoolSpan(receipts.AsSpan(), behaviors);
         _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.AsMemory(), cancellation);
 
         _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);

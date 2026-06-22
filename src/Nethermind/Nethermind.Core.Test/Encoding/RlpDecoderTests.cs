@@ -76,10 +76,10 @@ public class RlpDecoderTests
     }
 
     [Test]
-    public void Array_pool_span_array_encoding_uses_empty_list_for_null_withdrawals()
+    public void Array_pool_span_encoding_uses_empty_list_for_null_withdrawals()
     {
         WithdrawalDecoder decoder = new();
-        Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
+        ReadOnlySpan<Withdrawal?> withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
         using ArrayPoolSpan<byte> stream = decoder.EncodeToArrayPoolSpan(withdrawals);
 
@@ -87,50 +87,14 @@ public class RlpDecoderTests
     }
 
     [Test]
-    public void Array_pool_span_list_encoding_uses_empty_list_for_null_withdrawals()
-    {
-        WithdrawalDecoder decoder = new();
-        List<Withdrawal?> withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
-
-        using ArrayPoolSpan<byte> stream = decoder.EncodeToArrayPoolSpan(withdrawals);
-
-        AssertEncodedNullItem(decoder, stream);
-    }
-
-    [Test]
-    public void Array_pool_span_array_pool_list_ref_encoding_uses_empty_list_for_null_withdrawals()
-    {
-        WithdrawalDecoder decoder = new();
-        using ArrayPoolListRef<Withdrawal?> withdrawals = new(3);
-        withdrawals.Add(TestItem.WithdrawalA_1Eth);
-        withdrawals.Add(null);
-        withdrawals.Add(TestItem.WithdrawalB_2Eth);
-
-        using ArrayPoolSpan<byte> stream = decoder.EncodeToArrayPoolSpan(in withdrawals);
-
-        AssertEncodedNullItem(decoder, stream);
-    }
-
-    [Test]
-    public void Array_pool_span_collection_encoding_does_not_call_item_encoder_for_null_items()
+    public void Array_pool_span_encoding_does_not_call_item_encoder_for_null_items()
     {
         NonNullableItemDecoder decoder = new();
+        ReadOnlySpan<NonNullableItem?> items = [new(), null, new()];
 
-        NonNullableItem?[] array = [new(), null, new()];
-        using ArrayPoolSpan<byte> arrayStream = decoder.EncodeToArrayPoolSpan(array);
-        AssertEncodedNullItem(arrayStream);
+        using ArrayPoolSpan<byte> stream = decoder.EncodeToArrayPoolSpan(items);
 
-        List<NonNullableItem?> list = [new(), null, new()];
-        using ArrayPoolSpan<byte> listStream = decoder.EncodeToArrayPoolSpan(list);
-        AssertEncodedNullItem(listStream);
-
-        using ArrayPoolListRef<NonNullableItem?> pooled = new(3);
-        pooled.Add(new());
-        pooled.Add(null);
-        pooled.Add(new());
-
-        using ArrayPoolSpan<byte> pooledStream = decoder.EncodeToArrayPoolSpan(in pooled);
-        AssertEncodedNullItem(pooledStream);
+        AssertEncodedNullItem(stream);
     }
 
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
