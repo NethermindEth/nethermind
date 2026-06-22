@@ -252,10 +252,9 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 
     private void OnKademliaNodeRemoved(object? sender, Node node)
     {
-        if (node.IsBootnode || node.IsStatic)
+        if (true)
             return;
 
-        NodeRemoved?.Invoke(sender, new NodeEventArgs(node));
     }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
