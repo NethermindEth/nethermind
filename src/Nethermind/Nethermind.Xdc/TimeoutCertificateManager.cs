@@ -284,7 +284,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
                 ?? throw new DataExtractionException(nameof(EpochSwitchInfo));
             ulong currentNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
             ulong offset = currentNumber % spec.EpochLength + spec.Gap;
-            gapNumber = currentNumber > offset ? currentNumber - offset : 0UL;
+            gapNumber = currentNumber.SaturatingSub(offset);
         }
 
         ValueHash256 msgHash = ComputeTimeoutMsgHash(currentRound, gapNumber);

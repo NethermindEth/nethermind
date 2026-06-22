@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -77,7 +78,7 @@ internal class VotesManager(
         else
         {
             ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
-            gapNumber = epochSwitchNumber > offset ? epochSwitchNumber - offset : 0UL;
+            gapNumber = epochSwitchNumber.SaturatingSub(offset);
         }
 
         Vote vote = new(blockInfo, gapNumber, isMyVote: true);
