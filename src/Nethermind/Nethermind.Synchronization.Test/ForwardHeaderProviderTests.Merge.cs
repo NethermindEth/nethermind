@@ -95,13 +95,13 @@ public partial class ForwardHeaderProviderTests
 
     }
 
-    [TestCase(32UL, 32UL, 0, 32)]
-    [TestCase(32UL, 32UL, 10, 22)]
-    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, int blocksToIgnore, long expectedBestKnownNumber)
+    [TestCase(32UL, 32UL, 0UL, 32)]
+    [TestCase(32UL, 32UL, 10UL, 22)]
+    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, ulong blocksToIgnore, long expectedBestKnownNumber)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(4, (int)headNumber + 1)
+            .WithBlockTrees(4, headNumber + 1)
             .InsertBeaconPivot(pivot)
             .InsertBeaconHeaders(4, pivot - 1);
 
@@ -119,7 +119,7 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(peerInfo);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders((ulong)blocksToIgnore, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(blocksToIgnore, 128, CancellationToken.None);
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedBestKnownNumber));
     }
 

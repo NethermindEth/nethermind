@@ -834,11 +834,11 @@ public partial class BlockDownloaderTests
         IncorrectReceiptRoot = 256
     }
 
-    private IContainer CreateFastSyncNode(int fastSyncLag = 1) =>
+    private IContainer CreateFastSyncNode(ulong fastSyncLag = 1) =>
         CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
-            StateMinDistanceFromHead = (ulong)fastSyncLag,
+            StateMinDistanceFromHead = fastSyncLag,
         }));
 
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
