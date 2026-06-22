@@ -102,9 +102,7 @@ public sealed class NodeFilter
             return;
         }
 
-        IpSubnetKey key = GetKey(ipAddress, exactOnly);
-        if (_cache.TryGet(key, out _))
-            _cache.Set(key, Environment.TickCount64);
+        _cache.Set(GetKey(ipAddress, exactOnly), Environment.TickCount64);
     }
 
     public void Delete(IPAddress ipAddress, bool exactOnly = false)
