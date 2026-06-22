@@ -30,6 +30,8 @@ public class FlatScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
+    public bool SupportsConcurrentScopes => true;
+
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
         StateId currentState = new(baseBlock);
