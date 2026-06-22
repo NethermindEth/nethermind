@@ -102,7 +102,11 @@ public sealed class NodeFilter
             return;
         }
 
-        _cache.Set(GetKey(ipAddress, exactOnly), Environment.TickCount64);
+        // Only refresh an existing entry — do not re-insert one that was explicitly deleted.
+        IpSubnetKey key = GetKey(ipAddress, exactOnly);
+        long now = Environment.TickCount64;
+        if (_cache.TryGet(key, out long lastSeen) && now > lastSeen)
+            _cache.Set(key, now);
     }
 
     /// <summary>

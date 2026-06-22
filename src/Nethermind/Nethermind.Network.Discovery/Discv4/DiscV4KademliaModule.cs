@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
@@ -35,9 +33,9 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
             .AddModule(new KademliaModule<PublicKey, Node>())
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaDiscv4Adapter>()
             .AddSingleton<IKeyOperator<PublicKey, Node>, PublicKeyKeyOperator>()
-            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig, INetworkConfig, IEnode>((discoveryConfig, networkConfig, enode) => new KademliaConfig<Node>()
+            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
             {
-                CurrentNodeId = new Node(masterNode, enode.HostIp.ToString(), networkConfig.DiscoveryPort, true),
+                CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true), // It actually only need masterNode.
                 KSize = discoveryConfig.BucketSize,
                 Alpha = discoveryConfig.Concurrency,
                 Beta = discoveryConfig.BitsPerHop,

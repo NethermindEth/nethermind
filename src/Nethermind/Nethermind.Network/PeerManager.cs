@@ -551,7 +551,7 @@ namespace Nethermind.Network
             if (_currentSelection.PreCandidates.Count == 0)
             {
                 _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
-                hasOnlyStaticNodes = _currentSelection.Candidates.Count > 0;
+                hasOnlyStaticNodes = _currentSelection.PreCandidates.Count > 0;
             }
 
             if (_currentSelection.PreCandidates.Count == 0 && !hasOnlyStaticNodes)

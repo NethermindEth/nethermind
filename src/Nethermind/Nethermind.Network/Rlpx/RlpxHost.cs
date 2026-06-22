@@ -107,7 +107,7 @@ namespace Nethermind.Network.Rlpx
             _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
         }
 
-        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.TryAccept(ip, exactOnly);
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.CanAccept(ip, exactOnly);
 
         public async Task Init()
         {
@@ -289,6 +289,14 @@ namespace Nethermind.Network.Rlpx
             if (ShouldRejectInbound(session, channel))
             {
                 return;
+            }
+
+            // For outbound connections ShouldContact now uses CanAccept (read-only) so the
+            // NodeFilter slot must be reserved here instead, once the channel is actually open.
+            if (session.Direction == ConnectionDirection.Out
+                && channel.RemoteAddress is IPEndPoint outboundEndpoint)
+            {
+                _nodeFilter.TryAccept(outboundEndpoint.Address);
             }
 
             SetTcpSocketOptions(channel);
@@ -503,15 +511,17 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
-            // Remove the NodeFilter entry so the peer can reconnect immediately rather than
-            // being blocked for the full filter timeout window. The RefreshNodeFilter mechanism
-            // enforces uniqueness while a session is active; the timeout exists as a backstop
-            // for connections that die without being tracked, not to delay legitimate reconnects.
-            if (session.Direction == ConnectionDirection.In)
-                _nodeFilter.Delete(session.Node.Address.Address);
-
+            // Null the activity observer first so no concurrent Touch call can re-insert the
+            // NodeFilter entry between the Delete below and the next TryAccept for the same IP.
             subscription.DetachSession();
             _sessionMonitor.RemoveSession(session);
+
+            // Remove the NodeFilter entry so the peer can reconnect immediately rather than
+            // being blocked for the full filter timeout window. Use RemoteHost rather than
+            // session.Node.Address.Address to avoid InvalidOperationException for sessions
+            // that disconnected before the P2P handshake set RemoteNodeId.
+            if (session.RemoteHost is { } remoteHost && IPAddress.TryParse(remoteHost, out IPAddress? remoteIp))
+                _nodeFilter.Delete(remoteIp);
             try
             {
                 SessionDisconnected?.Invoke(this, session, args);
