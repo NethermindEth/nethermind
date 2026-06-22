@@ -116,6 +116,7 @@ namespace Nethermind.Network
         {
             if (Peers.TryRemove(id, out peer))
             {
+                if (_logger.IsInfo) _logger.Info($"TryRemove peer {id}: {Environment.StackTrace}");
                 _staticPeers.TryRemove(id, out _);
                 peer.InSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
                 peer.OutSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
