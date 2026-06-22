@@ -161,14 +161,6 @@ namespace Nethermind.Config
                     : throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
             }
 
-            // Backward compatibility: existing configs may carry "-1" sentinels on ulong fields
-            // (e.g. TxLookupLimit). Convert.ChangeType throws OverflowException on negative input;
-            // wrap-around to ulong keeps old configs loadable.
-            if (valueType == typeof(ulong) && long.TryParse(itemValue, out long longVal))
-            {
-                return unchecked((ulong)longVal);
-            }
-
             return TryFromHex(valueType, itemValue, out object? value) ? value : Convert.ChangeType(itemValue, valueType);
         }
     }

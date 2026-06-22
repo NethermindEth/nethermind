@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private bool FastBlockAccessListsFinished => !FastBlockAccessListsEnabled || _syncProgressResolver.IsFastBlockAccessListsFinished();
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
-        private ulong TotalSyncLag => (ulong)(_syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance);
+        private ulong TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
         private CancellationTokenSource? _cancellation = new();
 
@@ -687,14 +687,8 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         private static bool IsSnapshotInvalid(Snapshot best) =>
-            // Treat values above long.MaxValue as invalid sentinels — they would be ~2^63+ blocks,
-            // unreachable on any real chain; in practice they appear when a resolver returns -1 cast to ulong.
-            best.Block > long.MaxValue
-            || best.Header > long.MaxValue
-            || best.State > long.MaxValue
-            || best.Processed > long.MaxValue
-            || best.Peer.Block > long.MaxValue
-            || best.TargetBlock > long.MaxValue
+            // ulong.MaxValue is FindBestProcessedBlock's "no Head yet" sentinel.
+            best.Processed == ulong.MaxValue
             // best header is at least equal to the best full block
             || best.Block > best.Header
             // we cannot download state for an unknown header
