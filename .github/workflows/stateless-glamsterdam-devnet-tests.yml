@@ -41,15 +41,15 @@ jobs:
           retention-days: 1
 
   select-batches:
-    name: Select batches
+    name: Select block batches
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       selected_count: ${{ steps.select.outputs.selected_count }}
     env:
-      SUMMARY_DIR: /tmp/stateless-r2
+      SUMMARY_DIR: /tmp/stateless-devnet
     steps:
-      - name: Select R2 batches
+      - name: Select block batches
         id: select
         run: |
           set -euo pipefail
@@ -89,7 +89,7 @@ jobs:
           PY
 
   test:
-    name: Run R2 batch ${{ matrix.range }}
+    name: Run blocks ${{ matrix.range }}
     needs: [build, select-batches]
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -97,7 +97,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select-batches.outputs.matrix) }}
     env:
-      SUMMARY_DIR: /tmp/stateless-r2-${{ matrix.range }}
+      SUMMARY_DIR: /tmp/stateless-devnet-${{ matrix.range }}
       MATRIX_BATCH_COUNT: ${{ needs.select-batches.outputs.selected_count }}
     steps:
       - name: Check out repository
@@ -109,7 +109,7 @@ jobs:
           name: nethermind
           path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
 
-      - name: Run R2 batch
+      - name: Run blocks
         run: |
           set -euo pipefail
 
@@ -126,7 +126,7 @@ jobs:
           batch_total="$(jq -r '.batches.count' "$SUMMARY_DIR/manifest.json")"
 
           {
-            echo "# Stateless R2 devnet tests"
+            echo "# Stateless tests"
             echo
             echo "- Catalog: $CATALOG_ROOT"
             echo "- Network: $network"
@@ -150,7 +150,7 @@ jobs:
             local block_hash="$2"
             local reason="$3"
 
-            echo "::error title=Stateless R2 block failed::Block $block_number ($block_hash): $reason"
+            echo "::error title=Stateless execution failed::Block $block_number ($block_hash): $reason"
             echo "| $block_number | \`$block_hash\` | failed: $reason |" >> "$summary"
             failed=$((failed + 1))
           }
@@ -239,7 +239,7 @@ jobs:
 
           if [ "$failed" -ne 0 ]; then
             cat "$summary"
-            echo "::error title=Stateless R2 devnet tests failed::$failed block(s) failed"
+            echo "::error title=Stateless tests failed::$failed block(s) failed"
             exit 1
           fi
 
@@ -249,14 +249,14 @@ jobs:
           if [ -f "$SUMMARY_DIR/summary.md" ]; then
             cat "$SUMMARY_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "No stateless R2 summary was produced." >> "$GITHUB_STEP_SUMMARY"
+            echo "No stateless execution summary was produced." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: stateless-r2-devnet-${{ matrix.range }}-logs
+          name: stateless-devnet-${{ matrix.range }}-logs
           path: |
             ${{ env.SUMMARY_DIR }}/summary.md
             ${{ env.SUMMARY_DIR }}/manifest.json
