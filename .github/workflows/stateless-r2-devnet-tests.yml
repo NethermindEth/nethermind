@@ -18,20 +18,20 @@ on:
       timeout_minutes:
         description: Timeout per batch job
         required: false
-        default: "90"
+        default: '90'
         type: string
       all_timeout_minutes:
         description: Timeout per batch job when batch_count is all
         required: false
-        default: "360"
+        default: '360'
         type: string
       max_parallel:
         description: Maximum batch jobs to run in parallel
         required: false
-        default: "8"
+        default: '8'
         type: string
   schedule:
-    - cron: "23 */2 * * *"
+    - cron: '12 */12 * * *'
 
 permissions:
   contents: read
