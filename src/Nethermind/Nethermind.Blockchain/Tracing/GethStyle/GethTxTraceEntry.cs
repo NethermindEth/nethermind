@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -39,6 +40,9 @@ public class GethTxTraceEntry
 
     [JsonConverter(typeof(StorageHexConverter))]
     public Dictionary<UInt256, UInt256>? Storage { get; set; }
+
+    [JsonIgnore]
+    internal (Address Address, UInt256 Key, UInt256 Value)? StorageDelta { get; set; }
 
     internal virtual void UpdateMemorySize(ulong size) { }
 }

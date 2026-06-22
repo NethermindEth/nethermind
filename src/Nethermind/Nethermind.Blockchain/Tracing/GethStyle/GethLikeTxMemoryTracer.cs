@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using Nethermind.Core.Crypto;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
@@ -13,8 +12,6 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
-
-    private readonly Dictionary<AddressAsKey, Dictionary<UInt256, UInt256>> _storageByAddress = [];
 
     public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
     {
@@ -57,13 +54,6 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         if (CurrentTraceEntry is null)
             return;
 
-        if (!_storageByAddress.TryGetValue(address, out Dictionary<UInt256, UInt256>? contractStorage))
-        {
-            _storageByAddress[address] = contractStorage = [];
-        }
-
-        contractStorage[storageIndex] = new UInt256(value, isBigEndian: true);
-
-        CurrentTraceEntry.Storage = new Dictionary<UInt256, UInt256>(contractStorage);
+        CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
     }
 }

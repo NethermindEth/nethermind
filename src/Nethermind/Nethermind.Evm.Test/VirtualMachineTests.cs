@@ -4,11 +4,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using Nethermind.Specs;
 
@@ -134,15 +136,18 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
             Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
             Assert.That(entry.Storage, Is.Null, nameof(entry.Storage));
-            // Storage is recorded only at the SSTORE entry (slot 0x0 set to 0x0), matching Geth's struct logger.
             Assert.That(trace.Entries[4].Opcode, Is.EqualTo("SSTORE"), "SSTORE opcode");
-            Assert.That(trace.Entries[4].Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256>
-            {
-                [UInt256.Zero] = UInt256.Zero,
-            }), nameof(trace.Entries));
             Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
             Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
         }
+
+        // Storage is populated lazily during serialization; verify via JSON.
+        using JsonDocument doc = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        JsonElement sstoreEntry = doc.RootElement.GetProperty("structLogs")[4];
+        JsonElement storage = sstoreEntry.GetProperty("storage");
+        const string zero32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        Assert.That(storage.EnumerateObject().Count(), Is.EqualTo(1), "SSTORE storage has one slot");
+        Assert.That(storage.GetProperty(zero32).GetString(), Is.EqualTo(zero32), "SSTORE storage[0x0]=0x0");
     }
 
     [Test]

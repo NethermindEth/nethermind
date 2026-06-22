@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -114,8 +116,34 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         JsonSerializer.Serialize(writer, value.ReturnValue, options);
 
         writer.WritePropertyName("structLogs"u8);
-        JsonSerializer.Serialize(writer, value.Entries, options);
+        WriteEntriesWithStorageForwardPass(writer, value.Entries, options);
 
         writer.WriteEndObject();
+    }
+
+    private static void WriteEntriesWithStorageForwardPass(
+        Utf8JsonWriter writer,
+        List<GethTxTraceEntry> entries,
+        JsonSerializerOptions options)
+    {
+        Dictionary<AddressAsKey, Dictionary<UInt256, UInt256>> runningByAddress = [];
+        writer.WriteStartArray();
+        foreach (GethTxTraceEntry entry in entries)
+        {
+            if (entry.StorageDelta is { } delta)
+            {
+                if (!runningByAddress.TryGetValue(delta.Address, out Dictionary<UInt256, UInt256>? map)) 
+                    runningByAddress[delta.Address] = map = [];
+                map?[delta.Key] = delta.Value;
+                entry.Storage = map;
+                JsonSerializer.Serialize(writer, entry, options);
+                entry.Storage = null;
+            }
+            else
+            {
+                JsonSerializer.Serialize(writer, entry, options);
+            }
+        }
+        writer.WriteEndArray();
     }
 }
