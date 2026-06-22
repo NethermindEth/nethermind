@@ -81,7 +81,7 @@ namespace Nethermind.Api
         public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
-        public IProtocolsManager? ProtocolsManager { get; set; }
+        public IProtocolsManager? ProtocolsManager => Context.Resolve<IProtocolsManager>();
         public IProtocolValidator ProtocolValidator => Context.Resolve<IProtocolValidator>();
         public IReceiptStorage? ReceiptStorage => Context.Resolve<IReceiptStorage>();
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
