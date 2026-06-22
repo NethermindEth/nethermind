@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Spec;
@@ -32,7 +33,7 @@ internal class ProposedBlockTests
         BlockRoundInfo votingBlock = new(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
         ulong epochSwitchNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber;
         ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
-        ulong gapNumber = epochSwitchNumber > offset ? epochSwitchNumber - offset : 0UL;
+        ulong gapNumber = epochSwitchNumber.SaturatingSub(offset);
         //We skip 1 vote so we are 1 under the vote threshold, proving that if the round advances the module cast a vote itself
         foreach (PrivateKey? key in masternodes.Skip(1))
         {
@@ -108,7 +109,7 @@ internal class ProposedBlockTests
         BlockRoundInfo votingBlock = new(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
         ulong epochSwitchNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber;
         ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
-        ulong gapNumber = epochSwitchNumber > offset ? epochSwitchNumber - offset : 0UL;
+        ulong gapNumber = epochSwitchNumber.SaturatingSub(offset);
         //We skip 1 vote so we are 1 under the vote threshold
         foreach (PrivateKey? key in masternodes.Skip(1))
         {
@@ -192,7 +193,7 @@ internal class ProposedBlockTests
         BlockRoundInfo votingBlock = new(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
         ulong epochSwitchNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber;
         ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
-        ulong gapNumber = epochSwitchNumber > offset ? epochSwitchNumber - offset : 0UL;
+        ulong gapNumber = epochSwitchNumber.SaturatingSub(offset);
         //We skip 1 vote so we are 1 under the vote threshold
         foreach (PrivateKey? key in masternodes.Skip(1))
         {

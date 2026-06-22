@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -591,7 +592,7 @@ internal class SpecialTransactionsTests
 
         blockChain.MainWorldState.BeginScope(head);
 
-        ulong lowerBound = head.Number > spec.EpochLength * 2 ? head.Number - (spec.EpochLength * 2) : 0UL;
+        ulong lowerBound = head.Number.SaturatingSub(spec.EpochLength * 2);
         UInt256 tooLowBlockNumber = lowerBound;
         Transaction txTooLow = SignTransactionManager.CreateTxSign(
             tooLowBlockNumber,

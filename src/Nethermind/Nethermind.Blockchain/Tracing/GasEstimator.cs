@@ -75,7 +75,7 @@ public class GasEstimator(
             return fundsResult;
 
         ulong intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit).MinimalGas;
-        ulong leftBound = Math.Max(gasTracer.GasSpent > 0 ? gasTracer.GasSpent - 1 : 0, intrinsicGas > 0 ? intrinsicGas - 1 : 0);
+        ulong leftBound = Math.Max(gasTracer.GasSpent.SaturatingSub(1), intrinsicGas.SaturatingSub(1));
         ulong rightBound = Math.Min(
             tx.GasLimit != 0 && tx.GasLimit >= intrinsicGas ? tx.GasLimit : header.GasLimit,
             spec.GetTxGasLimitCap());

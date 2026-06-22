@@ -417,8 +417,7 @@ public class HistoryPruner : IHistoryPruner
 
                 if (_logger.IsInfo && deletedBlocks > 0 && deletedBlocks % _deletionProgressLoggingInterval == 0)
                 {
-                    // Guarded subtraction: if number+1 == upperExclusive, remaining is 0.
-                    ulong remaining = number + 1 < upperExclusive ? upperExclusive - (number + 1) : 0;
+                    ulong remaining = upperExclusive.SaturatingSub(number + 1);
                     _logger.Info($"Historical block pruning in progress... Deleted {deletedBlocks} blocks, with {remaining} remaining.");
                 }
 
@@ -478,7 +477,7 @@ public class HistoryPruner : IHistoryPruner
 
                 if (_logger.IsInfo && deletedBals > 0 && deletedBals % _deletionProgressLoggingInterval == 0)
                 {
-                    ulong remaining = number + 1 < upperExclusive ? upperExclusive - (number + 1) : 0;
+                    ulong remaining = upperExclusive.SaturatingSub(number + 1);
                     _logger.Info($"Historical block access list pruning in progress... Deleted {deletedBals} BALs, with {remaining} remaining.");
                 }
             }
