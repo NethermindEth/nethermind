@@ -100,7 +100,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             foreach (long blockNumber in _validator.Validators.Keys.Skip(1))
             {
-                _finalizationManager.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(
+                _finalizationManager.BlocksFinalized += Raise.EventWith(new AuRaFinalizeEventArgs(
                     Build.A.BlockHeader.WithNumber(blockNumber + 1).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject));
             }
 
@@ -191,7 +191,7 @@ namespace Nethermind.AuRa.Test.Validators
                 int finalizedBlock = i - blocksToFinalization;
                 if (finalizedBlock >= 1)
                 {
-                    _finalizationManager.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(
+                    _finalizationManager.BlocksFinalized += Raise.EventWith(new AuRaFinalizeEventArgs(
                         Build.A.BlockHeader.WithNumber(i).TestObject,
                         Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
                 }

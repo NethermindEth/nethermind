@@ -20,6 +20,6 @@ public interface IRocksDbConfig
     ulong? RowCacheSize { get; }
     bool EnableFileWarmer { get; }
     double CompressibilityHint { get; }
-    bool FlushOnExit { get; }
+    FlushOnExitMode FlushOnExit { get; }
     IntPtr? BlockCache { get; }
 }

@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
@@ -17,7 +15,7 @@ using System.Linq;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(ResolveIps))]
+    [RunnerStepDependencies]
     public class SetupKeyStore(INethermindApi api) : IStep
     {
         public Task Execute(CancellationToken cancellationToken)
@@ -62,11 +60,6 @@ namespace Nethermind.Init.Steps
             {
                 set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
             }
-
-            IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
-            IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
-
-            get.LogManager.SetGlobalVariable("enode", enode.ToString());
 
             networkConfig.Bootnodes = [.. networkConfig.Bootnodes.Where(bn => bn.NodeId != nodeKey.PublicKey)];
 

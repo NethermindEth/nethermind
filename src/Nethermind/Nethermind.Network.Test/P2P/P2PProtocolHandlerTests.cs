@@ -3,6 +3,8 @@
 
 using System.Linq;
 using System.Collections.Generic;
+using System.Net;
+using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -63,7 +65,7 @@ namespace Nethermind.Network.Test.P2P
 
             return new P2PProtocolHandler(
                 _session,
-                TestItem.PublicKeyA,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303),
                 _nodeStatsManager,
                 _serializer,
                 Substitute.For<IBackgroundTaskScheduler>(),
@@ -137,7 +139,8 @@ namespace Nethermind.Network.Test.P2P
         public void Sets_local_node_id_from_constructor()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            Assert.That(TestItem.PublicKeyA, Is.EqualTo(p2PProtocolHandler.LocalNodeId));
+            p2PProtocolHandler.Init();
+            _session.Received(1).DeliverMessage(Arg.Is<HelloMessage>(m => m.NodeId == TestItem.PublicKeyA));
         }
 
         [Test]

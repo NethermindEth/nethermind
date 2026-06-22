@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;

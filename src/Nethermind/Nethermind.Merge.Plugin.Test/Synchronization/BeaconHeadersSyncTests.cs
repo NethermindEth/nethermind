@@ -53,7 +53,7 @@ public class BeaconHeadersSyncTests
                     Block genesis = Build.A.Block.Genesis.TestObject;
                     _blockTree = BlockTreeBuilder.TestObject;
                     _blockTree.SuggestBlock(genesis);
-                    _blockTree.UpdateMainChain(new[] { genesis }, true); // MSMS do validity check on this
+                    _blockTree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis }); // MSMS do validity check on this
                 }
 
                 return _blockTree;
@@ -206,9 +206,12 @@ public class BeaconHeadersSyncTests
         }
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1001).TestObject);
         using HeadersSyncBatch? result = await feed.PrepareRequest();
-        Assert.That(result, Is.Null);
-        Assert.That(feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
-        Assert.That(progressLogger.CurrentValue, Is.EqualTo(999));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+            Assert.That(progressLogger.CurrentValue, Is.EqualTo(999));
+        }
     }
 
     [Test]
@@ -405,27 +408,33 @@ public class BeaconHeadersSyncTests
         long bestPointer,
         long endLowestBeaconHeader)
     {
-        Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
-        Assert.That(blockTree.BestKnownNumber, Is.EqualTo(bestPointer));
         BlockHeader? startBestHeader = syncedBlockTree.FindHeader(bestPointer, BlockTreeLookupOptions.None);
         BlockHeader? pivotHeader = syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None);
-        Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(startBestHeader?.Hash));
-        Assert.That(blockTree.BestSuggestedHeader?.Number, Is.EqualTo(startBestHeader?.Number));
-        Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(pivotHeader?.Hash));
-        Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(pivotHeader?.Number));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(bestPointer));
+            Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(startBestHeader?.Hash));
+            Assert.That(blockTree.BestSuggestedHeader?.Number, Is.EqualTo(startBestHeader?.Number));
+            Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(pivotHeader?.Hash));
+            Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(pivotHeader?.Number));
+        }
 
         BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
 
         HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
-        Assert.That(result, Is.Null);
-        // check headers are inserted into block tree during sync
-        Assert.That(blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null);
-        Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash));
-        Assert.That(blockTree.BestKnownNumber, Is.EqualTo(bestPointer));
-        Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(startBestHeader?.Hash));
-        Assert.That(blockTree.BestSuggestedHeader?.Number, Is.EqualTo(startBestHeader?.Number));
-        Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
-        Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            // check headers are inserted into block tree during sync
+            Assert.That(blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null);
+            Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash));
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(bestPointer));
+            Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(startBestHeader?.Hash));
+            Assert.That(blockTree.BestSuggestedHeader?.Number, Is.EqualTo(startBestHeader?.Number));
+            Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+            Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        }
     }
 
     private async void BuildHeadersSyncBatches(

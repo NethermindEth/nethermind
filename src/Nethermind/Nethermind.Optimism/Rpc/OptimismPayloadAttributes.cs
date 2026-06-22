@@ -115,7 +115,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        IReleaseSpec releaseSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
+        IOptimismReleaseSpec releaseSpec = (IOptimismReleaseSpec)specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
         if (!releaseSpec.IsOpHoloceneEnabled && EIP1559Params is not null)
         {
             error = $"{nameof(EIP1559Params)} should be null before Holocene";

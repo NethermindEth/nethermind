@@ -77,18 +77,21 @@ public class Eip2780Tests
         BasicTestBlockchain.Create(b => b.AddSingleton<ISpecProvider>(
             new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true })));
 
-    [TestCase(false, GasCostOf.TransactionEip2780 + GasCostOf.TransferLogEip2780, TestName = "existing recipient: base + transfer log (6256)")]
-    [TestCase(true, GasCostOf.TransactionEip2780 + GasCostOf.TransferLogEip2780 + GasCostOf.NewAccount, TestName = "new recipient: base + log + new-account surcharge (31256)")]
-    public async Task Simple_value_transfer_spends_eip2780_intrinsic_gas(bool recipientIsNew, long expectedGas)
+    // Whole-transaction gas (base + recipient cold touch + value STATE_UPDATE + transfer log),
+    // matching the EIP-2780 reference-case table; recipient AddressF is unfunded (dead per EIP-161).
+    [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780 + GasCostOf.StateUpdateEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to existing EOA (7756)")]
+    [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780 + GasCostOf.NewAccount + GasCostOf.TransferLogEip2780, TestName = "value transfer to new account (31756)")]
+    [TestCase(false, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780, TestName = "no-transfer to existing EOA (5000)")]
+    [TestCase(true, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780, TestName = "no-transfer to empty account (5000)")]
+    public async Task Simple_transfer_spends_eip2780_total_gas(bool recipientIsNew, ulong value, long expectedGas)
     {
         using BasicTestBlockchain chain = await CreateChain();
         UInt256 nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
-        // AddressB is a funded code-less EOA in genesis; AddressF is never funded (dead per EIP-161).
         Address recipient = recipientIsNew ? TestItem.AddressF : TestItem.AddressB;
         Transaction tx = Build.A.Transaction
             .WithTo(recipient)
-            .WithValue(1.Ether)
+            .WithValue(value)
             .WithNonce(nonce)
             .WithGasLimit(60000)
             .SignedAndResolved(TestItem.PrivateKeyA)

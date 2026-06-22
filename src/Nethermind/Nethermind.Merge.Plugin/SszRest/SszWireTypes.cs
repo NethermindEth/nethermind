@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -28,12 +29,18 @@ public partial struct SszWithdrawal
     public ulong Amount { get; set; }
 }
 
+[SszContainer(isCollectionItself: true)]
+public partial struct SszValidationError
+{
+    [SszList(1024)] public byte[]? Bytes { get; set; }
+}
+
 [SszContainer]
 public partial struct PayloadStatusWire
 {
     public byte Status { get; set; }
     [SszList(1)] public Hash256[]? LatestValidHash { get; set; }
-    [SszList(1024)] public byte[]? ValidationError { get; set; }
+    [SszList(1)] public SszValidationError[]? ValidationError { get; set; }
 }
 
 [SszContainer]
@@ -44,8 +51,18 @@ public partial struct ForkchoiceStateWire
     public Hash256 FinalizedBlockHash { get; set; }
 }
 
+/// <summary>
+/// Marker for the per-fork SSZ payload-attributes wire structs, exposing the field needed
+/// by fork-routing logic (timestamp). Each <c>PayloadAttributes*Wire</c> already has the
+/// <c>Timestamp</c> property; the interface lets generic helpers consume them uniformly.
+/// </summary>
+public interface ISszPayloadAttributesWire
+{
+    ulong Timestamp { get; }
+}
+
 [SszContainer]
-public partial struct PayloadAttributesV1Wire
+public partial struct PayloadAttributesV1Wire : ISszPayloadAttributesWire
 {
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
@@ -53,7 +70,7 @@ public partial struct PayloadAttributesV1Wire
 }
 
 [SszContainer]
-public partial struct PayloadAttributesV2Wire
+public partial struct PayloadAttributesV2Wire : ISszPayloadAttributesWire
 {
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
@@ -62,7 +79,7 @@ public partial struct PayloadAttributesV2Wire
 }
 
 [SszContainer]
-public partial struct PayloadAttributesV3Wire
+public partial struct PayloadAttributesV3Wire : ISszPayloadAttributesWire
 {
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
@@ -72,7 +89,7 @@ public partial struct PayloadAttributesV3Wire
 }
 
 [SszContainer]
-public partial struct PayloadAttributesWire
+public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
 {
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
@@ -108,13 +125,26 @@ public partial struct ForkchoiceUpdatedRequestWire
 {
     public ForkchoiceStateWire ForkchoiceState { get; set; }
     [SszList(1)] public PayloadAttributesWire[]? PayloadAttributes { get; set; }
+    [SszList(1)] public SszCustodyColumns[]? CustodyColumns { get; set; }
+}
+
+[SszContainer(isCollectionItself: true)]
+public partial struct SszCustodyColumns
+{
+    [SszVector(128)] public BitArray? Bits { get; set; }
+}
+
+[SszContainer(isCollectionItself: true)]
+public partial struct SszPayloadId
+{
+    [SszVector(8)] public byte[]? Bytes { get; set; }
 }
 
 [SszContainer]
 public partial struct ForkchoiceUpdatedResponseWire
 {
     public PayloadStatusWire PayloadStatus { get; set; }
-    [SszList(1)] public ulong[]? PayloadId { get; set; }
+    [SszList(1)] public SszPayloadId[]? PayloadId { get; set; }
 }
 
 [SszContainer]
@@ -133,7 +163,6 @@ public partial struct NewPayloadV2RequestWire
 public partial struct NewPayloadV3RequestWire
 {
     public SszExecutionPayloadV3 ExecutionPayload { get; set; }
-    [SszList(4096)] public Hash256[]? ExpectedBlobVersionedHashes { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
 }
 
@@ -141,7 +170,6 @@ public partial struct NewPayloadV3RequestWire
 public partial struct NewPayloadV4RequestWire
 {
     public SszExecutionPayloadV3 ExecutionPayload { get; set; }
-    [SszList(4096)] public Hash256[]? ExpectedBlobVersionedHashes { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
 }
@@ -150,7 +178,6 @@ public partial struct NewPayloadV4RequestWire
 public partial struct NewPayloadV5RequestWire
 {
     public SszExecutionPayloadV4 ExecutionPayload { get; set; }
-    [SszList(4096)] public Hash256[]? ExpectedBlobVersionedHashes { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
 }
@@ -178,6 +205,13 @@ public partial struct BlobsBundleV2Wire
 }
 
 [SszContainer]
+public partial struct BuiltPayloadParisWire
+{
+    public SszExecutionPayloadV1 ExecutionPayload { get; set; }
+    public UInt256 BlockValue { get; set; }
+}
+
+[SszContainer]
 public partial struct GetPayloadResponseV2Wire
 {
     public SszExecutionPayloadV2 ExecutionPayload { get; set; }
@@ -193,14 +227,15 @@ public partial struct GetPayloadResponseV3Wire
     public bool ShouldOverrideBuilder { get; set; }
 }
 
+// Field order: execution_requests precedes should_override_builder (diverges from JSON-RPC).
 [SszContainer]
 public partial struct GetPayloadResponseV4Wire
 {
     public SszExecutionPayloadV3 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV1Wire BlobsBundle { get; set; }
-    public bool ShouldOverrideBuilder { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    public bool ShouldOverrideBuilder { get; set; }
 }
 
 [SszContainer]
@@ -209,8 +244,8 @@ public partial struct GetPayloadResponseV5Wire
     public SszExecutionPayloadV3 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV2Wire BlobsBundle { get; set; }
-    public bool ShouldOverrideBuilder { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    public bool ShouldOverrideBuilder { get; set; }
 }
 
 [SszContainer]
@@ -219,8 +254,8 @@ public partial struct GetPayloadResponseV6Wire
     public SszExecutionPayloadV4 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV2Wire BlobsBundle { get; set; }
-    public bool ShouldOverrideBuilder { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    public bool ShouldOverrideBuilder { get; set; }
 }
 
 [SszContainer]
@@ -237,9 +272,16 @@ public partial struct BlobAndProofV1Wire
 }
 
 [SszContainer]
+public partial struct BlobV1EntryWire
+{
+    public bool Available { get; set; }
+    public BlobAndProofV1Wire Contents { get; set; }
+}
+
+[SszContainer]
 public partial struct GetBlobsV1ResponseWire
 {
-    [SszList(128)] public BlobAndProofV1Wire[]? BlobsAndProofs { get; set; }
+    [SszList(128)] public BlobV1EntryWire[]? Entries { get; set; }
 }
 
 [SszContainer(isCollectionItself: true)]
@@ -293,7 +335,7 @@ public partial struct ExecutionPayloadBodyV2Wire
 {
     [SszList(0x10_0000)] public SszTransaction[]? Transactions { get; set; }
     [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
-    [SszList(1)] public SszTransaction[]? BlockAccessList { get; set; }
+    [SszList(0x4000_0000)] public byte[]? BlockAccessList { get; set; }
 }
 
 [SszContainer]
@@ -310,33 +352,35 @@ public partial struct GetPayloadBodiesByRangeRequestWire
 }
 
 /// <summary>
-/// Each inner list has 0 elements for unknown blocks, 1 element for known blocks.
+/// <c>BodyEntry { available: Boolean; body: ExecutionPayloadBody }</c> per spec.
 /// </summary>
 [SszContainer]
-public partial struct NullablePayloadBodyV1Wire
+public partial struct BodyEntryV1Wire
 {
-    [SszList(1)] public ExecutionPayloadBodyV1Wire[]? Body { get; set; }
+    public bool Available { get; set; }
+    public ExecutionPayloadBodyV1Wire Body { get; set; }
 }
 
 [SszContainer]
 public partial struct PayloadBodiesV1ResponseWire
 {
-    [SszList(32)] public NullablePayloadBodyV1Wire[]? PayloadBodies { get; set; }
+    [SszList(32)] public BodyEntryV1Wire[]? Entries { get; set; }
 }
 
 /// <summary>
-/// Each inner list has 0 elements for unknown blocks, 1 element for known blocks.
+/// <c>BodyEntry { available: Boolean; body: ExecutionPayloadBodyAmsterdam }</c> per spec.
 /// </summary>
 [SszContainer]
-public partial struct NullablePayloadBodyV2Wire
+public partial struct BodyEntryV2Wire
 {
-    [SszList(1)] public ExecutionPayloadBodyV2Wire[]? Body { get; set; }
+    public bool Available { get; set; }
+    public ExecutionPayloadBodyV2Wire Body { get; set; }
 }
 
 [SszContainer]
 public partial struct PayloadBodiesV2ResponseWire
 {
-    [SszList(32)] public NullablePayloadBodyV2Wire[]? PayloadBodies { get; set; }
+    [SszList(32)] public BodyEntryV2Wire[]? Entries { get; set; }
 }
 
 [SszContainer]
@@ -348,22 +392,56 @@ public partial struct BlobAndProofV2Wire
 }
 
 [SszContainer]
+public partial struct BlobV2EntryWire
+{
+    public bool Available { get; set; }
+    public BlobAndProofV2Wire Contents { get; set; }
+}
+
+[SszContainer]
 public partial struct GetBlobsV2ResponseWire
 {
-    [SszList(128)] public BlobAndProofV2Wire[]? BlobsAndProofs { get; set; }
+    [SszList(128)] public BlobV2EntryWire[]? Entries { get; set; }
+}
+
+[SszContainer]
+public partial struct GetBlobsV4RequestWire
+{
+    [SszList(128)] public Hash256[]? BlobVersionedHashes { get; set; }
+    [SszVector(128)] public BitArray? IndicesBitarray { get; set; }
+}
+
+[SszContainer(isCollectionItself: true)]
+public partial struct NullableBlobCellWire
+{
+    [SszList(1)] public SszBlobCell[]? Cell { get; set; }
+}
+
+[SszContainer(isCollectionItself: true)]
+public partial struct NullableKzgProofWire
+{
+    [SszList(1)] public SszKzgCommitment[]? Proof { get; set; }
+}
+
+[SszContainer]
+public partial struct BlobCellsAndProofsWire
+{
+    [SszList(128)] public NullableBlobCellWire[]? BlobCells { get; set; }
+    [SszList(128)] public NullableKzgProofWire[]? Proofs { get; set; }
 }
 
 /// <summary>
-/// V3 uses nullable per-element encoding: List[BlobAndProofV2, 1] where 0 = missing, 1 = present.
+/// <c>BlobV4Entry { available: Boolean; contents: BlobCellsAndProofs }</c> per spec.
 /// </summary>
 [SszContainer]
-public partial struct NullableBlobAndProofV2Wire
+public partial struct BlobV4EntryWire
 {
-    [SszList(1)] public BlobAndProofV2Wire[]? BlobAndProof { get; set; }
+    public bool Available { get; set; }
+    public BlobCellsAndProofsWire Contents { get; set; }
 }
 
 [SszContainer]
-public partial struct GetBlobsV3ResponseWire
+public partial struct GetBlobsV4ResponseWire
 {
-    [SszList(128)] public NullableBlobAndProofV2Wire[]? BlobsAndProofs { get; set; }
+    [SszList(128)] public BlobV4EntryWire[]? Entries { get; set; }
 }

@@ -19,7 +19,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -62,14 +61,12 @@ namespace Nethermind.Api
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree BlockTree => Context.Resolve<IBlockTree>();
-        public IBloomStorage? BloomStorage => Context.Resolve<IBloomStorage>();
         public IChainLevelInfoRepository? ChainLevelInfoRepository => Context.Resolve<IChainLevelInfoRepository>();
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
         public ICryptoRandom CryptoRandom => Context.Resolve<ICryptoRandom>();
         public IDbProvider DbProvider => Context.Resolve<IDbProvider>();
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
-        public IEnode? Enode { get; set; }
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem => Context.Resolve<IFileSystem>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
@@ -113,7 +110,6 @@ namespace Nethermind.Api
         public ITxPool? TxPool { get; set; }
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public ITxValidator? HeadTxValidator => Context.ResolveOptionalKeyed<ITxValidator>(ITxValidator.HeadTxValidatorKey);
-        public IBlockFinalizationManager? FinalizationManager { get; set; }
 
         public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }

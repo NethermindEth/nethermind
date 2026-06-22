@@ -22,10 +22,10 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasRoot(BlockHeader? baseBlock) =>
         baseScopeProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         long scopeId = Interlocked.Increment(ref _currentScopeId);
-        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock), scopeId, _logger);
+        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
     }
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope

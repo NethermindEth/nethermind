@@ -20,7 +20,6 @@ public partial struct ForkConfig
     public static ForkConfig From(BlockHeader header, ISpecProvider specProvider)
     {
         ForkActivation forkActivation = new(header.Number, header.Timestamp);
-        int forkIndex = 0;
 
         for (int i = specProvider.TransitionActivations.Length - 1; i >= 0; i--)
         {
@@ -29,7 +28,6 @@ public partial struct ForkConfig
             if (activation <= forkActivation)
             {
                 forkActivation = activation;
-                forkIndex = i;
                 break;
             }
         }
@@ -38,7 +36,7 @@ public partial struct ForkConfig
 
         return new()
         {
-            Fork = (ulong)forkIndex + 1,
+            Fork = ForkIndexHelper.GetForkIndexByName(spec.Name),
             Activation = SszForkActivation.From(forkActivation),
             BlobSchedule =
             [

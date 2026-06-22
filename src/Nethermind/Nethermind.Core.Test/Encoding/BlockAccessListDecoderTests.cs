@@ -60,8 +60,11 @@ public class BlockAccessListDecoderTests
         Rlp.ValueDecoderContext ctx = new(envelope);
         ReadOnlyBlockAccessList decoded = BlockAccessListDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
 
-        Assert.That(decoded.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(balRlp))));
-        Assert.That(ctx.Position, Is.EqualTo(balRlp.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(balRlp))));
+            Assert.That(ctx.Position, Is.EqualTo(balRlp.Length));
+        }
     }
 
     // Truncated RLP causes an out-of-bounds primitive read; the Rlp.Decode entry-point
@@ -94,8 +97,8 @@ public class BlockAccessListDecoderTests
         byte[] encoded = EncodeAccountChangesWithEmptySlotChangesEntry(TestItem.AddressA);
 
         Assert.That(
-            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Empty SlotChanges entry; EIP-7928 requires a 2-field sequence."));
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded),
+            Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -161,8 +164,11 @@ public class BlockAccessListDecoderTests
             exception = e;
         }
 
-        Assert.That(exception?.Message, Is.EqualTo(ThrowingDisposableDecoder.Error));
-        Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.Message, Is.EqualTo(ThrowingDisposableDecoder.Error));
+            Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -181,8 +187,11 @@ public class BlockAccessListDecoderTests
             exception = e;
         }
 
-        Assert.That(exception?.Message, Is.EqualTo(ThrowingObjectDecoder.Error));
-        Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.Message, Is.EqualTo(ThrowingObjectDecoder.Error));
+            Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        }
     }
 
     [Test]

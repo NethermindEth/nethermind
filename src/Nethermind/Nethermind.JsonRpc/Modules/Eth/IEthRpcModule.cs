@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
@@ -245,7 +246,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction RLP by hash",
             IsSharable = true)]
-        public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash);
+        public ResultWrapper<ArrayPoolList<byte>?> eth_getRawTransactionByHash(Hash256 transactionHash);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns the pending transactions list",
@@ -270,14 +271,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction RLP by block hash and index",
             IsSharable = true)]
-        ResultWrapper<string?> eth_getRawTransactionByBlockHashAndIndex(
+        ResultWrapper<ArrayPoolList<byte>?> eth_getRawTransactionByBlockHashAndIndex(
             [JsonRpcParameter(ExampleValue = "[\"0xfe47fb3539ccce9d19a032473effdd6ce19e3c921bbae2746152ccf82ceef48e\",\"0x2\"]")] Hash256 blockHash,
             UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction RLP by block number and index",
             IsSharable = true)]
-        ResultWrapper<string?> eth_getRawTransactionByBlockNumberAndIndex(
+        ResultWrapper<ArrayPoolList<byte>?> eth_getRawTransactionByBlockNumberAndIndex(
             [JsonRpcParameter(ExampleValue = "[\"5111256\",\"0x8\"]")] BlockParameter blockParameter,
             UInt256 positionIndex);
 

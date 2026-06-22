@@ -63,7 +63,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
                 // so the exporter can resolve blockTree.Head correctly.
                 Block? lastBlock = blockTreeBuilder.BlockTree.FindBlock(length - 1, BlockTreeLookupOptions.None);
                 if (lastBlock is not null)
-                    blockTreeBuilder.BlockTree.UpdateMainChain(new[] { lastBlock }, true, forceUpdateHeadBlock: true);
+                    blockTreeBuilder.BlockTree.TryUpdateMainChain(lastBlock.Header, true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { lastBlock });
             });
     }
 
