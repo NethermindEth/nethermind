@@ -1,21 +1,15 @@
 name: Stateless glamsterdam-devnet tests
 
 on:
-  push:
-    branches: [feature/stateless-devnet-tests]
-  workflow_dispatch:
   schedule:
     - cron: '12 */12 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
   CATALOG_ROOT: https://pub-5345007fbd06486bbb7cbbe9f3112c45.r2.dev/devnets/glamsterdam-devnet-5
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build:
