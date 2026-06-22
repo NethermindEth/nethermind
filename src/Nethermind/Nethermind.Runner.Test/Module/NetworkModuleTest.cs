@@ -258,6 +258,7 @@ public class NetworkModuleTest
                 networkConfig,
                 syncConfig,
                 Substitute.For<IInitConfig>(),
+                Substitute.For<IEnode>(),
                 logManager)
     {
         public Task RunInitPeer() => InitPeer();

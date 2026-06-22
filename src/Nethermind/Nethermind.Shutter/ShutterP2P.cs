@@ -19,7 +19,7 @@ using System.Threading.Channels;
 using Google.Protobuf;
 using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
-using System.Net;
+using Nethermind.Network;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using System.Collections.Generic;
@@ -36,7 +36,7 @@ public class ShutterP2P : IShutterP2P
     private readonly PubsubPeerDiscoveryProtocol _disc;
     private readonly PeerStore _peerStore;
     private readonly ILocalPeer _peer;
-    private readonly string _address;
+    private readonly IIPResolver _ipResolver;
     private readonly ServiceProvider _serviceProvider;
     private readonly TimeSpan DisconnectionLogTimeout;
     private readonly TimeSpan DisconnectionLogInterval;
@@ -44,11 +44,11 @@ public class ShutterP2P : IShutterP2P
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
 
-    public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IPAddress ip)
+    public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IIPResolver ipResolver)
     {
         _logger = logManager.GetClassLogger<ShutterP2P>();
         _cfg = shutterConfig;
-        _address = $"/ip4/{ip}/tcp/{_cfg.P2PPort}";
+        _ipResolver = ipResolver;
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
         DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
 
@@ -100,16 +100,19 @@ public class ShutterP2P : IShutterP2P
 
     public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken)
     {
-        await _peer.StartListenAsync([_address], cancellationToken);
+        IIPResolver.NethermindIp ip = await _ipResolver.Resolve(cancellationToken);
+        string listenAddress = $"/ip4/{ip.ExternalIp}/tcp/{_cfg.P2PPort}";
+
+        await _peer.StartListenAsync([listenAddress], cancellationToken);
         await _router.StartAsync(_peer, cancellationToken);
-        _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(_address)], cancellationToken);
+        _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(listenAddress)], cancellationToken);
 
         foreach (Multiaddress address in bootnodeP2PAddresses)
         {
             _peerStore.Discover([address]);
         }
 
-        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_address}");
+        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {listenAddress}");
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
         bool hasTimedOut = false;

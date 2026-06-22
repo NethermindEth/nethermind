@@ -101,7 +101,8 @@ public static partial class EvmInstructions
         // For CREATE2, an extra salt value is required. Use type check to differentiate.
         if (typeof(TOpCreate) == typeof(OpCreate2))
         {
-            salt = stack.PopWord256();
+            if (!stack.PopWord256(out salt))
+                goto StackUnderflow;
         }
 
         // EIP-3860: Limit the maximum size of the initialization code.

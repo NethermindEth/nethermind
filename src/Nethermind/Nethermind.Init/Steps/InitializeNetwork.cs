@@ -9,6 +9,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -39,7 +40,6 @@ public static class NettyMemoryEstimator
 [RunnerStepDependencies(
     typeof(LoadGenesisBlock),
     typeof(SetupKeyStore),
-    typeof(ResolveIps),
     typeof(InitializePlugins),
     typeof(InitializeBlockchain))]
 #pragma warning disable IDE0290 // Primary constructor would shadow discard `_` used in fire-and-forget patterns
@@ -57,6 +57,7 @@ public class InitializeNetwork : IStep
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
+    private readonly IEnode _enode;
     protected readonly IProtocolHandlerFactory[] _protocolHandlerFactories;
 
     private readonly ILogger _logger;
@@ -75,10 +76,12 @@ public class InitializeNetwork : IStep
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
+        IEnode enode,
         ILogManager logManager
     )
     {
         _api = api;
+        _enode = enode;
         NodeStatsManager = nodeStatsManager;
         _synchronizer = synchronizer;
         _syncPeerPool = syncPeerPool;
@@ -183,18 +186,13 @@ public class InitializeNetwork : IStep
             _logger.Error("Unable to start the peer manager.", e);
         }
 
-        if (_api.Enode is null)
-        {
-            throw new InvalidOperationException("Cannot initialize network without knowing own enode");
-        }
-
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
-        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port} ");
+        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ");
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
-        ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info} ");
-        ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
+        ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ");
+        ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)");
     }
 
     private Task StartDiscovery()
