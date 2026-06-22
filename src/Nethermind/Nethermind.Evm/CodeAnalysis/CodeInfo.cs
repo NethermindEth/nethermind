@@ -83,7 +83,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         }
 
         if (Interlocked.CompareExchange(ref _streamBuildScheduled, 1, 0) == 0)
-            ThreadPool.UnsafeQueueUserWorkItem(static codeInfo => codeInfo.BuildStream(), this, preferLocal: false);
+            ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
 
         return null;
     }
@@ -97,6 +97,11 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
                 InstructionStreamCache.Set(CodeHash, stream);
             Interlocked.CompareExchange(ref _stream, stream, null);
         }
+    }
+
+    private sealed class StreamBuilder(CodeInfo codeInfo) : IThreadPoolWorkItem
+    {
+        public void Execute() => codeInfo.BuildStream();
     }
 
     /// <summary>
