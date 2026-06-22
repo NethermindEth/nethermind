@@ -232,7 +232,7 @@ public partial class EthRpcModuleTests
             Name: "memory_pruning_floor_dominates_window",
             ExpectedState: postSyncMemory, ExpectedStateproofs: postSyncMemory,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { RetentionWindow = (ulong)retention, HeadNumber = memoryHead, OldestStateBlock = recentPivot, SyncConfig = fullSync };
+        { RetentionWindow = retention, HeadNumber = memoryHead, OldestStateBlock = recentPivot, SyncConfig = fullSync };
 
         yield return new CapabilitiesScenario(
             Name: "fast_sync_no_receipts_disables_tx_logs_receipts",
