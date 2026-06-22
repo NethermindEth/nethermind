@@ -17,6 +17,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
 
+internal static class ScopeProviderTestExtensions
+{
+    // Test convenience overload: begins a scope with a throwaway metrics accumulator for tests that
+    // call the scope provider directly and do not assert on the folded counters.
+    public static IWorldStateScopeProvider.IScope BeginScope(this IWorldStateScopeProvider provider, BlockHeader baseBlock)
+        => provider.BeginScope(baseBlock, new LocalMetrics());
+}
+
 [TestFixture(false)]
 [TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
