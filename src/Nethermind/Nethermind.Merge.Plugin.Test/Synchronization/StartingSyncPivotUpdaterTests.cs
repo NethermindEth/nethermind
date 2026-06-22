@@ -75,7 +75,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             };
             // Eligibility inputs that MultiSyncModeSelector used to gate UpdatingPivot on are now checked by the updater itself.
             _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            _syncProgressResolver.FindBestFullState().Returns(0);
+            _syncProgressResolver.FindBestFullState().Returns(0UL);
             _blockCacheService = new BlockCacheService();
             _beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
             _beaconSyncStrategy.MergeTransitionFinished.Returns(true);

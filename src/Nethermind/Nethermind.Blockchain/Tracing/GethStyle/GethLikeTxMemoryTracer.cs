@@ -91,25 +91,25 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
     public override void ReportRefund(long refund) => _refund += refund;
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         _refundCheckpoints.Push(_refund);
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionEnd(gas, output);
         _refundCheckpoints.TryPop(out _);
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
         _refundCheckpoints.TryPop(out _);
     }
 
-    public override void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+    public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
         RestoreRefundCheckpoint();
