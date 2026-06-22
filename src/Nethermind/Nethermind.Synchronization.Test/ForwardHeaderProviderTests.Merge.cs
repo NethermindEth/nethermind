@@ -31,13 +31,13 @@ public partial class ForwardHeaderProviderTests
     [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, SyncBatchSizeMax * 8UL - 16UL, 3, 130)]
     public async Task Merge_Happy_path(ulong beaconPivot, ulong headNumber, int threshold, ulong insertedBeaconBlocks, long expectedFirstBlock, long expectedLastBlock)
     {
-        int notSyncedTreeStartingBlockNumber = 3;
+        ulong notSyncedTreeStartingBlockNumber = 3;
 
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, (int)headNumber + 1)
+            .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, headNumber + 1)
             .InsertBeaconPivot(beaconPivot)
-            .InsertBeaconHeaders((ulong)(notSyncedTreeStartingBlockNumber + 1), beaconPivot - 1)
+            .InsertBeaconHeaders(notSyncedTreeStartingBlockNumber + 1, beaconPivot - 1)
             .InsertBeaconBlocks(beaconPivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree syncedTree = blockTrees.SyncedTree;
 
@@ -58,9 +58,9 @@ public partial class ForwardHeaderProviderTests
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedLastBlock));
     }
 
-    [TestCase(32L, DownloaderOptions.Insert, 16, false, 16L)]
-    [TestCase(32L, DownloaderOptions.Insert, 16, true, null)] // No beacon header, so it does not sync
-    public async Task IfNoBeaconPivot_thenStopAtPoS(long headNumber, int options, int ttdBlock, bool withBeaconPivot, long? expectedBestKnownNumber)
+    [TestCase(32UL, DownloaderOptions.Insert, 16, false, 16L)]
+    [TestCase(32UL, DownloaderOptions.Insert, 16, true, null)] // No beacon header, so it does not sync
+    public async Task IfNoBeaconPivot_thenStopAtPoS(ulong headNumber, int options, int ttdBlock, bool withBeaconPivot, long? expectedBestKnownNumber)
     {
         UInt256 ttd = 10_000_000;
         int negativeTd = BlockHeaderBuilder.DefaultDifficulty.ToInt32(null);
@@ -68,7 +68,7 @@ public partial class ForwardHeaderProviderTests
             .GoesLikeThis()
             .WithBlockTrees(
                 4,
-                (int)headNumber + 1,
+                headNumber + 1,
                 true,
                 ttd,
                 syncedSplitFrom: ttdBlock,

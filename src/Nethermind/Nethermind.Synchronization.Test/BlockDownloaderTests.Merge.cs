@@ -101,17 +101,17 @@ public partial class BlockDownloaderTests
         Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(insertedBeaconBlocks));
     }
 
-    [TestCase(32L, DownloaderOptions.Insert, 32, false)]
-    [TestCase(32L, DownloaderOptions.Insert, 32, true)]
-    public async Task Can_reach_terminal_block(long headNumber, int options, int threshold, bool withBeaconPivot)
+    [TestCase(32UL, DownloaderOptions.Insert, 32, false)]
+    [TestCase(32UL, DownloaderOptions.Insert, 32, true)]
+    public async Task Can_reach_terminal_block(ulong headNumber, int options, int threshold, bool withBeaconPivot)
     {
         UInt256 ttd = 10000000;
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(4, (int)headNumber + 1, true, ttd)
+            .WithBlockTrees(4, headNumber + 1, true, ttd)
             .InsertBeaconPivot(16)
             .InsertBeaconHeaders(4, 15)
-            .InsertBeaconBlocks(17, (ulong)headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+            .InsertBeaconBlocks(17, headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
 
         BlockTree syncedTree = blockTrees.SyncedTree;
         await using IContainer container = CreateMergeNode(blockTrees, new MergeConfig()
@@ -140,7 +140,7 @@ public partial class BlockDownloaderTests
             .GoesLikeThis()
             .WithBlockTrees(
                 4,
-                (int)headNumber + 1,
+                headNumber + 1,
                 true,
                 ttd,
                 syncedSplitFrom: ttdBlock,
