@@ -243,13 +243,11 @@ namespace Nethermind.Consensus.Validators
             ulong adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             ulong maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
+            // Detect the addition overflowing ulong (hive tests pass parent.GasLimit = ulong.MaxValue);
+            // when the sum would overflow there's no real "too high" GasLimit to reject.
             ulong maxNextGasLimit = adjustedParentGasLimit + maxGasLimitDifference;
-            bool notToHighWithOverflow = ulong.MaxValue - maxGasLimitDifference < adjustedParentGasLimit;
-            // The edge case used in hive tests. If adjustedParentGasLimit + maxGasLimitDifference >= ulong.MaxValue,
-            // we can check for ulong.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
-            // In hive we have tests that using ulong.MaxValue in the genesis block
-            // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than ulong.MaxValue
-            bool gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
+            bool maxNextGasLimitOverflowed = ulong.MaxValue - maxGasLimitDifference < adjustedParentGasLimit;
+            bool gasLimitNotTooHigh = maxNextGasLimitOverflowed || header.GasLimit < maxNextGasLimit;
 
             if (!gasLimitNotTooHigh)
             {
