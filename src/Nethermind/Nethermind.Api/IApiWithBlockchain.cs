@@ -25,7 +25,7 @@ namespace Nethermind.Api
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IMainProcessingContext MainProcessingContext { get; }
         ITxSender? TxSender { get; set; }
-        INonceManager? NonceManager { get; set; }
+        INonceManager? NonceManager { get; }
         ITxPool? TxPool { get; set; }
 
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
@@ -37,7 +37,7 @@ namespace Nethermind.Api
         ITxValidator? HeadTxValidator { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
+        IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
         ICensorshipDetector CensorshipDetector { get; set; }
     }
 }

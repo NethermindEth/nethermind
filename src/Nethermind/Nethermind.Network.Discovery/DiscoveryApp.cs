@@ -21,6 +21,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 {
     private readonly ILogger _logger;
     private readonly INetworkConfig _networkConfig;
+    private readonly IIPResolver _ipResolver;
     private readonly IKademliaNodeSource _kademliaNodeSource;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IKademliaDiscv4Adapter _discv4Adapter;
@@ -37,12 +38,14 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         IEnode enode,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
+        IIPResolver ipResolver,
         IProcessExitSource processExitSource,
         ILogManager logManager,
         Action<ContainerBuilder>? configureDiscv4Services = null)
     {
         _logger = logManager.GetClassLogger<DiscoveryApp>();
         _networkConfig = networkConfig;
+        _ipResolver = ipResolver;
         _stopCts = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
         List<Node> bootNodes = [];
@@ -97,12 +100,11 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
     {
     }
 
-    public Task StartAsync()
+    public async Task StartAsync()
     {
         try
         {
-            Initialize();
-            return Task.CompletedTask;
+            await Initialize();
         }
         catch (Exception e)
         {
@@ -159,11 +161,12 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 
     public void AddNodeToDiscovery(Node node) => _kademlia.AddOrRefresh(node);
 
-    private void Initialize()
+    private async Task Initialize()
     {
+        IIPResolver.NethermindIp ip = await _ipResolver.Resolve();
         if (_logger.IsDebug)
-            _logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
-        ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+            _logger.Debug($"Discovery    : udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
+        ThisNodeInfo.AddInfo("Discovery    :", $"udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
     }
 
     protected virtual NettyDiscoveryHandler CreateDiscoveryHandler(IChannel channel)
