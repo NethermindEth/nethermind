@@ -42,7 +42,6 @@ public class BoundedModulePoolTests
 
         BlockTree blockTree = Build.A
             .BlockTree()
-            .WithRealBloom
             .TestObject;
 
         _modulePool = new BoundedModulePool<IEthRpcModule>(new EthModuleFactory(

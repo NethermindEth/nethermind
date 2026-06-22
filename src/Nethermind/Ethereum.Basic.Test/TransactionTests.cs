@@ -48,7 +48,7 @@ public class TransactionTests
         Transaction decodedSigned = Rlp.Decode<Transaction>(test.Signed);
         ethereumEcdsa.Sign(test.PrivateKey, decodedUnsigned, false);
 
-        Assert.That(decodedUnsigned.Signature.R.Span.SequenceEqual(decodedSigned.Signature.R.Span), "R");
+        Assert.That(decodedUnsigned.Signature.R.Span.SequenceEqual(decodedSigned.Signature.R.Span), Is.True, "R");
 
         BigInteger expectedS = decodedSigned.Signature.S.Span.ToUnsignedBigInteger();
         BigInteger actualS = decodedUnsigned.Signature.S.Span.ToUnsignedBigInteger();

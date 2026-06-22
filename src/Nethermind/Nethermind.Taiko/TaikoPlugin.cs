@@ -59,8 +59,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         _api = (TaikoNethermindApi)api;
 
-        _api.FinalizationManager = new ManualBlockFinalizationManager();
-
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
@@ -120,12 +118,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     }
 
     public bool MustInitialize => true;
-
-    // IConsensusPlugin
-
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _) => throw new NotSupportedException();
-
-    public IBlockProducer InitBlockProducer() => throw new NotSupportedException();
 
     public string SealEngineType => Core.SealEngineType.Taiko;
 

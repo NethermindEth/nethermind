@@ -13,8 +13,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -26,6 +29,45 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class EthRpcSimulateTestsBase
 {
+    public static readonly Address GasProbeContractAddress = new("0xc200000000000000000000000000000000000000");
+
+    private const string GasProbeBytecode = "0x5a60005260206000f3";
+
+    public static SimulatePayload<TransactionForRpc> CreateGasProbePayload(long? requestGas = null)
+    {
+        LegacyTransactionForRpc call = new()
+        {
+            From = TestItem.AddressA,
+            To = GasProbeContractAddress,
+            GasPrice = 0
+        };
+        if (requestGas is not null)
+        {
+            call.Gas = requestGas.Value;
+        }
+
+        return new SimulatePayload<TransactionForRpc>
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { GasProbeContractAddress, new AccountOverride { Code = Bytes.FromHexString(GasProbeBytecode) } }
+                    },
+                    Calls = [call]
+                }
+            ]
+        };
+    }
+
+    public static IEnumerable<TestCaseData> GasCapSimulateCases()
+    {
+        yield return new TestCaseData(50_000L, 100_000L, true).SetName("capped");
+        yield return new TestCaseData(0L, null, false).SetName("uncapped_zero_cap");
+    }
+
     public static Task<TestRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null)
     {
         TestRpcBlockchain testMevRpcBlockchain = new();

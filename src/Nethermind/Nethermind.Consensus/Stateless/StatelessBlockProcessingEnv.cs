@@ -34,9 +34,13 @@ public class StatelessBlockProcessingEnv(
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= new WorldState(
-        new TrieStoreScopeProvider(new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager),
-        logManager
+    public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
+        new WorldState(
+            new TrieStoreScopeProvider(
+                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager
+            ),
+            logManager
+        )
     );
 
     private BlockProcessor GetProcessor()
@@ -55,7 +59,8 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecution = false,
                 ParallelExecutionBatchRead = false
             },
-            new WithdrawalProcessorFactory(logManager)
+            new WithdrawalProcessorFactory(logManager),
+            witnessMode: true
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -99,7 +104,7 @@ public class StatelessBlockProcessingEnv(
             specProvider,
             state,
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
-            new EthereumCodeInfoRepository(state),
+            new CodeInfoRepository(state, new EthereumPrecompileProvider()),
             logManager
         );
 }

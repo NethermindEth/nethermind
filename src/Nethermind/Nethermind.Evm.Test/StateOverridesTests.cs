@@ -72,4 +72,32 @@ public class StateOverridesTests
 
         Assert.That(act, Throws.Nothing);
     }
+
+    [Test]
+    public void override_with_no_state_fields_does_not_create_account()
+    {
+        // An override with no state-changing fields (e.g. movePrecompileToAddress only)
+        // must not inject an empty account into the trie — that would alter the stateRoot.
+        Dictionary<Address, AccountOverride> overrides = new()
+        {
+            { TestItem.AddressA, new AccountOverride() },
+        };
+
+        _state.ApplyStateOverridesNoCommit(_codeRepo, overrides, Shanghai.Instance);
+
+        Assert.That(_state.TryGetAccount(TestItem.AddressA, out _), Is.False);
+    }
+
+    [Test]
+    public void override_with_balance_creates_account_in_state()
+    {
+        Dictionary<Address, AccountOverride> overrides = new()
+        {
+            { TestItem.AddressA, new AccountOverride { Balance = 100 } },
+        };
+
+        _state.ApplyStateOverridesNoCommit(_codeRepo, overrides, Shanghai.Instance);
+
+        Assert.That(_state.TryGetAccount(TestItem.AddressA, out _), Is.True);
+    }
 }

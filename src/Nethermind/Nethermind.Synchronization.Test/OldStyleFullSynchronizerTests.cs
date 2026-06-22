@@ -197,9 +197,9 @@ namespace Nethermind.Synchronization.Test
             Block splitBlockChild = Build.A.Block.WithParent(splitBlock).TestObject;
 
             miner1Tree.SuggestBlock(splitBlock);
-            miner1Tree.UpdateMainChain(splitBlock);
+            miner1Tree.TryUpdateMainChain(splitBlock.Header, true, preloadedBlocks: new[] { splitBlock });
             miner1Tree.SuggestBlock(splitBlockChild);
-            miner1Tree.UpdateMainChain(splitBlockChild);
+            miner1Tree.TryUpdateMainChain(splitBlockChild.Header, true, preloadedBlocks: new[] { splitBlockChild });
 
             Assert.That(splitBlockChild.Header, Is.EqualTo(miner1Tree.BestSuggestedHeader).UsingBlockHeaderComparer());
 
@@ -252,7 +252,7 @@ namespace Nethermind.Synchronization.Test
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head!).TestObject;
             minerTree.SuggestBlock(newBlock);
-            minerTree.UpdateMainChain(newBlock);
+            minerTree.TryUpdateMainChain(newBlock.Header, true, preloadedBlocks: new[] { newBlock });
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
@@ -290,7 +290,7 @@ namespace Nethermind.Synchronization.Test
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head!).TestObject;
             minerTree.SuggestBlock(newBlock);
-            minerTree.UpdateMainChain(newBlock);
+            minerTree.TryUpdateMainChain(newBlock.Header, true, preloadedBlocks: new[] { newBlock });
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));

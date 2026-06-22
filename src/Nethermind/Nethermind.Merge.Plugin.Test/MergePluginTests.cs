@@ -147,7 +147,7 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-        Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!));
+        Assert.DoesNotThrow(() => container.Resolve<IBlockProducerFactory>().InitBlockProducer());
     }
 
     [Test]
@@ -193,8 +193,8 @@ public class MergePluginTests
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
-        _plugin.InitBlockProducer(_consensusPlugin!);
-        Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
+        IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
+        Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
     }
 
     [Test]

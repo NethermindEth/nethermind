@@ -5,7 +5,6 @@ using System.Net;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 
 namespace Nethermind.Network.Discovery;
 
@@ -13,19 +12,19 @@ namespace Nethermind.Network.Discovery;
 /// Manages connections (Netty <see cref="IChannel"/>) allocated for all Discovery protocol versions.
 /// </summary>
 /// <remarks> Not thread-safe </remarks>
-public class DiscoveryConnectionsPool(ILogger logger, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig) : IConnectionsPool
+public class DiscoveryConnectionsPool(ILogger logger, IIPResolver ipResolver, IDiscoveryConfig discoveryConfig) : IConnectionsPool
 {
     private readonly ILogger _logger = logger;
-    private readonly INetworkConfig _networkConfig = networkConfig;
+    private readonly IIPResolver _ipResolver = ipResolver;
     private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig;
-    private readonly IPAddress _ip = IPAddress.Parse(networkConfig.LocalIp!);
     private readonly Dictionary<int, Task<IChannel>> _byPort = [];
 
     public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
     {
         if (_byPort.TryGetValue(port, out Task<IChannel>? task)) return await task;
 
-        task = BindAsync(bootstrap, port, _ip);
+        IPAddress ip = (await _ipResolver.Resolve()).LocalIp;
+        task = BindAsync(bootstrap, port, ip);
         _byPort.Add(port, task);
 
         return await task;
@@ -39,7 +38,7 @@ public class DiscoveryConnectionsPool(ILogger logger, INetworkConfig networkConf
         }
         catch (Exception e)
         {
-            _logger.Error($"Error when establishing discovery connection on Address: {ip}({_networkConfig.LocalIp}:{port})", e);
+            _logger.Error($"Error when establishing discovery connection on Address: {ip}:{port}", e);
             throw;
         }
     }

@@ -16,10 +16,13 @@ namespace Nethermind.Specs.Test
         [TestCase(12_244_000, true)]
         public void Berlin_eips(long blockNumber, bool isEnabled)
         {
-            Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip2537Enabled, Is.EqualTo(false));
-            Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip2565Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip2929Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip2930Enabled, Is.EqualTo(isEnabled));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip2537Enabled, Is.EqualTo(false));
+                Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip2565Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip2929Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip2930Enabled, Is.EqualTo(isEnabled));
+            }
         }
 
         [TestCase(12_964_999, false)]
@@ -31,20 +34,26 @@ namespace Nethermind.Specs.Test
             else
                 Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).DifficultyBombDelay, Is.EqualTo(Berlin.Instance.DifficultyBombDelay));
 
-            Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip1559Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip3198Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip3529Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip3541Enabled, Is.EqualTo(isEnabled));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip1559Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip3198Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip3529Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).IsEip3541Enabled, Is.EqualTo(isEnabled));
+            }
         }
 
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, false)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
         public void Cancun_eips(long blockNumber, ulong timestamp, bool isEnabled)
         {
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip1153Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4844Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip5656Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4788Enabled, Is.EqualTo(isEnabled));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip1153Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4844Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip5656Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4788Enabled, Is.EqualTo(isEnabled));
+            }
             if (isEnabled)
             {
                 Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip4788ContractAddress, Is.Not.Null);
@@ -74,14 +83,17 @@ namespace Nethermind.Specs.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.OsakaBlockTimestamp, true)]
         public void Osaka_eips(long blockNumber, ulong timestamp, bool isEnabled)
         {
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7594Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7823Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7825Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7883Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7918Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7934Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7939Enabled, Is.EqualTo(isEnabled));
-            Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7951Enabled, Is.EqualTo(isEnabled));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7594Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7823Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7825Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7883Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7918Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7934Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7939Enabled, Is.EqualTo(isEnabled));
+                Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7951Enabled, Is.EqualTo(isEnabled));
+            }
         }
 
         [Test]

@@ -30,14 +30,7 @@ public class ProcessingStatsTests
 
             BlockStatistics stats = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            Assert.Multiple(() =>
-            {
-                Assert.That(stats.BlockCount, Is.EqualTo(2));
-                Assert.That(stats.BlockFrom, Is.EqualTo(1));
-                Assert.That(stats.BlockTo, Is.EqualTo(2));
-                Assert.That(stats.ProcessingMs, Is.EqualTo(500));
-                Assert.That(stats.MGasPerSecond, Is.EqualTo(10));
-            });
+            AssertStats(stats, blockCount: 2, blockFrom: 1, blockTo: 2, processingMs: 500, mGasPerSecond: 10);
         });
 
     [Test]
@@ -58,15 +51,20 @@ public class ProcessingStatsTests
 
             BlockStatistics stats = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            Assert.Multiple(() =>
-            {
-                Assert.That(stats.BlockCount, Is.EqualTo(2));
-                Assert.That(stats.BlockFrom, Is.EqualTo(1));
-                Assert.That(stats.BlockTo, Is.EqualTo(2));
-                Assert.That(stats.ProcessingMs, Is.EqualTo(500));
-                Assert.That(stats.MGasPerSecond, Is.EqualTo(10));
-            });
+            AssertStats(stats, blockCount: 2, blockFrom: 1, blockTo: 2, processingMs: 500, mGasPerSecond: 10);
         });
+
+    private static void AssertStats(BlockStatistics stats, long blockCount, long blockFrom, long blockTo, double processingMs, double mGasPerSecond)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stats.BlockCount, Is.EqualTo(blockCount));
+            Assert.That(stats.BlockFrom, Is.EqualTo(blockFrom));
+            Assert.That(stats.BlockTo, Is.EqualTo(blockTo));
+            Assert.That(stats.ProcessingMs, Is.EqualTo(processingMs));
+            Assert.That(stats.MGasPerSecond, Is.EqualTo(mGasPerSecond));
+        }
+    }
 
     private static (BlockHeader BaseBlock, Block Block1, Block Block2) BuildBlockTrio()
     {
