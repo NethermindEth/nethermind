@@ -17,7 +17,6 @@ public class BuiltInPluginsTests
     {
         List<Type> pluginInAssembly = TypeDiscovery.FindNethermindBasedTypes(typeof(INethermindPlugin)).ToList();
         pluginInAssembly.Remove(typeof(IConsensusPlugin));
-        pluginInAssembly.Remove(typeof(IConsensusWrapperPlugin));
 
         HashSet<Type> builtInPlugins = NethermindPlugins.EmbeddedPlugins.ToHashSet();
         foreach (Type type in pluginInAssembly)

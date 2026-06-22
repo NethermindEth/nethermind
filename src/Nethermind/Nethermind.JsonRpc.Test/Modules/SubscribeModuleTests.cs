@@ -371,10 +371,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                     manualResetEvent.Set();
             }));
 
-            blockTree.UpdateMainChain(new Block[] { block1, block2, block3 }, true);
+            // Explicit-extent moves (genesis is not canonical in this lightweight tree, and these are sibling
+            // branches off it), so move exactly the supplied blocks rather than walking back to genesis.
+            blockTree.ForceMainChainForTest(new Block[] { block1, block2, block3 });
             manualResetEvent.WaitOne();
             manualResetEvent.Reset();
-            blockTree.UpdateMainChain(new Block[] { block1B, block2B }, true);
+            blockTree.ForceMainChainForTest(new Block[] { block1B, block2B });
             manualResetEvent.WaitOne();
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(5));
@@ -424,7 +426,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
             }));
 
-            blockTree.UpdateMainChain(blocks, true);
+            // The list includes genesis and the test expects a notification per block (21). The walk stops at
+            // genesis without re-moving it, so move exactly the supplied blocks to fire all 21 events.
+            blockTree.ForceMainChainForTest(blocks);
 
             manualResetEvent.WaitOne();
 

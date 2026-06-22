@@ -110,8 +110,9 @@ namespace Ethereum.Test.Base
         }
 
 
-        public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
+        public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson, ulong chainId = BlockchainIds.Mainnet)
         {
+            PrivateKey privateKey = new(transactionJson.SecretKey);
             Transaction transaction = new()
             {
                 Type = transactionJson.Type,
@@ -122,7 +123,7 @@ namespace Ethereum.Test.Base
                 Nonce = transactionJson.Nonce,
                 To = transactionJson.To,
                 Data = transactionJson.Data[postStateJson.Indexes.Data],
-                SenderAddress = new PrivateKey(transactionJson.SecretKey).Address,
+                SenderAddress = privateKey.Address,
                 Signature = new Signature(1, 1, 27),
                 BlobVersionedHashes = transactionJson.BlobVersionedHashes,
                 MaxFeePerBlobGas = transactionJson.MaxFeePerBlobGas
@@ -206,6 +207,17 @@ namespace Ethereum.Test.Base
                 }
             }
 
+            // State tests identify the sender via `secretKey`, so sign with that key for the
+            // signature to recover to the same sender; otherwise, whenever the sender account is
+            // absent from the pre-state, TransactionProcessor.RecoverSenderIfNeeded re-recovers a
+            // bogus sender from the placeholder signature and then crashes incrementing its nonce.
+            // Address.Zero marks an intentionally-invalid transaction, so leave those as-is.
+            if (transaction.SenderAddress != Address.Zero)
+            {
+                new EthereumEcdsa(chainId).Sign(privateKey, transaction, isEip155Enabled: false);
+                transaction.Hash = transaction.CalculateHash();
+            }
+
             return transaction;
         }
 
@@ -275,7 +287,7 @@ namespace Ethereum.Test.Base
                         PostReceiptsRoot = stateJson.Logs,
                         PostHash = stateJson.Hash,
                         Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value),
-                        Transaction = Convert(stateJson, testJson.Transaction)
+                        Transaction = Convert(stateJson, testJson.Transaction, chainId)
                     };
 
                     if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)

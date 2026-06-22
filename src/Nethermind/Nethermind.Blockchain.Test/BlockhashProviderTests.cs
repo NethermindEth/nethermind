@@ -109,9 +109,9 @@ public class BlockhashProviderTests
 
         Block branch = Build.A.Block.WithParent(notCanonParent).WithTransactions(Build.A.Transaction.TestObject).TestObject;
         Assert.That(tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
-        tree.UpdateMainChain(branch); // Update branch
+        tree.TryUpdateMainChain(branch.Header, true, preloadedBlocks: new[] { branch }); // Update branch
 
-        tree.UpdateMainChain([headParent, head], true); // Update back to original again, but skipping the branch block.
+        tree.TryUpdateMainChain(head.Header, true, preloadedBlocks: new[] { headParent, head }); // Update back to original again, but skipping the branch block.
 
         Block current = Build.A.Block.WithParent(head).TestObject; // At chainLength
 
@@ -139,7 +139,7 @@ public class BlockhashProviderTests
         for (int i = 0; i < additionalBlocks; i++)
         {
             tree.SuggestBlock(current);
-            tree.UpdateMainChain(current);
+            tree.TryUpdateMainChain(current.Header, true, preloadedBlocks: new[] { current });
             current = Build.A.Block.WithParent(current).TestObject;
         }
 
@@ -162,7 +162,7 @@ public class BlockhashProviderTests
         for (int i = 0; i < 6; i++)
         {
             tree.SuggestBlock(current);
-            tree.UpdateMainChain(current);
+            tree.TryUpdateMainChain(current.Header, true, preloadedBlocks: new[] { current });
             current = Build.A.Block.WithParent(current).TestObject;
         }
 

@@ -108,7 +108,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
     private static bool TryParseEpoch(string filename, out int epoch)
     {
         epoch = 0;
-        // Expected: {network}-{epoch:05d}-{hash}.erae
+        // Expected: {network}-{epoch:05d}-{hash}[-{profile}].ere (or legacy .erae)
         ReadOnlySpan<char> name = Path.GetFileNameWithoutExtension(filename.AsSpan());
         int first = name.IndexOf('-');
         if (first < 0) return false;

@@ -32,8 +32,11 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         int gasTotal = 0;
         for (int i = 0; i < gasCosts.Length; i++)
         {
-            Assert.That(trace.Entries[i].Gas, Is.EqualTo(79000 - gasTotal), $"gas[{i}]");
-            Assert.That(trace.Entries[i].GasCost, Is.EqualTo(gasCosts[i]), $"gasCost[{i}]");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.Entries[i].Gas, Is.EqualTo(79000 - gasTotal), $"gas[{i}]");
+                Assert.That(trace.Entries[i].GasCost, Is.EqualTo(gasCosts[i]), $"gasCost[{i}]");
+            }
             gasTotal += gasCosts[i];
         }
     }
@@ -55,8 +58,11 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         int gasTotal = 0;
         for (int i = 0; i < gasCosts.Length; i++)
         {
-            Assert.That(trace.Entries[i].Gas, Is.EqualTo(79000 - gasTotal), $"gas[{i}]");
-            Assert.That(trace.Entries[i].GasCost, Is.EqualTo(gasCosts[i]), $"gasCost[{i}]");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.Entries[i].Gas, Is.EqualTo(79000 - gasTotal), $"gas[{i}]");
+                Assert.That(trace.Entries[i].GasCost, Is.EqualTo(gasCosts[i]), $"gasCost[{i}]");
+            }
             gasTotal += gasCosts[i];
         }
     }
@@ -70,8 +76,11 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Done;
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
-        Assert.That(trace.Failed, Is.EqualTo(true));
-        Assert.That(trace.Entries[0].Error, Is.EqualTo("StackUnderflow"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries[0].Error, Is.EqualTo("StackUnderflow"));
+        }
     }
 
     [Test]
@@ -86,8 +95,11 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Done;
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
-        Assert.That(trace.Failed, Is.EqualTo(true));
-        Assert.That(trace.Entries.Last().Error, Is.EqualTo("StackOverflow"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries.Last().Error, Is.EqualTo("StackOverflow"));
+        }
     }
 
     [Test]
@@ -100,8 +112,11 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Done;
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
-        Assert.That(trace.Failed, Is.EqualTo(true));
-        Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadJumpDestination"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadJumpDestination"));
+        }
     }
 
     [Test]
@@ -113,8 +128,11 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Done;
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
-        Assert.That(trace.Failed, Is.EqualTo(true));
-        Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadInstruction"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadInstruction"));
+        }
     }
 
     [Test]
@@ -208,14 +226,17 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             1, // STOP [27]
         }; */
 
-        Assert.That(trace.Entries[0].Stack.Count, Is.EqualTo(0), "BEGIN 1");
-        Assert.That(trace.Entries[8].Stack.Count, Is.EqualTo(8), "CALL FROM 1");
-        Assert.That(trace.Entries[9].Stack.Count, Is.EqualTo(0), "BEGIN 2");
-        Assert.That(trace.Entries[19].Stack.Count, Is.EqualTo(4), "CREATE FROM 2");
-        Assert.That(trace.Entries[20].Stack.Count, Is.EqualTo(0), "BEGIN 3");
-        Assert.That(trace.Entries[25].Stack.Count, Is.EqualTo(2), "END 3");
-        Assert.That(trace.Entries[26].Stack.Count, Is.EqualTo(2), "END 2");
-        Assert.That(trace.Entries[27].Stack.Count, Is.EqualTo(2), "END 1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].Stack.Count, Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[8].Stack.Count, Is.EqualTo(8), "CALL FROM 1");
+            Assert.That(trace.Entries[9].Stack.Count, Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[19].Stack.Count, Is.EqualTo(4), "CREATE FROM 2");
+            Assert.That(trace.Entries[20].Stack.Count, Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[25].Stack.Count, Is.EqualTo(2), "END 3");
+            Assert.That(trace.Entries[26].Stack.Count, Is.EqualTo(2), "END 2");
+            Assert.That(trace.Entries[27].Stack.Count, Is.EqualTo(2), "END 1");
+        }
     }
 
     [Test]
@@ -252,14 +273,17 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             1, // STOP [21]
         }; */
 
-        Assert.That(trace.Entries[0].Memory.Count, Is.EqualTo(0), "BEGIN 1");
-        Assert.That(trace.Entries[10].Memory.Count, Is.EqualTo(3), "CALL FROM 1");
-        Assert.That(trace.Entries[11].Memory.Count, Is.EqualTo(0), "BEGIN 2");
-        Assert.That(trace.Entries[23].Memory.Count, Is.EqualTo(2), "CREATE FROM 2");
-        Assert.That(trace.Entries[24].Memory.Count, Is.EqualTo(0), "BEGIN 3");
-        Assert.That(trace.Entries[29].Memory.Count, Is.EqualTo(1), "END 3");
-        Assert.That(trace.Entries[30].Memory.Count, Is.EqualTo(2), "END 2");
-        Assert.That(trace.Entries[31].Memory.Count, Is.EqualTo(3), "END 1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].Memory.Count, Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[10].Memory.Count, Is.EqualTo(3), "CALL FROM 1");
+            Assert.That(trace.Entries[11].Memory.Count, Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[23].Memory.Count, Is.EqualTo(2), "CREATE FROM 2");
+            Assert.That(trace.Entries[24].Memory.Count, Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[29].Memory.Count, Is.EqualTo(1), "END 3");
+            Assert.That(trace.Entries[30].Memory.Count, Is.EqualTo(2), "END 2");
+            Assert.That(trace.Entries[31].Memory.Count, Is.EqualTo(3), "END 1");
+        }
     }
 
     [Test]
@@ -297,14 +321,17 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             1, // STOP [34]
         }; */
 
-        Assert.That(trace.Entries[0].Storage.Count, Is.EqualTo(0), "BEGIN 1");
-        Assert.That(trace.Entries[13].Storage.Count, Is.EqualTo(0), "CALL FROM 1");
-        Assert.That(trace.Entries[14].Storage.Count, Is.EqualTo(0), "BEGIN 2");
-        Assert.That(trace.Entries[26].Storage.Count, Is.EqualTo(0), "CREATE FROM 2");
-        Assert.That(trace.Entries[27].Storage.Count, Is.EqualTo(0), "BEGIN 3");
-        Assert.That(trace.Entries[32].Storage.Count, Is.EqualTo(0), "END 3");
-        Assert.That(trace.Entries[33].Storage.Count, Is.EqualTo(0), "END 2");
-        Assert.That(trace.Entries[34].Storage.Count, Is.EqualTo(0), "END 1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].Storage.Count, Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[13].Storage.Count, Is.EqualTo(0), "CALL FROM 1");
+            Assert.That(trace.Entries[14].Storage.Count, Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[26].Storage.Count, Is.EqualTo(0), "CREATE FROM 2");
+            Assert.That(trace.Entries[27].Storage.Count, Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[32].Storage.Count, Is.EqualTo(0), "END 3");
+            Assert.That(trace.Entries[33].Storage.Count, Is.EqualTo(0), "END 2");
+            Assert.That(trace.Entries[34].Storage.Count, Is.EqualTo(0), "END 1");
+        }
     }
 
     [Test]
@@ -398,24 +425,20 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         byte[] code = Bytes.FromHexString("0x60246044607460d1606b60b9603369866833515b6d086c607f3b15749e4886579008320052006f");
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
-        GethTxTraceEntry entry;
 
-        entry = trace.Entries[^3];
-        Assert.That(entry.ProgramCounter, Is.EqualTo(25));
-        Assert.That(entry.Opcode, Is.EqualTo("EXTCODESIZE"));
-        Assert.That(entry.Stack[^1], Is.EqualTo("0x866833515b6d086c607f"));
-        Assert.That(entry.Stack.Count, Is.EqualTo(8));
+        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: "0x866833515b6d086c607f", expectedStackCount: 8);
+        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: "0x0", expectedStackCount: 8);
+        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: "0x1", expectedStackCount: 8);
+    }
 
-        entry = trace.Entries[^2];
-        Assert.That(entry.ProgramCounter, Is.EqualTo(26));
-        Assert.That(entry.Opcode, Is.EqualTo("ISZERO"));
-        Assert.That(entry.Stack[^1], Is.EqualTo("0x0"));
-        Assert.That(entry.Stack.Count, Is.EqualTo(8));
-
-        entry = trace.Entries[^1];
-        Assert.That(entry.ProgramCounter, Is.EqualTo(27));
-        Assert.That(entry.Opcode, Is.EqualTo("PUSH21"));
-        Assert.That(entry.Stack[^1], Is.EqualTo("0x1"));
-        Assert.That(entry.Stack.Count, Is.EqualTo(8));
+    private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, string expectedStackTop, int expectedStackCount)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry.ProgramCounter, Is.EqualTo(expectedPc));
+            Assert.That(entry.Opcode, Is.EqualTo(expectedOpcode));
+            Assert.That(entry.Stack[^1], Is.EqualTo(expectedStackTop));
+            Assert.That(entry.Stack.Count, Is.EqualTo(expectedStackCount));
+        }
     }
 }

@@ -72,7 +72,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
 
         _timeouts.Add(timeout);
-        IReadOnlyCollection<Timeout> collectedTimeouts = _timeouts.GetItems(timeout);
+        IReadOnlyCollection<Timeout> collectedTimeouts = _timeouts.GetItemsByKey(timeout);
 
         XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
@@ -309,4 +309,5 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     public long GetTimeoutsCount(Timeout timeout) => _timeouts.GetCount(timeout);
 
+    public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Timeout>> GetReceivedTimeouts() => _timeouts.GetItems();
 }

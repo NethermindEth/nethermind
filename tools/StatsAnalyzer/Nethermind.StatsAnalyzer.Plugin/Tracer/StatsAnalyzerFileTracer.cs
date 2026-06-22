@@ -182,10 +182,8 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
         ct.ThrowIfCancellationRequested();
 
-        using (Stream file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write))
-        using (Utf8JsonWriter jsonWriter = new(file))
-        {
-            JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
-        }
+        using Stream file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write);
+        using Utf8JsonWriter jsonWriter = new(file);
+        JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
     }
 }

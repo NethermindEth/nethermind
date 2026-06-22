@@ -29,6 +29,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         UInt256 parentBlockIndex = new((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
         worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
+        worldState.RecordBytecodeAccess(eip2935Account);
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec spec)

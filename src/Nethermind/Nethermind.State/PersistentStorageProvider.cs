@@ -17,7 +17,6 @@ using Nethermind.Core.Resettables;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
-using EvmMetrics = Nethermind.Evm.Metrics;
 using Nethermind.Logging;
 
 namespace Nethermind.State;
@@ -26,11 +25,12 @@ namespace Nethermind.State;
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
 /// </summary>
-internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager)
+internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
     : PartialStorageProviderBase(logManager)
 {
     private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
+    private readonly LocalMetrics _metrics = metrics;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
@@ -51,6 +51,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
+            InvalidateStorageMemo();
             _toUpdateRoots.Clear();
         }
     }
@@ -59,7 +60,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
-        EvmMetrics.IncrementStorageWrites();
+        _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
     }
 
@@ -251,6 +252,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
+    // Static + atomic on purpose: called from ParallelUnbalancedWork worker finalizers
+    // (see PersistentStorageProvider.std.cs), so it must not touch the non-atomic per-scope LocalMetrics.
     private static void ReportMetrics(int writes, int skipped)
     {
         if (skipped > 0)
@@ -260,19 +263,41 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
-    public void ClearStorageMap() => _storages.Clear();
+    public void ClearStorageMap()
+    {
+        _storages.Clear();
+        InvalidateStorageMemo();
+    }
+
+    private Address? _lastStorageAddress;
+    private PerContractState? _lastStorage;
+
+    private void InvalidateStorageMemo()
+    {
+        _lastStorageAddress = null;
+        _lastStorage = null;
+    }
 
     private PerContractState GetOrCreateStorage(Address address)
     {
+        if (_lastStorageAddress == address)
+        {
+            return _lastStorage!;
+        }
+
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
+        _lastStorageAddress = address;
+        _lastStorage = value;
         return value;
     }
 
     public void WarmUp(in StorageCell storageCell, bool isEmpty)
     {
         if (!isEmpty)
+        {
             LoadFromTree(in storageCell);
+        }
     }
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
@@ -480,7 +505,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                Db.Metrics.IncrementStorageTreeCache();
+                _provider._metrics.IncrementStorageTreeCache();
             }
 
             if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
@@ -489,7 +514,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
-            Db.Metrics.IncrementStorageTreeReads();
+            _provider._metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
             return !storageCell.IsHash
@@ -511,20 +536,46 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
+            // Inserts/updates must be applied before deletes. Final root is identical regardless of order
+            // (an MPT is canonical for its key set), but a delete can collapse a branch (compression) which needs
+            // resolving the surviving sibling node. Applying deletes last keeps the trie traversal aligned with
+            // stateless verifiers that insert before deleting (see EELS client), which may avoid unnecessary branch
+            // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
+            // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
+
+            using ArrayPoolListRef<KeyValuePair<UInt256, StorageChangeTrace>> deferredDeletes = new(0);
+
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
                 if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
                 {
-                    BlockChange[kvp.Key] = new(after, after);
-                    storageWriteBatch.Set(kvp.Key, after);
+                    if (after.IsZero())
+                    {
+                        deferredDeletes.Add(kvp);
+                    }
+                    else
+                    {
+                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
+                        BlockChange[kvp.Key] = new(after, after);
+                        storageWriteBatch.Set(kvp.Key, after);
 
-                    writes++;
+                        writes++;
+                    }
                 }
                 else
                 {
                     skipped++;
                 }
+            }
+
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in deferredDeletes.AsSpan())
+            {
+                byte[] after = kvp.Value.After;
+                BlockChange[kvp.Key] = new(after, after);
+                storageWriteBatch.Set(kvp.Key, after);
+
+                writes++;
             }
 
             return (writes, skipped);

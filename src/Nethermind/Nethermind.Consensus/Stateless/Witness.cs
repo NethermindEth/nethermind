@@ -24,8 +24,6 @@ public class Witness : IDisposable
         State.Dispose();
         Keys.Dispose();
         Headers.Dispose();
-
-        GC.SuppressFinalize(this);
     }
 }
 
@@ -66,15 +64,37 @@ public static class WitnessExtensions
             ReadOnlySpan<byte[]> headersSpan = headers.AsSpan();
             ArrayPoolList<BlockHeader> decodedHeaders = new(headersSpan.Length, headersSpan.Length);
 
-            for (int i = 0; i < headersSpan.Length; i++)
+            // Witness headers must form a contiguous chain: each header's parent hash must equal the
+            // hash (keccak of the RLP) of the preceding header. Linkage is by parent hash, not a
+            // block-number comparison (that check lives in the header validator), though a well-formed
+            // chain is thereby ordered by ascending block number. This mirrors the stateless verifier's
+            // rule in EELS (validate_headers) and rejects witnesses whose headers were reordered or are
+            // otherwise non-contiguous. The previous header's hash is carried across iterations so each
+            // keccak is computed once.
+            try
             {
-                Rlp.ValueDecoderContext stream = new(headersSpan[i]);
+                ValueHash256 previousHeaderHash = default;
 
-                decodedHeaders[i] = _decoder.Decode(ref stream)
-                    ?? throw new InvalidOperationException($"No header decoded at index {i}");
+                for (int i = 0; i < headersSpan.Length; i++)
+                {
+                    Rlp.ValueDecoderContext stream = new(headersSpan[i]);
+
+                    decodedHeaders[i] = _decoder.Decode(ref stream)
+                        ?? throw new InvalidOperationException($"No header decoded at index {i}");
+
+                    if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))
+                        throw new InvalidOperationException("Witness headers are not contiguous");
+
+                    previousHeaderHash = ValueKeccak.Compute(headers[i]);
+                }
+
+                return decodedHeaders;
             }
-
-            return decodedHeaders;
+            catch
+            {
+                decodedHeaders.Dispose();
+                throw;
+            }
         }
     }
 }

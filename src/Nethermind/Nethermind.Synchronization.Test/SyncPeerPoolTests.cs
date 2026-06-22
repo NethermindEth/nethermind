@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -494,7 +495,7 @@ public class SyncPeerPoolTests
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
 
-        await WaitFor(() => peer.DisconnectRequested);
+        await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(50));
         Assert.That(peer.DisconnectRequested, Is.True);
     }
 
@@ -506,7 +507,9 @@ public class SyncPeerPoolTests
         peer.SetHeaderFailure(true);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
-        await WaitForPeersInitialization(ctx);
+        // GetHeadBlockHeader throws, so refresh routes through ReportRefreshFailed -> Disconnect.
+        bool refreshAttempted = await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(50));
+        Assert.That(refreshAttempted, Is.True, "refresh loop did not attempt the failing peer in time");
 
         SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         ctx.Pool.RemovePeer(peer);
@@ -731,20 +734,12 @@ public class SyncPeerPoolTests
         return peers;
     }
 
-    private async Task WaitForPeersInitialization(Context ctx) =>
-        await WaitFor(() => ctx.Pool.AllPeers.All(p => p.IsInitialized));
-
-    private async Task WaitFor(Func<bool> isConditionMet)
+    private async Task WaitForPeersInitialization(Context ctx)
     {
-        const int waitInterval = 50;
-        for (int i = 0; i < 20; i++)
-        {
-            if (isConditionMet())
-            {
-                return;
-            }
-
-            await Task.Delay(waitInterval);
-        }
+        bool initialized = await Wait.ForCondition(
+            () => ctx.Pool.AllPeers.All(p => p.IsInitialized),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromMilliseconds(50));
+        Assert.That(initialized, Is.True, "peers did not initialize in time");
     }
 }

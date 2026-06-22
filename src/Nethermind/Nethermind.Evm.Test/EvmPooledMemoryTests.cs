@@ -46,7 +46,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(10 * MaxCodeSize, MaxCodeSize)]
     [TestCase(100 * MaxCodeSize, MaxCodeSize)]
     [TestCase(1000 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(0, 1024 * 1024)]
+    [TestCase(0, MemorySizes.MiB)]
     // Note: Int32.MaxValue was removed as a test case because after word alignment
     // it exceeds the maximum allowed memory size and correctly returns out-of-gas.
     public void MemoryCost(int destination, int memoryAllocation)
@@ -76,6 +76,25 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
         Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [TestCase(70 * 1024)]
+    [TestCase(2 * 1024 * 1024)]
+    public void Large_pooled_buffer_is_zeroed_on_reuse(int size)
+    {
+        EvmPooledMemory dirty = new();
+        UInt256 zero = UInt256.Zero;
+        Span<byte> pattern = new byte[size];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(in zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory clean = new();
+        UInt256 length = (UInt256)size;
+        Assert.That(clean.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
+        Assert.That(data.Length, Is.EqualTo(size));
+        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
+        clean.Dispose();
     }
 
     [Test]

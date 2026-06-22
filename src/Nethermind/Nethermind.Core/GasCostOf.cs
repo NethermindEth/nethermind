@@ -66,14 +66,14 @@ namespace Nethermind.Core
         public const long AccessStorageListEntry = 1900; // eip-2930
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
-        public const long PerAuthBaseCost = 12500; // eip-7702
+        public const long PerAuthBaseCost = Eip7702Constants.PerAuthBaseCost;
         public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const long TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
         public const long CostPerStateByte = 1530; // eip-8037
         public const long StateBytesPerStorageSet = 64; // eip-8037
         public const long StateBytesPerNewAccount = 120; // eip-8037
-        public const long StateBytesPerAuthBase = 23; // eip-8037
+        public const long StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
         public const long SSetRegular = 2_900;
         public const long SSetState = StateBytesPerStorageSet * CostPerStateByte;
         public const long CreateRegular = 9_000;
@@ -81,7 +81,7 @@ namespace Nethermind.Core
         public const long NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const long CodeDepositRegularPerWord = 6;
         public const long CodeDepositState = CostPerStateByte;
-        public const long PerAuthBaseRegular = 7_500;
+        public const long PerAuthBaseRegular = Eip8037Constants.PerAuthBaseRegularCost;
         public const long PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
         public const long PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const long BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928

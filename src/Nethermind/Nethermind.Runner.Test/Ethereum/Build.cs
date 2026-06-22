@@ -89,7 +89,6 @@ namespace Nethermind.Runner.Test.Ethereum
 
         public static void MockOutNethermindApi(NethermindApi api)
         {
-            api.Enode = Substitute.For<IEnode>();
             api.TxPool = Substitute.For<ITxPool>();
             api.Wallet = Substitute.For<IWallet>();
             api.BlockProducer = Substitute.For<IBlockProducer>();

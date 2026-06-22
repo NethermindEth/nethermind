@@ -57,7 +57,7 @@ public class StartingSyncPivotUpdater : IDisposable
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot; // Note: Blocktree would have set this to 0 if sync pivot is in DB
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
 
-        if (_maxAttempts != 0)
+        if (_maxAttempts != 0 && !syncConfig.StaticSnapPivot)
         {
             _syncModeSelector.Changed += OnSyncModeChanged;
         }
