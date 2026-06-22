@@ -386,7 +386,9 @@ namespace Nethermind.Network
                         resolver.Resolve(capabilities);
                     }
 
-                    Volatile.Write(ref _cachedCapabilities, capabilities.ToArray());
+                    Capability[] resolved = capabilities.ToArray();
+                    if (_logger.IsDebug) _logger.Debug($"Resolved advertised P2P capabilities: {string.Join(", ", resolved.Select(static c => $"{c.ProtocolCode}/{c.Version}"))}");
+                    Volatile.Write(ref _cachedCapabilities, resolved);
                 }
 
                 return _cachedCapabilities;

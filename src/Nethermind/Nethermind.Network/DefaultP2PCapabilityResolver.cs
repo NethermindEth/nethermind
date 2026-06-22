@@ -16,16 +16,8 @@ namespace Nethermind.Network;
 /// </remarks>
 public class DefaultP2PCapabilityResolver : IP2PCapabilityResolver
 {
-    public static readonly IReadOnlyList<Capability> DefaultCapabilities = [new(Protocol.Eth, 68)];
-
     // The default set is static, so the cache never needs invalidating.
     public event Action? Changed { add { } remove { } }
 
-    public void Resolve(ISet<Capability> capabilities)
-    {
-        for (int i = 0; i < DefaultCapabilities.Count; i++)
-        {
-            capabilities.Add(DefaultCapabilities[i]);
-        }
-    }
+    public void Resolve(ISet<Capability> capabilities) => capabilities.Add(new Capability(Protocol.Eth, 68));
 }
