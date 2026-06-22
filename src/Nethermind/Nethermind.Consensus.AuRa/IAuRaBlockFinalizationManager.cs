@@ -1,14 +1,21 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
+using System;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public interface IAuRaBlockFinalizationManager : IBlockFinalizationManager
+    public interface IAuRaBlockFinalizationManager : IDisposable
     {
+        /// <summary>
+        /// Current finalized level tracked by the AuRa finalization manager.
+        /// </summary>
+        long LastFinalizedBlockLevel { get; }
+
+        event EventHandler<AuRaFinalizeEventArgs> BlocksFinalized;
+
         /// <summary>
         /// Get last level finalized by certain block hash.
         /// </summary>

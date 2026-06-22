@@ -12,9 +12,19 @@ public interface INetworkConfig : IConfig
     public const int MaxNettyArenaOrder = 14;
     public const int DefaultMaxNettyArenaCount = 8;
 
+    /// <remarks>
+    /// User-facing override only. Code that needs the actual external IP must resolve it through
+    /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
+    /// supplies an override.
+    /// </remarks>
     [ConfigItem(Description = "The external IP. Use only when the external IP cannot be resolved automatically.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
 
+    /// <remarks>
+    /// User-facing override only. Code that needs the actual local IP must resolve it through
+    /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
+    /// supplies an override.
+    /// </remarks>
     [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically.", DefaultValue = "null")]
     string? LocalIp { get; set; }
 

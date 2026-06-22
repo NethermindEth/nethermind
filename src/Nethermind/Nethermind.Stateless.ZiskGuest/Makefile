@@ -11,6 +11,7 @@ BFLAT_REFS := \
   -r {std}/System.Diagnostics.Tracing.dll \
   -r {std}/System.Memory.dll \
   -r {std}/System.Runtime.dll \
+  -r {std}/System.Runtime.InteropServices.dll \
   -r $(BIN_DIR)/BouncyCastle.Cryptography.dll \
   -r $(BIN_DIR)/Microsoft.Extensions.ObjectPool.dll \
   -r $(BIN_DIR)/Nethermind.Abi.dll \
