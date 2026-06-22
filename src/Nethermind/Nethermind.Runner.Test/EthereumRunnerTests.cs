@@ -28,7 +28,6 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -212,8 +211,6 @@ public class EthereumRunnerTests
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
-        api.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
-        api.NonceManager = Substitute.For<INonceManager>();
 
         if (api is AuRaNethermindApi auRaNethermindApi)
         {
@@ -438,8 +435,8 @@ public class EthereumRunnerTests
                 base.Load(builder);
 
                 IIPResolver ipResolver = Substitute.For<IIPResolver>();
-                ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
-                ipResolver.LocalIp.Returns(IPAddress.Parse("127.0.0.1"));
+                ipResolver.Resolve(Arg.Any<CancellationToken>())
+                    .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Parse("127.0.0.1"), IPAddress.Parse("127.0.0.1"))));
 
                 builder
                     .AddSingleton(ipResolver)

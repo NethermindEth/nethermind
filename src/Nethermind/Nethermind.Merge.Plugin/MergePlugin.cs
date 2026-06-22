@@ -41,7 +41,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -269,7 +268,7 @@ public class BaseMergePluginModule : Module
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
 
             .AddSingleton<StartingSyncPivotUpdater>()
-            .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
+            .Bind<ISyncPivotResolver, StartingSyncPivotUpdater>()
 
             // Invalid chain tracker wrapper should be after other validator.
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
