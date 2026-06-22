@@ -365,7 +365,6 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private bool PruningIntervalHasElapsed()
-        // Both Head.Number and _pruningInterval are ulong; modulo is unambiguous.
         => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
 
     private readonly int _deletionProgressLoggingInterval;
