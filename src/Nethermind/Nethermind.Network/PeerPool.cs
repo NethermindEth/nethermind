@@ -76,13 +76,19 @@ namespace Nethermind.Network
 
         private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
         {
-            if (Peers.TryGetValue(e.Node.Id, out Peer? peer)
-                && (peer.InSession is not null || peer.OutSession is not null))
+            if (!Peers.TryGetValue(e.Node.Id, out Peer? peer))
             {
+                TryRemove(e.Node.Id, out _);
                 return;
             }
 
-            TryRemove(e.Node.Id, out _);
+            lock (peer)
+            {
+                if (peer.InSession is not null || peer.OutSession is not null)
+                    return;
+
+                TryRemove(e.Node.Id, out _);
+            }
         }
 
         public Peer GetOrAdd(Node node) => Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));

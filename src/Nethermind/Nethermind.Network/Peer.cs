@@ -30,15 +30,18 @@ namespace Nethermind.Network
 
         internal INodeStats? Stats { get; } = stats;
 
+        private volatile ISession? _inSession;
+        private volatile ISession? _outSession;
+
         /// <summary>
         /// An incoming session to the Node which can be in one of many states.
         /// </summary>
-        public ISession? InSession { get; set; }
+        public ISession? InSession { get => _inSession; set => _inSession = value; }
 
         /// <summary>
         /// An outgoing session to the Node which can be in one of many states.
         /// </summary>
-        public ISession? OutSession { get; set; }
+        public ISession? OutSession { get => _outSession; set => _outSession = value; }
 
         public override string ToString() => $"[Peer|{Node:s}|{InSession}|{OutSession}]";
 
