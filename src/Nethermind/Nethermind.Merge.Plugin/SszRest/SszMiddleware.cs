@@ -85,9 +85,6 @@ public sealed class SszMiddleware
 
         foreach (ISszEndpointHandler h in handlers)
         {
-            // The witness handler is injected directly and dispatched via its own fast-path.
-            if (h is NewPayloadWithWitnessSszHandler) continue;
-
             // Dictionaries are keyed case-insensitively below — keep resource as-is, no lowercasing.
             Dictionary<string, List<ISszEndpointHandler>> dict =
                 h.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
