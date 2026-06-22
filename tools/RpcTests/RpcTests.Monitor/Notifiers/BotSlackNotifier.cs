@@ -77,6 +77,18 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
         }
     }
 
+    public async Task NotifyLiveAsync(string message)
+    {
+        try
+        {
+            await PostAsync($"✅ {_prefix}\n{message}", [], CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Slack notification error: {ex.Message}");
+        }
+    }
+
     public async Task NotifyStatsAsync(MonitorStats stats, CancellationToken ct)
     {
         try

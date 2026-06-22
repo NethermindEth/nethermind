@@ -22,7 +22,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
 
         (ITargetBlock<BlockInfo> startBlock, IDataflowBlock endBlock) = BuildPipeline(ct);
 
-        HeadMonitor headMonitor = new(args.TargetUrl, _errorReporter);
+        HeadMonitor headMonitor = new(args.TargetUrl, notifier, _errorReporter);
         try
         {
             Console.WriteLine($"Monitoring {args.TargetUrl}");

@@ -6,13 +6,16 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
+using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
+internal class HeadMonitor(Uri nodeUrl, INotifier notifier, ErrorReporter errorReporter)
 {
     private const string SubscribeRequest =
         """{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}""";
+
+    private readonly OutageReporter _outage = new(errorReporter, notifier);
 
     public static Uri DeriveWsUrl(Uri httpUrl) =>
         new UriBuilder(httpUrl) { Scheme = httpUrl.Scheme == "https" ? "wss" : "ws" }.Uri;
@@ -59,9 +62,7 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
                 }
                 catch (Exception ex)
                 {
-                    // reduce disconnect spamming in case if node is down/restarting
-                    if (failureCount >= RetryDelays.Length)
-                        errorReporter.Report("WebSocket connection error", ex);
+                    _outage.OnError("WebSocket connection error", ex);
                 }
 
                 TimeSpan delay = RetryDelays[Math.Min(failureCount, RetryDelays.Length - 1)];
@@ -81,6 +82,8 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
         using ClientWebSocket ws = new();
         await ws.ConnectAsync(DeriveWsUrl(nodeUrl), ct);
         await ws.SendAsync(Encoding.UTF8.GetBytes(SubscribeRequest), WebSocketMessageType.Text, true, ct);
+
+        _outage.OnRecovered();
 
         using MemoryStream ms = new();
         byte[] buffer = new byte[64 * 1024];
