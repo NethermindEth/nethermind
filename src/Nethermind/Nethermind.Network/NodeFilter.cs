@@ -107,6 +107,9 @@ public sealed class NodeFilter
             _cache.Set(key, Environment.TickCount64);
     }
 
+    public void Delete(IPAddress ipAddress, bool exactOnly = false)
+        => _cache?.Delete(GetKey(ipAddress, exactOnly));
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private IpSubnetKey GetKey(IPAddress ipAddress, bool exactOnly)
         => _exactMatchOnly || exactOnly
