@@ -129,6 +129,43 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Fresh_database_uses_bounded_initial_map_size()
+        {
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(".", "Blocks"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            db.Set([1], [2]);
+            db.Flush();
+
+            Assert.That(db.GatherMetric().Size, Is.LessThan(128.MiB));
+        }
+
+        [Test]
+        public void Multiple_fresh_databases_use_bounded_initial_map_size()
+        {
+            List<DbOnTheRocks> dbs = [];
+            try
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    DbOnTheRocks db = new(DbPath, GetRocksDbSettings($"db-{i}", $"Blocks-{i}"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+                    db.Set([1], [2]);
+                    db.Flush();
+                    dbs.Add(db);
+                }
+
+                long totalSize = dbs.Sum(db => db.GatherMetric().Size);
+                Assert.That(totalSize, Is.LessThan(1.GiB));
+            }
+            finally
+            {
+                foreach (DbOnTheRocks db in dbs)
+                {
+                    db.Dispose();
+                }
+            }
+        }
+
+        [Test]
         public void HyperClockCacheWrapper_is_a_noop_compatibility_wrapper()
         {
             using HyperClockCacheWrapper cache = new((ulong)10.KiB);

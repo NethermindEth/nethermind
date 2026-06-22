@@ -349,7 +349,7 @@ internal static class Program
                 ParseSize(Get(values, "target-size", "30GiB")),
                 int.Parse(Get(values, "value-size", "4096"), CultureInfo.InvariantCulture),
                 long.Parse(Get(values, "reads", "2000000"), CultureInfo.InvariantCulture),
-                int.Parse(Get(values, "batch-size", "8192"), CultureInfo.InvariantCulture),
+                int.Parse(Get(values, "batch-size", "1024"), CultureInfo.InvariantCulture),
                 bool.Parse(Get(values, "clean", "false")),
                 bool.Parse(Get(values, "disable-wal", "true")),
                 long.Parse(Get(values, "report-every", "250000"), CultureInfo.InvariantCulture),
