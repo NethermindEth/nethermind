@@ -9,8 +9,6 @@ namespace Nethermind.RpcTests.Monitor;
 
 internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
 {
-    private const int MaxErrorLength = 500;
-
     private long _requestNumber;
 
     public async Task<TestFailure?> ExecuteAsync(ExecutionArgs args, TestContext test, CancellationToken ct = default)
@@ -68,62 +66,72 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
         }
         catch (Exception ex)
         {
-            throw new HttpRequestException(GetErrorMessage(request, null, null), ex);
+            throw WithDetails(
+                new HttpRequestException(GetErrorMessage(request, null), ex),
+                requestData
+            );
         }
 
         using HttpResponseMessage _ = response;
 
-        string content;
+        string responseContent;
         try
         {
-            content = await response.Content.ReadAsStringAsync(ct);
+            responseContent = await response.Content.ReadAsStringAsync(ct);
         }
         catch (Exception ex)
         {
-            throw new HttpRequestException(GetErrorMessage(request, response, null), ex);
+            throw WithDetails(
+                new HttpRequestException(GetErrorMessage(request, response), ex),
+                requestData
+            );
         }
 
-        if (!response.IsSuccessStatusCode || string.IsNullOrEmpty(content))
+        if (!response.IsSuccessStatusCode || string.IsNullOrEmpty(responseContent))
         {
-            throw new HttpRequestException(GetErrorMessage(request, response, content));
+            throw WithDetails(
+                new HttpRequestException(GetErrorMessage(request, response)),
+                requestData, responseContent
+            );
         }
 
         JsonNode? json;
         try
         {
-            json = JsonNode.Parse(content);
+            json = JsonNode.Parse(responseContent);
         }
         catch (Exception ex)
         {
-            throw new JsonException(GetErrorMessage(request, response, content), ex);
+            throw WithDetails(
+                new JsonException(GetErrorMessage(request, response), ex),
+                requestData, responseContent
+            );
         }
 
-        return json ?? throw new JsonException(GetErrorMessage(request, response, content));
+        return json ?? throw WithDetails(
+            new JsonException(GetErrorMessage(request, response)),
+            requestData, responseContent
+        );
 
-        static string GetErrorMessage(HttpRequestMessage request, HttpResponseMessage? response, string? content)
+        static string GetErrorMessage(HttpRequestMessage request, HttpResponseMessage? response)
         {
             // strip url to host only to hide API key, if any
             Uri? uri = request.RequestUri;
             string host = uri is null ? "<no url>" : uri.Port == 80 ? uri.Host : $"{uri.Host}:{uri.Port}";
 
-            string message =
+            return
                 $"""
                  Failed to {request.Method} {host}
                  Got {(response is null ? "no response" : $"{(int)response.StatusCode} {response.StatusCode}")}
                  """;
+        }
 
-            if (response is null)
-                return message;
-
-            if (string.IsNullOrEmpty(content))
-                content = "<empty response>";
-
-            if (content.Length > MaxErrorLength)
-                content = content[..MaxErrorLength] + "...";
-
-            message = $"{message}\n{content}";
-
-            return message;
+        static T WithDetails<T>(T exception, JsonNode requestData, string? responseContent = null) where T : Exception
+        {
+            exception.Data["request.txt"] = requestData.ToPrettyString();
+            if (!string.IsNullOrEmpty(responseContent))
+                exception.Data["response.txt"] = responseContent;
+            return exception;
         }
     }
 }

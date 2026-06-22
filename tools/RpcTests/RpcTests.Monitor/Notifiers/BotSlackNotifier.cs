@@ -62,7 +62,11 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
             if (exception is not null)
             {
                 text = $"{text}\n```{exception.Message}```";
+
                 files.Add(("exception.txt", exception.ToString()));
+
+                foreach (object key in exception.Data.Keys)
+                    files.Add((key.ToString()!, exception.Data[key]?.ToString() ?? ""));
             }
 
             await PostAsync(text, files, CancellationToken.None);
