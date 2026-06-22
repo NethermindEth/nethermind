@@ -18,43 +18,39 @@ namespace Nethermind.Consensus.Stateless;
 /// passthroughs that share one source of truth here.
 /// </para>
 /// <para>
-/// Thread-safety: <see cref="TryArm"/> uses CAS on the world-state pointer so concurrent armers
-/// see at most one winner; <see cref="Disarm"/> clears in reverse so any consumer that still sees
-/// <see cref="WorldStateRecorder"/> set also sees the other recorders set. The main processing
-/// pipeline drives blocks serially so contention is theoretical, but the volatile reads remain
-/// safe under any caller.
+/// Thread-safety: both recorders are packed into one immutable slot that <see cref="TryArm"/>
+/// installs with a single CAS, so a reader observes either the fully-armed pair or nothing — there
+/// is no window where one recorder is visible without the other, and a losing armer cannot clobber
+/// the winner's recorders. <see cref="Disarm"/> clears the slot with one atomic write. The main
+/// processing pipeline drives blocks serially so contention is theoretical, but these guarantees
+/// hold under any caller.
 /// </para>
 /// </remarks>
 public sealed class WitnessCaptureSession
 {
-    private WitnessGeneratingWorldState? _worldStateRecorder;
-    private WitnessHeaderRecorder? _headerRecorder;
+    private Recorders? _recorders;
 
-    public WitnessGeneratingWorldState? WorldStateRecorder => Volatile.Read(ref _worldStateRecorder);
-    public WitnessHeaderRecorder? HeaderRecorder => Volatile.Read(ref _headerRecorder);
+    public WitnessGeneratingWorldState? WorldStateRecorder => Volatile.Read(ref _recorders)?.WorldState;
+    public WitnessHeaderRecorder? HeaderRecorder => Volatile.Read(ref _recorders)?.Header;
 
-    public bool IsActive => WorldStateRecorder is not null;
+    public bool IsActive => Volatile.Read(ref _recorders) is not null;
 
     /// <summary>
     /// Atomically installs the two recorders for a single capture pass. Returns <c>false</c>
     /// when a capture is already in progress on this session.
     /// </summary>
     /// <remarks>
-    /// The world-state recorder is the primary slot — the CAS on it gates the operation; the other
-    /// is written under the post-CAS happens-before, so any reader that observes the
-    /// world-state recorder also observes the header recorder.
+    /// Both recorders are bundled into one immutable slot installed by a single
+    /// <see cref="Interlocked.CompareExchange{T}(ref T, T, T)"/>, so the pair is published
+    /// atomically: a concurrent reader sees either both recorders (via the load-acquire in the
+    /// property getters) or neither, and a losing armer leaves the winner's slot untouched.
     /// </remarks>
     public bool TryArm(
         WitnessGeneratingWorldState worldStateRecorder,
         WitnessHeaderRecorder headerRecorder)
-    {
-        Volatile.Write(ref _headerRecorder, headerRecorder);
-        return Interlocked.CompareExchange(ref _worldStateRecorder, worldStateRecorder, null) is null;
-    }
+        => Interlocked.CompareExchange(ref _recorders, new Recorders(worldStateRecorder, headerRecorder), null) is null;
 
-    public void Disarm()
-    {
-        Volatile.Write(ref _worldStateRecorder, null);
-        Volatile.Write(ref _headerRecorder, null);
-    }
+    public void Disarm() => Volatile.Write(ref _recorders, null);
+
+    private sealed record Recorders(WitnessGeneratingWorldState WorldState, WitnessHeaderRecorder Header);
 }
