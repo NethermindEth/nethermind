@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Db.Rocks.Config;
@@ -17,10 +18,15 @@ namespace Nethermind.Db.Rocks;
 internal sealed class MdbxEnvironment : IDisposable
 {
     private readonly object _writeLock = new();
+    private readonly object _batchGroupLock = new();
+    private readonly Queue<MdbxBatchGroupRequest> _batchGroupQueue = new();
     private readonly ILogger _logger;
     private readonly MdbxProfiler? _profiler;
     private readonly MdbxValueCompression _valueCompression;
+    private readonly bool _batchGroupingEnabled;
+    private readonly int _maxBatchGroupOperations;
     private uint? _statsDbi;
+    private bool _batchGroupActive;
     private bool _disposed;
 
     public MdbxEnvironment(string path, IDbConfig dbConfig, IRocksDbConfig rocksDbConfig, ILogger logger)
@@ -35,6 +41,8 @@ internal sealed class MdbxEnvironment : IDisposable
         _valueCompression = MdbxValueCompression.Create(rocksDbConfig, logger, Path);
 
         MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger);
+        _batchGroupingEnabled = tuning.EnableBatchGrouping;
+        _maxBatchGroupOperations = tuning.MaxBatchGroupOperations;
         if (tuning.HasOverrides && logger.IsInfo)
         {
             logger.Info($"MDBX tuning for {Path}: {tuning.Describe()}");
@@ -50,6 +58,16 @@ internal sealed class MdbxEnvironment : IDisposable
             "mdbx_env_set_geometry");
 
         uint flags = MdbxNative.EnvNoStickyThreads | MdbxNative.EnvLifoReclaim | MdbxNative.EnvNoMemInit;
+        if (tuning.EnableWriteMap)
+        {
+            flags |= MdbxNative.EnvWriteMap;
+        }
+
+        if (tuning.EnableCoalesce)
+        {
+            flags |= MdbxNative.EnvCoalesce;
+        }
+
         if (!tuning.EnableReadAhead)
         {
             flags |= MdbxNative.EnvNoReadAhead;
@@ -189,6 +207,16 @@ internal sealed class MdbxEnvironment : IDisposable
             return;
         }
 
+        if (!_batchGroupingEnabled)
+        {
+            ExecuteBatch(operations);
+            return;
+        }
+
+        ApplyBatchGroup(operations);
+    }
+
+    private void ExecuteBatch(IReadOnlyList<MdbxWriteOperation> operations) =>
         ExecuteWrite(txn =>
         {
             for (int i = 0; i < operations.Count; i++)
@@ -196,6 +224,121 @@ internal sealed class MdbxEnvironment : IDisposable
                 ApplyOperation(txn, operations[i]);
             }
         }, operations.Count);
+
+    private void ApplyBatchGroup(IReadOnlyList<MdbxWriteOperation> operations)
+    {
+        MdbxBatchGroupRequest request = new(operations);
+        bool shouldRunBatchGroup;
+
+        lock (_batchGroupLock)
+        {
+            _batchGroupQueue.Enqueue(request);
+            shouldRunBatchGroup = !_batchGroupActive;
+            if (shouldRunBatchGroup)
+            {
+                _batchGroupActive = true;
+            }
+        }
+
+        if (shouldRunBatchGroup)
+        {
+            DrainBatchGroups();
+        }
+        else
+        {
+            WaitForBatchGroupRequest(request);
+        }
+
+        request.ThrowIfFailed();
+    }
+
+    private void DrainBatchGroups()
+    {
+        List<MdbxBatchGroupRequest> group = [];
+        while (true)
+        {
+            int operationCount = DequeueBatchGroup(group);
+            if (operationCount == 0)
+            {
+                return;
+            }
+
+            Exception? exception = null;
+            try
+            {
+                ExecuteWrite(txn =>
+                {
+                    for (int requestIndex = 0; requestIndex < group.Count; requestIndex++)
+                    {
+                        IReadOnlyList<MdbxWriteOperation> operations = group[requestIndex].Operations;
+                        for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+                        {
+                            ApplyOperation(txn, operations[operationIndex]);
+                        }
+                    }
+                }, operationCount);
+                _profiler?.RecordBatchGroup(group.Count, operationCount);
+            }
+            catch (Exception caught)
+            {
+                exception = caught;
+            }
+
+            CompleteBatchGroup(group, exception);
+            group.Clear();
+        }
+    }
+
+    private int DequeueBatchGroup(List<MdbxBatchGroupRequest> group)
+    {
+        int operationCount = 0;
+        lock (_batchGroupLock)
+        {
+            while (_batchGroupQueue.Count > 0)
+            {
+                MdbxBatchGroupRequest request = _batchGroupQueue.Peek();
+                if (group.Count > 0 && operationCount + request.OperationCount > _maxBatchGroupOperations)
+                {
+                    break;
+                }
+
+                _batchGroupQueue.Dequeue();
+                group.Add(request);
+                operationCount += request.OperationCount;
+            }
+
+            if (group.Count == 0)
+            {
+                _batchGroupActive = false;
+                Monitor.PulseAll(_batchGroupLock);
+            }
+        }
+
+        return operationCount;
+    }
+
+    private void CompleteBatchGroup(List<MdbxBatchGroupRequest> group, Exception? exception)
+    {
+        lock (_batchGroupLock)
+        {
+            for (int i = 0; i < group.Count; i++)
+            {
+                group[i].Complete(exception);
+            }
+
+            Monitor.PulseAll(_batchGroupLock);
+        }
+    }
+
+    private void WaitForBatchGroupRequest(MdbxBatchGroupRequest request)
+    {
+        lock (_batchGroupLock)
+        {
+            while (!request.IsCompleted)
+            {
+                Monitor.Wait(_batchGroupLock);
+            }
+        }
     }
 
     public void DropTable(uint dbi) =>
@@ -510,4 +653,29 @@ internal readonly record struct MdbxWriteOperation(MdbxWriteKind Kind, uint Dbi,
 
     public static MdbxWriteOperation Merge(uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IMergeOperator? mergeOperator) =>
         new(MdbxWriteKind.Merge, dbi, key.ToArray(), value.ToArray(), mergeOperator);
+}
+
+internal sealed class MdbxBatchGroupRequest(IReadOnlyList<MdbxWriteOperation> operations)
+{
+    private Exception? _exception;
+
+    public IReadOnlyList<MdbxWriteOperation> Operations { get; } = operations;
+
+    public int OperationCount => Operations.Count;
+
+    public bool IsCompleted { get; private set; }
+
+    public void Complete(Exception? exception)
+    {
+        _exception = exception;
+        IsCompleted = true;
+    }
+
+    public void ThrowIfFailed()
+    {
+        if (_exception is not null)
+        {
+            ExceptionDispatchInfo.Capture(_exception).Throw();
+        }
+    }
 }

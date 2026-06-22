@@ -17,6 +17,10 @@ internal readonly record struct MdbxTuningOptions(
     ulong MaxDbs,
     ulong MaxReaders,
     bool EnableReadAhead,
+    bool EnableWriteMap,
+    bool EnableCoalesce,
+    bool EnableBatchGrouping,
+    int MaxBatchGroupOperations,
     bool EnableProfiling,
     int HotPathSampleRate,
     TimeSpan ProfileInterval,
@@ -25,11 +29,12 @@ internal readonly record struct MdbxTuningOptions(
 {
     public const long DefaultInitialMapSize = 64L << 20;
     public const long DefaultMaxMapSize = 1L << 40;
-    public const long DefaultGrowthStep = 256L << 20;
+    public const long DefaultGrowthStep = 1L << 30;
     public const long DefaultShrinkThreshold = 1L << 30;
     public const int DefaultPageSize = 16 * 1024;
     public const ulong DefaultMaxDbs = 512;
     public const ulong DefaultMaxReaders = 512;
+    public const int DefaultMaxBatchGroupOperations = 128 * 1024;
 
     private const int DefaultProfileIntervalSeconds = 30;
     private const int DefaultSlowTransactionMilliseconds = 1_000;
@@ -46,6 +51,10 @@ internal readonly record struct MdbxTuningOptions(
         ulong maxDbs = ReadUInt64("NETHERMIND_MDBX_MAX_DBS", DefaultMaxDbs, logger, ref hasOverrides);
         ulong maxReaders = ReadUInt64("NETHERMIND_MDBX_MAX_READERS", DefaultMaxReaders, logger, ref hasOverrides);
         bool enableReadAhead = ReadBool("NETHERMIND_MDBX_READAHEAD", fallback: false, logger, ref hasOverrides);
+        bool enableWriteMap = ReadBool("NETHERMIND_MDBX_WRITEMAP", fallback: true, logger, ref hasOverrides);
+        bool enableCoalesce = ReadBool("NETHERMIND_MDBX_COALESCE", fallback: true, logger, ref hasOverrides);
+        bool enableBatchGrouping = ReadBool("NETHERMIND_MDBX_BATCH_GROUP", fallback: true, logger, ref hasOverrides);
+        int maxBatchGroupOperations = ReadInt32("NETHERMIND_MDBX_BATCH_GROUP_MAX_OPS", DefaultMaxBatchGroupOperations, logger, ref hasOverrides);
         bool enableProfiling = ReadBool("NETHERMIND_MDBX_PROFILE", fallback: false, logger, ref hasOverrides);
         int hotPathSampleRate = ReadInt32("NETHERMIND_MDBX_PROFILE_HOTPATH_SAMPLE_RATE", DefaultHotPathSampleRate, logger, ref hasOverrides);
         int profileIntervalSeconds = ReadInt32("NETHERMIND_MDBX_PROFILE_INTERVAL_SECONDS", DefaultProfileIntervalSeconds, logger, ref hasOverrides);
@@ -93,6 +102,12 @@ internal readonly record struct MdbxTuningOptions(
             maxReaders = DefaultMaxReaders;
         }
 
+        if (maxBatchGroupOperations <= 0)
+        {
+            Warn(logger, "NETHERMIND_MDBX_BATCH_GROUP_MAX_OPS must be positive. Using the default value.");
+            maxBatchGroupOperations = DefaultMaxBatchGroupOperations;
+        }
+
         if (hotPathSampleRate <= 0)
         {
             Warn(logger, "NETHERMIND_MDBX_PROFILE_HOTPATH_SAMPLE_RATE must be positive. Using the default value.");
@@ -111,6 +126,10 @@ internal readonly record struct MdbxTuningOptions(
             maxDbs,
             maxReaders,
             enableReadAhead,
+            enableWriteMap,
+            enableCoalesce,
+            enableBatchGrouping,
+            maxBatchGroupOperations,
             enableProfiling,
             hotPathSampleRate,
             TimeSpan.FromSeconds(profileIntervalSeconds),
@@ -121,7 +140,7 @@ internal readonly record struct MdbxTuningOptions(
     public string Describe() =>
         string.Create(
             CultureInfo.InvariantCulture,
-            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} readAhead={EnableReadAhead} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
+            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} readAhead={EnableReadAhead} writeMap={EnableWriteMap} coalesce={EnableCoalesce} batchGroup={EnableBatchGrouping} batchGroupMaxOps={MaxBatchGroupOperations} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
 
     internal static bool TryParseSize(string value, out long result)
     {

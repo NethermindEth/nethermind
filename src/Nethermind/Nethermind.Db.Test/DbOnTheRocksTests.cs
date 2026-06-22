@@ -183,6 +183,15 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Mdbx_value_compression_skips_values_below_min_threshold()
+        {
+            using MdbxValueCompression compression = new(enabled: true, minValueLength: 256);
+            byte[] value = Enumerable.Repeat((byte)0x42, 255).ToArray();
+
+            Assert.That(compression.TryEncode(value, out _, out _), Is.False);
+        }
+
+        [Test]
         public void Mdbx_value_compression_writes_versioned_zstd_marker()
         {
             using MdbxValueCompression compression = new(enabled: true);
@@ -229,6 +238,23 @@ namespace Nethermind.Db.Test
             byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
 
             Assert.That(compression.TryEncode(value, out _, out _), Is.False);
+        }
+
+        [Test]
+        public void Mdbx_value_compression_honors_min_value_length_override()
+        {
+            DbConfig config = new();
+            IRocksDbConfig rocksConfig = new PerTableDbConfig(config, "Blocks", validate: false);
+            WithEnvironmentVariable("NETHERMIND_MDBX_COMPRESSION_MIN_BYTES", "4096", () =>
+            {
+                using MdbxValueCompression compression = MdbxValueCompression.Create(
+                    rocksConfig,
+                    LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
+                    DbPath);
+
+                Assert.That(compression.MinValueLength, Is.EqualTo(4096));
+                Assert.That(compression.TryEncode(Enumerable.Repeat((byte)0x42, 1024).ToArray(), out _, out _), Is.False);
+            });
         }
 
         [Test]
@@ -329,6 +355,44 @@ namespace Nethermind.Db.Test
         [TestCase("maybe")]
         public void Mdbx_tuning_bool_parser_rejects_invalid_values(string value) =>
             Assert.That(MdbxTuningOptions.TryParseBool(value, out _), Is.False);
+
+        [Test]
+        public void Mdbx_tuning_defaults_enable_write_path_optimizations()
+        {
+            MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.EnableWriteMap, Is.True);
+                Assert.That(options.EnableCoalesce, Is.True);
+                Assert.That(options.EnableBatchGrouping, Is.True);
+                Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupOperations));
+                Assert.That(options.GrowthStep, Is.EqualTo(MdbxTuningOptions.DefaultGrowthStep));
+            }
+        }
+
+        [Test]
+        public void Concurrent_write_batches_commit_all_values()
+        {
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(".", "Blocks"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            Parallel.For(0, 16, batchIndex =>
+            {
+                using IWriteBatch batch = db.StartWriteBatch();
+                for (int itemIndex = 0; itemIndex < 256; itemIndex++)
+                {
+                    int keyValue = batchIndex * 256 + itemIndex;
+                    byte[] key = BitConverter.GetBytes(keyValue);
+                    batch.Set(key, [unchecked((byte)batchIndex), unchecked((byte)itemIndex)]);
+                }
+            });
+
+            for (int keyValue = 0; keyValue < 16 * 256; keyValue++)
+            {
+                byte[] key = BitConverter.GetBytes(keyValue);
+                Assert.That(db.Get(key), Is.Not.Null);
+            }
+        }
 
         [Test]
         public void HyperClockCacheWrapper_is_a_noop_compatibility_wrapper()

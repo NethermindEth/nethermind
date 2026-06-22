@@ -42,6 +42,11 @@ internal sealed class MdbxProfiler
     private long _queuedKeyBytes;
     private long _queuedValueBytes;
     private long _maxQueuedOperations;
+    private long _batchGroups;
+    private long _batchGroupBatches;
+    private long _batchGroupOperations;
+    private long _maxBatchGroupBatches;
+    private long _maxBatchGroupOperations;
 
     [ThreadStatic]
     private static int t_hotPathSampleCounter;
@@ -156,6 +161,15 @@ internal sealed class MdbxProfiler
         UpdateMax(ref _maxQueuedOperations, pendingOperations);
     }
 
+    public void RecordBatchGroup(int batchCount, int operationCount)
+    {
+        Interlocked.Increment(ref _batchGroups);
+        Interlocked.Add(ref _batchGroupBatches, batchCount);
+        Interlocked.Add(ref _batchGroupOperations, operationCount);
+        UpdateMax(ref _maxBatchGroupBatches, batchCount);
+        UpdateMax(ref _maxBatchGroupOperations, operationCount);
+    }
+
     public void ReportFinal() =>
         SafeReport("final");
 
@@ -208,6 +222,11 @@ internal sealed class MdbxProfiler
         long queuedKeyBytes = Volatile.Read(ref _queuedKeyBytes);
         long queuedValueBytes = Volatile.Read(ref _queuedValueBytes);
         long maxQueuedOperations = Volatile.Read(ref _maxQueuedOperations);
+        long batchGroups = Volatile.Read(ref _batchGroups);
+        long batchGroupBatches = Volatile.Read(ref _batchGroupBatches);
+        long batchGroupOperations = Volatile.Read(ref _batchGroupOperations);
+        long maxBatchGroupBatches = Volatile.Read(ref _maxBatchGroupBatches);
+        long maxBatchGroupOperations = Volatile.Read(ref _maxBatchGroupOperations);
 
         using Process process = Process.GetCurrentProcess();
         long managedBytes = GC.GetTotalMemory(forceFullCollection: false);
@@ -221,7 +240,7 @@ internal sealed class MdbxProfiler
             _logger.Info(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}{storageStatsText}"));
+                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} batchGroups={batchGroups} avgBatchGroupBatches={Average(batchGroupBatches, batchGroups):F1} avgBatchGroupOps={Average(batchGroupOperations, batchGroups):F1} maxBatchGroupBatches={maxBatchGroupBatches} maxBatchGroupOps={maxBatchGroupOperations} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}{storageStatsText}"));
         }
     }
 

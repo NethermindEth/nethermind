@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using Nethermind.Db.Rocks.Config;
@@ -12,11 +13,11 @@ using ZstdSharp;
 
 namespace Nethermind.Db.Rocks;
 
-internal sealed class MdbxValueCompression(bool enabled) : IDisposable
+internal sealed class MdbxValueCompression(bool enabled, int minValueLength = MdbxValueCompression.DefaultMinValueLength) : IDisposable
 {
     private const int LegacyHeaderLength = 9;
     private const int HeaderLength = 10;
-    private const int MinValueLength = 64;
+    internal const int DefaultMinValueLength = 256;
     private const int MaxDecodedLength = 1024 * 1024 * 1024;
     private const byte LegacySnappyVersion = 1;
     private const byte Version = 2;
@@ -24,6 +25,7 @@ internal sealed class MdbxValueCompression(bool enabled) : IDisposable
     private const byte ZstdCodec = 2;
     private const int ZstdCompressionLevel = 1;
     private const string EnabledVariable = "NETHERMIND_MDBX_COMPRESSION";
+    private const string MinValueLengthVariable = "NETHERMIND_MDBX_COMPRESSION_MIN_BYTES";
 
     private readonly ThreadLocal<Compressor> _zstdCompressors = new(() => new Compressor(ZstdCompressionLevel), trackAllValues: true);
     private readonly ThreadLocal<Decompressor> _zstdDecompressors = new(() => new Decompressor(), trackAllValues: true);
@@ -32,6 +34,8 @@ internal sealed class MdbxValueCompression(bool enabled) : IDisposable
     private static ReadOnlySpan<byte> Magic => [0xFF, (byte)'N', (byte)'M', (byte)'X'];
 
     public bool Enabled { get; } = enabled;
+
+    public int MinValueLength { get; } = Math.Max(0, minValueLength);
 
     public static MdbxValueCompression Create(IRocksDbConfig rocksDbConfig, ILogger logger, string path)
     {
@@ -50,12 +54,13 @@ internal sealed class MdbxValueCompression(bool enabled) : IDisposable
             }
         }
 
+        int minValueLength = ReadMinValueLength(logger);
         if (logger.IsInfo)
         {
-            logger.Info($"MDBX value compression for {path}: {(enabled ? "enabled" : "disabled")}");
+            logger.Info($"MDBX value compression for {path}: {(enabled ? "enabled" : "disabled")} minBytes={minValueLength}");
         }
 
-        return new MdbxValueCompression(enabled);
+        return new MdbxValueCompression(enabled, minValueLength);
     }
 
     public bool TryEncode(ReadOnlySpan<byte> value, out byte[]? buffer, out int length)
@@ -132,6 +137,27 @@ internal sealed class MdbxValueCompression(bool enabled) : IDisposable
         }
 
         return !compression.Equals("kNoCompression", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int ReadMinValueLength(ILogger logger)
+    {
+        string? value = Environment.GetEnvironmentVariable(MinValueLengthVariable);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return DefaultMinValueLength;
+        }
+
+        if (int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) && parsed >= 0)
+        {
+            return parsed;
+        }
+
+        if (logger.IsWarn)
+        {
+            logger.Warn($"Ignoring invalid {MinValueLengthVariable} value '{value}'. Use a non-negative integer.");
+        }
+
+        return DefaultMinValueLength;
     }
 
     private static bool LooksCompressed(ReadOnlySpan<byte> stored)

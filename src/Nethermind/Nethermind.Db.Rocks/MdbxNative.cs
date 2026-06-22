@@ -20,9 +20,11 @@ internal static class MdbxNative
 
     internal const uint EnvNoSubDir = 0x4000;
     internal const uint EnvNoMetaSync = 0x40000;
+    internal const uint EnvWriteMap = 0x80000;
     internal const uint EnvNoStickyThreads = 0x200000;
     internal const uint EnvNoReadAhead = 0x800000;
     internal const uint EnvNoMemInit = 0x1000000;
+    internal const uint EnvCoalesce = 0x2000000;
     internal const uint EnvLifoReclaim = 0x4000000;
 
     internal const uint ReadOnly = 0x20000;
