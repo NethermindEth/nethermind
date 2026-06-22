@@ -72,13 +72,13 @@ namespace Nethermind.AuRa.Test
             public const ulong StepDuration = 10;
             public static readonly TimeSpan StepDurationTimeSpan = TimeSpan.FromMilliseconds(StepDuration);
 
-            public ulong CurrentStep => (ulong)UnixTime.MillisecondsLong / StepDuration;
+            public ulong CurrentStep => UnixTime.Milliseconds / StepDuration;
 
             public TimeSpan TimeToNextStep
             {
                 get
                 {
-                    ulong milliseconds = (ulong)UnixTime.MillisecondsLong;
+                    ulong milliseconds = UnixTime.Milliseconds;
                     return TimeSpan.FromMilliseconds(((milliseconds / StepDuration) + 1) * StepDuration - milliseconds);
                 }
             }
