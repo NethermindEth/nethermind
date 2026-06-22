@@ -509,10 +509,6 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
-            if ((session.Node?.IsStatic == true || session.Node?.IsBootnode == true)
-                && session.RemoteHost is { } remoteHost && IPAddress.TryParse(remoteHost, out IPAddress? remoteIp))
-                _nodeFilter.Delete(remoteIp);
-
             subscription.DetachSession();
             _sessionMonitor.RemoveSession(session);
             try

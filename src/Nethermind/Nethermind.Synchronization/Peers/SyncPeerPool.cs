@@ -671,7 +671,7 @@ namespace Nethermind.Synchronization.Peers
 
         public void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception = null)
         {
-            if (_logger.IsInfo) _logger.Info($"Refresh failed: {syncPeer.Node:c} reason={reason} disconnect={exception is not OperationCanceledException and not TimeoutException}");
+            if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}, {exception}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
 
             if (exception is OperationCanceledException or TimeoutException)

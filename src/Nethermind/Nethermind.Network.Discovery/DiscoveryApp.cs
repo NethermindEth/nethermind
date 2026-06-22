@@ -250,7 +250,13 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken token) => _kademliaNodeSource.DiscoverNodes(token);
 
-    private void OnKademliaNodeRemoved(object? sender, Node node) => NodeRemoved?.Invoke(sender, new NodeEventArgs(node));
+    private void OnKademliaNodeRemoved(object? sender, Node node)
+    {
+        if (node.IsBootnode || node.IsStatic)
+            return;
+
+        NodeRemoved?.Invoke(sender, new NodeEventArgs(node));
+    }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
