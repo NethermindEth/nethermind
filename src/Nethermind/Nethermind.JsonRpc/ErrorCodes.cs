@@ -122,6 +122,11 @@ namespace Nethermind.JsonRpc
         public const int PrunedHistoryUnavailable = 4444;
 
         /// <summary>
+        /// Error message for <see cref="PrunedHistoryUnavailable"/>, aligned with Geth's EIP-4444 message.
+        /// </summary>
+        public const string PrunedHistoryUnavailableMessage = "pruned history unavailable";
+
+        /// <summary>
         /// Data is not available due to eip not being enabled yet
         /// </summary>
         public const int UnavailableBeforeFork = 4445;
