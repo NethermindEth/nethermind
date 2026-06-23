@@ -343,7 +343,10 @@ internal sealed class MdbxEnvironment : IDisposable
                     groupedOperations = RentSortedGroupedWriteOperations(group, operationCount);
                     uint transactionFlags = GetTransactionFlags(group, _disableWalSyncMode);
                     ExecuteWrite(txn => ApplyOperations(txn, group, groupedOperations, operationCount), operationCount, transactionFlags);
-                    _profiler?.RecordWriteSort(operationCount);
+                    if (groupedOperations is not null)
+                    {
+                        _profiler?.RecordWriteSort(operationCount);
+                    }
                 }
 
                 _profiler?.RecordBatchGroup(group.Count, operationCount, byteCount);
@@ -465,8 +468,13 @@ internal sealed class MdbxEnvironment : IDisposable
         }
     }
 
-    private static MdbxGroupedWriteOperation[] RentSortedGroupedWriteOperations(List<MdbxBatchGroupRequest> group, int operationCount)
+    private static MdbxGroupedWriteOperation[]? RentSortedGroupedWriteOperations(List<MdbxBatchGroupRequest> group, int operationCount)
     {
+        if (IsSortedBatchGroup(group))
+        {
+            return null;
+        }
+
         MdbxGroupedWriteOperation[] operationIndexes = ArrayPool<MdbxGroupedWriteOperation>.Shared.Rent(operationCount);
         try
         {
@@ -488,6 +496,29 @@ internal sealed class MdbxEnvironment : IDisposable
             ArrayPool<MdbxGroupedWriteOperation>.Shared.Return(operationIndexes);
             throw;
         }
+    }
+
+    internal static bool IsSortedBatchGroup(IReadOnlyList<MdbxBatchGroupRequest> group)
+    {
+        bool hasPrevious = false;
+        MdbxWriteOperation previous = default;
+        for (int requestIndex = 0; requestIndex < group.Count; requestIndex++)
+        {
+            IReadOnlyList<MdbxWriteOperation> operations = group[requestIndex].Operations;
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MdbxWriteOperation current = operations[operationIndex];
+                if (hasPrevious && MdbxWriteOperationIndexComparer.CompareOperations(previous, current) > 0)
+                {
+                    return false;
+                }
+
+                previous = current;
+                hasPrevious = true;
+            }
+        }
+
+        return true;
     }
 
     private static void ReturnSortedGroupedWriteOperations(MdbxGroupedWriteOperation[]? operationIndexes)
@@ -575,10 +606,24 @@ internal sealed class MdbxEnvironment : IDisposable
     private void ApplyOperations(
         MdbxNative.SafeMdbxTxnHandle txn,
         List<MdbxBatchGroupRequest> group,
-        MdbxGroupedWriteOperation[] operationIndexes,
+        MdbxGroupedWriteOperation[]? operationIndexes,
         int operationCount)
     {
         MdbxAppendTracker? appendTracker = _appendEnabled ? new MdbxAppendTracker(this, txn) : null;
+        if (operationIndexes is null)
+        {
+            for (int requestIndex = 0; requestIndex < group.Count; requestIndex++)
+            {
+                IReadOnlyList<MdbxWriteOperation> operations = group[requestIndex].Operations;
+                for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+                {
+                    ApplyOperation(txn, operations[operationIndex], appendTracker);
+                }
+            }
+
+            return;
+        }
+
         for (int i = 0; i < operationCount; i++)
         {
             MdbxGroupedWriteOperation operationIndex = operationIndexes[i];

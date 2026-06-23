@@ -1220,6 +1220,41 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Mdbx_grouped_write_ordering_detects_already_sorted_groups()
+        {
+            List<MdbxBatchGroupRequest> sortedGroup =
+            [
+                new(
+                [
+                    MdbxWriteOperation.PutSpan(1, [1], [0], null),
+                    MdbxWriteOperation.PutSpan(1, [2], [1], null),
+                ]),
+                new(
+                [
+                    MdbxWriteOperation.PutSpan(1, [2], [2], null),
+                    MdbxWriteOperation.PutSpan(2, [1], [3], null),
+                ]),
+            ];
+            List<MdbxBatchGroupRequest> unsortedGroup =
+            [
+                new(
+                [
+                    MdbxWriteOperation.PutSpan(1, [2], [0], null),
+                ]),
+                new(
+                [
+                    MdbxWriteOperation.PutSpan(1, [1], [1], null),
+                ]),
+            ];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MdbxEnvironment.IsSortedBatchGroup(sortedGroup), Is.True);
+                Assert.That(MdbxEnvironment.IsSortedBatchGroup(unsortedGroup), Is.False);
+            }
+        }
+
+        [Test]
         public void Write_batch_keeps_last_operation_for_duplicate_keys_after_sorting()
         {
             using IWriteBatch writeBatch = _db.StartWriteBatch();
