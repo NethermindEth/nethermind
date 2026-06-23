@@ -12,11 +12,11 @@ namespace Nethermind.Xdc.Test;
 public class XdcP2PCapabilityResolverTests
 {
     [Test]
-    public void Resolve_replaces_default_eth68_with_xdc_capabilities()
+    public void Resolve_advertises_xdc_capabilities()
     {
         XdcP2PCapabilityResolver resolver = new();
 
-        HashSet<Capability> capabilities = [new(Protocol.Eth, 68)];
+        HashSet<Capability> capabilities = [];
         resolver.Resolve(capabilities);
 
         Assert.That(capabilities, Is.EquivalentTo(new[]

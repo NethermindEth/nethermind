@@ -10,7 +10,8 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Xdc;
 
 /// <summary>
-/// XDC advertises eth/62, eth/63 and eth/100 instead of the default eth/68.
+/// XDC advertises eth/62, eth/63 and eth/100. The default eth/68 resolver is dropped at registration
+/// (see <c>XdcModule</c>), so this resolver only contributes the XDC-specific versions.
 /// </summary>
 public class XdcP2PCapabilityResolver : IP2PCapabilityResolver
 {
@@ -19,7 +20,6 @@ public class XdcP2PCapabilityResolver : IP2PCapabilityResolver
 
     public void Resolve(ISet<Capability> capabilities)
     {
-        capabilities.Remove(new Capability(Protocol.Eth, 68));
         capabilities.Add(new Capability(Protocol.Eth, 62));
         capabilities.Add(new Capability(Protocol.Eth, 63));
         capabilities.Add(new Capability(Protocol.Eth, 100));
