@@ -732,6 +732,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+                    // EIP-8038: an invalid authorization touches no state, so the worst-case intrinsic
+                    // charge (NEW_ACCOUNT + AUTH_BASE state and ACCOUNT_WRITE regular) is fully refunded.
+                    if (spec.IsEip8037Enabled)
+                    {
+                        refunds++;
+                        authBaseRefunds++;
+                    }
                 }
                 else
                 {
