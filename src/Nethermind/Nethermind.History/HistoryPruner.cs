@@ -44,7 +44,6 @@ public class HistoryPruner : IHistoryPruner
     private readonly IHistoryConfig _historyConfig;
     private readonly bool _enabled;
     private readonly ulong _pruningInterval;
-    // MinHistoryRetentionEpochs / MinBalRetentionEpochs come from IReleaseSpec which still returns long.
     private readonly ulong _minHistoryRetentionEpochs;
     private readonly ulong _minBalRetentionEpochs;
     private readonly ulong _ancientBarrier;
@@ -510,7 +509,6 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            // Rlp.Encode(long) stores as unsigned big-endian; DecodeULong() correctly reverses it.
             UpdateBlocksDeletePointer(ulong.Max(blocksVal.AsRlpValueContext().DecodeULong(), _minDeletableBlockNumber));
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
         }
