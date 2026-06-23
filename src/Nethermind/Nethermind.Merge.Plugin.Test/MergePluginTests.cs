@@ -105,7 +105,7 @@ public class MergePluginTests
                 INethermindApi api = ctx.Resolve<INethermindApi>();
                 Build.MockOutNethermindApi((NethermindApi)api);
 
-                api.BlockProcessingQueue.IsEmpty.Returns(true);
+                ctx.Resolve<IBlockProcessingQueue>().IsEmpty.Returns(true);
             });
 
         configure?.Invoke(builder);
