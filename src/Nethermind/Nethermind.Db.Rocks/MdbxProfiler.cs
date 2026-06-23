@@ -17,7 +17,7 @@ internal sealed class MdbxProfiler
 
     private readonly string _path;
     private readonly ILogger _logger;
-    private readonly Func<MdbxStorageStats?> _statsProvider;
+    private readonly Func<MdbxProfileStats?> _statsProvider;
     private readonly long _intervalTicks;
     private readonly long _slowTransactionTicks;
     private readonly int _hotPathSampleRate;
@@ -65,7 +65,7 @@ internal sealed class MdbxProfiler
     [ThreadStatic]
     private static int t_hotPathSampleCounter;
 
-    private MdbxProfiler(string path, ILogger logger, TimeSpan interval, TimeSpan slowTransactionThreshold, int hotPathSampleRate, Func<MdbxStorageStats?> statsProvider)
+    private MdbxProfiler(string path, ILogger logger, TimeSpan interval, TimeSpan slowTransactionThreshold, int hotPathSampleRate, Func<MdbxProfileStats?> statsProvider)
     {
         _path = path;
         _logger = logger;
@@ -76,7 +76,7 @@ internal sealed class MdbxProfiler
         _nextReportTimestamp = Stopwatch.GetTimestamp() + _intervalTicks;
     }
 
-    public static MdbxProfiler? Create(string path, MdbxTuningOptions options, ILogger logger, Func<MdbxStorageStats?> statsProvider)
+    public static MdbxProfiler? Create(string path, MdbxTuningOptions options, ILogger logger, Func<MdbxProfileStats?> statsProvider)
     {
         if (!options.EnableProfiling || !logger.IsInfo)
         {
@@ -305,15 +305,15 @@ internal sealed class MdbxProfiler
         long managedBytes = GC.GetTotalMemory(forceFullCollection: false);
         long workingSetBytes = process.WorkingSet64;
         long privateBytes = process.PrivateMemorySize64;
-        MdbxStorageStats? storageStats = _statsProvider();
-        string storageStatsText = storageStats is null ? string.Empty : FormatStorageStats(storageStats.Value);
+        MdbxProfileStats? stats = _statsProvider();
+        string statsText = stats is null ? string.Empty : FormatProfileStats(stats.Value);
 
         if (_logger.IsInfo)
         {
             _logger.Info(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} batchGroups={batchGroups} avgBatchGroupBatches={Average(batchGroupBatches, batchGroups):F1} avgBatchGroupOps={Average(batchGroupOperations, batchGroups):F1} avgBatchGroupMiB={ToMiB(Average(batchGroupBytes, batchGroups)):F1} maxBatchGroupBatches={maxBatchGroupBatches} maxBatchGroupOps={maxBatchGroupOperations} maxBatchGroupMiB={ToMiB(maxBatchGroupBytes):F1} sortedWriteBatches={sortedWriteBatches} avgSortedWriteOps={Average(sortedWriteOperations, sortedWriteBatches):F1} maxSortedWriteOps={maxSortedWriteOperations} compressionAttempts={compressionAttempts} compressedValues={compressedValues} compressionRejected={compressionRejected} compressionRejectPct={Percent(compressionRejected, compressionAttempts):F1} escapedRawValues={escapedRawValues} compressionInputMiB={ToMiB(compressionInputBytes):F1} compressionStoredMiB={ToMiB(compressionStoredBytes):F1} compressionSavedMiB={ToMiB(Math.Max(0, compressionInputBytes - compressionStoredBytes)):F1} appendAttempts={appendAttempts} appendSuccesses={appendSuccesses} appendFallbacks={appendFallbacks} appendSuccessPct={Percent(appendSuccesses, appendAttempts):F1} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}{storageStatsText}"));
+                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} batchGroups={batchGroups} avgBatchGroupBatches={Average(batchGroupBatches, batchGroups):F1} avgBatchGroupOps={Average(batchGroupOperations, batchGroups):F1} avgBatchGroupMiB={ToMiB(Average(batchGroupBytes, batchGroups)):F1} maxBatchGroupBatches={maxBatchGroupBatches} maxBatchGroupOps={maxBatchGroupOperations} maxBatchGroupMiB={ToMiB(maxBatchGroupBytes):F1} sortedWriteBatches={sortedWriteBatches} avgSortedWriteOps={Average(sortedWriteOperations, sortedWriteBatches):F1} maxSortedWriteOps={maxSortedWriteOperations} compressionAttempts={compressionAttempts} compressedValues={compressedValues} compressionRejected={compressionRejected} compressionRejectPct={Percent(compressionRejected, compressionAttempts):F1} escapedRawValues={escapedRawValues} compressionInputMiB={ToMiB(compressionInputBytes):F1} compressionStoredMiB={ToMiB(compressionStoredBytes):F1} compressionSavedMiB={ToMiB(Math.Max(0, compressionInputBytes - compressionStoredBytes)):F1} appendAttempts={appendAttempts} appendSuccesses={appendSuccesses} appendFallbacks={appendFallbacks} appendSuccessPct={Percent(appendSuccesses, appendAttempts):F1} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}{statsText}"));
         }
     }
 
@@ -364,10 +364,55 @@ internal sealed class MdbxProfiler
     private static double ToMiB(ulong bytes) =>
         bytes / BytesPerMiB;
 
+    private static string FormatProfileStats(MdbxProfileStats stats)
+    {
+        string storageStatsText = stats.StorageStats is null ? string.Empty : FormatStorageStats(stats.StorageStats.Value);
+        return FormatEnvironmentStats(stats.EnvironmentStats) + storageStatsText;
+    }
+
+    private static string FormatEnvironmentStats(MdbxEnvironmentStats stats) =>
+        string.Create(
+            CultureInfo.InvariantCulture,
+            $" mapMiB={ToMiB(stats.MapSize):F1} fileMiB={ToMiB(stats.DatabaseFileSize):F1} allocatedMiB={ToMiB(stats.DatabaseAllocatedSize):F1} currentMapMiB={ToMiB(stats.GeometryCurrent):F1} growMiB={ToMiB(stats.GeometryGrow):F1} readers={stats.NumReaders}/{stats.MaxReaders} readerLag={stats.ReaderLag} selfReaderLag={stats.SelfReaderLag} recentTxn={stats.RecentTransactionId} latterReaderTxn={stats.LatterReaderTransactionId} unsyncMiB={ToMiB(stats.UnsyncVolume):F1} newly={stats.NewlyPages} cow={stats.CowPages} split={stats.SplitPages} merge={stats.MergePages} spill={stats.SpillPages} unspill={stats.UnspillPages} msync={stats.MsyncOperations} fsync={stats.FsyncOperations}");
+
     private static string FormatStorageStats(MdbxStorageStats stats) =>
         string.Create(
             CultureInfo.InvariantCulture,
             $" pageSize={stats.PageSize} entries={stats.Entries} depth={stats.Depth} branchPages={stats.BranchPages} leafPages={stats.LeafPages} overflowPages={stats.OverflowPages} overflowPct={Percent((long)Math.Min(stats.OverflowPages, (ulong)long.MaxValue), (long)Math.Min(stats.TotalPages, (ulong)long.MaxValue)):F1} usedMiB={ToMiB(stats.UsedBytes):F1} modTxn={stats.ModTxnId}");
+}
+
+internal readonly record struct MdbxProfileStats(
+    MdbxEnvironmentStats EnvironmentStats,
+    MdbxStorageStats? StorageStats);
+
+internal readonly record struct MdbxEnvironmentStats(
+    ulong MapSize,
+    ulong DatabaseFileSize,
+    ulong DatabaseAllocatedSize,
+    ulong GeometryCurrent,
+    ulong GeometryGrow,
+    ulong RecentTransactionId,
+    ulong LatterReaderTransactionId,
+    ulong SelfLatterReaderTransactionId,
+    uint MaxReaders,
+    uint NumReaders,
+    ulong UnsyncVolume,
+    ulong NewlyPages,
+    ulong CowPages,
+    ulong SplitPages,
+    ulong MergePages,
+    ulong SpillPages,
+    ulong UnspillPages,
+    ulong MsyncOperations,
+    ulong FsyncOperations)
+{
+    public ulong ReaderLag => RecentTransactionId >= LatterReaderTransactionId
+        ? RecentTransactionId - LatterReaderTransactionId
+        : 0;
+
+    public ulong SelfReaderLag => RecentTransactionId >= SelfLatterReaderTransactionId
+        ? RecentTransactionId - SelfLatterReaderTransactionId
+        : 0;
 }
 
 internal readonly record struct MdbxStorageStats(

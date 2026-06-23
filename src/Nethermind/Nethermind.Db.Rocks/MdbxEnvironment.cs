@@ -123,7 +123,7 @@ internal sealed class MdbxEnvironment : IDisposable
             logger.Info($"MDBX tuning for {Path}: {tuning.Describe()}");
         }
 
-        _profiler = MdbxProfiler.Create(Path, tuning, logger, TryReadStorageStats);
+        _profiler = MdbxProfiler.Create(Path, tuning, logger, TryReadProfileStats);
     }
 
     public string Path { get; }
@@ -904,13 +904,49 @@ internal sealed class MdbxEnvironment : IDisposable
         }
     }
 
-    private MdbxStorageStats? TryReadStorageStats()
+    private MdbxProfileStats? TryReadProfileStats()
     {
-        if (_disposed || _statsDbi is not uint dbi)
+        if (_disposed)
         {
             return null;
         }
 
+        MdbxNative.ThrowOnError(
+            MdbxNative.EnvInfoEx(Env, IntPtr.Zero, out MdbxNative.MdbxEnvInfo info, (nuint)Marshal.SizeOf<MdbxNative.MdbxEnvInfo>()),
+            "mdbx_env_info_ex");
+
+        MdbxEnvironmentStats environmentStats = new(
+            info.MapSize,
+            info.DatabaseFileSize,
+            info.DatabaseAllocatedSize,
+            info.Geometry.Current,
+            info.Geometry.Grow,
+            info.RecentTransactionId,
+            info.LatterReaderTransactionId,
+            info.SelfLatterReaderTransactionId,
+            info.MaxReaders,
+            info.NumReaders,
+            info.UnsyncVolume,
+            info.PageOperationStat.Newly,
+            info.PageOperationStat.Cow,
+            info.PageOperationStat.Split,
+            info.PageOperationStat.Merge,
+            info.PageOperationStat.Spill,
+            info.PageOperationStat.Unspill,
+            info.PageOperationStat.Msync,
+            info.PageOperationStat.Fsync);
+
+        MdbxStorageStats? storageStats = null;
+        if (_statsDbi is uint dbi)
+        {
+            storageStats = TryReadStorageStats(dbi);
+        }
+
+        return new MdbxProfileStats(environmentStats, storageStats);
+    }
+
+    private MdbxStorageStats TryReadStorageStats(uint dbi)
+    {
         using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
         MdbxNative.ThrowOnError(
             MdbxNative.DbiStat(txn, dbi, out MdbxNative.MdbxStat stat, (nuint)Marshal.SizeOf<MdbxNative.MdbxStat>()),
