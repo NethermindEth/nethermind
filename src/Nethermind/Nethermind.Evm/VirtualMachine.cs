@@ -931,7 +931,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             // For creation operations, subtract the code deposit cost from the available gas; otherwise, use full gas.
             ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
-            ulong reportedGas = currentState.ExecutionType.IsAnyCreate() ? gasAvailable - codeDepositGasCost : gasAvailable;
+            ulong reportedGas = currentState.ExecutionType.IsAnyCreate() ? gasAvailable.SaturatingSub(codeDepositGasCost) : gasAvailable;
             _txTracer.ReportActionRevert(reportedGas, outputBytes);
         }
         // Process contract creation flows.

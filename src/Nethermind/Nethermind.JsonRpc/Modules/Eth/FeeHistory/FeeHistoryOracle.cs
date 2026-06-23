@@ -154,7 +154,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
 
         private bool ShouldCache(Block block) =>
-            _blockTree.Head is null || block.Number >= _blockTree.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache;
+            _blockTree.Head is null || block.Number >= _blockTree.Head.Number.SaturatingSub(_oldestBlockDistanceFromHeadAllowedInCache);
 
         public ResultWrapper<FeeHistoryResults> GetFeeHistory(
             ulong blockCount,
@@ -297,7 +297,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             foreach (double percentile in rewardPercentiles)
             {
-                double thresholdGasUsed = blockInfo.GasUsed * percentile / 100;
+                ulong thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
                 while (txIndex + 1 < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
                 {
                     txIndex++;

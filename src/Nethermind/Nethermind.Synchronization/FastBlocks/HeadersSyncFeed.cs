@@ -374,7 +374,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     _sent.Add(batch);
                     ulong lowestNumber = LowestInsertedBlockHeader?.Number ?? 0UL;
-                    if (batch.StartNumber >= lowestNumber - FastBlocksPriorities.ForHeaders)
+                    if (batch.StartNumber >= lowestNumber.SaturatingSub(FastBlocksPriorities.ForHeaders))
                     {
                         batch.Prioritized = true;
                     }
