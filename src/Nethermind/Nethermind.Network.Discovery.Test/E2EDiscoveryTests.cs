@@ -90,7 +90,6 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         {
             IPeerPool pool = node.Resolve<IPeerPool>();
             HashSet<PublicKey> expectedKeys = [.. nodeKeys];
-            expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
             Assert.That(() => pool.Peers.Select(static kvp => kvp.Value.Node.Id).ToHashSet(),
                 Is.EquivalentTo(expectedKeys).After(15000, 100));

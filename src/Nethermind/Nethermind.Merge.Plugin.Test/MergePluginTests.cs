@@ -101,6 +101,7 @@ public class MergePluginTests
                 LimboLogs.Instance))
             .AddSingleton(Substitute.For<IRpcModuleProvider>())
             .AddSingleton(Substitute.For<IBlockProcessingQueue>())
+            .AddSingleton(Substitute.For<IProtocolsManager>())
             .OnBuild(ctx =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();

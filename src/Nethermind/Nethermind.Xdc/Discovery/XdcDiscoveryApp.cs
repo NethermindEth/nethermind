@@ -5,6 +5,7 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 
@@ -16,12 +17,14 @@ public class XdcDiscoveryApp(
     IProcessExitSource processExitSource,
     INetworkConfig networkConfig,
     IDiscoveryConfig discoveryConfig,
+    IIPResolver ipResolver,
     ILogManager logManager)
     : DiscoveryApp(
         rootScope,
         enode,
         networkConfig,
         discoveryConfig,
+        ipResolver,
         processExitSource,
         logManager,
         static builder => builder

@@ -22,8 +22,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         bool IsFastBlockAccessListsFinished();
 
-        bool IsLoadingBlocksFromDb();
-
         long FindBestProcessedBlock();
 
         UInt256 ChainDifficulty { get; }

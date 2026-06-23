@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
@@ -14,9 +17,10 @@ namespace Nethermind.Network.Discovery.Discv4;
 /// Because kademlia can and probably will be reused outside of discv4, this module is meant to be added within a child
 /// lifecycle in <see cref="DiscoveryApp"/> to prevent unexpected conflict.
 /// </summary>
-/// <param name="masterNode"></param>
+/// <param name="enode"></param>
+/// <param name="networkConfig"></param>
 /// <param name="bootNodes"></param>
-public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : Module
+public class DiscV4KademliaModule(IEnode enode, INetworkConfig networkConfig, IReadOnlyList<Node> bootNodes) : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
             .AddSingleton<DiscoveryPersistenceManager>()
@@ -35,7 +39,10 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
             .AddSingleton<IKeyOperator<PublicKey, Node>, PublicKeyKeyOperator>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
             {
-                CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true), // It actually only need masterNode.
+                CurrentNodeId = new Node(
+                    enode.PublicKey,
+                    new IPEndPoint(enode.HostIp, networkConfig.DiscoveryPort),
+                    isStatic: true),
                 KSize = discoveryConfig.BucketSize,
                 Alpha = discoveryConfig.Concurrency,
                 Beta = discoveryConfig.BitsPerHop,
