@@ -189,17 +189,17 @@ public partial class DbOnTheRocks : IDb, IMergeableKeyValueStore, ISortedKeyValu
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
-        Mdbx.Put(_dbi, key, value);
+        Mdbx.Put(_dbi, key, value, flags);
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
     {
         byte[] keyCopy = key.ToArray();
         byte[] valueCopy = value.ToArray();
-        Mdbx.ExecuteWrite(txn => Mdbx.Put(txn, _dbi, keyCopy, valueCopy));
+        Mdbx.ExecuteWrite(txn => Mdbx.Put(txn, _dbi, keyCopy, valueCopy), flags);
     }
 
     public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
-        Mdbx.Merge(_dbi, key, value, _mergeOperator);
+        Mdbx.Merge(_dbi, key, value, _mergeOperator, flags);
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) =>
         MdbxCursorHelpers.Enumerate(Mdbx, _dbi);

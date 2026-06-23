@@ -25,6 +25,7 @@ internal readonly record struct MdbxTuningOptions(
     bool EnableCoalesce,
     bool EnableBatchGrouping,
     bool EnableAppend,
+    MdbxDisableWalSyncMode DisableWalSyncMode,
     int MaxBatchGroupOperations,
     long MaxBatchGroupBytes,
     bool EnableProfiling,
@@ -51,6 +52,7 @@ internal readonly record struct MdbxTuningOptions(
     public const long DefaultStateDirtyPagesReserveBytes = 1L << 30;
     public const long DefaultStateTransactionDirtyPagesLimitBytes = 1L << 30;
     public const long DefaultStateTransactionDirtyPagesInitialBytes = 128L << 20;
+    public const MdbxDisableWalSyncMode DefaultDisableWalSyncMode = MdbxDisableWalSyncMode.NoMetaSync;
 
     private const int DefaultProfileIntervalSeconds = 30;
     private const int DefaultSlowTransactionMilliseconds = 1_000;
@@ -71,6 +73,7 @@ internal readonly record struct MdbxTuningOptions(
         bool enableCoalesce = ReadBool("NETHERMIND_MDBX_COALESCE", fallback: true, logger, ref hasOverrides);
         bool enableBatchGrouping = ReadBool("NETHERMIND_MDBX_BATCH_GROUP", fallback: true, logger, ref hasOverrides);
         bool enableAppend = ReadBool("NETHERMIND_MDBX_APPEND", fallback: true, logger, ref hasOverrides);
+        MdbxDisableWalSyncMode disableWalSyncMode = ReadDisableWalSyncMode("NETHERMIND_MDBX_DISABLE_WAL_SYNC_MODE", DefaultDisableWalSyncMode, logger, ref hasOverrides);
         bool enableProfiling = ReadBool("NETHERMIND_MDBX_PROFILE", fallback: false, logger, ref hasOverrides);
         int hotPathSampleRate = ReadInt32("NETHERMIND_MDBX_PROFILE_HOTPATH_SAMPLE_RATE", DefaultHotPathSampleRate, logger, ref hasOverrides);
         int profileIntervalSeconds = ReadInt32("NETHERMIND_MDBX_PROFILE_INTERVAL_SECONDS", DefaultProfileIntervalSeconds, logger, ref hasOverrides);
@@ -170,6 +173,7 @@ internal readonly record struct MdbxTuningOptions(
             enableCoalesce,
             enableBatchGrouping,
             enableAppend,
+            disableWalSyncMode,
             maxBatchGroupOperations,
             maxBatchGroupBytes,
             enableProfiling,
@@ -207,7 +211,7 @@ internal readonly record struct MdbxTuningOptions(
     public string Describe() =>
         string.Create(
             CultureInfo.InvariantCulture,
-            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} rpAugmentLimit={RpAugmentLimit} dirtyPagesReserveLimit={DirtyPagesReserveLimit} txnDirtyPagesLimit={TransactionDirtyPagesLimit} txnDirtyPagesInitial={TransactionDirtyPagesInitial} readAhead={EnableReadAhead} writeMap={EnableWriteMap} coalesce={EnableCoalesce} batchGroup={EnableBatchGrouping} append={EnableAppend} batchGroupMaxOps={MaxBatchGroupOperations} batchGroupMaxBytes={FormatBytes(MaxBatchGroupBytes)} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
+            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} rpAugmentLimit={RpAugmentLimit} dirtyPagesReserveLimit={DirtyPagesReserveLimit} txnDirtyPagesLimit={TransactionDirtyPagesLimit} txnDirtyPagesInitial={TransactionDirtyPagesInitial} readAhead={EnableReadAhead} writeMap={EnableWriteMap} coalesce={EnableCoalesce} batchGroup={EnableBatchGrouping} append={EnableAppend} disableWalSync={DisableWalSyncMode} batchGroupMaxOps={MaxBatchGroupOperations} batchGroupMaxBytes={FormatBytes(MaxBatchGroupBytes)} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
 
     internal static bool TryParseSize(string value, out long result)
     {
@@ -290,6 +294,35 @@ internal readonly record struct MdbxTuningOptions(
                 return true;
             default:
                 result = false;
+                return false;
+        }
+    }
+
+    internal static bool TryParseDisableWalSyncMode(string value, out MdbxDisableWalSyncMode result)
+    {
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "none":
+            case "off":
+            case "false":
+            case "0":
+                result = MdbxDisableWalSyncMode.None;
+                return true;
+            case "nometasync":
+            case "no-meta-sync":
+            case "meta":
+                result = MdbxDisableWalSyncMode.NoMetaSync;
+                return true;
+            case "safenosync":
+            case "safe-nosync":
+            case "nosync":
+            case "no-sync":
+            case "true":
+            case "1":
+                result = MdbxDisableWalSyncMode.SafeNoSync;
+                return true;
+            default:
+                result = MdbxDisableWalSyncMode.None;
                 return false;
         }
     }
@@ -384,6 +417,24 @@ internal readonly record struct MdbxTuningOptions(
         return fallback;
     }
 
+    private static MdbxDisableWalSyncMode ReadDisableWalSyncMode(string name, MdbxDisableWalSyncMode fallback, ILogger logger, ref bool hasOverrides)
+    {
+        string? value = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return fallback;
+        }
+
+        hasOverrides = true;
+        if (TryParseDisableWalSyncMode(value, out MdbxDisableWalSyncMode parsed))
+        {
+            return parsed;
+        }
+
+        Warn(logger, $"{name}='{value}' is not a valid MDBX DisableWAL sync mode. Use none, nometasync, or safe-nosync.");
+        return fallback;
+    }
+
     private static void Warn(ILogger logger, string message)
     {
         if (logger.IsWarn)
@@ -407,4 +458,11 @@ internal readonly record struct MdbxTuningOptions(
             >= 1L << 10 when bytes % (1L << 10) == 0 => $"{bytes / (1L << 10)}KiB",
             _ => bytes.ToString(CultureInfo.InvariantCulture),
         };
+}
+
+internal enum MdbxDisableWalSyncMode
+{
+    None,
+    NoMetaSync,
+    SafeNoSync,
 }

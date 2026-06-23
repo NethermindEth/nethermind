@@ -448,6 +448,26 @@ namespace Nethermind.Db.Test
         public void Mdbx_tuning_bool_parser_rejects_invalid_values(string value) =>
             Assert.That(MdbxTuningOptions.TryParseBool(value, out _), Is.False);
 
+        [TestCase("none", 0)]
+        [TestCase("off", 0)]
+        [TestCase("nometasync", 1)]
+        [TestCase("no-meta-sync", 1)]
+        [TestCase("safenosync", 2)]
+        [TestCase("safe-nosync", 2)]
+        [TestCase("nosync", 2)]
+        public void Mdbx_tuning_disable_wal_sync_mode_parser_supports_expected_values(string value, int expected)
+        {
+            Assert.That(MdbxTuningOptions.TryParseDisableWalSyncMode(value, out MdbxDisableWalSyncMode result), Is.True);
+            Assert.That((int)result, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Mdbx_tuning_disable_wal_sync_mode_parser_rejects_invalid_values()
+        {
+            Assert.That(MdbxTuningOptions.TryParseDisableWalSyncMode("maybe", out MdbxDisableWalSyncMode result), Is.False);
+            Assert.That(result, Is.EqualTo(MdbxDisableWalSyncMode.None));
+        }
+
         [Test]
         public void Mdbx_tuning_defaults_enable_write_path_optimizations()
         {
@@ -459,6 +479,7 @@ namespace Nethermind.Db.Test
                 Assert.That(options.EnableCoalesce, Is.True);
                 Assert.That(options.EnableBatchGrouping, Is.True);
                 Assert.That(options.EnableAppend, Is.True);
+                Assert.That(options.DisableWalSyncMode, Is.EqualTo(MdbxTuningOptions.DefaultDisableWalSyncMode));
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupOperations));
                 Assert.That(options.MaxBatchGroupBytes, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupBytes));
                 Assert.That(options.GrowthStep, Is.EqualTo(MdbxTuningOptions.DefaultGrowthStep));
@@ -980,6 +1001,72 @@ namespace Nethermind.Db.Test
             Array.Sort(indexes, 0, indexes.Length, new MdbxWriteOperationIndexComparer(operations));
 
             Assert.That(indexes, Is.EqualTo(new[] { 3, 1, 2, 4, 0 }));
+        }
+
+        [Test]
+        public void Mdbx_write_transaction_flags_follow_disable_wal_mode()
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MdbxEnvironment.GetTransactionFlags(WriteFlags.None, MdbxDisableWalSyncMode.SafeNoSync), Is.Zero);
+                Assert.That(MdbxEnvironment.GetTransactionFlags(WriteFlags.DisableWAL, MdbxDisableWalSyncMode.None), Is.Zero);
+                Assert.That(MdbxEnvironment.GetTransactionFlags(WriteFlags.DisableWAL, MdbxDisableWalSyncMode.NoMetaSync), Is.EqualTo(MdbxNative.TxnNoMetaSync));
+                Assert.That(MdbxEnvironment.GetTransactionFlags(WriteFlags.DisableWAL, MdbxDisableWalSyncMode.SafeNoSync), Is.EqualTo(MdbxNative.TxnNoSync));
+            }
+        }
+
+        [Test]
+        public void Mdbx_write_transaction_flags_require_all_operations_to_disable_wal()
+        {
+            List<MdbxWriteOperation> disableWalOperations =
+            [
+                MdbxWriteOperation.PutSpan(1, [1], [1], null, WriteFlags.DisableWAL),
+                MdbxWriteOperation.Set(1, [2], null, null, WriteFlags.DisableWAL),
+            ];
+            List<MdbxWriteOperation> mixedOperations =
+            [
+                MdbxWriteOperation.PutSpan(1, [1], [1], null, WriteFlags.DisableWAL),
+                MdbxWriteOperation.PutSpan(1, [2], [2], null),
+            ];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MdbxEnvironment.GetTransactionFlags(disableWalOperations, MdbxDisableWalSyncMode.SafeNoSync), Is.EqualTo(MdbxNative.TxnNoSync));
+                Assert.That(MdbxEnvironment.GetTransactionFlags(mixedOperations, MdbxDisableWalSyncMode.SafeNoSync), Is.Zero);
+            }
+        }
+
+        [Test]
+        public void Mdbx_grouped_write_transaction_flags_require_all_operations_to_disable_wal()
+        {
+            List<MdbxBatchGroupRequest> disableWalGroup =
+            [
+                new(
+                [
+                    MdbxWriteOperation.PutSpan(1, [1], [1], null, WriteFlags.DisableWAL),
+                ]),
+                new(
+                [
+                    MdbxWriteOperation.Set(1, [2], null, null, WriteFlags.DisableWAL),
+                ]),
+            ];
+            List<MdbxBatchGroupRequest> mixedGroup =
+            [
+                new(
+                [
+                    MdbxWriteOperation.PutSpan(1, [1], [1], null, WriteFlags.DisableWAL),
+                ]),
+                new(
+                [
+                    MdbxWriteOperation.PutSpan(1, [2], [2], null),
+                ]),
+            ];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MdbxEnvironment.GetTransactionFlags(disableWalGroup, MdbxDisableWalSyncMode.SafeNoSync), Is.EqualTo(MdbxNative.TxnNoSync));
+                Assert.That(MdbxEnvironment.GetTransactionFlags(mixedGroup, MdbxDisableWalSyncMode.SafeNoSync), Is.Zero);
+            }
         }
 
         [Test]

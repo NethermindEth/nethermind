@@ -11,6 +11,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -29,6 +30,7 @@ internal sealed class MdbxEnvironment : IDisposable
     private readonly MdbxValueCompression _valueCompression;
     private readonly bool _batchGroupingEnabled;
     private readonly bool _appendEnabled;
+    private readonly MdbxDisableWalSyncMode _disableWalSyncMode;
     private readonly int _maxBatchGroupOperations;
     private readonly long _maxBatchGroupBytes;
     private uint? _statsDbi;
@@ -100,6 +102,7 @@ internal sealed class MdbxEnvironment : IDisposable
         }
         _batchGroupingEnabled = tuning.EnableBatchGrouping;
         _appendEnabled = tuning.EnableAppend;
+        _disableWalSyncMode = tuning.DisableWalSyncMode;
         _maxBatchGroupOperations = tuning.MaxBatchGroupOperations;
         _maxBatchGroupBytes = tuning.MaxBatchGroupBytes;
 
@@ -195,10 +198,13 @@ internal sealed class MdbxEnvironment : IDisposable
         }
     }
 
-    public void ExecuteWrite(Action<MdbxNative.SafeMdbxTxnHandle> action) =>
-        ExecuteWrite(action, operationCount: 1);
+    public void ExecuteWrite(Action<MdbxNative.SafeMdbxTxnHandle> action, WriteFlags writeFlags = WriteFlags.None) =>
+        ExecuteWrite(action, operationCount: 1, GetTransactionFlags(writeFlags, _disableWalSyncMode));
 
-    public void ExecuteWrite(Action<MdbxNative.SafeMdbxTxnHandle> action, int operationCount)
+    public void ExecuteWrite(Action<MdbxNative.SafeMdbxTxnHandle> action, int operationCount) =>
+        ExecuteWrite(action, operationCount, transactionFlags: 0);
+
+    private void ExecuteWrite(Action<MdbxNative.SafeMdbxTxnHandle> action, int operationCount, uint transactionFlags)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -206,7 +212,7 @@ internal sealed class MdbxEnvironment : IDisposable
         {
             lock (_writeLock)
             {
-                using MdbxNative.SafeMdbxTxnHandle txn = BeginWriteTransaction();
+                using MdbxNative.SafeMdbxTxnHandle txn = BeginWriteTransaction(transactionFlags);
                 action(txn);
                 MdbxNative.Commit(txn);
             }
@@ -221,7 +227,7 @@ internal sealed class MdbxEnvironment : IDisposable
         {
             Monitor.Enter(_writeLock, ref lockTaken);
             lockAcquired = Stopwatch.GetTimestamp();
-            using MdbxNative.SafeMdbxTxnHandle txn = BeginWriteTransaction();
+            using MdbxNative.SafeMdbxTxnHandle txn = BeginWriteTransaction(transactionFlags);
             action(txn);
             MdbxNative.Commit(txn);
         }
@@ -254,9 +260,10 @@ internal sealed class MdbxEnvironment : IDisposable
     private void ExecuteBatch(List<MdbxWriteOperation> operations)
     {
         int[]? sortedIndexes = RentSortedWriteIndexes(operations);
+        uint transactionFlags = GetTransactionFlags(operations, _disableWalSyncMode);
         try
         {
-            ExecuteWrite(txn => ApplyOperations(txn, operations, sortedIndexes), operations.Count);
+            ExecuteWrite(txn => ApplyOperations(txn, operations, sortedIndexes), operations.Count, transactionFlags);
             if (sortedIndexes is not null)
             {
                 _profiler?.RecordWriteSort(operations.Count);
@@ -314,7 +321,8 @@ internal sealed class MdbxEnvironment : IDisposable
                 if (group.Count == 1)
                 {
                     sortedIndexes = RentSortedWriteIndexes(group[0].Operations);
-                    ExecuteWrite(txn => ApplyOperations(txn, group[0].Operations, sortedIndexes), operationCount);
+                    uint transactionFlags = GetTransactionFlags(group[0].Operations, _disableWalSyncMode);
+                    ExecuteWrite(txn => ApplyOperations(txn, group[0].Operations, sortedIndexes), operationCount, transactionFlags);
                     if (sortedIndexes is not null)
                     {
                         _profiler?.RecordWriteSort(operationCount);
@@ -323,7 +331,8 @@ internal sealed class MdbxEnvironment : IDisposable
                 else
                 {
                     groupedOperations = RentSortedGroupedWriteOperations(group, operationCount);
-                    ExecuteWrite(txn => ApplyOperations(txn, group, groupedOperations, operationCount), operationCount);
+                    uint transactionFlags = GetTransactionFlags(group, _disableWalSyncMode);
+                    ExecuteWrite(txn => ApplyOperations(txn, group, groupedOperations, operationCount), operationCount, transactionFlags);
                     _profiler?.RecordWriteSort(operationCount);
                 }
 
@@ -464,6 +473,61 @@ internal sealed class MdbxEnvironment : IDisposable
         {
             ArrayPool<MdbxGroupedWriteOperation>.Shared.Return(operationIndexes);
         }
+    }
+
+    internal static uint GetTransactionFlags(IReadOnlyList<MdbxWriteOperation> operations, MdbxDisableWalSyncMode disableWalSyncMode)
+    {
+        if (disableWalSyncMode == MdbxDisableWalSyncMode.None || operations.Count == 0)
+        {
+            return 0;
+        }
+
+        for (int i = 0; i < operations.Count; i++)
+        {
+            if ((operations[i].WriteFlags & WriteFlags.DisableWAL) == 0)
+            {
+                return 0;
+            }
+        }
+
+        return GetTransactionFlags(WriteFlags.DisableWAL, disableWalSyncMode);
+    }
+
+    internal static uint GetTransactionFlags(List<MdbxBatchGroupRequest> group, MdbxDisableWalSyncMode disableWalSyncMode)
+    {
+        if (disableWalSyncMode == MdbxDisableWalSyncMode.None || group.Count == 0)
+        {
+            return 0;
+        }
+
+        for (int requestIndex = 0; requestIndex < group.Count; requestIndex++)
+        {
+            IReadOnlyList<MdbxWriteOperation> operations = group[requestIndex].Operations;
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                if ((operations[operationIndex].WriteFlags & WriteFlags.DisableWAL) == 0)
+                {
+                    return 0;
+                }
+            }
+        }
+
+        return GetTransactionFlags(WriteFlags.DisableWAL, disableWalSyncMode);
+    }
+
+    internal static uint GetTransactionFlags(WriteFlags writeFlags, MdbxDisableWalSyncMode disableWalSyncMode)
+    {
+        if ((writeFlags & WriteFlags.DisableWAL) == 0)
+        {
+            return 0;
+        }
+
+        return disableWalSyncMode switch
+        {
+            MdbxDisableWalSyncMode.NoMetaSync => MdbxNative.TxnNoMetaSync,
+            MdbxDisableWalSyncMode.SafeNoSync => MdbxNative.TxnNoSync,
+            _ => 0,
+        };
     }
 
     private void ApplyOperations(MdbxNative.SafeMdbxTxnHandle txn, List<MdbxWriteOperation> operations, int[]? sortedIndexes)
@@ -622,10 +686,10 @@ internal sealed class MdbxEnvironment : IDisposable
         return value is not null;
     }
 
-    public void Put(uint dbi, ReadOnlySpan<byte> key, byte[]? value)
+    public void Put(uint dbi, ReadOnlySpan<byte> key, byte[]? value, WriteFlags writeFlags = WriteFlags.None)
     {
         byte[] keyCopy = key.ToArray();
-        ExecuteWrite(txn => Put(txn, dbi, keyCopy, value));
+        ExecuteWrite(txn => Put(txn, dbi, keyCopy, value), writeFlags);
     }
 
     public void Put(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key, byte[]? value)
@@ -696,11 +760,11 @@ internal sealed class MdbxEnvironment : IDisposable
         }
     }
 
-    public void Merge(uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IMergeOperator? mergeOperator)
+    public void Merge(uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IMergeOperator? mergeOperator, WriteFlags writeFlags = WriteFlags.None)
     {
         byte[] keyCopy = key.ToArray();
         byte[] valueCopy = value.ToArray();
-        ExecuteWrite(txn => Merge(txn, dbi, keyCopy, valueCopy, mergeOperator));
+        ExecuteWrite(txn => Merge(txn, dbi, keyCopy, valueCopy, mergeOperator), writeFlags);
     }
 
     public void Merge(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IMergeOperator? mergeOperator)
@@ -818,9 +882,9 @@ internal sealed class MdbxEnvironment : IDisposable
     public void RecordQueuedWrite(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, int pendingOperations) =>
         _profiler?.RecordQueuedWrite(key.Length, value.Length, pendingOperations);
 
-    private MdbxNative.SafeMdbxTxnHandle BeginWriteTransaction()
+    private MdbxNative.SafeMdbxTxnHandle BeginWriteTransaction(uint flags = 0)
     {
-        MdbxNative.ThrowOnError(MdbxNative.TxnBegin(Env, IntPtr.Zero, 0, out MdbxNative.SafeMdbxTxnHandle txn), "mdbx_txn_begin(write)");
+        MdbxNative.ThrowOnError(MdbxNative.TxnBegin(Env, IntPtr.Zero, flags, out MdbxNative.SafeMdbxTxnHandle txn), "mdbx_txn_begin(write)");
         return txn;
     }
 
@@ -1017,20 +1081,20 @@ internal enum MdbxAppendResult
     Fallback,
 }
 
-internal readonly record struct MdbxWriteOperation(MdbxWriteKind Kind, uint Dbi, byte[] Key, byte[]? Value, IMergeOperator? MergeOperator)
+internal readonly record struct MdbxWriteOperation(MdbxWriteKind Kind, uint Dbi, byte[] Key, byte[]? Value, IMergeOperator? MergeOperator, WriteFlags WriteFlags)
 {
     public int ApproximateByteLength => Key.Length + (Value?.Length ?? 0);
 
-    public static MdbxWriteOperation Set(uint dbi, ReadOnlySpan<byte> key, byte[]? value, IMergeOperator? mergeOperator) =>
+    public static MdbxWriteOperation Set(uint dbi, ReadOnlySpan<byte> key, byte[]? value, IMergeOperator? mergeOperator, WriteFlags writeFlags = WriteFlags.None) =>
         value is null
-            ? new MdbxWriteOperation(MdbxWriteKind.Delete, dbi, key.ToArray(), null, mergeOperator)
-            : new MdbxWriteOperation(MdbxWriteKind.Set, dbi, key.ToArray(), value.AsSpan().ToArray(), mergeOperator);
+            ? new MdbxWriteOperation(MdbxWriteKind.Delete, dbi, key.ToArray(), null, mergeOperator, writeFlags)
+            : new MdbxWriteOperation(MdbxWriteKind.Set, dbi, key.ToArray(), value.AsSpan().ToArray(), mergeOperator, writeFlags);
 
-    public static MdbxWriteOperation PutSpan(uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IMergeOperator? mergeOperator) =>
-        new(MdbxWriteKind.Set, dbi, key.ToArray(), value.ToArray(), mergeOperator);
+    public static MdbxWriteOperation PutSpan(uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IMergeOperator? mergeOperator, WriteFlags writeFlags = WriteFlags.None) =>
+        new(MdbxWriteKind.Set, dbi, key.ToArray(), value.ToArray(), mergeOperator, writeFlags);
 
-    public static MdbxWriteOperation Merge(uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IMergeOperator? mergeOperator) =>
-        new(MdbxWriteKind.Merge, dbi, key.ToArray(), value.ToArray(), mergeOperator);
+    public static MdbxWriteOperation Merge(uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IMergeOperator? mergeOperator, WriteFlags writeFlags = WriteFlags.None) =>
+        new(MdbxWriteKind.Merge, dbi, key.ToArray(), value.ToArray(), mergeOperator, writeFlags);
 }
 
 internal readonly record struct MdbxGroupedWriteOperation(int RequestIndex, int OperationIndex);

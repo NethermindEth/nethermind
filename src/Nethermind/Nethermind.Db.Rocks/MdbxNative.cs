@@ -21,6 +21,7 @@ internal static class MdbxNative
     internal const int KeyMismatch = -30418;
 
     internal const uint EnvNoSubDir = 0x4000;
+    internal const uint EnvSafeNoSync = 0x10000;
     internal const uint EnvNoMetaSync = 0x40000;
     internal const uint EnvWriteMap = 0x80000;
     internal const uint EnvNoStickyThreads = 0x200000;
@@ -31,6 +32,8 @@ internal static class MdbxNative
 
     internal const uint ReadOnly = 0x20000;
     internal const uint Create = 0x40000;
+    internal const uint TxnNoMetaSync = EnvNoMetaSync;
+    internal const uint TxnNoSync = EnvSafeNoSync;
 
     internal const uint PutUpsert = 0;
     internal const uint PutAppend = 0x20000;

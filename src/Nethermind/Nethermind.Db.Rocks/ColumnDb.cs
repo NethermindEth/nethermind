@@ -87,17 +87,17 @@ public sealed class ColumnDb : IDb, IMergeableKeyValueStore, ISortedKeyValueStor
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
-        _owner.Mdbx.Put(Dbi, key, value);
+        _owner.Mdbx.Put(Dbi, key, value, flags);
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
     {
         byte[] keyCopy = key.ToArray();
         byte[] valueCopy = value.ToArray();
-        _owner.Mdbx.ExecuteWrite(txn => _owner.Mdbx.Put(txn, Dbi, keyCopy, valueCopy));
+        _owner.Mdbx.ExecuteWrite(txn => _owner.Mdbx.Put(txn, Dbi, keyCopy, valueCopy), flags);
     }
 
     public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
-        _owner.Mdbx.Merge(Dbi, key, value, MergeOperator);
+        _owner.Mdbx.Merge(Dbi, key, value, MergeOperator, flags);
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) =>
         MdbxCursorHelpers.Enumerate(_owner.Mdbx, Dbi);
