@@ -348,7 +348,7 @@ namespace Nethermind.Xdc
             ulong current;
             do
             {
-                current = Interlocked.CompareExchange(ref field, field, field);
+                current = Interlocked.Read(ref field);
                 if (current != ulong.MaxValue && current >= value) return false;
             } while (Interlocked.CompareExchange(ref field, value, current) != current);
             return true;
