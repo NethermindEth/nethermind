@@ -40,6 +40,8 @@ internal static class MdbxNative
 
     private const uint EnvOptionMaxDbs = 0;
     private const uint EnvOptionMaxReaders = 1;
+    private const uint EnvOptionSyncBytes = 2;
+    private const uint EnvOptionSyncPeriod = 3;
     private const uint EnvOptionRpAugmentLimit = 4;
     private const uint EnvOptionDpReserveLimit = 6;
     private const uint EnvOptionTxnDpLimit = 7;
@@ -183,6 +185,12 @@ internal static class MdbxNative
 
     internal static void SetRpAugmentLimit(SafeMdbxEnvHandle env, ulong value) =>
         ThrowOnError(EnvSetOption(env, EnvOptionRpAugmentLimit, value), "mdbx_env_set_option(MDBX_opt_rp_augment_limit)");
+
+    internal static void SetSyncBytes(SafeMdbxEnvHandle env, ulong value) =>
+        ThrowOnError(EnvSetOption(env, EnvOptionSyncBytes, value), "mdbx_env_set_option(MDBX_opt_sync_bytes)");
+
+    internal static void SetSyncPeriod(SafeMdbxEnvHandle env, ulong value) =>
+        ThrowOnError(EnvSetOption(env, EnvOptionSyncPeriod, value), "mdbx_env_set_option(MDBX_opt_sync_period)");
 
     internal static void SetDirtyPagesReserveLimit(SafeMdbxEnvHandle env, ulong value) =>
         ThrowOnError(EnvSetOption(env, EnvOptionDpReserveLimit, value), "mdbx_env_set_option(MDBX_opt_dp_reserve_limit)");

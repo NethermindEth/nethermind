@@ -20,6 +20,8 @@ internal readonly record struct MdbxTuningOptions(
     ulong DirtyPagesReserveLimit,
     ulong TransactionDirtyPagesLimit,
     ulong TransactionDirtyPagesInitial,
+    long SyncBytes,
+    int SyncPeriodSeconds,
     bool EnableReadAhead,
     bool EnableWriteMap,
     bool EnableCoalesce,
@@ -53,6 +55,9 @@ internal readonly record struct MdbxTuningOptions(
     public const long DefaultStateTransactionDirtyPagesLimitBytes = 1L << 30;
     public const long DefaultStateTransactionDirtyPagesInitialBytes = 128L << 20;
     public const MdbxDisableWalSyncMode DefaultDisableWalSyncMode = MdbxDisableWalSyncMode.NoMetaSync;
+    public const long DefaultSafeNoSyncSyncBytes = 1L << 30;
+    public const int DefaultSafeNoSyncSyncPeriodSeconds = 30;
+    public const int MaxSyncPeriodSeconds = ushort.MaxValue;
 
     private const int DefaultProfileIntervalSeconds = 30;
     private const int DefaultSlowTransactionMilliseconds = 1_000;
@@ -74,6 +79,10 @@ internal readonly record struct MdbxTuningOptions(
         bool enableBatchGrouping = ReadBool("NETHERMIND_MDBX_BATCH_GROUP", fallback: true, logger, ref hasOverrides);
         bool enableAppend = ReadBool("NETHERMIND_MDBX_APPEND", fallback: true, logger, ref hasOverrides);
         MdbxDisableWalSyncMode disableWalSyncMode = ReadDisableWalSyncMode("NETHERMIND_MDBX_DISABLE_WAL_SYNC_MODE", DefaultDisableWalSyncMode, logger, ref hasOverrides);
+        long defaultSyncBytes = disableWalSyncMode == MdbxDisableWalSyncMode.SafeNoSync ? DefaultSafeNoSyncSyncBytes : 0;
+        int defaultSyncPeriodSeconds = disableWalSyncMode == MdbxDisableWalSyncMode.SafeNoSync ? DefaultSafeNoSyncSyncPeriodSeconds : 0;
+        long syncBytes = ReadSize("NETHERMIND_MDBX_SYNC_BYTES", defaultSyncBytes, logger, ref hasOverrides);
+        int syncPeriodSeconds = ReadInt32("NETHERMIND_MDBX_SYNC_PERIOD_SECONDS", defaultSyncPeriodSeconds, logger, ref hasOverrides);
         bool enableProfiling = ReadBool("NETHERMIND_MDBX_PROFILE", fallback: false, logger, ref hasOverrides);
         int hotPathSampleRate = ReadInt32("NETHERMIND_MDBX_PROFILE_HOTPATH_SAMPLE_RATE", DefaultHotPathSampleRate, logger, ref hasOverrides);
         int profileIntervalSeconds = ReadInt32("NETHERMIND_MDBX_PROFILE_INTERVAL_SECONDS", DefaultProfileIntervalSeconds, logger, ref hasOverrides);
@@ -147,6 +156,18 @@ internal readonly record struct MdbxTuningOptions(
             maxBatchGroupBytes = DefaultMaxBatchGroupBytes;
         }
 
+        if (syncBytes < 0)
+        {
+            Warn(logger, "NETHERMIND_MDBX_SYNC_BYTES must be zero or positive. Using the default value.");
+            syncBytes = defaultSyncBytes;
+        }
+
+        if (syncPeriodSeconds is < 0 or > MaxSyncPeriodSeconds)
+        {
+            Warn(logger, $"NETHERMIND_MDBX_SYNC_PERIOD_SECONDS must be between 0 and {MaxSyncPeriodSeconds}. Using the default value.");
+            syncPeriodSeconds = defaultSyncPeriodSeconds;
+        }
+
         if (hotPathSampleRate <= 0)
         {
             Warn(logger, "NETHERMIND_MDBX_PROFILE_HOTPATH_SAMPLE_RATE must be positive. Using the default value.");
@@ -168,6 +189,8 @@ internal readonly record struct MdbxTuningOptions(
             dirtyPagesReserveLimit,
             transactionDirtyPagesLimit,
             transactionDirtyPagesInitial,
+            syncBytes,
+            syncPeriodSeconds,
             enableReadAhead,
             enableWriteMap,
             enableCoalesce,
@@ -211,7 +234,7 @@ internal readonly record struct MdbxTuningOptions(
     public string Describe() =>
         string.Create(
             CultureInfo.InvariantCulture,
-            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} rpAugmentLimit={RpAugmentLimit} dirtyPagesReserveLimit={DirtyPagesReserveLimit} txnDirtyPagesLimit={TransactionDirtyPagesLimit} txnDirtyPagesInitial={TransactionDirtyPagesInitial} readAhead={EnableReadAhead} writeMap={EnableWriteMap} coalesce={EnableCoalesce} batchGroup={EnableBatchGrouping} append={EnableAppend} disableWalSync={DisableWalSyncMode} batchGroupMaxOps={MaxBatchGroupOperations} batchGroupMaxBytes={FormatBytes(MaxBatchGroupBytes)} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
+            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} rpAugmentLimit={RpAugmentLimit} dirtyPagesReserveLimit={DirtyPagesReserveLimit} txnDirtyPagesLimit={TransactionDirtyPagesLimit} txnDirtyPagesInitial={TransactionDirtyPagesInitial} syncBytes={FormatBytes(SyncBytes)} syncPeriod={SyncPeriodSeconds}s readAhead={EnableReadAhead} writeMap={EnableWriteMap} coalesce={EnableCoalesce} batchGroup={EnableBatchGrouping} append={EnableAppend} disableWalSync={DisableWalSyncMode} batchGroupMaxOps={MaxBatchGroupOperations} batchGroupMaxBytes={FormatBytes(MaxBatchGroupBytes)} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
 
     internal static bool TryParseSize(string value, out long result)
     {

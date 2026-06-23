@@ -5,8 +5,10 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -480,6 +482,8 @@ namespace Nethermind.Db.Test
                 Assert.That(options.EnableBatchGrouping, Is.True);
                 Assert.That(options.EnableAppend, Is.True);
                 Assert.That(options.DisableWalSyncMode, Is.EqualTo(MdbxTuningOptions.DefaultDisableWalSyncMode));
+                Assert.That(options.SyncBytes, Is.Zero);
+                Assert.That(options.SyncPeriodSeconds, Is.Zero);
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupOperations));
                 Assert.That(options.MaxBatchGroupBytes, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupBytes));
                 Assert.That(options.GrowthStep, Is.EqualTo(MdbxTuningOptions.DefaultGrowthStep));
@@ -508,6 +512,88 @@ namespace Nethermind.Db.Test
                 Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(32_768));
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultStateMaxBatchGroupOperations));
             }
+        }
+
+        [Test]
+        public void Mdbx_tuning_safe_no_sync_enables_bounded_autosync_defaults() =>
+            WithEnvironmentVariable("NETHERMIND_MDBX_DISABLE_WAL_SYNC_MODE", "safe-nosync", () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(options.DisableWalSyncMode, Is.EqualTo(MdbxDisableWalSyncMode.SafeNoSync));
+                    Assert.That(options.SyncBytes, Is.EqualTo(MdbxTuningOptions.DefaultSafeNoSyncSyncBytes));
+                    Assert.That(options.SyncPeriodSeconds, Is.EqualTo(MdbxTuningOptions.DefaultSafeNoSyncSyncPeriodSeconds));
+                }
+            });
+
+        [Test]
+        public void Mdbx_tuning_accepts_autosync_overrides() =>
+            WithEnvironmentVariable("NETHERMIND_MDBX_DISABLE_WAL_SYNC_MODE", "safe-nosync", () =>
+            {
+                WithEnvironmentVariable("NETHERMIND_MDBX_SYNC_BYTES", "256MiB", () =>
+                {
+                    WithEnvironmentVariable("NETHERMIND_MDBX_SYNC_PERIOD_SECONDS", "7", () =>
+                    {
+                        MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(options.SyncBytes, Is.EqualTo(256L << 20));
+                            Assert.That(options.SyncPeriodSeconds, Is.EqualTo(7));
+                        }
+                    });
+                });
+            });
+
+        [Test]
+        public void Mdbx_tuning_accepts_max_autosync_period() =>
+            WithEnvironmentVariable("NETHERMIND_MDBX_DISABLE_WAL_SYNC_MODE", "safe-nosync", () =>
+            {
+                WithEnvironmentVariable("NETHERMIND_MDBX_SYNC_PERIOD_SECONDS", MdbxTuningOptions.MaxSyncPeriodSeconds.ToString(CultureInfo.InvariantCulture), () =>
+                {
+                    MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                    Assert.That(options.SyncPeriodSeconds, Is.EqualTo(MdbxTuningOptions.MaxSyncPeriodSeconds));
+                });
+            });
+
+        [Test]
+        public void Mdbx_tuning_rejects_autosync_period_above_libmdbx_range() =>
+            WithEnvironmentVariable("NETHERMIND_MDBX_DISABLE_WAL_SYNC_MODE", "safe-nosync", () =>
+            {
+                WithEnvironmentVariable("NETHERMIND_MDBX_SYNC_PERIOD_SECONDS", ((int)ushort.MaxValue + 1).ToString(CultureInfo.InvariantCulture), () =>
+                {
+                    MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                    Assert.That(options.SyncPeriodSeconds, Is.EqualTo(MdbxTuningOptions.DefaultSafeNoSyncSyncPeriodSeconds));
+                });
+            });
+
+        [Test]
+        [Platform(Include = "Linux", Reason = "MDBX native backend is linux-x64 only.")]
+        public void Mdbx_database_opens_with_safe_no_sync_autosync_defaults()
+        {
+            byte[] key = [1];
+            byte[] value = [2];
+
+            WithEnvironmentVariable("NETHERMIND_MDBX_DISABLE_WAL_SYNC_MODE", "safe-nosync", () =>
+            {
+                using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(".", "Blocks"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+                db.Set(key, value, WriteFlags.DisableWAL);
+
+                MdbxNative.ThrowOnError(
+                    MdbxNative.EnvInfoEx(db.Mdbx.Env, IntPtr.Zero, out MdbxNative.MdbxEnvInfo info, (nuint)Marshal.SizeOf<MdbxNative.MdbxEnvInfo>()),
+                    "mdbx_env_info_ex");
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(info.AutosyncThreshold, Is.EqualTo((ulong)MdbxTuningOptions.DefaultSafeNoSyncSyncBytes));
+                    Assert.That(info.AutosyncPeriodSeconds16Dot16, Is.EqualTo((uint)MdbxTuningOptions.DefaultSafeNoSyncSyncPeriodSeconds << 16));
+                    Assert.That(db.Get(key), Is.EqualTo(value));
+                }
+            });
         }
 
         [Test]

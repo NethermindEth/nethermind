@@ -106,6 +106,16 @@ internal sealed class MdbxEnvironment : IDisposable
         _maxBatchGroupOperations = tuning.MaxBatchGroupOperations;
         _maxBatchGroupBytes = tuning.MaxBatchGroupBytes;
 
+        if (tuning.SyncBytes != 0)
+        {
+            MdbxNative.SetSyncBytes(Env, (ulong)tuning.SyncBytes);
+        }
+
+        if (tuning.SyncPeriodSeconds != 0)
+        {
+            MdbxNative.SetSyncPeriod(Env, (ulong)tuning.SyncPeriodSeconds << 16);
+        }
+
         if (tuning.DirtyPagesReserveLimit != 0)
         {
             MdbxNative.SetDirtyPagesReserveLimit(Env, tuning.DirtyPagesReserveLimit);
