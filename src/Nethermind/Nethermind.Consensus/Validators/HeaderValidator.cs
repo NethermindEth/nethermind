@@ -87,6 +87,7 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateParent(header, parent, ref error))
                    && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
                    && (orphaned || ValidateSeal(header, parent, isUncle, ref error))
+                   && ValidateAbsoluteGasLimit(header, ref error)
                    && ValidateGasUsed(header, ref error)
                    && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
                    && (orphaned || ValidateTimestamp(header, parent, ref error))
@@ -168,6 +169,21 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
+        // Ethereum protocol hard-caps block gas limit at 2^63-1 to prevent overflow and ensure
+        // compatibility with signed 64-bit systems. Runs unconditionally — independent of parent,
+        // orphaned status, or subclass overrides of ValidateGasLimitRange.
+        protected virtual bool ValidateAbsoluteGasLimit(BlockHeader header, ref string? error)
+        {
+            if (header.GasLimit > 0x7FFFFFFFFFFFFFFF)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit higher than 2^63-1. Gas limit: {header.GasLimit}");
+                error = BlockErrorMessages.InvalidGasLimit;
+                return false;
+            }
+
+            return true;
+        }
+
         protected virtual bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
         {
             if (parent is null)
@@ -231,14 +247,6 @@ namespace Nethermind.Consensus.Validators
             // ValidateParent (called earlier in the chain) accepts a null parent only for genesis.
             // Gas-limit-vs-parent comparisons don't apply at genesis, so skip them.
             if (parent is null) return true;
-
-            // Ethereum protocol hard-caps block gas limit at 2^63-1 to prevent overflow and ensure compatibility with signed 64-bit systems.
-            if (header.GasLimit > 0x7FFFFFFFFFFFFFFF)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit higher than 2^63-1. Gas limit: {header.GasLimit}");
-                error = BlockErrorMessages.InvalidGasLimit;
-                return false;
-            }
 
             ulong adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             ulong maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
