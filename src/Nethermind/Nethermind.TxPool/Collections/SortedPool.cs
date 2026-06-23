@@ -192,8 +192,11 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         public bool TryTakeFirst(out TValue? first)
         {
-            if (GetFirsts().Min is TValue min)
+            if (GetBest() is TValue min)
+            {
                 return TryRemove(GetKey(min), out first);
+            }
+
             first = default;
             return false;
         }
