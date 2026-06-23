@@ -414,14 +414,23 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IPeerAllocationStrategyFactory<SnapSyncBatch>, SnapSyncAllocationStrategyFactory>()
             .AddSingleton<ISnapSyncRunner, SnapSyncRunner>();
 
-        serviceCollection.Register(static ctx => new SimpleDispatcher<SnapSyncBatch>(
-            ctx.Resolve<ISimpleSyncFeed<SnapSyncBatch>>(),
-            ctx.Resolve<ISyncDownloader<SnapSyncBatch>>(),
-            ctx.Resolve<IPeerAllocationStrategyFactory<SnapSyncBatch>>(),
-            AllocationContexts.Snap,
-            ctx.Resolve<ISyncPeerPool>(),
-            ctx.Resolve<ISyncConfig>(),
-            ctx.Resolve<ILogManager>()))
+        serviceCollection.Register(static ctx =>
+        {
+            ISyncConfig syncConfig = ctx.Resolve<ISyncConfig>();
+            int snapConcurrency = syncConfig.MaxProcessingThreads == 0
+                ? Math.Max(Environment.ProcessorCount, syncConfig.SnapSyncAccountRangePartitionCount)
+                : syncConfig.MaxProcessingThreads;
+
+            return new SimpleDispatcher<SnapSyncBatch>(
+                ctx.Resolve<ISimpleSyncFeed<SnapSyncBatch>>(),
+                ctx.Resolve<ISyncDownloader<SnapSyncBatch>>(),
+                ctx.Resolve<IPeerAllocationStrategyFactory<SnapSyncBatch>>(),
+                AllocationContexts.Snap,
+                ctx.Resolve<ISyncPeerPool>(),
+                syncConfig,
+                ctx.Resolve<ILogManager>(),
+                snapConcurrency);
+        })
             .AsSelf()
             .SingleInstance();
     }

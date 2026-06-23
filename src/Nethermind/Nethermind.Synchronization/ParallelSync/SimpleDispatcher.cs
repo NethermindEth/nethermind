@@ -28,17 +28,17 @@ public class SimpleDispatcher<T>(
     AllocationContexts contexts,
     ISyncPeerPool peerPool,
     ISyncConfig syncConfig,
-    ILogManager logManager) where T : class
+    ILogManager logManager,
+    int maxConcurrency = 0) where T : class
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SimpleDispatcher<T>>();
     private readonly int _allocateTimeoutMs = syncConfig.SyncDispatcherAllocateTimeoutMs;
     private readonly string _feedName = feed.GetType().Name;
+    private readonly int _maxConcurrency = ResolveMaxConcurrency(syncConfig, maxConcurrency);
 
     public async Task Run(CancellationToken token)
     {
-        int maxThreads = syncConfig.MaxProcessingThreads == 0
-            ? Environment.ProcessorCount
-            : syncConfig.MaxProcessingThreads;
+        int maxThreads = _maxConcurrency;
         SemaphoreSlim semaphore = new(maxThreads, maxThreads);
 
         while (!token.IsCancellationRequested)
@@ -157,5 +157,17 @@ public class SimpleDispatcher<T>(
                 if (_logger.IsError) _logger.Error($"Feed has reported an internal error when handling request");
                 break;
         }
+    }
+
+    private static int ResolveMaxConcurrency(ISyncConfig syncConfig, int maxConcurrency)
+    {
+        if (maxConcurrency > 0)
+        {
+            return maxConcurrency;
+        }
+
+        return syncConfig.MaxProcessingThreads == 0
+            ? Environment.ProcessorCount
+            : syncConfig.MaxProcessingThreads;
     }
 }

@@ -138,6 +138,61 @@ public class SyncDispatcherTests
         }
     }
 
+    private sealed class BlockingSimpleDownloader(int expectedConcurrentDispatches) : ISyncDownloader<TestBatch>
+    {
+        private readonly TaskCompletionSource _expectedConcurrentDispatchesReached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _currentDispatches;
+        private int _maxConcurrentDispatches;
+
+        public int MaxConcurrentDispatches => Volatile.Read(ref _maxConcurrentDispatches);
+
+        public async Task Dispatch(PeerInfo peerInfo, TestBatch request, CancellationToken cancellationToken)
+        {
+            int currentDispatches = Interlocked.Increment(ref _currentDispatches);
+            UpdateMax(currentDispatches);
+            if (currentDispatches == expectedConcurrentDispatches)
+            {
+                _expectedConcurrentDispatchesReached.TrySetResult();
+            }
+
+            try
+            {
+                await _release.Task.WaitAsync(cancellationToken);
+                int[] result = new int[request.Length];
+                for (int i = 0; i < request.Length; i++)
+                {
+                    result[i] = request.Start + i;
+                }
+
+                request.Result = result;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _currentDispatches);
+            }
+        }
+
+        public Task WaitForExpectedConcurrentDispatches(CancellationToken cancellationToken) =>
+            _expectedConcurrentDispatchesReached.Task.WaitAsync(cancellationToken);
+
+        public void Release() =>
+            _release.TrySetResult();
+
+        private void UpdateMax(int currentDispatches)
+        {
+            int currentMax;
+            do
+            {
+                currentMax = Volatile.Read(ref _maxConcurrentDispatches);
+                if (currentDispatches <= currentMax)
+                {
+                    return;
+                }
+            } while (Interlocked.CompareExchange(ref _maxConcurrentDispatches, currentDispatches, currentMax) != currentMax);
+        }
+    }
+
     private class TestSyncFeed(bool isMultiFeed = true, int max = 64) : SyncFeed<TestBatch>
     {
         public int Max { get; } = max;
@@ -250,6 +305,58 @@ public class SyncDispatcherTests
         }
     }
 
+    private sealed class SimpleTestFeed(int maxRequests) : ISimpleSyncFeed<TestBatch>
+    {
+        private readonly HashSet<int> _results = [];
+        private int _preparedRequests;
+        private int _pendingRequests;
+
+        public int ResultCount
+        {
+            get
+            {
+                lock (_results)
+                {
+                    return _results.Count;
+                }
+            }
+        }
+
+        public async Task<TestBatch?> PrepareRequest(CancellationToken token)
+        {
+            int requestNumber = Interlocked.Increment(ref _preparedRequests);
+            if (requestNumber <= maxRequests)
+            {
+                Interlocked.Increment(ref _pendingRequests);
+                return new TestBatch((requestNumber - 1) * 8, 8);
+            }
+
+            while (Volatile.Read(ref _pendingRequests) > 0)
+            {
+                await Task.Delay(10, token);
+            }
+
+            return null;
+        }
+
+        public SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
+        {
+            if (response.Result is not null)
+            {
+                lock (_results)
+                {
+                    for (int i = 0; i < response.Result.Length; i++)
+                    {
+                        _results.Add(response.Result[i]);
+                    }
+                }
+            }
+
+            Interlocked.Decrement(ref _pendingRequests);
+            return SyncResponseHandlingResult.OK;
+        }
+    }
+
     [Test, NonParallelizable, MaxTime(30_000)]
     public async Task Simple_test_sync()
     {
@@ -269,6 +376,36 @@ public class SyncDispatcherTests
         {
             Assert.That(syncFeed._results.Contains(i), Is.True, i.ToString());
         }
+    }
+
+    [Test, NonParallelizable, CancelAfter(30_000)]
+    public async Task SimpleDispatcher_uses_configured_max_concurrency(CancellationToken cancellationToken)
+    {
+        const int MaxConcurrency = 4;
+        SimpleTestFeed syncFeed = new(maxRequests: MaxConcurrency);
+        BlockingSimpleDownloader downloader = new(expectedConcurrentDispatches: MaxConcurrency);
+        SimpleDispatcher<TestBatch> dispatcher = new(
+            syncFeed,
+            downloader,
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            AllocationContexts.All,
+            new TestSyncPeerPool(peerCount: MaxConcurrency),
+            new TestSyncConfig
+            {
+                MaxProcessingThreads = 1,
+            },
+            LimboLogs.Instance,
+            maxConcurrency: MaxConcurrency);
+
+        Task executorTask = dispatcher.Run(cancellationToken);
+
+        await downloader.WaitForExpectedConcurrentDispatches(cancellationToken);
+        Assert.That(downloader.MaxConcurrentDispatches, Is.EqualTo(MaxConcurrency));
+
+        downloader.Release();
+        await executorTask.WaitAsync(cancellationToken);
+
+        Assert.That(syncFeed.ResultCount, Is.EqualTo(MaxConcurrency * 8));
     }
 
     // [NonParallelizable]: this test relies on the dispatcher's Task.Run reaching HandleResponse
