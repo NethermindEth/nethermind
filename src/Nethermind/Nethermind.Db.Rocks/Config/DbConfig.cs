@@ -410,6 +410,27 @@ public class DbConfig : IDbConfig
         "";
     public string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
+    // History columns (archival queries). Conservative defaults reusing options already proven on the other flat
+    // columns; revisit after measuring the from-genesis archive. ChangeSets hold empty per-block markers; History
+    // holds the block-versioned values read by point-seek, so keep the last-level bloom filter.
+    const string? FlatHistoryCommonOptions =
+        "optimize_filters_for_hits=false;" +
+        "write_buffer_size=32000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+
+    public string? FlatAccountChangeSetsDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
+    public string? FlatAccountChangeSetsDbAdditionalRocksDbOptions { get; set; }
+
+    public string? FlatAccountHistoryDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
+    public string? FlatAccountHistoryDbAdditionalRocksDbOptions { get; set; }
+
+    public string? FlatStorageChangeSetsDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
+    public string? FlatStorageChangeSetsDbAdditionalRocksDbOptions { get; set; }
+
+    public string? FlatStorageHistoryDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
+    public string? FlatStorageHistoryDbAdditionalRocksDbOptions { get; set; }
+
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 }

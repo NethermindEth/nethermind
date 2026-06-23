@@ -9,6 +9,7 @@ public class FlatDbConfig : IFlatDbConfig
 {
     public bool Enabled { get; set; } = false;
     public bool EnablePreimageRecording { get; set; } = false;
+    public bool HistoryEnabled { get; set; } = false;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;

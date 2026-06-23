@@ -5,9 +5,13 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,6 +31,15 @@ public class FlatDbManagerTests
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
 
+    private const long HistoryBarrier = 100;
+    private static readonly Address HistoryAddr = new("0x0000000000000000000000000000000000000abc");
+    private static readonly UInt256 HistorySlot = 7;
+
+    private SnapshotableMemColumnsDb<FlatDbColumns> _historyDb = null!;
+    private HistoryReader _historyReader = null!;
+    private HistoryStore _accountStore = null!;
+    private HistoryStore _storageStore = null!;
+
     [SetUp]
     public void SetUp()
     {
@@ -41,6 +54,15 @@ public class FlatDbManagerTests
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
         _blocksConfig = Substitute.For<IBlocksConfig>();
         _blocksConfig.SecondsPerSlot.Returns(12UL);
+
+        _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        _historyReader = new HistoryReader(_historyDb, rlpWrapSlots: true);
+        _accountStore = new HistoryStore(
+            _historyDb.GetColumnDb(FlatDbColumns.AccountHistory),
+            _historyDb.GetColumnDb(FlatDbColumns.AccountChangeSets));
+        _storageStore = new HistoryStore(
+            _historyDb.GetColumnDb(FlatDbColumns.StorageHistory),
+            _historyDb.GetColumnDb(FlatDbColumns.StorageChangeSets));
     }
 
     [TearDown]
@@ -48,6 +70,7 @@ public class FlatDbManagerTests
     {
         _cts.Cancel();
         _cts.Dispose();
+        _historyDb.Dispose();
     }
 
     private FlatDbManager CreateManager() => new(
@@ -196,5 +219,128 @@ public class FlatDbManagerTests
 
         _resourcePool.Received(1).ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
         _snapshotRepository.DidNotReceive().SetLastCommittedStateId(Arg.Any<StateId>());
+    }
+
+    // Account: set @5, overwritten @20, deleted @30. Slot: 0xAA @5, 0xBBCC @20, cleared @30.
+    [TestCase(3, 0L, null)]
+    [TestCase(10, 5L, "aa")]
+    [TestCase(19, 5L, "aa")]
+    [TestCase(20, 20L, "bbcc")]
+    [TestCase(29, 20L, "bbcc")]
+    [TestCase(30, 0L, null)]
+    [TestCase(35, 0L, null)]
+    public async Task GatherReadOnlySnapshotBundle_below_barrier_reads_history(long block, long expectedNonce, string? expectedSlotHex)
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        RecordHistoryWindow();
+        StateId historicalBlock = CreateStateId(block, (byte)block);
+
+        await using FlatDbManager manager = CreateHistoryManager();
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(historicalBlock);
+
+        Account? account = bundle.GetAccount(HistoryAddr);
+        byte[]? slot = bundle.GetSlot(HistoryAddr, HistorySlot, bundle.DetermineSelfDestructSnapshotIdx(HistoryAddr));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle, Is.Not.Null);
+
+            if (expectedNonce == 0)
+            {
+                Assert.That(account, Is.Null);
+            }
+            else
+            {
+                Assert.That(account, Is.Not.Null);
+                Assert.That(account!.Nonce, Is.EqualTo((UInt256)expectedNonce));
+                Assert.That(account.Balance, Is.EqualTo((UInt256)(expectedNonce * 100)));
+            }
+
+            if (expectedSlotHex is null)
+            {
+                Assert.That(slot, Is.Null.Or.EqualTo(new byte[] { 0 }));
+            }
+            else
+            {
+                Assert.That(slot!.WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedSlotHex)));
+            }
+        }
+    }
+
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    public async Task HasStateForBlock_below_barrier_follows_history_flag(bool historyEnabled, bool expected)
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        StateId historicalBlock = CreateStateId(10, rootByte: 10);
+        _snapshotRepository.HasState(historicalBlock).Returns(false);
+
+        await using FlatDbManager manager = CreateHistoryManager(historyEnabled);
+        Assert.That(manager.HasStateForBlock(historicalBlock), Is.EqualTo(expected));
+    }
+
+    private FlatDbManager CreateHistoryManager(bool historyEnabled = true) => new(
+        _resourcePool,
+        _processExitSource,
+        _trieNodeCache,
+        _snapshotCompactor,
+        _snapshotRepository,
+        _persistenceManager,
+        new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, HistoryEnabled = historyEnabled },
+        _blocksConfig,
+        LimboLogs.Instance,
+        enableDetailedMetrics: false,
+        historyWriter: null,
+        historyReader: _historyReader);
+
+    private void RecordHistoryWindow()
+    {
+        RecordAccount(5, new Account(5, 500));
+        RecordAccount(20, new Account(20, 2000));
+        RecordAccount(30, account: null);
+
+        RecordStorage(5, [0xAA]);
+        RecordStorage(20, [0xBB, 0xCC]);
+        RecordStorage(30, ReadOnlySpan<byte>.Empty);
+    }
+
+    private void RecordAccount(long block, Account? account)
+    {
+        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
+            stackalloc byte[BaseFlatPersistence.AccountKeyLength], HistoryAddr.ToAccountPath);
+
+        using IColumnsWriteBatch<FlatDbColumns> batch = _historyDb.StartWriteBatch();
+        IWriteBatch history = batch.GetColumnBatch(FlatDbColumns.AccountHistory);
+        IWriteBatch changeMarkers = batch.GetColumnBatch(FlatDbColumns.AccountChangeSets);
+
+        if (account is null)
+        {
+            _accountStore.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, history, changeMarkers);
+            return;
+        }
+
+        byte[] buffer = new byte[256];
+        RlpStream rlp = new(buffer);
+        AccountDecoder.Slim.Encode(account, rlp);
+        _accountStore.RecordChange(block, flatKey, buffer.AsSpan(0, rlp.Position), history, changeMarkers);
+    }
+
+    private void RecordStorage(long block, ReadOnlySpan<byte> rawValue)
+    {
+        ValueHash256 slotHash = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(HistorySlot, ref slotHash);
+        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(
+            stackalloc byte[BaseFlatPersistence.StorageKeyLength], HistoryAddr.ToAccountPath, slotHash);
+
+        Span<byte> value = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+        int written = rawValue.IsEmpty
+            ? 0
+            : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
+
+        using IColumnsWriteBatch<FlatDbColumns> batch = _historyDb.StartWriteBatch();
+        _storageStore.RecordChange(
+            block, flatKey, value[..written],
+            batch.GetColumnBatch(FlatDbColumns.StorageHistory),
+            batch.GetColumnBatch(FlatDbColumns.StorageChangeSets));
     }
 }

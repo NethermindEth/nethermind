@@ -12,4 +12,8 @@ public enum FlatDbColumns
     StateTopNodes,
     StorageNodes,
     FallbackNodes,
+    AccountChangeSets,
+    AccountHistory,
+    StorageChangeSets,
+    StorageHistory,
 }

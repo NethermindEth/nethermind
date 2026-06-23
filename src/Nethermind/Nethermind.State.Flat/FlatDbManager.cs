@@ -26,6 +26,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
 
+    // Null unless history capture is enabled; captures finalized changesets before pruning.
+    private readonly HistoryWriter? _historyWriter;
+
+    // Serves reads for blocks below the finalization barrier (whose tip snapshots are pruned) from the history index.
+    private readonly HistoryReader? _historyReader;
+    private readonly bool _historyEnabled;
+
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
     private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
@@ -67,7 +74,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IFlatDbConfig config,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
-        bool enableDetailedMetrics)
+        bool enableDetailedMetrics,
+        HistoryWriter? historyWriter = null,
+        HistoryReader? historyReader = null)
     {
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
@@ -76,6 +85,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+        _historyWriter = historyWriter;
+        _historyReader = historyReader;
+        _historyEnabled = config.HistoryEnabled && historyReader is not null;
 
         _compactSize = config.CompactSize;
 
@@ -159,6 +171,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
+
+        // Capture the just-finalized per-block changesets while their snapshots are still in memory; this must
+        // run before RemoveStatesUntil prunes them.
+        _historyWriter?.CaptureUpTo(currentPersistedStateId, _snapshotRepository);
 
         _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
         ClearReadOnlyBundleCache();
@@ -250,6 +266,18 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         {
             // Special case for pregenesis. Note: nethermind always tries to generate genesis.
             return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
+        }
+
+        // Below the finalization barrier the per-block snapshots are pruned, so the tip can no longer answer; serve the
+        // read from the finalized history index. Assumes history covers from genesis (the capture-from-genesis model);
+        // a partial-archive lower bound is a follow-up. Only when enabled — otherwise fall through to the tip path,
+        // which throws for a pruned block as before.
+        if (_historyEnabled && baseBlock.BlockNumber < _persistenceManager.GetCurrentPersistedStateId().BlockNumber)
+        {
+            return new ReadOnlySnapshotBundle(
+                new SnapshotPooledList(0),
+                new HistoryBackedPersistenceReader(_historyReader!, baseBlock),
+                _enableDetailedMetrics);
         }
 
         long sw = 0;
@@ -430,7 +458,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public bool HasStateForBlock(in StateId stateId)
     {
         if (_snapshotRepository.HasState(stateId)) return true;
-        if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
+        StateId persisted = _persistenceManager.GetCurrentPersistedStateId();
+        if (persisted == stateId) return true;
+        // Below the barrier the history index answers (when enabled), so RPC guards must not reject these blocks.
+        if (_historyEnabled && stateId.BlockNumber < persisted.BlockNumber) return true;
         return false;
     }
 

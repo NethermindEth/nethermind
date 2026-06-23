@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.Persistence;
 
 internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db, long writeBufferFloor = WriteBufferAdjuster.DefaultWriteBufferFloor)
 {
-    internal const int ColumnCount = 7;
+    internal const int ColumnCount = 11;
     internal const long DefaultWriteBufferFloor = 16 * MemorySizes.MiB;
 
     private static long MaxWriteBufferSize(FlatDbColumns column) => column switch
