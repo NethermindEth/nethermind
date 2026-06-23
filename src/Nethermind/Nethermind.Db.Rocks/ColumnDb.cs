@@ -57,6 +57,9 @@ public sealed class ColumnDb : IDb, IMergeableKeyValueStore, ISortedKeyValueStor
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
         Get(key, flags);
 
+    public bool KeyExists(ReadOnlySpan<byte> key) =>
+        _owner.Mdbx.KeyExists(Dbi, key);
+
     public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags = ReadFlags.None)
     {
         byte[]? data = Get(key, flags);

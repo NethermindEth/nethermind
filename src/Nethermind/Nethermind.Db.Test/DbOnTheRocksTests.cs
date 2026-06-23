@@ -838,6 +838,25 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Key_exists_tracks_current_and_snapshot_state()
+        {
+            byte[] key = [1, 2, 3];
+            byte[] missingKey = [9, 9, 9];
+            _db[key] = [4, 5, 6];
+
+            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+            _db[key] = null;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_db.KeyExists(key), Is.False);
+                Assert.That(_db.KeyExists(missingKey), Is.False);
+                Assert.That(snapshot.KeyExists(key), Is.True);
+                Assert.That(snapshot.KeyExists(missingKey), Is.False);
+            }
+        }
+
+        [Test]
         public void Compressed_sized_value_round_trips_through_all_read_paths()
         {
             byte[] key = [1, 2, 3];

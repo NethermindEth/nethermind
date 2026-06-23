@@ -566,6 +566,34 @@ internal sealed class MdbxEnvironment : IDisposable
         return ExecuteRead(txn => Get(txn, dbi, keyCopy));
     }
 
+    public bool KeyExists(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key)
+    {
+        // mdbx_get only observes the key during the call; the returned value pointer is ignored.
+        unsafe
+        {
+            fixed (byte* keyPointer = key)
+            {
+                MdbxValue keyValue = new() { Base = (IntPtr)keyPointer, Length = (nuint)key.Length };
+                int result = MdbxNative.Get(txn, dbi, ref keyValue, out _);
+                if (result == MdbxNative.NotFound)
+                {
+                    _profiler?.RecordGet(hit: false, key.Length, valueBytes: 0);
+                    return false;
+                }
+
+                MdbxNative.ThrowOnError(result, "mdbx_get");
+                _profiler?.RecordGet(hit: true, key.Length, valueBytes: 0);
+                return true;
+            }
+        }
+    }
+
+    public bool KeyExists(uint dbi, ReadOnlySpan<byte> key)
+    {
+        byte[] keyCopy = key.ToArray();
+        return ExecuteRead(txn => KeyExists(txn, dbi, keyCopy));
+    }
+
     public bool TryGet(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key, out byte[]? value)
     {
         value = Get(txn, dbi, key);

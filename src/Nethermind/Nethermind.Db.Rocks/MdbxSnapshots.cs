@@ -44,6 +44,12 @@ internal sealed class MdbxKeyValueStoreSnapshot(MdbxEnvironment environment, uin
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
         Get(key, flags);
 
+    public bool KeyExists(ReadOnlySpan<byte> key)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _environment.KeyExists(_txn, _dbi, key);
+    }
+
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
     {
         lock (_lifetimeLock)
@@ -214,5 +220,8 @@ internal sealed class MdbxColumnDbSnapshot<TKey>(
 
         public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
             Get(key, flags);
+
+        public bool KeyExists(ReadOnlySpan<byte> key) =>
+            _environment.KeyExists(_txn, _dbi, key);
     }
 }

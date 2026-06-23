@@ -159,6 +159,9 @@ public partial class DbOnTheRocks : IDb, IMergeableKeyValueStore, ISortedKeyValu
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
         Get(key, flags);
 
+    public bool KeyExists(ReadOnlySpan<byte> key) =>
+        Mdbx.KeyExists(_dbi, key);
+
     public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags = ReadFlags.None)
     {
         byte[]? data = Get(key, flags);

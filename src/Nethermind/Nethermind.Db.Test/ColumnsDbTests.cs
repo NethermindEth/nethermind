@@ -204,6 +204,28 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void SnapshotColumn_KeyExists_TracksSnapshotState()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] key = TestItem.KeccakA.BytesToArray();
+        byte[] missingKey = TestItem.KeccakB.BytesToArray();
+
+        colA.Set(key, TestItem.KeccakA.BytesToArray());
+
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+        IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
+        colA.Set(key, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(colA.KeyExists(key), Is.False);
+            Assert.That(snapshotColumn.KeyExists(key), Is.True);
+            Assert.That(snapshotColumn.KeyExists(missingKey), Is.False);
+        }
+    }
+
+    [Test]
     public void Snapshot_DoubleDispose_DoesNotThrow()
     {
         IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
