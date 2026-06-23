@@ -250,7 +250,17 @@ public static partial class EvmInstructions
             false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
         };
 
-        bool outOfGas = chargesNewAccount && !(TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
+        bool outOfGas = false;
+        if (chargesNewAccount)
+        {
+            // EIP-8038: sending a positive balance to an empty beneficiary costs ACCOUNT_WRITE regular
+            // gas in addition to the NEW_ACCOUNT state gas. Charge regular first so a regular-gas OOG does
+            // not spill state gas.
+            if (spec.IsEip8038Enabled)
+                outOfGas = !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite);
+            if (!outOfGas)
+                outOfGas = !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
+        }
 
         if (outOfGas) goto OutOfGas;
 
