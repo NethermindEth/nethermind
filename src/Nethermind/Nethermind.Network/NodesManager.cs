@@ -133,6 +133,9 @@ public abstract class NodesManager(string path, ILogger logger)
         return nodes;
     }
 
+    /// <summary>
+    /// Raised when a node is explicitly removed from this source.
+    /// </summary>
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
     /// <summary>
