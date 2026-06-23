@@ -149,7 +149,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
             (TKadKey itemHash, TNode value) = items[i];
             TreeNode? targetNode = _distance.GetBit(itemHash, depth) ? node.Right : node.Left;
             targetNode.Bucket.TryAddOrRefresh(itemHash, value, out _);
-            if (_logger.IsTrace) _logger.Trace($"Moved item ({itemHash}, {value}) to {(GetBit(itemHash, depth) ? "right" : "left")} child");
+            if (_logger.IsTrace) _logger.Trace($"Moved item ({itemHash}, {value}) to {(_distance.GetBit(itemHash, depth) ? "right" : "left")} child");
         }
 
         node.Bucket.Clear();
