@@ -35,7 +35,10 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
     // layout vs v3.
     // v5: sorted table became two-level — 4 KB data blocks with an in-block restart table and a
     // tail separator-key index — incompatible with the v4 single-level sparse-offset layout.
-    private const int CurrentVersion = 5;
+    // v6: sorted table reuses one self-describing block format for both levels; data blocks are
+    // 4 KiB-aligned and addressed by block number, and the index is a single block (separator →
+    // block number) — incompatible with the v5 byte-offset tail index.
+    private const int CurrentVersion = 6;
 
     private static readonly byte[] MetadataKey = new byte[4];
 

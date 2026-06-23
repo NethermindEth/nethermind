@@ -126,13 +126,14 @@ public class SortedTableTests
         Assert.That(Enumerate(bytes).Count, Is.EqualTo(1));
     }
 
-    // A single 4 KB block, exercising restart-run boundaries around RestartInterval (= 16): the
+    // A single 4 KB block, exercising restart-run boundaries around RestartInterval (= 8): the
     // builder resets front-coding every restart, the reader binary-searches restarts then scans one run.
-    [TestCase(15)]
+    [TestCase(7)]
+    [TestCase(8)]
+    [TestCase(9)]
     [TestCase(16)]
-    [TestCase(17)]
-    [TestCase(32)]
-    [TestCase(33)]
+    [TestCase(24)]
+    [TestCase(25)]
     [TestCase(48)]
     public void Restart_boundaries_within_one_block(int count)
     {
@@ -307,6 +308,40 @@ public class SortedTableTests
                 Assert.That(keys[i - 1].AsSpan().SequenceCompareTo(keys[i]), Is.LessThan(0));
         }
     }
+
+    // Every data block is zero-padded to BlockSize, so block i starts at i*BlockSize and the index
+    // block starts at M*BlockSize — both must parse as valid self-describing blocks.
+    [Test]
+    public void Data_blocks_are_4k_aligned_and_index_follows()
+    {
+        const int count = 300;
+        byte[] value = new byte[200];
+        (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] key = new byte[4];
+            BinaryPrimitives.WriteInt32BigEndian(key, i);
+            entries[i] = (key, value);
+        }
+        byte[] bytes = BuildTable(entries, [.. Enumerable.Range(0, count).Reverse()]);
+
+        SpanByteReader reader = new(bytes);
+        Bound table = new(0, reader.Length);
+        Assert.That(SortedTable.TryReadFooter<SpanByteReader, NoOpPin>(in reader, table, out SortedTable.Footer footer), Is.True);
+        int m = footer.NumBlocks;
+        Assert.That(m, Is.GreaterThan(1));
+
+        for (int i = 0; i < m; i++)
+            Assert.That(BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, (long)i * SortedTable.BlockSize, out int w, out _, out _, out _) && (w is Block.Width2 or Block.Width4),
+                Is.True, $"data block {i} at {i * SortedTable.BlockSize}");
+        // The index block sits right after the last (unpadded) data block.
+        Assert.That(BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, SortedTable.IndexBlockStart(table, footer), out _, out _, out _, out _), Is.True, "index block after the last data block");
+    }
+
+    // u32 block number * 4 KiB reaches ~16 TiB; the helper must widen before multiplying.
+    [Test]
+    public void Block_number_addressing_does_not_overflow() =>
+        Assert.That(SortedTable.DataBlockStart(new Bound(0, 0), uint.MaxValue), Is.EqualTo((long)uint.MaxValue * SortedTable.BlockSize));
 
     [Test]
     public void Large_table_round_trips_after_buffer_growth()
