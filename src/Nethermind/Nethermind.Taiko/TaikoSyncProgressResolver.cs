@@ -51,7 +51,6 @@ public sealed class TaikoSyncProgressResolver(
     public bool IsFastBlocksBodiesFinished() => inner.IsFastBlocksBodiesFinished();
     public bool IsFastBlocksReceiptsFinished() => inner.IsFastBlocksReceiptsFinished();
     public bool IsFastBlockAccessListsFinished() => inner.IsFastBlockAccessListsFinished();
-    public bool IsLoadingBlocksFromDb() => inner.IsLoadingBlocksFromDb();
     public long FindBestProcessedBlock() => inner.FindBestProcessedBlock();
     public UInt256 ChainDifficulty => inner.ChainDifficulty;
     // On Taiko TotalDifficulty is always 0; the default resolver does

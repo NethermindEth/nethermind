@@ -32,7 +32,7 @@ namespace Nethermind.Api
         IWorldStateManager? WorldStateManager { get; }
         IMainProcessingContext MainProcessingContext { get; }
         ITxSender? TxSender { get; set; }
-        INonceManager? NonceManager { get; set; }
+        INonceManager? NonceManager { get; }
         ITxPool? TxPool { get; set; }
 
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
@@ -46,7 +46,7 @@ namespace Nethermind.Api
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
+        IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
         ICensorshipDetector CensorshipDetector { get; set; }
     }
 }
