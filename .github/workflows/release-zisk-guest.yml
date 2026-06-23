@@ -32,9 +32,10 @@ jobs:
         env:
           GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
           GPG_SECRET_KEY: ${{ secrets.PPA_GPG_SECRET_KEY }}
+        working-directory: ${{ env.PACKAGE_DIR }}
         run: |
           archive_name=nethermind-guest-zisk-r${{ github.run_number }}.tar.gz
-          tar -czf "$archive_name" -C $PACKAGE_DIR nethermind
+          tar -czf "$archive_name" nethermind
           tar -tzf "$archive_name"
 
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
