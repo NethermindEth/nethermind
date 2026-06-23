@@ -35,6 +35,7 @@ public class NullableQuantityUInt256Converter : JsonConverter<UInt256?>
         }
 
         int length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
+        // 78 covers the longest decimal UInt256 (78 digits); hex is further bounded to 64 digits inside ReadHex.
         if (length is 0 or > 78)
         {
             ThrowJsonException();
@@ -60,6 +61,10 @@ public class NullableQuantityUInt256Converter : JsonConverter<UInt256?>
         if (hex.StartsWith("0x"u8))
         {
             hex = hex[2..];
+            if (hex.Length > 64) // UInt256 is 32 bytes = 64 hex digits max
+            {
+                ThrowJsonException();
+            }
             // EIP-1474: QUANTITY hex strings must not have leading zero digits.
             if (JsonRpcQuantityFormat.StrictMode && hex.Length > 1 && hex[0] == (byte)'0')
             {
@@ -89,8 +94,18 @@ public class NullableQuantityUInt256Converter : JsonConverter<UInt256?>
             return;
         }
 
-        // Delegate to the standard UInt256 writer via the registered converter.
-        JsonSerializer.Serialize(writer, value.Value, options);
+        if (value.Value.IsZero)
+        {
+            writer.WriteStringValue("0x0"u8);
+            return;
+        }
+
+        Span<byte> bytes = stackalloc byte[32];
+        value.Value.ToBigEndian(bytes);
+        int start = bytes.IndexOfAnyExcept((byte)0);
+        string hex = Convert.ToHexStringLower(bytes[start..]);
+        // Strip leading zero nibble: byte 0x0b → hex "0b" → QUANTITY "0xb"
+        writer.WriteStringValue(hex[0] == '0' ? "0x" + hex[1..] : "0x" + hex);
     }
 
     [DoesNotReturn, StackTraceHidden]
