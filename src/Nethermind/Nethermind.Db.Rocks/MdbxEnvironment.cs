@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -220,7 +221,7 @@ internal sealed class MdbxEnvironment : IDisposable
         }
     }
 
-    public void ApplyBatch(IReadOnlyList<MdbxWriteOperation> operations)
+    public void ApplyBatch(List<MdbxWriteOperation> operations)
     {
         if (operations.Count == 0)
         {
@@ -236,17 +237,24 @@ internal sealed class MdbxEnvironment : IDisposable
         ApplyBatchGroup(operations);
     }
 
-    private void ExecuteBatch(IReadOnlyList<MdbxWriteOperation> operations) =>
-        ExecuteWrite(txn =>
+    private void ExecuteBatch(List<MdbxWriteOperation> operations)
+    {
+        int[]? sortedIndexes = RentSortedWriteIndexes(operations);
+        try
         {
-            MdbxAppendTracker? appendTracker = _appendEnabled ? new MdbxAppendTracker(this, txn) : null;
-            for (int i = 0; i < operations.Count; i++)
+            ExecuteWrite(txn => ApplyOperations(txn, operations, sortedIndexes), operations.Count);
+            if (sortedIndexes is not null)
             {
-                ApplyOperation(txn, operations[i], appendTracker);
+                _profiler?.RecordWriteSort(operations.Count);
             }
-        }, operations.Count);
+        }
+        finally
+        {
+            ReturnSortedWriteIndexes(sortedIndexes);
+        }
+    }
 
-    private void ApplyBatchGroup(IReadOnlyList<MdbxWriteOperation> operations)
+    private void ApplyBatchGroup(List<MdbxWriteOperation> operations)
     {
         MdbxBatchGroupRequest request = new(operations);
         bool shouldRunBatchGroup;
@@ -285,25 +293,36 @@ internal sealed class MdbxEnvironment : IDisposable
             }
 
             Exception? exception = null;
+            int[]? sortedIndexes = null;
+            MdbxGroupedWriteOperation[]? groupedOperations = null;
             try
             {
-                ExecuteWrite(txn =>
+                if (group.Count == 1)
                 {
-                    MdbxAppendTracker? appendTracker = _appendEnabled ? new MdbxAppendTracker(this, txn) : null;
-                    for (int requestIndex = 0; requestIndex < group.Count; requestIndex++)
+                    sortedIndexes = RentSortedWriteIndexes(group[0].Operations);
+                    ExecuteWrite(txn => ApplyOperations(txn, group[0].Operations, sortedIndexes), operationCount);
+                    if (sortedIndexes is not null)
                     {
-                        IReadOnlyList<MdbxWriteOperation> operations = group[requestIndex].Operations;
-                        for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
-                        {
-                            ApplyOperation(txn, operations[operationIndex], appendTracker);
-                        }
+                        _profiler?.RecordWriteSort(operationCount);
                     }
-                }, operationCount);
+                }
+                else
+                {
+                    groupedOperations = RentSortedGroupedWriteOperations(group, operationCount);
+                    ExecuteWrite(txn => ApplyOperations(txn, group, groupedOperations, operationCount), operationCount);
+                    _profiler?.RecordWriteSort(operationCount);
+                }
+
                 _profiler?.RecordBatchGroup(group.Count, operationCount, byteCount);
             }
             catch (Exception caught)
             {
                 exception = caught;
+            }
+            finally
+            {
+                ReturnSortedWriteIndexes(sortedIndexes);
+                ReturnSortedGroupedWriteOperations(groupedOperations);
             }
 
             CompleteBatchGroup(group, exception);
@@ -364,6 +383,105 @@ internal sealed class MdbxEnvironment : IDisposable
             {
                 Monitor.Wait(_batchGroupLock);
             }
+        }
+    }
+
+    private static int[]? RentSortedWriteIndexes(List<MdbxWriteOperation> operations)
+    {
+        if (operations.Count < 2)
+        {
+            return null;
+        }
+
+        int[] indexes = ArrayPool<int>.Shared.Rent(operations.Count);
+        try
+        {
+            for (int i = 0; i < operations.Count; i++)
+            {
+                indexes[i] = i;
+            }
+
+            Array.Sort(indexes, 0, operations.Count, new MdbxWriteOperationIndexComparer(operations));
+            return indexes;
+        }
+        catch
+        {
+            ArrayPool<int>.Shared.Return(indexes);
+            throw;
+        }
+    }
+
+    private static void ReturnSortedWriteIndexes(int[]? indexes)
+    {
+        if (indexes is not null)
+        {
+            ArrayPool<int>.Shared.Return(indexes);
+        }
+    }
+
+    private static MdbxGroupedWriteOperation[] RentSortedGroupedWriteOperations(List<MdbxBatchGroupRequest> group, int operationCount)
+    {
+        MdbxGroupedWriteOperation[] operationIndexes = ArrayPool<MdbxGroupedWriteOperation>.Shared.Rent(operationCount);
+        try
+        {
+            int writeIndex = 0;
+            for (int requestIndex = 0; requestIndex < group.Count; requestIndex++)
+            {
+                int requestOperationCount = group[requestIndex].Operations.Count;
+                for (int operationIndex = 0; operationIndex < requestOperationCount; operationIndex++)
+                {
+                    operationIndexes[writeIndex++] = new MdbxGroupedWriteOperation(requestIndex, operationIndex);
+                }
+            }
+
+            Array.Sort(operationIndexes, 0, operationCount, new MdbxGroupedWriteOperationComparer(group));
+            return operationIndexes;
+        }
+        catch
+        {
+            ArrayPool<MdbxGroupedWriteOperation>.Shared.Return(operationIndexes);
+            throw;
+        }
+    }
+
+    private static void ReturnSortedGroupedWriteOperations(MdbxGroupedWriteOperation[]? operationIndexes)
+    {
+        if (operationIndexes is not null)
+        {
+            ArrayPool<MdbxGroupedWriteOperation>.Shared.Return(operationIndexes);
+        }
+    }
+
+    private void ApplyOperations(MdbxNative.SafeMdbxTxnHandle txn, List<MdbxWriteOperation> operations, int[]? sortedIndexes)
+    {
+        MdbxAppendTracker? appendTracker = _appendEnabled ? new MdbxAppendTracker(this, txn) : null;
+        if (sortedIndexes is null)
+        {
+            for (int i = 0; i < operations.Count; i++)
+            {
+                ApplyOperation(txn, operations[i], appendTracker);
+            }
+
+            return;
+        }
+
+        for (int i = 0; i < operations.Count; i++)
+        {
+            ApplyOperation(txn, operations[sortedIndexes[i]], appendTracker);
+        }
+    }
+
+    private void ApplyOperations(
+        MdbxNative.SafeMdbxTxnHandle txn,
+        List<MdbxBatchGroupRequest> group,
+        MdbxGroupedWriteOperation[] operationIndexes,
+        int operationCount)
+    {
+        MdbxAppendTracker? appendTracker = _appendEnabled ? new MdbxAppendTracker(this, txn) : null;
+        for (int i = 0; i < operationCount; i++)
+        {
+            MdbxGroupedWriteOperation operationIndex = operationIndexes[i];
+            ApplyOperation(txn, group[operationIndex.RequestIndex].Operations[operationIndex.OperationIndex], appendTracker);
         }
     }
 
@@ -730,11 +848,45 @@ internal readonly record struct MdbxWriteOperation(MdbxWriteKind Kind, uint Dbi,
         new(MdbxWriteKind.Merge, dbi, key.ToArray(), value.ToArray(), mergeOperator);
 }
 
-internal sealed class MdbxBatchGroupRequest(IReadOnlyList<MdbxWriteOperation> operations)
+internal readonly record struct MdbxGroupedWriteOperation(int RequestIndex, int OperationIndex);
+
+internal sealed class MdbxWriteOperationIndexComparer(List<MdbxWriteOperation> operations) : IComparer<int>
+{
+    public int Compare(int x, int y)
+    {
+        int result = CompareOperations(operations[x], operations[y]);
+        return result != 0 ? result : x.CompareTo(y);
+    }
+
+    internal static int CompareOperations(in MdbxWriteOperation x, in MdbxWriteOperation y)
+    {
+        int result = x.Dbi.CompareTo(y.Dbi);
+        return result != 0 ? result : x.Key.AsSpan().SequenceCompareTo(y.Key);
+    }
+}
+
+internal sealed class MdbxGroupedWriteOperationComparer(List<MdbxBatchGroupRequest> group) : IComparer<MdbxGroupedWriteOperation>
+{
+    public int Compare(MdbxGroupedWriteOperation x, MdbxGroupedWriteOperation y)
+    {
+        MdbxWriteOperation xOperation = group[x.RequestIndex].Operations[x.OperationIndex];
+        MdbxWriteOperation yOperation = group[y.RequestIndex].Operations[y.OperationIndex];
+        int result = MdbxWriteOperationIndexComparer.CompareOperations(xOperation, yOperation);
+        if (result != 0)
+        {
+            return result;
+        }
+
+        result = x.RequestIndex.CompareTo(y.RequestIndex);
+        return result != 0 ? result : x.OperationIndex.CompareTo(y.OperationIndex);
+    }
+}
+
+internal sealed class MdbxBatchGroupRequest(List<MdbxWriteOperation> operations)
 {
     private Exception? _exception;
 
-    public IReadOnlyList<MdbxWriteOperation> Operations { get; } = operations;
+    public List<MdbxWriteOperation> Operations { get; } = operations;
 
     public int OperationCount => Operations.Count;
 

@@ -844,6 +844,85 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Mdbx_write_ordering_sorts_by_dbi_and_key_but_preserves_duplicate_order()
+        {
+            List<MdbxWriteOperation> operations =
+            [
+                MdbxWriteOperation.PutSpan(2, [2], [0], null),
+                MdbxWriteOperation.PutSpan(1, [2], [1], null),
+                MdbxWriteOperation.PutSpan(1, [2], [2], null),
+                MdbxWriteOperation.PutSpan(1, [1], [3], null),
+                MdbxWriteOperation.PutSpan(2, [1], [4], null),
+            ];
+
+            int[] indexes = [0, 1, 2, 3, 4];
+            Array.Sort(indexes, 0, indexes.Length, new MdbxWriteOperationIndexComparer(operations));
+
+            Assert.That(indexes, Is.EqualTo(new[] { 3, 1, 2, 4, 0 }));
+        }
+
+        [Test]
+        public void Mdbx_grouped_write_ordering_sorts_by_dbi_and_key_but_preserves_request_order_for_duplicates()
+        {
+            List<MdbxBatchGroupRequest> group =
+            [
+                new(
+                [
+                    MdbxWriteOperation.PutSpan(1, [2], [0], null),
+                    MdbxWriteOperation.PutSpan(1, [1], [1], null),
+                    MdbxWriteOperation.PutSpan(2, [1], [2], null),
+                ]),
+                new(
+                [
+                    MdbxWriteOperation.PutSpan(1, [2], [3], null),
+                    MdbxWriteOperation.PutSpan(1, [0], [4], null),
+                    MdbxWriteOperation.PutSpan(2, [1], [5], null),
+                ]),
+            ];
+
+            MdbxGroupedWriteOperation[] operations =
+            [
+                new(0, 0),
+                new(0, 1),
+                new(0, 2),
+                new(1, 0),
+                new(1, 1),
+                new(1, 2),
+            ];
+
+            Array.Sort(operations, 0, operations.Length, new MdbxGroupedWriteOperationComparer(group));
+
+            string[] sortedOperations = new string[operations.Length];
+            for (int i = 0; i < operations.Length; i++)
+            {
+                sortedOperations[i] = $"{operations[i].RequestIndex}:{operations[i].OperationIndex}";
+            }
+
+            Assert.That(sortedOperations, Is.EqualTo(new[] { "1:1", "0:1", "0:0", "1:0", "0:2", "1:2" }));
+        }
+
+        [Test]
+        public void Write_batch_keeps_last_operation_for_duplicate_keys_after_sorting()
+        {
+            using IWriteBatch writeBatch = _db.StartWriteBatch();
+            writeBatch.Set([3], [3]);
+            writeBatch.Set([1], [1]);
+            writeBatch.Set([1], [2]);
+            writeBatch.Set([2], [5]);
+            writeBatch.Set([2], null);
+            writeBatch.Set([4], [4]);
+            writeBatch.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_db.Get([1]), Is.EqualTo(new byte[] { 2 }));
+                Assert.That(_db.Get([2]), Is.Null);
+                Assert.That(_db.Get([3]), Is.EqualTo(new byte[] { 3 }));
+                Assert.That(_db.Get([4]), Is.EqualTo(new byte[] { 4 }));
+            }
+        }
+
+        [Test]
         public void Write_batch_commits_sorted_keys_with_append_enabled()
         {
             using IWriteBatch writeBatch = _db.StartWriteBatch();
@@ -861,7 +940,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Write_batch_falls_back_when_keys_are_not_appendable()
+        public void Write_batch_updates_existing_keys_with_append_enabled_after_sorting()
         {
             _db.Set([2], [2]);
 
