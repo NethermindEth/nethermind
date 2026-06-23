@@ -137,18 +137,19 @@ namespace Nethermind.Network
 
         public bool TryRemove(PublicKey id, out Peer peer)
         {
-            if (Peers.TryRemove(id, out peer))
+            if (!Peers.TryRemove(id, out peer))
+                return false;
+
+            _staticPeers.TryRemove(id, out _);
+            lock (peer.SessionLock)
             {
-                _staticPeers.TryRemove(id, out _);
                 peer.InSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
                 peer.OutSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
                 peer.InSession = null;
                 peer.OutSession = null;
-                PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
-                return true;
             }
-
-            return false;
+            PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
+            return true;
         }
 
         public Peer Replace(ISession session)
