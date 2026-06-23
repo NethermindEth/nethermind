@@ -40,10 +40,14 @@ internal sealed class StateCompositionSnapshotStore(
         // still works. The reverse order (remove-first) would let PurgeOldEntries
         // delete the freshly written snapshot because LatestKey still pointed at
         // the already-removed old block.
-        ulong prevBlock = ulong.MinValue;
+        ulong prevBlock = 0;
+        bool hasPrev = false;
         byte[]? prevBytes = db.Get(LatestKey);
         if (prevBytes is not null && prevBytes.Length >= 8)
+        {
             prevBlock = BinaryPrimitives.ReadUInt64BigEndian(prevBytes);
+            hasPrev = true;
+        }
 
         Span<byte> key = stackalloc byte[8];
         BinaryPrimitives.WriteUInt64BigEndian(key, snapshot.BlockNumber);
@@ -65,7 +69,7 @@ internal sealed class StateCompositionSnapshotStore(
         BinaryPrimitives.WriteUInt64BigEndian(blockBytes, snapshot.BlockNumber);
         db.PutSpan(LatestKey, blockBytes);
 
-        if (prevBlock != ulong.MinValue && prevBlock != snapshot.BlockNumber)
+        if (hasPrev && prevBlock != snapshot.BlockNumber)
         {
             Span<byte> prevKey = stackalloc byte[8];
             BinaryPrimitives.WriteUInt64BigEndian(prevKey, prevBlock);
