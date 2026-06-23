@@ -7,7 +7,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// A reservation of space within an arena. Owns a lease on its <see cref="ArenaFile"/> and
-/// coordinates lifecycle (eviction, punch-hole, tracker bookkeeping) with the owning
+/// coordinates lifecycle (page-cache reclaim, punch-hole) with the owning
 /// <see cref="IArenaManager"/> on disposal.
 /// </summary>
 public sealed class ArenaReservation : SmallRefCountingDisposable
@@ -60,18 +60,15 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
     }
 
     /// <summary>
-    /// Probe every OS page that overlaps the
-    /// reader-relative byte range <c>[localOffset, localOffset + length)</c> against the
-    /// <see cref="PageResidencyTracker"/>, queue any displaced occupants, and — if more
-    /// than one probed page was a non-<see cref="PageResidencyTracker.TouchOutcome.Hit"/> — issue a <em>single</em>
-    /// <c>madvise(MADV_POPULATE_READ)</c> over the page-aligned envelope of the range.
+    /// Pre-fault the OS pages overlapping the reader-relative byte range
+    /// <c>[localOffset, localOffset + length)</c>: when the range spans more than one OS page,
+    /// issue a <em>single</em> <c>madvise(MADV_POPULATE_READ)</c> over its page-aligned envelope.
     /// </summary>
     /// <remarks>
     /// Coalesces the per-page pre-fault syscalls into one for a contiguous read.
     /// <c>MADV_POPULATE_READ</c> is a no-op on already-resident pages, so over-faulting the few
-    /// hot pages inside the range is harmless. When only a single probed page is cold the batched
-    /// <c>madvise</c> is skipped — a one-page syscall is not amortized vs. the inline minor fault
-    /// the reader would otherwise take.
+    /// hot pages inside the range is harmless. A single-page range is skipped — a one-page syscall
+    /// is not amortized vs. the inline minor fault the reader would otherwise take.
     /// </remarks>
     internal void TouchRangePopulate(long localOffset, long length)
     {
@@ -84,19 +81,7 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
         int firstPage = (int)(firstPageBase / pageSize);
         int lastPage = (int)((lastPageBaseExclusive - 1) / pageSize);
 
-        int missedCount = 0;
-        PageResidencyTracker tracker = _arenaManager.PageTracker;
-        for (int p = firstPage; p <= lastPage; p++)
-        {
-            PageResidencyTracker.TouchOutcome outcome = tracker.TryTouch(ArenaId, p,
-                out int evictedArenaId, out int evictedPageIdx);
-            if (outcome == PageResidencyTracker.TouchOutcome.Hit) continue;
-            missedCount++;
-            if (outcome == PageResidencyTracker.TouchOutcome.Evicted)
-                _arenaManager.QueueEviction(evictedArenaId, evictedPageIdx);
-        }
-
-        if (missedCount > 1)
+        if (firstPage != lastPage)
             _arenaFile.PopulateRead(firstPageBase, lastPageBaseExclusive - firstPageBase);
     }
 
@@ -116,42 +101,31 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
 
     /// <summary>
     /// Construct an <see cref="ArenaByteReader"/> over this reservation's bytes. The reader
-    /// reports each read/pin to the arena's <see cref="PageResidencyTracker"/> so collision-displaced
-    /// OS pages can be advised <c>MADV_DONTNEED</c> on eviction. Pointer-backed so &gt;2 GiB
-    /// reservations are addressable.
+    /// pre-faults the OS pages it reads via <see cref="TouchRangePopulate"/>. Pointer-backed so
+    /// &gt;2 GiB reservations are addressable.
     /// </summary>
     public unsafe ArenaByteReader CreateReader() =>
         new(_arenaFile.BasePtr + Offset, Size, this);
 
-    public void AdviseDontNeed()
-    {
-        long footprint = Footprint;
-        _arenaFile.AdviseDontNeed(Offset, footprint);
-        _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
-    }
-
     /// <summary>
-    /// Forget every PageResidencyTracker entry that points into this reservation. Skips the
-    /// <c>madvise(MADV_DONTNEED)</c> step that <see cref="AdviseDontNeed"/> does; use this
-    /// when the page-cache side has already been advised away (e.g. by a freshly-closed
-    /// <see cref="WholeReadSession"/> over the same range) and only the tracker needs cleaning.
+    /// <c>madvise(MADV_DONTNEED)</c> over the reservation's range, dropping the mmap working set
+    /// without freeing disk blocks. The owning snapshot stays alive and readable; a later read
+    /// re-faults any dropped page.
     /// </summary>
-    public void ForgetTracker() =>
-        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Footprint);
+    public void AdviseDontNeed() => _arenaFile.AdviseDontNeed(Offset, Footprint);
 
     /// <summary>
     /// Demote variant of <see cref="AdviseDontNeed"/>: <c>madvise(MADV_DONTNEED)</c> plus
-    /// <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> over the reservation's range, then the
-    /// matching tracker-forget. Drops both the mmap working set and the OS file-cache pages
-    /// without freeing disk blocks — unlike <see cref="CleanUp"/> it must not punch a hole,
-    /// because the owning snapshot stays alive and readable.
+    /// <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> over the reservation's range. Drops both the mmap
+    /// working set and the OS file-cache pages without freeing disk blocks — unlike
+    /// <see cref="CleanUp"/> it must not punch a hole, because the owning snapshot stays alive and
+    /// readable.
     /// </summary>
     public void AdviseAndFadviseDontNeed()
     {
         long footprint = Footprint;
         _arenaFile.AdviseDontNeed(Offset, footprint);
         _arenaFile.FadviseDontNeed(Offset, footprint);
-        _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
     }
 
     /// <summary>
@@ -193,7 +167,6 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
         // release below, which drops its pages anyway.
         if (!punched && fileSurvives)
             _arenaFile.FadviseDontNeed(Offset, footprint);
-        _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
         Interlocked.Decrement(ref Metrics._arenaReservationCount);
         Interlocked.Add(ref Metrics._arenaReservationBytes, -_initialSize);
         _arenaFile.Dispose();

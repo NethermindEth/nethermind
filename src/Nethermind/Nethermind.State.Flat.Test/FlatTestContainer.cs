@@ -51,14 +51,12 @@ internal sealed class FlatTestContainer : IDisposable
         FlatDbConfig? config = null,
         long arenaFileSizeBytes = 1024L * 1024 * 1024,
         long blobFileSizeBytes = 1024L * 1024,
-        long arenaPageCacheBytes = 0,
         string? baseDbPath = null,
         IDb? catalogDb = null,
         Action<ContainerBuilder>? configure = null)
     {
         Config = config ?? new FlatDbConfig();
         Config.ArenaFileSizeBytes = arenaFileSizeBytes;
-        Config.PersistedSnapshotArenaPageCacheBytes = arenaPageCacheBytes;
 
         if (baseDbPath is null)
         {

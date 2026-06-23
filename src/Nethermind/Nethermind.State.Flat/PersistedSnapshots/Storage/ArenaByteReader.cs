@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// Holds a raw <c>byte*</c> + <see cref="long"/> length so the addressed region can exceed
 /// 2 GiB (each individual pin still materialises an int-sized <see cref="ReadOnlySpan{T}"/>).
 /// Each read or pin reports touched OS pages to <see cref="ArenaReservation.TouchRangePopulate"/>
-/// for residency tracking and pre-fault coalescing.
+/// for pre-fault coalescing.
 /// </summary>
 public unsafe ref struct ArenaByteReader : IByteReader<NoOpPin>
 {

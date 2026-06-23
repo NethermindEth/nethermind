@@ -19,15 +19,12 @@ namespace Nethermind.State.Flat.Test;
 internal static class TestFixtureHelpers
 {
     /// <summary>
-    /// Creates a real <see cref="ArenaManager"/> over <paramref name="dir"/> configured for tests: the
-    /// page-residency tracker is disabled (<c>PersistedSnapshotArenaPageCacheBytes = 0</c>) so no
-    /// madvise/eviction runs, and the arena file size is floored to one OS page so tiny test sizes
-    /// don't trip the mmap minimum.
+    /// Creates a real <see cref="ArenaManager"/> over <paramref name="dir"/> configured for tests:
+    /// the arena file size is floored to one OS page so tiny test sizes don't trip the mmap minimum.
     /// </summary>
     public static ArenaManager CreateArenaManager(string dir, int arenaSize = 64 * 1024) =>
         new(dir, new FlatDbConfig
         {
-            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = Math.Max(arenaSize, Environment.SystemPageSize),
         }, LimboLogs.Instance);
 

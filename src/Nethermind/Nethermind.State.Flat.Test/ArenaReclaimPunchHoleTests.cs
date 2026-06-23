@@ -46,7 +46,6 @@ public class ArenaReclaimPunchHoleTests
 
         using ArenaManager manager = new(arenaDir, new FlatDbConfig
         {
-            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = 8L * 1024 * 1024,
             PersistedSnapshotPunchHoleOnReclaim = punchHoleOnReclaim,
         }, LimboLogs.Instance);
