@@ -49,19 +49,13 @@ public static class PersistedSnapshotMerger
     {
         ArgumentNullException.ThrowIfNull(bloom);
 
-        long estimatedKeys = 0;
-        for (int i = 0; i < views.Length; i++)
-        {
-            TReader r = views[i].CreateReader();
-            if (SortedTable.TryReadFooter<TReader, TPin>(in r, new Bound(0, r.Length), out SortedTable.Footer footer))
-                estimatedKeys += footer.Count;
-        }
-
-        SortedTableBuilder<TWriter> table = new(ref writer, (int)Math.Min(estimatedKeys + 8, int.MaxValue));
+        // The table is built by streaming in strictly ascending key order: entries (ref-ids 0x00 …
+        // per-address 0xFE) first via the N-way merge, then metadata (0xFF) last.
+        SortedTableBuilder<TWriter> table = new(ref writer);
         try
         {
-            MergeMetadata<TWriter, TView, TReader, TPin>(views, ref table);
             MergeEntries<TWriter, TView, TReader, TPin>(views, ref table, bloom);
+            MergeMetadata<TWriter, TView, TReader, TPin>(views, ref table);
             table.Build();
         }
         finally
@@ -128,8 +122,9 @@ public static class PersistedSnapshotMerger
             }
 
             bool isPerAddr = key[0] == PersistedSnapshotKey.AccountColumn;
-            // On any address change (or leaving the per-address column), flush the previous
-            // address's buffered slots using the barrier resolved from its self-destruct record.
+            // Safety net for a slots-only address (no self-destruct / account record to trigger the
+            // flush): on address change or leaving the per-address column, flush any still-buffered
+            // slots (barrier resolved from this address's self-destruct, or -1 if none).
             if (haveAddr && (!isPerAddr || !PersistedSnapshotKey.PerAddressAddress(key).SequenceEqual(curAddr)))
             {
                 FlushPendingSlots(ref table, bloom, curAddr, barrier, pendingKeys, pendingValues, pending);
@@ -157,10 +152,18 @@ public static class PersistedSnapshotMerger
                 }
                 else if (sub == PersistedSnapshotKey.SelfDestructSub)
                 {
-                    barrier = MergeSelfDestruct<TWriter, TView, TReader, TPin>(views, enums, ref table, bloom, key, matching[..matchCount]);
+                    // Slots (0xFD) sort before self-destruct (0xFE): resolve the barrier from the
+                    // self-destruct record, flush the now barrier-filtered slots so they land in their
+                    // ascending position, then emit the self-destruct record.
+                    barrier = ComputeSelfDestructBarrier<TView, TReader, TPin>(views, enums, matching[..matchCount]);
+                    FlushPendingSlots(ref table, bloom, curAddr, barrier, pendingKeys, pendingValues, pending);
+                    EmitSelfDestruct(ref table, bloom, key, barrier);
                 }
                 else // account
                 {
+                    // Account (0xFF) sorts after slots and self-destruct; flush any slots not already
+                    // flushed by a self-destruct (barrier == -1 ⇒ no truncation) before it.
+                    FlushPendingSlots(ref table, bloom, curAddr, barrier, pendingKeys, pendingValues, pending);
                     EmitNewest<TWriter, TView, TReader, TPin>(views, enums, ref table, bloom, key, newest);
                 }
             }
@@ -227,23 +230,10 @@ public static class PersistedSnapshotMerger
         pending.Clear();
     }
 
-    /// <summary>Emit the self-destruct record (destructed if any source in the range destructed, else
-    /// new) and return the truncation barrier — the newest source index that destructed, or -1.</summary>
-    /// <remarks>
-    /// The emitted tag is "destructed" whenever any source in the merged range destructed, even if a
-    /// newer source re-created the contract. This is deliberate and matches the only consumer of the
-    /// flag value, <see cref="PersistenceManager"/>: when a CompactSized snapshot is written to
-    /// RocksDB it does <c>if (SelfDestructFlag is false) batch.SelfDestruct(addr)</c> and only then
-    /// re-applies the account and the (already barrier-filtered) post-destruct slots. The
-    /// <c>SelfDestruct</c> clears any storage carried in RocksDB from before this range, so a
-    /// re-created contract ends with exactly its new slots. Emitting "new" here would skip that clear
-    /// and leak the pre-destruct storage. The flag value is otherwise unused on the read path, which
-    /// keys off the barrier (presence) via <see cref="PersistedSnapshotStack.TryGetSelfDestruct"/>.
-    /// </remarks>
-    private static int MergeSelfDestruct<TWriter, TView, TReader, TPin>(
-        ReadOnlySpan<TView> views, SortedTableEnumerator<TReader, TPin>[] enums,
-        ref SortedTableBuilder<TWriter> table, BloomFilter bloom, scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<int> matching)
-        where TWriter : IByteBufferWriter
+    /// <summary>The truncation barrier for a self-destruct key — the newest source index that
+    /// destructed, or -1 if none in the merged range did.</summary>
+    private static int ComputeSelfDestructBarrier<TView, TReader, TPin>(
+        ReadOnlySpan<TView> views, SortedTableEnumerator<TReader, TPin>[] enums, scoped ReadOnlySpan<int> matching)
         where TView : IHsstReaderSource<TReader, TPin>
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
@@ -259,12 +249,30 @@ public static class PersistedSnapshotMerger
             if (!r.TryRead(enums[i].CurrentValue.Offset, new Span<byte>(ref flag))) continue;
             if (flag == PersistedSnapshotTags.SelfDestructDestructedMarkerByte) barrier = i; // newest destructed
         }
+        return barrier;
+    }
 
+    /// <summary>Emit the self-destruct record — destructed if any source in the merged range destructed
+    /// (<paramref name="barrier"/> &gt;= 0), else new.</summary>
+    /// <remarks>
+    /// The emitted tag is "destructed" whenever any source in the merged range destructed, even if a
+    /// newer source re-created the contract. This is deliberate and matches the only consumer of the
+    /// flag value, <see cref="PersistenceManager"/>: when a CompactSized snapshot is written to
+    /// RocksDB it does <c>if (SelfDestructFlag is false) batch.SelfDestruct(addr)</c> and only then
+    /// re-applies the account and the (already barrier-filtered) post-destruct slots. The
+    /// <c>SelfDestruct</c> clears any storage carried in RocksDB from before this range, so a
+    /// re-created contract ends with exactly its new slots. Emitting "new" here would skip that clear
+    /// and leak the pre-destruct storage. The flag value is otherwise unused on the read path, which
+    /// keys off the barrier (presence) via <see cref="PersistedSnapshotStack.TryGetSelfDestruct"/>.
+    /// </remarks>
+    private static void EmitSelfDestruct<TWriter>(
+        ref SortedTableBuilder<TWriter> table, BloomFilter bloom, scoped ReadOnlySpan<byte> key, int barrier)
+        where TWriter : IByteBufferWriter
+    {
         table.Add(key, barrier >= 0
             ? PersistedSnapshotTags.SelfDestructDestructedMarker
             : PersistedSnapshotTags.SelfDestructNewMarker);
         bloom.Add(PersistedSnapshotBloomBuilder.AddressKey(PersistedSnapshotKey.PerAddressAddress(key)));
-        return barrier;
     }
 
     /// <summary>Emit the newest source's value for <paramref name="key"/> (account / state node /
@@ -319,15 +327,18 @@ public static class PersistedSnapshotMerger
         TReader newest = views[n - 1].CreateReader();
         Bound newestTable = new(0, newest.Length);
 
+        // Metadata keys (column 0xFF) are emitted in ascending name order so the streaming builder's
+        // strict-ascending invariant holds: from_block < from_hash < noderefs < to_block < to_hash < version.
         AddMetadataField<TWriter, TReader, TPin>(ref table, in oldest, oldestTable, PersistedSnapshotTags.MetadataFromBlockKey);
         AddMetadataField<TWriter, TReader, TPin>(ref table, in oldest, oldestTable, PersistedSnapshotTags.MetadataFromHashKey);
-        AddMetadataField<TWriter, TReader, TPin>(ref table, in newest, newestTable, PersistedSnapshotTags.MetadataToBlockKey);
-        AddMetadataField<TWriter, TReader, TPin>(ref table, in newest, newestTable, PersistedSnapshotTags.MetadataToHashKey);
-        AddMetadataField<TWriter, TReader, TPin>(ref table, in newest, newestTable, PersistedSnapshotTags.MetadataVersionKey);
 
         Span<byte> noderefsKey = stackalloc byte[1 + PersistedSnapshotTags.MetadataKeyLength];
         int noderefsLen = PersistedSnapshotKey.WriteMetadataKey(noderefsKey, PersistedSnapshotTags.MetadataNodeRefsKey);
         table.Add(noderefsKey[..noderefsLen], PersistedSnapshotTags.MetadataNodeRefsPresentMarker);
+
+        AddMetadataField<TWriter, TReader, TPin>(ref table, in newest, newestTable, PersistedSnapshotTags.MetadataToBlockKey);
+        AddMetadataField<TWriter, TReader, TPin>(ref table, in newest, newestTable, PersistedSnapshotTags.MetadataToHashKey);
+        AddMetadataField<TWriter, TReader, TPin>(ref table, in newest, newestTable, PersistedSnapshotTags.MetadataVersionKey);
 
         // ref-id records (column 0x00) are not metadata — they flow through the normal entry merge
         // (MergeEntries), which dedups them across sources into the union for free.

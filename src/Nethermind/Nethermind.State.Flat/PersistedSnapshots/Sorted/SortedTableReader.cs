@@ -23,7 +23,7 @@ internal static class SortedTableReader
     {
         value = default;
         if (!SortedTable.TryReadFooter<TReader, TPin>(in reader, table, out SortedTable.Footer footer)
-            || footer.NumBlocks == 0)
+            || footer.NumDataBlocks == 0)
             return false;
 
         // Stage 1: ceiling over the index block — first separator ≥ target → its data block number.

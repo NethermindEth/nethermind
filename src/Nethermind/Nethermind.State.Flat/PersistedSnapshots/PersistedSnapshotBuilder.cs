@@ -25,12 +25,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// account / slot / self-destruct / metadata values are inlined.
 /// </summary>
 /// <remarks>
-/// The extraction + sort + top/compact/fallback bucketing (and the comparers below) are kept
-/// unchanged from the HSST builder so the entity ordering the future HSST builder/compacter rely on
-/// does not drift. Only the serialization changed: instead of nested HSST columns, the materialized
-/// keys are fed to a <see cref="SortedTableBuilder{TWriter}"/>, which sorts them ascending at
-/// <c>Build</c>. The key encoding stores column / subcolumn tag bytes as <c>255 − tag</c> so that
-/// plain ascending order reproduces the HSST reverse-tag emission order.
+/// The extraction + top/compact/fallback bucketing (and the comparers below) are kept unchanged from
+/// the HSST builder so the entity ordering the future HSST builder/compacter rely on does not drift.
+/// The materialized keys are streamed to a <see cref="SortedTableBuilder{TWriter}"/> in strictly
+/// ascending key order — the builder enforces the order rather than sorting — so <see cref="Build"/>
+/// emits by ascending column (ref-id, storage, state, per-address, metadata), merging the storage
+/// sublists. The key encoding stores column / subcolumn tag bytes as <c>255 − tag</c> so that plain
+/// ascending order reproduces the HSST reverse-tag emission order.
 /// </remarks>
 public static class PersistedSnapshotBuilder
 {
@@ -149,21 +150,20 @@ public static class PersistedSnapshotBuilder
                 uniqueAddresses = addresses;
             });
 
-        int expectedKeys = snapshot.StateNodesCount + snapshot.StorageNodesCount
-            + uniqueAddresses.Count + sortedStorages.Count + 8;
-        SortedTableBuilder<TWriter> table = new(ref writer, expectedKeys);
+        SortedTableBuilder<TWriter> table = new(ref writer);
         try
         {
-            // Emission order is free — the table sorts all keys at Build. Per-address (accounts /
-            // self-destruct / slots) and trie nodes come first; metadata is written last so its
-            // blob_range entry can record the now-final blob-arena run this snapshot wrote.
-            WritePerAddress(ref table, snapshot, sortedStorages, uniqueAddresses, bloom);
-            WriteStateNodes(ref table, snapshot, stateTopKeys, blobWriter, bloom);
-            WriteStateNodes(ref table, snapshot, stateCompactKeys, blobWriter, bloom);
+            // Records are streamed in strictly ascending key order (the builder enforces it), so emit
+            // by ascending column: ref-id (0x00), storage nodes (0xFA), state fallback/compact/top
+            // (0xFB/0xFC/0xFD), per-address accounts/self-destruct/slots (0xFE), metadata (0xFF).
+            // Metadata is last so its blob_range records the now-final blob-arena run; the ref-id is
+            // first but only needs the (fixed) blob-arena id.
+            WriteRefId(ref table, blobWriter);
+            WriteStorageNodes(ref table, snapshot, storFallbackKeys, storCompactKeys, storTopKeys, blobWriter, bloom);
             WriteStateNodes(ref table, snapshot, stateFallbackKeys, blobWriter, bloom);
-            WriteStorageNodes(ref table, snapshot, storTopKeys, blobWriter, bloom);
-            WriteStorageNodes(ref table, snapshot, storCompactKeys, blobWriter, bloom);
-            WriteStorageNodes(ref table, snapshot, storFallbackKeys, blobWriter, bloom);
+            WriteStateNodes(ref table, snapshot, stateCompactKeys, blobWriter, bloom);
+            WriteStateNodes(ref table, snapshot, stateTopKeys, blobWriter, bloom);
+            WritePerAddress(ref table, snapshot, sortedStorages, uniqueAddresses, bloom);
             WriteMetadata(ref table, snapshot, blobWriter);
 
             table.Build();
@@ -183,12 +183,15 @@ public static class PersistedSnapshotBuilder
     }
 
     /// <summary>
-    /// Estimate of the serialized snapshot size, used to size the destination arena
-    /// reservation. Capped at 2 GiB — the hard ceiling on a Full snapshot — which also
-    /// keeps the value within <see cref="int"/>.MaxValue for contiguous-buffer callers.
+    /// Upper bound on the serialized snapshot size, used to pre-size the destination arena. The
+    /// in-memory snapshot size bounds it comfortably: the metadata table stores only compact keys,
+    /// small inline values, and 6-byte <see cref="NodeRef"/>s (the trie-node RLP it references lives in
+    /// the blob arena), so the serialized table is far smaller than the in-memory snapshot it is built
+    /// from. There is no artificial 2 GiB ceiling — the streaming
+    /// <see cref="Sorted.SortedTableBuilder{TWriter}"/> builds tables past 2 GiB and the arena is
+    /// long-addressed.
     /// </summary>
-    public static long EstimateSize(Snapshot snapshot) =>
-        Math.Min(2.GiB, snapshot.EstimateMemory() + 1.KiB);
+    public static long EstimateSize(Snapshot snapshot) => snapshot.EstimateMemory() + 1.KiB;
 
     private static void WritePerAddress<TWriter>(
         ref SortedTableBuilder<TWriter> table, Snapshot snapshot,
@@ -285,19 +288,44 @@ public static class PersistedSnapshotBuilder
         }
     }
 
+    /// <summary>
+    /// Emit storage-trie nodes (column 0xFA) in ascending key order via a 3-way merge of the
+    /// fallback / compact / top sublists. The sub-column byte (fallback 0xFD &lt; compact 0xFE &lt; top
+    /// 0xFF) follows the 20-byte address-hash, so for each address-hash all fallback nodes precede
+    /// compact, which precede top; each sublist is already sorted by address-hash → path and the path
+    /// encodings preserve that order, so the merged stream is strictly ascending.
+    /// </summary>
     private static void WriteStorageNodes<TWriter>(
         ref SortedTableBuilder<TWriter> table, Snapshot snapshot,
-        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> keys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> fallback,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> compact,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> top,
+        BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
         Span<byte> keyBuf = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
-        // Lists are sorted by addressHash prefix → path, so cache the materialised Hash256 across
-        // a per-addressHash run (one Gen0 alloc per addressHash instead of per node).
+        // Cache the materialised Hash256 across a per-addressHash run — the merge keeps all of an
+        // address-hash's nodes (across sublists) contiguous, so one Gen0 alloc per address-hash.
         ValueHash256 cachedHash = default;
         Hash256? cachedRef = null;
-        for (int i = 0; i < keys.Count; i++)
+        int fi = 0, ci = 0, ti = 0;
+        while (true)
         {
-            (ValueHash256 addressHash, TreePath path) = keys[i];
+            bool hasF = fi < fallback.Count, hasC = ci < compact.Count, hasT = ti < top.Count;
+            if (!hasF && !hasC && !hasT) break;
+
+            // Smallest head by (addressHash, sub-rank fallback<compact<top). Strict-less keeps the
+            // lower sub-rank on an address-hash tie (fallback first, then compact, then top).
+            int pick;
+            if (hasF && (!hasC || !AddrHashLess(compact[ci].AddrHash, fallback[fi].AddrHash))
+                     && (!hasT || !AddrHashLess(top[ti].AddrHash, fallback[fi].AddrHash)))
+                pick = 0;
+            else if (hasC && (!hasT || !AddrHashLess(top[ti].AddrHash, compact[ci].AddrHash)))
+                pick = 1;
+            else
+                pick = 2;
+
+            (ValueHash256 addressHash, TreePath path) = pick == 0 ? fallback[fi++] : pick == 1 ? compact[ci++] : top[ti++];
             if (cachedRef is null || !cachedHash.Equals(addressHash))
             {
                 cachedHash = addressHash;
@@ -311,6 +339,20 @@ public static class PersistedSnapshotBuilder
             table.Add(keyBuf[..len], nrBuf);
             bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
         }
+    }
+
+    private static bool AddrHashLess(in ValueHash256 a, in ValueHash256 b) =>
+        a.Bytes[..PersistedSnapshotKey.AddressHashPrefixLength]
+            .SequenceCompareTo(b.Bytes[..PersistedSnapshotKey.AddressHashPrefixLength]) < 0;
+
+    /// <summary>Emit the single referenced blob-arena id record (column 0x00, sorts first). A base
+    /// snapshot writes all its trie RLP through one blob arena, so there is exactly one.</summary>
+    private static void WriteRefId<TWriter>(ref SortedTableBuilder<TWriter> table, BlobArenaWriter blobWriter)
+        where TWriter : IByteBufferWriter
+    {
+        Span<byte> refIdKey = stackalloc byte[PersistedSnapshotKey.RefIdKeyLength];
+        int refIdLen = PersistedSnapshotKey.WriteRefIdKey(refIdKey, blobWriter.BlobArenaId);
+        table.Add(refIdKey[..refIdLen], PersistedSnapshotTags.RefIdValue);
     }
 
     private static void WriteMetadata<TWriter>(
@@ -333,11 +375,7 @@ public static class PersistedSnapshotBuilder
         AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataFromBlockKey, blockNumBytes);
         AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataFromHashKey, snapshot.From.StateRoot.Bytes);
 
-        // A base snapshot writes all its trie RLP through one blob arena — one referenced id.
-        Span<byte> refIdKey = stackalloc byte[PersistedSnapshotKey.RefIdKeyLength];
-        int refIdLen = PersistedSnapshotKey.WriteRefIdKey(refIdKey, blobWriter.BlobArenaId);
-        table.Add(refIdKey[..refIdLen], PersistedSnapshotTags.RefIdValue);
-
+        // The ref-id record (column 0x00) sorts before everything and is emitted up front by WriteRefId.
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.To.BlockNumber);
         AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataToBlockKey, blockNumBytes);
         AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataToHashKey, snapshot.To.StateRoot.Bytes);

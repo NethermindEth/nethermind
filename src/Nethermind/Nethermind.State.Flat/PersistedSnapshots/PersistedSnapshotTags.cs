@@ -46,7 +46,8 @@ internal static class PersistedSnapshotTags
     // On-disk format version, written as the value of MetadataVersionKey by the builder and copied
     // through by the merger. Bump when the on-disk layout changes.
     // v5: single-level sorted table (replaces the columnar HSST format).
-    internal static readonly byte[] MetadataFormatVersion = [0x05];
+    // v6: streaming two-level sorted table — i64 footer, index block located by stored byte offset.
+    internal static readonly byte[] MetadataFormatVersion = [0x06];
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32
     // bytes. Mirrors BaseFlatPersistence.RlpSlotValueBufferSize.

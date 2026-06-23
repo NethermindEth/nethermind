@@ -19,8 +19,8 @@ internal struct SortedTableEnumerator<TReader, TPin>
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
     private readonly long _tableOffset;
-    private readonly int _numBlocks;
-    private int _blockIdx;
+    private readonly long _numDataBlocks;
+    private long _blockIdx;
     private long _pos;
     private long _blockEnd;
     private byte[] _keyBuf;
@@ -33,7 +33,7 @@ internal struct SortedTableEnumerator<TReader, TPin>
         _keyBuf = new byte[256];
         _tableOffset = table.Offset;
         if (SortedTable.TryReadFooter<TReader, TPin>(in reader, table, out SortedTable.Footer footer))
-            _numBlocks = footer.NumBlocks;
+            _numDataBlocks = footer.NumDataBlocks;
         _blockIdx = -1; // before the first block; the first MoveNext loads block 0 (_pos == _blockEnd == 0)
     }
 
@@ -43,8 +43,8 @@ internal struct SortedTableEnumerator<TReader, TPin>
         while (_pos >= _blockEnd)
         {
             _blockIdx++;
-            if (_blockIdx >= _numBlocks) return false;
-            long blockStart = _tableOffset + (long)_blockIdx * SortedTable.BlockSize;
+            if (_blockIdx >= _numDataBlocks) return false;
+            long blockStart = _tableOffset + _blockIdx * SortedTable.BlockSize;
             if (!BlockReader.ReadHeader<TReader, TPin>(in reader, blockStart, out _, out long recordsEnd, out _, out long recordsStart))
                 return false;
             _pos = blockStart + recordsStart;

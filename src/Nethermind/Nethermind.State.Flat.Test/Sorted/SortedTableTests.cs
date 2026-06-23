@@ -26,14 +26,18 @@ public class SortedTableTests
         (Bytes.FromHexString("ff"), Bytes.FromHexString("deadbeef")),
     ];
 
-    private static byte[] BuildTable((byte[] Key, byte[] Value)[] entries, int[] insertionOrder)
+    // The builder requires strictly ascending keys, so feed them sorted regardless of input order.
+    private static byte[] BuildTable((byte[] Key, byte[] Value)[] entries)
     {
+        (byte[] Key, byte[] Value)[] sorted = [.. entries];
+        Array.Sort(sorted, static (x, y) => x.Key.AsSpan().SequenceCompareTo(y.Key));
+
         using PooledByteBufferWriter pooled = new(256);
-        SortedTableBuilder<PooledByteBufferWriter.Writer> table = new(ref pooled.GetWriter(), entries.Length);
+        SortedTableBuilder<PooledByteBufferWriter.Writer> table = new(ref pooled.GetWriter());
         try
         {
-            foreach (int i in insertionOrder)
-                table.Add(entries[i].Key, entries[i].Value);
+            foreach ((byte[] Key, byte[] Value) e in sorted)
+                table.Add(e.Key, e.Value);
             table.Build();
         }
         finally
@@ -43,11 +47,11 @@ public class SortedTableTests
         return pooled.WrittenSpan.ToArray();
     }
 
-    private static int BlockCount(byte[] bytes)
+    private static long DataBlockCount(byte[] bytes)
     {
         SpanByteReader reader = new(bytes);
         Assert.That(SortedTable.TryReadFooter<SpanByteReader, NoOpPin>(in reader, new Bound(0, reader.Length), out SortedTable.Footer footer), Is.True);
-        return footer.NumBlocks;
+        return footer.NumDataBlocks;
     }
 
     private static bool Seek(byte[] bytes, ReadOnlySpan<byte> key, out byte[] value)
@@ -76,8 +80,7 @@ public class SortedTableTests
     public void Round_trips_every_key_and_reports_misses()
     {
         (byte[] Key, byte[] Value)[] entries = SampleEntries();
-        // Insert out of sorted order to prove Build sorts.
-        byte[] bytes = BuildTable(entries, [5, 0, 3, 1, 4, 2]);
+        byte[] bytes = BuildTable(entries);
 
         foreach ((byte[] key, byte[] value) in entries)
         {
@@ -92,10 +95,34 @@ public class SortedTableTests
     }
 
     [Test]
+    public void Add_rejects_non_ascending_and_duplicate_keys()
+    {
+        Assert.That(static () => AddPair(Bytes.FromHexString("02"), Bytes.FromHexString("01")), Throws.ArgumentException, "descending key");
+        Assert.That(static () => AddPair(Bytes.FromHexString("02"), Bytes.FromHexString("02")), Throws.ArgumentException, "duplicate key");
+        Assert.That(static () => AddPair(Bytes.FromHexString("01"), Bytes.FromHexString("02")), Throws.Nothing, "ascending key");
+
+        // Separate method so the ref-struct builder is never captured by the assertion delegate.
+        static void AddPair(byte[] first, byte[] second)
+        {
+            using PooledByteBufferWriter pooled = new(256);
+            SortedTableBuilder<PooledByteBufferWriter.Writer> table = new(ref pooled.GetWriter());
+            try
+            {
+                table.Add(first, Bytes.FromHexString("aa"));
+                table.Add(second, Bytes.FromHexString("bb"));
+            }
+            finally
+            {
+                table.Dispose();
+            }
+        }
+    }
+
+    [Test]
     public void Enumerates_in_ascending_key_order()
     {
         (byte[] Key, byte[] Value)[] entries = SampleEntries();
-        byte[] bytes = BuildTable(entries, [.. Enumerable.Range(0, entries.Length).Reverse()]);
+        byte[] bytes = BuildTable(entries);
 
         List<byte[]> keys = Enumerate(bytes);
         Assert.That(keys.Count, Is.EqualTo(entries.Length));
@@ -106,8 +133,8 @@ public class SortedTableTests
     [Test]
     public void Empty_table_seeks_and_enumerates_nothing()
     {
-        byte[] bytes = BuildTable([], []);
-        Assert.That(BlockCount(bytes), Is.EqualTo(0));
+        byte[] bytes = BuildTable([]);
+        Assert.That(DataBlockCount(bytes), Is.EqualTo(0));
         Assert.That(Seek(bytes, Bytes.FromHexString("00"), out _), Is.False);
         Assert.That(Enumerate(bytes), Is.Empty);
     }
@@ -116,9 +143,9 @@ public class SortedTableTests
     public void Single_record_round_trips()
     {
         (byte[] Key, byte[] Value)[] entries = [(Bytes.FromHexString("abcdef"), Bytes.FromHexString("1234"))];
-        byte[] bytes = BuildTable(entries, [0]);
+        byte[] bytes = BuildTable(entries);
 
-        Assert.That(BlockCount(bytes), Is.EqualTo(1));
+        Assert.That(DataBlockCount(bytes), Is.EqualTo(1));
         Assert.That(Seek(bytes, entries[0].Key, out byte[] got), Is.True);
         Assert.That(got, Is.EqualTo(entries[0].Value));
         Assert.That(Seek(bytes, Bytes.FromHexString("abcdee"), out _), Is.False); // before
@@ -144,9 +171,9 @@ public class SortedTableTests
             BinaryPrimitives.WriteInt32BigEndian(key, i);
             entries[i] = (key, [(byte)i, (byte)(i + 1)]);
         }
-        byte[] bytes = BuildTable(entries, [.. Enumerable.Range(0, count).Reverse()]);
+        byte[] bytes = BuildTable(entries);
 
-        Assert.That(BlockCount(bytes), Is.EqualTo(1), "small values keep all records in one block");
+        Assert.That(DataBlockCount(bytes), Is.EqualTo(1), "small values keep all records in one block");
         for (int i = 0; i < count; i++)
         {
             Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
@@ -173,7 +200,7 @@ public class SortedTableTests
             BinaryPrimitives.WriteInt32BigEndian(key, i);
             entries[i] = (key, [(byte)i]);
         }
-        byte[] bytes = BuildTable(entries, [.. Enumerable.Range(0, count).Reverse()]);
+        byte[] bytes = BuildTable(entries);
 
         for (int i = 0; i < count; i++)
         {
@@ -202,9 +229,9 @@ public class SortedTableTests
             BinaryPrimitives.WriteInt32BigEndian(key, 2 * i + 1); // odd
             entries[i] = (key, value);
         }
-        byte[] bytes = BuildTable(entries, [.. Enumerable.Range(0, count).Reverse()]);
+        byte[] bytes = BuildTable(entries);
 
-        Assert.That(BlockCount(bytes), Is.GreaterThan(1), "200-byte values span multiple 4 KB blocks");
+        Assert.That(DataBlockCount(bytes), Is.GreaterThan(1), "200-byte values span multiple 4 KB blocks");
 
         for (int i = 0; i < count; i++)
         {
@@ -239,7 +266,7 @@ public class SortedTableTests
             BinaryPrimitives.WriteUInt16BigEndian(key.AsSpan(30), (ushort)i);
             entries[i] = (key, [(byte)i, (byte)(i + 1)]);
         }
-        byte[] bytes = BuildTable(entries, [.. Enumerable.Range(0, count).Reverse()]);
+        byte[] bytes = BuildTable(entries);
 
         for (int i = 0; i < count; i++)
         {
@@ -284,7 +311,7 @@ public class SortedTableTests
             }
 
             (byte[] Key, byte[] Value)[] entries = [.. map.Select(kv => (Bytes.FromHexString(kv.Key), kv.Value))];
-            byte[] bytes = BuildTable(entries, [.. Enumerable.Range(0, entries.Length).Reverse()]);
+            byte[] bytes = BuildTable(entries);
 
             foreach ((byte[] key, byte[] value) in entries)
             {
@@ -309,10 +336,10 @@ public class SortedTableTests
         }
     }
 
-    // Every data block is zero-padded to BlockSize, so block i starts at i*BlockSize and the index
-    // block starts at M*BlockSize — both must parse as valid self-describing blocks.
+    // Every data block but the last is zero-padded to BlockSize, so data block i starts at i*BlockSize.
+    // The (unaligned) index block is located by the footer's IndexOffset, right after the last block.
     [Test]
-    public void Data_blocks_are_4k_aligned_and_index_follows()
+    public void Data_blocks_are_4k_aligned_and_index_located_by_offset()
     {
         const int count = 300;
         byte[] value = new byte[200];
@@ -323,19 +350,22 @@ public class SortedTableTests
             BinaryPrimitives.WriteInt32BigEndian(key, i);
             entries[i] = (key, value);
         }
-        byte[] bytes = BuildTable(entries, [.. Enumerable.Range(0, count).Reverse()]);
+        byte[] bytes = BuildTable(entries);
 
         SpanByteReader reader = new(bytes);
         Bound table = new(0, reader.Length);
         Assert.That(SortedTable.TryReadFooter<SpanByteReader, NoOpPin>(in reader, table, out SortedTable.Footer footer), Is.True);
-        int m = footer.NumBlocks;
+        long m = footer.NumDataBlocks;
         Assert.That(m, Is.GreaterThan(1));
 
-        for (int i = 0; i < m; i++)
-            Assert.That(BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, (long)i * SortedTable.BlockSize, out int w, out _, out _, out _) && (w is Block.Width2 or Block.Width4),
+        for (long i = 0; i < m; i++)
+            Assert.That(BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, i * SortedTable.BlockSize, out int w, out _, out _, out _) && (w is Block.Width2 or Block.Width4),
                 Is.True, $"data block {i} at {i * SortedTable.BlockSize}");
-        // The index block sits right after the last (unpadded) data block.
-        Assert.That(BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, SortedTable.IndexBlockStart(table, footer), out _, out _, out _, out _), Is.True, "index block after the last data block");
+
+        // The index block is located directly by the footer's IndexOffset (it is not block-aligned and
+        // begins right after the last, unpadded, data block).
+        Assert.That(footer.IndexOffset, Is.GreaterThanOrEqualTo((m - 1) * SortedTable.BlockSize));
+        Assert.That(BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, SortedTable.IndexBlockStart(table, footer), out _, out _, out _, out _), Is.True, "index block at IndexOffset");
     }
 
     // u32 block number * 4 KiB reaches ~16 TiB; the helper must widen before multiplying.
@@ -344,9 +374,9 @@ public class SortedTableTests
         Assert.That(SortedTable.DataBlockStart(new Bound(0, 0), uint.MaxValue), Is.EqualTo((long)uint.MaxValue * SortedTable.BlockSize));
 
     [Test]
-    public void Large_table_round_trips_after_buffer_growth()
+    public void Large_table_round_trips_across_many_blocks()
     {
-        // Enough entries to force the builder's key/entry buffers to grow several times and span blocks.
+        // Enough entries to span many data blocks and a sizeable index block.
         const int count = 5000;
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
@@ -355,15 +385,8 @@ public class SortedTableTests
             BinaryPrimitives.WriteInt32BigEndian(key, i);
             entries[i] = (key, [(byte)(i & 0xFF), (byte)((i >> 8) & 0xFF)]);
         }
-        // Insertion order: a deterministic shuffle (stride coprime to count).
-        int[] order = new int[count];
-        for (int i = 0; i < count; i++) order[i] = (int)((long)i * 2654435761L % count);
-        // Ensure the shuffle is a permutation; fall back to identity for any unlikely collision.
-        if (order.Distinct().Count() != count)
-            for (int i = 0; i < count; i++) order[i] = i;
-
-        byte[] bytes = BuildTable(entries, order);
-        Assert.That(BlockCount(bytes), Is.GreaterThan(1));
+        byte[] bytes = BuildTable(entries);
+        Assert.That(DataBlockCount(bytes), Is.GreaterThan(1));
 
         for (int i = 0; i < count; i++)
         {

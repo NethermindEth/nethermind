@@ -394,12 +394,12 @@ public class PersistedSnapshotCompactor(
         ArenaByteReader reader = reservation.CreateReader();
         Bound table = new(0, reader.Length);
         if (!SortedTable.TryReadFooter<ArenaByteReader, NoOpPin>(in reader, table, out SortedTable.Footer footer)
-            || footer.NumBlocks == 0)
+            || footer.NumDataBlocks == 0)
             return;
 
         // The reader is reservation-relative and TouchRangePopulate takes reservation-relative offsets.
-        // The index block starts just past the M data blocks (= M·BlockSize) and runs, with the footer,
-        // to the table end.
+        // The index block starts at the footer's recorded offset (just past the last, unpadded, data
+        // block) and runs, with the footer, to the table end.
         long indexStart = SortedTable.IndexBlockStart(table, footer);
         long indexLen = table.Length - indexStart;
         if (indexLen <= 0) return;

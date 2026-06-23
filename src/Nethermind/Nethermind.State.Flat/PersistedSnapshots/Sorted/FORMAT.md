@@ -10,8 +10,9 @@ in separate blob arenas; the table stores only small inline values (account RLP,
 
 ```
 data block × M  ; blocks 0..M-2 zero-padded to BlockSize (4096); data block i at i·BlockSize
-index block     ; right after the last (unpadded) data block; key = separator, value = u32 blockNumber LE
-footer          ; [count i64][numBlocks u32][lastBlockSize u16][restartInterval u8][version u8]  (fixed 16 bytes, read first)
+index block     ; right after the last (unpadded) data block, at the footer's indexOffset; NOT block-aligned;
+                ;   key = separator, value = u32 blockNumber LE
+footer          ; [count i64][numDataBlocks i64][indexOffset i64][restartInterval u8][version u8]  (fixed 26 bytes, read first)
 
 Block (data and index alike):
   [offsetWidth u8]                    ; W = 2 or 4 bytes
@@ -33,15 +34,15 @@ Block (data and index alike):
   size `vs` are each one byte: keys are ≤ 55 bytes, every inline value is < 255. The one variable-length
   datum, the referenced blob-arena id list, is stored as separate records (see below), so no value
   overflows.
-- Records are physically **sorted and packed** into data blocks; a data block closes once the next
-  record would push its content past `BlockSize` (4096). Blocks 0..M-2 are then **zero-padded to 4096**
-  so block `i` sits at `i·BlockSize` and is addressed by **block number** — a `u32` block number times
-  4096 reaches a 16 TiB table. The **last** data block is left unpadded, so a single-block table stays
-  compact; the footer's `lastBlockSize` locates what follows it.
+- Records are **streamed and packed** into data blocks in ascending key order; a data block closes once
+  the next record would push its content past `BlockSize` (4096). Blocks 0..M-2 are **zero-padded to
+  4096** so block `i` sits at `i·BlockSize` and is addressed by **block number** — a `u32` block number
+  times 4096 reaches a 16 TiB data region. The **last** data block is left unpadded, with the index
+  block immediately after it.
 - The **index block** maps, per data block, the shortest **separator** key in
   `[lastKey(block), firstKey(next block))` (the last block's separator is its own last key) to that
-  block's number. It begins right after the last data block, at
-  `(M-1)·BlockSize + lastBlockSize`, both from the footer.
+  block's number. It is located directly by the footer's `indexOffset` (a table-relative byte offset),
+  so it needs no block-number address and no padding; the i64 footer fields span the full range.
 - A lookup (`SortedTableReader`) reads the footer, then does two `BlockReader.SeekCeiling` calls
   (LevelDB `Block::Iter::Seek`): (1) ceiling over the **index block** — the first separator ≥ the
   target yields the data block number (a target past the last separator misses); (2) ceiling over that
@@ -49,9 +50,12 @@ Block (data and index alike):
   ceiling binary-searches the restarts (rightmost restart whose first key ≤ target, clamped to restart
   0 when the target precedes the block) then scans forward to `recordsEnd`, reconstructing front-coded
   keys. O(log M) + O(log restarts) random reads + a short in-page scan; no caching, no per-table bloom.
-- The **builder** (`SortedTableBuilder`) buffers records off-heap (any order), sorts them at `Build`,
-  then drives a data `BlockBuilder` (closing + padding at 4096) and an index `BlockBuilder`
-  (separator → block number). Only the current data block and the index are held in memory.
+- The **builder** (`SortedTableBuilder`) requires records in **strictly ascending** key order and
+  streams them straight into a data `BlockBuilder` (closing + padding at 4096) as they arrive — no
+  record buffer, so the table size is bounded by the 16 TiB data region rather than by memory. The index
+  `BlockBuilder` (separator → block number) accrues one entry per flushed data block; only the current
+  data block and the index are held in memory. Producers (`PersistedSnapshotBuilder`,
+  `PersistedSnapshotMerger`) therefore emit in ascending key order (see Keys below).
 - `version` rejects a blob written by a different format; the catalog version (`SnapshotCatalog`)
   gates the whole tier across incompatible changes.
 

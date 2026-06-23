@@ -38,7 +38,9 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
     // v6: sorted table reuses one self-describing block format for both levels; data blocks are
     // 4 KiB-aligned and addressed by block number, and the index is a single block (separator →
     // block number) — incompatible with the v5 byte-offset tail index.
-    private const int CurrentVersion = 6;
+    // v7: sorted-table footer widened to i64 fields and the (unaligned) index block is located by a
+    // stored byte offset instead of being recomputed from the block count — incompatible footer.
+    private const int CurrentVersion = 7;
 
     private static readonly byte[] MetadataKey = new byte[4];
 
