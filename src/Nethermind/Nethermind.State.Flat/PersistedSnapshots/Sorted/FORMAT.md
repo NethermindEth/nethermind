@@ -8,19 +8,25 @@ separate blob arenas; the table stores only small inline values (account RLP, sl
 ## Layout (within the table's `Bound`, offsets relative to the bound start)
 
 ```
-records:  [keysize u16][key][valuesize u16][value]  × N      (records in arbitrary insertion order)
-offsets:  [recordOffset u32]                         × N      (one per record, in ascending key order)
-footer:   [count i64][version u8]                              (fixed 9 bytes, read first)
+records:  [ks u8][key][vs u8][value]   × N                  (sorted by key, contiguous)
+offsets:  [recordOffset u32]           × ceil(N / 8)        (first record of each 8-record block)
+footer:   [count i64][blockSize u8][version u8]             (fixed 10 bytes, read first)
 ```
 
-- The **offset region** is the only sorted structure: `offsets[i]` is the byte offset of the i-th
-  record *in ascending key order*. Lookups read the footer for `N`, then binary search the offset
-  region — each probe reads `offsets[mid]`, seeks the record, and compares its inline key
-  (`SortedTableReader`). O(log N) reader accesses, no caching, no per-table bloom.
-- The **builder** (`SortedTableBuilder`) streams records to the writer in any order, buffers every
-  key off-heap, and sorts the offsets once at `Build`. Buffering all keys is the intended cost.
-- `version` byte rejects a blob written by a different format; the catalog version
-  (`SnapshotCatalog`) gates the whole tier across incompatible changes.
+- Records are physically **sorted and packed back-to-back**. Key and value sizes are each a single
+  byte: keys are ≤ 55 bytes, and every inline value is < 255 (the builder's checked cast enforces
+  it). The one variable-length datum, the referenced blob-arena id list, is stored as separate
+  records instead (see below), so no value overflows.
+- The **sparse offset region** stores the byte offset of the first record of every `blockSize`
+  (= 8) record block, in ascending key order. A lookup (`SortedTableReader`) reads the footer for
+  `count`/`blockSize`, binary searches the sparse offsets for the block whose first key ≤ the
+  target, then **sequentially scans that block's ≤ 8 contiguous records** (almost always within one
+  4 KiB page). O(log(N/8)) random reads + a short in-page scan; no caching, no per-table bloom.
+- The **builder** (`SortedTableBuilder`) buffers records off-heap as added (any order), sorts them
+  by key at `Build`, then writes the sorted records, the sparse offset region, and the footer. The
+  sparse index cuts the on-disk offset region and the per-record build bookkeeping ~8×.
+- `version` rejects a blob written by a different format; the catalog version (`SnapshotCatalog`)
+  gates the whole tier across incompatible changes.
 
 ## Keys (`PersistedSnapshotKey`)
 
@@ -30,6 +36,7 @@ bytes are stored as `255 − tag`**; entity bytes are natural. Ascending order t
 
 | Entity | Key bytes (tags as 255−v) | Value |
 |---|---|---|
+| Ref-id | `00` + blobArenaId(2 BE) | `[01]` presence |
 | Storage node | `FA` + addrHash(20) + `{FF top, FE compact, FD fallback}` + path | `NodeRef` (6) |
 | State node | `{FD top, FC compact, FB fallback}` + path | `NodeRef` (6) |
 | Slot | `FE` + addr(20) + `FD` + slot(32 BE) | RLP-wrapped value / empty (deleted) |
@@ -37,16 +44,19 @@ bytes are stored as `255 − tag`**; entity bytes are natural. Ascending order t
 | Account | `FE` + addr(20) + `FF` | slim account RLP / `[00]` deleted |
 | Metadata | `FF` + name(10, NUL-padded) | metadata value |
 
-Within an address: slots → self-destruct → account. Within an addressHash: fallback → compact →
-top. Across columns: storage → state → per-address → metadata. The path encodings (4/8/33-byte) and
-the per-bucket ordering are unchanged from the HSST builder/compacter so a future proper-HSST
-serializer can reuse them.
+Each referenced blob-arena id is its own record under column `00`, which sorts before every real
+column — so the ref-ids are the first records and iterate cheaply from the table start
+(`PersistedSnapshot`'s ref-id enumerator stops at the first non-`00` record). Within an address:
+slots → self-destruct → account. Within an addressHash: fallback → compact → top. Across columns:
+ref-ids → storage → state → per-address → metadata. The path encodings (4/8/33-byte) and the
+per-bucket ordering are unchanged from the HSST builder/compacter so a future proper-HSST serializer
+can reuse them.
 
 ## Compaction (`PersistedSnapshotMerger`)
 
 Each input snapshot is one sorted run. The merge walks them in ascending key order (O(N) find-min),
-newest-source-wins per key. Slots are buffered per address and flushed once that address's
+newest-source-wins per key. Ref-id records dedup through this same merge, yielding the union of
+referenced ids for free. Slots are buffered per address and flushed once that address's
 self-destruct barrier is known — slots that contributed only from sources older than the newest
-destruct are dropped (self-destruct truncation). Metadata is merged separately: `from_*` from the
-oldest source, `to_*`/`version` from the newest, the union of all `ref_ids`, and a `noderefs`
-presence marker.
+destruct are dropped (self-destruct truncation). The remaining metadata (`from_*` from the oldest
+source, `to_*`/`version` from the newest, a `noderefs` presence marker) is written separately.

@@ -93,6 +93,39 @@ public class SortedTableTests
             in reader, new Bound(0, reader.Length), Bytes.FromHexString("00"), out _), Is.False);
     }
 
+    // Exercise the sparse index across last-block sizes 1..8 (partial and full final blocks).
+    [TestCase(1)]
+    [TestCase(7)]
+    [TestCase(8)]
+    [TestCase(9)]
+    [TestCase(16)]
+    [TestCase(17)]
+    public void Round_trips_across_block_boundaries(int count)
+    {
+        (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] key = new byte[4];
+            BinaryPrimitives.WriteInt32BigEndian(key, i);
+            entries[i] = (key, [(byte)i]);
+        }
+        int[] order = [.. Enumerable.Range(0, count).Reverse()];
+        byte[] bytes = BuildTable(entries, order);
+
+        SpanByteReader reader = new(bytes);
+        Bound table = new(0, reader.Length);
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(SortedTableReader.TrySeek<SpanByteReader, NoOpPin>(in reader, table, entries[i].Key, out Bound v), Is.True);
+            byte[] got = new byte[v.Length];
+            reader.TryRead(v.Offset, got);
+            Assert.That(got, Is.EqualTo(entries[i].Value));
+        }
+        byte[] missing = new byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(missing, count);
+        Assert.That(SortedTableReader.TrySeek<SpanByteReader, NoOpPin>(in reader, table, missing, out _), Is.False);
+    }
+
     [Test]
     public void Large_table_round_trips_after_buffer_growth()
     {

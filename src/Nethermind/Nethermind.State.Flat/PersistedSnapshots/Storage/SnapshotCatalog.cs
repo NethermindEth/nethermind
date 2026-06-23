@@ -29,7 +29,9 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
     // directories will fail to load with a clear "wipe and resync" message.
     // v2: persisted-snapshot metadata switched from the columnar HSST format to the single-level
     // sorted table — the old metadata blobs are unreadable by the new reader.
-    private const int CurrentVersion = 2;
+    // v3: sorted table moved to a sparse (per-8-record) offset index, 1-byte key/value sizes, and
+    // per-id ref-id records — incompatible with the v2 dense-offset layout.
+    private const int CurrentVersion = 3;
 
     private static readonly byte[] MetadataKey = new byte[4];
 

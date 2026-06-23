@@ -145,8 +145,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     private RefIdsEnumerator<ArenaByteReader, NoOpPin> GetRefIdsEnumerator()
     {
         ArenaByteReader reader = _reservation.CreateReader();
-        Bound refIds = SeekMetadata<ArenaByteReader, NoOpPin>(in reader, new Bound(0, reader.Length), PersistedSnapshotTags.MetadataRefIdsKey);
-        return new RefIdsEnumerator<ArenaByteReader, NoOpPin>(reader, refIds);
+        return new RefIdsEnumerator<ArenaByteReader, NoOpPin>(reader, new Bound(0, reader.Length));
     }
 
     /// <summary>
@@ -167,36 +166,33 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     }
 
     /// <summary>
-    /// Ref-struct enumerator backing <see cref="GetRefIdsEnumerator"/>. Yields each
-    /// <see cref="NodeRef.BlobArenaId"/> stored in the snapshot's <c>ref_ids</c> metadata entry in
-    /// ascending order without allocating a <c>ushort[]</c>.
+    /// Ref-struct enumerator backing <see cref="GetRefIdsEnumerator"/>. Yields each referenced
+    /// <see cref="NodeRef.BlobArenaId"/> by walking the ref-id records (column
+    /// <see cref="PersistedSnapshotKey.RefIdColumn"/>), which sort first in the table, and stopping
+    /// at the first non-ref-id record.
     /// </summary>
     private ref struct RefIdsEnumerator<TReader, TPin>
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         private TReader _reader;
-        private long _cursor;
-        private long _end;
+        private SortedTableEnumerator<TReader, TPin> _inner;
         private ushort _current;
 
-        internal RefIdsEnumerator(TReader reader, Bound refIdsBound)
+        internal RefIdsEnumerator(TReader reader, Bound table)
         {
             _reader = reader;
-            if (refIdsBound.Length > 0 && refIdsBound.Length % 2 == 0)
-            {
-                _cursor = refIdsBound.Offset;
-                _end = refIdsBound.Offset + refIdsBound.Length;
-            }
+            _inner = new SortedTableEnumerator<TReader, TPin>(in reader, table);
         }
 
         public readonly ushort Current => _current;
 
         public bool MoveNext()
         {
-            if (_cursor >= _end) return false;
-            if (!_reader.TryRead(_cursor, MemoryMarshal.AsBytes(new Span<ushort>(ref _current)))) return false;
-            _cursor += 2;
+            if (!_inner.MoveNext(in _reader)) return false;
+            ReadOnlySpan<byte> key = _inner.CurrentKey;
+            if (key.Length == 0 || key[0] != PersistedSnapshotKey.RefIdColumn) return false;
+            _current = PersistedSnapshotKey.ReadRefId(key);
             return true;
         }
 

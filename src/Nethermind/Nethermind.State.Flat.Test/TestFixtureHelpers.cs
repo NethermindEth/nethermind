@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -65,30 +66,25 @@ internal static class TestFixtureHelpers
     }
 
     /// <summary>
-    /// Read the snapshot's <c>ref_ids</c> metadata entry as a <c>ushort[]</c>, or <c>null</c> when
-    /// the entry is absent or malformed. Test-only convenience for asserting the referenced
-    /// blob-arena id set; production resolves ref-ids lazily through <c>PersistedSnapshot</c>'s
-    /// internal ref-ids enumerator instead.
+    /// Read the snapshot's referenced blob-arena ids (the ref-id records in column
+    /// <see cref="PersistedSnapshotKey.RefIdColumn"/>) as a <c>ushort[]</c>, or <c>null</c> when
+    /// there are none (e.g. raw test bytes that aren't a real table). Test-only convenience for
+    /// asserting the referenced id set; production walks them via <c>PersistedSnapshot</c>'s
+    /// internal ref-ids enumerator.
     /// </summary>
     public static ushort[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        Span<byte> key = stackalloc byte[1 + PersistedSnapshotTags.MetadataKeyLength];
-        int klen = PersistedSnapshotKey.WriteMetadataKey(key, PersistedSnapshotTags.MetadataRefIdsKey);
-        if (!SortedTableReader.TrySeek<TReader, TPin>(in reader, new Bound(0, reader.Length), key[..klen], out Bound b)
-            || b.Length == 0 || b.Length % 2 != 0)
-            return null;
-        int len = checked((int)b.Length);
-        int count = len / 2;
-        Span<byte> buf = stackalloc byte[256];
-        if (len > buf.Length)
-            buf = new byte[len];
-        if (!reader.TryRead(b.Offset, buf[..len])) return null;
-        ushort[] ids = new ushort[count];
-        for (int i = 0; i < count; i++)
-            ids[i] = BinaryPrimitives.ReadUInt16LittleEndian(buf.Slice(i * 2, 2));
-        return ids;
+        List<ushort> ids = [];
+        SortedTableEnumerator<TReader, TPin> e = new(in reader, new Bound(0, reader.Length));
+        while (e.MoveNext(in reader))
+        {
+            ReadOnlySpan<byte> key = e.CurrentKey;
+            if (key.Length == 0 || key[0] != PersistedSnapshotKey.RefIdColumn) break;
+            ids.Add(PersistedSnapshotKey.ReadRefId(key));
+        }
+        return ids.Count == 0 ? null : ids.ToArray();
     }
 
     /// <summary>

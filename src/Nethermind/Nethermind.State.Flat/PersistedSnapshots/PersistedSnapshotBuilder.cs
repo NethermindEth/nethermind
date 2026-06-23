@@ -317,7 +317,6 @@ public static class PersistedSnapshotBuilder
 
         Span<byte> keyBuf = stackalloc byte[1 + PersistedSnapshotTags.MetadataKeyLength];
         Span<byte> blockNumBytes = stackalloc byte[8];
-        Span<byte> refIdsBytes = stackalloc byte[2];
         Span<byte> blobRangeBytes = stackalloc byte[BlobRange.SerializedSize];
 
         blobRange.Write(blobRangeBytes);
@@ -327,8 +326,10 @@ public static class PersistedSnapshotBuilder
         AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataFromBlockKey, blockNumBytes);
         AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataFromHashKey, snapshot.From.StateRoot.Bytes);
 
-        BinaryPrimitives.WriteUInt16LittleEndian(refIdsBytes, blobWriter.BlobArenaId);
-        AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataRefIdsKey, refIdsBytes);
+        // A base snapshot writes all its trie RLP through one blob arena — one referenced id.
+        Span<byte> refIdKey = stackalloc byte[PersistedSnapshotKey.RefIdKeyLength];
+        int refIdLen = PersistedSnapshotKey.WriteRefIdKey(refIdKey, blobWriter.BlobArenaId);
+        table.Add(refIdKey[..refIdLen], PersistedSnapshotTags.RefIdValue);
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.To.BlockNumber);
         AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataToBlockKey, blockNumBytes);

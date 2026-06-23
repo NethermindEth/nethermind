@@ -34,10 +34,14 @@ internal static class PersistedSnapshotTags
     internal static readonly byte[] MetadataFromBlockKey = "from_block"u8.ToArray();
     internal static readonly byte[] MetadataFromHashKey = "from_hash\0"u8.ToArray();
     internal static readonly byte[] MetadataNodeRefsKey = "noderefs\0\0"u8.ToArray();
-    internal static readonly byte[] MetadataRefIdsKey = "ref_ids\0\0\0"u8.ToArray();
     internal static readonly byte[] MetadataToBlockKey = "to_block\0\0"u8.ToArray();
     internal static readonly byte[] MetadataToHashKey = "to_hash\0\0\0"u8.ToArray();
     internal static readonly byte[] MetadataVersionKey = "version\0\0\0"u8.ToArray();
+
+    // Referenced blob-arena ids are stored as one record per id (key = ref-id column + id; see
+    // PersistedSnapshotKey.WriteRefIdKey) rather than a single list value, so they merge/dedup
+    // through the normal N-way merge and iterate like any other records. This is the per-id value.
+    internal static readonly byte[] RefIdValue = [0x01];
 
     // On-disk format version, written as the value of MetadataVersionKey by the builder and copied
     // through by the merger. Bump when the on-disk layout changes.

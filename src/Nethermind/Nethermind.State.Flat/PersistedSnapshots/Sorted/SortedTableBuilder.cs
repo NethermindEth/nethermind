@@ -11,98 +11,105 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 /// <summary>
-/// Builds a single-level <see cref="SortedTable"/>. Records are streamed to the writer in
-/// arbitrary <see cref="Add"/> order; the keys (and their record offsets) are buffered off-heap
-/// and sorted once at <see cref="Build"/>, which then appends the ascending offset region and the
-/// footer. Buffering every key in memory is the deliberate "unoptimized" cost — see
-/// <see cref="SortedTable"/>. Wire layout there too.
+/// Builds a single-level <see cref="SortedTable"/>. Records are buffered off-heap as they are
+/// <see cref="Add"/>ed (in arbitrary order), then at <see cref="Build"/> sorted by key and written
+/// to the destination <em>in sorted, contiguous order</em>, followed by a sparse offset region (one
+/// entry per <see cref="SortedTable.BlockSize"/> records) and the footer.
 /// </summary>
 /// <remarks>
-/// Decoupling on-disk order from <see cref="Add"/> order lets the snapshot builder emit records
-/// in whatever order is convenient (e.g. computing the metadata <c>blob_range</c> only after every
-/// trie RLP has been written) without reordering its blob writes.
+/// Physically sorting the records is what lets the offset index be sparse: a lookup binary searches
+/// the sparse offsets to a block, then sequentially scans that block's records. Buffering records
+/// also decouples on-disk order from <see cref="Add"/> order, so the snapshot builder can emit in
+/// any convenient order (e.g. computing the metadata <c>blob_range</c> only after all trie RLP is
+/// written). Values are small, so buffering them is cheap; the per-record index is one <c>int</c>.
 /// </remarks>
 internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWriter
 {
-    // Per-record bookkeeping: where the record landed in the writer (relative to the table start)
-    // and where its key bytes sit in _keyBuf, so Build can sort by key without re-reading the writer.
-    private struct Entry
-    {
-        public uint RecordOffset;
-        public int KeyOffset;
-        public int KeyLength;
-    }
-
     private ref TWriter _writer;
     private readonly long _tableStart;
-    private readonly NativeMemoryList<byte> _keyBuf;
-    private readonly NativeMemoryList<Entry> _entries;
+    // Records in insertion order, each [ks u8][key][vs u8][value]; _entries holds the start offset
+    // of each record within _recordBuf, sorted by key at Build.
+    private readonly NativeMemoryList<byte> _recordBuf;
+    private readonly NativeMemoryList<int> _entries;
 
     public SortedTableBuilder(ref TWriter writer, int expectedKeyCount = 16)
     {
         _writer = ref writer;
         _tableStart = writer.Written;
-        _entries = new NativeMemoryList<Entry>(Math.Max(1, expectedKeyCount));
-        _keyBuf = new NativeMemoryList<byte>(Math.Max(16, expectedKeyCount * 24));
+        _entries = new NativeMemoryList<int>(Math.Max(1, expectedKeyCount));
+        _recordBuf = new NativeMemoryList<byte>(Math.Max(32, expectedKeyCount * 32));
     }
 
-    /// <summary>Append one record. Keys must be unique; callers feed each materialized key once.</summary>
+    /// <summary>Buffer one record. Keys must be unique; key and value lengths must each be ≤ 255.</summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
-        uint recordOffset = checked((uint)(_writer.Written - _tableStart));
-
-        WriteUInt16(checked((ushort)key.Length));
-        IByteBufferWriter.Copy(ref _writer, key);
-        WriteUInt16(checked((ushort)value.Length));
-        IByteBufferWriter.Copy(ref _writer, value);
-
-        int keyOffset = _keyBuf.Count;
-        _keyBuf.AddRange(key);
-        _entries.Add(new Entry { RecordOffset = recordOffset, KeyOffset = keyOffset, KeyLength = key.Length });
+        _entries.Add(_recordBuf.Count);
+        Span<byte> hdr = stackalloc byte[1];
+        hdr[0] = checked((byte)key.Length);
+        _recordBuf.AddRange(hdr);
+        _recordBuf.AddRange(key);
+        hdr[0] = checked((byte)value.Length);
+        _recordBuf.AddRange(hdr);
+        _recordBuf.AddRange(value);
     }
 
-    /// <summary>Sort the buffered keys ascending, then emit the offset region and footer.</summary>
+    /// <summary>Sort the buffered records by key and emit the sorted records, the sparse offset
+    /// region, and the footer.</summary>
     public unsafe void Build()
     {
-        Span<Entry> entries = _entries.AsSpan();
+        Span<int> entries = _entries.AsSpan();
+        Span<byte> records = _recordBuf.AsSpan();
         if (entries.Length > 0)
         {
-            byte* keyBase = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(_keyBuf.AsSpan()));
-            _entries.Sort(new KeyComparer(keyBase));
+            byte* recordBase = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(records));
+            _entries.Sort(new KeyComparer(recordBase));
         }
+
+        long blockCount = (entries.Length + SortedTable.BlockSize - 1) / SortedTable.BlockSize;
+        using NativeMemoryList<uint> blockOffsets = new((int)Math.Max(1, blockCount));
 
         for (int i = 0; i < entries.Length; i++)
         {
+            if (i % SortedTable.BlockSize == 0)
+                blockOffsets.Add(checked((uint)(_writer.Written - _tableStart)));
+
+            int off = entries[i];
+            int ks = records[off];
+            int vs = records[off + SortedTable.SizePrefix + ks];
+            int recLen = SortedTable.SizePrefix + ks + SortedTable.SizePrefix + vs;
+            IByteBufferWriter.Copy(ref _writer, records.Slice(off, recLen));
+        }
+
+        Span<uint> blocks = blockOffsets.AsSpan();
+        for (int b = 0; b < blocks.Length; b++)
+        {
             Span<byte> dst = _writer.GetSpan(SortedTable.OffsetSize);
-            BinaryPrimitives.WriteUInt32LittleEndian(dst, entries[i].RecordOffset);
+            BinaryPrimitives.WriteUInt32LittleEndian(dst, blocks[b]);
             _writer.Advance(SortedTable.OffsetSize);
         }
 
         Span<byte> footer = _writer.GetSpan(SortedTable.FooterSize);
         BinaryPrimitives.WriteInt64LittleEndian(footer, entries.Length);
-        footer[sizeof(long)] = SortedTable.FormatVersion;
+        footer[sizeof(long)] = (byte)SortedTable.BlockSize;
+        footer[sizeof(long) + 1] = SortedTable.FormatVersion;
         _writer.Advance(SortedTable.FooterSize);
-    }
-
-    private void WriteUInt16(ushort value)
-    {
-        Span<byte> dst = _writer.GetSpan(SortedTable.SizePrefix);
-        BinaryPrimitives.WriteUInt16LittleEndian(dst, value);
-        _writer.Advance(SortedTable.SizePrefix);
     }
 
     public void Dispose()
     {
-        _keyBuf.Dispose();
+        _recordBuf.Dispose();
         _entries.Dispose();
     }
 
-    /// <summary>Compares two entries by their key bytes (ascending) read from the stable
-    /// native key buffer base pointer captured at <see cref="Build"/> time.</summary>
-    private readonly unsafe struct KeyComparer(byte* keyBase) : IComparer<Entry>
+    /// <summary>Compares two records by their inline key bytes (ascending), read from the stable
+    /// native record-buffer base pointer captured at <see cref="Build"/> time.</summary>
+    private readonly unsafe struct KeyComparer(byte* recordBase) : IComparer<int>
     {
-        public int Compare(Entry a, Entry b) =>
-            new ReadOnlySpan<byte>(keyBase + a.KeyOffset, a.KeyLength)
-                .SequenceCompareTo(new ReadOnlySpan<byte>(keyBase + b.KeyOffset, b.KeyLength));
+        public int Compare(int a, int b)
+        {
+            ReadOnlySpan<byte> ka = new(recordBase + a + SortedTable.SizePrefix, recordBase[a]);
+            ReadOnlySpan<byte> kb = new(recordBase + b + SortedTable.SizePrefix, recordBase[b]);
+            return ka.SequenceCompareTo(kb);
+        }
     }
 }

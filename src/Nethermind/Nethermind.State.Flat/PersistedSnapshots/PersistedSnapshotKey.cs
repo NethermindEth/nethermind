@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -28,6 +29,12 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </remarks>
 internal static class PersistedSnapshotKey
 {
+    // Referenced blob-arena ids: one record per id, keyed by this column (0x00) + the id. 0x00 is
+    // below every real column (0xFA..0xFF), so ref-id records sort first and iterate cheaply from
+    // the table start; the value is a presence marker (PersistedSnapshotTags.RefIdValue).
+    internal const byte RefIdColumn = 0x00;
+    internal const int RefIdKeyLength = 1 + sizeof(ushort);
+
     // Column tag bytes = 255 - PersistedSnapshotTags column tag.
     internal const byte MetadataColumn = 0xFF;       // 255 - 0x00
     internal const byte AccountColumn = 0xFE;        // 255 - 0x01 (per-address: account/SD/slots)
@@ -62,6 +69,17 @@ internal static class PersistedSnapshotKey
         name.CopyTo(dst[1..]);
         return 1 + name.Length;
     }
+
+    /// <summary>Materialize a referenced blob-arena id record key: <see cref="RefIdColumn"/> + the
+    /// id (big-endian, so ids sort numerically).</summary>
+    internal static int WriteRefIdKey(Span<byte> dst, ushort blobArenaId)
+    {
+        dst[0] = RefIdColumn;
+        BinaryPrimitives.WriteUInt16BigEndian(dst[1..], blobArenaId);
+        return RefIdKeyLength;
+    }
+
+    internal static ushort ReadRefId(scoped ReadOnlySpan<byte> key) => BinaryPrimitives.ReadUInt16BigEndian(key[1..]);
 
     internal static int WriteAccountKey(Span<byte> dst, scoped ReadOnlySpan<byte> address)
     {

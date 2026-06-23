@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Hsst;
@@ -55,7 +53,7 @@ public static class PersistedSnapshotMerger
         for (int i = 0; i < views.Length; i++)
         {
             TReader r = views[i].CreateReader();
-            if (SortedTable.TryReadFooter<TReader, TPin>(in r, new Bound(0, r.Length), out long c, out _))
+            if (SortedTable.TryReadFooter<TReader, TPin>(in r, new Bound(0, r.Length), out long c, out _, out _))
                 estimatedKeys += c;
         }
 
@@ -274,6 +272,8 @@ public static class PersistedSnapshotMerger
     {
         switch (key[0])
         {
+            case PersistedSnapshotKey.RefIdColumn:
+                break; // ref-id presence records are not bloom-gated
             case PersistedSnapshotKey.AccountColumn:
                 bloom.Add(PersistedSnapshotBloomBuilder.AddressKey(PersistedSnapshotKey.PerAddressAddress(key)));
                 break;
@@ -314,7 +314,8 @@ public static class PersistedSnapshotMerger
         int noderefsLen = PersistedSnapshotKey.WriteMetadataKey(noderefsKey, PersistedSnapshotTags.MetadataNodeRefsKey);
         table.Add(noderefsKey[..noderefsLen], PersistedSnapshotTags.MetadataNodeRefsPresentMarker);
 
-        MergeRefIds<TWriter, TView, TReader, TPin>(views, ref table);
+        // ref-id records (column 0x00) are not metadata — they flow through the normal entry merge
+        // (MergeEntries), which dedups them across sources into the union for free.
     }
 
     private static void AddMetadataField<TWriter, TReader, TPin>(
@@ -332,37 +333,4 @@ public static class PersistedSnapshotMerger
         }
     }
 
-    /// <summary>Union of every source's sorted little-endian ushort ref_ids run, emitted sorted.</summary>
-    private static void MergeRefIds<TWriter, TView, TReader, TPin>(
-        ReadOnlySpan<TView> views, ref SortedTableBuilder<TWriter> table)
-        where TWriter : IByteBufferWriter
-        where TView : IHsstReaderSource<TReader, TPin>
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-        where TPin : struct, IBufferPin, allows ref struct
-    {
-        Span<byte> key = stackalloc byte[1 + PersistedSnapshotTags.MetadataKeyLength];
-        int keyLen = PersistedSnapshotKey.WriteMetadataKey(key, PersistedSnapshotTags.MetadataRefIdsKey);
-
-        SortedSet<ushort> ids = [];
-        for (int i = 0; i < views.Length; i++)
-        {
-            TReader r = views[i].CreateReader();
-            if (!SortedTableReader.TrySeek<TReader, TPin>(in r, new Bound(0, r.Length), key[..keyLen], out Bound vb)
-                || vb.Length == 0 || vb.Length % 2 != 0)
-                continue;
-            using TPin pin = r.PinBuffer(vb);
-            ReadOnlySpan<byte> bytes = pin.Buffer;
-            for (int o = 0; o + 2 <= bytes.Length; o += 2)
-                ids.Add(BinaryPrimitives.ReadUInt16LittleEndian(bytes[o..]));
-        }
-
-        byte[] buf = new byte[ids.Count * 2];
-        int w = 0;
-        foreach (ushort id in ids)
-        {
-            BinaryPrimitives.WriteUInt16LittleEndian(buf.AsSpan(w), id);
-            w += 2;
-        }
-        table.Add(key[..keyLen], buf);
-    }
 }
