@@ -79,21 +79,27 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
             ValueHash256 effectiveHashLimit = hashLimit ?? ValueKeccak.MaxValue;
 
-            (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueHash256> codeHashes, Hash256 actualRootHash) =
+            (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount>? accountsWithStorage, List<ValueHash256>? codeHashes, Hash256 actualRootHash) =
                 SnapProviderHelper.AddAccountRange(_trieFactory, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
 
             if (result == AddRangeResult.OK)
             {
-                foreach (PathWithAccount item in CollectionsMarshal.AsSpan(accountsWithStorage))
+                if (accountsWithStorage is not null)
                 {
-                    _progressTracker.EnqueueAccountStorage(item);
+                    foreach (PathWithAccount item in CollectionsMarshal.AsSpan(accountsWithStorage))
+                    {
+                        _progressTracker.EnqueueAccountStorage(item);
+                    }
                 }
 
                 try
                 {
-                    using ArrayPoolListRef<ValueHash256> filteredCodeHashes = FilterMissingCodeHashes(codeHashes);
+                    if (codeHashes is not null)
+                    {
+                        using ArrayPoolListRef<ValueHash256> filteredCodeHashes = FilterMissingCodeHashes(codeHashes);
 
-                    _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
+                        _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
+                    }
                 }
                 catch (AggregateException ae) when (ae.Flatten().InnerExceptions is { Count: > 0 } inners
                     && inners.All(e => e is ObjectDisposedException))
@@ -369,11 +375,17 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes)
         {
-            HashSet<ValueHash256> set = requestedHashes.ToHashSet();
-
-            using (IWriteBatch writeBatch = _codeDb.StartWriteBatch())
+            int codesCount = codes.Count;
+            HashSet<ValueHash256> set = new(requestedHashes.Count);
+            for (int i = 0; i < requestedHashes.Count; i++)
             {
-                for (int i = 0; i < codes.Count; i++)
+                set.Add(requestedHashes[i]);
+            }
+
+            try
+            {
+                using IWriteBatch writeBatch = _codeDb.StartWriteBatch();
+                for (int i = 0; i < codesCount; i++)
                 {
                     ReadOnlySpan<byte> codeSpan = codes[i];
                     ValueHash256 codeHash = ValueKeccak.Compute(codeSpan);
@@ -385,10 +397,20 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                 }
             }
+            finally
+            {
+                codes.Dispose();
+            }
 
-            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Count);
-            codes.Dispose();
-            _progressTracker.ReportCodeRequestFinished(set.ToArray());
+            Interlocked.Add(ref Metrics.SnapSyncedCodes, codesCount);
+            if (set.Count == 0)
+            {
+                _progressTracker.ReportCodeRequestFinished(ReadOnlySpan<ValueHash256>.Empty);
+            }
+            else
+            {
+                _progressTracker.ReportCodeRequestFinished(set.ToArray());
+            }
         }
 
         public void RetryRequest(SnapSyncBatch batch)

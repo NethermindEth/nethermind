@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private const int ExtensionRlpChildIndex = 1;
 
-        public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes, Hash256 actualRootHash) AddAccountRange(
+        public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount>? storageRoots, List<ValueHash256>? codeHashes, Hash256 actualRootHash) AddAccountRange(
             ISnapTrieFactory factory,
             long blockNumber,
             in ValueHash256 expectedRootHash,
@@ -33,17 +33,17 @@ namespace Nethermind.Synchronization.SnapSync
             if (result != AddRangeResult.OK)
                 return (result, true, null, null, tree.RootHash);
 
-            List<PathWithAccount> accountsWithStorage = [];
-            List<ValueHash256> codeHashes = [];
+            List<PathWithAccount>? accountsWithStorage = null;
+            List<ValueHash256>? codeHashes = null;
             for (int index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
 
                 if (account.Account.HasStorage && account.Path <= limitHash)
-                    accountsWithStorage.Add(account);
+                    (accountsWithStorage ??= new List<PathWithAccount>(accounts.Count)).Add(account);
 
                 if (account.Account.HasCode)
-                    codeHashes.Add(account.Account.CodeHash);
+                    (codeHashes ??= new List<ValueHash256>(accounts.Count)).Add(account.Account.CodeHash);
             }
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, tree.RootHash);

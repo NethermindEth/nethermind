@@ -372,6 +372,23 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddCodes_DisposesCodes_WhenWriteBatchCreationFails()
+    {
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig()
+        {
+            SnapSyncAccountRangePartitionCount = 1
+        })
+            .AddKeyedSingleton<IDb>(DbNames.Code, _ => new ThrowingCodeDb())
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        DisposableByteArrayList codes = new([1, 2, 3]);
+
+        Assert.That(() => snapProvider.AddCodes([], codes), Throws.InvalidOperationException);
+        Assert.That(codes.DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Persisted_check_scope_uses_snapshot_and_disposes_once_when_owner_disposes_first()
     {
         CountingReadSnapshot snapshot = new() { Exists = false };
@@ -533,6 +550,22 @@ public class SnapProviderTests
             LastBatch = new RecordingWriteBatch(this);
             return LastBatch;
         }
+    }
+
+    private sealed class ThrowingCodeDb : TestMemDb
+    {
+        public override IWriteBatch StartWriteBatch() =>
+            throw new InvalidOperationException();
+    }
+
+    private sealed class DisposableByteArrayList(byte[] item) : IByteArrayList
+    {
+        public int Count => 1;
+        public int DisposeCount { get; private set; }
+        public ReadOnlySpan<byte> this[int index] => index == 0 ? item : throw new IndexOutOfRangeException();
+
+        public void Dispose() =>
+            DisposeCount++;
     }
 
     private sealed class RecordingWriteBatch(RecordingCodeDb db) : IWriteBatch
