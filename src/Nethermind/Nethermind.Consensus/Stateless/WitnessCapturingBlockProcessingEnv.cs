@@ -139,8 +139,8 @@ public sealed class WitnessCapturingBlockProcessingEnv(
 
         public void Dispose()
         {
-            scope.Dispose();
-            trieStore.Dispose();
+            try { scope.Dispose(); }
+            finally { trieStore.Dispose(); }
         }
     }
 }
