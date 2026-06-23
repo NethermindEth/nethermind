@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <RunAnalyzers>false</RunAnalyzers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Nethermind.State/Nethermind.State.csproj" />
+    <ProjectReference Include="../Nethermind.Trie/Nethermind.Trie.csproj" />
+    <ProjectReference Include="../Nethermind.Core/Nethermind.Core.csproj" />
+    <ProjectReference Include="../Nethermind.Db/Nethermind.Db.csproj" />
+    <ProjectReference Include="../Nethermind.Logging/Nethermind.Logging.csproj" />
+    <ProjectReference Include="../Nethermind.StateComposition/Nethermind.StateComposition.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="RocksDB" />
+  </ItemGroup>
+</Project>

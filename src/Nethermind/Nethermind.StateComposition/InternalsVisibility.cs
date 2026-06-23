@@ -4,3 +4,4 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nethermind.StateComposition.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Archive.Bench")]
