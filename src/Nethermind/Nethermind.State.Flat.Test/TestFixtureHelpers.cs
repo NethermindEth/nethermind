@@ -9,6 +9,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 
@@ -42,14 +43,14 @@ internal static class TestFixtureHelpers
     }
 
     /// <summary>
-    /// Read the <c>ref_ids</c> list from the metadata HSST inside <paramref name="reservation"/>
+    /// Read the <c>ref_ids</c> list from the metadata inside <paramref name="reservation"/>
     /// and acquire a lease per id on <paramref name="blobs"/>. Mirrors what
     /// <c>SnapshotRepository</c> does at load time — the resulting
     /// <see cref="PersistedSnapshot"/>'s <c>CleanUp</c> drops one lease per id, keeping
-    /// refcounts balanced. No-op when the HSST has no ref_ids (raw test bytes that aren't
-    /// a real HSST).
+    /// refcounts balanced. No-op when there are no ref_ids (raw test bytes that aren't
+    /// a real sorted table).
     /// </summary>
-    public static void LeaseBlobIdsFromHsst(ArenaReservation reservation, BlobArenaManager blobs)
+    public static void LeaseBlobIds(ArenaReservation reservation, BlobArenaManager blobs)
     {
         using WholeReadSession session = reservation.BeginWholeReadSession();
         WholeReadSessionReader reader = session.CreateReader();
@@ -64,21 +65,20 @@ internal static class TestFixtureHelpers
     }
 
     /// <summary>
-    /// Read the snapshot's <c>ref_ids</c> metadata entry (column 0x00) as a <c>ushort[]</c>,
-    /// or <c>null</c> when the entry is absent or malformed. Test-only convenience for
-    /// asserting the referenced blob-arena id set; production resolves ref-ids lazily through
-    /// <c>PersistedSnapshot</c>'s internal ref-ids enumerator instead.
+    /// Read the snapshot's <c>ref_ids</c> metadata entry as a <c>ushort[]</c>, or <c>null</c> when
+    /// the entry is absent or malformed. Test-only convenience for asserting the referenced
+    /// blob-arena id set; production resolves ref-ids lazily through <c>PersistedSnapshot</c>'s
+    /// internal ref-ids enumerator instead.
     /// </summary>
     public static ushort[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        using HsstReader<TReader, TPin> r = new(in reader);
-        if (!r.TrySeek(PersistedSnapshotTags.MetadataTag, out _) ||
-            !r.TrySeek(PersistedSnapshotTags.MetadataRefIdsKey, out _))
+        Span<byte> key = stackalloc byte[1 + PersistedSnapshotTags.MetadataKeyLength];
+        int klen = PersistedSnapshotKey.WriteMetadataKey(key, PersistedSnapshotTags.MetadataRefIdsKey);
+        if (!SortedTableReader.TrySeek<TReader, TPin>(in reader, new Bound(0, reader.Length), key[..klen], out Bound b)
+            || b.Length == 0 || b.Length % 2 != 0)
             return null;
-        Bound b = r.GetBound();
-        if (b.Length == 0 || b.Length % 2 != 0) return null;
         int len = checked((int)b.Length);
         int count = len / 2;
         Span<byte> buf = stackalloc byte[256];
@@ -93,7 +93,7 @@ internal static class TestFixtureHelpers
 
     /// <summary>
     /// Write <paramref name="data"/> into a fresh reservation on <paramref name="arena"/>,
-    /// lease the blob ids referenced by its metadata HSST (skipped when
+    /// lease the blob ids referenced by its metadata (skipped when
     /// <paramref name="leaseBlobIds"/> is false) and wrap the result in a
     /// <see cref="PersistedSnapshot"/> over <paramref name="blobs"/>.
     /// </summary>
@@ -106,7 +106,7 @@ internal static class TestFixtureHelpers
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        if (leaseBlobIds) LeaseBlobIdsFromHsst(reservation, blobs);
+        if (leaseBlobIds) LeaseBlobIds(reservation, blobs);
         return new PersistedSnapshot(from, to, reservation, blobs, SnapshotTier.PersistedBase, RefCountedBloomFilter.AlwaysTrue());
     }
 

@@ -779,17 +779,12 @@ public class PersistedSnapshotTests
         verify(persisted);
     }
 
-    // Cross-size coverage for the address-bound warmup path added to <see cref="PersistedSnapshot.TryGetAddressBound"/>.
-    // Three regimes:
-    //   - 4 slots: inner HSST is tiny → warmedWholeBound = true → sub-tag walk goes via SpanByteReader.
-    //   - 400 slots: inner HSST is a few KiB → still under the 32 KiB warmup window → SpanByteReader path.
-    //   - 4000 slots: inner HSST exceeds 32 KiB → warmedWholeBound = false → sub-tag walk stays on ArenaByteReader.
-    // Each case asserts: account/self-destruct/slot/storage-node round-trip on first lookup (cache miss → warmup),
-    // a second lookup (cache hit, no warmup), and a third lookup after Demote() drops kernel pages.
+    // Round-trips account / self-destruct / slot / storage-node across a range of slot counts,
+    // including a multi-page snapshot, then re-reads after AdviseDontNeed drops the kernel pages.
     [TestCase(4)]
     [TestCase(400)]
     [TestCase(4000)]
-    public void AddressBoundWarmup_RoundTripsAcrossInnerHsstSizes(int slotCount)
+    public void RoundTrips_AcrossSlotCounts(int slotCount)
     {
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("warmup"));
@@ -813,13 +808,15 @@ public class PersistedSnapshotTests
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
-        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+        // The flat sorted table materialises a full record per slot, so a large slot count exceeds
+        // the shared 64 KiB fixture arena — use a roomier local arena for this case.
+        string arenaDir = Path.Combine(Path.GetTempPath(), $"nm-pstest-rt-{Guid.NewGuid():N}");
+        using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaDir, 64 * 1024 * 1024);
+        using PersistedSnapshot persisted = TestFixtureHelpers.CreatePersistedSnapshot(arena, _blobs, from, to, data);
 
-        // Spot-check the sub-tags that the address-bound warmup path serves. The per-address
-        // column is keyed by raw Address; storage-trie reads still take the addressHash.
+        // Per-address entries are keyed by raw Address; storage-trie reads take the addressHash.
         ValueHash256 addrHash = addr.ToAccountPath;
 
-        // First pass: cache miss → warmup runs.
         Assert.That(persisted.TryGetAccount(addr, out Account? acc1), Is.True);
         Assert.That(acc1, Is.Not.Null);
         Assert.That(acc1!.Balance, Is.EqualTo(expectedAccount.Balance));
@@ -837,21 +834,15 @@ public class PersistedSnapshotTests
         Assert.That(persisted.TryLoadStorageNodeRlp(addrHash, storagePath, out byte[]? nodeRlp1), Is.True);
         Assert.That(nodeRlp1, Is.EqualTo(storageNode.FullRlp.ToArray()));
 
-        // Second pass: cache hit → no warmup, results must match.
+        // Second pass: results must match.
         Assert.That(persisted.TryGetAccount(addr, out Account? acc2), Is.True);
         Assert.That(acc2!.Balance, Is.EqualTo(expectedAccount.Balance));
         SlotValue slot2 = default;
         Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot2), Is.True);
         Assert.That(slot2.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
 
-        // AdviseDontNeed: the per-arena tracker entries are forgotten and the mmap range
-        // is advised cold. The inline address-bound cache slot is unaffected (it holds an
-        // arena offset, not page-residency state) so the *next* TryGetAccount call hits the
-        // cache. For a small bound this exercises the cache-hit-with-cold-pages branch:
-        // TryGetAddressBound's hit path now also calls TouchRangePopulate on the whole bound
-        // when bound.Length <= AddressBoundWarmupBytes, re-arming the tracker and (on a real
-        // mmap) re-faulting any cold page in one syscall. With the page tracker disabled in tests
-        // the kernel side is a no-op; the assertion below just proves the lookup path remains correct.
+        // AdviseDontNeed advises the mmap range cold; the next reads re-fault any dropped page
+        // and the binary search must still resolve correctly.
         persisted.AdviseDontNeed();
         Assert.That(persisted.TryGetAccount(addr, out Account? acc3), Is.True);
         Assert.That(acc3!.Nonce, Is.EqualTo(expectedAccount.Nonce));

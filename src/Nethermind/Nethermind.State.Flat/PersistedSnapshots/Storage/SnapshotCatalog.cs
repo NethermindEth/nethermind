@@ -27,7 +27,9 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
 
     // Catalog version: bumped when the on-disk binary layout changes incompatibly. Old
     // directories will fail to load with a clear "wipe and resync" message.
-    private const int CurrentVersion = 1;
+    // v2: persisted-snapshot metadata switched from the columnar HSST format to the single-level
+    // sorted table — the old metadata blobs are unreadable by the new reader.
+    private const int CurrentVersion = 2;
 
     private static readonly byte[] MetadataKey = new byte[4];
 

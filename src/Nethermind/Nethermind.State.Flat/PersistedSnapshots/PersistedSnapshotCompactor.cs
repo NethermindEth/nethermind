@@ -11,6 +11,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -378,41 +379,23 @@ public class PersistedSnapshotCompactor(
     }
 
     /// <summary>
-    /// Pre-fault the address column's index region of a freshly-written large-tier
-    /// snapshot so its BTree separators / page directory land in the page-residency
-    /// tracker. Without this, the first query walking the address column takes a chain
-    /// of inline minor page faults.
+    /// Pre-fault the sorted table's offset region (the binary-search index at the tail of a
+    /// freshly-written large-tier snapshot) so it lands in the page-residency tracker. Without
+    /// this, the first lookups take a chain of inline minor page faults walking the offsets.
     /// </summary>
-    /// <remarks>
-    /// The index region is the byte range from the end of the last data entry to the end
-    /// of the address column's HSST bound (not the arena/file EOF). Locating it requires
-    /// (a) the column bound and (b) the bound of the last data entry. The last entry
-    /// is found via <c>TrySeekFloor</c> with a 20-byte all-<c>0xFF</c> key — addresses are
-    /// 20 bytes, so this floor-seek always lands on the rightmost entry of the BTree.
-    /// </remarks>
     internal static void WarmAddressColumnIndex(PersistedSnapshot snapshot)
     {
         ArenaReservation reservation = snapshot.Reservation;
         ArenaByteReader reader = reservation.CreateReader();
-
-        if (!PersistedSnapshotReader.TryGetAddressColumnBound<ArenaByteReader, NoOpPin>(
-                in reader, out Bound columnBound))
+        Bound table = new(0, reader.Length);
+        if (!SortedTable.TryReadFooter<ArenaByteReader, NoOpPin>(in reader, table, out _, out long offsetRegionStart))
             return;
 
-        using HsstReader<ArenaByteReader, NoOpPin> r = new(in reader);
-        if (!r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out _))
-            return;
-        Span<byte> maxKey = stackalloc byte[Address.Size];
-        maxKey.Fill(0xFF);
-        if (!r.TrySeekFloor(maxKey, out Bound lastEntry))
-            return;
-
-        long dataEnd = lastEntry.Offset + lastEntry.Length;
-        long columnEnd = columnBound.Offset + columnBound.Length;
-        long indexLen = columnEnd - dataEnd;
+        // The reader is reservation-relative, and TouchRangePopulate takes reservation-relative
+        // offsets, so offsetRegionStart maps directly. The warmed range covers the offset array
+        // plus the footer up to the table end.
+        long indexLen = table.Length - offsetRegionStart;
         if (indexLen <= 0) return;
-
-        long indexStartLocal = dataEnd - reservation.Offset;
-        reservation.TouchRangePopulate(indexStartLocal, indexLen);
+        reservation.TouchRangePopulate(offsetRegionStart, indexLen);
     }
 }

@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.State.Flat.Hsst.DenseByteIndex;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -29,21 +28,17 @@ public static class PersistedSnapshotScanner
 }
 
 /// <summary>
-/// Streaming scan over a persisted snapshot's HSST columns, generic over the byte-reader source so
-/// the traversal isn't bound to a specific reader. The <typeparamref name="TSource"/> (held as a
-/// value) mints a fresh <typeparamref name="TReader"/> per enumerator; the caller guarantees the
-/// underlying region stays valid for the scanner's lifetime. Node entries (<see cref="StateNodeEntry"/>,
-/// <see cref="StorageNodeEntry"/>) decode key and value lazily on property access; <see cref="PerAddressEntry"/>
-/// materialises the address eagerly but decodes account/slot data lazily.
+/// Streaming scan over a persisted snapshot's single-level <see cref="SortedTable"/>, surfacing the
+/// same per-address / state-node / storage-node views the HSST scanner did. Each view does a full
+/// forward pass over the table, skipping the columns it does not own (the columns are contiguous in
+/// sorted order). Generic over the byte-reader source so the traversal isn't bound to a specific
+/// reader; the caller guarantees the underlying region stays valid for the scanner's lifetime.
 /// </summary>
 public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource source, PersistedSnapshot snapshot)
     where TSource : IHsstReaderSource<TReader, TPin>
     where TReader : IHsstByteReader<TPin>, allows ref struct
     where TPin : struct, IBufferPin, allows ref struct
 {
-    private const int SlotPrefixLength = 30;
-    private const int SlotSuffixLength = 32 - SlotPrefixLength;
-
     private readonly TSource _source = source;
     private readonly PersistedSnapshot _snapshot = snapshot;
 
@@ -51,71 +46,37 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
     public StateNodeEnumerable StateNodes => new(_snapshot, _source.CreateReader());
     public StorageNodeEnumerable StorageNodes => new(_snapshot, _source.CreateReader());
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static TPin Pin(scoped in TReader reader, Bound b) =>
-        reader.PinBuffer(b);
+    // ---------------- PerAddress (column 0xFE: Account + SelfDestruct + Slots) ----------------
 
-    // ---------------- PerAddress (column 0x01: Account + SD + Slots) ----------------
-
-    /// <summary>
-    /// One row's worth of per-address data from column 0x01. The on-disk format keys this
-    /// column by raw 20-byte Address; the inner DenseByteIndex carries sub-tags 0x00 (account),
-    /// 0x01 (self-destruct), 0x02 (slots). Storage-trie nodes live in column 0x05 keyed
-    /// by addressHash and are surfaced via <see cref="StorageNodes"/>.
-    /// </summary>
     public readonly ref struct PerAddressEntry(
-        TReader reader, Address address,
-        Bound slotBound, Bound accountBound, Bound sdBound)
+        TReader reader, Address address, bool hasAccount, Bound accountBound, bool? selfDestructFlag,
+        ReadOnlySpan<byte> slotKeys, ReadOnlySpan<Bound> slotValues)
     {
         private readonly TReader _reader = reader;
-        private readonly Bound _slotBound = slotBound;
         private readonly Bound _accountBound = accountBound;
-        private readonly Bound _sdBound = sdBound;
+        private readonly ReadOnlySpan<byte> _slotKeys = slotKeys;
+        private readonly ReadOnlySpan<Bound> _slotValues = slotValues;
 
         public Address Address { get; } = address;
+        public bool? SelfDestructFlag { get; } = selfDestructFlag;
+        public bool HasAccount { get; } = hasAccount;
 
-        /// <summary>
-        /// Self-destruct flag tri-state: <c>null</c> = sub-tag absent (length 0),
-        /// <c>false</c> = destructed (0x00), <c>true</c> = new account marker (0x01).
-        /// Matches <see cref="PersistedSnapshot.TryGetSelfDestructFlag"/> semantics.
-        /// </summary>
-        public bool? SelfDestructFlag
-        {
-            get
-            {
-                if (_sdBound.Length == 0) return null;
-                Span<byte> tag = stackalloc byte[1];
-                _reader.TryRead(_sdBound.Offset, tag);
-                return tag[0] != PersistedSnapshotTags.SelfDestructDestructedMarkerByte;
-            }
-        }
-
-        public bool HasAccount => _accountBound.Length > 0;
-
-        /// <summary>
-        /// Decoded account, or <c>null</c> when the on-disk marker is [0x00] (deleted) or
-        /// the sub-tag is absent. Callers should branch on <see cref="HasAccount"/> first
-        /// when they need to distinguish "no account update in this snapshot" from
-        /// "account explicitly deleted".
-        /// </summary>
+        /// <summary>Decoded account, or <c>null</c> when the on-disk marker is <c>[0x00]</c>
+        /// (deleted). Branch on <see cref="HasAccount"/> first to tell "no account update in this
+        /// snapshot" from "explicitly deleted".</summary>
         public Account? Account
         {
             get
             {
-                if (_accountBound.Length == 0) return null;
-                using TPin pin = Pin(in _reader, _accountBound);
+                if (!HasAccount) return null;
+                using TPin pin = _reader.PinBuffer(_accountBound);
                 ReadOnlySpan<byte> rlp = pin.Buffer;
                 if (rlp.Length == 1 && rlp[0] == PersistedSnapshotTags.AccountDeletedMarkerByte) return null;
                 return AccountDecoder.Slim.Decode(rlp);
             }
         }
 
-        /// <summary>
-        /// Nested enumerable over the slot HSST (sub-tag 0x02). Empty when the slot sub-tag
-        /// is absent. The yielded <see cref="SlotEntry"/> values carry only <c>Slot</c> and
-        /// <c>Value</c>; the address is on this entry and lives one foreach scope up.
-        /// </summary>
-        public SlotEnumerable Slots => new(_reader, _slotBound);
+        public SlotEnumerable Slots => new(_reader, _slotKeys, _slotValues);
     }
 
     public readonly ref struct PerAddressEnumerable(TReader reader)
@@ -126,188 +87,144 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
 
     public ref struct PerAddressEnumerator : IDisposable
     {
-        private readonly TReader _reader;
-        private HsstEnumerator<TReader, TPin> _addrEnum;
-        // _curAddress is materialised once per outer row from the 20-byte outer key and
-        // reused across every sub-tag access and yielded SlotEntry. Per-row cost: one
-        // Address object plus its backing 20-byte array.
+        private TReader _reader;
+        private SortedTableEnumerator<TReader, TPin> _inner;
+        private bool _hasRow;
+
         private Address? _curAddress;
-        private Bound _slotBound;
+        private bool _hasAccount;
         private Bound _accountBound;
-        private Bound _sdBound;
+        private bool? _sdFlag;
+        private byte[] _slotKeys;
+        private Bound[] _slotValues;
+        private int _slotCount;
 
         public PerAddressEnumerator(TReader reader)
         {
             _reader = reader;
-            HsstReader<TReader, TPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out Bound matched) ? matched : default;
-            _addrEnum = new HsstEnumerator<TReader, TPin>(in _reader, colBound);
+            _inner = new SortedTableEnumerator<TReader, TPin>(in reader, new Bound(0, reader.Length));
+            _slotKeys = new byte[PersistedSnapshotKey.SlotLength * 8];
+            _slotValues = new Bound[8];
+            _hasRow = _inner.MoveNext(in _reader);
         }
 
         public bool MoveNext()
         {
-            Span<byte> addrBuf = stackalloc byte[PersistedSnapshotTags.AddressKeyLength];
-            Span<Bound> sub = stackalloc Bound[PersistedSnapshotTags.PerAddrSubTagCount];
-            while (_addrEnum.MoveNext(in _reader))
+            // Skip to the next per-address row; stop once we pass it (metadata sorts after).
+            while (_hasRow && _inner.CurrentKey[0] != PersistedSnapshotKey.AccountColumn)
             {
-                Bound addrInner = _addrEnum.CurrentValue;
-                sub.Clear();
-                HsstDenseByteIndexReader.TryResolveAll<TReader, TPin>(
-                    in _reader, addrInner, sub);
-                Bound slot = sub[PersistedSnapshotTags.SlotSubTagByte];
-                Bound account = sub[PersistedSnapshotTags.AccountSubTagByte];
-                Bound sd = sub[PersistedSnapshotTags.SelfDestructSubTagByte];
-                // Defensive: skip rows where every sub-tag is gap-filled.
-                if (slot.Length == 0 && account.Length == 0 && sd.Length == 0)
-                    continue;
-                ReadOnlySpan<byte> addrKey = _addrEnum.CopyCurrentLogicalKey(in _reader, addrBuf);
-                _curAddress = new Address(addrKey);
-                _slotBound = slot;
-                _accountBound = account;
-                _sdBound = sd;
-                return true;
+                if (_inner.CurrentKey[0] > PersistedSnapshotKey.AccountColumn) { _hasRow = false; break; }
+                _hasRow = _inner.MoveNext(in _reader);
             }
-            return false;
+            if (!_hasRow) return false;
+
+            _curAddress = new Address(PersistedSnapshotKey.PerAddressAddress(_inner.CurrentKey));
+            _hasAccount = false;
+            _accountBound = default;
+            _sdFlag = null;
+            _slotCount = 0;
+
+            while (_hasRow && _inner.CurrentKey[0] == PersistedSnapshotKey.AccountColumn &&
+                   PersistedSnapshotKey.PerAddressAddress(_inner.CurrentKey).SequenceEqual(_curAddress.Bytes))
+            {
+                byte sub = PersistedSnapshotKey.PerAddressSubColumn(_inner.CurrentKey);
+                if (sub == PersistedSnapshotKey.SlotSub)
+                {
+                    BufferSlot(PersistedSnapshotKey.SlotKeyBytes(_inner.CurrentKey), _inner.CurrentValue);
+                }
+                else if (sub == PersistedSnapshotKey.SelfDestructSub)
+                {
+                    byte flag = 0;
+                    _reader.TryRead(_inner.CurrentValue.Offset, new Span<byte>(ref flag));
+                    _sdFlag = flag != PersistedSnapshotTags.SelfDestructDestructedMarkerByte;
+                }
+                else // account
+                {
+                    _hasAccount = true;
+                    _accountBound = _inner.CurrentValue;
+                }
+                _hasRow = _inner.MoveNext(in _reader);
+            }
+            return true;
         }
 
-        public readonly PerAddressEntry Current =>
-            new(_reader, _curAddress!, _slotBound, _accountBound, _sdBound);
+        private void BufferSlot(ReadOnlySpan<byte> slot32, Bound valueBound)
+        {
+            if (_slotCount == _slotValues.Length)
+            {
+                Array.Resize(ref _slotValues, _slotValues.Length * 2);
+                byte[] grown = new byte[_slotKeys.Length * 2];
+                _slotKeys.CopyTo(grown.AsSpan());
+                _slotKeys = grown;
+            }
+            slot32.CopyTo(_slotKeys.AsSpan(_slotCount * PersistedSnapshotKey.SlotLength));
+            _slotValues[_slotCount] = valueBound;
+            _slotCount++;
+        }
 
-        public void Dispose() => _addrEnum.Dispose();
+        public readonly PerAddressEntry Current => new(
+            _reader, _curAddress!, _hasAccount, _accountBound, _sdFlag,
+            _slotKeys.AsSpan(0, _slotCount * PersistedSnapshotKey.SlotLength), _slotValues.AsSpan(0, _slotCount));
+
+        public void Dispose() { }
     }
 
     // ---------------- Slot (nested inside PerAddressEntry) ----------------
 
-    public readonly ref struct SlotEntry(
-        TReader reader, ReadOnlySpan<byte> prefixKey, ReadOnlySpan<byte> suffixKey, Bound suffixValue)
+    public readonly ref struct SlotEntry(TReader reader, ReadOnlySpan<byte> slot32, Bound value)
     {
         private readonly TReader _reader = reader;
-        private readonly ReadOnlySpan<byte> _prefix = prefixKey;
-        private readonly ReadOnlySpan<byte> _suffix = suffixKey;
-        private readonly Bound _value = suffixValue;
+        private readonly ReadOnlySpan<byte> _slot = slot32;
+        private readonly Bound _value = value;
 
-        public UInt256 Slot
-        {
-            get
-            {
-                Span<byte> slotKey = stackalloc byte[32];
-                _prefix.CopyTo(slotKey[.._prefix.Length]);
-                _suffix.CopyTo(slotKey[SlotPrefixLength..]);
-                return new UInt256(slotKey, isBigEndian: true);
-            }
-        }
+        public UInt256 Slot => new(_slot, isBigEndian: true);
 
         public SlotValue? Value
         {
             get
             {
                 if (_value.Length == 0) return null;
-                using TPin pin = Pin(in _reader, _value);
-                // Present values are RLP-wrapped byte-strings; unwrap before reconstruction.
+                using TPin pin = _reader.PinBuffer(_value);
                 ReadOnlySpan<byte> value = new Rlp.ValueDecoderContext(pin.Buffer).DecodeByteArraySpan();
                 return SlotValue.FromSpanWithoutLeadingZero(value);
             }
         }
     }
 
-    public readonly ref struct SlotEnumerable(TReader reader, Bound slotBound)
+    public readonly ref struct SlotEnumerable(TReader reader, ReadOnlySpan<byte> slotKeys, ReadOnlySpan<Bound> slotValues)
     {
         private readonly TReader _reader = reader;
-        private readonly Bound _slotBound = slotBound;
-        public SlotEnumerator GetEnumerator() => new(_reader, _slotBound);
+        private readonly ReadOnlySpan<byte> _slotKeys = slotKeys;
+        private readonly ReadOnlySpan<Bound> _slotValues = slotValues;
+        public SlotEnumerator GetEnumerator() => new(_reader, _slotKeys, _slotValues);
     }
 
-    /// <summary>
-    /// Two-level walk over a per-address slot HSST: outer 30-byte prefix BTreeKeyFirst →
-    /// inner 2-byte suffix keys-first TwoByteSlotValue / -Large blob. The address is
-    /// supplied by the enclosing <see cref="PerAddressEntry"/>; this enumerator yields
-    /// only (slot, value) pairs.
-    /// </summary>
-    public ref struct SlotEnumerator : IDisposable
+    public ref struct SlotEnumerator(TReader reader, ReadOnlySpan<byte> slotKeys, ReadOnlySpan<Bound> slotValues)
     {
-        private readonly TReader _reader;
-        private HsstEnumerator<TReader, TPin> _prefixEnum;
-        private HsstEnumerator<TReader, TPin> _suffixEnum;
-        private byte _level; // 0=need prefix MoveNext, 1=have prefix, 2=have suffixEnum
-        private readonly byte[] _curPrefix;
-        private int _curPrefixLen;
-        private readonly byte[] _curSuffix;
-        private int _curSuffixLen;
-        private Bound _curSuffixValue;
+        private readonly TReader _reader = reader;
+        private readonly ReadOnlySpan<byte> _slotKeys = slotKeys;
+        private readonly ReadOnlySpan<Bound> _slotValues = slotValues;
+        private int _index = -1;
 
-        public SlotEnumerator(TReader reader, Bound slotBound)
-        {
-            _reader = reader;
-            _curPrefix = new byte[SlotPrefixLength];
-            _curSuffix = new byte[SlotSuffixLength];
-            // Empty slotBound (no slots for this address) → empty enumeration.
-            _prefixEnum = slotBound.Length > 0
-                ? new HsstEnumerator<TReader, TPin>(in _reader, slotBound)
-                : default;
-            _level = (byte)(slotBound.Length > 0 ? 1 : 0);
-        }
+        public bool MoveNext() => ++_index < _slotValues.Length;
 
-        public bool MoveNext()
-        {
-            while (true)
-            {
-                if (_level >= 2)
-                {
-                    if (_suffixEnum.MoveNext(in _reader))
-                    {
-                        _curSuffixLen = _suffixEnum.CopyCurrentLogicalKey(in _reader, _curSuffix).Length;
-                        _curSuffixValue = _suffixEnum.CurrentValue;
-                        return true;
-                    }
-                    _suffixEnum.Dispose();
-                    _suffixEnum = default;
-                    _level = 1;
-                }
-                if (_level == 1)
-                {
-                    if (_prefixEnum.MoveNext(in _reader))
-                    {
-                        _curPrefixLen = _prefixEnum.CopyCurrentLogicalKey(in _reader, _curPrefix).Length;
-                        // The prefix entry's value is a keys-first TwoByteSlotValue / -Large
-                        // sub-slot blob — front-dispatch on byte 0, no tail read.
-                        _suffixEnum = HsstEnumerator<TReader, TPin>.CreateTwoByteSlot(
-                            in _reader, _prefixEnum.CurrentValue);
-                        _level = 2;
-                        continue;
-                    }
-                    _prefixEnum.Dispose();
-                    _prefixEnum = default;
-                    _level = 0;
-                }
-                return false;
-            }
-        }
-
-        public readonly SlotEntry Current =>
-            new(_reader, _curPrefix.AsSpan(0, _curPrefixLen), _curSuffix.AsSpan(0, _curSuffixLen), _curSuffixValue);
-
-        public void Dispose()
-        {
-            _suffixEnum.Dispose();
-            _prefixEnum.Dispose();
-        }
+        public readonly SlotEntry Current => new(
+            _reader,
+            _slotKeys.Slice(_index * PersistedSnapshotKey.SlotLength, PersistedSnapshotKey.SlotLength),
+            _slotValues[_index]);
     }
 
-    // ---------------- StateNode ----------------
+    // ---------------- StateNode (columns 0xFB/0xFC/0xFD) ----------------
 
-    public readonly ref struct StateNodeEntry(
-        PersistedSnapshot snapshot, ReadOnlySpan<byte> key, Bound value, byte stage)
+    public readonly ref struct StateNodeEntry(PersistedSnapshot snapshot, ReadOnlySpan<byte> key, Bound value)
     {
         private readonly PersistedSnapshot _snapshot = snapshot;
         private readonly ReadOnlySpan<byte> _key = key;
         private readonly Bound _value = value;
-        private readonly byte _stage = stage;
-        public TreePath Path => _stage switch
-        {
-            0 => TreePath.DecodeWith4Byte(_key),
-            1 => TreePath.DecodeWith8Byte(_key),
-            _ => new(new ValueHash256(_key[..32]), _key[32]),
-        };
+
+        public TreePath Path => PersistedSnapshotKey.DecodePath(
+            PersistedSnapshotKey.StatePathBytes(_key), StateStage(_key[0]));
+
         public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);
     }
 
@@ -321,75 +238,60 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
     public ref struct StateNodeEnumerator : IDisposable
     {
         private readonly PersistedSnapshot _snapshot;
-        private readonly TReader _reader;
-        private HsstEnumerator<TReader, TPin> _inner;
-        private byte _stage; // 0=TopNodes, 1=CompactNodes, 2=Fallback, 3=done
-        // State-trie path key in logical form. Stage 1 (compact, keySize=8) is auto
-        // LE-stored at the source; CopyCurrentLogicalKey un-reverses it. 33 covers the
-        // largest path encoding (fallback hash+nibble).
-        private readonly byte[] _curKey;
-        private int _curKeyLen;
-        private Bound _curValue;
+        private TReader _reader;
+        private SortedTableEnumerator<TReader, TPin> _inner;
+        private bool _hasRow;
+        private bool _returnedRow;
 
         public StateNodeEnumerator(PersistedSnapshot snapshot, TReader reader)
         {
             _snapshot = snapshot;
             _reader = reader;
-            _curKey = new byte[33];
-            _stage = 0;
-            _inner = OpenColumn(in _reader, PersistedSnapshotTags.StateTopNodesTag);
-        }
-
-        private static HsstEnumerator<TReader, TPin> OpenColumn(scoped in TReader reader, byte[] tag)
-        {
-            HsstReader<TReader, TPin> r = new(in reader);
-            Bound b = r.TrySeek(tag, out Bound matched) ? matched : default;
-            return new HsstEnumerator<TReader, TPin>(in reader, b);
+            _inner = new SortedTableEnumerator<TReader, TPin>(in reader, new Bound(0, reader.Length));
+            _hasRow = _inner.MoveNext(in _reader);
         }
 
         public bool MoveNext()
         {
-            while (_stage < 3)
+            if (_returnedRow)
             {
-                if (_inner.MoveNext(in _reader))
+                _hasRow = _inner.MoveNext(in _reader);
+                _returnedRow = false;
+            }
+            while (_hasRow)
+            {
+                byte col = _inner.CurrentKey[0];
+                if (col is PersistedSnapshotKey.StateTopColumn or PersistedSnapshotKey.StateCompactColumn or PersistedSnapshotKey.StateFallbackColumn)
                 {
-                    _curKeyLen = _inner.CopyCurrentLogicalKey(in _reader, _curKey).Length;
-                    _curValue = _inner.CurrentValue;
+                    _returnedRow = true;
                     return true;
                 }
-                _inner.Dispose();
-                _stage++;
-                _inner = _stage switch
-                {
-                    1 => OpenColumn(in _reader, PersistedSnapshotTags.StateNodeTag),
-                    2 => OpenColumn(in _reader, PersistedSnapshotTags.StateNodeFallbackTag),
-                    _ => default,
-                };
+                // State columns (FB/FC/FD) sit between storage (FA) and per-address (FE); once
+                // past them there is nothing more to yield.
+                if (col > PersistedSnapshotKey.StateTopColumn) { _hasRow = false; break; }
+                _hasRow = _inner.MoveNext(in _reader);
             }
             return false;
         }
 
-        public readonly StateNodeEntry Current => new(_snapshot, _curKey.AsSpan(0, _curKeyLen), _curValue, _stage);
-        public void Dispose() => _inner.Dispose();
+        public readonly StateNodeEntry Current => new(_snapshot, _inner.CurrentKey, _inner.CurrentValue);
+
+        public void Dispose() { }
     }
 
-    // ---------------- StorageNode ----------------
+    // ---------------- StorageNode (column 0xFA) ----------------
 
-    public readonly ref struct StorageNodeEntry(
-        PersistedSnapshot snapshot, ValueHash256 addressHash,
-        ReadOnlySpan<byte> pathKey, Bound value, byte stage)
+    public readonly ref struct StorageNodeEntry(PersistedSnapshot snapshot, ValueHash256 addressHash, ReadOnlySpan<byte> key, Bound value)
     {
         private readonly PersistedSnapshot _snapshot = snapshot;
-        public ValueHash256 AddressHash { get; } = addressHash;
-        private readonly ReadOnlySpan<byte> _pathKey = pathKey;
+        private readonly ReadOnlySpan<byte> _key = key;
         private readonly Bound _value = value;
-        private readonly byte _stage = stage;
-        public TreePath Path => _stage switch
-        {
-            0 => TreePath.DecodeWith4Byte(_pathKey),
-            1 => TreePath.DecodeWith8Byte(_pathKey),
-            _ => new(new ValueHash256(_pathKey[..32]), _pathKey[32]),
-        };
+
+        public ValueHash256 AddressHash { get; } = addressHash;
+
+        public TreePath Path => PersistedSnapshotKey.DecodePath(
+            PersistedSnapshotKey.StoragePathBytes(_key), StorageStage(PersistedSnapshotKey.StorageSubColumn(_key)));
+
         public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);
     }
 
@@ -403,117 +305,61 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
     public ref struct StorageNodeEnumerator : IDisposable
     {
         private readonly PersistedSnapshot _snapshot;
-        private readonly TReader _reader;
-        // Column 0x05 (storage-trie) outer enumerator; keys are addressHash (20 bytes).
-        private HsstEnumerator<TReader, TPin> _addrEnum;
-        private HsstEnumerator<TReader, TPin> _pathEnum;
-        // _stage: 0 = current address-hash's top sub-tag, 1 = its compact sub-tag,
-        // 2 = its fallback sub-tag. Reported back to StorageNodeEntry for path-key
-        // decoding (top 4 bytes / compact 8 bytes / fallback 33 bytes), so it doubles
-        // as the on-disk path-encoding selector.
-        private byte _stage;
-        private byte _level;  // 0=need new addr, 1=have pathEnum
-        private Bound _addrInnerBound;
-        private ValueHash256 _curHash;
-        // Path key in logical form. Stage 1 (compact, keySize=8) is auto LE-stored at the
-        // source; CopyCurrentLogicalKey un-reverses. 33 covers the largest path encoding.
-        private readonly byte[] _curPathKey;
-        private int _curPathKeyLen;
-        private Bound _curValue;
+        private TReader _reader;
+        private SortedTableEnumerator<TReader, TPin> _inner;
+        private bool _hasRow;
+        private bool _returnedRow;
 
         public StorageNodeEnumerator(PersistedSnapshot snapshot, TReader reader)
         {
             _snapshot = snapshot;
             _reader = reader;
-            _curPathKey = new byte[33];
-            _stage = 0;
-            _level = 0;
-            _curHash = default;
-            HsstReader<TReader, TPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshotTags.StorageTrieColumnTag, out Bound matched) ? matched : default;
-            _addrEnum = new HsstEnumerator<TReader, TPin>(in _reader, colBound);
-        }
-
-        private static bool TryOpenSubTag(
-            scoped in TReader reader, Bound addrInner, byte[] subTag,
-            out HsstEnumerator<TReader, TPin> e)
-        {
-            HsstReader<TReader, TPin> r = new(in reader, addrInner);
-            if (!r.TrySeek(subTag, out _))
-            {
-                e = default;
-                return false;
-            }
-            Bound b = r.GetBound();
-            // DenseByteIndex returns success on gap-filled absences; treat length 0 as
-            // "this sub-tag is empty" so we don't pay an enumerator setup for nothing.
-            if (b.Length == 0)
-            {
-                e = default;
-                return false;
-            }
-            e = new HsstEnumerator<TReader, TPin>(in reader, b);
-            return true;
+            _inner = new SortedTableEnumerator<TReader, TPin>(in reader, new Bound(0, reader.Length));
+            _hasRow = _inner.MoveNext(in _reader);
         }
 
         public bool MoveNext()
         {
-            Span<byte> hashBuf = stackalloc byte[32];
-            while (true)
+            if (_returnedRow)
             {
-                if (_level == 1)
-                {
-                    if (_pathEnum.MoveNext(in _reader))
-                    {
-                        _curPathKeyLen = _pathEnum.CopyCurrentLogicalKey(in _reader, _curPathKey).Length;
-                        _curValue = _pathEnum.CurrentValue;
-                        return true;
-                    }
-                    _pathEnum.Dispose();
-                    _pathEnum = default;
-                    if (_stage == 0)
-                    {
-                        _stage = 1;
-                        if (TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageCompactSubTag, out _pathEnum))
-                            continue;
-                    }
-                    if (_stage == 1)
-                    {
-                        _stage = 2;
-                        if (TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageFallbackSubTag, out _pathEnum))
-                            continue;
-                    }
-                    _level = 0;
-                    _stage = 0;
-                }
-                // _level == 0: pull next address that has at least one storage sub-tag.
-                if (!_addrEnum.MoveNext(in _reader)) return false;
-                _addrInnerBound = _addrEnum.CurrentValue;
-                _stage = 0;
-                if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageTopSubTag, out _pathEnum))
-                {
-                    _stage = 1;
-                    if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageCompactSubTag, out _pathEnum))
-                    {
-                        _stage = 2;
-                        if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageFallbackSubTag, out _pathEnum))
-                            continue;
-                    }
-                }
-                _curHash = default;
-                ReadOnlySpan<byte> hashKey = _addrEnum.CopyCurrentLogicalKey(in _reader, hashBuf);
-                hashKey.CopyTo(_curHash.BytesAsSpan[..hashKey.Length]);
-                _level = 1;
+                _hasRow = _inner.MoveNext(in _reader);
+                _returnedRow = false;
+            }
+            while (_hasRow)
+            {
+                byte col = _inner.CurrentKey[0];
+                if (col == PersistedSnapshotKey.StorageColumn) { _returnedRow = true; return true; }
+                // Storage (FA) is the first column; once past it there is nothing more to yield.
+                if (col > PersistedSnapshotKey.StorageColumn) { _hasRow = false; break; }
+                _hasRow = _inner.MoveNext(in _reader);
+            }
+            return false;
+        }
+
+        public readonly StorageNodeEntry Current
+        {
+            get
+            {
+                ValueHash256 hash = default;
+                PersistedSnapshotKey.StorageAddressHash(_inner.CurrentKey).CopyTo(hash.BytesAsSpan);
+                return new StorageNodeEntry(_snapshot, hash, _inner.CurrentKey, _inner.CurrentValue);
             }
         }
 
-        public readonly StorageNodeEntry Current =>
-            new(_snapshot, _curHash, _curPathKey.AsSpan(0, _curPathKeyLen), _curValue, _stage);
-
-        public void Dispose()
-        {
-            _pathEnum.Dispose();
-            _addrEnum.Dispose();
-        }
+        public void Dispose() { }
     }
+
+    private static int StateStage(byte column) => column switch
+    {
+        PersistedSnapshotKey.StateTopColumn => 0,
+        PersistedSnapshotKey.StateCompactColumn => 1,
+        _ => 2,
+    };
+
+    private static int StorageStage(byte subColumn) => subColumn switch
+    {
+        PersistedSnapshotKey.StorageTopSub => 0,
+        PersistedSnapshotKey.StorageCompactSub => 1,
+        _ => 2,
+    };
 }
