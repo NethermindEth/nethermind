@@ -43,6 +43,8 @@ jobs:
             --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
             -o "$archive_name.asc" -ab "$archive_name"
 
+          ls $PACKAGE_DIR
+
       - name: Upload assets
         uses: actions/upload-artifact@v7
         with:
