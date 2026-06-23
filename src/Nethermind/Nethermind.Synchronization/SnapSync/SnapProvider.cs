@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
+using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -243,50 +244,103 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void RefreshAccounts(AccountsToRefreshRequest request, IByteArrayList response)
+        public AddRangeResult RefreshAccounts(AccountsToRefreshRequest request, AccountsAndProofs response)
         {
-            int respLength = response.Count;
-            ReadOnlySpan<AccountWithStorageStartingHash> paths = request.Paths.AsSpan();
-            for (int reqIndex = 0; reqIndex < paths.Length; reqIndex++)
+            AccountWithStorageStartingHash requestedPath = request.Paths[0];
+            ValueHash256 path = requestedPath.PathAndAccount.Path;
+
+            AddRangeResult result;
+            switch (VerifyRefreshedAccount(response, request.RootHash, path, out Account? account))
             {
-                AccountWithStorageStartingHash requestedPath = paths[reqIndex];
-
-                if (reqIndex < respLength)
-                {
-                    ReadOnlySpan<byte> nodeData = response[reqIndex];
-
-                    if (nodeData.Length == 0)
-                    {
-                        RetryAccountRefresh(requestedPath);
-                        _logger.Trace($"SNAP - Empty Account Refresh: {requestedPath.PathAndAccount.Path}");
-                        continue;
-                    }
-
-                    requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(Keccak.Compute(nodeData));
+                case RefreshVerifyResult.Verified:
+                    result = AddRangeResult.OK;
+                    requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(account!.StorageRoot);
 
                     if (requestedPath.StorageStartingHash > ValueKeccak.Zero)
                     {
-                        StorageRange range = new()
+                        _progressTracker.EnqueueNextSlot(new StorageRange
                         {
                             Accounts = new ArrayPoolList<PathWithAccount>(1) { requestedPath.PathAndAccount },
                             StartingHash = requestedPath.StorageStartingHash,
                             LimitHash = requestedPath.StorageHashLimit
-                        };
-
-                        _progressTracker.EnqueueNextSlot(range);
+                        });
                     }
                     else
                     {
                         _progressTracker.EnqueueAccountStorage(requestedPath.PathAndAccount);
                     }
-                }
-                else
-                {
+                    break;
+
+                case RefreshVerifyResult.NotFound:
+                    // The account no longer exists at the pivot, so there is no storage to retrieve. It remains
+                    // tracked for healing. Terminal success - must not retry or the refresh would loop forever.
+                    result = AddRangeResult.OK;
+                    break;
+
+                case RefreshVerifyResult.Expired:
+                    // The peer does not have the state for this root (stale pivot).
+                    result = AddRangeResult.ExpiredRootHash;
                     RetryAccountRefresh(requestedPath);
-                }
+                    break;
+
+                default: // InvalidProof - the proof does not reconstruct the state root.
+                    result = AddRangeResult.DifferentRootHash;
+                    RetryAccountRefresh(requestedPath);
+                    break;
             }
 
+            Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: false, result: result));
+            // Must be the last statement, after any enqueue, so IsSnapGetRangesFinished cannot observe
+            // an empty queue with a zeroed active count while work is still being scheduled.
             _progressTracker.ReportAccountRefreshFinished();
+            return result;
+        }
+
+        private enum RefreshVerifyResult { Verified, NotFound, Expired, InvalidProof }
+
+        /// <summary>
+        /// Reconstructs the returned account range and verifies it against <paramref name="stateRoot"/> in an
+        /// isolated, empty-backed trie - the account leaf is set from the response, not assumed to be in the proof -
+        /// then extracts the verified account at <paramref name="path"/>. Nothing is written to the client state DB.
+        /// </summary>
+        private RefreshVerifyResult VerifyRefreshedAccount(AccountsAndProofs response, Hash256 stateRoot, in ValueHash256 path, out Account? account)
+        {
+            account = null;
+            IReadOnlyList<PathWithAccount> accounts = response.PathAndAccounts;
+            // An empty response carries no range to verify, so the account's absence cannot be proven here -
+            // retry rather than concluding (unproven) that it was deleted.
+            if (accounts.Count == 0)
+                return RefreshVerifyResult.Expired;
+
+            AddRangeResult result;
+            try
+            {
+                // Empty-backed isolated factory: a proof node that cannot be resolved from the proof itself fails
+                // verification instead of being completed from (or racing) the live client state DB.
+                ISnapTrieFactory factory = new PatriciaSnapTrieFactory(new NodeStorage(new MemDb()), logManager);
+                result = SnapProviderHelper.VerifyAccountRange(factory, stateRoot, path, path.IncrementPath(), accounts, response.Proofs);
+            }
+            catch (Exception)
+            {
+                // The proof is untrusted P2P data: any failure assembling or decoding it (trie, RLP, bounds, etc.)
+                // means the proof is invalid, never a crash of the sync task.
+                return RefreshVerifyResult.InvalidProof;
+            }
+
+            if (result != AddRangeResult.OK)
+                return RefreshVerifyResult.InvalidProof;
+
+            // The verified range proves which accounts exist around [path, path + 1]; filter to the requested one.
+            // Its absence here is therefore a proven non-existence (deleted account), not an unverified guess.
+            for (int i = 0; i < accounts.Count; i++)
+            {
+                if (accounts[i].Path == path)
+                {
+                    account = accounts[i].Account;
+                    return RefreshVerifyResult.Verified;
+                }
+            }
+            return RefreshVerifyResult.NotFound;
         }
 
         private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath) => _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);

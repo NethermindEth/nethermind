@@ -7,7 +7,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
 
-public class NullDiscoveryApp : IDiscoveryApp
+public sealed class NullDiscoveryApp : IDiscoveryApp
 {
     public void Initialize(PublicKey masterPublicKey)
     {
