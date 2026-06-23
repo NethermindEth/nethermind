@@ -3,7 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core.Collections;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
@@ -150,7 +150,7 @@ internal static class BlockReader
     internal static bool ReadHeader<TReader, TPin>(scoped in TReader reader, long blockStart,
         out int width, out long recordsEnd, out long numRestarts, out long recordsStart)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         width = 0;
         recordsEnd = 0;
@@ -180,7 +180,7 @@ internal static class BlockReader
     internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
         scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf, out int keyLen, out Bound value)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         keyLen = 0;
         value = default;

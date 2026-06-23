@@ -3,7 +3,7 @@
 
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 /// <remarks>
 /// Generic over the byte-reader source so it isn't bound to a specific reader; each input is an
-/// <see cref="IHsstReaderSource{TReader,TPin}"/> that mints a fresh reader on demand (production
+/// <see cref="IByteReaderSource{TReader,TPin}"/> that mints a fresh reader on demand (production
 /// drives it with <see cref="Storage.WholeReadSession"/>). The deliberately-unoptimized find-min is
 /// O(N) per step.
 /// </remarks>
@@ -43,8 +43,8 @@ public static class PersistedSnapshotMerger
     internal static void NWayMergeSnapshots<TWriter, TView, TReader, TPin>(
         ReadOnlySpan<TView> views, ref TWriter writer, BloomFilter bloom)
         where TWriter : IByteBufferWriter
-        where TView : IHsstReaderSource<TReader, TPin>
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TView : IByteReaderSource<TReader, TPin>
+        where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         ArgumentNullException.ThrowIfNull(bloom);
@@ -72,8 +72,8 @@ public static class PersistedSnapshotMerger
     private static void MergeEntries<TWriter, TView, TReader, TPin>(
         ReadOnlySpan<TView> views, ref SortedTableBuilder<TWriter> table, BloomFilter bloom)
         where TWriter : IByteBufferWriter
-        where TView : IHsstReaderSource<TReader, TPin>
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TView : IByteReaderSource<TReader, TPin>
+        where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         int n = views.Length;
@@ -187,8 +187,8 @@ public static class PersistedSnapshotMerger
         ReadOnlySpan<TView> views, SortedTableEnumerator<TReader, TPin>[] enums,
         ReadOnlySpan<byte> key, int newest,
         NativeMemoryList<byte> pendingKeys, NativeMemoryList<byte> pendingValues, NativeMemoryList<PendingSlot> pending)
-        where TView : IHsstReaderSource<TReader, TPin>
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TView : IByteReaderSource<TReader, TPin>
+        where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         TReader r = views[newest].CreateReader();
@@ -234,8 +234,8 @@ public static class PersistedSnapshotMerger
     /// destructed, or -1 if none in the merged range did.</summary>
     private static int ComputeSelfDestructBarrier<TView, TReader, TPin>(
         ReadOnlySpan<TView> views, SortedTableEnumerator<TReader, TPin>[] enums, scoped ReadOnlySpan<int> matching)
-        where TView : IHsstReaderSource<TReader, TPin>
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TView : IByteReaderSource<TReader, TPin>
+        where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         int barrier = -1;
@@ -281,8 +281,8 @@ public static class PersistedSnapshotMerger
         ReadOnlySpan<TView> views, SortedTableEnumerator<TReader, TPin>[] enums,
         ref SortedTableBuilder<TWriter> table, BloomFilter bloom, scoped ReadOnlySpan<byte> key, int newest)
         where TWriter : IByteBufferWriter
-        where TView : IHsstReaderSource<TReader, TPin>
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TView : IByteReaderSource<TReader, TPin>
+        where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         TReader r = views[newest].CreateReader();
@@ -317,8 +317,8 @@ public static class PersistedSnapshotMerger
     private static void MergeMetadata<TWriter, TView, TReader, TPin>(
         ReadOnlySpan<TView> views, ref SortedTableBuilder<TWriter> table)
         where TWriter : IByteBufferWriter
-        where TView : IHsstReaderSource<TReader, TPin>
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TView : IByteReaderSource<TReader, TPin>
+        where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         int n = views.Length;
@@ -347,7 +347,7 @@ public static class PersistedSnapshotMerger
     private static void AddMetadataField<TWriter, TReader, TPin>(
         ref SortedTableBuilder<TWriter> table, scoped in TReader reader, Bound metaTable, ReadOnlySpan<byte> name)
         where TWriter : IByteBufferWriter
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         Span<byte> key = stackalloc byte[1 + PersistedSnapshotTags.MetadataKeyLength];

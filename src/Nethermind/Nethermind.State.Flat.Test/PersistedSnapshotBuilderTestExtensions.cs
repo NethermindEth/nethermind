@@ -3,7 +3,7 @@
 
 using System;
 using Nethermind.Core.Collections;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 

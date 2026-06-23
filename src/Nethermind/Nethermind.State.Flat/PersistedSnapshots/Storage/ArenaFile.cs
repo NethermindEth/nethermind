@@ -10,7 +10,7 @@ using Nethermind.Core.Utils;
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// A single append-only arena file for storing persisted snapshot HSST data.
+/// A single append-only arena file for storing persisted snapshot table data.
 /// Reads use a read-only mmap for zero-copy access; writes go through a
 /// <see cref="FileStream"/> seeked to the target offset.
 ///

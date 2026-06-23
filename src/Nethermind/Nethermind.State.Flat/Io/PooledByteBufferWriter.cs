@@ -3,7 +3,7 @@
 
 using System.Runtime.InteropServices;
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Io;
 
 public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset = 0) : IDisposable
 {

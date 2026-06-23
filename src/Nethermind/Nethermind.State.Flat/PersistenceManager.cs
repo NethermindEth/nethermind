@@ -19,7 +19,7 @@ using Nethermind.Trie.Pruning;
 using WholeReadScanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
     Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSession,
     Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader,
-    Nethermind.State.Flat.Hsst.NoOpPin>;
+    Nethermind.State.Flat.Io.NoOpPin>;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
@@ -75,7 +75,7 @@ public class PersistenceManager(
 
     /// <summary>
     /// Two-phase action: Phase 1 (persistence to RocksDB) runs first; Phase 2 (conversion to
-    /// the HSST persisted-snapshot tier) runs only when Phase 1 returns no candidate.
+    /// the persisted-snapshot tier) runs only when Phase 1 returns no candidate.
     /// </summary>
     /// <remarks>
     /// Phase 1 seed selection — the finalized trigger and the backstop are evaluated independently,
@@ -531,7 +531,7 @@ public class PersistenceManager(
         long sw = Stopwatch.GetTimestamp();
 
         // A linked CompactSized's NodeRefs scatter across the base snapshots' blob arenas, so
-        // the HSST scan below reads blobs out of order. Prefetch every base's contiguous RLP
+        // the table scan below reads blobs out of order. Prefetch every base's contiguous RLP
         // region up front so the kernel can stream them in as bulk read-ahead; once the
         // CompactSized is written the same regions are dropped from the page cache (below) —
         // they won't be read again. The leases are held for the whole method.
@@ -544,7 +544,7 @@ public class PersistenceManager(
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
             // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
-            // same per-address inner HSST, so one outer pass + TryResolveAll resolves all
+            // same per-address inner table, so one outer pass + TryResolveAll resolves all
             // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
             // is preserved within the row; cross-address ordering is irrelevant to the
             // write batch.

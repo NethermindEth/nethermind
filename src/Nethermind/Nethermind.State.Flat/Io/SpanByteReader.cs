@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Io;
 
 /// <summary>
-/// Span-backed <see cref="IHsstByteReader{TPin}"/>. Stored as a ref struct so the underlying
+/// Span-backed <see cref="IByteReader{TPin}"/>. Stored as a ref struct so the underlying
 /// span's lifetime is tracked by the compiler — no raw pointers, no GC pinning concerns.
 /// </summary>
-public readonly ref struct SpanByteReader : IHsstByteReader<NoOpPin>
+public readonly ref struct SpanByteReader : IByteReader<NoOpPin>
 {
     private readonly ReadOnlySpan<byte> _data;
 

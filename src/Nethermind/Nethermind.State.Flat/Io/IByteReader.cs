@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.State.Flat.Hsst;
+namespace Nethermind.State.Flat.Io;
 
 /// <summary>
-/// Absolute offset + length region within an <see cref="IHsstByteReader{TPin}"/>.
+/// Absolute offset + length region within an <see cref="IByteReader{TPin}"/>.
 /// </summary>
 public readonly record struct Bound(long Offset, long Length);
 
 /// <summary>
-/// Pin handle returned by <see cref="IHsstByteReader{TPin}.PinBuffer"/>: combines a
+/// Pin handle returned by <see cref="IByteReader{TPin}.PinBuffer"/>: combines a
 /// disposable release primitive with the pinned <see cref="Buffer"/> span itself.
 /// Implementations may be ref structs so the buffer's lifetime is tracked by the compiler.
 /// </summary>
@@ -29,7 +29,7 @@ public readonly ref struct NoOpPin(ReadOnlySpan<byte> buffer) : IBufferPin
 }
 
 /// <summary>
-/// Random-access byte source for <see cref="HsstReader{TReader,TPin}"/>, generic over the
+/// Random-access byte source over a fixed region, generic over the
 /// pin handle type so readers can return their own zero-allocation, non-virtual pin
 /// (no-op for in-memory, pooled-array for copy fallback, page refcount for paged stores, etc.).
 /// The pinned buffer is exposed via <see cref="IBufferPin.Buffer"/>.
@@ -39,7 +39,7 @@ public readonly ref struct NoOpPin(ReadOnlySpan<byte> buffer) : IBufferPin
 /// <see cref="IBufferPin"/>; <c>allows ref struct</c> permits readers to return ref-struct
 /// pins (e.g. ones that hold a span directly).
 /// </typeparam>
-public interface IHsstByteReader<TPin> where TPin : struct, IBufferPin, allows ref struct
+public interface IByteReader<TPin> where TPin : struct, IBufferPin, allows ref struct
 {
     long Length { get; }
 

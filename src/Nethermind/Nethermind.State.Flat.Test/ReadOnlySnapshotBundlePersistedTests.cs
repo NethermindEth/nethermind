@@ -55,9 +55,9 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
+        byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -87,9 +87,9 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         content.StorageNodes[(address, path)] = new TrieNode(NodeType.Branch, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
+        byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -120,9 +120,9 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         content.StateNodes[storedPath] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
+        byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();

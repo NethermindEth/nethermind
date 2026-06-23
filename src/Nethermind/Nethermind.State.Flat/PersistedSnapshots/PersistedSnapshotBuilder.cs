@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -26,12 +26,12 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 /// <remarks>
 /// The extraction + top/compact/fallback bucketing (and the comparers below) are kept unchanged from
-/// the HSST builder so the entity ordering the future HSST builder/compacter rely on does not drift.
+/// the columnar builder so the entity ordering the future columnar builder/compacter rely on does not drift.
 /// The materialized keys are streamed to a <see cref="SortedTableBuilder{TWriter}"/> in strictly
 /// ascending key order — the builder enforces the order rather than sorting — so <see cref="Build"/>
 /// emits by ascending column (ref-id, storage, state, per-address, metadata), merging the storage
 /// sublists. The key encoding stores column / subcolumn tag bytes as <c>255 − tag</c> so that plain
-/// ascending order reproduces the HSST reverse-tag emission order.
+/// ascending order reproduces the columnar reverse-tag emission order.
 /// </remarks>
 public static class PersistedSnapshotBuilder
 {

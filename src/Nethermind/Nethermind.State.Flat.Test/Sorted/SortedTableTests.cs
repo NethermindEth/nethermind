@@ -6,7 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Extensions;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using NUnit.Framework;
 

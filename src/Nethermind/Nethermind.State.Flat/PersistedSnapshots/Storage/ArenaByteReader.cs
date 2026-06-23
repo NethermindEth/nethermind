@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.Intrinsics.X86;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// Pointer-backed <see cref="IHsstByteReader{TPin}"/> over an arena-mmap region.
+/// Pointer-backed <see cref="IByteReader{TPin}"/> over an arena-mmap region.
 /// Holds a raw <c>byte*</c> + <see cref="long"/> length so the addressed region can exceed
 /// 2 GiB (each individual pin still materialises an int-sized <see cref="ReadOnlySpan{T}"/>).
 /// Each read or pin reports touched OS pages to <see cref="ArenaReservation.TouchRangePopulate"/>
 /// for residency tracking and pre-fault coalescing.
 /// </summary>
-public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
+public unsafe ref struct ArenaByteReader : IByteReader<NoOpPin>
 {
     private readonly byte* _basePtr;
     private readonly long _length;
@@ -23,7 +23,7 @@ public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
     private readonly long _pageMask;
     // Page-aligned absolute address of the last touched range. -1 sentinel = uninitialised.
     // Used to skip the per-page Touch loop when a single-page access stays within the same OS
-    // page as the previous access — the common case for HSST seeks that re-read sequential
+    // page as the previous access — the common case for table seeks that re-read sequential
     // bytes within one node.
     private long _lastPageBase;
 

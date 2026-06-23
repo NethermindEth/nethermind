@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
@@ -29,14 +29,14 @@ public static class PersistedSnapshotScanner
 
 /// <summary>
 /// Streaming scan over a persisted snapshot's single-level <see cref="SortedTable"/>, surfacing the
-/// same per-address / state-node / storage-node views the HSST scanner did. Each view does a full
+/// same per-address / state-node / storage-node views the prior columnar scanner did. Each view does a full
 /// forward pass over the table, skipping the columns it does not own (the columns are contiguous in
 /// sorted order). Generic over the byte-reader source so the traversal isn't bound to a specific
 /// reader; the caller guarantees the underlying region stays valid for the scanner's lifetime.
 /// </summary>
 public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource source, PersistedSnapshot snapshot)
-    where TSource : IHsstReaderSource<TReader, TPin>
-    where TReader : IHsstByteReader<TPin>, allows ref struct
+    where TSource : IByteReaderSource<TReader, TPin>
+    where TReader : IByteReader<TPin>, allows ref struct
     where TPin : struct, IBufferPin, allows ref struct
 {
     private readonly TSource _source = source;

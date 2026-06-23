@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.Trie;
 
@@ -21,7 +21,7 @@ public static class PersistedSnapshotReader
 {
     internal static bool TryGetAccount<TReader, TPin>(scoped in TReader reader, Bound table, Address address, out Bound accountBound)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         Span<byte> key = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
         int len = PersistedSnapshotKey.WriteAccountKey(key, address.Bytes);
@@ -30,7 +30,7 @@ public static class PersistedSnapshotReader
 
     internal static bool TryGetSlot<TReader, TPin>(scoped in TReader reader, Bound table, Address address, in UInt256 index, out Bound slotBound)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         Span<byte> slot = stackalloc byte[32];
         index.ToBigEndian(slot);
@@ -43,7 +43,7 @@ public static class PersistedSnapshotReader
     /// <c>false</c> when destructed (<c>[0x00]</c>), <c>true</c> when newly created (<c>[0x01]</c>).</returns>
     internal static bool? TryGetSelfDestructFlag<TReader, TPin>(scoped in TReader reader, Bound table, Address address)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         Span<byte> key = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
         int len = PersistedSnapshotKey.WriteSelfDestructKey(key, address.Bytes);
@@ -60,7 +60,7 @@ public static class PersistedSnapshotReader
     /// </summary>
     internal static bool TryLoadStateNodeRlp<TReader, TPin>(scoped in TReader reader, Bound table, scoped in TreePath path, out Bound bound)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         Span<byte> key = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
         int len = PersistedSnapshotKey.WriteStateNodeKey(key, in path);
@@ -69,7 +69,7 @@ public static class PersistedSnapshotReader
 
     internal static bool TryLoadStorageNodeRlp<TReader, TPin>(scoped in TReader reader, Bound table, in ValueHash256 addressHash, in TreePath path, out Bound bound)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         Span<byte> key = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
         int len = PersistedSnapshotKey.WriteStorageNodeKey(key, addressHash.Bytes, in path);

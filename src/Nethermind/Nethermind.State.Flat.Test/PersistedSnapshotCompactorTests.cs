@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Db;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -47,7 +47,7 @@ public class PersistedSnapshotCompactorTests
     /// per-address sub-tag merge runs with <c>matchCount == N</c> on every iteration and
     /// the slot merge exercises the fused inline bloom path with N slot inputs. Failures
     /// here flag mis-cached keys, missed bound refresh after <c>MoveNext</c>, or
-    /// destruct-barrier/slot-bound mismatches in <c>NWayMergePerAddressHsst</c>.
+    /// destruct-barrier/slot-bound mismatches in <c>MergeEntries</c>.
     /// </summary>
     [TestCase(8)]
     [TestCase(16)]
@@ -70,7 +70,7 @@ public class PersistedSnapshotCompactorTests
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             // Shared overlapping account: same AddressA every block, distinct balance and
-            // a distinct slot — drives matchCount == N through NWayMergePerAddressHsst,
+            // a distinct slot — drives matchCount == N through MergeEntries,
             // and the slot merge sees N inputs with N unique slot keys.
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
             c.Storages[(TestItem.AddressA, (UInt256)i)] = new SlotValue(new byte[] { (byte)i });
@@ -111,7 +111,7 @@ public class PersistedSnapshotCompactorTests
     /// Regression for large-tier boundary compaction of an address with 256k sequential
     /// storage slots. Each big-endian-contiguous run of 65536 slots forms one dense 30-byte
     /// slot-prefix group; merging the per-block slices accumulates a group's inner sub-slot
-    /// HSST past <c>ArenaBufferWriter</c>'s 1 MiB buffer. No single source snapshot crosses
+    /// table past <c>ArenaBufferWriter</c>'s 1 MiB buffer. No single source snapshot crosses
     /// that threshold (16384 slots per block), so the oversized value first appears inside
     /// <c>NWayNestedStreamingSlotMerge</c> during the merge — the mainnet crash site.
     /// </summary>
@@ -232,11 +232,11 @@ public class PersistedSnapshotCompactorTests
 
     /// <summary>
     /// Regression for the 4 KiB page-alignment pad applied by the BTree builder
-    /// (<c>HsstBTreeBuilder.Add → TryAlign</c>) when an about-to-straddle entry is pushed
+    /// (<c>BlockBuilder.Add → TryAlign</c>) when an about-to-straddle entry is pushed
     /// onto a fresh page. The leading pad bytes must be inert so the outer leaf's
     /// <c>ValueStart = MetadataStart − ValueLength</c> derivation lands inside the value and
     /// decoding succeeds. Drives many distinct single-source addresses (matchCount==1) through
-    /// compaction with non-trivial inner HSSTs (slots + a storage-trie node each) so positions
+    /// compaction with non-trivial inner tables (slots + a storage-trie node each) so positions
     /// sweep across multiple page boundaries — at least some entries trigger the pad code path,
     /// and all must round-trip read intact post-compaction.
     /// </summary>
@@ -251,7 +251,7 @@ public class PersistedSnapshotCompactorTests
         SnapshotRepository repo = tier.Repository;
         PersistedSnapshotCompactor compactor = tier.Compactor;
 
-        // Source 0: accountCount addresses with varying slot counts so inner-HSST
+        // Source 0: accountCount addresses with varying slot counts so inner-table
         // sizes span ~tens to ~hundreds of bytes — repeated fast-path writes
         // sweep across 4 KiB page boundaries in the destination arena.
         SnapshotContent c0 = new();
@@ -878,7 +878,7 @@ public class PersistedSnapshotCompactorTests
     /// <summary>
     /// Regression for the builder no-storage fast path in
     /// <c>PersistedSnapshotBuilder.WritePerAddressColumn</c>: when an address has no
-    /// slots and no storage-trie nodes the per-address inner HSST is staged into a
+    /// slots and no storage-trie nodes the per-address inner table is staged into a
     /// pooled buffer so its length is known up-front, and the outer leaf entry applies
     /// 4 KiB page-alignment padding. Drives many EOAs so writer positions sweep across
     /// page boundaries; every address must round-trip read intact and every self-destruct

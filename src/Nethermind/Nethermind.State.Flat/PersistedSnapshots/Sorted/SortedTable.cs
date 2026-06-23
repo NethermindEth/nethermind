@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
@@ -29,7 +29,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <c>indexOffset</c>, so it needs no padding and the footer fields are i64 to span the full range.
 /// Both data and index blocks are self-describing (see <see cref="Block"/>), so search needs only a
 /// block's start. Keys carry the column / subcolumn tag bytes as <c>255 − tag</c> so a plain ascending
-/// sort reproduces the reverse-tag emission order the HSST builder/compacter expect (see
+/// sort reproduces the reverse-tag emission order the columnar builder/compacter expect (see
 /// <see cref="PersistedSnapshotKey"/>).
 /// </remarks>
 internal static class SortedTable
@@ -65,7 +65,7 @@ internal static class SortedTable
     /// <returns><c>false</c> when the bound is too small, unreadable, or carries an unknown version.</returns>
     internal static bool TryReadFooter<TReader, TPin>(scoped in TReader reader, Bound table, out Footer footer)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         footer = default;
         if (table.Length < FooterSize) return false;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 

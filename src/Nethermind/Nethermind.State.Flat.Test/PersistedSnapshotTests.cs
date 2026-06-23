@@ -17,7 +17,7 @@ using NUnit.Framework;
 using WholeReadScanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
     Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSession,
     Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader,
-    Nethermind.State.Flat.Hsst.NoOpPin>;
+    Nethermind.State.Flat.Io.NoOpPin>;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -200,7 +200,7 @@ public class PersistedSnapshotTests
         Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted));
     }
 
-    // Regression: a storage HSST node can land within <12 bytes of a 4 KiB boundary in a
+    // Regression: a storage-trie node record can land within <12 bytes of a 4 KiB boundary in a
     // region-relative (SpanByteReader-scoped) read; TryLoadNode used to clamp the speculative
     // window to that short page remainder and overrun the 12-byte header. A single account with
     // ~280 spread-out slots places such a node; reading every slot back must not throw.
@@ -600,7 +600,7 @@ public class PersistedSnapshotTests
         long afterBuild = Metrics.BlobAllocatedBytes;
         Assert.That(afterBuild, Is.GreaterThan(baselineBytes), "Building a snapshot with trie nodes should grow blob-allocated bytes");
 
-        // Skip LeaseBlobIdsFromHsst: it acquires an extra lease per blob id that other
+        // Skip LeaseBlobIds: it acquires an extra lease per blob id that other
         // tests rely on but that this test must not leave dangling, otherwise the
         // orphan-reset would correctly refuse to fire.
         TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data, leaseBlobIds: false)

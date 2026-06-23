@@ -69,8 +69,8 @@ public class PersistedSnapshotRepositoryTests
     /// Regression: an address with 256k sequential storage slots fills four fully-dense
     /// 30-byte slot-prefix groups (65536 slots each). The builder writes the per-address
     /// slot column through <c>ArenaBufferWriter</c> (see <see cref="SnapshotRepository"/>),
-    /// and a full prefix group's inner sub-slot HSST exceeds that writer's 1 MiB buffer — so the
-    /// single <c>HsstBTreeBuilder.Add</c> for the oversized prefix-group value must still round-trip.
+    /// and a full prefix group's inner sub-slot table exceeds that writer's 1 MiB buffer — so the
+    /// single <c>BlockBuilder.Add</c> for the oversized prefix-group value must still round-trip.
     /// </summary>
     [Test]
     public void ConvertSnapshot_SequentialSlotsAcrossDensePrefixGroups_RoundTrips()
@@ -291,7 +291,7 @@ public class PersistedSnapshotRepositoryTests
     [TestCase(false, TestName = "BlobRange_SurvivesReloadViaMetadata(no trie nodes)")]
     public void BlobRange_SurvivesReloadViaMetadata(bool withTrieNode)
     {
-        // The blob range lives in the snapshot's own metadata HSST (blob_range key), not the
+        // The blob range lives in the snapshot's own metadata table (blob_range key), not the
         // catalog, so it must round-trip a restart: read back by the PersistedSnapshot ctor.
         MemDb catalogDb = new();
 
@@ -315,7 +315,7 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo2.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? reloaded), Is.True);
         using (reloaded)
             Assert.That(reloaded!.BlobRange.IsEmpty, Is.EqualTo(!withTrieNode),
-                "the base's blob range must round-trip a restart via its metadata HSST");
+                "the base's blob range must round-trip a restart via its metadata table");
     }
 
     [Test]
@@ -378,7 +378,7 @@ public class PersistedSnapshotRepositoryTests
         using (compactSizedAt4)
         {
             // The widest snapshot covering (0, 4] — the chain's starting snapshot. Its bloom is rebuilt
-            // from its own merged HSST and holds every address written across the four bases.
+            // from its own merged table and holds every address written across the four bases.
             BloomFilter shared = compactSizedAt4!.Bloom;
             Assert.That(shared.Count, Is.GreaterThan(0),
                 "ReconstructBloom must have built a real bloom for the widest (starting) snapshot");

@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// Reference to a trie-node RLP stored in a blob arena file. Persisted snapshots
-/// store only metadata HSST locally; the RLP bytes live in a separate blob arena
+/// store only metadata table locally; the RLP bytes live in a separate blob arena
 /// file addressed by <see cref="BlobArenaId"/>.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]

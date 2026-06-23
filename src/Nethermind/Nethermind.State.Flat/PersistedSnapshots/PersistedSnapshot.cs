@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -130,7 +130,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     /// value bound, or a default bound if absent.</summary>
     private static Bound SeekMetadata<TReader, TPin>(scoped in TReader reader, Bound table, scoped ReadOnlySpan<byte> name)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         Span<byte> key = stackalloc byte[1 + PersistedSnapshotTags.MetadataKeyLength];
         int len = PersistedSnapshotKey.WriteMetadataKey(key, name);
@@ -172,7 +172,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     /// at the first non-ref-id record.
     /// </summary>
     private ref struct RefIdsEnumerator<TReader, TPin>
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         private TReader _reader;

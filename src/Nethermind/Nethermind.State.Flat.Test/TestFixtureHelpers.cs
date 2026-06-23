@@ -8,7 +8,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -74,7 +74,7 @@ internal static class TestFixtureHelpers
     /// </summary>
     public static ushort[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
         where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
     {
         List<ushort> ids = [];
         SortedTableEnumerator<TReader, TPin> e = new(in reader, new Bound(0, reader.Length));
@@ -115,7 +115,7 @@ internal static class TestFixtureHelpers
     /// Slot indices are stored big-endian, so a run of 65536 consecutive slots shares one
     /// 30-byte slot-prefix and forms a single dense prefix group. The values keep a non-zero
     /// leading byte so <c>WithoutLeadingZeros()</c> cannot trim them — a full group's inner
-    /// sub-slot HSST then stays large enough to exceed an <c>ArenaBufferWriter</c> buffer.
+    /// sub-slot table then stays large enough to exceed an <c>ArenaBufferWriter</c> buffer.
     /// </remarks>
     public static void AddSequentialSlots(SnapshotContent content, Address address, int firstSlot, int count)
     {

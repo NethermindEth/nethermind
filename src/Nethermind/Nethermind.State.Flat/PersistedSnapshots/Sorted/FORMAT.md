@@ -2,7 +2,7 @@
 
 A persisted snapshot's metadata blob is a single **two-level sorted table** (`SortedTable`), laid out
 like a LevelDB SSTable: a run of 4 KiB-aligned data blocks plus one index block, both using the same
-self-describing block format. It replaces the previous columnar HSST format. Trie-node RLP still lives
+self-describing block format. It replaces the previous columnar format. Trie-node RLP still lives
 in separate blob arenas; the table stores only small inline values (account RLP, slot RLP, 6-byte
 `NodeRef`s, self-destruct flags, metadata).
 
@@ -61,7 +61,7 @@ Block (data and index alike):
 
 ## Keys (`PersistedSnapshotKey`)
 
-The table is plain ascending byte-sorted — no custom comparator. To reproduce the HSST reverse-tag
+The table is plain ascending byte-sorted — no custom comparator. To reproduce the columnar reverse-tag
 emission order (DenseByteIndex containers wrote tags descending), the **column and subcolumn tag
 bytes are stored as `255 − tag`**; entity bytes are natural. Ascending order then is:
 
@@ -80,7 +80,7 @@ column — so the ref-ids are the first records and iterate cheaply from the tab
 (`PersistedSnapshot`'s ref-id enumerator stops at the first non-`00` record). Within an address:
 slots → self-destruct → account. Within an addressHash: fallback → compact → top. Across columns:
 ref-ids → storage → state → per-address → metadata. The path encodings (4/8/33-byte) and the
-per-bucket ordering are unchanged from the HSST builder/compacter so a future proper-HSST serializer
+per-bucket ordering are unchanged from the columnar builder/compacter so a future proper columnar serializer
 can reuse them.
 
 ## Compaction (`PersistedSnapshotMerger`)

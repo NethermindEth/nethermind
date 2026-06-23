@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// </summary>
 internal struct SortedTableEnumerator<TReader, TPin>
     where TPin : struct, IBufferPin, allows ref struct
-    where TReader : IHsstByteReader<TPin>, allows ref struct
+    where TReader : IByteReader<TPin>, allows ref struct
 {
     private readonly long _tableOffset;
     private readonly long _numDataBlocks;

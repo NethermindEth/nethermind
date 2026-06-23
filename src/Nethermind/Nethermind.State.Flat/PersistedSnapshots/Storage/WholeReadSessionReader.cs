@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.Intrinsics.X86;
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// <see cref="IHsstByteReader{TPin}"/> over a <see cref="WholeReadSession"/>'s mmap view.
+/// <see cref="IByteReader{TPin}"/> over a <see cref="WholeReadSession"/>'s mmap view.
 /// Uses <c>byte*</c> + <see cref="long"/> length to correctly address &gt;2 GiB views;
 /// each <see cref="PinBuffer"/> call constructs an int-sized <see cref="ReadOnlySpan{T}"/>
 /// at the requested offset rather than spanning the whole reservation.
 /// </summary>
 /// <remarks>The pointer lifetime is owned by the <see cref="WholeReadSession"/>; the session must remain alive for the duration of any use of this reader.</remarks>
-public readonly unsafe ref struct WholeReadSessionReader(byte* basePtr, long length) : IHsstByteReader<NoOpPin>
+public readonly unsafe ref struct WholeReadSessionReader(byte* basePtr, long length) : IByteReader<NoOpPin>
 {
     private readonly byte* _basePtr = basePtr;
     public long Length => length;

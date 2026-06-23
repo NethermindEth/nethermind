@@ -6,13 +6,13 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// Page-alignment constants shared by the flat-state on-disk writers. The 4 KiB page size
 /// matches the typical OS page granularity targeted by the mmap-backed arenas; writers
-/// pad to this size so a single value (trie-node RLP in a blob arena, HSST B-tree node)
+/// pad to this size so a single value (trie-node RLP in a blob arena, sorted-table block)
 /// never straddles a page that the reader would have to fault in just to splice across
 /// the seam.
 /// </summary>
 public static class PageLayout
 {
-    /// <summary>Logical page size for blob-arena and HSST index alignment.</summary>
+    /// <summary>Logical page size for blob-arena and sorted-table index alignment.</summary>
     public const int PageSize = 4096;
 
     /// <summary>
@@ -23,7 +23,7 @@ public static class PageLayout
     public const long PageMask = PageSize - 1;
 
     /// <summary>
-    /// Bytes-to-next-page threshold below which the HSST builder pads up to the next
+    /// Bytes-to-next-page threshold below which the sorted-table builder pads up to the next
     /// page boundary before writing the next node. The page-crossing heuristic stops a
     /// node growing into the next page; padding eats the small leftover so the next
     /// node opens on a fresh page. Threshold is intentionally large so most splits earn

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -16,14 +16,14 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// pages the kernel has already released.
 /// </summary>
 /// <remarks>
-/// Also serves as the <see cref="IHsstReaderSource{TReader,TPin}"/> for the reservation:
+/// Also serves as the <see cref="IByteReaderSource{TReader,TPin}"/> for the reservation:
 /// the mmap base pointer is captured once at construction (one call on the underlying
 /// <see cref="ArenaFile.MmapWholeView"/>) so <see cref="CreateReader"/> mints fresh
 /// pointer-backed readers on the merge/scan hot path with no per-call indirection or
 /// dispose check. Callers must keep the session alive while any reader derived from it
 /// is in use.
 /// </remarks>
-public sealed unsafe class WholeReadSession : IDisposable, IHsstReaderSource<WholeReadSessionReader, NoOpPin>
+public sealed unsafe class WholeReadSession : IDisposable, IByteReaderSource<WholeReadSessionReader, NoOpPin>
 {
     private readonly ArenaReservation _reservation;
     private readonly ArenaFile.MmapWholeView _view;
@@ -43,7 +43,7 @@ public sealed unsafe class WholeReadSession : IDisposable, IHsstReaderSource<Who
     }
 
     /// <summary>
-    /// Materialise a fresh <see cref="IHsstByteReader{TPin}"/> over the session's view, addressed
+    /// Materialise a fresh <see cref="IByteReader{TPin}"/> over the session's view, addressed
     /// in the reservation's own offset space (offset 0 = first byte). Pointer-backed so &gt;2 GiB
     /// reservations are addressable. No dispose check — the caller guarantees the session is alive
     /// (see the type remarks); this is the merge/scan hot path.

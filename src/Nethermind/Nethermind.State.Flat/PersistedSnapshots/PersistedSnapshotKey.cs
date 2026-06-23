@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// <summary>
 /// Materializes the fully-verbose, single-level sorted-table keys for a persisted snapshot and
 /// classifies them on read. The on-disk table is a plain ascending byte-sorted map (see
-/// <see cref="Sorted.SortedTable"/>); to reproduce the reverse-tag emission order that the HSST
+/// <see cref="Sorted.SortedTable"/>); to reproduce the reverse-tag emission order that the columnar
 /// builder/compacter use (outer columns and per-entity sub-tags descend, entity bytes ascend), the
 /// column and subcolumn tag bytes are stored as <c>255 − tag</c>. Everything else is natural.
 /// </summary>
@@ -25,7 +25,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 ///   Account      : FE + addr(20) + FF
 ///   Metadata     : FF + name(10, NUL-padded)
 /// </code>
-/// Ascending byte order over these is exactly the HSST leaf-emission order.
+/// Ascending byte order over these is exactly the columnar leaf-emission order.
 /// </remarks>
 internal static class PersistedSnapshotKey
 {

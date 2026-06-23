@@ -8,7 +8,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// File pool for trie-node RLP bytes, stored back-to-back in its own files, separate from
-/// the metadata HSST arena files held by <see cref="IArenaManager"/>. A <see cref="NodeRef"/>
+/// the metadata table arena files held by <see cref="IArenaManager"/>. A <see cref="NodeRef"/>
 /// embedded in a persisted snapshot's metadata points at <c>(BlobArenaId, file-absolute
 /// offset)</c>; the manager resolves the id to the underlying arena file. Standalone — owns
 /// its own file pool, with no dependency on <see cref="ArenaManager"/>. Each known

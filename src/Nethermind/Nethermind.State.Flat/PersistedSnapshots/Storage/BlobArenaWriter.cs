@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// is computed against the file-absolute frontier (files start at offset 0). Trie-node
 /// RLP is bounded well below 4 KiB (worst-case branch ≈ 532 bytes), so the simple
 /// "pad if it would cross" rule never has to split an oversize value. The pad bytes
-/// are inert because the HSST reader recovers value bounds from per-entry length
+/// are inert because the reader recovers value bounds from per-entry length
 /// metadata.
 /// </para>
 ///
@@ -88,7 +88,7 @@ public sealed class BlobArenaWriter : IDisposable
     /// <summary>
     /// Append <paramref name="rlp"/> to the blob arena file, padding to keep it within a
     /// single 4 KiB page when it would otherwise straddle. Returns the <see cref="NodeRef"/>
-    /// that the caller embeds in the metadata HSST in place of the inline RLP.
+    /// that the caller embeds in the metadata table in place of the inline RLP.
     /// </summary>
     public NodeRef WriteRlp(ReadOnlySpan<byte> rlp)
     {

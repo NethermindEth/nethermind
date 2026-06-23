@@ -12,7 +12,7 @@ using Nethermind.Trie;
 using WholeReadScanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
     Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSession,
     Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader,
-    Nethermind.State.Flat.Hsst.NoOpPin>;
+    Nethermind.State.Flat.Io.NoOpPin>;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
