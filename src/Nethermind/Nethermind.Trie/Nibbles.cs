@@ -240,16 +240,20 @@ namespace Nethermind.Trie
         public static byte[] ToCompactHexEncoding(TreePath nibbles)
         {
             int oddity = nibbles.Length % 2;
-            byte[] bytes = new byte[nibbles.Length / 2 + 1];
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(nibbles.Length / 2 + 1);
+            if (oddity == 0)
+            {
+                bytes[0] = 0;
+                nibbles.Span[..(bytes.Length - 1)].CopyTo(bytes.AsSpan(1));
+                return bytes;
+            }
+
             for (int i = 0; i < bytes.Length - 1; i++)
             {
                 bytes[i + 1] = ToByte((byte)nibbles[2 * i + oddity], (byte)nibbles[2 * i + 1 + oddity]);
             }
 
-            if (oddity == 1)
-            {
-                bytes[0] = ToByte(1, (byte)nibbles[0]);
-            }
+            bytes[0] = ToByte(1, (byte)nibbles[0]);
 
             return bytes;
         }
@@ -258,11 +262,15 @@ namespace Nethermind.Trie
 
         public static byte[] ToBytes(TreePath nibbles)
         {
-            byte[] bytes = new byte[nibbles.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
+            int byteLength = nibbles.Length / 2;
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(byteLength);
+            if (byteLength == 1)
             {
-                bytes[i] = ToByte((byte)nibbles[2 * i], (byte)nibbles[2 * i + 1]);
+                bytes[0] = nibbles.Span[0];
+                return bytes;
             }
+
+            nibbles.Span[..byteLength].CopyTo(bytes);
 
             return bytes;
         }

@@ -119,27 +119,30 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         }
 
         Span<byte> pathSpan = Span;
+        int length = Length;
 
-        if (Length % 2 == 1)
+        if ((length & 1) != 0)
         {
-            this[Length] = nibbles[0];
-            Length++;
+            this[length] = nibbles[0];
+            length++;
             nibbles = nibbles[1..];
         }
 
         int byteLength = nibbles.Length / 2;
-        int pathSpanStart = Length / 2;
+        int pathSpanStart = length / 2;
         for (int i = 0; i < byteLength; i++)
         {
             pathSpan[i + pathSpanStart] = Nibbles.ToByte(nibbles[i * 2], nibbles[i * 2 + 1]);
-            Length += 2;
+        }
+        length += byteLength * 2;
+
+        if ((nibbles.Length & 1) != 0)
+        {
+            this[length] = nibbles[^1];
+            length++;
         }
 
-        if (nibbles.Length % 2 == 1)
-        {
-            this[Length] = nibbles[^1];
-            Length++;
-        }
+        Length = length;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -228,10 +231,23 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     [SkipLocalsInit]
     public readonly byte[] ToNibble()
     {
-        bool odd = Length % 2 == 1;
-        Span<byte> theNibbles = stackalloc byte[odd ? Length + 1 : Length];
-        Nibbles.BytesToNibbleBytes(Span[..((Length + 1) / 2)], theNibbles);
-        return (odd ? theNibbles[..Length] : theNibbles).ToArray();
+        if (Length == 1)
+        {
+            byte[] singleNibble = GC.AllocateUninitializedArray<byte>(1);
+            singleNibble[0] = (byte)(Span[0] >> 4);
+            return singleNibble;
+        }
+
+        if ((Length & 1) != 0)
+        {
+            Span<byte> theNibbles = stackalloc byte[Length + 1];
+            Nibbles.BytesToNibbleBytes(Span[..((Length + 1) / 2)], theNibbles);
+            return theNibbles[..Length].ToArray();
+        }
+
+        byte[] nibbles = GC.AllocateUninitializedArray<byte>(Length);
+        Nibbles.BytesToNibbleBytes(Span[..(Length / 2)], nibbles);
+        return nibbles;
     }
 
     public readonly string ToHexString()
@@ -276,13 +292,15 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     {
         int minLength = Math.Min(Length, otherTree.Length);
         int commonByteLength = minLength / 2;
+        Span<byte> span = Span;
+        Span<byte> otherSpan = otherTree.Span;
         int compareByByte =
-            Bytes.BytesComparer.Compare(Span[..commonByteLength], otherTree.Span[..commonByteLength]);
+            Bytes.BytesComparer.Compare(span[..commonByteLength], otherSpan[..commonByteLength]);
         if (compareByByte != 0) return compareByByte;
 
-        if (minLength % 2 == 1)
+        if ((minLength & 1) != 0)
         {
-            int result = this[minLength - 1].CompareTo(otherTree[minLength - 1]);
+            int result = (span[commonByteLength] & 0xF0) - (otherSpan[commonByteLength] & 0xF0);
             if (result != 0) return result;
         }
 
@@ -301,13 +319,15 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     {
         int minLength = Math.Min(length, otherTree.Length);
         int commonByteLength = minLength / 2;
+        Span<byte> span = Span;
+        Span<byte> otherSpan = otherTree.Span;
         int compareByByte =
-            Bytes.BytesComparer.Compare(Span[..commonByteLength], otherTree.Span[..commonByteLength]);
+            Bytes.BytesComparer.Compare(span[..commonByteLength], otherSpan[..commonByteLength]);
         if (compareByByte != 0) return compareByByte;
 
-        if (minLength % 2 == 1)
+        if ((minLength & 1) != 0)
         {
-            int result = this[minLength - 1].CompareTo(otherTree[minLength - 1]);
+            int result = (span[commonByteLength] & 0xF0) - (otherSpan[commonByteLength] & 0xF0);
             if (result != 0) return result;
         }
 

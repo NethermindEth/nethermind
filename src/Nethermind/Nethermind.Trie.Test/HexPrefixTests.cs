@@ -99,6 +99,17 @@ public class HexPrefixTests
     }
 
     [Test]
+    public void Tree_path_to_bytes_returns_packed_prefix()
+    {
+        byte[] nibbles = Enumerable.Range(0, 64).Select(static i => (byte)(i & 0xF)).ToArray();
+        TreePath treePath = TreePath.FromNibble(nibbles);
+
+        byte[] result = Nibbles.ToBytes(treePath);
+
+        Assert.That(result, Is.EqualTo(Nibbles.ToBytes(nibbles)).AsCollection);
+    }
+
+    [Test]
     public void GetPathArray_returns_cached_array_for_single_nibble()
     {
         // Test all valid single nibble values (0-15)
