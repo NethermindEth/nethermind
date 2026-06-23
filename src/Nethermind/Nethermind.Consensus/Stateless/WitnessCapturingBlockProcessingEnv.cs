@@ -60,6 +60,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
         Graph graph = _graph.Value;
         graph.Recorder.Reset();
         graph.HeaderRecorder.Reset();
+        graph.BlockhashCache.Clear();
     }
 
     /// <summary>Projects the accesses recorded during the last <see cref="Processor"/> run into a witness.</summary>
@@ -115,7 +116,8 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             .AddModule(validationModules));
 
         IBlockProcessor processor = scope.Resolve<IBlockProcessor>();
-        return new Graph(scope, trieStore, recorder, headerRecorder, processor);
+        IBlockhashCache blockhashCache = scope.Resolve<IBlockhashCache>();
+        return new Graph(scope, trieStore, recorder, headerRecorder, processor, blockhashCache);
     }
 
     /// <summary>
@@ -127,11 +129,13 @@ public sealed class WitnessCapturingBlockProcessingEnv(
         IReadOnlyTrieStore trieStore,
         WitnessGeneratingWorldState recorder,
         WitnessHeaderRecorder headerRecorder,
-        IBlockProcessor processor) : IDisposable
+        IBlockProcessor processor,
+        IBlockhashCache blockhashCache) : IDisposable
     {
         public WitnessGeneratingWorldState Recorder => recorder;
         public WitnessHeaderRecorder HeaderRecorder => headerRecorder;
         public IBlockProcessor Processor => processor;
+        public IBlockhashCache BlockhashCache => blockhashCache;
 
         public void Dispose()
         {
