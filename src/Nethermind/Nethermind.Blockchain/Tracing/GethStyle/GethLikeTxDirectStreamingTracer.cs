@@ -46,7 +46,11 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private long _pendingGasCost;
     private int _pendingDepth;
     private string? _pendingError;
+    private long _pendingRefund;
     private bool _gasCostAlreadySet;
+
+    private long _refund;
+    private readonly Stack<long> _refundCheckpoints = new();
 
     private byte[]? _stackBuffer;
     private int _stackByteCount;
@@ -78,6 +82,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _cancellationToken = cancellationToken;
         _flushIntervalEntries = flushIntervalEntries;
         IsTracingMemory = IsTracingFullMemory;
+        IsTracingRefunds = true;
+        IsTracingActions = true;
     }
 
     internal void ResetForNextTx(Transaction? transaction)
@@ -91,7 +97,10 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingGasCost = 0;
         _pendingDepth = 0;
         _pendingError = null;
+        _pendingRefund = 0;
         _gasCostAlreadySet = false;
+        _refund = 0;
+        _refundCheckpoints.Clear();
         _stackByteCount = 0;
         _memoryByteCount = 0;
         if (_storageByDepth is not null)
@@ -123,6 +132,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingGasCost = 0;
         _pendingDepth = newDepth;
         _pendingError = null;
+        // Snapshot the cumulative refund counter before the opcode executes (geth pre-op GetRefund()).
+        _pendingRefund = _refund;
         _gasCostAlreadySet = false;
         _stackByteCount = 0;
         _memoryByteCount = 0;
@@ -260,6 +271,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _writer.WriteNumber("gasCost"u8, _pendingGasCost);
         _writer.WriteNumber("depth"u8, _pendingDepth);
 
+        if (_pendingRefund != 0) _writer.WriteNumber("refund"u8, _pendingRefund);
+
         if (_pendingError is null) _writer.WriteNull("error"u8);
         else _writer.WriteString("error"u8, _pendingError);
 
@@ -322,4 +335,43 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _entriesSinceLastFlush = 0;
     }
 
+    public override void ReportRefund(long refund) => _refund += refund;
+
+    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    {
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        _refundCheckpoints.Push(_refund);
+    }
+
+    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionEnd(gas, output);
+        _refundCheckpoints.TryPop(out _);
+    }
+
+    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        _refundCheckpoints.TryPop(out _);
+    }
+
+    public override void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionRevert(gasLeft, output);
+        RestoreRefundCheckpoint();
+    }
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    {
+        base.ReportActionError(evmExceptionType);
+        RestoreRefundCheckpoint();
+    }
+
+    // A reverted or aborted frame rolls back every refund accrued within it (and its successful
+    // children), mirroring go-ethereum's journaled refund counter.
+    private void RestoreRefundCheckpoint()
+    {
+        if (_refundCheckpoints.TryPop(out long checkpoint))
+            _refund = checkpoint;
+    }
 }
