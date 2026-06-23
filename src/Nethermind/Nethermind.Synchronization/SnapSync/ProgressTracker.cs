@@ -269,19 +269,17 @@ namespace Nethermind.Synchronization.SnapSync
             return new SnapSyncBatch { AccountRangeRequest = range };
         }
 
-        private SnapSyncBatch DequeAccountToRefresh(Hash256 rootHash)
+        private SnapSyncBatch? DequeAccountToRefresh(Hash256 rootHash)
         {
+            // One account per request: each refresh is served by a single GetAccountRange.
+            if (!AccountsToRefresh.TryDequeue(out AccountWithStorageStartingHash acc))
+                return null;
+
             Interlocked.Increment(ref _activeAccRefreshRequests);
 
             LogRequest($"AccountsToRefresh: {AccountsToRefresh.Count}");
 
-            int queueLength = AccountsToRefresh.Count;
-            ArrayPoolList<AccountWithStorageStartingHash> paths = new(queueLength);
-
-            for (int i = 0; i < queueLength && AccountsToRefresh.TryDequeue(out AccountWithStorageStartingHash acc); i++)
-            {
-                paths.Add(acc);
-            }
+            ArrayPoolList<AccountWithStorageStartingHash> paths = new(1) { acc };
 
             return new SnapSyncBatch { AccountsToRefreshRequest = new AccountsToRefreshRequest { RootHash = rootHash, Paths = paths } };
         }
