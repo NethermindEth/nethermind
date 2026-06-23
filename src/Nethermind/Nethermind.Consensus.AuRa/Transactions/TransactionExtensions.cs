@@ -12,11 +12,11 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             bool isEip1559Enabled = releaseSpec.IsEip1559Enabled;
             bool checkByFeeCap = isEip1559Enabled && tx.Supports1559;
-            if (checkByFeeCap && tx.GasPrice != 0) // only 0 gas price transactions are system transactions and can be whitelisted
+            if (checkByFeeCap && !tx.MaxFeePerGas.IsZero) // only 0 gas price transactions are system transactions and can be whitelisted
             {
                 return false;
             }
-            else if (tx.GasPrice != 0 && !checkByFeeCap)
+            else if (!tx.GasPrice.IsZero && !checkByFeeCap)
             {
                 return false;
             }
