@@ -299,15 +299,17 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
-            // EIP-2780/EIP-8037 top-frame charge: a top-level call whose recipient is an EIP-7702
-            // delegation also touches the delegation target with a (flat) cold account access. The
-            // target is already pre-warmed for the frame, so this is the sole charge for it. If the
-            // gas cannot be covered the frame is exhausted and the EVM halts out of gas.
-            // The delegation is read from post-authorization state, so a delegation installed by this
-            // same transaction's authorization list is included (and one cleared by it is excluded).
+            // EIP-8037 top-frame charge: a top-level call whose recipient is an EIP-7702 delegation
+            // also touches the delegation target with a (flat) cold account access. The target is
+            // already pre-warmed for the frame, so this is the sole charge for it. If the gas cannot
+            // be covered the frame is exhausted and the EVM halts out of gas. The delegation is read
+            // from post-authorization state, so a delegation installed by this same transaction's
+            // authorization list is included (and one cleared by it is excluded). Gated on EIP-8037
+            // (the 2-D state-gas model); the standalone EIP-2780 model instead prices the delegation
+            // target touch in the intrinsic cost, so charging here would double-charge.
             bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
                 && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
-            if (spec.IsEip2780Enabled && !tx.IsContractCreation && recipientIsDelegated)
+            if (spec.IsEip8037Enabled && !tx.IsContractCreation && recipientIsDelegated)
             {
                 long delegationCold = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
                 if (!TGasPolicy.UpdateGas(ref gasAvailable, delegationCold))
@@ -403,12 +405,13 @@ namespace Nethermind.Evm.TransactionProcessing
             bool senderIsRecipient = tx.SenderAddress == recipient;
             bool isTracingActions = tracer.IsTracingActions;
 
-            // EIP-2780/EIP-8037 top-frame charge: a value transfer that materialises a new
-            // (dead, non-precompile) recipient pays NEW_ACCOUNT state gas, evaluated against
-            // pre-transfer state. If the (state) gas cannot be covered the frame is out of gas:
-            // no value moves and the sender forfeits all gas.
+            // EIP-8037 top-frame charge: a value transfer that materialises a new (dead, non-precompile)
+            // recipient pays NEW_ACCOUNT state gas, evaluated against pre-transfer state. If the (state)
+            // gas cannot be covered the frame is out of gas: no value moves and the sender forfeits all
+            // gas. Gated on EIP-8037 (the 2-D state-gas model); the standalone EIP-2780 model instead
+            // prices NEW_ACCOUNT in the intrinsic cost, so charging here would double-charge.
             bool newAccountOutOfGas = false;
-            if (spec.IsEip2780Enabled && hasValueTransfer && !senderIsRecipient
+            if (spec.IsEip8037Enabled && hasValueTransfer && !senderIsRecipient
                 && !spec.IsPrecompile(recipient) && WorldState.IsDeadAccount(recipient))
             {
                 newAccountOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost(in gasAvailable));

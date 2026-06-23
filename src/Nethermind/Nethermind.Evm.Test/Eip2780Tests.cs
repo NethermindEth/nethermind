@@ -29,7 +29,7 @@ public class Eip2780Tests
     private static long ChargeCallValue(bool isSelfCall, bool recipientEmpty)
     {
         EthereumGasPolicy gas = EthereumGasPolicy.FromLong(1_000_000);
-        Assert.That(EthereumGasPolicy.ConsumeCallValueTransferEip2780(ref gas, isSelfCall, recipientEmpty), Is.True);
+        Assert.That(EthereumGasPolicy.ConsumeCallValueTransferEip2780(ref gas, isSelfCall, recipientEmpty, Eip2780Spec), Is.True);
         return 1_000_000 - EthereumGasPolicy.GetRemainingGas(in gas);
     }
 

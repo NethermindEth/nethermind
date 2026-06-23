@@ -7,14 +7,14 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test;
 
 /// <summary>
-/// Pins the EIP-8038 gas parameters to the spec's derivation formulas. The base values are
-/// placeholders equal to the current (pre-8038) costs while the EIP is a Draft; these tests
-/// guard the relationships so the derived values stay correct when the final figures land.
+/// Pins the EIP-8038 gas parameters to the final repriced values scheduled in Amsterdam by
+/// glamsterdam-devnet-6, and guards the derivation relationships so the derived values stay
+/// consistent with the base parameters.
 /// </summary>
 public class Eip8038ConstantsTests
 {
     [Test]
-    public void Base_parameters_match_their_current_placeholder_values()
+    public void Base_parameters_match_the_devnet6_repriced_values()
     {
         long coldAccountAccess = Eip8038Constants.ColdAccountAccess;
         long warmAccess = Eip8038Constants.WarmAccess;
@@ -25,21 +25,24 @@ public class Eip8038ConstantsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(coldAccountAccess, Is.EqualTo(2600));
+            Assert.That(coldAccountAccess, Is.EqualTo(3000));
             Assert.That(warmAccess, Is.EqualTo(100));
-            Assert.That(coldStorageAccess, Is.EqualTo(2100));
-            Assert.That(accountWrite, Is.EqualTo(6700));
-            Assert.That(storageWrite, Is.EqualTo(2800));
+            Assert.That(coldStorageAccess, Is.EqualTo(3000));
+            Assert.That(accountWrite, Is.EqualTo(8000));
+            Assert.That(storageWrite, Is.EqualTo(10000));
             Assert.That(callStipend, Is.EqualTo(2300));
         });
     }
 
     [Test]
-    public void Account_write_is_call_value_minus_stipend()
-    {
-        long accountWrite = Eip8038Constants.AccountWrite;
-        Assert.That(accountWrite, Is.EqualTo(GasCostOf.CallValue - GasCostOf.CallStipend));
-    }
+    public void Derived_parameters_match_the_devnet6_repriced_values() =>
+        Assert.Multiple(() =>
+        {
+            Assert.That(Eip8038Constants.CallValue, Is.EqualTo(10300));
+            Assert.That(Eip8038Constants.CreateAccess, Is.EqualTo(11000));
+            Assert.That(Eip8038Constants.StorageClearRefund, Is.EqualTo(12480));
+            Assert.That(Eip8038Constants.PerAuthBaseRegular, Is.EqualTo(15816));
+        });
 
     [Test]
     public void Call_value_is_account_write_plus_stipend()
