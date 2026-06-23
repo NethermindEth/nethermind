@@ -562,8 +562,19 @@ internal sealed class MdbxEnvironment : IDisposable
 
     public byte[]? Get(uint dbi, ReadOnlySpan<byte> key)
     {
-        byte[] keyCopy = key.ToArray();
-        return ExecuteRead(txn => Get(txn, dbi, keyCopy));
+        long started = _profiler?.StartReadTransaction() ?? 0;
+        try
+        {
+            using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
+            return Get(txn, dbi, key);
+        }
+        finally
+        {
+            if (_profiler is not null)
+            {
+                _profiler.RecordReadTransaction(started);
+            }
+        }
     }
 
     public bool KeyExists(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key)
@@ -590,8 +601,19 @@ internal sealed class MdbxEnvironment : IDisposable
 
     public bool KeyExists(uint dbi, ReadOnlySpan<byte> key)
     {
-        byte[] keyCopy = key.ToArray();
-        return ExecuteRead(txn => KeyExists(txn, dbi, keyCopy));
+        long started = _profiler?.StartReadTransaction() ?? 0;
+        try
+        {
+            using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
+            return KeyExists(txn, dbi, key);
+        }
+        finally
+        {
+            if (_profiler is not null)
+            {
+                _profiler.RecordReadTransaction(started);
+            }
+        }
     }
 
     public bool TryGet(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key, out byte[]? value)
