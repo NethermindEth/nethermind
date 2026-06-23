@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -21,7 +22,13 @@ public class BlockOverride
     {
         if (Time is not null) result.Timestamp = Time.Value;
         if (GasLimit is not null)
+        {
+            if (GasLimit > long.MaxValue)
+            {
+                throw new OverflowException($"GasLimit value is too large, max value {long.MaxValue}");
+            }
             result.GasLimit = GasLimit.Value;
+        }
 
         if (Number is not null)
             result.Number = Number.Value;
