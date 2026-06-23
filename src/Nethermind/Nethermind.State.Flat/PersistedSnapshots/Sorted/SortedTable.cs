@@ -76,7 +76,9 @@ internal static class SortedTable
         long count = BinaryPrimitives.ReadInt64LittleEndian(buf);
         long numBlocks = BinaryPrimitives.ReadUInt32LittleEndian(buf[sizeof(long)..]);
         int lastBlockSize = BinaryPrimitives.ReadUInt16LittleEndian(buf[(sizeof(long) + sizeof(uint))..]);
-        if (count < 0 || lastBlockSize > BlockSize) return false;
+        // Bound numBlocks by the actual table size before the int cast / offset math below, so a
+        // corrupt footer cannot overflow to a negative count or address outside the bound.
+        if (count < 0 || lastBlockSize > BlockSize || numBlocks > table.Length / BlockSize + 1) return false;
 
         footer = new Footer(count, (int)numBlocks, lastBlockSize);
         // The index block starts past the data region and the footer follows it.

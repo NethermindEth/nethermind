@@ -205,60 +205,65 @@ public static class PersistedSnapshotBuilder
         Span<byte> slotKey = stackalloc byte[32];
         int storageIdx = 0;
 
-        for (int addrIdx = 0; addrIdx < uniqueAddresses.Count; addrIdx++)
+        try
         {
-            ValueAddress addrValue = uniqueAddresses[addrIdx];
-            ReadOnlySpan<byte> addressBytes = addrValue.AsSpan;
-            Address address = addrValue.ToAddress();
-
-            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressBytes);
-            bloom.Add(addrBloomKey);
-
-            // Slots (sub-tag 0x02). Full 32-byte big-endian slot inline — no prefix/suffix split.
-            while (storageIdx < sortedStorages.Count &&
-                sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
+            for (int addrIdx = 0; addrIdx < uniqueAddresses.Count; addrIdx++)
             {
-                SlotValue? value = sortedStorages[storageIdx].Value;
-                sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
-                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
-                // Present values are RLP-wrapped; null/deleted slots keep an empty payload so the
-                // length-0 = absent sentinel survives.
-                ReadOnlySpan<byte> payload = value.HasValue
-                    ? rlpBuffer.AsSpan(0, Rlp.Encode(value.Value.AsReadOnlySpan.WithoutLeadingZeros(), rlpBuffer))
-                    : [];
-                int len = PersistedSnapshotKey.WriteSlotKey(keyBuf, addressBytes, slotKey);
-                table.Add(keyBuf[..len], payload);
-                storageIdx++;
-            }
+                ValueAddress addrValue = uniqueAddresses[addrIdx];
+                ReadOnlySpan<byte> addressBytes = addrValue.AsSpan;
+                Address address = addrValue.ToAddress();
 
-            // Self-destruct (sub-tag 0x01).
-            if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
-            {
-                int len = PersistedSnapshotKey.WriteSelfDestructKey(keyBuf, addressBytes);
-                table.Add(keyBuf[..len],
-                    sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
-            }
+                ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressBytes);
+                bloom.Add(addrBloomKey);
 
-            // Account (sub-tag 0x00). Slim RLP starts with a list header (0xc0+), so the
-            // [0x00] deleted-marker is unambiguous against any valid RLP.
-            if (snapshot.TryGetAccount(address, out Account? account))
-            {
-                int len = PersistedSnapshotKey.WriteAccountKey(keyBuf, addressBytes);
-                if (account is null)
+                // Slots (sub-tag 0x02). Full 32-byte big-endian slot inline — no prefix/suffix split.
+                while (storageIdx < sortedStorages.Count &&
+                    sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
                 {
-                    table.Add(keyBuf[..len], PersistedSnapshotTags.AccountDeletedMarker);
+                    SlotValue? value = sortedStorages[storageIdx].Value;
+                    sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
+                    bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
+                    // Present values are RLP-wrapped; null/deleted slots keep an empty payload so the
+                    // length-0 = absent sentinel survives.
+                    ReadOnlySpan<byte> payload = value.HasValue
+                        ? rlpBuffer.AsSpan(0, Rlp.Encode(value.Value.AsReadOnlySpan.WithoutLeadingZeros(), rlpBuffer))
+                        : [];
+                    int len = PersistedSnapshotKey.WriteSlotKey(keyBuf, addressBytes, slotKey);
+                    table.Add(keyBuf[..len], payload);
+                    storageIdx++;
                 }
-                else
+
+                // Self-destruct (sub-tag 0x01).
+                if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
                 {
-                    int rlpLen = AccountDecoder.Slim.GetLength(account);
-                    rlpStream.Reset();
-                    AccountDecoder.Slim.Encode(rlpStream, account);
-                    table.Add(keyBuf[..len], rlpBuffer.AsSpan(0, rlpLen));
+                    int len = PersistedSnapshotKey.WriteSelfDestructKey(keyBuf, addressBytes);
+                    table.Add(keyBuf[..len],
+                        sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
+                }
+
+                // Account (sub-tag 0x00). Slim RLP starts with a list header (0xc0+), so the
+                // [0x00] deleted-marker is unambiguous against any valid RLP.
+                if (snapshot.TryGetAccount(address, out Account? account))
+                {
+                    int len = PersistedSnapshotKey.WriteAccountKey(keyBuf, addressBytes);
+                    if (account is null)
+                    {
+                        table.Add(keyBuf[..len], PersistedSnapshotTags.AccountDeletedMarker);
+                    }
+                    else
+                    {
+                        int rlpLen = AccountDecoder.Slim.GetLength(account);
+                        rlpStream.Reset();
+                        AccountDecoder.Slim.Encode(rlpStream, account);
+                        table.Add(keyBuf[..len], rlpBuffer.AsSpan(0, rlpLen));
+                    }
                 }
             }
         }
-
-        ArrayPool<byte>.Shared.Return(rlpBuffer);
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rlpBuffer);
+        }
     }
 
     private static void WriteStateNodes<TWriter>(
@@ -270,8 +275,9 @@ public static class PersistedSnapshotBuilder
         for (int i = 0; i < keys.Count; i++)
         {
             TreePath path = keys[i];
-            snapshot.TryGetStateNode(path, out TrieNode? node);
-            NodeRef nr = blobWriter.WriteRlp(node!.FullRlp.AsSpan());
+            if (!snapshot.TryGetStateNode(path, out TrieNode? node) || node is null)
+                throw new InvalidOperationException($"State node {path} disappeared between extraction and persist.");
+            NodeRef nr = blobWriter.WriteRlp(node.FullRlp.AsSpan());
             NodeRef.Write(nrBuf, in nr);
             int len = PersistedSnapshotKey.WriteStateNodeKey(keyBuf, in path);
             table.Add(keyBuf[..len], nrBuf);
@@ -297,8 +303,9 @@ public static class PersistedSnapshotBuilder
                 cachedHash = addressHash;
                 cachedRef = new Hash256(in addressHash);
             }
-            snapshot.TryGetStorageNode((cachedRef, path), out TrieNode? node);
-            NodeRef nr = blobWriter.WriteRlp(node!.FullRlp.AsSpan());
+            if (!snapshot.TryGetStorageNode((cachedRef, path), out TrieNode? node) || node is null)
+                throw new InvalidOperationException($"Storage node {addressHash}:{path} disappeared between extraction and persist.");
+            NodeRef nr = blobWriter.WriteRlp(node.FullRlp.AsSpan());
             NodeRef.Write(nrBuf, in nr);
             int len = PersistedSnapshotKey.WriteStorageNodeKey(keyBuf, addressHash.Bytes, in path);
             table.Add(keyBuf[..len], nrBuf);

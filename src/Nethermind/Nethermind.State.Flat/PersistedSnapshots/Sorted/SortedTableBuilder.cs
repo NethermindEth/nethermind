@@ -61,6 +61,8 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         Span<byte> records = _recordBuf.AsSpan();
         if (entries.Length > 0)
         {
+            // Sort only reorders _entries; _recordBuf is never mutated here, so recordBase stays valid
+            // for the whole sort. Do not Add to _recordBuf inside the comparator.
             byte* recordBase = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(records));
             _entries.Sort(new KeyComparer(recordBase));
         }

@@ -38,27 +38,28 @@ public abstract class SmallRefCountingDisposable(int initialCount = 1) : IDispos
     {
         // Volatile read for starting value
         long current = Volatile.Read(ref _leases);
-        if (current == Disposing)
-        {
-            // Already disposed
-            return false;
-        }
 
         while (true)
         {
+            // Reject once the count has reached zero (NoAccessors) or gone to Disposing: the object is
+            // being torn down. Acquiring at NoAccessors would resurrect an object whose owner has
+            // already observed the zero count and begun teardown — the release path moves the count
+            // 1 → 0 and only then CASes 0 → Disposing, so a concurrent acquirer can briefly see 0.
+            // Checking inside the loop (not just on the initial read) also closes the window where a
+            // failed CAS hands back a now-zero count.
+            if (current <= NoAccessors)
+            {
+                return false;
+            }
+
             long prev = Interlocked.CompareExchange(ref _leases, current + Single, current);
             if (prev == current)
             {
                 // Successfully acquired
                 return true;
             }
-            if (prev == Disposing)
-            {
-                // Already disposed
-                return false;
-            }
 
-            // Try again with new starting value
+            // Try again with the observed value
             current = prev;
             // Add PAUSE instruction to reduce shared core contention
             Thread.SpinWait(1);

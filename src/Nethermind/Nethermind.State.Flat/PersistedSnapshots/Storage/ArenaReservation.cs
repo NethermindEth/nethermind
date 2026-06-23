@@ -189,7 +189,9 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
         // skipped.
         bool preserve = Volatile.Read(ref _preserveOnDispose) == 1;
         bool punched = !preserve && fileSurvives && _arenaManager.TryPunchHole(_arenaFile, Offset, footprint);
-        if (!punched)
+        // Skip the fadvise when the file did not survive — it is about to be deleted on the last lease
+        // release below, which drops its pages anyway.
+        if (!punched && fileSurvives)
             _arenaFile.FadviseDontNeed(Offset, footprint);
         _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
         Interlocked.Decrement(ref Metrics._arenaReservationCount);

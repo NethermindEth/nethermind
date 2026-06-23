@@ -100,7 +100,9 @@ public static class PersistedSnapshotMerger
         int barrier = -1;
 
         Span<byte> minKey = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
-        Span<int> matching = stackalloc int[n];
+        // n is the number of merged inputs (small in practice); cap the stackalloc and fall back to
+        // the heap for an unusually large compaction batch to avoid a stack overflow.
+        Span<int> matching = n <= 64 ? stackalloc int[64] : new int[n];
 
         while (true)
         {
@@ -225,8 +227,19 @@ public static class PersistedSnapshotMerger
         pending.Clear();
     }
 
-    /// <summary>Emit the self-destruct record (destructed if any source destructed, else new) and
-    /// return the truncation barrier — the newest source index that destructed, or -1.</summary>
+    /// <summary>Emit the self-destruct record (destructed if any source in the range destructed, else
+    /// new) and return the truncation barrier — the newest source index that destructed, or -1.</summary>
+    /// <remarks>
+    /// The emitted tag is "destructed" whenever any source in the merged range destructed, even if a
+    /// newer source re-created the contract. This is deliberate and matches the only consumer of the
+    /// flag value, <see cref="PersistenceManager"/>: when a CompactSized snapshot is written to
+    /// RocksDB it does <c>if (SelfDestructFlag is false) batch.SelfDestruct(addr)</c> and only then
+    /// re-applies the account and the (already barrier-filtered) post-destruct slots. The
+    /// <c>SelfDestruct</c> clears any storage carried in RocksDB from before this range, so a
+    /// re-created contract ends with exactly its new slots. Emitting "new" here would skip that clear
+    /// and leak the pre-destruct storage. The flag value is otherwise unused on the read path, which
+    /// keys off the barrier (presence) via <see cref="PersistedSnapshotStack.TryGetSelfDestruct"/>.
+    /// </remarks>
     private static int MergeSelfDestruct<TWriter, TView, TReader, TPin>(
         ReadOnlySpan<TView> views, SortedTableEnumerator<TReader, TPin>[] enums,
         ref SortedTableBuilder<TWriter> table, BloomFilter bloom, scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<int> matching)
@@ -241,7 +254,9 @@ public static class PersistedSnapshotMerger
             int i = matching[k];
             byte flag = 0;
             TReader r = views[i].CreateReader();
-            r.TryRead(enums[i].CurrentValue.Offset, new Span<byte>(ref flag));
+            // Skip unreadable entries — do not let a failed read fall through as flag == 0, which is
+            // the destructed marker and would set a spurious truncation barrier.
+            if (!r.TryRead(enums[i].CurrentValue.Offset, new Span<byte>(ref flag))) continue;
             if (flag == PersistedSnapshotTags.SelfDestructDestructedMarkerByte) barrier = i; // newest destructed
         }
 

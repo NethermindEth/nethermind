@@ -59,6 +59,7 @@ public class PersistedSnapshotCompactor(
     private readonly CancellationToken _shutdownToken = processExitSource.Token;
     private Task? _compactPersistedTask;
     private Task[]? _boundaryCompactorTasks;
+    private readonly Lock _startLock = new();
     private int _disposed;
 
     private const int BoundaryCompactorWorkerCount = 4;
@@ -84,15 +85,19 @@ public class PersistedSnapshotCompactor(
 
     private Task EnsureStarted()
     {
-        _compactPersistedTask ??= RunPersistedCompactor(_shutdownToken);
-        if (_boundaryCompactorTasks is null)
+        // Guard against concurrent EnqueueAsync callers spawning duplicate worker sets.
+        lock (_startLock)
         {
-            Task[] tasks = new Task[BoundaryCompactorWorkerCount];
-            for (int i = 0; i < BoundaryCompactorWorkerCount; i++)
-                tasks[i] = RunBoundaryCompactor(_shutdownToken);
-            _boundaryCompactorTasks = tasks;
+            _compactPersistedTask ??= RunPersistedCompactor(_shutdownToken);
+            if (_boundaryCompactorTasks is null)
+            {
+                Task[] tasks = new Task[BoundaryCompactorWorkerCount];
+                for (int i = 0; i < BoundaryCompactorWorkerCount; i++)
+                    tasks[i] = RunBoundaryCompactor(_shutdownToken);
+                _boundaryCompactorTasks = tasks;
+            }
+            return _compactPersistedTask;
         }
-        return _compactPersistedTask;
     }
 
     private async Task RunPersistedCompactor(CancellationToken cancellationToken)
