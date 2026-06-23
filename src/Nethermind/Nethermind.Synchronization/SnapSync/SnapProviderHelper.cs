@@ -318,6 +318,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return;
             }
 
+            using IDisposable persistedCheckScope = tree.BeginPersistedCheckScope();
             for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
             {
                 (TrieNode node, TreePath path) = sortedBoundaryList[i];

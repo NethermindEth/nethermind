@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -103,6 +104,26 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
             nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA),
             requirePath ? Is.EqualTo(value) : Is.Null);
         Assert.That(nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(requirePath));
+    }
+
+    [Test]
+    public void Read_snapshot_tracks_snapshot_state()
+    {
+        SnapshotableMemDb db = new();
+        NodeStorage nodeStorage = new(db, currentKeyScheme);
+
+        nodeStorage.Set(null, TreePath.Empty, TestItem.KeccakA, TestItem.KeccakA.Bytes);
+
+        using INodeStorageReadSnapshot snapshot = ((INodeStorageWithReadSnapshot)nodeStorage).CreateReadSnapshot()!;
+        nodeStorage.Set(null, TreePath.Empty, TestItem.KeccakB, TestItem.KeccakB.Bytes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.True);
+            Assert.That(snapshot.Get(null, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(snapshot.KeyExists(null, TreePath.Empty, TestItem.KeccakB), Is.False);
+            Assert.That(nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakB), Is.True);
+        }
     }
 
     [TestCase(false, 0, "000000000000000000003333333333333333333333333333333333333333333333333333333333333333")]

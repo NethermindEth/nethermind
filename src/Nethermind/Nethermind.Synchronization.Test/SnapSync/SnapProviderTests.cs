@@ -258,6 +258,45 @@ public class SnapProviderTests
         Assert.That(container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count(), Is.EqualTo(3)); // 3 child. Root branch node not saved due to state sync compatibility
     }
 
+    [Test]
+    public void Persisted_check_scope_uses_snapshot_and_disposes_once_when_owner_disposes_first()
+    {
+        CountingReadSnapshot snapshot = new() { Exists = false };
+        MutableNodeStorage storage = new(snapshot) { Exists = true };
+        NodeStoragePersistedCheckScope persistedCheckScope = new(storage);
+
+        IDisposable scope = persistedCheckScope.Begin();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedCheckScope.Current.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.False);
+            Assert.That(snapshot.DisposeCount, Is.Zero);
+        }
+
+        persistedCheckScope.Dispose();
+        scope.Dispose();
+        scope.Dispose();
+        persistedCheckScope.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedCheckScope.Current.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.True);
+            Assert.That(snapshot.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Persisted_check_scope_falls_back_to_live_storage_without_snapshot_support()
+    {
+        MutableNodeStorage storage = new(null) { Exists = false };
+        NodeStoragePersistedCheckScope persistedCheckScope = new(storage);
+
+        using IDisposable scope = persistedCheckScope.Begin();
+        storage.Exists = true;
+
+        Assert.That(persistedCheckScope.Current.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.True);
+    }
+
     [TestCase("badreq-roothash.zip")]
     [TestCase("badreq-roothash-2.zip")]
     [TestCase("badreq-roothash-3.zip")]
@@ -322,5 +361,53 @@ public class SnapProviderTests
 
         SnapServer ss = new(trieStore.AsReadOnly(), new TestMemDb(), LimboLogs.Instance);
         return (ss, st.RootHash);
+    }
+
+    private sealed class MutableNodeStorage(CountingReadSnapshot? snapshot) : INodeStorage, INodeStorageWithReadSnapshot
+    {
+        public INodeStorage.KeyScheme Scheme { get; set; }
+        public bool RequirePath => false;
+        public bool Exists { get; set; }
+
+        public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None) =>
+            Exists ? [] : null;
+
+        public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash) =>
+            Exists;
+
+        public INodeStorageReadSnapshot? CreateReadSnapshot() =>
+            snapshot;
+
+        public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
+        {
+        }
+
+        public INodeStorage.IWriteBatch StartWriteBatch() =>
+            throw new NotSupportedException();
+
+        public void Flush(bool onlyWal)
+        {
+        }
+
+        public void Compact()
+        {
+        }
+    }
+
+    private sealed class CountingReadSnapshot : INodeStorageReadSnapshot
+    {
+        public INodeStorage.KeyScheme Scheme { get; } = INodeStorage.KeyScheme.Hash;
+        public bool RequirePath => false;
+        public bool Exists { get; init; }
+        public int DisposeCount { get; private set; }
+
+        public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None) =>
+            Exists ? [] : null;
+
+        public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash) =>
+            Exists;
+
+        public void Dispose() =>
+            DisposeCount++;
     }
 }

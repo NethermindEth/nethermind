@@ -14,7 +14,7 @@ public class NodeStorage(
     IKeyValueStore keyValueStore,
     INodeStorage.KeyScheme scheme = INodeStorage.KeyScheme.HalfPath,
     bool requirePath = true)
-    : INodeStorage
+    : INodeStorage, INodeStorageWithReadSnapshot
 {
     private readonly IKeyValueStore _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
     private static readonly byte[] EmptyTreeHashBytes = [128];
@@ -100,6 +100,16 @@ public class NodeStorage(
     }
 
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
+        => Get(_keyValueStore, Scheme, RequirePath, address, path, keccak, readFlags);
+
+    private static byte[]? Get(
+        IReadOnlyKeyValueStore keyValueStore,
+        INodeStorage.KeyScheme scheme,
+        bool requirePath,
+        Hash256? address,
+        in TreePath path,
+        in ValueHash256 keccak,
+        ReadFlags readFlags = ReadFlags.None)
     {
         // Some of the code does not save empty tree at all so this is more about correctness than optimization.
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
@@ -107,7 +117,7 @@ public class NodeStorage(
             return EmptyTreeHashBytes;
         }
 
-        if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
+        if (scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
         {
             if (address is null && path.Length > TopStateBoundary)
             {
@@ -120,19 +130,28 @@ public class NodeStorage(
         }
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
-        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        if (scheme == INodeStorage.KeyScheme.HalfPath)
         {
-            return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
-                   ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
+            return keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
+                   ?? keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
         }
 
-        byte[]? value = _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
-        return value is not null || !RequirePath
+        byte[]? value = keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
+        return value is not null || !requirePath
             ? value
-            : _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+            : keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
     }
 
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
+        => KeyExists(_keyValueStore, Scheme, RequirePath, address, path, keccak);
+
+    private static bool KeyExists(
+        IReadOnlyKeyValueStore keyValueStore,
+        INodeStorage.KeyScheme scheme,
+        bool requirePath,
+        in ValueHash256? address,
+        in TreePath path,
+        in ValueHash256 keccak)
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
         {
@@ -140,14 +159,14 @@ public class NodeStorage(
         }
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
-        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        if (scheme == INodeStorage.KeyScheme.HalfPath)
         {
-            return _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak))
-                   || _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak));
+            return keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak))
+                   || keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak));
         }
 
-        return _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak))
-               || (RequirePath && _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)));
+        return keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak))
+               || (requirePath && keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)));
     }
 
     public INodeStorage.IWriteBatch StartWriteBatch()
@@ -192,6 +211,16 @@ public class NodeStorage(
         }
     }
 
+    public INodeStorageReadSnapshot? CreateReadSnapshot()
+    {
+        if (_keyValueStore is not IKeyValueStoreWithSnapshot snapshotSource)
+        {
+            return null;
+        }
+
+        return new ReadSnapshot(snapshotSource.CreateSnapshot(), Scheme, RequirePath);
+    }
+
     private class WriteBatch(IWriteBatch writeBatch, NodeStorage nodeStorage) : INodeStorage.IWriteBatch
     {
         public void Dispose() => writeBatch.Dispose();
@@ -202,6 +231,32 @@ public class NodeStorage(
             {
                 writeBatch.PutSpan(nodeStorage.GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), data, writeFlags);
             }
+        }
+    }
+
+    private sealed class ReadSnapshot(IKeyValueStoreSnapshot snapshot, INodeStorage.KeyScheme scheme, bool requirePath) : INodeStorageReadSnapshot
+    {
+        private readonly IKeyValueStoreSnapshot _snapshot = snapshot;
+        private bool _disposed;
+
+        public INodeStorage.KeyScheme Scheme { get; } = scheme;
+        public bool RequirePath { get; } = requirePath;
+
+        public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None) =>
+            NodeStorage.Get(_snapshot, Scheme, RequirePath, address, path, keccak, readFlags);
+
+        public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash) =>
+            NodeStorage.KeyExists(_snapshot, Scheme, RequirePath, address, path, hash);
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _snapshot.Dispose();
         }
     }
 }

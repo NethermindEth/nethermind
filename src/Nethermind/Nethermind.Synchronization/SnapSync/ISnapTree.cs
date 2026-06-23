@@ -20,6 +20,7 @@ public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
 
     void SetRootFromProof(TrieNode root);
     bool IsPersisted(in TreePath path, in ValueHash256 keccak);
+    IDisposable BeginPersistedCheckScope() => EmptyPersistedCheckScope.Instance;
     void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries);
     void Commit(ValueHash256 upperBound);
 
@@ -42,5 +43,18 @@ public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
 
         tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
         tree.UpdateRootHash();
+    }
+}
+
+internal sealed class EmptyPersistedCheckScope : IDisposable
+{
+    public static EmptyPersistedCheckScope Instance { get; } = new();
+
+    private EmptyPersistedCheckScope()
+    {
+    }
+
+    public void Dispose()
+    {
     }
 }
