@@ -74,12 +74,13 @@ internal class SubnetPenaltyTests
         );
 
         ulong target = EpochLength * 3 - Gap;
+        int targetHeaderIndex = (int)target - EpochLength + 1;
 
         Address[] injectedPenalties = [TestItem.AddressA, TestItem.AddressB];
         byte[] penaltyBytes = new byte[injectedPenalties.Length * Address.Size];
         for (int i = 0; i < injectedPenalties.Length; i++)
             injectedPenalties[i].Bytes.CopyTo(penaltyBytes.AsSpan(i * Address.Size));
-        ctx.Headers[(int)(target - EpochLength + 1)].Penalties = penaltyBytes;
+        ctx.Headers[targetHeaderIndex].Penalties = penaltyBytes;
 
         Address[] penalties = ctx.Handler.HandlePenalties(
             target,
@@ -167,6 +168,7 @@ internal class SubnetPenaltyTests
         );
 
         ulong target = EpochLength * 3 - Gap;
+        int targetHeaderIndex = (int)target - EpochLength + 1;
 
         Address eip55First = new("0xECf1aC276D2D3333483cF394d2F73BaB6915feCb");
         Address eip55Second = new("0xe3eE640071486df6A007021c34D52b5DE7be94e3");
@@ -178,7 +180,7 @@ internal class SubnetPenaltyTests
         byte[] penaltyBytes = new byte[injectedPenalties.Length * Address.Size];
         for (int i = 0; i < injectedPenalties.Length; i++)
             injectedPenalties[i].Bytes.CopyTo(penaltyBytes.AsSpan(i * Address.Size));
-        ctx.Headers[(int)(target - EpochLength + 1)].Penalties = penaltyBytes;
+        ctx.Headers[targetHeaderIndex].Penalties = penaltyBytes;
 
         Address[] penalties = ctx.Handler.HandlePenalties(
             target,

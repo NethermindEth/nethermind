@@ -121,6 +121,9 @@ internal class TrieStoreDirtyNodesCache
         return _byKeyObjectCache.ContainsKey(key);
     }
 
+    // We use a ulong sentinel (ulong.MaxValue) instead of ulong? (Nullable<ulong>)
+    // to keep NodeRecord at 16 bytes, avoiding the 8-byte padding overhead of Nullable<ulong>,
+    // which significantly reduces heap memory usage when holding millions of cached dirty nodes.
     public readonly struct NodeRecord(TrieNode node, ulong lastCommit) : IEquatable<NodeRecord>
     {
         public readonly TrieNode Node = node;

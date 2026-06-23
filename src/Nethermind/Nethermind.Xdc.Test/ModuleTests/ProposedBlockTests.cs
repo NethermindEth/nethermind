@@ -161,11 +161,11 @@ internal class ProposedBlockTests
 
         BlockHeader startBlock = blockChain.BlockTree.Head!.Header;
 
-        for (int i = 1; i <= count; i++)
+        for (ulong i = 1; i <= (ulong)count; i++)
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
-            Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(startBlock.Number + (ulong)i));
-            Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber, Is.EqualTo(startBlock.Number + (ulong)i));
+            Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(startBlock.Number + i));
+            Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber, Is.EqualTo(startBlock.Number + i));
             Assert.That(blockChain.XdcContext.HighestCommitBlock.BlockNumber, Is.EqualTo(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2UL));
         }
     }

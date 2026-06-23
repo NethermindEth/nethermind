@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Xdc.Test.Helpers;
@@ -38,7 +39,7 @@ internal class XdcTestBlockchainTests
         BlockHeader parent = _blockchain.BlockTree.Genesis!;
         for (ulong i = 1; i < _blockchain.BlockTree.Head!.Number; i++)
         {
-            Block? block = _blockchain.BlockTree.FindBlock(i, Nethermind.Blockchain.BlockTreeLookupOptions.None);
+            Block? block = _blockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
             Assert.That(block, Is.Not.Null);
             Assert.That(headerValidator.Validate(block!.Header, parent, false, out string? error), Is.True, "Header validation failed: " + error);
             parent = block.Header;

@@ -41,7 +41,7 @@ public class XdcTestBlockchain : TestBlockchain
     private readonly bool _useHotStuffModule;
     private readonly bool _withPresetPenaltyHistory;
 
-    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null, bool withPenalty = false)
+    public static async Task<XdcTestBlockchain> Create(ulong blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null, bool withPenalty = false)
     {
         XdcTestBlockchain chain = new(useHotStuffModule, withPenalty);
         await chain.Build(configurer);
@@ -59,7 +59,7 @@ public class XdcTestBlockchain : TestBlockchain
             chain.QuorumCertificateManager.Initialize((XdcBlockHeader)chain.BlockTree.Head!.Header);
         }
 
-        await chain.AddBlocks(blocksToAdd, true);
+        await chain.AddBlocks((int)blocksToAdd, true);
 
         return chain;
     }

@@ -34,7 +34,7 @@ public class RpcModuleTests
     private XdcRpcModule _rpcModule;
 
 
-    private EpochSwitchInfo[] GenerateEpochSwitchInfos(ulong begin, ulong end, uint switchEpoch, uint epochLength)
+    private EpochSwitchInfo[] GenerateEpochSwitchInfos(ulong begin, ulong end, ulong switchEpoch, ulong epochLength)
     {
         List<EpochSwitchInfo> epochSwitchInfos = [];
         for (ulong blockNum = begin; blockNum <= end; blockNum += epochLength)

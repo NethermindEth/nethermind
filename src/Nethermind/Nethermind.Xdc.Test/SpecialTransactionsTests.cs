@@ -547,7 +547,7 @@ internal class SpecialTransactionsTests
     public async Task Malformed_WrongBlockNumber_BlockTooHigh_SignTx_Fails_Validation(bool enableEip1559)
     {
         ulong epochLength = 10;
-        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create((int)epochLength * 3, false);
+        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.IsEip1559Enabled = enableEip1559;
@@ -580,7 +580,7 @@ internal class SpecialTransactionsTests
     public async Task Malformed_WrongBlockNumber_BlockTooLow_SignTx_Fails_Validation(bool enableEip1559)
     {
         ulong epochLength = 10;
-        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create((int)epochLength * 3, false);
+        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.IsEip1559Enabled = enableEip1559;
@@ -614,7 +614,7 @@ internal class SpecialTransactionsTests
     public async Task Malformed_WrongBlockNumber_BlockWithinRange_SignTx_Fails_Validation(bool enableEip1559)
     {
         ulong epochLength = 10;
-        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create((int)epochLength * 3, false);
+        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.IsEip1559Enabled = enableEip1559;
@@ -654,7 +654,7 @@ internal class SpecialTransactionsTests
     public async Task SignTx_From_NonEpochCandidate_Fails_Validation(bool enableEip1559)
     {
         ulong epochLength = 10;
-        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create((int)epochLength * 3, false);
+        XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.IsEip1559Enabled = enableEip1559;
@@ -859,10 +859,10 @@ internal class SpecialTransactionsTests
 
         XdcBlockHeader head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
         IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec(head, chain.XdcContext.CurrentRound);
-        int epochLength = (int)spec.EpochLength;
+        ulong epochLength = spec.EpochLength;
 
         // Add blocks up to epochLength (E) + 15 and create a signing tx that will be inserted in the next block
-        await chain.AddBlocks(epochLength + 15 - 3);
+        await chain.AddBlocks((int)epochLength + 15 - 3);
         XdcBlockHeader? header915 = chain.BlockTree.Head!.Header as XdcBlockHeader;
         Assert.That(header915, Is.Not.Null);
         PrivateKey signer915 = chain.Signer.Key!;
