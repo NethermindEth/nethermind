@@ -88,9 +88,9 @@ jobs:
 
           ### [CONTENT PLACEHOLDER]
 
-          #### Build signatures
+          #### Build signature
 
-          The packages are signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
+          The package is signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
           EOF
           )
             gh release create "$GIT_TAG" --target "$GITHUB_SHA" -t "$title" -d -p -F <(printf '%s' "$relnotes")
