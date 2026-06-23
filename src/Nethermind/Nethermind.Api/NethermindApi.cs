@@ -81,7 +81,7 @@ namespace Nethermind.Api
         public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
-        public IProtocolsManager? ProtocolsManager { get; set; }
+        public IProtocolsManager? ProtocolsManager => Context.Resolve<IProtocolsManager>();
         public IProtocolValidator ProtocolValidator => Context.Resolve<IProtocolValidator>();
         public IReceiptStorage? ReceiptStorage => Context.Resolve<IReceiptStorage>();
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
@@ -106,14 +106,14 @@ namespace Nethermind.Api
         public ITimerFactory TimerFactory => Context.Resolve<ITimerFactory>();
         public IMainProcessingContext MainProcessingContext => Context.Resolve<IMainProcessingContext>();
         public ITxSender? TxSender { get; set; }
-        public INonceManager? NonceManager { get; set; }
+        public INonceManager? NonceManager => Context.Resolve<INonceManager>();
         public ITxPool? TxPool { get; set; }
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public ITxValidator? HeadTxValidator => Context.ResolveOptionalKeyed<ITxValidator>(ITxValidator.HeadTxValidatorKey);
 
         public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        public IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
+        public IBackgroundTaskScheduler BackgroundTaskScheduler => Context.Resolve<IBackgroundTaskScheduler>();
         public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
