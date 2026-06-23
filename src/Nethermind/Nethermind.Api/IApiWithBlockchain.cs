@@ -45,7 +45,6 @@ namespace Nethermind.Api
 
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
 
-        IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
         ICensorshipDetector CensorshipDetector { get; set; }
     }

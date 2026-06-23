@@ -13,7 +13,6 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -96,7 +95,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.TxSender = Substitute.For<ITxSender>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
-            api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
         }
     }
 }

@@ -90,6 +90,7 @@ namespace Nethermind.Merge.AuRa
                         new AuRaPostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
                 .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
                 .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
+                .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
 
                 .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
                 .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))

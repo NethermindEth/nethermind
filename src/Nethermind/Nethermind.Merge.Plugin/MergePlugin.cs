@@ -56,8 +56,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
 
-    private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
-
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
     public string Author => "Nethermind";
@@ -191,10 +189,7 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         {
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
             ArgumentNullException.ThrowIfNull(_api.ProtocolsManager);
-            if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
 
-            _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
-            _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
             InitializeMergeFinalization();
 
             if (_poSSwitcher.TransitionFinished)
@@ -252,6 +247,9 @@ public class MergePluginModule : Module
                     new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
             .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
+            // Wraps the base policy. Kept here (and in AuRaMergeModule) rather than BaseMergePluginModule
+            // so Optimism/Taiko, which load only BaseMergePluginModule, keep their own unwrapped policies.
+            .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
 
             .AddModule(new BaseMergePluginModule());
 }

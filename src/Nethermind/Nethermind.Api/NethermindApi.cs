@@ -112,7 +112,6 @@ namespace Nethermind.Api
         public ITxValidator? HeadTxValidator => Context.ResolveOptionalKeyed<ITxValidator>(ITxValidator.HeadTxValidatorKey);
 
         public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
-        public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public IBackgroundTaskScheduler BackgroundTaskScheduler => Context.Resolve<IBackgroundTaskScheduler>();
         public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
         public IWallet? Wallet { get; set; }
