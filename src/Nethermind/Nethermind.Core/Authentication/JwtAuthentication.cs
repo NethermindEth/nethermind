@@ -111,7 +111,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
                 throw;
             }
 
-            if (logger.IsWarn) logger.Warn($"The authentication secret hasn't been found in '{fileInfo.FullName}'so it has been automatically created.");
+            if (logger.IsWarn) logger.Warn($"The authentication secret file '{fileInfo.FullName}' was not found or was empty, so it has been automatically created.");
 
             return new(secret, timestamper, logger);
         }

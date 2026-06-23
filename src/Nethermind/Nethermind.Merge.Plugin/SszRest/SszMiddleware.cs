@@ -316,8 +316,14 @@ public sealed class SszMiddleware
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        if (span.EndsWith("/"))
-            return false;
+        // Collapse a trailing slash so `/foo` and `/foo/` route identically; `pathLen` then
+        // bounds every subsequent `path.AsMemory(...)` slice so the slash never reaches `extra`.
+        int pathLen = path.Length;
+        if (pathLen > EnginePrefix.Length && path[pathLen - 1] == '/')
+        {
+            pathLen--;
+            span = span[..pathLen];
+        }
 
         int offset = EnginePrefix.Length;
         span = span[offset..];
@@ -326,7 +332,7 @@ public sealed class SszMiddleware
         if (span.Equals("identity".AsSpan(), StringComparison.OrdinalIgnoreCase)
             || span.Equals("capabilities".AsSpan(), StringComparison.OrdinalIgnoreCase))
         {
-            pathSegment = path.AsMemory(offset);
+            pathSegment = path.AsMemory(offset, pathLen - offset);
             return true;
         }
         // Unscoped endpoints don't accept path extras — reject "/identity/foo" / "/capabilities/foo"
@@ -382,7 +388,7 @@ public sealed class SszMiddleware
         if (nextSlash < span.Length)
         {
             offset += nextSlash + 1;
-            pathSegment = path.AsMemory(offset);
+            pathSegment = path.AsMemory(offset, pathLen - offset);
         }
         else
         {

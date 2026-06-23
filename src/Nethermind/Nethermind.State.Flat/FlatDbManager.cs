@@ -341,6 +341,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
+        // The latest block the main processing scope committed; used as the head for forced persists.
+        _snapshotRepository.SetLastCommittedStateId(endBlock);
+
         if (_inlineCompaction)
         {
             RunCompactJobSync(endBlock, transientResource, _cancelTokenSource.Token).Wait();

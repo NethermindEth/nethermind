@@ -61,6 +61,13 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public Hash256? PendingHash => throw new NotSupportedException();
     public Hash256? FinalizedHash => throw new NotSupportedException();
     public Hash256? SafeHash => throw new NotSupportedException();
+    public long LastFinalizedBlockLevel => throw new NotSupportedException();
+
+    public event EventHandler<FinalizeEventArgs>? BlocksFinalized
+    {
+        add => throw new NotSupportedException();
+        remove => throw new NotSupportedException();
+    }
     public Block? Head => throw new NotSupportedException();
 
     public long? BestPersistedState
@@ -125,7 +132,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public bool WasProcessed(long number, Hash256 blockHash)
         => throw new NotSupportedException();
 
-    public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false)
+    public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks)
         => throw new NotSupportedException();
 
     public void MarkChainAsProcessed(IReadOnlyList<Block> blocks)

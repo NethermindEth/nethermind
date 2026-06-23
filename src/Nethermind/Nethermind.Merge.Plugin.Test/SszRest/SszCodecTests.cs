@@ -231,11 +231,17 @@ public class SszCodecTests
         }
     }
 
+    // Container { payload(var) + block_value(32) }: 4-byte offset + 32-byte block_value.
+    private const int BuiltPayloadParisFixedSize = 36;
+
+    private static GetPayloadV2Result MakeV2Result(ExecutionPayload ep, UInt256 blockValue) =>
+        new((Block)ep.TryGetBlock(), blockValue);
+
     private static IEnumerable<TestCaseData> NonEmptyEncodings()
     {
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
-            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload(), w)))
-            .SetName(nameof(Encoded_buffer_is_non_empty) + "_GetPayloadV1");
+            SszCodec.EncodeBuiltPayloadParis(MakeV2Result(SszTestData.MakeMinimalPayload(), UInt256.One), w)))
+            .SetName(nameof(Encoded_buffer_is_non_empty) + "_BuiltPayloadParis");
 
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
         {
@@ -345,8 +351,8 @@ public class SszCodecTests
             .SetName(nameof(Encoded_buffer_length_is_consistent) + "_PayloadStatus");
 
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
-            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload(), w)))
-            .SetName(nameof(Encoded_buffer_length_is_consistent) + "_GetPayloadV1");
+            SszCodec.EncodeBuiltPayloadParis(MakeV2Result(SszTestData.MakeMinimalPayload(), UInt256.One), w)))
+            .SetName(nameof(Encoded_buffer_length_is_consistent) + "_BuiltPayloadParis");
     }
 
     [TestCaseSource(nameof(BufferConsistentEncodings))]
@@ -358,27 +364,33 @@ public class SszCodecTests
     }
 
     [Test]
-    public void EncodeGetPayloadV1Response_fields_land_at_spec_defined_offsets()
+    public void EncodeBuiltPayloadParis_fields_land_at_spec_defined_offsets()
     {
         ExecutionPayload ep = SszTestData.MakeMinimalPayload();
         ep.BaseFeePerGas = new UInt256(0xABCDEF);
+        UInt256 blockValue = new(0xCAFEBABEu);
 
         ArrayBufferWriter<byte> w = new();
-        SszCodec.EncodeGetPayloadV1Response(ep, w);
+        SszCodec.EncodeBuiltPayloadParis(MakeV2Result(ep, blockValue), w);
         ReadOnlySpan<byte> buffer = w.WrittenSpan;
 
-        Assert.That(buffer.Length, Is.GreaterThan(440 + 32), "encoded payload must be large enough to contain baseFeePerGas");
+        uint epOffset = BitConverter.ToUInt32(buffer.Slice(0, 4));
+        Assert.That(epOffset, Is.EqualTo((uint)BuiltPayloadParisFixedSize), "payload variable-length offset @ 0 must point at the 36-byte fixed-section end");
+        Assert.That(new UInt256(buffer.Slice(4, 32), isBigEndian: false), Is.EqualTo(blockValue), "block_value @ offset 4 (32 bytes, little-endian)");
 
-        UInt256 decodedBaseFee = new(buffer.Slice(440, 32), isBigEndian: false);
-        Assert.That(decodedBaseFee, Is.EqualTo(ep.BaseFeePerGas), "baseFeePerGas must be encoded at byte offset 440 per the Ethereum consensus spec");
+        ReadOnlySpan<byte> payload = buffer[BuiltPayloadParisFixedSize..];
+        Assert.That(payload.Length, Is.GreaterThan(440 + 32), "encoded inner payload must be large enough to contain baseFeePerGas");
 
-        Assert.That(buffer.Slice(0, 32).ToArray(), Is.EqualTo(ep.ParentHash!.Bytes.ToArray()), "parent_hash must be the first 32 bytes of the encoded payload");
+        UInt256 decodedBaseFee = new(payload.Slice(440, 32), isBigEndian: false);
+        Assert.That(decodedBaseFee, Is.EqualTo(ep.BaseFeePerGas), "baseFeePerGas must be encoded at byte offset 440 of the inner payload per the Ethereum consensus spec");
 
-        Assert.That(buffer.Slice(472, 32).ToArray(), Is.EqualTo(ep.BlockHash!.Bytes.ToArray()), "block_hash must be encoded at byte offset 472 per the Ethereum consensus spec");
+        Assert.That(payload.Slice(0, 32).ToArray(), Is.EqualTo(ep.ParentHash!.Bytes.ToArray()), "parent_hash must be the first 32 bytes of the inner payload");
+
+        Assert.That(payload.Slice(472, 32).ToArray(), Is.EqualTo(ep.BlockHash!.Bytes.ToArray()), "block_hash must be encoded at byte offset 472 of the inner payload per the Ethereum consensus spec");
     }
 
     [Test]
-    public void EncodeGetPayloadV1Response_all_static_fields_land_at_spec_defined_offsets()
+    public void EncodeBuiltPayloadParis_all_static_fields_land_at_spec_defined_offsets()
     {
         ExecutionPayload ep = new()
         {
@@ -397,10 +409,17 @@ public class SszCodecTests
             BlockHash = TestItem.KeccakE,
             Transactions = Array.Empty<byte[]>()
         };
+        UInt256 blockValue = new(0xCAFEBABEu);
 
         ArrayBufferWriter<byte> w = new();
-        SszCodec.EncodeGetPayloadV1Response(ep, w);
-        ReadOnlySpan<byte> buf = w.WrittenSpan;
+        SszCodec.EncodeBuiltPayloadParis(MakeV2Result(ep, blockValue), w);
+        ReadOnlySpan<byte> outer = w.WrittenSpan;
+
+        uint epOffset = BitConverter.ToUInt32(outer.Slice(0, 4));
+        Assert.That(epOffset, Is.EqualTo((uint)BuiltPayloadParisFixedSize), "payload offset @ 0 must equal the 36-byte fixed-section size");
+        Assert.That(new UInt256(outer.Slice(4, 32), isBigEndian: false), Is.EqualTo(blockValue), "block_value @ offset 4");
+
+        ReadOnlySpan<byte> buf = outer[BuiltPayloadParisFixedSize..];
 
         using (Assert.EnterMultipleScope())
         {
@@ -495,6 +514,7 @@ public class SszCodecTests
         ReadOnlySpan<byte> buf,
         int fixedSectionSize,
         UInt256 expectedBlockValue,
+        int shouldOverrideBuilderOffset,
         byte expectedShouldOverrideBuilder,
         string version)
     {
@@ -508,7 +528,7 @@ public class SszCodecTests
         uint bbOffset = BitConverter.ToUInt32(buf.Slice(36, 4));
         Assert.That(bbOffset, Is.GreaterThanOrEqualTo((uint)fixedSectionSize), $"blobs_bundle offset @ 36 must point past the {fixedSectionSize}-byte fixed section");
 
-        Assert.That(buf[40], Is.EqualTo(expectedShouldOverrideBuilder), $"should_override_builder must encode as 0x{expectedShouldOverrideBuilder:X2} at offset 40");
+        Assert.That(buf[shouldOverrideBuilderOffset], Is.EqualTo(expectedShouldOverrideBuilder), $"should_override_builder must encode as 0x{expectedShouldOverrideBuilder:X2} at offset {shouldOverrideBuilderOffset}");
     }
 
     [Test]
@@ -523,7 +543,7 @@ public class SszCodecTests
             new GetPayloadV3Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: true), w);
 
         AssertGetPayloadResponseHeaderOffsets(w.WrittenSpan, fixedSectionSize: 41, blockValue,
-            expectedShouldOverrideBuilder: 1, version: "V3");
+            shouldOverrideBuilderOffset: 40, expectedShouldOverrideBuilder: 1, version: "V3");
     }
 
     [Test]
@@ -649,13 +669,50 @@ public class SszCodecTests
         ArrayBufferWriter<byte> w = new();
         SszCodec.EncodeGetPayloadV4Response(
             new GetPayloadV4Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: false, executionRequests: []), w);
-        ReadOnlySpan<byte> buf = w.WrittenSpan;
 
+        AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 0, version: "V4");
+    }
+
+    [Test]
+    public void EncodeGetPayloadV5Response_all_static_fields_land_at_spec_defined_offsets()
+    {
+        UInt256 blockValue = new(0xC0FFEEu);
+        ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
+        Block block = (Block)ep.TryGetBlock();
+
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV5Response(
+            new GetPayloadV5Result(block, blockValue, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: true), w);
+
+        AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 1, version: "V5");
+    }
+
+    [Test]
+    public void EncodeGetPayloadV6Response_all_static_fields_land_at_spec_defined_offsets()
+    {
+        UInt256 blockValue = new(0xFEEDFACEu);
+        // 0xc0 is the RLP encoding of an empty list — minimum valid BAL payload for TryGetBlock.
+        ExecutionPayloadV4 ep = SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL);
+        Block block = (Block)ep.TryGetBlock();
+
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV6Response(
+            new GetPayloadV6Result(block, blockValue, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false), w);
+
+        AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 0, version: "V6");
+    }
+
+    // Shared assertion for the Prague+ BuiltPayload fixed section: identical for V4/V5/V6 since
+    // BlobsBundleV{1,2} and ExecutionPayloadV{3,4} are all variable-size (4-byte offsets).
+    private static void AssertPragueBuiltPayloadOffsets(
+        ReadOnlySpan<byte> buf, UInt256 blockValue, byte expectedShouldOverrideBuilder, string version)
+    {
         AssertGetPayloadResponseHeaderOffsets(buf, fixedSectionSize: 45, blockValue,
-            expectedShouldOverrideBuilder: 0, version: "V4");
+            shouldOverrideBuilderOffset: 44, expectedShouldOverrideBuilder, version);
 
-        uint erOffset = BitConverter.ToUInt32(buf.Slice(41, 4));
-        Assert.That(erOffset, Is.GreaterThanOrEqualTo(45u), "execution_requests offset @ 41 must point past the 45-byte fixed section");
+        uint erOffset = BitConverter.ToUInt32(buf.Slice(40, 4));
+        Assert.That(erOffset, Is.GreaterThanOrEqualTo(45u),
+            $"{version}: execution_requests offset @ 40 must point past the 45-byte fixed section");
     }
 
     /// <summary>
