@@ -11,9 +11,10 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
-using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Discovery.Discv4.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
 using Nethermind.Network.StaticNodes;
@@ -25,6 +26,15 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
 {
     protected override void Load(ContainerBuilder builder)
     {
+        builder.Register(static context => new NodesLoaderOptions(
+                LoadBootnodesAsPeerCandidates: (context.Resolve<IDiscoveryConfig>().DiscoveryVersion & DiscoveryVersion.V4) != 0))
+            .SingleInstance();
+
+        builder.RegisterType<NodesLoader>()
+            .AsSelf()
+            .WithAttributeFiltering()
+            .SingleInstance();
+
         builder
             // Enr discovery uses DNS to get some bootnodes.
             .AddSingleton<EnrDiscovery, IEthereumEcdsa, ILogManager>((ethereumEcdsa, logManager) =>
@@ -43,8 +53,6 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddSingleton<IStaticNodesManager, ILogManager>(logManager =>
                 new StaticNodesManager(initConfig.StaticNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
             // This load from file.
-            .AddSingleton<NodesLoader>()
-
             .AddSingleton<ITrustedNodesManager, ILogManager>((logManager) =>
                 new TrustedNodesManager(initConfig.TrustedNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
 

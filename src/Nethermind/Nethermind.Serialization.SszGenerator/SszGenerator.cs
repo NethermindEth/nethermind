@@ -301,9 +301,9 @@ internal static class SszCodecHelpers
         }
     }
 
-    internal static void ValidateSszListLimit<T>(ReadOnlySpan<T> items, int limit, string typeName, string fieldName)
+    internal static void ValidateSszListLimit<T>(ReadOnlySpan<T> items, ulong limit, string typeName, string fieldName)
     {
-        if (items.Length > limit)
+        if ((ulong)items.Length > limit)
         {
             ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} elements but found {items.Length}.");
         }
@@ -318,9 +318,9 @@ internal static class SszCodecHelpers
         }
     }
 
-    internal static void ValidateSszBitlistLimit(BitArray? bits, int limit, string typeName, string fieldName)
+    internal static void ValidateSszBitlistLimit(BitArray? bits, ulong limit, string typeName, string fieldName)
     {
-        if (bits is not null && bits.Length > limit)
+        if (bits is not null && (ulong)bits.Length > limit)
         {
             ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} bits but found {bits.Length}.");
         }
@@ -645,10 +645,9 @@ internal static class SszCodecHelpers
         {
             Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
-            Kind.List when property.Type.Name == "BitArray" => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
-            Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.BitVector => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
-            Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             _ => string.Empty,
         };
 
@@ -783,7 +782,8 @@ internal static class SszCodecHelpers
                 ? string.Empty
                 : $"int __count = {sliceExpression}.Length / {itemSize};";
             string countExpression = property.Kind == Kind.Vector ? property.Length!.Value.ToString() : "__count";
-            string limitGuard = (property.Kind == Kind.List && property.Limit.HasValue)
+            // No guard for limits beyond int.MaxValue: an int-typed count can never exceed them
+            string limitGuard = (property.Kind == Kind.List && property.Limit is <= int.MaxValue)
                 ? $"if (__count > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.TypeReferenceName}.{property.Name}: list count {{__count}} exceeds SSZ limit {property.Limit.Value}\");"
                 : string.Empty;
             string assignment = DecodeAssignmentExpression(property, variableName, sourceIsArray: true);
@@ -803,7 +803,8 @@ internal static class SszCodecHelpers
                 ? string.Empty
                 : $"int __count = {sliceExpression}.Length / {itemSize};";
             string countExpression = property.Kind == Kind.Vector ? property.Length!.Value.ToString() : "__count";
-            string limitGuard = (property.Kind == Kind.List && property.Limit.HasValue)
+            // No guard for limits beyond int.MaxValue: an int-typed count can never exceed them
+            string limitGuard = (property.Kind == Kind.List && property.Limit is <= int.MaxValue)
                 ? $"if (__count > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.TypeReferenceName}.{property.Name}: list count {{__count}} exceeds SSZ limit {property.Limit.Value}\");"
                 : string.Empty;
             string assignment = DecodeAssignmentExpression(property, variableName, sourceIsArray: true);
@@ -832,7 +833,8 @@ internal static class SszCodecHelpers
         string validation2 = ValidationStatement(decl, property, $"container.{property.Name}");
 
         string preAllocationListGuard = string.Empty;
-        if (property.Kind == Kind.List && property.Limit.HasValue && !property.HandledByStd)
+        // No guard for limits beyond int.MaxValue: an int-typed count can never exceed them
+        if (property.Kind == Kind.List && property.Limit is <= int.MaxValue && !property.HandledByStd)
         {
             preAllocationListGuard = property.Type.IsVariable
                 ? $"if ({sliceExpression}.Length >= {SszType.PointerLength}) {{ int __firstOffset = DecodeSszOffset({sliceExpression}.Slice(0, {SszType.PointerLength})); int __preCount = __firstOffset / {SszType.PointerLength}; if (__preCount > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.TypeReferenceName}.{property.Name}: list count {{__preCount}} exceeds SSZ limit {property.Limit.Value}\"); }}"
@@ -882,22 +884,22 @@ internal static class SszCodecHelpers
             Kind.Basic when property.Type.CustomFeedMethod is not null => ConverterMerkleizeStatement(property, expression, rootName),
             Kind.Basic => $"Merkle.Merkleize(out {rootName}, {expression});",
             Kind.BitVector => $"Merkle.Merkleize(out {rootName}, {expression}!);",
-            Kind.BitList => $"Merkle.Merkleize(out {rootName}, {expression} ?? new BitArray(0), {property.Limit});",
+            Kind.BitList => $"Merkle.Merkleize(out {rootName}, {expression} ?? new BitArray(0), {property.Limit}UL);",
             Kind.ProgressiveBitList => $"MerkleizeProgressiveBitList({expression}, out {rootName});",
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeBasicVectorWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {property.Length}, {enumType.CustomEncodeMethod}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeBasicListWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {property.Limit}, {enumType.CustomEncodeMethod}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeBasicListWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {property.Limit}UL, {enumType.CustomEncodeMethod}, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeProgressiveBasicListWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {enumType.CustomEncodeMethod}, out {rootName});",
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeBasicVectorWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, {property.Type.CustomEncodeMethod}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}, {property.Type.CustomEncodeMethod}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}UL, {property.Type.CustomEncodeMethod}, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeProgressiveBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Type.CustomEncodeMethod}, out {rootName});",
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeBasicVector({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeBasicList({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeBasicList({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}UL, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeProgressiveBasicList({SpanExpression(property, expression)}, out {rootName});",
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec => $"MerkleizeCompositeVectorWithConverter({SpanExpression(property, expression)}, {property.Length}, {property.Type.CustomFeedMethod}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec => $"MerkleizeCompositeListWithConverter({SpanExpression(property, expression)}, {property.Limit}, {property.Type.CustomFeedMethod}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec => $"MerkleizeCompositeListWithConverter({SpanExpression(property, expression)}, {property.Limit}UL, {property.Type.CustomFeedMethod}, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec => $"MerkleizeCompositeProgressiveListWithConverter({SpanExpression(property, expression)}, {property.Type.CustomFeedMethod}, out {rootName});",
             Kind.Vector => $"{property.Type.StaticMemberAccess}.MerkleizeVector({SpanExpression(property, expression)}, out {rootName});",
-            Kind.List => $"{property.Type.StaticMemberAccess}.MerkleizeList({SpanExpression(property, expression)}, {property.Limit}, out {rootName});",
+            Kind.List => $"{property.Type.StaticMemberAccess}.MerkleizeList({SpanExpression(property, expression)}, {property.Limit}UL, out {rootName});",
             Kind.ProgressiveList => $"{property.Type.StaticMemberAccess}.MerkleizeProgressiveList({SpanExpression(property, expression)}, out {rootName});",
             _ => $"{property.Type.StaticMemberAccess}.Merkleize({expression}, out {rootName});",
         };
@@ -912,15 +914,15 @@ internal static class SszCodecHelpers
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec => $"MerkleizeDefaultCompositeVectorWithConverter<{property.Type.TypeReferenceName}>({property.Type.StaticLength}, {property.Length}, {property.Type.CustomDecodeMethod}, {property.Type.CustomFeedMethod}, out {rootName});",
             Kind.Vector when property.Type.Kind == Kind.Basic => $"Merkle.Merkleize(out {rootName}, ReadOnlySpan<UInt256>.Empty, {property.Length});",
             Kind.Vector => $"{{ {property.Type.TypeReferenceName}[] __empty{property.Name} = new {property.Type.TypeReferenceName}[{property.Length}]; {property.Type.StaticMemberAccess}.MerkleizeVector(__empty{property.Name}, out {rootName}); }}",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeBasicListWithConverter<{enumType.TypeReferenceName}>(System.Runtime.InteropServices.MemoryMarshal.Cast<{property.Type.TypeReferenceName}, {enumType.TypeReferenceName}>(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty), {enumType.StaticLength}, {property.Limit}, {enumType.CustomEncodeMethod}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeBasicListWithConverter<{enumType.TypeReferenceName}>(System.Runtime.InteropServices.MemoryMarshal.Cast<{property.Type.TypeReferenceName}, {enumType.TypeReferenceName}>(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty), {enumType.StaticLength}, {property.Limit}UL, {enumType.CustomEncodeMethod}, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeProgressiveBasicListWithConverter<{enumType.TypeReferenceName}>(System.Runtime.InteropServices.MemoryMarshal.Cast<{property.Type.TypeReferenceName}, {enumType.TypeReferenceName}>(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty), {enumType.StaticLength}, {enumType.CustomEncodeMethod}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeBasicListWithConverter<{property.Type.TypeReferenceName}>(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Type.StaticLength}, {property.Limit}, {property.Type.CustomEncodeMethod}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeBasicListWithConverter<{property.Type.TypeReferenceName}>(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Type.StaticLength}, {property.Limit}UL, {property.Type.CustomEncodeMethod}, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeProgressiveBasicListWithConverter<{property.Type.TypeReferenceName}>(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Type.StaticLength}, {property.Type.CustomEncodeMethod}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeBasicList(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Type.StaticLength}, {property.Limit}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeBasicList(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Type.StaticLength}, {property.Limit}UL, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeProgressiveBasicList(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec => $"MerkleizeCompositeListWithConverter(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Limit}, {property.Type.CustomFeedMethod}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec => $"MerkleizeCompositeListWithConverter(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Limit}UL, {property.Type.CustomFeedMethod}, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec => $"MerkleizeCompositeProgressiveListWithConverter(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Type.CustomFeedMethod}, out {rootName});",
-            Kind.List => $"{property.Type.StaticMemberAccess}.MerkleizeList(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Limit}, out {rootName});",
+            Kind.List => $"{property.Type.StaticMemberAccess}.MerkleizeList(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, {property.Limit}UL, out {rootName});",
             Kind.ProgressiveList => $"{property.Type.StaticMemberAccess}.MerkleizeProgressiveList(ReadOnlySpan<{property.Type.TypeReferenceName}>.Empty, out {rootName});",
             _ => throw new InvalidOperationException($"Cannot merkleize an empty {property.Kind} collection."),
         };
@@ -1032,7 +1034,9 @@ internal static class SszCodecHelpers
         string arguments = $"{target}, {EncodeValueExpression(property, expression)}";
         if (property.Kind == Kind.BitList)
         {
-            arguments += $", {property.Limit}";
+            // The Encode limit parameter is int-typed; bitlist limits beyond int.MaxValue are
+            // rejected at parse time (a BitArray cannot exceed int.MaxValue bits), so this fits.
+            arguments += $", {property.Limit!.Value}";
         }
         else if (property.Kind == Kind.ProgressiveBitList)
         {

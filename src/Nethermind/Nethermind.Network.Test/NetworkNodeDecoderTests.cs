@@ -5,8 +5,11 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using System.Net;
 
 namespace Nethermind.Network.Test
 {
@@ -14,17 +17,12 @@ namespace Nethermind.Network.Test
     [TestFixture]
     public class NetworkNodeDecoderTests
     {
-        [Test]
-        public void Can_do_roundtrip()
+        [TestCase("127.0.0.1", 30303, 100L)]
+        [TestCase("127.0.0.1", 30303, -100L)]
+        [TestCase("127.0.0.1", -1, -100L)]
+        public void Can_do_roundtrip(string host, int port, long reputation)
         {
-            NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
-            AssertRoundtripPreservesFields(node);
-        }
-
-        [Test]
-        public void Can_do_roundtrip_negative_reputation()
-        {
-            NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, -100L);
+            NetworkNode node = new(TestItem.PublicKeyA, host, port, reputation);
             AssertRoundtripPreservesFields(node);
         }
 
@@ -44,17 +42,10 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [Test]
-        public void Negative_port_just_in_case_for_resilience()
-        {
-            NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", -1, -100L);
-            AssertRoundtripPreservesFields(node);
-        }
-
         private static void AssertRoundtripPreservesFields(NetworkNode node)
         {
             NetworkNodeDecoder networkNodeDecoder = new();
-            Rlp encoded = Rlp.Encode(node);
+            Rlp encoded = networkNodeDecoder.Encode(node);
             Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
             using (Assert.EnterMultipleScope())
@@ -66,5 +57,45 @@ namespace Nethermind.Network.Test
             }
         }
 
+        [Test]
+        public void Can_do_enr_roundtrip()
+        {
+            NetworkNodeDecoder networkNodeDecoder = new();
+            NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304);
+            NetworkNode node = new(enr.EnrString)
+            {
+                Reputation = 100L
+            };
+
+            Rlp encoded = networkNodeDecoder.Encode(node);
+            Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
+            NetworkNode decoded = networkNodeDecoder.Decode(ref context);
+
+            using (Assert.EnterMultipleScope())
+            {
+                NodeRecord? decodedEnr = decoded.Enr;
+                Assert.That(decoded.IsEnr, Is.True);
+                Assert.That(decodedEnr, Is.Not.Null);
+                Assert.That(decodedEnr!.EnrString, Is.EqualTo(enr.EnrString));
+                Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
+                Assert.That(decoded.Host, Is.EqualTo("8.8.8.8"));
+                Assert.That(decoded.Port, Is.EqualTo(30304));
+                Assert.That(decoded.Reputation, Is.EqualTo(node.Reputation));
+            }
+        }
+
+        private static NodeRecord CreateTestEnr(PrivateKey privateKey, IPAddress ipAddress, int tcpPort, int udpPort)
+        {
+            NodeRecord enr = new();
+            enr.SetEntry(IdEntry.Instance);
+            enr.SetEntry(new IpEntry(ipAddress));
+            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+            enr.SetEntry(new TcpEntry(tcpPort));
+            enr.SetEntry(new UdpEntry(udpPort));
+            enr.EnrSequence = 1;
+            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+
+            return enr;
+        }
     }
 }

@@ -101,12 +101,13 @@ public class MergePluginTests
                 LimboLogs.Instance))
             .AddSingleton(Substitute.For<IRpcModuleProvider>())
             .AddSingleton(Substitute.For<IBlockProcessingQueue>())
+            .AddSingleton(Substitute.For<IProtocolsManager>())
             .OnBuild(ctx =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();
                 Build.MockOutNethermindApi((NethermindApi)api);
 
-                api.BlockProcessingQueue.IsEmpty.Returns(true);
+                ctx.Resolve<IBlockProcessingQueue>().IsEmpty.Returns(true);
             });
 
         configure?.Invoke(builder);

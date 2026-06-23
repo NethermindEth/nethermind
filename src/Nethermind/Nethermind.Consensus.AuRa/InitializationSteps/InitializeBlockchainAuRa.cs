@@ -14,12 +14,13 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
+public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy, IChainLevelInfoRepository chainLevelInfoRepository)
     : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     protected AuRaNethermindApi Api => api;
@@ -30,7 +31,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
         AuRaChainSpecEngineParameters chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         api.AuRaFinalizationManager = new AuRaBlockFinalizationManager(
             api.BlockTree!,
-            api.ChainLevelInfoRepository!,
+            chainLevelInfoRepository,
             api.ValidatorStore!,
             api.LogManager,
             chainSpecAuRa.TwoThirdsMajorityTransition);
