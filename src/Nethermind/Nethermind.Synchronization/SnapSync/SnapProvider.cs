@@ -91,14 +91,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 try
                 {
-                    using ArrayPoolListRef<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
-                    {
-                        if (_codeExistKeyCache.Get(code)) return false;
-
-                        bool exist = _codeDb.KeyExists(code.Bytes);
-                        if (exist) _codeExistKeyCache.Set(code);
-                        return !exist;
-                    }).ToPooledListRef(codeHashes.Count);
+                    using ArrayPoolListRef<ValueHash256> filteredCodeHashes = FilterMissingCodeHashes(codeHashes);
 
                     _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
                 }
@@ -129,6 +122,89 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             return result;
+        }
+
+        private ArrayPoolListRef<ValueHash256> FilterMissingCodeHashes(List<ValueHash256> codeHashes)
+        {
+            if (_codeDb is not IKeyValueStoreWithSnapshot snapshotSource)
+            {
+                return codeHashes.AsParallel().Where((code) => ShouldRequestCode(code, _codeDb)).ToPooledListRef(codeHashes.Count);
+            }
+
+            ArrayPoolListRef<ValueHash256> uncachedCodeHashes = FilterUncachedCodeHashes(codeHashes);
+            if (uncachedCodeHashes.Count == 0)
+            {
+                return uncachedCodeHashes;
+            }
+
+            IKeyValueStoreSnapshot snapshot;
+            try
+            {
+                snapshot = snapshotSource.CreateSnapshot();
+            }
+            catch
+            {
+                uncachedCodeHashes.Dispose();
+                throw;
+            }
+
+            using (snapshot)
+            {
+                return FilterMissingCodeHashes(uncachedCodeHashes, snapshot);
+            }
+        }
+
+        private bool ShouldRequestCode(ValueHash256 code, IReadOnlyKeyValueStore codeStore)
+        {
+            if (_codeExistKeyCache.Get(code)) return false;
+
+            bool exists = codeStore.KeyExists(code.Bytes);
+            if (exists) _codeExistKeyCache.Set(code);
+            return !exists;
+        }
+
+        private ArrayPoolListRef<ValueHash256> FilterUncachedCodeHashes(List<ValueHash256> codeHashes)
+        {
+            ArrayPoolListRef<ValueHash256> uncachedCodeHashes = new(codeHashes.Count);
+            foreach (ValueHash256 code in CollectionsMarshal.AsSpan(codeHashes))
+            {
+                if (!_codeExistKeyCache.Get(code))
+                {
+                    uncachedCodeHashes.Add(code);
+                }
+            }
+
+            return uncachedCodeHashes;
+        }
+
+        private ArrayPoolListRef<ValueHash256> FilterMissingCodeHashes(ArrayPoolListRef<ValueHash256> uncachedCodeHashes, IReadOnlyKeyValueStore codeStore)
+        {
+            ArrayPoolListRef<ValueHash256> missingCodeHashes = new(uncachedCodeHashes.Count);
+            try
+            {
+                foreach (ValueHash256 code in uncachedCodeHashes.AsSpan())
+                {
+                    if (codeStore.KeyExists(code.Bytes))
+                    {
+                        _codeExistKeyCache.Set(code);
+                    }
+                    else
+                    {
+                        missingCodeHashes.Add(code);
+                    }
+                }
+
+                return missingCodeHashes;
+            }
+            catch
+            {
+                missingCodeHashes.Dispose();
+                throw;
+            }
+            finally
+            {
+                uncachedCodeHashes.Dispose();
+            }
         }
 
         public AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response)

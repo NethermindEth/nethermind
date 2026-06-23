@@ -24,6 +24,7 @@ using Nethermind.State.Proofs;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 using Nethermind.Trie;
+using NSubstitute;
 using AccountRange = Nethermind.State.Snap.AccountRange;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
@@ -256,6 +257,86 @@ public class SnapProviderTests
         Assert.That(snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs), Is.EqualTo(AddRangeResult.OK));
 
         Assert.That(container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count(), Is.EqualTo(3)); // 3 child. Root branch node not saved due to state sync compatibility
+    }
+
+    [Test]
+    public void AddAccountRange_UsesSnapshotableCodeDb_ForExistingCodeHashes()
+    {
+        byte[] code = [1, 2, 3];
+        Hash256 codeHash = Keccak.Compute(code);
+        (Hash256, Account)[] entries =
+        [
+            (TestItem.KeccakA, new Account(0, 1).WithChangedCodeHash(codeHash)),
+        ];
+
+        (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
+        SnapshotableMemDb codeDb = new();
+        codeDb[codeHash.Bytes] = code;
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig()
+        {
+            SnapSyncAccountRangePartitionCount = 1
+        })
+            .WithSuggestedHeaderOfStateRoot(root)
+            .AddKeyedSingleton<IDb>(DbNames.Code, _ => codeDb)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? batch), Is.False);
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = ss.GetAccountRanges(
+            root,
+            batch!.AccountRangeRequest!.StartingHash,
+            batch.AccountRangeRequest.LimitHash,
+            1.MB,
+            default);
+
+        using AccountsAndProofs accountsAndProofs = new();
+        accountsAndProofs.PathAndAccounts = accounts;
+        accountsAndProofs.Proofs = proofs;
+
+        Assert.That(snapProvider.AddAccountRange(batch.AccountRangeRequest, accountsAndProofs), Is.EqualTo(AddRangeResult.OK));
+        Assert.That(progressTracker.IsFinished(out batch), Is.True);
+        Assert.That(batch, Is.Null);
+    }
+
+    [Test]
+    public void AddAccountRange_DoesNotSnapshotCodeDb_WhenAccountsHaveNoCode()
+    {
+        (Hash256, Account)[] entries =
+        [
+            (TestItem.KeccakA, new Account(0, 1)),
+        ];
+
+        (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
+        IDb codeDb = Substitute.For<IDb, IKeyValueStoreWithSnapshot>();
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig()
+        {
+            SnapSyncAccountRangePartitionCount = 1
+        })
+            .WithSuggestedHeaderOfStateRoot(root)
+            .AddKeyedSingleton<IDb>(DbNames.Code, _ => codeDb)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? batch), Is.False);
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = ss.GetAccountRanges(
+            root,
+            batch!.AccountRangeRequest!.StartingHash,
+            batch.AccountRangeRequest.LimitHash,
+            1.MB,
+            default);
+
+        using AccountsAndProofs accountsAndProofs = new();
+        accountsAndProofs.PathAndAccounts = accounts;
+        accountsAndProofs.Proofs = proofs;
+
+        Assert.That(snapProvider.AddAccountRange(batch.AccountRangeRequest, accountsAndProofs), Is.EqualTo(AddRangeResult.OK));
+        ((IKeyValueStoreWithSnapshot)codeDb).DidNotReceive().CreateSnapshot();
     }
 
     [Test]
