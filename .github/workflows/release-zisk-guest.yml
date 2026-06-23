@@ -47,6 +47,7 @@ jobs:
       - name: Upload assets
         uses: actions/upload-artifact@v7
         with:
+          name: nethermind-guest-zisk-r${{ github.run_number }}
           path: ${{ env.PACKAGE_DIR }}/*.tar.gz*
           if-no-files-found: error
           retention-days: 1
@@ -56,6 +57,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
       - name: Create GitHub app token
         id: gh-app
         uses: actions/create-github-app-token@v3
