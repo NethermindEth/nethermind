@@ -126,8 +126,10 @@ public class NodeStorage(
                    ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
         }
 
-        return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
-               ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+        byte[]? value = _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
+        return value is not null || !RequirePath
+            ? value
+            : _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
     }
 
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
@@ -145,7 +147,7 @@ public class NodeStorage(
         }
 
         return _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak))
-               || _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak));
+               || (RequirePath && _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)));
     }
 
     public INodeStorage.IWriteBatch StartWriteBatch()

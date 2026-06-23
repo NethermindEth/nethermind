@@ -88,6 +88,23 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
         Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void HashReadFallback_DependsOnRequirePath(bool requirePath)
+    {
+        if (currentKeyScheme != INodeStorage.KeyScheme.Hash) return;
+
+        byte[] value = TestItem.KeccakA.BytesToArray();
+        TestMemDb testDb = new();
+        testDb[NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA)] = value;
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme, requirePath);
+
+        Assert.That(
+            nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA),
+            requirePath ? Is.EqualTo(value) : Is.Null);
+        Assert.That(nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(requirePath));
+    }
+
     [TestCase(false, 0, "000000000000000000003333333333333333333333333333333333333333333333333333333333333333")]
     [TestCase(false, 1, "002000000000000000013333333333333333333333333333333333333333333333333333333333333333")]
     [TestCase(false, 4, "002222000000000000043333333333333333333333333333333333333333333333333333333333333333")]
