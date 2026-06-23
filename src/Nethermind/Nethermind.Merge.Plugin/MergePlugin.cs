@@ -247,8 +247,6 @@ public class MergePluginModule : Module
                     new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
             .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
-            // Wraps the base policy. Kept here (and in AuRaMergeModule) rather than BaseMergePluginModule
-            // so Optimism/Taiko, which load only BaseMergePluginModule, keep their own unwrapped policies.
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
 
             .AddModule(new BaseMergePluginModule());

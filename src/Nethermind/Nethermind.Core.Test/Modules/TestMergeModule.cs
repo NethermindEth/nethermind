@@ -38,7 +38,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
 
             // Block production related.
             .AddScoped<PostMergeBlockProducerFactory>()
-            .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
 
             // Engine rpc
             .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
