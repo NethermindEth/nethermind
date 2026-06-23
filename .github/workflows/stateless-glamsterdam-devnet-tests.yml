@@ -178,6 +178,8 @@ jobs:
             echo "::error title=Stateless batch failed::Batch $batch: $reason"
             echo "| batch $batch | | failed: $reason |" >> "$summary"
             failed=$((failed + 1))
+
+            rm -rf "$archive" "$batch_dir"
           }
 
           while IFS= read -r batch; do
@@ -271,6 +273,8 @@ jobs:
 
               rm -f "$input_file" "$raw_input_file" "$block_json" "$input_hex_file"
             done < <(jq -c '.artifacts[]' "$batch_dir/manifest.json")
+
+            rm -rf "$archive" "$batch_dir"
           done < <(jq -c '.[]' <<< "$BATCHES_JSON")
 
           {
