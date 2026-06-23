@@ -118,6 +118,32 @@ public class NodeRecordSignerTests
         Assert.That(nodeRecord.ToRlpBytes(), Is.EqualTo(Bytes.FromHexString(testCase)));
     }
 
+    [Test]
+    public void Can_serialize_eth_entry_as_nested_fork_id_list()
+    {
+        byte[] forkHash = [1, 2, 3, 4];
+        const long nextBlock = 0x0506;
+        byte[] expectedEntryBytes = Bytes.FromHexString("83657468c9c88401020304820506");
+
+        Ecdsa ecdsa = new();
+        PrivateKey privateKey = new(TestPrivateKey);
+        NodeRecordSigner signer = new(ecdsa, privateKey);
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
+        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        signer.Sign(nodeRecord);
+
+        byte[] recordBytes = nodeRecord.ToRlpBytes();
+        Assert.That(recordBytes.AsSpan().IndexOf(expectedEntryBytes), Is.GreaterThanOrEqualTo(0));
+
+        NodeRecord decoded = NodeRecord.FromBytes(recordBytes, ecdsa);
+        ForkId? forkId = decoded.GetValue<ForkId>(EnrContentKey.Eth);
+
+        Assert.That(forkId, Is.Not.Null);
+        Assert.That(forkId.Value.ForkHash, Is.EqualTo(forkHash));
+        Assert.That(forkId.Value.NextBlock, Is.EqualTo(nextBlock));
+    }
+
     [TestCaseSource(nameof(InvalidRecordByteCases))]
     public void FromBytes_throws_when_record_bytes_are_invalid(Func<byte[]> createRecordBytes)
         => Assert.That(() => NodeRecord.FromBytes(createRecordBytes()), Throws.TypeOf<RlpException>());

@@ -39,6 +39,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     public DiscoveryV5App(
         ILifetimeScope rootScope,
         [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IEnode enode,
         IIPResolver ipResolver,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
@@ -47,9 +48,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         Action<ContainerBuilder>? configureDiscv5Services = null)
         : base("discv5", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryV5App>())
     {
-        // DiscoveryV5App is resolved during network startup, after SetupKeyStore (a declared dependency of
-        // InitializeNetwork) has already awaited Resolve() and warmed the cache, so this does not block.
-        IPAddress externalIp = ipResolver.Resolve().GetAwaiter().GetResult().ExternalIp;
+        IPAddress externalIp = enode.HostIp;
         _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(externalIp);
 
         List<Node> bootNodes = CreateBootNodes(networkConfig, discoveryConfig);

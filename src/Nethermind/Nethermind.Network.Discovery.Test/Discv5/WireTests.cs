@@ -6,6 +6,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
@@ -36,8 +37,8 @@ public class WireTests
     {
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
         IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
-        TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
-        TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        await using TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
+        await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
             Enr = peerB.NodeRecordProvider.Current.EnrString
@@ -63,8 +64,8 @@ public class WireTests
     {
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
         IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
-        TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
-        TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        await using TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
+        await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
             Enr = peerB.NodeRecordProvider.Current.EnrString
@@ -82,7 +83,7 @@ public class WireTests
         await cancellationSourceB.CancelAsync();
         await runB;
 
-        TestPeer restartedPeerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        await using TestPeer restartedPeerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
         using CancellationTokenSource cancellationSourceRestartedB = new(10_000);
         Task runRestartedB = restartedPeerB.Adapter.RunAsync(cancellationSourceRestartedB.Token);
 
@@ -100,8 +101,8 @@ public class WireTests
     {
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
         IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
-        TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA, includeEndpointInRecord: false);
-        TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        await using TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA, includeEndpointInRecord: false);
+        await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
             Enr = peerB.NodeRecordProvider.Current.EnrString
@@ -126,8 +127,8 @@ public class WireTests
     {
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
         IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
-        TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
-        TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        await using TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
+        await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
             Enr = peerB.NodeRecordProvider.Current.EnrString
@@ -160,9 +161,9 @@ public class WireTests
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
         IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
         IPEndPoint endpointC = IPEndPoint.Parse("127.0.0.1:10002");
-        TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
-        TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
-        TestPeer peerC = CreatePeer(TestItem.PrivateKeyC, endpointC);
+        await using TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
+        await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
+        await using TestPeer peerC = CreatePeer(TestItem.PrivateKeyC, endpointC);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
             Enr = peerB.NodeRecordProvider.Current.EnrString
@@ -204,13 +205,14 @@ public class WireTests
         handler.InitializeChannel(channel);
 
         TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord);
+        PacketCodec packetCodec = new(
+            new InsecureProtectedPrivateKey(privateKey),
+            new CryptoRandom(),
+            new EthereumEcdsa(0));
         KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(kademlia),
             handler,
-            new PacketCodec(
-                new InsecureProtectedPrivateKey(privateKey),
-                new CryptoRandom(),
-                new EthereumEcdsa(0)),
+            packetCodec,
             nodeRecordProvider,
             new DiscoveryConfig(),
             new CryptoRandom(),
@@ -218,7 +220,7 @@ public class WireTests
             ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
 
-        return new TestPeer(adapter, handler, channel, kademlia, nodeRecordProvider, endpoint);
+        return new TestPeer(adapter, handler, channel, packetCodec, kademlia, nodeRecordProvider, endpoint);
     }
 
     private static async Task PumpUntilComplete(Task task, TestPeer peerA, TestPeer peerB, CancellationToken token)
@@ -251,9 +253,16 @@ public class WireTests
     {
         while (from.Channel.ReadOutbound<DatagramPacket>() is { } packet)
         {
-            byte[] data = packet.Content.ReadAllBytesAsArray();
-            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
-            to.Handler.ChannelRead(context, new DatagramPacket(Unpooled.WrappedBuffer(data), from.Endpoint, to.Endpoint));
+            try
+            {
+                byte[] data = packet.Content.ReadAllBytesAsArray();
+                IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+                to.Handler.ChannelRead(context, new DatagramPacket(Unpooled.WrappedBuffer(data), from.Endpoint, to.Endpoint));
+            }
+            finally
+            {
+                ReferenceCountUtil.Release(packet);
+            }
         }
     }
 
@@ -261,9 +270,19 @@ public class WireTests
         KademliaAdapter Adapter,
         NettyDiscoveryV5Handler Handler,
         EmbeddedChannel Channel,
+        PacketCodec PacketCodec,
         IKademlia<PublicKey, Node> Kademlia,
         TestNodeRecordProvider NodeRecordProvider,
-        IPEndPoint Endpoint);
+        IPEndPoint Endpoint) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            await Adapter.DisposeAsync();
+            await Channel.CloseAsync();
+            Channel.FinishAndReleaseAll();
+            PacketCodec.Dispose();
+        }
+    }
 
     private sealed class TestNodeRecordProvider(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpoint) : INodeRecordProvider
     {

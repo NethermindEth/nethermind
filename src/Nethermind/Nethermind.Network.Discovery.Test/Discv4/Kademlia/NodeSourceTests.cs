@@ -86,7 +86,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _discv4Adapter.Ping(node2, Arg.Any<CancellationToken>())
                 .Returns(true);
 
-            IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node1));
             await enumerator.MoveNextAsync();
@@ -106,7 +106,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node);
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
             // Assert - Verify that ping was called
@@ -137,7 +137,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node2));
 
@@ -163,7 +163,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node2));
 
@@ -188,7 +188,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
             _kademlia.RaiseNodeAdded(node2);
@@ -212,7 +212,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             using AutoCancelTokenSource shortTimeout = token.CreateChildTokenSource(TimeSpan.FromMilliseconds(100));
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(shortTimeout.Token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
             Assert.ThrowsAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync().AsTask());
@@ -231,7 +231,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator();
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
             await enumerator.MoveNextAsync();
 

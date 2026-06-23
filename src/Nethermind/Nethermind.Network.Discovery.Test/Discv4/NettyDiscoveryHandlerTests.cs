@@ -167,11 +167,12 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             NodeFilter? nodeFilter = null,
             int? globalInboundMessageBurst = null,
             int? inboundMessageQueueCapacity = null,
-            int? inboundMessageWorkerCount = null)
+            int? inboundMessageWorkerCount = null,
+            IMessageSerializationService? messageSerializationService = null)
         {
             IKademliaAdapter adapter = Substitute.For<IKademliaAdapter>();
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
-            IMessageSerializationService service = Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject;
+            IMessageSerializationService service = messageSerializationService ?? Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject;
             IChannel channel = Substitute.For<IChannel>();
             NettyDiscoveryHandler handler = new(
                 adapter,
@@ -332,32 +333,36 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task InboundDispatchQueue_Drops_Messages_WhenFull()
         {
-            TaskCompletionSource unblockHandler = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            IMessageSerializationService innerService = Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject;
+            using ManualResetEventSlim deserializeEntered = new();
+            using ManualResetEventSlim unblockDeserialize = new();
+            BlockingSerializationService blockingService = new(innerService, deserializeEntered, unblockDeserialize);
             (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(
                 globalInboundMessageBurst: 64,
                 inboundMessageQueueCapacity: 1,
-                inboundMessageWorkerCount: 1);
+                inboundMessageWorkerCount: 1,
+                messageSerializationService: blockingService);
             int received = 0;
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(_ =>
             {
                 Interlocked.Increment(ref received);
-                return unblockHandler.Task;
+                return Task.CompletedTask;
             });
 
             byte[] data = SerializePing(service);
 
-            for (int i = 0; i < 16; i++)
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), new IPEndPoint(IPAddress.Parse("127.0.2.1"), _address2.Port), _address));
+            Assert.That(deserializeEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+            for (int i = 1; i < 16; i++)
             {
                 IPEndPoint sender = new(IPAddress.Parse($"127.0.2.{i + 1}"), _address2.Port);
                 handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), sender, _address));
             }
 
-            Assert.That(() => Interlocked.CompareExchange(ref received, 0, 0), Is.GreaterThanOrEqualTo(1).After(5000, 10));
-            await Task.Delay(100);
-            unblockHandler.SetResult();
-            await Task.Delay(100);
+            unblockDeserialize.Set();
 
-            Assert.That(Interlocked.CompareExchange(ref received, 0, 0), Is.LessThan(16));
+            Assert.That(() => Interlocked.CompareExchange(ref received, 0, 0), Is.EqualTo(2).After(5000, 10));
         }
 
         private byte[] SerializePing(IMessageSerializationService service)
@@ -412,5 +417,30 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         private static async Task SleepWhileWaiting() =>
             await Task.Delay((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
+
+        private sealed class BlockingSerializationService(
+            IMessageSerializationService innerService,
+            ManualResetEventSlim deserializeEntered,
+            ManualResetEventSlim unblockDeserialize) : IMessageSerializationService
+        {
+            private int _deserializeCalls;
+
+            public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
+                => innerService.ZeroSerialize(message, allocator);
+
+            public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
+            {
+                if (typeof(T) == typeof(PingMsg) && Interlocked.Increment(ref _deserializeCalls) == 1)
+                {
+                    deserializeEntered.Set();
+                    unblockDeserialize.Wait(TimeSpan.FromSeconds(10));
+                }
+
+                return innerService.Deserialize<T>(bytes);
+            }
+
+            public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
+                => innerService.Deserialize<T>(buffer);
+        }
     }
 }

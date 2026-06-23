@@ -49,16 +49,18 @@ public class DiscoveryV5AppTests
             ExternalIp = externalIp.ToString()
         };
         IProtectedPrivateKey nodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyF);
+        IEnode enode = new Enode(nodeKey.PublicKey, externalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
         IIPResolver ipResolver = new FixedIpResolver(networkConfig);
         EthereumEcdsa ecdsa = new(0);
         ContainerBuilder builder = new();
         builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
         builder.RegisterInstance(networkConfig).As<INetworkConfig>();
+        builder.RegisterInstance(enode).As<IEnode>();
         builder.RegisterInstance(ipResolver).As<IIPResolver>();
         builder.RegisterInstance(nodeKey).Keyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey);
         builder.RegisterInstance(ecdsa).As<IEthereumEcdsa>().As<IEcdsa>();
         builder.RegisterInstance(new CryptoRandom()).As<ICryptoRandom>();
-        builder.RegisterInstance(new NetworkStorage(_discoveryDb, LimboLogs.Instance)).Keyed<INetworkStorage>(DbNames.DiscoveryNodes);
+        builder.RegisterInstance(new NetworkStorage(_discoveryDb, LimboLogs.Instance)).Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);
         builder.RegisterInstance(Substitute.For<INodeStatsManager>()).As<INodeStatsManager>();
         builder.RegisterType<NodeRecordProvider>().As<INodeRecordProvider>().WithAttributeFiltering().SingleInstance();
         IContainer container = builder.Build();
@@ -67,6 +69,7 @@ public class DiscoveryV5AppTests
         return new DiscoveryV5App(
             container,
             nodeKey,
+            enode,
             ipResolver,
             networkConfig,
             new DiscoveryConfig { },
@@ -119,9 +122,9 @@ public class DiscoveryV5AppTests
     }
 
     [Test]
-    public void Should_Accept_Private_Ip_Enr_On_Private_Deployment()
+    public async Task Should_Accept_Private_Ip_Enr_On_Private_Deployment()
     {
-        DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
+        await using DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
         NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Loopback);
 
         bool result = privateDiscoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
@@ -159,9 +162,9 @@ public class DiscoveryV5AppTests
 
     [TestCase("192.0.2.1")]
     [TestCase("2001:db8::1")]
-    public void Should_Reject_Special_Use_Ip_Enr_On_Private_Deployment(string ip)
+    public async Task Should_Reject_Special_Use_Ip_Enr_On_Private_Deployment(string ip)
     {
-        DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
+        await using DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
         NodeRecord enr = CreateEnrForAddress(TestItem.PrivateKeyA, IPAddress.Parse(ip));
 
         bool result = privateDiscoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);

@@ -26,6 +26,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
     private readonly PeerFailureCache _peerFailures = new(1024);
     private readonly TKadKey _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
     private readonly TimeSpan _refreshPingTimeout = config.RefreshPingTimeout;
+    private readonly TimeSpan _refreshPingDelay = config.RefreshPingDelay;
     private readonly CancellationTokenSource _refreshCancellation = new();
 
     private int _disposed;
@@ -52,7 +53,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         try
         {
             // First, we delay in case any new message come and clear the refresh task, so we don't need to send any ping.
-            await Task.Delay(100, token);
+            await Task.Delay(_refreshPingDelay, token);
             if (!_isRefreshing.ContainsKey(nodeHash))
             {
                 return;

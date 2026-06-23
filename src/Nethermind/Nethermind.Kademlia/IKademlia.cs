@@ -56,7 +56,7 @@ public interface IKademlia<TKey, TNode>
     /// <param name="target">Protocol-specific lookup key.</param>
     /// <param name="excluding">Optional node to exclude from the result.</param>
     /// <param name="excludeSelf">Whether to exclude the local node from the result.</param>
-    /// <remarks>The returned array is not sorted and may be an internal routing-table array.</remarks>
+    /// <remarks>The returned array is not sorted.</remarks>
     TNode[] GetKNeighbour(TKey target, TNode? excluding = default, bool excludeSelf = false);
 
     /// <summary>

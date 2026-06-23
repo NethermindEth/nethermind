@@ -6,7 +6,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,6 +17,7 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -60,7 +60,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Do(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
-                    IByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent);
+                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
                     PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
                     PongMsg pong = new(
                         msg.FarPublicKey!,
@@ -151,7 +151,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         private T AddReceiverFarAddress<T>(T msg) where T : DiscoveryMsg
         {
-            IByteBuffer buffer = _receiverSerializationManager.ZeroSerialize<T>(msg);
+            using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize<T>(msg).AsDisposable();
             IPEndPoint? farAddress = msg.FarAddress;
             msg = _receiverSerializationManager.Deserialize<T>(buffer);
             msg.FarAddress = farAddress;
@@ -377,8 +377,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             await _adapter.OnIncomingMsg(pingMsg);
 
-            await Task.Delay(100);
-
             ValueHash256 expectedPingMdc = pingMsg.Mdc!.Value;
             await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
@@ -401,8 +399,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(expectedNodes);
 
             await _adapter.OnIncomingMsg(findNodeMsg);
-
-            await Task.Delay(100);
 
             _kademliaMessageReceiver.GetKNeighbour(
                 Arg.Is<PublicKey>(pk => pk.Bytes!.SequenceEqual(_testPublicKey.Bytes!)),
@@ -459,8 +455,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Hash256 expectedRequestHash = new(enrRequestMsg.Hash!.Value);
 
             await _adapter.OnIncomingMsg(enrRequestMsg);
-
-            Task.Delay(100).Wait();
 
             await _msgSender.Received(1).SendMsg(Arg.Is<EnrResponseMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&

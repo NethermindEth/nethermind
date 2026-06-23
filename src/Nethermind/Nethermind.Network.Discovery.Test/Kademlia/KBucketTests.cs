@@ -28,7 +28,7 @@ public class KBucketTests
     }
 
     [Test]
-    public void TryAddOrRefresh_ShouldKeepSameCachedArray_WhenAddingSameNode()
+    public void GetAll_should_return_snapshot_when_adding_same_node()
     {
         (KBucket<int, int> bucket, int[] toAdd) = BuildFullBucket();
 
@@ -36,7 +36,9 @@ public class KBucketTests
 
         AddNodes(bucket, toAdd);
 
-        Assert.That(bucket.GetAll(), Is.SameAs(nodes));
+        int[] refreshedNodes = bucket.GetAll();
+        Assert.That(refreshedNodes, Is.Not.SameAs(nodes));
+        Assert.That(refreshedNodes.ToHashSet(), Is.EquivalentTo(nodes.ToHashSet()));
     }
 
     [Test]

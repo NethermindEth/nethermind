@@ -169,12 +169,12 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         // Refresh stale non-empty buckets one by one. Protocols whose wire lookup target cannot be synthesized from a
         // bucket prefix may return a best-effort random lookup key here; discv4 public keys are one example.
         using PooledSet<TKadKey> activeBucketPrefixes = new();
-        foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
+        foreach (RoutingTableBucket<TNode, TKadKey> bucket in _routingTable.IterateBuckets())
         {
-            activeBucketPrefixes.Add(Prefix);
-            if (!ShouldRefreshBucket(Prefix, Bucket)) continue;
+            activeBucketPrefixes.Add(bucket.Prefix);
+            if (!ShouldRefreshBucket(bucket.Prefix, bucket.Count)) continue;
 
-            TKey? keyToLookup = _keyOperator.CreateRandomKeyAtDistance(Prefix, Distance);
+            TKey? keyToLookup = _keyOperator.CreateRandomKeyAtDistance(bucket.Prefix, bucket.Distance);
             await LookupNodesClosest(keyToLookup, token);
         }
 
@@ -187,9 +187,9 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         }
     }
 
-    private bool ShouldRefreshBucket(TKadKey prefix, KBucket<TNode, TKadKey> bucket)
+    private bool ShouldRefreshBucket(TKadKey prefix, int bucketCount)
     {
-        if (bucket.Count == 0) return false;
+        if (bucketCount == 0) return false;
 
         long nowTicks = _timeProvider.GetUtcNow().Ticks;
         lock (_lastBucketRefreshLock)
@@ -246,9 +246,9 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
 
     public IEnumerable<TNode> IterateNodes()
     {
-        foreach ((TKadKey _, int _, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
+        foreach (RoutingTableBucket<TNode, TKadKey> bucket in _routingTable.IterateBuckets())
         {
-            foreach (TNode node in Bucket.GetAll())
+            foreach (TNode node in bucket.Nodes)
             {
                 yield return node;
             }

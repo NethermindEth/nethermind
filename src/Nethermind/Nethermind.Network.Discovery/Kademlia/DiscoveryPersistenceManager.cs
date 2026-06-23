@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -27,7 +25,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <param name="logManager">Log manager for logging events.</param>
 /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
 public sealed class DiscoveryPersistenceManager(
-    [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
+    INetworkStorage discoveryStorage,
     INodeStatsManager nodeStatsManager,
     IKademliaMessageSender<PublicKey, Node> messageSender,
     IKademlia<PublicKey, Node> kademlia,

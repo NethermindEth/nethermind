@@ -47,7 +47,9 @@ public class KBucket<TNode, TKadKey>(int k)
         return BucketAddResult.Full;
     }
 
-    public TNode[] GetAll() => _cacheItems ? _cachedArray : _items.GetAll();
+    public TNode[] GetAll() => _items.GetAll();
+
+    internal TNode[] GetAllCached() => _cacheItems ? _cachedArray : _items.GetAll();
 
     public (TKadKey, TNode)[] GetAllWithHash() => _items.GetAllWithKey();
 

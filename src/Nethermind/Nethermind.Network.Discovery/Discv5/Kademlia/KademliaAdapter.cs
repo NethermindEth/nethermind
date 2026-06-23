@@ -190,7 +190,11 @@ public sealed class KademliaAdapter(
     }
 
     /// <inheritdoc/>
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _sessions.Clear();
+        return ValueTask.CompletedTask;
+    }
 
     private async Task<bool> SendRequest<TResponse>(
         Node receiver,
@@ -209,7 +213,7 @@ public sealed class KademliaAdapter(
         PendingNonceKey? pendingNonceKey = null;
         try
         {
-            pendingNonceKey = await SendMessage(receiver, request);
+            pendingNonceKey = await SendMessage(receiver, request, timeoutCts.Token);
             await responseHandler.Task.WaitAsync(timeoutCts.Token);
             return true;
         }
@@ -228,15 +232,15 @@ public sealed class KademliaAdapter(
         }
     }
 
-    private async Task<PendingNonceKey?> SendMessage(Node receiver, Discv5Message message)
+    private async Task<PendingNonceKey?> SendMessage(Node receiver, Discv5Message message, CancellationToken token)
     {
         if (TryEncodeWithExistingSession(receiver, message, out PendingNonceKey pendingNonceKey, out byte[]? packet))
         {
-            return await SendPendingPacket(receiver, message, pendingNonceKey, packet, hasSession: true);
+            return await SendPendingPacket(receiver, message, pendingNonceKey, packet, hasSession: true, token);
         }
 
         pendingNonceKey = EncodeMessageWithoutSession(receiver, message, out byte[] initialPacket);
-        return await SendPendingPacket(receiver, message, pendingNonceKey, initialPacket, hasSession: false);
+        return await SendPendingPacket(receiver, message, pendingNonceKey, initialPacket, hasSession: false, token);
     }
 
     [SkipLocalsInit]
@@ -282,13 +286,14 @@ public sealed class KademliaAdapter(
         Discv5Message message,
         PendingNonceKey pendingNonceKey,
         byte[] packet,
-        bool hasSession)
+        bool hasSession,
+        CancellationToken token)
     {
         _pendingByNonce.Set(pendingNonceKey, new PendingRequest(receiver, message));
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} {(hasSession ? "with existing session" : "without session")}, bytes: {packet.Length}.");
-            await discoveryHandler.SendAsync(packet, receiver.Address);
+            await discoveryHandler.SendAsync(packet, receiver.Address, token);
             return pendingNonceKey;
         }
         catch
@@ -306,7 +311,7 @@ public sealed class KademliaAdapter(
         }
 
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 response {message.MessageType} {message.RequestId} to {receiver:s}, bytes: {packet.Length}.");
-        await discoveryHandler.SendAsync(packet, receiver.Address);
+        await discoveryHandler.SendAsync(packet, receiver.Address, token);
     }
 
     [SkipLocalsInit]
@@ -389,7 +394,7 @@ public sealed class KademliaAdapter(
 
         SetSession(new SessionKey(pendingRequest.Receiver.Id.Hash.ValueHash256, endpoint), session);
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 HANDSHAKE for {pendingRequest.Message.MessageType} {pendingRequest.Message.RequestId} to {endpoint}, bytes: {handshakePacket.Length}, requested ENR seq: {requestedEnrSequence}.");
-        await discoveryHandler.SendAsync(handshakePacket, endpoint);
+        await discoveryHandler.SendAsync(handshakePacket, endpoint, token);
     }
 
     private async Task HandleOrdinary(IPEndPoint endpoint, Packet packet, CancellationToken token)
@@ -404,7 +409,7 @@ public sealed class KademliaAdapter(
         if (!TryDecryptOrdinaryMessage(in packet, sessionKey, out Session? session, out Discv5Message? message))
         {
             if (_logger.IsTrace) _logger.Trace($"Discv5 ordinary packet from {endpoint} could not be decrypted with an existing session; sending WHOAREYOU.");
-            await SendWhoAreYou(endpoint, packet, nodeId);
+            await SendWhoAreYou(endpoint, packet, nodeId, token);
             return;
         }
 
@@ -479,14 +484,14 @@ public sealed class KademliaAdapter(
         await HandleHandshakeMessage(endpoint, nodeId, session, message, nodeRecord, knownRecord, token);
     }
 
-    private async Task SendWhoAreYou(IPEndPoint endpoint, Packet requestPacket, ValueHash256 nodeId)
+    private async Task SendWhoAreYou(IPEndPoint endpoint, Packet requestPacket, ValueHash256 nodeId, CancellationToken token)
     {
         ChallengeKey challengeKey = new(nodeId, endpoint);
         long now = Environment.TickCount64;
         if (_sentChallenges.TryGet(challengeKey, out SentChallenge existingChallenge) && !IsExpired(existingChallenge, now))
         {
             if (_logger.IsTrace) _logger.Trace($"Resending discv5 WHOAREYOU challenge to {endpoint}.");
-            await discoveryHandler.SendAsync(existingChallenge.Packet, endpoint);
+            await discoveryHandler.SendAsync(existingChallenge.Packet, endpoint, token);
             return;
         }
 
@@ -500,7 +505,7 @@ public sealed class KademliaAdapter(
         byte[] packet = packetCodec.EncodeWhoAreYou(nodeId.Bytes, requestPacket.Nonce.Span, enrSequence);
         SetSentChallenge(challengeKey, packet);
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 WHOAREYOU challenge to {endpoint}, known ENR seq: {enrSequence}, bytes: {packet.Length}.");
-        await discoveryHandler.SendAsync(packet, endpoint);
+        await discoveryHandler.SendAsync(packet, endpoint, token);
     }
 
     private async Task HandleHandshakeMessage(

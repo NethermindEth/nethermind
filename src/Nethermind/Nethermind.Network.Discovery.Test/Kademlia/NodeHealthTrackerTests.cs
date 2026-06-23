@@ -207,7 +207,7 @@ public class NodeHealthTrackerTests
 
         public int[] GetAllAtDistance(int i) => throw new NotSupportedException();
 
-        public IEnumerable<(int Prefix, int Distance, KBucket<int, int> Bucket)> IterateBuckets() =>
+        public IEnumerable<RoutingTableBucket<int, int>> IterateBuckets() =>
             throw new NotSupportedException();
 
         public int GetByHash(int nodeId) => throw new NotSupportedException();

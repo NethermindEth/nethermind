@@ -111,6 +111,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, DbNames.DiscoveryNodes)
+                .AddNetworkStorage(DbNames.DiscoveryV5Nodes, DbNames.DiscoveryV5Nodes)
 
                 ;
 

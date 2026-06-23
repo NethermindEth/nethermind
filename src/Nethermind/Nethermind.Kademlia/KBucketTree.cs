@@ -213,7 +213,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
             }
             else
             {
-                TNode[] items = node.Bucket.GetAll();
+                TNode[] items = node.Bucket.GetAllCached();
                 for (int i = 0; i < items.Length; i++)
                 {
                     result.Add(items[i]);
@@ -255,29 +255,29 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         }
     }
 
-    public IEnumerable<(TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket)> IterateBuckets()
+    public IEnumerable<RoutingTableBucket<TNode, TKadKey>> IterateBuckets()
     {
         lock (_lock)
         {
-            // Well, it need to ToArray, otherwise the lock does not really do anything.
+            // Materialize snapshots while holding the tree lock so callers cannot observe live bucket state.
             return DoIterateBucketRandomHashes(_root, 0).ToArray();
         }
     }
 
-    private IEnumerable<(TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket)> DoIterateBucketRandomHashes(TreeNode node, int depth)
+    private IEnumerable<RoutingTableBucket<TNode, TKadKey>> DoIterateBucketRandomHashes(TreeNode node, int depth)
     {
         if (node.IsLeaf)
         {
-            yield return (node.Prefix, depth, node.Bucket);
+            yield return new RoutingTableBucket<TNode, TKadKey>(node.Prefix, depth, node.Bucket.GetAll());
         }
         else
         {
-            foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) bucketInfo in DoIterateBucketRandomHashes(node.Left!, depth + 1))
+            foreach (RoutingTableBucket<TNode, TKadKey> bucketInfo in DoIterateBucketRandomHashes(node.Left!, depth + 1))
             {
                 yield return bucketInfo;
             }
 
-            foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) bucketInfo in DoIterateBucketRandomHashes(node.Right!, depth + 1))
+            foreach (RoutingTableBucket<TNode, TKadKey> bucketInfo in DoIterateBucketRandomHashes(node.Right!, depth + 1))
             {
                 yield return bucketInfo;
             }
@@ -344,12 +344,11 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
 
             if (shouldNotContainExcludedNode && shouldNotContainSelf)
             {
-                TNode[] nodes = firstBucket.GetAll();
+                TNode[] nodes = firstBucket.GetAllCached();
                 if (nodes.Length == _k)
                 {
-                    // Fast path. In theory, most of the time, this would be the taken path, where no array
-                    // concatenation or creation is needed.
-                    return nodes;
+                    // Fast path. In theory, most of the time, this avoids neighbour traversal and concatenation.
+                    return (TNode[])nodes.Clone();
                 }
             }
 
@@ -451,11 +450,24 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         get
         {
             int total = 0;
-            foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) in IterateBuckets())
+            lock (_lock)
             {
-                total += Bucket.Count;
+                CountNodes(_root);
             }
+
             return total;
+
+            void CountNodes(TreeNode node)
+            {
+                if (node.IsLeaf)
+                {
+                    total += node.Bucket.Count;
+                    return;
+                }
+
+                CountNodes(node.Left!);
+                CountNodes(node.Right!);
+            }
         }
     }
 }
