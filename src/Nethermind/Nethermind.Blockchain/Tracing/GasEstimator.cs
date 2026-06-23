@@ -34,7 +34,7 @@ public class GasEstimator(
     public const string InsufficientFundsForGas = "insufficient funds for gas * price + value";
 
     private const int MaxErrorMargin = 10000;
-    private const ulong BasisPointsDivisor = 10000UL;
+    private const double BasisPointsDivisor = 10000d;
 
     private const string InvalidErrorMarginNegative = "Invalid error margin, cannot be negative.";
     private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
@@ -144,7 +144,7 @@ public class GasEstimator(
             return EstimationResult.Failure(error);
         }
 
-        ulong marginMultiplier = errorMargin == 0 ? 1UL : errorMargin / BasisPointsDivisor + 1UL;
+        double marginMultiplier = errorMargin == 0 ? 1d : errorMargin / BasisPointsDivisor + 1d;
         ulong cap = bounds.RightBound;
         (ulong leftBound, ulong rightBound) = TryOptimisticEstimate(tx, header, gasTracer, bounds, marginMultiplier, token);
 
@@ -166,13 +166,13 @@ public class GasEstimator(
 
     private (ulong Left, ulong Right) TryOptimisticEstimate(
         Transaction tx, BlockHeader header, EstimateGasTracer gasTracer,
-        EstimationBounds bounds, ulong marginMultiplier, CancellationToken token)
+        EstimationBounds bounds, double marginMultiplier, CancellationToken token)
     {
         ulong leftBound = bounds.LeftBound;
         ulong rightBound = bounds.RightBound;
 
         // Optimistic first guess (Geth approach): reduces binary search iterations in most cases.
-        ulong optimistic = (gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginMultiplier;
+        ulong optimistic = (ulong)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginMultiplier);
         if (optimistic > leftBound && optimistic < rightBound)
         {
             if (TryExecute(tx, header, optimistic, gasTracer, token, out _))
