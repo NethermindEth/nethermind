@@ -4,15 +4,17 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncFeed(TreeSync treeSync, ILogManager logManager) : ISimpleSyncFeed<StateSyncBatch>
+    public class StateSyncFeed(TreeSync treeSync, ILogManager logManager, ISyncConfig syncConfig) : ISimpleSyncFeed<StateSyncBatch>
     {
         private readonly ILogger _logger = logManager.GetClassLogger<StateSyncFeed>();
+        private readonly int _emptyRequestDelayMs = Math.Max(1, syncConfig.SyncDispatcherEmptyRequestDelayMs);
 
         public async Task<StateSyncBatch?> PrepareRequest(CancellationToken token)
         {
@@ -33,7 +35,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 // Pending queue empty or transient error — wait and retry
-                await Task.Delay(50, token);
+                await Task.Delay(_emptyRequestDelayMs, token);
             }
 
             return null;

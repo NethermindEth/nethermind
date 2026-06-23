@@ -5,13 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : ISimpleSyncFeed<SnapSyncBatch>
+    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager, ISyncConfig? syncConfig = null) : ISimpleSyncFeed<SnapSyncBatch>
     {
         private readonly Lock _syncLock = new();
 
@@ -23,6 +24,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ISnapProvider _snapProvider = snapProvider;
 
         private readonly ILogger _logger = logManager.GetClassLogger<SnapSyncFeed>();
+        private readonly int _emptyRequestDelayMs = Math.Max(1, (syncConfig ?? SyncConfig.Default).SyncDispatcherEmptyRequestDelayMs);
 
         public async Task<SnapSyncBatch?> PrepareRequest(CancellationToken token)
         {
@@ -52,7 +54,7 @@ namespace Nethermind.Synchronization.SnapSync
                     _logger.Error("Error when preparing a batch", e);
                 }
 
-                await Task.Delay(50, token);
+                await Task.Delay(_emptyRequestDelayMs, token);
             }
 
             return EmptyBatch;
