@@ -186,7 +186,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        bool ShouldPrune() => _minBlock + MaxDepth * 4 < blockHeader.Number && _pruningTask.IsCompleted;
+        bool ShouldPrune() => _minBlock != ulong.MaxValue && _minBlock + MaxDepth * 4 < blockHeader.Number && _pruningTask.IsCompleted;
     }
 
     public int PruneBefore(ulong blockNumber)
@@ -245,7 +245,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
         _blocks.Clear();
         _flatCache.Clear();
-        Interlocked.Exchange(ref _minBlock, int.MaxValue);
+        Interlocked.Exchange(ref _minBlock, ulong.MaxValue);
     }
 
     public void Dispose() => Clear();
