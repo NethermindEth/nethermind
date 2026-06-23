@@ -289,6 +289,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             if (isCreate)
                             {
                                 IncorporateChildStateGasRefunds(previousState);
+                                // EIP-8037: the NEW_ACCOUNT state gas charged up-front at the CREATE/CREATE2
+                                // opcode is refunded on successful deployment when the target account already
+                                // existed (e.g. a pre-funded address), since the code is added to an existing
+                                // account leaf rather than materialising a new one.
+                                if (previousState.IsCreateOnPreExistingAccount)
+                                {
+                                    CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+                                }
                             }
                         }
                     }
