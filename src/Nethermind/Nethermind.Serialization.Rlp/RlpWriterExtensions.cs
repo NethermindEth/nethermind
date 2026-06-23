@@ -242,11 +242,9 @@ public static class RlpWriterExtensions
             }
             else
             {
-                writer.WriteEncodedRlp(rlp.Bytes);
+                writer.Write(rlp.Bytes);
             }
         }
-
-        public void WriteEncodedRlp(scoped ReadOnlySpan<byte> encodedRlp) => writer.Write(encodedRlp);
 
         public void Encode(Bloom? bloom)
         {

@@ -180,7 +180,7 @@ public class NodeRecordSignerTests
         foreach ((string key, Rlp value) in entries)
         {
             writer.Encode(key);
-            writer.WriteEncodedRlp(value.Bytes);
+            writer.Encode(value);
         }
 
         return record;
@@ -302,7 +302,7 @@ public class NodeRecordSignerTests
         foreach ((string key, Rlp value) in entries)
         {
             writer.Encode(key);
-            writer.WriteEncodedRlp(value.Bytes);
+            writer.Encode(value);
         }
 
         return record;

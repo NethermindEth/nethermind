@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Text;
 using System.Net;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -353,7 +355,7 @@ public class NodeRecord
     {
         if (OriginalRlp is not null)
         {
-            writer.WriteEncodedRlp(OriginalRlp);
+            writer.Write(OriginalRlp);
             return;
         }
 
@@ -374,9 +376,15 @@ public class NodeRecord
         RequireSignature();
 
         const string prefix = "enr:";
-        string base64String = Convert.ToBase64String(ToRlpBytes()).Replace('+', '-').Replace('/', '_');
-        int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0;
-        return string.Concat(prefix, base64String.AsSpan(0, base64String.Length - skipLast));
+        if (OriginalRlp is not null)
+        {
+            return string.Concat(prefix, Base64Url.EncodeToString(OriginalRlp));
+        }
+
+        using ArrayPoolSpan<byte> bytes = new(GetRlpLengthWithSignature());
+        RlpWriter writer = new(bytes);
+        Encode(ref writer);
+        return string.Concat(prefix, Base64Url.EncodeToString(bytes));
     }
 
     private void RequireSignature()

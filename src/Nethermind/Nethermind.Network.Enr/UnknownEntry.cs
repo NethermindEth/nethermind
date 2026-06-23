@@ -11,5 +11,5 @@ internal sealed class UnknownEntry(string key, byte[] rlpValue) : EnrContentEntr
 
     protected override int GetRlpLengthOfValue() => Value.Length;
 
-    protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.WriteEncodedRlp(Value);
+    protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.Write(Value);
 }
