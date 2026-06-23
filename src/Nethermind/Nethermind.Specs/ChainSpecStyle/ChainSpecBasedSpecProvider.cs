@@ -214,10 +214,6 @@ namespace Nethermind.Specs.ChainSpecStyle
             return transitionActivations;
         }
 
-        // Returns the activation block number for a ChainParameters ulong? transition field,
-        // or the sentinel when the field is null.
-        // "never" sentinel: ulong.MaxValue (all callers use <= so ulong.MaxValue is never reached).
-        // "from genesis" sentinel: 0 (used for EIPs that activate at block 0 when present).
         private static ulong BlockOf(ulong? transition, ulong nullSentinel = ulong.MaxValue) =>
             transition ?? nullSentinel;
 

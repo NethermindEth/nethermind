@@ -52,8 +52,6 @@ public class HistoryPruner : IHistoryPruner
     private ulong _blocksDeletePointer = 1;
     private ulong _balsDeletePointer = 1;
     private ulong _lastSavedBlocksDeletePointer = 1;
-    // ulong.MaxValue is used as a sentinel meaning "never persisted yet",
-    // forcing a save on the first call to SaveDeletePointers after load.
     private ulong _lastSavedBalsDeletePointer = 1;
     private BlockHeader? _oldestBlockHeader;
     private bool _hasLoadedDeletePointers;

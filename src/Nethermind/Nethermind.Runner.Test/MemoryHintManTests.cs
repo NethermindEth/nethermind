@@ -78,7 +78,7 @@ namespace Nethermind.Runner.Test
             [Values(true, false)] bool fastSync)
         {
             // OK to throw here
-            if (memoryHint == (ulong)256.MB)
+            if (memoryHint == 256 * MB)
             {
                 _txPoolConfig.Size = 128;
                 _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
@@ -90,8 +90,8 @@ namespace Nethermind.Runner.Test
             SyncConfig syncConfig = new();
             syncConfig.FastSync = fastSync;
 
-            Assert.That(_memoryHintMan.DbMemory, Is.GreaterThan((ulong)((memoryHint - (ulong)100.MB) * 0.5)));
-            Assert.That(_memoryHintMan.DbMemory, Is.LessThan((ulong)((memoryHint - (ulong)100.MB) * 0.9)));
+            Assert.That(_memoryHintMan.DbMemory, Is.GreaterThan((ulong)((memoryHint - 100 * MB) * 0.5)));
+            Assert.That(_memoryHintMan.DbMemory, Is.LessThan((ulong)((memoryHint - 100 * MB) * 0.9)));
         }
 
         [TestCase(100 * GB, 16u, -1)]

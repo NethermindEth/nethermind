@@ -326,7 +326,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce((ulong)2)
+                .WithNonce(2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
