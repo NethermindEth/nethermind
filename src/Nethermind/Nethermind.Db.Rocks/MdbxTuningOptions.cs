@@ -100,7 +100,7 @@ internal readonly record struct MdbxTuningOptions(
             shrinkThreshold = DefaultShrinkThreshold;
         }
 
-        if (pageSize < 4096 || pageSize > 65536 || !BitOperations.IsPow2(pageSize))
+        if (!IsValidPageSize(pageSize))
         {
             Warn(logger, "NETHERMIND_MDBX_PAGE_SIZE must be a power of two between 4096 and 65536. Using the default value.");
             pageSize = DefaultPageSize;
@@ -394,6 +394,9 @@ internal readonly record struct MdbxTuningOptions(
 
     internal static ulong BytesToPages(long bytes, int pageSize) =>
         (ulong)Math.Max(1, bytes / pageSize);
+
+    internal static bool IsValidPageSize(int pageSize) =>
+        pageSize >= 4096 && pageSize <= 65536 && BitOperations.IsPow2(pageSize);
 
     private static string FormatBytes(long bytes) =>
         bytes switch

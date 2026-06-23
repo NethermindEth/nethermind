@@ -531,16 +531,64 @@ namespace Nethermind.Db.Test
                 });
             });
 
-        [Test]
-        public void Mdbx_state_database_opens_after_applying_dirty_page_defaults()
+        [TestCase("4096")]
+        [TestCase("16384")]
+        [Platform(Include = "Linux", Reason = "MDBX native backend is linux-x64 only.")]
+        public void Mdbx_state_database_opens_after_applying_dirty_page_defaults(string pageSize)
         {
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(Path.Combine("mainnet", "state", "0"), "State"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
-
+            string dbPath = Path.Combine("mainnet", "state", "0");
+            string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, DbPath);
             byte[] key = [1];
             byte[] value = [2];
-            db.Set(key, value);
 
-            Assert.That(db.Get(key), Is.EqualTo(value));
+            WithEnvironmentVariable("NETHERMIND_MDBX_PAGE_SIZE", pageSize, () =>
+            {
+                using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(dbPath, "State"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+                db.Set(key, value);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(db.Get(key), Is.EqualTo(value));
+                    Assert.That(File.ReadAllText(Path.Combine(fullPath, MdbxEnvironment.PageSizeMarkerFileName)).Trim(), Is.EqualTo(pageSize));
+                }
+            });
+        }
+
+        [TestCase(null)]
+        [TestCase("16384")]
+        [TestCase("not-a-page-size")]
+        [Platform(Include = "Linux", Reason = "MDBX native backend is linux-x64 only.")]
+        public void Mdbx_state_database_rewrites_page_size_marker_from_actual_environment(string? marker)
+        {
+            string dbPath = Path.Combine("mainnet", "state", "0");
+            string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, DbPath);
+            string markerPath = Path.Combine(fullPath, MdbxEnvironment.PageSizeMarkerFileName);
+            byte[] key = [1];
+            byte[] value = [2];
+
+            WithEnvironmentVariable("NETHERMIND_MDBX_PAGE_SIZE", "4096", () =>
+            {
+                using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(dbPath, "State"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance))
+                {
+                    db.Set(key, value);
+                }
+
+                if (marker is null)
+                {
+                    File.Delete(markerPath);
+                }
+                else
+                {
+                    File.WriteAllText(markerPath, marker);
+                }
+
+                using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(dbPath, "State"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance))
+                {
+                    Assert.That(db.Get(key), Is.EqualTo(value));
+                }
+
+                Assert.That(File.ReadAllText(markerPath).Trim(), Is.EqualTo("4096"));
+            });
         }
 
         [Test]

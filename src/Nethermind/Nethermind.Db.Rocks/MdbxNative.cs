@@ -127,8 +127,8 @@ internal static class MdbxNative
     [DllImport(LibraryName, EntryPoint = "mdbx_env_sync_ex")]
     internal static extern int EnvSyncEx(SafeMdbxEnvHandle env, [MarshalAs(UnmanagedType.I1)] bool force, [MarshalAs(UnmanagedType.I1)] bool nonblock);
 
-    [DllImport(LibraryName, EntryPoint = "mdbx_env_stat")]
-    internal static extern int EnvStat(SafeMdbxEnvHandle env, out MdbxStat stat, nuint bytes);
+    [DllImport(LibraryName, EntryPoint = "mdbx_env_info_ex")]
+    internal static extern int EnvInfoEx(SafeMdbxEnvHandle env, IntPtr txn, out MdbxEnvInfo info, nuint bytes);
 
     [DllImport(LibraryName, EntryPoint = "mdbx_env_close_ex")]
     private static extern int EnvCloseEx(IntPtr env, [MarshalAs(UnmanagedType.I1)] bool dontSync);
@@ -236,6 +236,90 @@ internal static class MdbxNative
         public ulong OverflowPages;
         public ulong Entries;
         public ulong ModTxnId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MdbxEnvInfo
+    {
+        public MdbxGeometryInfo Geometry;
+        public ulong MapSize;
+        public ulong DatabaseFileSize;
+        public ulong DatabaseAllocatedSize;
+        public ulong LastPageNumber;
+        public ulong RecentTransactionId;
+        public ulong LatterReaderTransactionId;
+        public ulong SelfLatterReaderTransactionId;
+        public ulong MetaTransactionId0;
+        public ulong MetaTransactionId1;
+        public ulong MetaTransactionId2;
+        public ulong MetaSign0;
+        public ulong MetaSign1;
+        public ulong MetaSign2;
+        public uint MaxReaders;
+        public uint NumReaders;
+        public uint DxbPageSize;
+        public uint SystemPageSize;
+        public uint SystemUnifiedPageCacheBlockSize;
+        public uint SystemIoBlockSize;
+        public MdbxBootIdInfo BootId;
+        public ulong UnsyncVolume;
+        public ulong AutosyncThreshold;
+        public uint SinceSyncSeconds16Dot16;
+        public uint AutosyncPeriodSeconds16Dot16;
+        public uint SinceReaderCheckSeconds16Dot16;
+        public uint Mode;
+        public MdbxPageOperationStat PageOperationStat;
+        public MdbxDxbId DxbId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MdbxGeometryInfo
+    {
+        public ulong Lower;
+        public ulong Upper;
+        public ulong Current;
+        public ulong Shrink;
+        public ulong Grow;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MdbxBootIdInfo
+    {
+        public MdbxPair Current;
+        public MdbxPair Meta0;
+        public MdbxPair Meta1;
+        public MdbxPair Meta2;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MdbxPageOperationStat
+    {
+        public ulong Newly;
+        public ulong Cow;
+        public ulong Clone;
+        public ulong Split;
+        public ulong Merge;
+        public ulong Spill;
+        public ulong Unspill;
+        public ulong WriteOperations;
+        public ulong Prefault;
+        public ulong Mincore;
+        public ulong Msync;
+        public ulong Fsync;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MdbxDxbId
+    {
+        public ulong X;
+        public ulong Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MdbxPair
+    {
+        public ulong X;
+        public ulong Y;
     }
 }
 

@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -18,6 +19,8 @@ namespace Nethermind.Db.Rocks;
 
 internal sealed class MdbxEnvironment : IDisposable
 {
+    internal const string PageSizeMarkerFileName = "nethermind.mdbx.page-size";
+
     private readonly object _writeLock = new();
     private readonly object _batchGroupLock = new();
     private readonly Queue<MdbxBatchGroupRequest> _batchGroupQueue = new();
@@ -41,14 +44,11 @@ internal sealed class MdbxEnvironment : IDisposable
 
         ThrowIfRocksDbStoreExists(Path);
         Directory.CreateDirectory(Path);
+        bool isStateDb = MdbxPathHelpers.IsStateDbPath(Path);
         bool isNewEnvironment = IsNewMdbxEnvironment(Path);
         _valueCompression = MdbxValueCompression.Create(rocksDbConfig, logger, Path);
 
         MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger, Path);
-        _batchGroupingEnabled = tuning.EnableBatchGrouping;
-        _appendEnabled = tuning.EnableAppend;
-        _maxBatchGroupOperations = tuning.MaxBatchGroupOperations;
-        _maxBatchGroupBytes = tuning.MaxBatchGroupBytes;
 
         MdbxNative.ThrowOnError(MdbxNative.EnvCreate(out MdbxNative.SafeMdbxEnvHandle env), "mdbx_env_create");
         Env = env;
@@ -91,7 +91,18 @@ internal sealed class MdbxEnvironment : IDisposable
             }
         }
 
-        tuning = tuning.WithActualPageSize(ReadEnvironmentPageSize(), MdbxPathHelpers.IsStateDbPath(Path));
+        if (isStateDb)
+        {
+            int actualPageSize = ReadEnvironmentPageSize();
+            tuning = tuning.WithActualPageSize(actualPageSize, isStateDb: true);
+            CleanupPageSizeMarkerTempFiles(Path, logger);
+            WritePageSizeMarker(Path, actualPageSize, logger);
+        }
+        _batchGroupingEnabled = tuning.EnableBatchGrouping;
+        _appendEnabled = tuning.EnableAppend;
+        _maxBatchGroupOperations = tuning.MaxBatchGroupOperations;
+        _maxBatchGroupBytes = tuning.MaxBatchGroupBytes;
+
         if (tuning.DirtyPagesReserveLimit != 0)
         {
             MdbxNative.SetDirtyPagesReserveLimit(Env, tuning.DirtyPagesReserveLimit);
@@ -766,10 +777,86 @@ internal sealed class MdbxEnvironment : IDisposable
     private int ReadEnvironmentPageSize()
     {
         MdbxNative.ThrowOnError(
-            MdbxNative.EnvStat(Env, out MdbxNative.MdbxStat stat, (nuint)Marshal.SizeOf<MdbxNative.MdbxStat>()),
-            "mdbx_env_stat");
+            MdbxNative.EnvInfoEx(Env, IntPtr.Zero, out MdbxNative.MdbxEnvInfo info, (nuint)Marshal.SizeOf<MdbxNative.MdbxEnvInfo>()),
+            "mdbx_env_info_ex");
 
-        return checked((int)stat.PageSize);
+        int pageSize = checked((int)info.DxbPageSize);
+        if (!MdbxTuningOptions.IsValidPageSize(pageSize))
+        {
+            throw new InvalidOperationException($"MDBX environment {Path} reported an unsupported page size: {pageSize}.");
+        }
+
+        return pageSize;
+    }
+
+    private static bool TryReadPageSizeMarker(string path, out int pageSize)
+    {
+        pageSize = 0;
+        string markerPath = System.IO.Path.Combine(path, PageSizeMarkerFileName);
+        if (!File.Exists(markerPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            string marker = File.ReadAllText(markerPath).Trim();
+            return int.TryParse(marker, NumberStyles.None, CultureInfo.InvariantCulture, out pageSize)
+                && MdbxTuningOptions.IsValidPageSize(pageSize);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static void WritePageSizeMarker(string path, int pageSize, ILogger logger)
+    {
+        string markerPath = System.IO.Path.Combine(path, PageSizeMarkerFileName);
+        if (TryReadPageSizeMarker(path, out int markerPageSize) && markerPageSize == pageSize)
+        {
+            return;
+        }
+
+        string tempPath = System.IO.Path.Combine(path, $"{PageSizeMarkerFileName}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllText(tempPath, pageSize.ToString(CultureInfo.InvariantCulture));
+            File.Move(tempPath, markerPath, overwrite: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            try
+            {
+                File.Delete(tempPath);
+            }
+            catch (Exception deleteException) when (deleteException is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            if (logger.IsWarn)
+            {
+                logger.Warn($"Failed to write MDBX page-size marker for {path}: {exception.Message}");
+            }
+        }
+    }
+
+    private static void CleanupPageSizeMarkerTempFiles(string path, ILogger logger)
+    {
+        try
+        {
+            foreach (string tempPath in Directory.EnumerateFiles(path, $"{PageSizeMarkerFileName}.*.tmp"))
+            {
+                File.Delete(tempPath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (logger.IsWarn)
+            {
+                logger.Warn($"Failed to clean stale MDBX page-size marker temp files for {path}: {exception.Message}");
+            }
+        }
     }
 
     private static void ThrowIfRocksDbStoreExists(string path)
