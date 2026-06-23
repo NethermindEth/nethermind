@@ -771,8 +771,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             ulong finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
-            // Saturating subtraction: when _maxDepth exceeds MaxBlockNumber the pruning boundary
-            // is conceptually "before block 0" — we clamp to 0 just like the old signed long arithmetic.
+            // When _maxDepth exceeds MaxBlockNumber the pruning boundary is conceptually "before block 0"; clamp to 0.
             ulong pruningBoundaryBlock = _commitSetQueue.MaxBlockNumber!.Value.SaturatingSub(_maxDepth);
             ulong effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlock, finalizedBlockNumber);
 
