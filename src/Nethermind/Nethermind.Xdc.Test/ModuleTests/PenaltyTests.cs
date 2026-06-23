@@ -52,6 +52,7 @@ internal class PenaltyTests
 
         XdcBlockHeader signedHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(targetHeader.Number - spec.MergeSignRange)!;
         Transaction tx = BuildSigningTx(spec, signedHeader.Number, signedHeader.Hash!, penaltyHistorySigner);
+        tx.SenderAddress = null; // to test sender recovery
         signingTxCache.SetSigningTransactions(signedHeader.Hash!, [tx]);
 
         penalties = penaltyHandler.HandlePenalties(targetHeader.Number, targetHeader.ParentHash!, masternodes);
