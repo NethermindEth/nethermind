@@ -340,6 +340,38 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddCodes_WritesRequestedCodeThroughBatchSpanPath()
+    {
+        byte[] code = [1, 2, 3];
+        byte[] unexpectedCode = [4, 5, 6];
+        ValueHash256 codeHash = Keccak.Compute(code);
+        RecordingCodeDb codeDb = new();
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig()
+        {
+            SnapSyncAccountRangePartitionCount = 1
+        })
+            .AddKeyedSingleton<IDb>(DbNames.Code, _ => codeDb)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ByteArrayListAdapter codes = new(new List<byte[]> { code, unexpectedCode }.ToPooledList());
+
+        snapProvider.AddCodes([codeHash], codes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeDb.LastBatch, Is.Not.Null);
+            Assert.That(codeDb.LastBatch!.PutSpanWrites, Has.Count.EqualTo(1));
+            Assert.That(codeDb.LastBatch.SetWriteCount, Is.Zero);
+            Assert.That(codeDb.LastBatch.PutSpanWrites[0].Key, Is.EqualTo(codeHash.Bytes.ToArray()));
+            Assert.That(codeDb.LastBatch.PutSpanWrites[0].Value, Is.EqualTo(code));
+            Assert.That(codeDb.LastBatch.PutSpanWrites[0].Flags, Is.EqualTo(WriteFlags.None));
+            Assert.That(codeDb.Get(codeHash.Bytes), Is.EqualTo(code));
+        }
+    }
+
+    [Test]
     public void Persisted_check_scope_uses_snapshot_and_disposes_once_when_owner_disposes_first()
     {
         CountingReadSnapshot snapshot = new() { Exists = false };
@@ -490,5 +522,46 @@ public class SnapProviderTests
 
         public void Dispose() =>
             DisposeCount++;
+    }
+
+    private sealed class RecordingCodeDb : TestMemDb
+    {
+        public RecordingWriteBatch? LastBatch { get; private set; }
+
+        public override IWriteBatch StartWriteBatch()
+        {
+            LastBatch = new RecordingWriteBatch(this);
+            return LastBatch;
+        }
+    }
+
+    private sealed class RecordingWriteBatch(RecordingCodeDb db) : IWriteBatch
+    {
+        public List<(byte[] Key, byte[] Value, WriteFlags Flags)> PutSpanWrites { get; } = [];
+
+        public int SetWriteCount { get; private set; }
+
+        public void Clear() =>
+            PutSpanWrites.Clear();
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            SetWriteCount++;
+            db.Set(key, value, flags);
+        }
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            byte[] valueCopy = value.ToArray();
+            PutSpanWrites.Add((key.ToArray(), valueCopy, flags));
+            db.Set(key, valueCopy, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
     }
 }

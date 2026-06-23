@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
@@ -162,31 +161,11 @@ public partial class DbOnTheRocks : IDb, IMergeableKeyValueStore, ISortedKeyValu
     public bool KeyExists(ReadOnlySpan<byte> key) =>
         Mdbx.KeyExists(_dbi, key);
 
-    public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags = ReadFlags.None)
-    {
-        byte[]? data = Get(key, flags);
-        if (data is null)
-        {
-            handle = IntPtr.Zero;
-            return default;
-        }
+    public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags = ReadFlags.None) =>
+        MdbxNativeSlice.Pin(Get(key, flags), out handle);
 
-        handle = Marshal.AllocHGlobal(data.Length);
-        Marshal.Copy(data, 0, handle, data.Length);
-        // The unmanaged copy is owned by the caller through DangerousReleaseHandle.
-        unsafe
-        {
-            return new ReadOnlySpan<byte>((void*)handle, data.Length);
-        }
-    }
-
-    public void DangerousReleaseHandle(IntPtr handle)
-    {
-        if (handle != IntPtr.Zero)
-        {
-            Marshal.FreeHGlobal(handle);
-        }
-    }
+    public void DangerousReleaseHandle(IntPtr handle) =>
+        MdbxNativeSlice.Release(handle);
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
         Mdbx.Put(_dbi, key, value, flags);

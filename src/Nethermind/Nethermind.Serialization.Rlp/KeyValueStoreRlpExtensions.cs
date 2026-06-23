@@ -94,13 +94,13 @@ public static class KeyValueStoreRlpExtensions
     private static TItem? Get<TItem>(IReadOnlyNativeKeyValueStore db, ReadOnlySpan<byte> key, IRlpDecoder<TItem> valueDecoder, RlpBehaviors rlpBehaviors) where TItem : class
     {
         ReadOnlySpan<byte> data = db.GetNativeSlice(key, out IntPtr handle);
-        if (data.IsNull())
-        {
-            return null;
-        }
-
         try
         {
+            if (data.IsNull())
+            {
+                return null;
+            }
+
             if (data.Length == 0)
             {
                 return null;

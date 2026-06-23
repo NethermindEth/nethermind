@@ -380,9 +380,8 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (set.Remove(codeHash))
                     {
-                        byte[] code = codeSpan.ToArray();
-                        Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
-                        writeBatch[codeHash.Bytes] = code;
+                        Interlocked.Add(ref Metrics.SnapStateSynced, codeSpan.Length);
+                        writeBatch.PutSpan(codeHash.Bytes, codeSpan);
                     }
                 }
             }

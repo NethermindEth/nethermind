@@ -421,7 +421,7 @@ internal sealed class MdbxEnvironment : IDisposable
 
     private static int[]? RentSortedWriteIndexes(List<MdbxWriteOperation> operations)
     {
-        if (operations.Count < 2)
+        if (operations.Count < 2 || IsSortedWriteBatch(operations))
         {
             return null;
         }
@@ -442,6 +442,19 @@ internal sealed class MdbxEnvironment : IDisposable
             ArrayPool<int>.Shared.Return(indexes);
             throw;
         }
+    }
+
+    internal static bool IsSortedWriteBatch(IReadOnlyList<MdbxWriteOperation> operations)
+    {
+        for (int i = 1; i < operations.Count; i++)
+        {
+            if (MdbxWriteOperationIndexComparer.CompareOperations(operations[i - 1], operations[i]) > 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static void ReturnSortedWriteIndexes(int[]? indexes)

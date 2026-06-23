@@ -19,6 +19,7 @@ using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Snappier;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
@@ -1090,6 +1091,29 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Mdbx_write_ordering_detects_already_sorted_batches()
+        {
+            List<MdbxWriteOperation> sortedOperations =
+            [
+                MdbxWriteOperation.PutSpan(1, [1], [0], null),
+                MdbxWriteOperation.PutSpan(1, [2], [1], null),
+                MdbxWriteOperation.PutSpan(1, [2], [2], null),
+                MdbxWriteOperation.PutSpan(2, [1], [3], null),
+            ];
+            List<MdbxWriteOperation> unsortedOperations =
+            [
+                MdbxWriteOperation.PutSpan(1, [2], [0], null),
+                MdbxWriteOperation.PutSpan(1, [1], [1], null),
+            ];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MdbxEnvironment.IsSortedWriteBatch(sortedOperations), Is.True);
+                Assert.That(MdbxEnvironment.IsSortedWriteBatch(unsortedOperations), Is.False);
+            }
+        }
+
+        [Test]
         public void Mdbx_write_transaction_flags_follow_disable_wal_mode()
         {
             using (Assert.EnterMultipleScope())
@@ -1309,15 +1333,84 @@ namespace Nethermind.Db.Test
 
             _db[[1]] = [];
             ReadOnlySpan<byte> empty = nativeDb.GetNativeSlice([1], out IntPtr emptyHandle);
-            Assert.That(empty.Length, Is.Zero);
-            nativeDb.DangerousReleaseHandle(emptyHandle);
+            try
+            {
+                Assert.That(empty.Length, Is.Zero);
+                Assert.That(empty.IsNull(), Is.False);
+                AssertPinnedNativeSlice(emptyHandle, []);
+            }
+            finally
+            {
+                nativeDb.DangerousReleaseHandle(emptyHandle);
+            }
 
             _db[[2]] = [3, 4];
             ReadOnlySpan<byte> existing = nativeDb.GetNativeSlice([2], out IntPtr existingHandle);
-            byte[] existingCopy = existing.ToArray();
-            nativeDb.DangerousReleaseHandle(existingHandle);
+            byte[] existingCopy;
+            try
+            {
+                AssertPinnedNativeSlice(existingHandle, [3, 4]);
+                existingCopy = existing.ToArray();
+            }
+            finally
+            {
+                nativeDb.DangerousReleaseHandle(existingHandle);
+            }
 
             Assert.That(existingCopy, Is.EqualTo(new byte[] { 3, 4 }));
+        }
+
+        [Test]
+        public void Native_rlp_get_releases_handle_for_null_span()
+        {
+            NullSpanNativeDb db = new();
+
+            object? item = KeyValueStoreRlpExtensions.Get<object>(db, 1L, ThrowingRlpDecoder.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(item, Is.Null);
+                Assert.That(db.ReleaseCount, Is.EqualTo(1));
+            }
+        }
+
+        private static void AssertPinnedNativeSlice(IntPtr handle, byte[] expected)
+        {
+            Assert.That(handle, Is.Not.EqualTo(IntPtr.Zero));
+            GCHandle gcHandle = GCHandle.FromIntPtr(handle);
+            Assert.That(gcHandle.Target, Is.TypeOf<byte[]>());
+            Assert.That((byte[])gcHandle.Target!, Is.EqualTo(expected));
+        }
+
+        private sealed class NullSpanNativeDb : IReadOnlyKeyValueStore, IReadOnlyNativeKeyValueStore
+        {
+            public int ReleaseCount { get; private set; }
+
+            public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+                throw new NotSupportedException();
+
+            public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags = ReadFlags.None)
+            {
+                handle = new IntPtr(1);
+                return default;
+            }
+
+            public void DangerousReleaseHandle(IntPtr handle) =>
+                ReleaseCount++;
+        }
+
+        private sealed class ThrowingRlpDecoder : RlpDecoder<object>
+        {
+            public static readonly ThrowingRlpDecoder Instance = new();
+
+            public override int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+                throw new NotSupportedException();
+
+            public override void Encode(RlpStream stream, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+                throw new NotSupportedException();
+
+            protected override object DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+                throw new AssertionException("Null native spans must return before decoding.");
         }
 
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
