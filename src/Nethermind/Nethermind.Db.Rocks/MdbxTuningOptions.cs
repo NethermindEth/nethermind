@@ -24,6 +24,7 @@ internal readonly record struct MdbxTuningOptions(
     bool EnableWriteMap,
     bool EnableCoalesce,
     bool EnableBatchGrouping,
+    bool EnableAppend,
     int MaxBatchGroupOperations,
     long MaxBatchGroupBytes,
     bool EnableProfiling,
@@ -65,6 +66,7 @@ internal readonly record struct MdbxTuningOptions(
         bool enableWriteMap = ReadBool("NETHERMIND_MDBX_WRITEMAP", fallback: true, logger, ref hasOverrides);
         bool enableCoalesce = ReadBool("NETHERMIND_MDBX_COALESCE", fallback: true, logger, ref hasOverrides);
         bool enableBatchGrouping = ReadBool("NETHERMIND_MDBX_BATCH_GROUP", fallback: true, logger, ref hasOverrides);
+        bool enableAppend = ReadBool("NETHERMIND_MDBX_APPEND", fallback: true, logger, ref hasOverrides);
         int maxBatchGroupOperations = ReadInt32("NETHERMIND_MDBX_BATCH_GROUP_MAX_OPS", DefaultMaxBatchGroupOperations, logger, ref hasOverrides);
         long maxBatchGroupBytes = ReadSize("NETHERMIND_MDBX_BATCH_GROUP_MAX_BYTES", DefaultMaxBatchGroupBytes, logger, ref hasOverrides);
         bool enableProfiling = ReadBool("NETHERMIND_MDBX_PROFILE", fallback: false, logger, ref hasOverrides);
@@ -151,6 +153,7 @@ internal readonly record struct MdbxTuningOptions(
             enableWriteMap,
             enableCoalesce,
             enableBatchGrouping,
+            enableAppend,
             maxBatchGroupOperations,
             maxBatchGroupBytes,
             enableProfiling,
@@ -163,7 +166,7 @@ internal readonly record struct MdbxTuningOptions(
     public string Describe() =>
         string.Create(
             CultureInfo.InvariantCulture,
-            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} rpAugmentLimit={RpAugmentLimit} dirtyPagesReserveLimit={DirtyPagesReserveLimit} txnDirtyPagesLimit={TransactionDirtyPagesLimit} txnDirtyPagesInitial={TransactionDirtyPagesInitial} readAhead={EnableReadAhead} writeMap={EnableWriteMap} coalesce={EnableCoalesce} batchGroup={EnableBatchGrouping} batchGroupMaxOps={MaxBatchGroupOperations} batchGroupMaxBytes={FormatBytes(MaxBatchGroupBytes)} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
+            $"initialMap={FormatBytes(InitialMapSize)} maxMap={FormatBytes(MaxMapSize)} growthStep={FormatBytes(GrowthStep)} shrinkThreshold={FormatBytes(ShrinkThreshold)} pageSize={PageSize} maxDbs={MaxDbs} maxReaders={MaxReaders} rpAugmentLimit={RpAugmentLimit} dirtyPagesReserveLimit={DirtyPagesReserveLimit} txnDirtyPagesLimit={TransactionDirtyPagesLimit} txnDirtyPagesInitial={TransactionDirtyPagesInitial} readAhead={EnableReadAhead} writeMap={EnableWriteMap} coalesce={EnableCoalesce} batchGroup={EnableBatchGrouping} append={EnableAppend} batchGroupMaxOps={MaxBatchGroupOperations} batchGroupMaxBytes={FormatBytes(MaxBatchGroupBytes)} profile={EnableProfiling} profileHotPathSampleRate={HotPathSampleRate} profileInterval={ProfileInterval.TotalSeconds:F0}s slowTransaction={SlowTransactionThreshold.TotalMilliseconds:F0}ms");
 
     internal static bool TryParseSize(string value, out long result)
     {

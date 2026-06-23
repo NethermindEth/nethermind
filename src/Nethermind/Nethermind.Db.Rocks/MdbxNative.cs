@@ -16,7 +16,9 @@ internal static class MdbxNative
 
     internal const int Success = 0;
     internal const int ResultTrue = -1;
+    internal const int KeyExists = -30799;
     internal const int NotFound = -30798;
+    internal const int KeyMismatch = -30418;
 
     internal const uint EnvNoSubDir = 0x4000;
     internal const uint EnvNoMetaSync = 0x40000;
@@ -31,6 +33,7 @@ internal static class MdbxNative
     internal const uint Create = 0x40000;
 
     internal const uint PutUpsert = 0;
+    internal const uint PutAppend = 0x20000;
 
     private const uint EnvOptionMaxDbs = 0;
     private const uint EnvOptionMaxReaders = 1;

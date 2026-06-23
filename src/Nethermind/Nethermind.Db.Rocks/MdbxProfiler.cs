@@ -55,6 +55,9 @@ internal sealed class MdbxProfiler
     private long _escapedRawValues;
     private long _compressionInputBytes;
     private long _compressionStoredBytes;
+    private long _appendAttempts;
+    private long _appendSuccesses;
+    private long _appendFallbacks;
 
     [ThreadStatic]
     private static int t_hotPathSampleCounter;
@@ -202,6 +205,20 @@ internal sealed class MdbxProfiler
         }
     }
 
+    public void RecordAppend(bool success, bool fallback)
+    {
+        Interlocked.Increment(ref _appendAttempts);
+        if (success)
+        {
+            Interlocked.Increment(ref _appendSuccesses);
+        }
+
+        if (fallback)
+        {
+            Interlocked.Increment(ref _appendFallbacks);
+        }
+    }
+
     public void ReportFinal() =>
         SafeReport("final");
 
@@ -267,6 +284,9 @@ internal sealed class MdbxProfiler
         long escapedRawValues = Volatile.Read(ref _escapedRawValues);
         long compressionInputBytes = Volatile.Read(ref _compressionInputBytes);
         long compressionStoredBytes = Volatile.Read(ref _compressionStoredBytes);
+        long appendAttempts = Volatile.Read(ref _appendAttempts);
+        long appendSuccesses = Volatile.Read(ref _appendSuccesses);
+        long appendFallbacks = Volatile.Read(ref _appendFallbacks);
 
         using Process process = Process.GetCurrentProcess();
         long managedBytes = GC.GetTotalMemory(forceFullCollection: false);
@@ -280,7 +300,7 @@ internal sealed class MdbxProfiler
             _logger.Info(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} batchGroups={batchGroups} avgBatchGroupBatches={Average(batchGroupBatches, batchGroups):F1} avgBatchGroupOps={Average(batchGroupOperations, batchGroups):F1} avgBatchGroupMiB={ToMiB(Average(batchGroupBytes, batchGroups)):F1} maxBatchGroupBatches={maxBatchGroupBatches} maxBatchGroupOps={maxBatchGroupOperations} maxBatchGroupMiB={ToMiB(maxBatchGroupBytes):F1} compressionAttempts={compressionAttempts} compressedValues={compressedValues} compressionRejected={compressionRejected} compressionRejectPct={Percent(compressionRejected, compressionAttempts):F1} escapedRawValues={escapedRawValues} compressionInputMiB={ToMiB(compressionInputBytes):F1} compressionStoredMiB={ToMiB(compressionStoredBytes):F1} compressionSavedMiB={ToMiB(Math.Max(0, compressionInputBytes - compressionStoredBytes)):F1} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}{storageStatsText}"));
+                    $"MDBX profile {reason} path={_path} readTx={readTransactions} avgReadUs={AverageMicroseconds(readTicks, readTransactions):F1} writeTx={writeTransactions} avgWriteMs={AverageMilliseconds(writeTicks, writeTransactions):F1} avgWriteWaitMs={AverageMilliseconds(writeWaitTicks, writeTransactions):F1} writeOps={writeOperations} avgOpsPerWriteTx={Average(writeOperations, writeTransactions):F1} batchGroups={batchGroups} avgBatchGroupBatches={Average(batchGroupBatches, batchGroups):F1} avgBatchGroupOps={Average(batchGroupOperations, batchGroups):F1} avgBatchGroupMiB={ToMiB(Average(batchGroupBytes, batchGroups)):F1} maxBatchGroupBatches={maxBatchGroupBatches} maxBatchGroupOps={maxBatchGroupOperations} maxBatchGroupMiB={ToMiB(maxBatchGroupBytes):F1} compressionAttempts={compressionAttempts} compressedValues={compressedValues} compressionRejected={compressionRejected} compressionRejectPct={Percent(compressionRejected, compressionAttempts):F1} escapedRawValues={escapedRawValues} compressionInputMiB={ToMiB(compressionInputBytes):F1} compressionStoredMiB={ToMiB(compressionStoredBytes):F1} compressionSavedMiB={ToMiB(Math.Max(0, compressionInputBytes - compressionStoredBytes)):F1} appendAttempts={appendAttempts} appendSuccesses={appendSuccesses} appendFallbacks={appendFallbacks} appendSuccessPct={Percent(appendSuccesses, appendAttempts):F1} gets={gets} getHitPct={Percent(getHits, gets):F1} getKeyMiB={ToMiB(getKeyBytes):F1} getValueMiB={ToMiB(getValueBytes):F1} puts={puts} putKeyMiB={ToMiB(putKeyBytes):F1} putValueMiB={ToMiB(putValueBytes):F1} deletes={deletes} merges={merges} queuedWrites={queuedWrites} queuedKeyMiB={ToMiB(queuedKeyBytes):F1} queuedValueMiB={ToMiB(queuedValueBytes):F1} maxQueuedOps={maxQueuedOperations} managedMiB={ToMiB(managedBytes):F1} workingSetMiB={ToMiB(workingSetBytes):F1} privateMiB={ToMiB(privateBytes):F1}{storageStatsText}"));
         }
     }
 

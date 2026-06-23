@@ -24,6 +24,7 @@ internal sealed class MdbxEnvironment : IDisposable
     private readonly MdbxProfiler? _profiler;
     private readonly MdbxValueCompression _valueCompression;
     private readonly bool _batchGroupingEnabled;
+    private readonly bool _appendEnabled;
     private readonly int _maxBatchGroupOperations;
     private readonly long _maxBatchGroupBytes;
     private uint? _statsDbi;
@@ -43,6 +44,7 @@ internal sealed class MdbxEnvironment : IDisposable
 
         MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger);
         _batchGroupingEnabled = tuning.EnableBatchGrouping;
+        _appendEnabled = tuning.EnableAppend;
         _maxBatchGroupOperations = tuning.MaxBatchGroupOperations;
         _maxBatchGroupBytes = tuning.MaxBatchGroupBytes;
         if (tuning.HasOverrides && logger.IsInfo)
@@ -237,9 +239,10 @@ internal sealed class MdbxEnvironment : IDisposable
     private void ExecuteBatch(IReadOnlyList<MdbxWriteOperation> operations) =>
         ExecuteWrite(txn =>
         {
+            MdbxAppendTracker? appendTracker = _appendEnabled ? new MdbxAppendTracker(this, txn) : null;
             for (int i = 0; i < operations.Count; i++)
             {
-                ApplyOperation(txn, operations[i]);
+                ApplyOperation(txn, operations[i], appendTracker);
             }
         }, operations.Count);
 
@@ -286,12 +289,13 @@ internal sealed class MdbxEnvironment : IDisposable
             {
                 ExecuteWrite(txn =>
                 {
+                    MdbxAppendTracker? appendTracker = _appendEnabled ? new MdbxAppendTracker(this, txn) : null;
                     for (int requestIndex = 0; requestIndex < group.Count; requestIndex++)
                     {
                         IReadOnlyList<MdbxWriteOperation> operations = group[requestIndex].Operations;
                         for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
                         {
-                            ApplyOperation(txn, operations[operationIndex]);
+                            ApplyOperation(txn, operations[operationIndex], appendTracker);
                         }
                     }
                 }, operationCount);
@@ -378,12 +382,17 @@ internal sealed class MdbxEnvironment : IDisposable
     public void Flush() =>
         MdbxNative.ThrowOnError(MdbxNative.EnvSyncEx(Env, force: true, nonblock: false), "mdbx_env_sync_ex");
 
-    public void ApplyOperation(MdbxNative.SafeMdbxTxnHandle txn, in MdbxWriteOperation operation)
+    public void ApplyOperation(MdbxNative.SafeMdbxTxnHandle txn, in MdbxWriteOperation operation) =>
+        ApplyOperation(txn, operation, appendTracker: null);
+
+    private void ApplyOperation(MdbxNative.SafeMdbxTxnHandle txn, in MdbxWriteOperation operation, MdbxAppendTracker? appendTracker)
     {
         switch (operation.Kind)
         {
             case MdbxWriteKind.Set:
-                Put(txn, operation.Dbi, operation.Key, operation.Value);
+                bool tryAppend = appendTracker?.TryAppend(operation) == true;
+                MdbxAppendResult appendResult = Put(txn, operation.Dbi, operation.Key, operation.Value, tryAppend);
+                appendTracker?.RecordResult(operation, appendResult);
                 break;
             case MdbxWriteKind.Delete:
                 Delete(txn, operation.Dbi, operation.Key);
@@ -448,7 +457,10 @@ internal sealed class MdbxEnvironment : IDisposable
         Put(txn, dbi, key, value.AsSpan());
     }
 
-    public unsafe void Put(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    public void Put(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value) =>
+        Put(txn, dbi, key, value, tryAppend: false);
+
+    private unsafe MdbxAppendResult Put(MdbxNative.SafeMdbxTxnHandle txn, uint dbi, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool tryAppend)
     {
         byte[]? storedBuffer = _valueCompression.TryEncode(value, out byte[]? encoded, out int storedLength, out MdbxValueEncodingKind encodingKind)
             ? encoded
@@ -461,9 +473,25 @@ internal sealed class MdbxEnvironment : IDisposable
         {
             MdbxValue keyValue = new() { Base = (IntPtr)keyPointer, Length = (nuint)key.Length };
             MdbxValue dataValue = new() { Base = (IntPtr)valuePointer, Length = (nuint)storedValue.Length };
-            MdbxNative.ThrowOnError(MdbxNative.Put(txn, dbi, ref keyValue, ref dataValue, MdbxNative.PutUpsert), "mdbx_put");
+            int result = MdbxNative.Put(txn, dbi, ref keyValue, ref dataValue, tryAppend ? MdbxNative.PutAppend : MdbxNative.PutUpsert);
+            if (tryAppend && result is MdbxNative.KeyExists or MdbxNative.KeyMismatch)
+            {
+                _profiler?.RecordAppend(success: false, fallback: true);
+                result = MdbxNative.Put(txn, dbi, ref keyValue, ref dataValue, MdbxNative.PutUpsert);
+                MdbxNative.ThrowOnError(result, "mdbx_put");
+                _profiler?.RecordPut(key.Length, value.Length);
+                _profiler?.RecordValueEncoding(encodingKind, value.Length, storedValue.Length);
+                return MdbxAppendResult.Fallback;
+            }
+            else if (tryAppend)
+            {
+                _profiler?.RecordAppend(success: result == MdbxNative.Success, fallback: false);
+            }
+
+            MdbxNative.ThrowOnError(result, "mdbx_put");
             _profiler?.RecordPut(key.Length, value.Length);
             _profiler?.RecordValueEncoding(encodingKind, value.Length, storedValue.Length);
+            return tryAppend ? MdbxAppendResult.Succeeded : MdbxAppendResult.NotAttempted;
         }
     }
 
@@ -655,6 +683,21 @@ internal sealed class MdbxEnvironment : IDisposable
 
     private static bool IsNewMdbxEnvironment(string path) =>
         !File.Exists(System.IO.Path.Combine(path, "mdbx.dat"));
+
+    internal byte[]? TryGetLastKey(MdbxNative.SafeMdbxTxnHandle txn, uint dbi)
+    {
+        using MdbxNative.SafeMdbxCursorHandle cursor = MdbxCursorHelpers.OpenCursor(txn, dbi);
+        MdbxValue key = default;
+        MdbxValue data = default;
+        int result = MdbxNative.CursorGet(cursor, ref key, ref data, MdbxCursorOp.Last);
+        if (result == MdbxNative.NotFound)
+        {
+            return null;
+        }
+
+        MdbxNative.ThrowOnError(result, "mdbx_cursor_get(last)");
+        return Copy(key);
+    }
 }
 
 internal enum MdbxWriteKind
@@ -662,6 +705,13 @@ internal enum MdbxWriteKind
     Set,
     Delete,
     Merge,
+}
+
+internal enum MdbxAppendResult
+{
+    NotAttempted,
+    Succeeded,
+    Fallback,
 }
 
 internal readonly record struct MdbxWriteOperation(MdbxWriteKind Kind, uint Dbi, byte[] Key, byte[]? Value, IMergeOperator? MergeOperator)
@@ -715,5 +765,47 @@ internal sealed class MdbxBatchGroupRequest(IReadOnlyList<MdbxWriteOperation> op
         }
 
         return byteCount;
+    }
+}
+
+internal sealed class MdbxAppendTracker(MdbxEnvironment environment, MdbxNative.SafeMdbxTxnHandle txn)
+{
+    private readonly Dictionary<uint, byte[]?> _lastKeys = [];
+    private HashSet<uint>? _disabledDbis;
+
+    public bool TryAppend(in MdbxWriteOperation operation)
+    {
+        if (operation.Kind != MdbxWriteKind.Set ||
+            operation.Value is null ||
+            operation.MergeOperator is not null ||
+            (_disabledDbis is not null && _disabledDbis.Contains(operation.Dbi)))
+        {
+            return false;
+        }
+
+        if (!_lastKeys.TryGetValue(operation.Dbi, out byte[]? lastKey))
+        {
+            lastKey = environment.TryGetLastKey(txn, operation.Dbi);
+            _lastKeys.Add(operation.Dbi, lastKey);
+        }
+
+        if (lastKey is not null && operation.Key.AsSpan().SequenceCompareTo(lastKey) <= 0)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    public void RecordResult(in MdbxWriteOperation operation, MdbxAppendResult result)
+    {
+        if (result == MdbxAppendResult.Succeeded)
+        {
+            _lastKeys[operation.Dbi] = operation.Key;
+        }
+        else if (result == MdbxAppendResult.Fallback)
+        {
+            (_disabledDbis ??= []).Add(operation.Dbi);
+        }
     }
 }

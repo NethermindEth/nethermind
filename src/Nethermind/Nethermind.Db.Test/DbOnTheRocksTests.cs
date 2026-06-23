@@ -458,6 +458,7 @@ namespace Nethermind.Db.Test
                 Assert.That(options.EnableWriteMap, Is.True);
                 Assert.That(options.EnableCoalesce, Is.True);
                 Assert.That(options.EnableBatchGrouping, Is.True);
+                Assert.That(options.EnableAppend, Is.True);
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupOperations));
                 Assert.That(options.MaxBatchGroupBytes, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupBytes));
                 Assert.That(options.GrowthStep, Is.EqualTo(MdbxTuningOptions.DefaultGrowthStep));
@@ -506,6 +507,21 @@ namespace Nethermind.Db.Test
 
                 Assert.That(options.MaxBatchGroupBytes, Is.EqualTo(32L << 20));
             });
+
+            WithEnvironmentVariable("NETHERMIND_MDBX_APPEND", "false", () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>());
+
+                Assert.That(options.EnableAppend, Is.False);
+            });
+        }
+
+        [Test]
+        public void Mdbx_key_mismatch_error_code_matches_native_library()
+        {
+            string message = MdbxNative.GetErrorMessage(MdbxNative.KeyMismatch);
+
+            Assert.That(message, Does.Contain("mismatch").IgnoreCase);
         }
 
         [Test]
@@ -806,6 +822,42 @@ namespace Nethermind.Db.Test
             writeBatch.Dispose();
 
             Assert.That(_db.Get([1]), Is.EqualTo(new byte[] { 1 }));
+        }
+
+        [Test]
+        public void Write_batch_commits_sorted_keys_with_append_enabled()
+        {
+            using IWriteBatch writeBatch = _db.StartWriteBatch();
+            for (int i = 0; i < 256; i++)
+            {
+                writeBatch.Set(i.ToBigEndianByteArray(), [unchecked((byte)i)]);
+            }
+
+            writeBatch.Dispose();
+
+            for (int i = 0; i < 256; i++)
+            {
+                Assert.That(_db.Get(i.ToBigEndianByteArray()), Is.EqualTo(new[] { unchecked((byte)i) }));
+            }
+        }
+
+        [Test]
+        public void Write_batch_falls_back_when_keys_are_not_appendable()
+        {
+            _db.Set([2], [2]);
+
+            using IWriteBatch writeBatch = _db.StartWriteBatch();
+            writeBatch.Set([4], [4]);
+            writeBatch.Set([1], [1]);
+            writeBatch.Set([2], [3]);
+            writeBatch.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_db.Get([1]), Is.EqualTo(new byte[] { 1 }));
+                Assert.That(_db.Get([2]), Is.EqualTo(new byte[] { 3 }));
+                Assert.That(_db.Get([4]), Is.EqualTo(new byte[] { 4 }));
+            }
         }
 
         [Test]
