@@ -79,21 +79,20 @@ namespace Nethermind.Network
             if (!Peers.TryGetValue(e.Node.Id, out Peer? peer))
                 return;
 
-            if (sender is not IStaticNodesManager and not ITrustedNodesManager)
+            if (e is not ExplicitNodeRemovalEventArgs)
             {
-                // Lock peer to make the session check and TryRemove atomic against AttachSession.
-                // If a session is being concurrently assigned, AttachSession also holds lock(peer),
-                // so only one thread will see null sessions and call TryRemove. Residual: TryGetValue
-                // is outside the lock, so a session assigned between TryGetValue and lock acquisition
-                // leaves the peer alive in ActivePeers but absent from Peers until rediscovery —
-                // strictly better than the original unconditional disconnect.
-                lock (peer)
+                // Only remove the peer if no P2P session is active.
+                // The dictionary removals are done inside SessionLock so the session check and
+                // removal are atomic against AttachSession. PeerRemoved is fired outside the lock
+                // to avoid holding it across arbitrary event handler code.
+                bool removed;
+                lock (peer.SessionLock)
                 {
-                    if (peer.InSession is not null || peer.OutSession is not null || peer.IsAwaitingConnection)
-                        return;
-
-                    TryRemove(e.Node.Id, out _);
+                    removed = peer.InSession is null && peer.OutSession is null && !peer.IsAwaitingConnection
+                              && Peers.TryRemove(e.Node.Id, out _);
+                    if (removed) _staticPeers.TryRemove(e.Node.Id, out _);
                 }
+                if (removed) PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
                 return;
             }
 

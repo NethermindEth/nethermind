@@ -652,7 +652,7 @@ namespace Nethermind.Network.Test
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
-            ctx.StaticNodesManager.NodeRemoved += Raise.EventWith(new NodeEventArgs(
+            ctx.StaticNodesManager.NodeRemoved += Raise.EventWith<NodeEventArgs>(new ExplicitNodeRemovalEventArgs(
                 new Node(staticNodes.First())));
 
             Assert.That(ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic), Is.EqualTo(nodesCount - 1));

@@ -84,40 +84,16 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
     public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         NetworkNode networkNode = new(enode);
-        if (!_nodes.TryRemove(networkNode.NodeId, out _))
+        if (!TryRemoveNode(networkNode.NodeId))
         {
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Trusted node was not found: {enode}");
-            }
+            if (_logger.IsInfo) _logger.Info($"Trusted node was not found: {enode}");
             return false;
         }
 
-        if (_logger.IsInfo)
-        {
-            _logger.Info($"Trusted node was removed: {enode}");
-        }
-
-        // Fire NodeRemoved (drives PeerPool disconnect via the event chain) BEFORE the file write,
-        // so a cancelled SaveFileAsync cannot leave the peer untrusted-in-memory yet still connected.
-        // Mirrors StaticNodesManager.RemoveAsync ordering.
-        OnNodeRemoved(networkNode);
-
-        if (updateFile)
-        {
-            await SaveFileAsync(cancellationToken);
-        }
-
+        if (_logger.IsInfo) _logger.Info($"Trusted node was removed: {enode}");
+        if (updateFile) await SaveFileAsync(cancellationToken);
         return true;
     }
 
     public bool IsTrusted(Enode enode) => _nodes.ContainsKey(enode.PublicKey);
-
-    public event EventHandler<NodeEventArgs>? NodeRemoved;
-
-    private void OnNodeRemoved(NetworkNode node)
-    {
-        Node nodeForEvent = new(node);
-        NodeRemoved?.Invoke(this, new NodeEventArgs(nodeForEvent));
-    }
 }

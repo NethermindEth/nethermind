@@ -49,6 +49,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 new TrustedNodesManager(initConfig.TrustedNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
+            .Bind<INodeSource, ITrustedNodesManager>()
 
             // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
             .AddNetworkStorage(DbNames.PeersDb, DbNames.PeersDb)

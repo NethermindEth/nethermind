@@ -1075,7 +1075,7 @@ namespace Nethermind.Network
 
         private void AttachSession(Peer peer, ISession session, ConnectionDirection sessionDirection, bool disconnectOpposite)
         {
-            lock (peer)
+            lock (peer.SessionLock)
             {
                 if (sessionDirection == ConnectionDirection.In)
                 {
