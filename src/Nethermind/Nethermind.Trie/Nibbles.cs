@@ -264,12 +264,6 @@ namespace Nethermind.Trie
         {
             int byteLength = nibbles.Length / 2;
             byte[] bytes = GC.AllocateUninitializedArray<byte>(byteLength);
-            if (byteLength == 1)
-            {
-                bytes[0] = nibbles.Span[0];
-                return bytes;
-            }
-
             nibbles.Span[..byteLength].CopyTo(bytes);
 
             return bytes;

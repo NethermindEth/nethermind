@@ -8,6 +8,7 @@ namespace Nethermind.Trie.Test.Pruning;
 
 public class CompositePersistenceStrategyTests
 {
+    [TestCase(3, ExpectedResult = true)]
     [TestCase(4, ExpectedResult = true)]
     [TestCase(5, ExpectedResult = false)]
     public bool Should_persist_when_any_inner_strategy_matches(long blockNumber)

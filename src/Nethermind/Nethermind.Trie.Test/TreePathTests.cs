@@ -82,6 +82,22 @@ public class TreePathTests
         Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }
 
+    [Test]
+    public void To_bytes_returns_packed_prefix()
+    {
+        byte[] nibbles = new byte[64];
+        for (int i = 0; i < nibbles.Length; i++)
+        {
+            nibbles[i] = (byte)(i & 0xF);
+        }
+
+        TreePath treePath = TreePath.FromNibble(nibbles);
+
+        byte[] result = Nibbles.ToBytes(treePath);
+
+        Assert.That(result, Is.EqualTo(Nibbles.ToBytes(nibbles)).AsCollection);
+    }
+
     [TestCase(1, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
     [TestCase(16, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
     [TestCase(30, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]

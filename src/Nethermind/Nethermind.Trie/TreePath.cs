@@ -231,13 +231,6 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     [SkipLocalsInit]
     public readonly byte[] ToNibble()
     {
-        if (Length == 1)
-        {
-            byte[] singleNibble = GC.AllocateUninitializedArray<byte>(1);
-            singleNibble[0] = (byte)(Span[0] >> 4);
-            return singleNibble;
-        }
-
         if ((Length & 1) != 0)
         {
             Span<byte> theNibbles = stackalloc byte[Length + 1];
