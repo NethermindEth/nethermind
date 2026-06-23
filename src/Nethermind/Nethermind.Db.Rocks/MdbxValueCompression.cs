@@ -59,7 +59,7 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
         }
 
         int minValueLength = IsStateDbPath(path)
-            ? ReadMinValueLength(StateMinValueLengthVariable, int.MaxValue, logger)
+            ? ReadStateMinValueLength(logger)
             : ReadMinValueLength(MinValueLengthVariable, DefaultMinValueLength, logger);
         if (logger.IsInfo)
         {
@@ -178,10 +178,25 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
         return fallback;
     }
 
+    private static int ReadStateMinValueLength(ILogger logger)
+    {
+        string? stateValue = Environment.GetEnvironmentVariable(StateMinValueLengthVariable);
+        if (!string.IsNullOrWhiteSpace(stateValue))
+        {
+            return ReadMinValueLength(StateMinValueLengthVariable, int.MaxValue, logger);
+        }
+
+        string? globalValue = Environment.GetEnvironmentVariable(MinValueLengthVariable);
+        return string.IsNullOrWhiteSpace(globalValue)
+            ? int.MaxValue
+            : ReadMinValueLength(MinValueLengthVariable, int.MaxValue, logger);
+    }
+
     private static bool IsStateDbPath(string path)
     {
         string normalized = path.Replace('\\', '/');
-        return normalized.Contains("/state/", StringComparison.OrdinalIgnoreCase);
+        return normalized.Contains("/state/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.EndsWith("/state", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool LooksCompressed(ReadOnlySpan<byte> stored)
