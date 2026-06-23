@@ -303,7 +303,11 @@ namespace Nethermind.Evm.TransactionProcessing
             // delegation also touches the delegation target with a (flat) cold account access. The
             // target is already pre-warmed for the frame, so this is the sole charge for it. If the
             // gas cannot be covered the frame is exhausted and the EVM halts out of gas.
-            if (spec.IsEip2780Enabled && !tx.IsContractCreation && preloadedDelegationAddress is not null)
+            // The delegation is read from post-authorization state, so a delegation installed by this
+            // same transaction's authorization list is included (and one cleared by it is excluded).
+            bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
+                && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
+            if (spec.IsEip2780Enabled && !tx.IsContractCreation && recipientIsDelegated)
             {
                 long delegationCold = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
                 if (!TGasPolicy.UpdateGas(ref gasAvailable, delegationCold))
