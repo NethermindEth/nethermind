@@ -38,6 +38,12 @@ namespace Nethermind.Init
             TotalMemory = memoryHint ?? 1UL.GiB;
             ValidateCpuCount(cpuCount);
 
+            if (TotalMemory < GeneralMemory)
+            {
+                throw new InvalidDataException(
+                    $"Memory hint is not enough to cover general memory. Assign at least {GeneralMemory / 1000 / 1000} MB.");
+            }
+
             checked
             {
                 SetupMallocOpts(initConfig);
