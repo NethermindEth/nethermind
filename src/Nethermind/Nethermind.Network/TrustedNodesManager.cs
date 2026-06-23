@@ -5,7 +5,6 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -84,6 +83,8 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
     public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         NetworkNode networkNode = new(enode);
+        // Fire NodeRemoved BEFORE the file write: a cancelled SaveFileAsync must not leave
+        // the peer disconnected in-memory but still persisted as trusted.
         if (!TryRemoveNode(networkNode.NodeId))
         {
             if (_logger.IsInfo) _logger.Info($"Trusted node was not found: {enode}");
