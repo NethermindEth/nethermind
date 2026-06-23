@@ -65,8 +65,8 @@ namespace Nethermind.Network
             _logger = logManager?.GetClassLogger<ProtocolsManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
             // Order is already set by OrderedComponents<T> (AddFirst/AddLast)
-            _factories = factories;
-            _capabilityResolvers = capabilityResolvers;
+            _factories = factories ?? throw new ArgumentNullException(nameof(factories));
+            _capabilityResolvers = capabilityResolvers ?? throw new ArgumentNullException(nameof(capabilityResolvers));
             foreach (IP2PCapabilityResolver resolver in _capabilityResolvers)
             {
                 resolver.Changed += InvalidateCapabilities;
@@ -391,7 +391,7 @@ namespace Nethermind.Network
                     Volatile.Write(ref _cachedCapabilities, resolved);
                 }
 
-                return _cachedCapabilities;
+                return _cachedCapabilities!;
             }
         }
     }

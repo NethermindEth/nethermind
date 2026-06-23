@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
@@ -23,7 +24,7 @@ public class SnapP2PCapabilityResolverTests
         ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = snapServing, SnapSync = snapSync };
         ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
         syncModeSelector.Current.Returns(currentMode);
-        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector);
+        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector, LimboLogs.Instance);
 
         HashSet<Capability> capabilities = [];
         resolver.Resolve(capabilities);
@@ -31,18 +32,21 @@ public class SnapP2PCapabilityResolverTests
         Assert.That(capabilities.Contains(new Capability(Protocol.Snap, 1)), Is.EqualTo(expected));
     }
 
-    [Test]
-    public void Raises_Changed_on_sync_mode_change()
+    [TestCase(false, true, SyncMode.StateNodes, SyncMode.Full, true, TestName = "Snap sync finishing flips snap and fires Changed")]
+    [TestCase(false, true, SyncMode.StateNodes, SyncMode.FastBlocks, false, TestName = "Non-Full to non-Full leaves snap unchanged")]
+    [TestCase(true, true, SyncMode.StateNodes, SyncMode.Full, false, TestName = "Snap serving keeps snap constant across sync modes")]
+    [TestCase(false, false, SyncMode.StateNodes, SyncMode.Full, false, TestName = "No snap sync means no snap to toggle")]
+    public void Raises_Changed_only_when_snap_contribution_flips(bool snapServing, bool snapSync, SyncMode previous, SyncMode current, bool expectedFired)
     {
-        ISyncConfig syncConfig = new SyncConfig();
+        ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = snapServing, SnapSync = snapSync };
         ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector);
+        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector, LimboLogs.Instance);
 
         bool changed = false;
         resolver.Changed += () => changed = true;
 
-        syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.StateNodes, SyncMode.Full));
+        syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(previous, current));
 
-        Assert.That(changed, Is.True);
+        Assert.That(changed, Is.EqualTo(expectedFired));
     }
 }

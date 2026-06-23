@@ -307,7 +307,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
-                .AddLast<IP2PCapabilityResolver>(_ => new PostMergeCapabilitiesResolver())
+                .AddLast<IP2PCapabilityResolver, PostMergeCapabilitiesResolver>()
                 ;
         }
         else

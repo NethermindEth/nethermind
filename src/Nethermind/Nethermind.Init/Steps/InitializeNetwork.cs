@@ -261,7 +261,7 @@ public class InitializeNetwork : IStep
             await plugin.InitNetworkProtocol();
         }
 
-        // Capabilities must be finalized before the RLPx listener accepts peers. Otherwise
+        // Capabilities must be resolved before the RLPx listener accepts peers. Otherwise
         // early sessions can negotiate only the default ETH version and never upgrade.
         await _rlpxPeer.Init();
 
