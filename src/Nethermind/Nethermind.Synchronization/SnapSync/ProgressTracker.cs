@@ -561,6 +561,9 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                     }
 
+                    string stateRangesDetails = GetProgressDetails(reqType);
+                    stateRangesReport = $"{stateRangesReport} | {stateRangesDetails}";
+
                     if (_lastStateRangesReport != stateRangesReport || _lastLogTime < DateTimeOffset.Now - _maxTimeBetweenLog)
                     {
                         _logger.Info(stateRangesReport);
@@ -575,9 +578,12 @@ namespace Nethermind.Synchronization.SnapSync
                 int moreAccountCount = AccountRangePartitions.Count(static kv => kv.Value.MoreAccountsToRight);
 
                 _logger.Debug(
-                    $"Snap - ({reqType}, diff: {_pivot.Diff}) {moreAccountCount} - Requests Account: {_activeAccountRequests} | Storage: {_activeStorageRequests} | Code: {_activeCodeRequests} | Refresh: {_activeAccRefreshRequests} - Queues Slots: {NextSlotRange.Count} | Storages: {StoragesToRetrieve.Count} | Codes: {CodesToRetrieve.Count} | Refresh: {AccountsToRefresh.Count}");
+                    $"Snap - ({reqType}, diff: {_pivot.Diff}) {moreAccountCount} - {GetProgressDetails(reqType)}");
             }
         }
+
+        private string GetProgressDetails(string reqType) =>
+            $"Request: {reqType} | Active Account: {_activeAccountRequests} | Storage: {_activeStorageRequests} | Code: {_activeCodeRequests} | Refresh: {_activeAccRefreshRequests} | Queues Slots: {NextSlotRange.Count} | Storages: {StoragesToRetrieve.Count} | Codes: {CodesToRetrieve.Count} | Refresh: {AccountsToRefresh.Count}";
 
         private bool TryDequeNextSlotRange(out StorageRange item)
         {
