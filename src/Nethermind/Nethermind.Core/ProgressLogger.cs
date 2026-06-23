@@ -123,7 +123,7 @@ namespace Nethermind.Core
                     return 0M;
                 }
 
-                return (decimal)(CurrentValue - StartValue) / timePassed;
+                return ((decimal)CurrentValue - StartValue) / timePassed;
             }
         }
 
@@ -162,7 +162,7 @@ namespace Nethermind.Core
                     return 0M;
                 }
 
-                return (decimal)(CurrentValue - LastValue) / timePassed;
+                return ((decimal)CurrentValue - LastValue) / timePassed;
             }
         }
 
