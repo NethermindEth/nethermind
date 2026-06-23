@@ -8,23 +8,29 @@ separate blob arenas; the table stores only small inline values (account RLP, sl
 ## Layout (within the table's `Bound`, offsets relative to the bound start)
 
 ```
-records:  [ks u8][key][vs u8][value]   × N                  (sorted by key, contiguous)
-offsets:  [recordOffset u32]           × ceil(N / 8)        (first record of each 8-record block)
-footer:   [count i64][blockSize u8][version u8]             (fixed 10 bytes, read first)
+records:  [cp u8][suffixLen u8][keySuffix][vs u8][value]  × N   (sorted by key, contiguous, front-coded)
+offsets:  [recordOffset u32]           × ceil(N / 8)            (first record of each 8-record block)
+footer:   [count i64][blockSize u8][version u8]                 (fixed 10 bytes, read first)
 ```
 
-- Records are physically **sorted and packed back-to-back**. Key and value sizes are each a single
-  byte: keys are ≤ 55 bytes, and every inline value is < 255 (the builder's checked cast enforces
-  it). The one variable-length datum, the referenced blob-arena id list, is stored as separate
-  records instead (see below), so no value overflows.
+- Records are physically **sorted and packed back-to-back**, with keys **front-coded**: `cp` is the
+  number of leading bytes shared with the previous record's key and `keySuffix` is the remaining
+  `suffixLen` bytes, so the full key = previous key's first `cp` bytes + `keySuffix`. The first
+  record of every block has `cp = 0` (full key) so the block decodes standalone. `cp`, `suffixLen`,
+  and the value size `vs` are each one byte: keys are ≤ 55 bytes, and every inline value is < 255
+  (the builder's checked cast enforces it). The one variable-length datum, the referenced blob-arena
+  id list, is stored as separate records instead (see below), so no value overflows.
 - The **sparse offset region** stores the byte offset of the first record of every `blockSize`
   (= 8) record block, in ascending key order. A lookup (`SortedTableReader`) reads the footer for
   `count`/`blockSize`, binary searches the sparse offsets for the block whose first key ≤ the
-  target, then **sequentially scans that block's ≤ 8 contiguous records** (almost always within one
-  4 KiB page). O(log(N/8)) random reads + a short in-page scan; no caching, no per-table bloom.
-- The **builder** (`SortedTableBuilder`) buffers records off-heap as added (any order), sorts them
-  by key at `Build`, then writes the sorted records, the sparse offset region, and the footer. The
-  sparse index cuts the on-disk offset region and the per-record build bookkeeping ~8×.
+  target (block-start keys are full, `cp = 0`), then **sequentially scans that block's ≤ 8
+  contiguous records**, reconstructing each key into a running buffer (keep `[0..cp)`, append the
+  suffix). Almost always within one 4 KiB page; O(log(N/8)) random reads + a short in-page scan; no
+  caching, no per-table bloom.
+- The **builder** (`SortedTableBuilder`) buffers records off-heap (full keys, any order), sorts them
+  by key at `Build`, then writes the sorted, front-coded records, the sparse offset region, and the
+  footer. The sparse index cuts the offset region and per-record build bookkeeping ~8×; front-coding
+  shrinks the dominant long, prefix-sharing keys (slots, storage/state nodes, accounts).
 - `version` rejects a blob written by a different format; the catalog version (`SnapshotCatalog`)
   gates the whole tier across incompatible changes.
 

@@ -25,7 +25,8 @@ internal struct SortedTableEnumerator<TReader, TPin>
 
     public SortedTableEnumerator(scoped in TReader reader, Bound table)
     {
-        _keyBuf = new byte[64];
+        // Fixed: keys are ≤ 255 bytes, and the running key must retain its prefix across records.
+        _keyBuf = new byte[256];
         if (SortedTable.TryReadFooter<TReader, TPin>(in reader, table, out _, out _, out long offsetRegionStart))
         {
             _pos = table.Offset;
@@ -37,17 +38,17 @@ internal struct SortedTableEnumerator<TReader, TPin>
     {
         if (_pos >= _recordsEnd) return false;
 
-        Span<byte> sizeBuf = stackalloc byte[SortedTable.SizePrefix];
-        if (!reader.TryRead(_pos, sizeBuf)) return false;
-        int keyLength = sizeBuf[0];
-        if (keyLength > _keyBuf.Length) _keyBuf = new byte[keyLength];
-        long keyOffset = _pos + SortedTable.SizePrefix;
-        if (!reader.TryRead(keyOffset, _keyBuf.AsSpan(0, keyLength))) return false;
-        _keyLength = keyLength;
+        Span<byte> hdr = stackalloc byte[2]; // [commonPrefix u8][suffixLen u8]
+        if (!reader.TryRead(_pos, hdr)) return false;
+        int cp = hdr[0];
+        int suffixLen = hdr[1];
+        // Front-coded: keep _keyBuf[0..cp) from the previous record, append this record's suffix.
+        if (!reader.TryRead(_pos + 2, _keyBuf.AsSpan(cp, suffixLen))) return false;
+        _keyLength = cp + suffixLen;
 
-        long valueSizeOffset = keyOffset + keyLength;
-        if (!reader.TryRead(valueSizeOffset, sizeBuf)) return false;
-        int valueLength = sizeBuf[0];
+        long valueSizeOffset = _pos + 2 + suffixLen;
+        if (!reader.TryRead(valueSizeOffset, hdr[..1])) return false;
+        int valueLength = hdr[0];
         _value = new Bound(valueSizeOffset + SortedTable.SizePrefix, valueLength);
 
         _pos = valueSizeOffset + SortedTable.SizePrefix + valueLength;

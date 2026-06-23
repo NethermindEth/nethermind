@@ -29,9 +29,10 @@ internal static class SortedTableReader
 
         long blockCount = (count + blockSize - 1) / blockSize;
         Span<byte> offsetBuf = stackalloc byte[SortedTable.OffsetSize];
-        Span<byte> sizeBuf = stackalloc byte[SortedTable.SizePrefix];
+        Span<byte> hdr = stackalloc byte[2]; // [commonPrefix u8][suffixLen u8]
 
-        // Stage 1: rightmost block whose first key <= target.
+        // Stage 1: rightmost block whose first key <= target. Block-start records have cp == 0, so
+        // the stored suffix is the full key.
         long lo = 0;
         long hi = blockCount - 1;
         long found = -1;
@@ -40,29 +41,32 @@ internal static class SortedTableReader
             long mid = lo + ((hi - lo) >> 1);
             if (!reader.TryRead(offsetRegionStart + mid * SortedTable.OffsetSize, offsetBuf)) return false;
             long recordStart = table.Offset + BinaryPrimitives.ReadUInt32LittleEndian(offsetBuf);
-            if (!reader.TryRead(recordStart, sizeBuf)) return false;
-            int firstKeyLen = sizeBuf[0];
-            using TPin keyPin = reader.PinBuffer(new Bound(recordStart + SortedTable.SizePrefix, firstKeyLen));
+            if (!reader.TryRead(recordStart, hdr)) return false;
+            int firstKeyLen = hdr[1]; // hdr[0] (cp) == 0 at a block start
+            using TPin keyPin = reader.PinBuffer(new Bound(recordStart + 2, firstKeyLen));
             if (keyPin.Buffer.SequenceCompareTo(key) <= 0) { found = mid; lo = mid + 1; }
             else hi = mid - 1;
         }
         if (found < 0) return false;
 
-        // Stage 2: sequential scan of the found block's records (contiguous, ascending).
+        // Stage 2: sequential scan of the found block, reconstructing front-coded keys.
         if (!reader.TryRead(offsetRegionStart + found * SortedTable.OffsetSize, offsetBuf)) return false;
         long pos = table.Offset + BinaryPrimitives.ReadUInt32LittleEndian(offsetBuf);
         long scanCount = Math.Min(blockSize, count - found * blockSize);
+        Span<byte> runningKey = stackalloc byte[256];
         for (long j = 0; j < scanCount; j++)
         {
-            if (!reader.TryRead(pos, sizeBuf)) return false;
-            int keyLen = sizeBuf[0];
-            long keyOffset = pos + SortedTable.SizePrefix;
-            long valueSizeOffset = keyOffset + keyLen;
-            if (!reader.TryRead(valueSizeOffset, sizeBuf)) return false;
-            int valueLen = sizeBuf[0];
+            if (!reader.TryRead(pos, hdr)) return false;
+            int cp = hdr[0];
+            int suffixLen = hdr[1];
+            if (!reader.TryRead(pos + 2, runningKey.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
+            int keyLen = cp + suffixLen;
 
-            using TPin keyPin = reader.PinBuffer(new Bound(keyOffset, keyLen));
-            int cmp = key.SequenceCompareTo(keyPin.Buffer);
+            long valueSizeOffset = pos + 2 + suffixLen;
+            if (!reader.TryRead(valueSizeOffset, hdr[..1])) return false;
+            int valueLen = hdr[0];
+
+            int cmp = key.SequenceCompareTo(runningKey[..keyLen]);
             if (cmp == 0)
             {
                 value = new Bound(valueSizeOffset + SortedTable.SizePrefix, valueLen);

@@ -31,7 +31,9 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
     // sorted table — the old metadata blobs are unreadable by the new reader.
     // v3: sorted table moved to a sparse (per-8-record) offset index, 1-byte key/value sizes, and
     // per-id ref-id records — incompatible with the v2 dense-offset layout.
-    private const int CurrentVersion = 3;
+    // v4: sorted-table keys are front-coded (per-block prefix compression) — incompatible record
+    // layout vs v3.
+    private const int CurrentVersion = 4;
 
     private static readonly byte[] MetadataKey = new byte[4];
 

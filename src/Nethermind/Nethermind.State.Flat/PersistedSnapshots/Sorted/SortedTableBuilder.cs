@@ -13,8 +13,9 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <summary>
 /// Builds a single-level <see cref="SortedTable"/>. Records are buffered off-heap as they are
 /// <see cref="Add"/>ed (in arbitrary order), then at <see cref="Build"/> sorted by key and written
-/// to the destination <em>in sorted, contiguous order</em>, followed by a sparse offset region (one
-/// entry per <see cref="SortedTable.BlockSize"/> records) and the footer.
+/// to the destination <em>in sorted, contiguous order</em> with front-coded keys (block-start keys
+/// stored in full), followed by a sparse offset region (one entry per
+/// <see cref="SortedTable.BlockSize"/> records) and the footer.
 /// </summary>
 /// <remarks>
 /// Physically sorting the records is what lets the offset index be sparse: a lookup binary searches
@@ -68,16 +69,43 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         long blockCount = (entries.Length + SortedTable.BlockSize - 1) / SortedTable.BlockSize;
         using NativeMemoryList<uint> blockOffsets = new((int)Math.Max(1, blockCount));
 
+        // Front-code keys against the previous record's key, resetting (cp = 0, full key) at every
+        // block start so each block — entered via its sparse offset — decodes standalone.
+        Span<byte> prevKey = stackalloc byte[256];
+        int prevKeyLen = 0;
         for (int i = 0; i < entries.Length; i++)
         {
-            if (i % SortedTable.BlockSize == 0)
-                blockOffsets.Add(checked((uint)(_writer.Written - _tableStart)));
-
             int off = entries[i];
             int ks = records[off];
-            int vs = records[off + SortedTable.SizePrefix + ks];
-            int recLen = SortedTable.SizePrefix + ks + SortedTable.SizePrefix + vs;
-            IByteBufferWriter.Copy(ref _writer, records.Slice(off, recLen));
+            ReadOnlySpan<byte> key = records.Slice(off + SortedTable.SizePrefix, ks);
+            int vsOff = off + SortedTable.SizePrefix + ks;
+            int vs = records[vsOff];
+            ReadOnlySpan<byte> value = records.Slice(vsOff + SortedTable.SizePrefix, vs);
+
+            int cp;
+            if (i % SortedTable.BlockSize == 0)
+            {
+                blockOffsets.Add(checked((uint)(_writer.Written - _tableStart)));
+                cp = 0;
+            }
+            else
+            {
+                ReadOnlySpan<byte> prev = prevKey[..prevKeyLen];
+                cp = prev.CommonPrefixLength(key);
+            }
+
+            Span<byte> hdr = _writer.GetSpan(2);
+            hdr[0] = (byte)cp;
+            hdr[1] = (byte)(ks - cp);
+            _writer.Advance(2);
+            IByteBufferWriter.Copy(ref _writer, key[cp..]);
+            Span<byte> vsHdr = _writer.GetSpan(SortedTable.SizePrefix);
+            vsHdr[0] = (byte)vs;
+            _writer.Advance(SortedTable.SizePrefix);
+            IByteBufferWriter.Copy(ref _writer, value);
+
+            key.CopyTo(prevKey);
+            prevKeyLen = ks;
         }
 
         Span<uint> blocks = blockOffsets.AsSpan();

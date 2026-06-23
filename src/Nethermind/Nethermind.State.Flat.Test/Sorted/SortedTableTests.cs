@@ -127,6 +127,50 @@ public class SortedTableTests
     }
 
     [Test]
+    public void Round_trips_long_shared_prefix_keys_across_blocks()
+    {
+        // 32-byte keys sharing a 31-byte prefix, differing only in the last byte, spanning >2 blocks.
+        // Exercises front-coding with cp == 31 within a block and the cp == 0 reset at block starts.
+        const int count = 20;
+        (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] key = new byte[32];
+            key.AsSpan(0, 31).Fill(0xAB);
+            key[31] = (byte)i;
+            entries[i] = (key, [(byte)i, (byte)(i + 1)]);
+        }
+        byte[] bytes = BuildTable(entries, [.. Enumerable.Range(0, count).Reverse()]);
+
+        SpanByteReader reader = new(bytes);
+        Bound table = new(0, reader.Length);
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(SortedTableReader.TrySeek<SpanByteReader, NoOpPin>(in reader, table, entries[i].Key, out Bound v), Is.True);
+            byte[] got = new byte[v.Length];
+            reader.TryRead(v.Offset, got);
+            Assert.That(got, Is.EqualTo(entries[i].Value));
+        }
+
+        // Enumeration reconstructs the full 32-byte keys in ascending order.
+        SortedTableEnumerator<SpanByteReader, NoOpPin> e = new(in reader, table);
+        int n = 0;
+        while (e.MoveNext(in reader))
+        {
+            ReadOnlySpan<byte> k = e.CurrentKey;
+            Assert.That(k.Length, Is.EqualTo(32));
+            Assert.That(k[31], Is.EqualTo((byte)n));
+            n++;
+        }
+        Assert.That(n, Is.EqualTo(count));
+
+        byte[] missing = new byte[32];
+        missing.AsSpan(0, 31).Fill(0xAB);
+        missing[31] = count;
+        Assert.That(SortedTableReader.TrySeek<SpanByteReader, NoOpPin>(in reader, table, missing, out _), Is.False);
+    }
+
+    [Test]
     public void Large_table_round_trips_after_buffer_growth()
     {
         // Enough entries to force the builder's key/entry buffers to grow several times.
