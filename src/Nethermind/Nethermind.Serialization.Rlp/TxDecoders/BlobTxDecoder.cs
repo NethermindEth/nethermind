@@ -54,7 +54,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             }
             else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                CalculateHash(transaction, transactionSequence);
+                CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
             }
         }
     }

@@ -13,6 +13,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages;
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class RlpByteArrayListTests
 {
+    private const int SmallPrefixBarrier = 56;
+
     private static byte[][] SingleByteItems => [
         [0x01], [0x42], [0x7f]
     ];
@@ -159,14 +161,14 @@ public class RlpByteArrayListTests
 
     private static byte[] EncodeSingleByteItemList(int count)
     {
-        int contentLength = count * Rlp.LengthOf(new byte[] { 0x42 });
-        int totalLength = Rlp.LengthOfSequence(contentLength);
+        int contentLength = count;
+        int totalLength = LengthOfSequence(contentLength);
         byte[] encoded = new byte[totalLength];
-        RlpWriter writer = new(encoded);
-        writer.StartSequence(contentLength);
+        int position = 0;
+        WriteSequencePrefix(encoded, ref position, contentLength);
         for (int i = 0; i < count; i++)
         {
-            writer.Encode(new byte[] { 0x42 });
+            encoded[position++] = 0x42;
         }
         return encoded;
     }
@@ -183,20 +185,106 @@ public class RlpByteArrayListTests
         int contentLength = 0;
         for (int i = 0; i < items.Length; i++)
         {
-            contentLength += Rlp.LengthOf(items[i]);
+            contentLength += LengthOfByteArray(items[i]);
         }
 
-        int totalLength = Rlp.LengthOfSequence(contentLength);
+        int totalLength = LengthOfSequence(contentLength);
         byte[] encoded = new byte[totalLength];
-        RlpWriter writer = new(encoded);
+        int position = 0;
 
-        writer.StartSequence(contentLength);
+        WriteSequencePrefix(encoded, ref position, contentLength);
         for (int i = 0; i < items.Length; i++)
         {
-            writer.Encode(items[i]);
+            WriteByteArray(encoded, ref position, items[i]);
         }
 
         return encoded;
+    }
+
+    private static int LengthOfByteArray(byte[] item)
+    {
+        if (item.Length == 0 || item.Length == 1 && item[0] < 0x80)
+        {
+            return 1;
+        }
+
+        return item.Length < SmallPrefixBarrier
+            ? 1 + item.Length
+            : 1 + LengthOfLength(item.Length) + item.Length;
+    }
+
+    private static int LengthOfSequence(int contentLength) =>
+        contentLength < SmallPrefixBarrier
+            ? 1 + contentLength
+            : 1 + LengthOfLength(contentLength) + contentLength;
+
+    private static void WriteSequencePrefix(Span<byte> encoded, ref int position, int contentLength)
+    {
+        if (contentLength < SmallPrefixBarrier)
+        {
+            encoded[position++] = (byte)(0xc0 + contentLength);
+        }
+        else
+        {
+            encoded[position++] = (byte)(0xf7 + LengthOfLength(contentLength));
+            WriteLength(encoded, ref position, contentLength);
+        }
+    }
+
+    private static void WriteByteArray(Span<byte> encoded, ref int position, byte[] item)
+    {
+        if (item.Length == 0)
+        {
+            encoded[position++] = 0x80;
+            return;
+        }
+
+        if (item.Length == 1 && item[0] < 0x80)
+        {
+            encoded[position++] = item[0];
+            return;
+        }
+
+        if (item.Length < SmallPrefixBarrier)
+        {
+            encoded[position++] = (byte)(0x80 + item.Length);
+        }
+        else
+        {
+            encoded[position++] = (byte)(0xb7 + LengthOfLength(item.Length));
+            WriteLength(encoded, ref position, item.Length);
+        }
+
+        item.AsSpan().CopyTo(encoded[position..]);
+        position += item.Length;
+    }
+
+    private static int LengthOfLength(int value)
+    {
+        if (value < 1 << 8)
+        {
+            return 1;
+        }
+
+        if (value < 1 << 16)
+        {
+            return 2;
+        }
+
+        if (value < 1 << 24)
+        {
+            return 3;
+        }
+
+        return 4;
+    }
+
+    private static void WriteLength(Span<byte> encoded, ref int position, int length)
+    {
+        for (int shift = (LengthOfLength(length) - 1) * 8; shift >= 0; shift -= 8)
+        {
+            encoded[position++] = (byte)(length >> shift);
+        }
     }
 
     private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>

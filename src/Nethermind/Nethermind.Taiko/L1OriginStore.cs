@@ -22,7 +22,7 @@ namespace Nethermind.Taiko;
 /// and clobber each other when invoked concurrently from the auth-RPC thread pool.
 /// Reads are not synchronised; callers tolerate eventual visibility of the latest write.
 /// </remarks>
-public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, L1OriginDecoder decoder) : IL1OriginStore
+public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, RlpDecoder<L1Origin> decoder) : IL1OriginStore
 {
     public const string L1OriginDbName = "L1Origin";
     private const int UInt256BytesLength = 32;

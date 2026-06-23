@@ -41,16 +41,26 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            CalculateHash(transaction, transactionSequence);
+            CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
         }
     }
 
-    protected static void CalculateHash(Transaction transaction, ReadOnlySpan<byte> transactionSequence)
+    protected static void CalculateHash(Transaction transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext)
     {
         if (transactionSequence.Length <= MaxDelayedHashTxnSize)
         {
             // Delay hash generation, as may be filtered as having too low gas etc
-            transaction.SetPreHashNoLock(transactionSequence);
+            if (decoderContext.IsMemoryBacked)
+            {
+                int currentPosition = decoderContext.Position;
+                decoderContext.Position = txSequenceStart;
+                transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
+                decoderContext.Position = currentPosition;
+            }
+            else
+            {
+                transaction.SetPreHashNoLock(transactionSequence);
+            }
         }
         else
         {
@@ -83,7 +93,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         transaction.GasLimit = decoderContext.DecodePositiveLong();
         transaction.To = decoderContext.DecodeAddress();
         transaction.Value = decoderContext.DecodeUInt256();
-        transaction.Data = decoderContext.DecodeByteArray(_dataRlpLimit);
+        transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();

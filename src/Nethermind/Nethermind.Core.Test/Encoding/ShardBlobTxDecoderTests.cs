@@ -183,9 +183,9 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(ShardBlobTxTests))]
     public void NetworkWrapper_is_decoded_correctly(string rlp, Hash256 signedHash, RlpBehaviors rlpBehaviors)
     {
-        byte[] spanIncomingTxRlp = Bytes.FromHexString(rlp);
-        RlpReader ctx = new(spanIncomingTxRlp.AsSpan());
-        RlpReader decoderContext = new(spanIncomingTxRlp.AsSpan());
+        byte[] incomingTxRlp = Bytes.FromHexString(rlp);
+        RlpReader ctx = new(incomingTxRlp);
+        RlpReader decoderContext = new(incomingTxRlp);
 
         Transaction? decoded = _txDecoder.Decode(ref ctx, rlpBehaviors);
         Transaction? decodedByRlpReader = _txDecoder.Decode(ref decoderContext, rlpBehaviors);
@@ -214,8 +214,8 @@ public partial class ShardBlobTxDecoderTests
             _txDecoder.Encode(decodedByRlpReader!, rlpBehaviors);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(encoded.Bytes, Is.EqualTo(spanIncomingTxRlp));
-            Assert.That(encodedWithDecodedByRlpReader.Bytes, Is.EqualTo(spanIncomingTxRlp));
+            Assert.That(encoded.Bytes, Is.EqualTo(incomingTxRlp));
+            Assert.That(encodedWithDecodedByRlpReader.Bytes, Is.EqualTo(incomingTxRlp));
         }
     }
 

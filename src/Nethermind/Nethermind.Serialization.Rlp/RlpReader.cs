@@ -19,12 +19,29 @@ namespace Nethermind.Serialization.Rlp;
 
 public ref struct RlpReader
 {
+    private readonly Memory<byte> _memory;
+    private readonly bool _isMemoryBacked;
     private bool _isNotNull;
 
     public RlpReader(scoped in ReadOnlySpan<byte> data)
     {
         Data = data;
         Position = 0;
+        _memory = default;
+        _isMemoryBacked = false;
+        _isNotNull = true;
+    }
+
+    public RlpReader(byte[]? data) : this((data ?? []).AsSpan())
+    {
+    }
+
+    public RlpReader(Memory<byte> data)
+    {
+        Data = data.Span;
+        Position = 0;
+        _memory = data;
+        _isMemoryBacked = true;
         _isNotNull = true;
     }
 
@@ -32,10 +49,14 @@ public ref struct RlpReader
     {
         Data = data.AsSpan();
         Position = 0;
+        _memory = default;
+        _isMemoryBacked = false;
         _isNotNull = data.IsNotNull;
     }
 
     public ReadOnlySpan<byte> Data { get; }
+
+    public readonly bool IsMemoryBacked => _isMemoryBacked;
 
     public readonly bool IsNull => !_isNotNull;
 
@@ -114,6 +135,18 @@ public ref struct RlpReader
     public ReadOnlySpan<byte> Read(int length)
     {
         ReadOnlySpan<byte> data = Data.Slice(Position, length);
+        Position += length;
+        return data;
+    }
+
+    public Memory<byte> ReadMemory(int length)
+    {
+        if (!_isMemoryBacked)
+        {
+            return Read(length).ToArray();
+        }
+
+        Memory<byte> data = _memory.Slice(Position, length);
         Position += length;
         return data;
     }
@@ -557,6 +590,72 @@ public ref struct RlpReader
         }
 
         return span.ToArray();
+    }
+
+    public Memory<byte> DecodeByteArrayMemory(RlpLimit? limit = null, int size = -1)
+    {
+        if (!_isMemoryBacked)
+        {
+            return DecodeByteArray(limit, size);
+        }
+
+        int position = Position;
+        int prefix = ReadByte();
+        if (prefix < Rlp.EmptyByteArrayByte)
+        {
+            GuardSize(actual: 1, expected: size);
+            return _memory.Slice(position, 1);
+        }
+
+        if (prefix is Rlp.EmptyByteArrayByte)
+        {
+            GuardSize(actual: 0, expected: size);
+            return Memory<byte>.Empty;
+        }
+
+        if (prefix <= 183)
+        {
+            int length = prefix - 128;
+            GuardLimit(length, limit);
+            GuardSize(actual: length, expected: size);
+
+            Memory<byte> buffer = ReadMemory(length);
+
+            if (length == 1 && buffer.Span[0] < 128)
+            {
+                RlpHelpers.ThrowNonCanonicalInteger(position);
+            }
+
+            return buffer;
+        }
+
+        return DecodeLargerByteArrayMemory(prefix, limit, size);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Memory<byte> DecodeLargerByteArrayMemory(int prefix, RlpLimit? limit = null, int size = -1)
+    {
+        if (prefix < 192)
+        {
+            int lengthOfLength = prefix - 183;
+            if (lengthOfLength > 4)
+            {
+                RlpHelpers.ThrowSequenceLengthTooLong();
+            }
+
+            int length = DeserializeLength(lengthOfLength);
+            if (length < RlpHelpers.SmallPrefixBarrier)
+            {
+                RlpHelpers.ThrowUnexpectedLength(length);
+            }
+
+            GuardSize(actual: length, expected: size);
+            GuardLimit(length, limit);
+            return ReadMemory(length);
+        }
+
+        RlpHelpers.ThrowUnexpectedPrefix(prefix);
+        return default;
     }
 
     public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null, int size = -1)

@@ -148,6 +148,14 @@ namespace Nethermind.Core
             transactionSequence.CopyTo(_preHash.Span);
         }
 
+        public void SetPreHashMemoryNoLock(Memory<byte> transactionSequence, IMemoryOwner<byte>? preHashMemoryOwner = null)
+        {
+            // Used to delay hash generation, as may be filtered as having too low gas etc
+            _hash = null;
+            _preHash = transactionSequence;
+            _preHashMemoryOwner = preHashMemoryOwner;
+        }
+
         public void ClearPreHash()
         {
             if (_preHash.Length > 0)

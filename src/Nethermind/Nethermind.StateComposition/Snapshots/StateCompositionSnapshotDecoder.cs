@@ -12,10 +12,21 @@ using Nethermind.StateComposition.Diff;
 
 namespace Nethermind.StateComposition.Snapshots;
 
+/// <summary>
+/// RLP encoder and decoder for persisted state composition snapshots.
+/// </summary>
+/// <remarks>
+/// Field order: schema version, cumulative trie stats, block number, state root, diffs since baseline,
+/// scan block number, optional depth stats, code byte total, slot-count histogram, slot-count map,
+/// code-refcount map, and code-size map. Incompatible layout changes must bump <see cref="SchemaVersion"/>.
+/// </remarks>
 public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositionSnapshot>
 {
     public static StateCompositionSnapshotDecoder Instance { get; } = new();
 
+    /// <summary>
+    /// Persisted snapshot wire-format version. Mismatches fail decoding so callers rebuild the baseline.
+    /// </summary>
     private const byte SchemaVersion = 1;
 
     public override void Encode<TWriter>(ref TWriter writer, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -102,7 +113,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
         writer.Encode(map.Count);
         foreach (KeyValuePair<ValueHash256, long> kvp in map)
         {
-            writer.Encode(new Hash256(kvp.Key));
+            writer.Encode(kvp.Key);
             writer.Encode(kvp.Value);
         }
     }
@@ -115,7 +126,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
         writer.Encode(map.Count);
         foreach (KeyValuePair<ValueHash256, int> kvp in map)
         {
-            writer.Encode(new Hash256(kvp.Key));
+            writer.Encode(kvp.Key);
             writer.Encode(kvp.Value);
         }
     }

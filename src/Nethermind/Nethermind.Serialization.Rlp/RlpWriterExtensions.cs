@@ -149,6 +149,12 @@ public static class RlpWriterExtensions
             }
         }
 
+        public void Encode(in ValueHash256 keccak)
+        {
+            writer.WriteByte(160);
+            writer.Write(keccak.Bytes);
+        }
+
         public void Encode(Hash256[] keccaks)
         {
             if (keccaks is null)
