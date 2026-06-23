@@ -472,6 +472,64 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Can_trace_refund_on_storage_clear()
+    {
+        // Seed a non-zero slot so clearing it to zero grants a storage-clearing refund.
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .PersistData("0x0", HexZero)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        GethTxTraceEntry sstore = trace.Entries.Single(e => e.Opcode == "SSTORE");
+        GethTxTraceEntry stop = trace.Entries.Single(e => e.Opcode == "STOP");
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The counter is captured before the opcode runs, so SSTORE itself shows no refund yet.
+            Assert.That(sstore.Refund, Is.Null, "refund before SSTORE executes");
+            Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund after the clearing SSTORE");
+        }
+    }
+
+    [Test]
+    public void Refund_is_rolled_back_when_frame_reverts()
+    {
+        byte[] calleeCode = Prepare.EvmCode
+            .PersistData("0x0", HexZero)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.REVERT)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.Set(new StorageCell(TestItem.AddressC, 0), new byte[] { 1 });
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        GethTxTraceEntry revert = trace.Entries.Single(e => e.Opcode == "REVERT");
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revert.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund visible inside the reverting frame");
+            Assert.That(topLevelStop.Refund, Is.Null, "refund rolled back after the frame reverts");
+        }
+    }
+
+    [Test]
     public void Storage_snapshot_accumulates_per_address_across_repeated_calls_to_same_contract()
     {
         const string val1 = "11";
@@ -497,7 +555,6 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Entries.Count(e => e.Opcode == "SSTORE"), Is.EqualTo(4),
             "expected four SSTORE entries (two per invocation)");
 
-        // Storage content (cumulative per-address, not cleared on call return) verified via JSON parity.
         AssertStreamingMatchesInMemory(code);
     }
 
@@ -507,9 +564,9 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         const string val = "42";
 
         byte[] code = Prepare.EvmCode
-            .PersistData("0x1", val) // SSTORE slot 0x1 = 0x42
+            .PersistData("0x1", val)
             .PushData("0x1")
-            .Op(Instruction.SLOAD)   // SLOAD slot 0x1
+            .Op(Instruction.SLOAD)
             .Op(Instruction.STOP)
             .Done;
 
@@ -517,14 +574,9 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         Assert.That(trace.Entries.Any(e => e.Opcode == "SLOAD"), Is.True, "expected an SLOAD entry");
 
-        // Storage content on SLOAD verified via JSON parity with the streaming tracer.
         AssertStreamingMatchesInMemory(code);
     }
 
-    /// <summary>
-    /// Asserts the in-memory and streaming Geth tracers produce identical <c>structLogs</c> for the same code,
-    /// comparing each entry's full JSON (not just storage). Property order is ignored.
-    /// </summary>
     private void AssertStreamingMatchesInMemory(byte[] code)
     {
         GethLikeTxTrace trace = ExecuteAndTrace(code);
@@ -541,10 +593,6 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         }
     }
 
-    /// <summary>
-    /// Drives <see cref="GethLikeTxDirectStreamingTracer"/> over the supplied code and returns the streamed
-    /// per-opcode JSON entries, so the streaming path can be pinned to the in-memory tracer's behaviour.
-    /// </summary>
     private JsonElement[] ExecuteStreamingTracerEntries(byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
@@ -570,8 +618,8 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         {
             Assert.That(entry.ProgramCounter, Is.EqualTo(expectedPc));
             Assert.That(entry.Opcode, Is.EqualTo(expectedOpcode));
-            Assert.That(entry.Stack[^1], Is.EqualTo(expectedStackTop));
-            Assert.That(entry.Stack.Count, Is.EqualTo(expectedStackCount));
+            Assert.That(entry.Stack![^1], Is.EqualTo(expectedStackTop));
+            Assert.That(entry.Stack!.Length, Is.EqualTo(expectedStackCount));
         }
     }
 

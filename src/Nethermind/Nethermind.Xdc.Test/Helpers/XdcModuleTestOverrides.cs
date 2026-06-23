@@ -52,6 +52,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
 
             // Environments
+            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
                 blockProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,

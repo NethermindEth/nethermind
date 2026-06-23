@@ -32,6 +32,11 @@ public class GethTxTraceEntry
 
     public string? Error { get; set; }
 
+    [JsonPropertyName("refund")]
+    [JsonConverter(typeof(LongRawJsonConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? Refund { get; set; }
+
     [JsonConverter(typeof(StackHexConverter))]
     public UInt256[]? Stack { get; set; }
 
