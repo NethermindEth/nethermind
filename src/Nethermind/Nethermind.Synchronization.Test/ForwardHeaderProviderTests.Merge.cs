@@ -23,13 +23,13 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class ForwardHeaderProviderTests
 {
-    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3, 32)]
-    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 29UL, 3, 29)]
-    [TestCase(16UL, SyncBatchSizeMax * 8UL, 0, 32UL, 3, 32)]
-    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3, 32)]
-    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3, 32)]
-    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, SyncBatchSizeMax * 8UL - 16UL, 3, 130)]
-    public async Task Merge_Happy_path(ulong beaconPivot, ulong headNumber, int threshold, ulong insertedBeaconBlocks, long expectedFirstBlock, long expectedLastBlock)
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 29UL, 3UL, 29UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 0, 32UL, 3UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, SyncBatchSizeMax * 8UL - 16UL, 3UL, 130UL)]
+    public async Task Merge_Happy_path(ulong beaconPivot, ulong headNumber, int threshold, ulong insertedBeaconBlocks, ulong expectedFirstBlock, ulong expectedLastBlock)
     {
         ulong notSyncedTreeStartingBlockNumber = 3;
 
@@ -95,9 +95,9 @@ public partial class ForwardHeaderProviderTests
 
     }
 
-    [TestCase(32UL, 32UL, 0UL, 32)]
-    [TestCase(32UL, 32UL, 10UL, 22)]
-    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, ulong blocksToIgnore, long expectedBestKnownNumber)
+    [TestCase(32UL, 32UL, 0UL, 32UL)]
+    [TestCase(32UL, 32UL, 10UL, 22UL)]
+    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, ulong blocksToIgnore, ulong expectedBestKnownNumber)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()

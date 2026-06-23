@@ -165,9 +165,9 @@ public partial class BlockDownloaderTests
         Assert.That(notSyncedTree.BestKnownNumber, Is.EqualTo(expectedBestKnownNumber));
     }
 
-    [TestCase(32UL, 32UL, 0UL, 32)]
-    [TestCase(32UL, 32UL, 10UL, 22)]
-    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, ulong blocksToIgnore, long expectedBestKnownNumber)
+    [TestCase(32UL, 32UL, 0UL, 32UL)]
+    [TestCase(32UL, 32UL, 10UL, 22UL)]
+    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, ulong blocksToIgnore, ulong expectedBestKnownNumber)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
@@ -192,7 +192,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(Math.Max(0, expectedBestKnownNumber)));
+        Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(expectedBestKnownNumber));
     }
 
     [Test]
