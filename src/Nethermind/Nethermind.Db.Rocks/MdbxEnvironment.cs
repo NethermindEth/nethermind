@@ -41,6 +41,7 @@ internal sealed class MdbxEnvironment : IDisposable
 
         ThrowIfRocksDbStoreExists(Path);
         Directory.CreateDirectory(Path);
+        bool isNewEnvironment = IsNewMdbxEnvironment(Path);
         _valueCompression = MdbxValueCompression.Create(rocksDbConfig, logger, Path);
 
         MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger, Path);
@@ -48,32 +49,13 @@ internal sealed class MdbxEnvironment : IDisposable
         _appendEnabled = tuning.EnableAppend;
         _maxBatchGroupOperations = tuning.MaxBatchGroupOperations;
         _maxBatchGroupBytes = tuning.MaxBatchGroupBytes;
-        if (tuning.HasOverrides && logger.IsInfo)
-        {
-            logger.Info($"MDBX tuning for {Path}: {tuning.Describe()}");
-        }
 
         MdbxNative.ThrowOnError(MdbxNative.EnvCreate(out MdbxNative.SafeMdbxEnvHandle env), "mdbx_env_create");
         Env = env;
         MdbxNative.SetMaxDbs(Env, tuning.MaxDbs);
         MdbxNative.SetMaxReaders(Env, tuning.MaxReaders);
         MdbxNative.SetRpAugmentLimit(Env, tuning.RpAugmentLimit);
-        if (tuning.DirtyPagesReserveLimit != 0)
-        {
-            MdbxNative.SetDirtyPagesReserveLimit(Env, tuning.DirtyPagesReserveLimit);
-        }
-
-        if (tuning.TransactionDirtyPagesLimit != 0)
-        {
-            MdbxNative.SetTransactionDirtyPagesLimit(Env, tuning.TransactionDirtyPagesLimit);
-        }
-
-        if (tuning.TransactionDirtyPagesInitial != 0)
-        {
-            MdbxNative.SetTransactionDirtyPagesInitial(Env, tuning.TransactionDirtyPagesInitial);
-        }
-
-        int pageSize = IsNewMdbxEnvironment(Path) ? tuning.PageSize : -1;
+        int pageSize = isNewEnvironment ? tuning.PageSize : -1;
         MdbxNative.ThrowOnError(
             MdbxNative.EnvSetGeometry(Env, 0, (nint)tuning.InitialMapSize, unchecked((nint)tuning.MaxMapSize), (nint)tuning.GrowthStep, unchecked((nint)tuning.ShrinkThreshold), pageSize),
             "mdbx_env_set_geometry");
@@ -107,6 +89,27 @@ internal sealed class MdbxEnvironment : IDisposable
             {
                 MdbxNative.ThrowOnError(MdbxNative.EnvOpen(Env, pathPointer, flags, Convert.ToUInt32("640", 8)), "mdbx_env_open");
             }
+        }
+
+        tuning = tuning.WithActualPageSize(ReadEnvironmentPageSize(), MdbxPathHelpers.IsStateDbPath(Path));
+        if (tuning.DirtyPagesReserveLimit != 0)
+        {
+            MdbxNative.SetDirtyPagesReserveLimit(Env, tuning.DirtyPagesReserveLimit);
+        }
+
+        if (tuning.TransactionDirtyPagesLimit != 0)
+        {
+            MdbxNative.SetTransactionDirtyPagesLimit(Env, tuning.TransactionDirtyPagesLimit);
+        }
+
+        if (tuning.TransactionDirtyPagesInitial != 0)
+        {
+            MdbxNative.SetTransactionDirtyPagesInitial(Env, tuning.TransactionDirtyPagesInitial);
+        }
+
+        if (tuning.HasOverrides && logger.IsInfo)
+        {
+            logger.Info($"MDBX tuning for {Path}: {tuning.Describe()}");
         }
 
         _profiler = MdbxProfiler.Create(Path, tuning, logger, TryReadStorageStats);
@@ -758,6 +761,15 @@ internal sealed class MdbxEnvironment : IDisposable
     {
         MdbxNative.ThrowOnError(MdbxNative.TxnBegin(Env, IntPtr.Zero, 0, out MdbxNative.SafeMdbxTxnHandle txn), "mdbx_txn_begin(write)");
         return txn;
+    }
+
+    private int ReadEnvironmentPageSize()
+    {
+        MdbxNative.ThrowOnError(
+            MdbxNative.EnvStat(Env, out MdbxNative.MdbxStat stat, (nuint)Marshal.SizeOf<MdbxNative.MdbxStat>()),
+            "mdbx_env_stat");
+
+        return checked((int)stat.PageSize);
     }
 
     private static void ThrowIfRocksDbStoreExists(string path)

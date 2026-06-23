@@ -31,13 +31,16 @@ internal readonly record struct MdbxTuningOptions(
     int HotPathSampleRate,
     TimeSpan ProfileInterval,
     TimeSpan SlowTransactionThreshold,
+    bool HasDirtyPagesReserveLimitOverride,
+    bool HasTransactionDirtyPagesLimitOverride,
+    bool HasTransactionDirtyPagesInitialOverride,
     bool HasOverrides)
 {
     public const long DefaultInitialMapSize = 64L << 20;
     public const long DefaultMaxMapSize = 1L << 40;
     public const long DefaultGrowthStep = 1L << 30;
     public const long DefaultShrinkThreshold = 1L << 30;
-    public const int DefaultPageSize = 16 * 1024;
+    public const int DefaultPageSize = 4 * 1024;
     public const ulong DefaultMaxDbs = 512;
     public const ulong DefaultMaxReaders = 8192;
     public const ulong DefaultRpAugmentLimit = 256 * 1024;
@@ -111,9 +114,9 @@ internal readonly record struct MdbxTuningOptions(
         int defaultMaxBatchGroupOperations = isStateDb ? DefaultStateMaxBatchGroupOperations : DefaultMaxBatchGroupOperations;
 
         ulong rpAugmentLimit = ReadUInt64("NETHERMIND_MDBX_RP_AUGMENT_LIMIT", defaultRpAugmentLimit, logger, ref hasOverrides);
-        ulong dirtyPagesReserveLimit = ReadUInt64("NETHERMIND_MDBX_DIRTY_PAGES_RESERVE_LIMIT", defaultDirtyPagesReserveLimit, logger, ref hasOverrides);
-        ulong transactionDirtyPagesLimit = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_LIMIT", defaultTransactionDirtyPagesLimit, logger, ref hasOverrides);
-        ulong transactionDirtyPagesInitial = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_INITIAL", defaultTransactionDirtyPagesInitial, logger, ref hasOverrides);
+        ulong dirtyPagesReserveLimit = ReadUInt64("NETHERMIND_MDBX_DIRTY_PAGES_RESERVE_LIMIT", defaultDirtyPagesReserveLimit, logger, ref hasOverrides, out bool hasDirtyPagesReserveLimitOverride);
+        ulong transactionDirtyPagesLimit = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_LIMIT", defaultTransactionDirtyPagesLimit, logger, ref hasOverrides, out bool hasTransactionDirtyPagesLimitOverride);
+        ulong transactionDirtyPagesInitial = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_INITIAL", defaultTransactionDirtyPagesInitial, logger, ref hasOverrides, out bool hasTransactionDirtyPagesInitialOverride);
         int maxBatchGroupOperations = ReadInt32("NETHERMIND_MDBX_BATCH_GROUP_MAX_OPS", defaultMaxBatchGroupOperations, logger, ref hasOverrides);
         long maxBatchGroupBytes = ReadSize("NETHERMIND_MDBX_BATCH_GROUP_MAX_BYTES", DefaultMaxBatchGroupBytes, logger, ref hasOverrides);
 
@@ -173,7 +176,32 @@ internal readonly record struct MdbxTuningOptions(
             hotPathSampleRate,
             TimeSpan.FromSeconds(profileIntervalSeconds),
             TimeSpan.FromMilliseconds(slowTransactionMilliseconds),
+            hasDirtyPagesReserveLimitOverride,
+            hasTransactionDirtyPagesLimitOverride,
+            hasTransactionDirtyPagesInitialOverride,
             hasOverrides);
+    }
+
+    public MdbxTuningOptions WithActualPageSize(int actualPageSize, bool isStateDb)
+    {
+        if (!isStateDb)
+        {
+            return this with { PageSize = actualPageSize };
+        }
+
+        return this with
+        {
+            PageSize = actualPageSize,
+            DirtyPagesReserveLimit = HasDirtyPagesReserveLimitOverride
+                ? DirtyPagesReserveLimit
+                : BytesToPages(DefaultStateDirtyPagesReserveBytes, actualPageSize),
+            TransactionDirtyPagesLimit = HasTransactionDirtyPagesLimitOverride
+                ? TransactionDirtyPagesLimit
+                : BytesToPages(DefaultStateTransactionDirtyPagesLimitBytes, actualPageSize),
+            TransactionDirtyPagesInitial = HasTransactionDirtyPagesInitialOverride
+                ? TransactionDirtyPagesInitial
+                : BytesToPages(DefaultStateTransactionDirtyPagesInitialBytes, actualPageSize),
+        };
     }
 
     public string Describe() =>
@@ -296,20 +324,26 @@ internal readonly record struct MdbxTuningOptions(
         return fallback;
     }
 
-    private static ulong ReadUInt64(string name, ulong fallback, ILogger logger, ref bool hasOverrides)
+    private static ulong ReadUInt64(string name, ulong fallback, ILogger logger, ref bool hasOverrides) =>
+        ReadUInt64(name, fallback, logger, ref hasOverrides, out _);
+
+    private static ulong ReadUInt64(string name, ulong fallback, ILogger logger, ref bool hasOverrides, out bool hasOverride)
     {
         string? value = Environment.GetEnvironmentVariable(name);
         if (string.IsNullOrWhiteSpace(value))
         {
+            hasOverride = false;
             return fallback;
         }
 
         hasOverrides = true;
         if (ulong.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsed))
         {
+            hasOverride = true;
             return parsed;
         }
 
+        hasOverride = false;
         Warn(logger, $"{name}='{value}' is not a valid unsigned integer. Using {fallback}.");
         return fallback;
     }
@@ -358,7 +392,7 @@ internal readonly record struct MdbxTuningOptions(
         }
     }
 
-    private static ulong BytesToPages(long bytes, int pageSize) =>
+    internal static ulong BytesToPages(long bytes, int pageSize) =>
         (ulong)Math.Max(1, bytes / pageSize);
 
     private static string FormatBytes(long bytes) =>

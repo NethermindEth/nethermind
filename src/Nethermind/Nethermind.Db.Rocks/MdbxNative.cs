@@ -127,6 +127,9 @@ internal static class MdbxNative
     [DllImport(LibraryName, EntryPoint = "mdbx_env_sync_ex")]
     internal static extern int EnvSyncEx(SafeMdbxEnvHandle env, [MarshalAs(UnmanagedType.I1)] bool force, [MarshalAs(UnmanagedType.I1)] bool nonblock);
 
+    [DllImport(LibraryName, EntryPoint = "mdbx_env_stat")]
+    internal static extern int EnvStat(SafeMdbxEnvHandle env, out MdbxStat stat, nuint bytes);
+
     [DllImport(LibraryName, EntryPoint = "mdbx_env_close_ex")]
     private static extern int EnvCloseEx(IntPtr env, [MarshalAs(UnmanagedType.I1)] bool dontSync);
 

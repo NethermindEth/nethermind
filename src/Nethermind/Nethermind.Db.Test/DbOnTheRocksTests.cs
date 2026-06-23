@@ -482,11 +482,65 @@ namespace Nethermind.Db.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(options.RpAugmentLimit, Is.EqualTo(MdbxTuningOptions.DefaultStateRpAugmentLimit));
-                Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(65_536));
-                Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(65_536));
-                Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(8_192));
+                Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(262_144));
+                Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(262_144));
+                Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(32_768));
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultStateMaxBatchGroupOperations));
             }
+        }
+
+        [Test]
+        public void Mdbx_tuning_recomputes_state_dirty_page_defaults_for_actual_page_size()
+        {
+            MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(
+                LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
+                Path.Combine("nethermind_db", "mainnet", "state", "0"));
+
+            MdbxTuningOptions adjusted = options.WithActualPageSize(16 * 1024, isStateDb: true);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(adjusted.PageSize, Is.EqualTo(16 * 1024));
+                Assert.That(adjusted.DirtyPagesReserveLimit, Is.EqualTo(65_536));
+                Assert.That(adjusted.TransactionDirtyPagesLimit, Is.EqualTo(65_536));
+                Assert.That(adjusted.TransactionDirtyPagesInitial, Is.EqualTo(8_192));
+            }
+        }
+
+        [Test]
+        public void Mdbx_tuning_keeps_dirty_page_overrides_when_actual_page_size_differs() =>
+            WithEnvironmentVariable("NETHERMIND_MDBX_DIRTY_PAGES_RESERVE_LIMIT", "2048", () =>
+            {
+                WithEnvironmentVariable("NETHERMIND_MDBX_TXN_DIRTY_PAGES_LIMIT", "4096", () =>
+                {
+                    WithEnvironmentVariable("NETHERMIND_MDBX_TXN_DIRTY_PAGES_INITIAL", "1024", () =>
+                    {
+                        MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(
+                            LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
+                            Path.Combine("nethermind_db", "mainnet", "state", "0"));
+
+                        MdbxTuningOptions adjusted = options.WithActualPageSize(16 * 1024, isStateDb: true);
+
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(adjusted.DirtyPagesReserveLimit, Is.EqualTo(2048));
+                            Assert.That(adjusted.TransactionDirtyPagesLimit, Is.EqualTo(4096));
+                            Assert.That(adjusted.TransactionDirtyPagesInitial, Is.EqualTo(1024));
+                        }
+                    });
+                });
+            });
+
+        [Test]
+        public void Mdbx_state_database_opens_after_applying_dirty_page_defaults()
+        {
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(Path.Combine("mainnet", "state", "0"), "State"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] key = [1];
+            byte[] value = [2];
+            db.Set(key, value);
+
+            Assert.That(db.Get(key), Is.EqualTo(value));
         }
 
         [Test]
