@@ -92,6 +92,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     protected VmState<TGasPolicy> _currentState;
     protected ReadOnlyMemory<byte>? _previousCallResult;
+    protected Address? _previousCallAddressResult;
     protected UInt256 _previousCallOutputDestination;
 
     public ILogger Logger => _logger;
@@ -158,6 +159,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
         _previousCallResult = null;
+        _previousCallAddressResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
 
@@ -204,6 +206,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     {
                         callResult = ExecuteCall<TTracingInst>(
                             _previousCallResult,
+                            _previousCallAddressResult,
                             previousCallOutput,
                             _previousCallOutputDestination);
                     }
@@ -335,7 +338,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref ZeroPaddedSpan previousCallOutput)
     {
-        _previousCallResult = previousState.Env.ExecutingAccount.Bytes.ToArray();
+        _previousCallResult = null;
+        _previousCallAddressResult = previousState.Env.ExecutingAccount;
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
@@ -346,6 +350,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         ZeroPaddedSpan previousCallOutput;
         ReturnDataBuffer = callResult.Output;
+        _previousCallAddressResult = null;
         _previousCallResult = callResult.PrecompileSuccess.HasValue
             ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
             : StatusCode.SuccessBytes;
@@ -470,6 +475,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             }
 
             _previousCallResult = BytesZero;
+            _previousCallAddressResult = null;
             previousStateSucceeded = false;
 
             if (_txTracer.IsTracingActions)
@@ -512,6 +518,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnDataBuffer = outputBytes;
 
         _previousCallResult = StatusCode.FailureBytes;
+        _previousCallAddressResult = null;
 
         // Slice the output bytes, zero-padding if necessary, to match the expected output length.
         // This ensures that the returned data conforms to the caller's output length expectations.
@@ -590,6 +597,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         _previousCallResult = StatusCode.FailureBytes;
+        _previousCallAddressResult = null;
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
 
         // Reset output destination and return data.
@@ -722,6 +730,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;
+        _previousCallAddressResult = null;
 
         // Reset the return data buffer to ensure no residual data persists across call frames.
         ReturnDataBuffer = Array.Empty<byte>();
@@ -772,6 +781,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         _previousCallResult = StatusCode.FailureBytes;
+        _previousCallAddressResult = null;
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
 
         // Reset output destination and clear return data.
@@ -1091,6 +1101,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// An optional read-only memory buffer containing the output of a previous call; if provided, its bytes
     /// will be pushed onto the stack for further processing.
     /// </param>
+    /// <param name="previousCallAddressResult">
+    /// An optional contract creation result address to push onto the stack.
+    /// </param>
     /// <param name="previousCallOutput">
     /// A zero-padded span containing output from the previous call used for updating the memory state.
     /// </param>
@@ -1108,6 +1121,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [SkipLocalsInit]
     protected CallResult ExecuteCall<TTracingInst>(
         ReadOnlyMemory<byte>? previousCallResult,
+        Address? previousCallAddressResult,
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
@@ -1157,8 +1171,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // gas/state-gas accounting without needing interpreter-wide exception handling.
         ref TGasPolicy gas = ref vmState.Gas;
 
-        // If a previous call result exists, push its bytes onto the stack.
-        if (previousCallResult is not null)
+        // If a previous call or create result exists, push its bytes onto the stack.
+        if (previousCallAddressResult is not null)
+        {
+            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(previousCallAddressResult.Bytes);
+            if (pushResult != EvmExceptionType.None) return new(pushResult);
+
+            // Report the remaining gas if tracing instructions are enabled.
+            if (TTracingInst.IsActive)
+            {
+                _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
+            }
+        }
+        else if (previousCallResult is not null)
         {
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(previousCallResult.Value.Span);
             if (pushResult != EvmExceptionType.None) return new(pushResult);

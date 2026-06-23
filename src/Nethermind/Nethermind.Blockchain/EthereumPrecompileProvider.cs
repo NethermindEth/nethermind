@@ -12,9 +12,8 @@ namespace Nethermind.Blockchain;
 
 public class EthereumPrecompileProvider() : IPrecompileProvider
 {
-    private static FrozenDictionary<AddressAsKey, CodeInfo> Precompiles
-    {
-        get => new Dictionary<AddressAsKey, CodeInfo>
+    private static readonly FrozenDictionary<AddressAsKey, CodeInfo> Precompiles =
+        new Dictionary<AddressAsKey, CodeInfo>
         {
             [ECRecoverPrecompile.Address] = new(ECRecoverPrecompile.Instance),
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
@@ -40,7 +39,6 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
 
             [SecP256r1Precompile.Address] = new(SecP256r1Precompile.Instance),
         }.ToFrozenDictionary();
-    }
 
     public FrozenDictionary<AddressAsKey, CodeInfo> GetPrecompiles() => Precompiles;
 }
