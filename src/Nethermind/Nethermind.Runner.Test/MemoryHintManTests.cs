@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
