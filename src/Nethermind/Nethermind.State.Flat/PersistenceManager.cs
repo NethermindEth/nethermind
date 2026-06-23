@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -122,7 +123,7 @@ public class PersistenceManager(
             ? lastSnapshotNumber + 1
             : lastSnapshotNumber - currentPersistedState.BlockNumber;
 
-        if (inMemoryStateDepth - _compactSize < _minReorgDepth)
+        if (inMemoryStateDepth.SaturatingSub(_compactSize) < _minReorgDepth)
         {
             return null;
         }
