@@ -1690,9 +1690,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private static bool ShouldRefundGas(Transaction tx, ExecutionOptions opts, in UInt256 gasPrice) =>
             !gasPrice.IsZero && ShouldValidateGas(tx, opts);
 
-        protected virtual ulong CalculateClaimableRefund(ulong spentGas, ulong totalRefund, IReleaseSpec spec)
-            => RefundHelper.CalculateClaimableRefund(spentGas, totalRefund, spec);
-
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
 
