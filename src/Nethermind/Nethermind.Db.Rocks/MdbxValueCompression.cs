@@ -28,6 +28,7 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
     private const int ZstdCompressionLevel = 1;
     private const string EnabledVariable = "NETHERMIND_MDBX_COMPRESSION";
     private const string MinValueLengthVariable = "NETHERMIND_MDBX_COMPRESSION_MIN_BYTES";
+    private const string StateMinValueLengthVariable = "NETHERMIND_MDBX_STATE_COMPRESSION_MIN_BYTES";
 
     private readonly ThreadLocal<Compressor> _zstdCompressors = new(() => new Compressor(ZstdCompressionLevel), trackAllValues: true);
     private readonly ThreadLocal<Decompressor> _zstdDecompressors = new(() => new Decompressor(), trackAllValues: true);
@@ -57,7 +58,9 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
             }
         }
 
-        int minValueLength = ReadMinValueLength(logger);
+        int minValueLength = IsStateDbPath(path)
+            ? ReadMinValueLength(StateMinValueLengthVariable, int.MaxValue, logger)
+            : ReadMinValueLength(MinValueLengthVariable, DefaultMinValueLength, logger);
         if (logger.IsInfo)
         {
             logger.Info($"MDBX value compression for {path}: {(enabled ? "enabled" : "disabled")} minBytes={minValueLength}");
@@ -154,12 +157,12 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
         return !compression.Equals("kNoCompression", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static int ReadMinValueLength(ILogger logger)
+    private static int ReadMinValueLength(string variableName, int fallback, ILogger logger)
     {
-        string? value = Environment.GetEnvironmentVariable(MinValueLengthVariable);
+        string? value = Environment.GetEnvironmentVariable(variableName);
         if (string.IsNullOrWhiteSpace(value))
         {
-            return DefaultMinValueLength;
+            return fallback;
         }
 
         if (int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) && parsed >= 0)
@@ -169,10 +172,16 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
 
         if (logger.IsWarn)
         {
-            logger.Warn($"Ignoring invalid {MinValueLengthVariable} value '{value}'. Use a non-negative integer.");
+            logger.Warn($"Ignoring invalid {variableName} value '{value}'. Use a non-negative integer.");
         }
 
-        return DefaultMinValueLength;
+        return fallback;
+    }
+
+    private static bool IsStateDbPath(string path)
+    {
+        string normalized = path.Replace('\\', '/');
+        return normalized.Contains("/state/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool LooksCompressed(ReadOnlySpan<byte> stored)

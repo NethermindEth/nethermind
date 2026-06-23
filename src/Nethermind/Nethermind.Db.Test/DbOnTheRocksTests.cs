@@ -258,6 +258,40 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Mdbx_value_compression_skips_state_values_by_default()
+        {
+            DbConfig config = new();
+            IRocksDbConfig rocksConfig = new PerTableDbConfig(config, "State", validate: false);
+            using MdbxValueCompression compression = MdbxValueCompression.Create(
+                rocksConfig,
+                LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
+                Path.Combine(DbPath, "mainnet", "state", "0"));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compression.MinValueLength, Is.EqualTo(int.MaxValue));
+                Assert.That(compression.TryEncode(Enumerable.Repeat((byte)0x42, 4096).ToArray(), out _, out _), Is.False);
+            }
+        }
+
+        [Test]
+        public void Mdbx_value_compression_honors_state_min_value_length_override()
+        {
+            DbConfig config = new();
+            IRocksDbConfig rocksConfig = new PerTableDbConfig(config, "State", validate: false);
+            WithEnvironmentVariable("NETHERMIND_MDBX_STATE_COMPRESSION_MIN_BYTES", "4096", () =>
+            {
+                using MdbxValueCompression compression = MdbxValueCompression.Create(
+                    rocksConfig,
+                    LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
+                    Path.Combine(DbPath, "mainnet", "state", "0"));
+
+                Assert.That(compression.MinValueLength, Is.EqualTo(4096));
+                Assert.That(compression.TryEncode(Enumerable.Repeat((byte)0x42, 4096).ToArray(), out _, out _), Is.True);
+            });
+        }
+
+        [Test]
         public void Mdbx_value_compression_treats_invalid_marker_as_raw()
         {
             using MdbxValueCompression compression = new(enabled: true);
