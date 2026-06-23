@@ -8,23 +8,20 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// Transparent <see cref="IHeaderFinder"/> decorator that, when a capture is armed on the
-/// <see cref="WitnessCaptureSession"/>, side-channels every successful header lookup into the
-/// session's <see cref="WitnessHeaderRecorder"/> recorder. Catches BLOCKHASH lookups
-/// during EVM execution so the witness headers chain extends back to whatever the EVM touched.
+/// Transparent <see cref="IHeaderFinder"/> decorator that side-channels every successful header lookup
+/// into a <see cref="WitnessHeaderRecorder"/>, so BLOCKHASH lookups during EVM execution extend the
+/// witness header chain back to whatever the EVM touched.
 /// </summary>
-public sealed class WitnessCapturingHeaderFinder(IHeaderFinder inner, WitnessCaptureSession session) : IHeaderFinder
+/// <remarks>
+/// Installed only inside the dedicated witness processing graph, so it records unconditionally — there
+/// is no armed/disarmed state to consult.
+/// </remarks>
+public sealed class WitnessCapturingHeaderFinder(IHeaderFinder inner, WitnessHeaderRecorder recorder) : IHeaderFinder
 {
-    /// <summary>
-    /// The undecorated inner header finder. Exposed so witness-build code can walk ancestor headers
-    /// without re-entering the capture path — see <see cref="WitnessHeaderRecorder.BuildHeaders"/>.
-    /// </summary>
-    internal IHeaderFinder Inner => inner;
-
     public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null)
     {
         BlockHeader? header = inner.Get(blockHash, blockNumber);
-        if (header is not null && session.HeaderRecorder is { } recorder) recorder.OnHeaderRead(header);
+        if (header is not null) recorder.OnHeaderRead(header);
         return header;
     }
 }

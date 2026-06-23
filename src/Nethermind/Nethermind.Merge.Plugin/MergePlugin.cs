@@ -284,12 +284,13 @@ public class BaseMergePluginModule : Module
 
             .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
             // Rendezvous lives in the root scope so the JSON-RPC handler can take it directly; the
-            // main-processing module simply consumes it when EIP-7928 is enabled.
+            // selector decorator (installed by the main-processing module when EIP-7928 is enabled)
+            // publishes the witness through it.
             .AddSingleton<WitnessRendezvous>()
-            // The capture session also lives at root: the main-world trie store below is constructed
-            // at root, before the main-processing child scope exists, so its read-tap must consult a
-            // root-scoped session. The main-processing module's decorators resolve this same instance.
-            .AddSingleton<WitnessCaptureSession>()
+            // The witness processor graph also lives at root so it builds off the root scope and does
+            // not inherit the main scope's IBlockProcessor selector decorator (which would cycle), while
+            // still wrapping the shared main IWorldState. Built lazily on the first witnessed block.
+            .AddSingleton<WitnessCapturingBlockProcessingEnv>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()

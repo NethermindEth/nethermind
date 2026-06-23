@@ -48,10 +48,10 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 // These are main block processing specific
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 // Dedupe by type: a module's Load runs once per instance, and re-running a module that
-                // registers a decorator (e.g. WitnessCapturingMainProcessingModule's IWorldState proxy)
-                // double-decorates and forms a self-referential cycle. Duplicate instances arise when more
-                // than one module tree transitively pulls in the same module (e.g. both MergePluginModule
-                // and AuRaMergeModule add BaseMergePluginModule in aura tests).
+                // registers a decorator (e.g. WitnessCapturingMainProcessingModule's IBlockProcessor
+                // selector) would install it twice. Duplicate instances arise when more than one module
+                // tree transitively pulls in the same module (e.g. both MergePluginModule and
+                // AuRaMergeModule add BaseMergePluginModule in aura tests).
                 .AddModule([.. blockValidationModules.DistinctBy(static m => m.GetType())])
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule([.. mainProcessingModules.DistinctBy(static m => m.GetType())])
