@@ -103,7 +103,7 @@ internal readonly record struct MdbxTuningOptions(
             pageSize = DefaultPageSize;
         }
 
-        bool isStateDb = IsStateDbPath(path);
+        bool isStateDb = MdbxPathHelpers.IsStateDbPath(path);
         ulong defaultRpAugmentLimit = isStateDb ? DefaultStateRpAugmentLimit : DefaultRpAugmentLimit;
         ulong defaultDirtyPagesReserveLimit = isStateDb ? BytesToPages(DefaultStateDirtyPagesReserveBytes, pageSize) : 0;
         ulong defaultTransactionDirtyPagesLimit = isStateDb ? BytesToPages(DefaultStateTransactionDirtyPagesLimitBytes, pageSize) : 0;
@@ -357,11 +357,6 @@ internal readonly record struct MdbxTuningOptions(
             logger.Warn(message);
         }
     }
-
-    private static bool IsStateDbPath(string? path) =>
-        !string.IsNullOrEmpty(path) &&
-        (path.EndsWith("/state/0", StringComparison.OrdinalIgnoreCase) ||
-         path.EndsWith("\\state\\0", StringComparison.OrdinalIgnoreCase));
 
     private static ulong BytesToPages(long bytes, int pageSize) =>
         (ulong)Math.Max(1, bytes / pageSize);

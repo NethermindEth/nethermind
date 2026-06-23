@@ -470,12 +470,14 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [Test]
-        public void Mdbx_tuning_uses_larger_dirty_page_defaults_for_state_db()
+        [TestCase("state")]
+        [TestCase("state/0")]
+        [TestCase("state/1")]
+        public void Mdbx_tuning_uses_larger_dirty_page_defaults_for_state_db(string statePath)
         {
             MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(
                 LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                Path.Combine("nethermind_db", "mainnet", "state", "0"));
+                Path.Combine("nethermind_db", "mainnet", statePath));
 
             using (Assert.EnterMultipleScope())
             {
