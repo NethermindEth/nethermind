@@ -1138,7 +1138,7 @@ public partial class EthRpcModule(
         => GetBlockAccessList(blockHash, null);
 
     public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(ulong blockNumber)
-        => GetBlockAccessList(null, blockNumber >= 0 ? blockNumber : null);
+        => GetBlockAccessList(null, blockNumber);
     private ResultWrapper<ReadOnlyBlockAccessList?> GetBlockAccessList(Hash256? blockHash, ulong? blockNumber)
     {
         Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber!.Value) : _blockFinder.FindBlock(blockHash);

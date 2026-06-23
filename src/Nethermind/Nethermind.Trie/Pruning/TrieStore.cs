@@ -779,9 +779,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 // Finalized block number far behind any commit. Persist everything so that it can be pruned, but not after
                 // pruning boundary point as snap sync need it.
-                using ArrayPoolListRef<BlockCommitSet> commitSet = pruningBoundaryBlock >= 0
-                    ? _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt((ulong)pruningBoundaryBlock)
-                    : new ArrayPoolListRef<BlockCommitSet>();
+                using ArrayPoolListRef<BlockCommitSet> commitSet = _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt(pruningBoundaryBlock);
 
                 if (commitSet.Count > 0)
                 {
