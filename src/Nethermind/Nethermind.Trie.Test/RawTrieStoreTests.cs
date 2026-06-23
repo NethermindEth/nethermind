@@ -16,15 +16,15 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class RawTrieStoreTests
 {
-    [TestCase(WriteFlags.None, new[] { 4097 })]
-    [TestCase(WriteFlags.DisableWAL, new[] { 4096, 1 })]
+    [TestCase(WriteFlags.None, new[] { 16385 })]
+    [TestCase(WriteFlags.DisableWAL, new[] { 16384, 1 })]
     public void Raw_scoped_committer_splits_only_disable_wal_batches(WriteFlags writeFlags, int[] expectedBatchSizes)
     {
         CountingNodeStorage nodeStorage = new();
         using (ICommitter committer = new RawScopedTrieStore.Committer(nodeStorage, null, writeFlags))
         {
             TreePath path = TreePath.Empty;
-            for (int i = 0; i < 4097; i++)
+            for (int i = 0; i < 16385; i++)
             {
                 committer.CommitNode(ref path, CreateNode(i));
             }
