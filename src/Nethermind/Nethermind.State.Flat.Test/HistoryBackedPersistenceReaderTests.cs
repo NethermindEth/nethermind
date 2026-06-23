@@ -75,17 +75,20 @@ public class HistoryBackedPersistenceReaderTests
     public void Pins_current_state_to_its_block() =>
         Assert.That(Reader(10).CurrentState.BlockNumber, Is.EqualTo(10));
 
+    // Flat history has no trie nodes / raw-import data / iteration, so a historical trie traversal (eth_getProof,
+    // verifyTrie) must fail loudly as unsupported rather than silently return a wrong proof or an empty state walk.
     [Test]
-    public void Trie_and_raw_members_are_inert()
+    public void Unsupported_members_throw_not_supported()
     {
         HistoryBackedPersistenceReader reader = Reader(10);
-        SlotValue raw = default;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(default, ReadFlags.None), Is.Null);
-            Assert.That(reader.TryLoadStorageRlp(Keccak.Zero, default, ReadFlags.None), Is.Null);
-            Assert.That(reader.GetAccountRaw(default), Is.Null);
-            Assert.That(reader.TryGetStorageRaw(default, default, ref raw), Is.False);
+            Assert.That(() => reader.TryLoadStateRlp(default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
+            Assert.That(() => reader.TryLoadStorageRlp(Keccak.Zero, default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
+            Assert.That(() => reader.GetAccountRaw(default), Throws.InstanceOf<NotSupportedException>());
+            Assert.That(() => { SlotValue raw = default; reader.TryGetStorageRaw(default, default, ref raw); }, Throws.InstanceOf<NotSupportedException>());
+            Assert.That(() => reader.CreateAccountIterator(default, default), Throws.InstanceOf<NotSupportedException>());
+            Assert.That(() => reader.CreateStorageIterator(default, default, default), Throws.InstanceOf<NotSupportedException>());
             Assert.That(reader.IsPreimageMode, Is.False);
         }
     }
