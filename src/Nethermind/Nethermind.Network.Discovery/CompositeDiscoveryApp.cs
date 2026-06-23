@@ -10,6 +10,7 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
@@ -19,7 +20,7 @@ namespace Nethermind.Network.Discovery;
 /// <summary>
 /// Combines several protocol versions under a single <see cref="IDiscoveryApp"/> implementation.
 /// </summary>
-public class CompositeDiscoveryApp : IDiscoveryApp
+public sealed class CompositeDiscoveryApp : IDiscoveryApp
 {
     private readonly INetworkConfig _networkConfig;
     private readonly IConnectionsPool _connections;

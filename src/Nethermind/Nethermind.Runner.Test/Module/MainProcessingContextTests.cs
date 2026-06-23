@@ -28,7 +28,7 @@ public class MainProcessingContextTests
             .AddModule(new TestNethermindModule(Cancun.Instance))
             .WithGenesisPostProcessor((_, state) =>
             {
-                state.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 10.Ether, Osaka.Instance);
+                state.AddToBalanceAndCreateIfNotExists(TestItem.PrivateKeyA.Address, 10.Ether, Osaka.Instance);
             })
             .Build();
 
@@ -40,7 +40,7 @@ public class MainProcessingContextTests
         await ctx.Resolve<TestBlockchainUtil>().AddBlockAndWaitForHead(false, cancellationToken,
             Build.A.Transaction
                 .WithGasLimit(100_000)
-                .WithSenderAddress(TestItem.AddressA)
+                .WithSenderAddress(TestItem.PrivateKeyA.Address)
                 .WithCode(Prepare.EvmCode
                     .ForInitOf(Prepare.EvmCode
                         .PushData(TestItem.PrivateKeyB.Address)

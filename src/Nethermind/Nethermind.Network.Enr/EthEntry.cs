@@ -12,17 +12,20 @@ public class EthEntry(byte[] forkHash, long nextBlock) : EnrContentEntry<ForkId>
 {
     public override string Key => EnrContentKey.Eth;
 
-    protected override int GetRlpLengthOfValue() => Rlp.LengthOfSequence(
-                Rlp.LengthOfSequence(
-                    5 + Rlp.LengthOf(Value.NextBlock)));
+    protected override int GetRlpLengthOfValue()
+    {
+        int forkIdContentLength = GetForkIdContentLength();
+        return Rlp.LengthOfSequence(Rlp.LengthOfSequence(forkIdContentLength));
+    }
 
     protected override void EncodeValue<TWriter>(ref TWriter writer)
     {
-        // I am just guessing this one
-        int contentLength = 5 + Rlp.LengthOf(Value.NextBlock);
-        writer.StartSequence(contentLength + 1);
+        int contentLength = GetForkIdContentLength();
+        writer.StartSequence(Rlp.LengthOfSequence(contentLength));
         writer.StartSequence(contentLength);
         writer.Encode(Value.ForkHash);
         writer.Encode(Value.NextBlock);
     }
+
+    private int GetForkIdContentLength() => Rlp.LengthOf(Value.ForkHash) + Rlp.LengthOf(Value.NextBlock);
 }
