@@ -58,6 +58,9 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
 
+    private byte[]? _returnDataBuffer;
+    private int _returnDataByteCount;
+
     private ArrayPoolList<PooledDictionary<UInt256, UInt256>>? _storageByDepth;
     private int _activeStorageDepth;
 
@@ -103,6 +106,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _refundCheckpoints.Clear();
         _stackByteCount = 0;
         _memoryByteCount = 0;
+        _returnDataByteCount = 0;
         if (_storageByDepth is not null)
         {
             for (int i = 0; i < _activeStorageDepth; i++) _storageByDepth[i].Clear();
@@ -137,6 +141,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _gasCostAlreadySet = false;
         _stackByteCount = 0;
         _memoryByteCount = 0;
+        _returnDataByteCount = 0;
     }
 
     public override void ReportOperationRemainingGas(long gas)
@@ -196,6 +201,18 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         top[storageIndex] = new UInt256(newValue, isBigEndian: true);
     }
 
+    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
+        if (!_hasPendingOpcode) return;
+        int needed = returnData.Length;
+        if (needed == 0) { _returnDataByteCount = 0; return; }
+
+        // The source buffer is reused across opcodes, so copy the bytes into our own scratch.
+        EnsureBuffer(ref _returnDataBuffer, needed);
+        returnData.Span.CopyTo(_returnDataBuffer.AsSpan(0, needed));
+        _returnDataByteCount = needed;
+    }
+
     public override GethLikeTxTrace BuildResult()
     {
         FinalizePendingOpcode();
@@ -246,6 +263,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     {
         if (_stackBuffer is not null) { ArrayPool<byte>.Shared.Return(_stackBuffer); _stackBuffer = null; }
         if (_memoryBuffer is not null) { ArrayPool<byte>.Shared.Return(_memoryBuffer); _memoryBuffer = null; }
+        if (_returnDataBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataBuffer); _returnDataBuffer = null; }
         if (_storageByDepth is not null)
         {
             for (int i = 0; i < _storageByDepth.Count; i++) _storageByDepth[i].Dispose();
@@ -279,6 +297,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (IsTracingStack) WriteStackArrayIfPresent();
         if (IsTracingFullMemory) WriteMemoryArrayIfPresent();
         if (IsTracingOpLevelStorage) WriteStorageObjectIfPresent();
+        if (IsTracingReturnData && _returnDataByteCount > 0)
+            _writer.WriteString("returnData"u8, _returnDataBuffer.AsSpan(0, _returnDataByteCount).ToHexString(true));
 
         _writer.WriteEndObject();
     }

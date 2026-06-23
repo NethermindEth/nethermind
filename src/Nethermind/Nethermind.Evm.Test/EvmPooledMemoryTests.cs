@@ -409,6 +409,7 @@ public class MyTracer : ITxTracer, IDisposable
     public bool IsTracingDetailedMemory { get; set; } = true;
     public bool IsTracingInstructions => true;
     public bool IsTracingRefunds { get; } = false;
+    public bool IsTracingReturnData { get; } = false;
     public bool IsTracingCode => true;
     public bool IsTracingStack { get; set; } = true;
     public bool IsTracingState => false;
@@ -463,6 +464,10 @@ public class MyTracer : ITxTracer, IDisposable
     public void SetOperationMemory(TraceMemory memoryTrace) => lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
 
     public void SetOperationMemorySize(ulong newSize)
+    {
+    }
+
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
     {
     }
 

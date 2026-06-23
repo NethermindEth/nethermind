@@ -19,6 +19,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingMemory;
     private readonly bool _isTracingInstructions;
     private readonly bool _isTracingRefunds;
+    private readonly bool _isTracingReturnData;
     private readonly bool _isTracingCode;
     private readonly bool _isTracingStack;
     private readonly bool _isTracingState;
@@ -67,6 +68,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     {
         get => _isTracingRefunds || innerTracer.IsTracingRefunds;
         init => _isTracingRefunds = value;
+    }
+
+    public bool IsTracingReturnData
+    {
+        get => _isTracingReturnData || innerTracer.IsTracingReturnData;
+        init => _isTracingReturnData = value;
     }
 
     public bool IsTracingCode
@@ -277,6 +284,15 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         if (innerTracer.IsTracingMemory)
         {
             innerTracer.SetOperationMemorySize(newSize);
+        }
+    }
+
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingReturnData)
+        {
+            innerTracer.SetOperationReturnData(returnData);
         }
     }
 

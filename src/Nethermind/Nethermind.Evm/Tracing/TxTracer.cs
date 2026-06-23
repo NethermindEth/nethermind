@@ -38,6 +38,7 @@ public abstract class TxTracer : ITxTracer
     public virtual bool IsTracingMemory { get; protected set; }
     public virtual bool IsTracingInstructions { get; protected set; }
     public virtual bool IsTracingRefunds { get; protected set; }
+    public virtual bool IsTracingReturnData { get; protected set; }
     public virtual bool IsTracingCode { get; protected set; }
     public virtual bool IsTracingStack { get; protected set; }
     public virtual bool IsTracingBlockHash { get; protected set; }
@@ -62,6 +63,7 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
     public virtual void SetOperationMemory(TraceMemory memoryTrace) { }
     public virtual void SetOperationMemorySize(ulong newSize) { }
+    public virtual void SetOperationReturnData(ReadOnlyMemory<byte> returnData) { }
     public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
     public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
     public virtual void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
