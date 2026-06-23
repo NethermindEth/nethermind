@@ -184,7 +184,6 @@ public class Eip8037BlockGasInclusionCheckTests
             long stateGasSpill = random.Next(0, (int)Math.Min(spentRegular, int.MaxValue));
             long stateGasSpillReclassified = random.Next(0, (int)Math.Min(stateGasSpill, int.MaxValue));
             long remainingRegular = initialRegular - spentRegular;
-            long floorGas = random.Next(21_000, 200_000);
 
             long executionRegularGasUsed = initialRegular - remainingRegular - stateGasSpill + stateGasSpillReclassified;
             long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
@@ -192,26 +191,27 @@ public class Eip8037BlockGasInclusionCheckTests
                 initialRegular,
                 remainingRegular,
                 stateGasSpill,
-                stateGasSpillReclassified,
-                floorGas);
+                stateGasSpillReclassified);
 
             Assert.That(executionRegularGasUsed, Is.GreaterThanOrEqualTo(0L));
-            Assert.That(blockRegularGas, Is.EqualTo(Math.Max(intrinsicRegular + executionRegularGasUsed, floorGas)));
+            Assert.That(blockRegularGas, Is.EqualTo(intrinsicRegular + executionRegularGasUsed));
         }
     }
 
-    [TestCase(300L, 100L, TestName = "Calculate_block_regular_gas_floor_clamps_low_regular_gas")]
-    [TestCase(0L, 0L, TestName = "Calculate_block_regular_gas_allows_negative_execution_intermediate")]
-    public void Calculate_block_regular_gas_clamps_to_floor(long initialRegular, long remainingRegular)
+    [Test]
+    public void Calculate_block_regular_gas_ignores_calldata_floor()
     {
+        // Regression: the EIP-7623/7976 calldata floor is a minimum charge on the sender
+        // (tx_gas_used / receipts) only and must NOT inflate the block's regular-gas dimension.
+        // Here the actual regular gas consumed (21_000) is far below any plausible floor, yet the
+        // block regular gas must report the consumed amount, not a floor-clamped value.
         long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
             intrinsicRegularGas: 21_000,
-            initialRegularGas: initialRegular,
-            remainingRegularGas: remainingRegular,
-            stateGasSpill: 200,
-            stateGasSpillReclassified: 0,
-            floorGas: 53_000);
+            initialRegularGas: 0,
+            remainingRegularGas: 0,
+            stateGasSpill: 0,
+            stateGasSpillReclassified: 0);
 
-        Assert.That(blockRegularGas, Is.EqualTo(53_000));
+        Assert.That(blockRegularGas, Is.EqualTo(21_000));
     }
 }

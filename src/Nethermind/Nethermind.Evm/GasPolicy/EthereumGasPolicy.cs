@@ -241,6 +241,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static long ColdAccountAccessCost(IReleaseSpec spec, bool hasCode) =>
         spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess
+        : spec.IsEip2780Enabled && !hasCode ? GasCostOf.ColdAccountAccessNoCodeEip2780
         : GasCostOf.ColdAccountAccess;
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
@@ -552,22 +553,30 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         spec.GetBaseDataCost(tx) + tokensInCallData * GasCostOf.TxDataZero;
 
     /// <summary>
-    /// EIP-2780 recipient charge on top of TX_BASE_COST. For a non-self call: a flat
-    /// <c>COLD_ACCOUNT_ACCESS</c> touch, plus (for a value transfer) the EIP-7708 transfer log and
-    /// <c>TX_VALUE_COST</c> recipient balance write. For a CREATE: only the transfer log when value is sent
-    /// (the <c>CREATE_ACCESS</c> regular cost and <c>NEW_ACCOUNT</c> state cost are added by
-    /// <see cref="CreateCost"/>/<see cref="CreateStateCost"/>).
+    /// EIP-2780 recipient charge on top of TX_BASE_COST. Dispatches to the EIP-8038 (glamsterdam-devnet-6)
+    /// flat model when EIP-8038 is active, otherwise to the standalone EIP-2780 two-tier model.
     /// </summary>
     /// <remarks>
-    /// Mirrors EELS <c>calculate_intrinsic_cost</c>: the recipient touch is a flat cold charge independent of
-    /// the recipient's existence or code, overriding EIP-2929's "all tx addresses are warm" rule; the recipient
-    /// stays pre-warmed for execution. A delegated recipient (EIP-7702) additionally touches its delegation
-    /// target — priced here from <paramref name="worldState"/> since the top-level frame only warms it.
+    /// Both models mirror their respective EELS <c>calculate_intrinsic_cost</c>: the recipient touch overrides
+    /// EIP-2929's "all tx addresses are warm" rule and the recipient stays pre-warmed for execution. See
+    /// <see cref="Eip8038IntrinsicRecipientGas"/> and <see cref="Eip2780StandaloneExtraGas"/> for the specifics.
     /// </remarks>
     private static long Eip2780ExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
     {
         if (!spec.IsEip2780Enabled) return 0;
+        return spec.IsEip8038Enabled
+            ? Eip8038IntrinsicRecipientGas(tx, spec, worldState)
+            : Eip2780StandaloneExtraGas(tx, spec, worldState);
+    }
 
+    // EIP-8038 (glamsterdam-devnet-6): the recipient touch is a flat cold charge independent of the
+    // recipient's existence or code, and a value transfer adds the EIP-7708 transfer log plus a fixed
+    // value-move cost. The new-account surcharge moves to a separate NEW_ACCOUNT state charge, and the
+    // EIP-7702 delegation-target touch is charged at execution time (against post-authorization state)
+    // rather than here; neither is priced in this method. worldState-independent because the EELS
+    // intrinsic cost does not consult state.
+    private static long Eip8038IntrinsicRecipientGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
+    {
         bool hasValue = !tx.Value.IsZero;
 
         if (tx.IsContractCreation)
@@ -576,29 +585,74 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.
         if (tx.SenderAddress == tx.To) return 0;
 
-        long coldAccess = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
-        long cost = coldAccess;
+        long cost = Eip8038Constants.ColdAccountAccess;
         if (hasValue)
             cost += GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
 
-        // EIP-7702: calling a delegated recipient also touches its delegation target. The EVM warms
-        // (does not gas-charge) that target for the top-level frame, so it is priced here instead.
-        if (spec.IsEip7702Enabled && worldState is not null && tx.To is not null
-            && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(tx.To).AsSpan(), out Address? target))
+        return cost;
+    }
+
+    // Standalone EIP-2780 (pre-EIP-8038) intrinsic recipient cost: a two-tier cold touch keyed on
+    // whether the recipient carries code, plus a NEW_ACCOUNT surcharge and a STATE_UPDATE leaf write
+    // for value transfers, mirroring the EIP-2780 reference table. Requires <paramref name="worldState"/>
+    // to classify the recipient; superseded by <see cref="Eip8038IntrinsicRecipientGas"/> under EIP-8038.
+    private static long Eip2780StandaloneExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
+    {
+        bool isCreate = tx.IsContractCreation;
+        Address? to = tx.To;
+        bool hasValue = !tx.Value.IsZero;
+        bool senderIsRecipient = !isCreate && tx.SenderAddress == to;
+
+        long cost = 0;
+        // EIP-7708 transfer log on the top-level value transfer; CREATE endows a distinct address.
+        if (hasValue && (isCreate || !senderIsRecipient))
+            cost += GasCostOf.TransferLogEip2780;
+
+        if (isCreate || to is null || worldState is null) return cost;
+
+        bool isPrecompile = spec.IsPrecompile(to);
+        bool recipientDead = worldState.IsDeadAccount(to);
+
+        // New-account surcharge: value transfer to a nonexistent, non-precompile recipient.
+        if (hasValue && !isPrecompile && recipientDead)
+            cost += GasCostOf.NewAccount;
+
+        // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST;
+        // precompiles are warm at tx start and charged zero.
+        if (!senderIsRecipient && !isPrecompile)
         {
-            cost += TxAccessListContains(tx, target) ? GasCostOf.WarmStateRead : coldAccess;
+            cost += RecipientTouchCost(spec, worldState, to, AccessListAddresses(tx));
+            // The new-account surcharge already covers the recipient leaf write.
+            if (hasValue && !recipientDead)
+                cost += GasCostOf.StateUpdateEip2780;
         }
 
         return cost;
     }
 
-    private static bool TxAccessListContains(Transaction tx, Address address)
+    private static long RecipientTouchCost(IReleaseSpec spec, IReadOnlyStateProvider worldState, Address to, IReadOnlySet<Address>? accessList)
     {
-        if (tx.AccessList is null) return false;
-        foreach ((Address entry, _) in tx.AccessList)
-        {
-            if (entry == address) return true;
-        }
-        return false;
+        long cost = accessList?.Contains(to) == true
+            ? GasCostOf.WarmStateRead
+            : worldState.IsContract(to) ? GasCostOf.ColdAccountAccess : GasCostOf.ColdAccountAccessNoCodeEip2780;
+
+        // EIP-7702: a delegated recipient also touches its delegation target (always carries code).
+        // The EVM warms (does not gas-charge) this target for the top-level frame, so this is the sole charge.
+        if (spec.IsEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(to).AsSpan(), out Address? target))
+            cost += accessList?.Contains(target) == true ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess;
+
+        return cost;
     }
+
+    private static IReadOnlySet<Address>? AccessListAddresses(Transaction tx)
+    {
+        if (tx.AccessList is null) return null;
+        HashSet<Address> set = [];
+        foreach ((Address address, _) in tx.AccessList)
+        {
+            set.Add(address);
+        }
+        return set;
+    }
+
 }
