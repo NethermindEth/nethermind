@@ -630,7 +630,7 @@ internal class SpecialTransactionsTests
         //
         // Pick something comfortably in the middle of that interval.
         ulong upper = head.Number - 1;
-        ulong lower = head.Number > spec.EpochLength * 2 ? head.Number - (spec.EpochLength * 2) + 1 : 1UL;
+        ulong lower = head.Number.SaturatingSub(spec.EpochLength * 2) + 1;
         ulong validBlockNumber = lower + (upper - lower) / 2;
 
         Transaction tx =
