@@ -42,7 +42,7 @@ internal sealed class MdbxEnvironment : IDisposable
         Directory.CreateDirectory(Path);
         _valueCompression = MdbxValueCompression.Create(rocksDbConfig, logger, Path);
 
-        MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger);
+        MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger, Path);
         _batchGroupingEnabled = tuning.EnableBatchGrouping;
         _appendEnabled = tuning.EnableAppend;
         _maxBatchGroupOperations = tuning.MaxBatchGroupOperations;

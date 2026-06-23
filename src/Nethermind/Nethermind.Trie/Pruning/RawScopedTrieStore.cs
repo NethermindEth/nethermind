@@ -31,9 +31,12 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags) : ICommitter
     {
-        INodeStorage.IWriteBatch _writeBatch = nodeStorage.StartWriteBatch();
+        private const int DisableWalBatchSize = 512;
 
-        public void Dispose() => _writeBatch.Dispose();
+        private INodeStorage.IWriteBatch? _writeBatch;
+        private int _pendingWrites;
+
+        public void Dispose() => _writeBatch?.Dispose();
 
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
@@ -45,10 +48,25 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
                 }
 
                 node.IsPersisted = true;
-                _writeBatch.Set(address, path, node.Keccak, node.FullRlp.AsSpan(), writeFlags);
+                CurrentBatch.Set(address, path, node.Keccak, node.FullRlp.AsSpan(), writeFlags);
+                FlushDisableWalBatchIfFull();
             }
 
             return node;
+        }
+
+        private INodeStorage.IWriteBatch CurrentBatch => _writeBatch ??= nodeStorage.StartWriteBatch();
+
+        private void FlushDisableWalBatchIfFull()
+        {
+            if ((writeFlags & WriteFlags.DisableWAL) == 0 || ++_pendingWrites < DisableWalBatchSize)
+            {
+                return;
+            }
+
+            _writeBatch?.Dispose();
+            _writeBatch = null;
+            _pendingWrites = 0;
         }
 
         [DoesNotReturn, StackTraceHidden]

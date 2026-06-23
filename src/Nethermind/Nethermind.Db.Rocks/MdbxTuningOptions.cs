@@ -41,14 +41,19 @@ internal readonly record struct MdbxTuningOptions(
     public const ulong DefaultMaxDbs = 512;
     public const ulong DefaultMaxReaders = 8192;
     public const ulong DefaultRpAugmentLimit = 256 * 1024;
+    public const ulong DefaultStateRpAugmentLimit = 1_000_000_000;
     public const int DefaultMaxBatchGroupOperations = 128 * 1024;
+    public const int DefaultStateMaxBatchGroupOperations = 32 * 1024;
     public const long DefaultMaxBatchGroupBytes = 64L << 20;
+    public const long DefaultStateDirtyPagesReserveBytes = 1L << 30;
+    public const long DefaultStateTransactionDirtyPagesLimitBytes = 1L << 30;
+    public const long DefaultStateTransactionDirtyPagesInitialBytes = 128L << 20;
 
     private const int DefaultProfileIntervalSeconds = 30;
     private const int DefaultSlowTransactionMilliseconds = 1_000;
     private const int DefaultHotPathSampleRate = 128;
 
-    public static MdbxTuningOptions ReadFromEnvironment(ILogger logger)
+    public static MdbxTuningOptions ReadFromEnvironment(ILogger logger, string? path = null)
     {
         bool hasOverrides = false;
         long initialMapSize = ReadSize("NETHERMIND_MDBX_INITIAL_MAP_SIZE", DefaultInitialMapSize, logger, ref hasOverrides);
@@ -58,17 +63,11 @@ internal readonly record struct MdbxTuningOptions(
         int pageSize = ReadInt32("NETHERMIND_MDBX_PAGE_SIZE", DefaultPageSize, logger, ref hasOverrides);
         ulong maxDbs = ReadUInt64("NETHERMIND_MDBX_MAX_DBS", DefaultMaxDbs, logger, ref hasOverrides);
         ulong maxReaders = ReadUInt64("NETHERMIND_MDBX_MAX_READERS", DefaultMaxReaders, logger, ref hasOverrides);
-        ulong rpAugmentLimit = ReadUInt64("NETHERMIND_MDBX_RP_AUGMENT_LIMIT", DefaultRpAugmentLimit, logger, ref hasOverrides);
-        ulong dirtyPagesReserveLimit = ReadUInt64("NETHERMIND_MDBX_DIRTY_PAGES_RESERVE_LIMIT", 0, logger, ref hasOverrides);
-        ulong transactionDirtyPagesLimit = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_LIMIT", 0, logger, ref hasOverrides);
-        ulong transactionDirtyPagesInitial = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_INITIAL", 0, logger, ref hasOverrides);
         bool enableReadAhead = ReadBool("NETHERMIND_MDBX_READAHEAD", fallback: false, logger, ref hasOverrides);
         bool enableWriteMap = ReadBool("NETHERMIND_MDBX_WRITEMAP", fallback: true, logger, ref hasOverrides);
         bool enableCoalesce = ReadBool("NETHERMIND_MDBX_COALESCE", fallback: true, logger, ref hasOverrides);
         bool enableBatchGrouping = ReadBool("NETHERMIND_MDBX_BATCH_GROUP", fallback: true, logger, ref hasOverrides);
         bool enableAppend = ReadBool("NETHERMIND_MDBX_APPEND", fallback: true, logger, ref hasOverrides);
-        int maxBatchGroupOperations = ReadInt32("NETHERMIND_MDBX_BATCH_GROUP_MAX_OPS", DefaultMaxBatchGroupOperations, logger, ref hasOverrides);
-        long maxBatchGroupBytes = ReadSize("NETHERMIND_MDBX_BATCH_GROUP_MAX_BYTES", DefaultMaxBatchGroupBytes, logger, ref hasOverrides);
         bool enableProfiling = ReadBool("NETHERMIND_MDBX_PROFILE", fallback: false, logger, ref hasOverrides);
         int hotPathSampleRate = ReadInt32("NETHERMIND_MDBX_PROFILE_HOTPATH_SAMPLE_RATE", DefaultHotPathSampleRate, logger, ref hasOverrides);
         int profileIntervalSeconds = ReadInt32("NETHERMIND_MDBX_PROFILE_INTERVAL_SECONDS", DefaultProfileIntervalSeconds, logger, ref hasOverrides);
@@ -104,6 +103,20 @@ internal readonly record struct MdbxTuningOptions(
             pageSize = DefaultPageSize;
         }
 
+        bool isStateDb = IsStateDbPath(path);
+        ulong defaultRpAugmentLimit = isStateDb ? DefaultStateRpAugmentLimit : DefaultRpAugmentLimit;
+        ulong defaultDirtyPagesReserveLimit = isStateDb ? BytesToPages(DefaultStateDirtyPagesReserveBytes, pageSize) : 0;
+        ulong defaultTransactionDirtyPagesLimit = isStateDb ? BytesToPages(DefaultStateTransactionDirtyPagesLimitBytes, pageSize) : 0;
+        ulong defaultTransactionDirtyPagesInitial = isStateDb ? BytesToPages(DefaultStateTransactionDirtyPagesInitialBytes, pageSize) : 0;
+        int defaultMaxBatchGroupOperations = isStateDb ? DefaultStateMaxBatchGroupOperations : DefaultMaxBatchGroupOperations;
+
+        ulong rpAugmentLimit = ReadUInt64("NETHERMIND_MDBX_RP_AUGMENT_LIMIT", defaultRpAugmentLimit, logger, ref hasOverrides);
+        ulong dirtyPagesReserveLimit = ReadUInt64("NETHERMIND_MDBX_DIRTY_PAGES_RESERVE_LIMIT", defaultDirtyPagesReserveLimit, logger, ref hasOverrides);
+        ulong transactionDirtyPagesLimit = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_LIMIT", defaultTransactionDirtyPagesLimit, logger, ref hasOverrides);
+        ulong transactionDirtyPagesInitial = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_INITIAL", defaultTransactionDirtyPagesInitial, logger, ref hasOverrides);
+        int maxBatchGroupOperations = ReadInt32("NETHERMIND_MDBX_BATCH_GROUP_MAX_OPS", defaultMaxBatchGroupOperations, logger, ref hasOverrides);
+        long maxBatchGroupBytes = ReadSize("NETHERMIND_MDBX_BATCH_GROUP_MAX_BYTES", DefaultMaxBatchGroupBytes, logger, ref hasOverrides);
+
         if (maxDbs == 0)
         {
             Warn(logger, "NETHERMIND_MDBX_MAX_DBS must be positive. Using the default value.");
@@ -119,7 +132,7 @@ internal readonly record struct MdbxTuningOptions(
         if (maxBatchGroupOperations <= 0)
         {
             Warn(logger, "NETHERMIND_MDBX_BATCH_GROUP_MAX_OPS must be positive. Using the default value.");
-            maxBatchGroupOperations = DefaultMaxBatchGroupOperations;
+            maxBatchGroupOperations = defaultMaxBatchGroupOperations;
         }
 
         if (maxBatchGroupBytes <= 0)
@@ -344,6 +357,14 @@ internal readonly record struct MdbxTuningOptions(
             logger.Warn(message);
         }
     }
+
+    private static bool IsStateDbPath(string? path) =>
+        !string.IsNullOrEmpty(path) &&
+        (path.EndsWith("/state/0", StringComparison.OrdinalIgnoreCase) ||
+         path.EndsWith("\\state\\0", StringComparison.OrdinalIgnoreCase));
+
+    private static ulong BytesToPages(long bytes, int pageSize) =>
+        (ulong)Math.Max(1, bytes / pageSize);
 
     private static string FormatBytes(long bytes) =>
         bytes switch

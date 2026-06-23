@@ -471,6 +471,23 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Mdbx_tuning_uses_larger_dirty_page_defaults_for_state_db()
+        {
+            MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(
+                LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
+                Path.Combine("nethermind_db", "mainnet", "state", "0"));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.RpAugmentLimit, Is.EqualTo(MdbxTuningOptions.DefaultStateRpAugmentLimit));
+                Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(65_536));
+                Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(65_536));
+                Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(8_192));
+                Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultStateMaxBatchGroupOperations));
+            }
+        }
+
+        [Test]
         public void Mdbx_tuning_accepts_mdbx_page_cache_overrides()
         {
             WithEnvironmentVariable("NETHERMIND_MDBX_RP_AUGMENT_LIMIT", "8192", () =>
