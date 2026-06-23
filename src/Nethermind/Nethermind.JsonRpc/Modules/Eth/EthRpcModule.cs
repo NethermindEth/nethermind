@@ -829,7 +829,7 @@ public partial class EthRpcModule(
         }
         catch (ResourceNotFoundException)
         {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorCodes.PrunedHistoryUnavailableMessage, ErrorCodes.PrunedHistoryUnavailable);
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
         }
         finally
         {
@@ -909,7 +909,7 @@ public partial class EthRpcModule(
         }
         catch (ResourceNotFoundException)
         {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorCodes.PrunedHistoryUnavailableMessage, ErrorCodes.PrunedHistoryUnavailable);
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
         }
         finally
         {
@@ -1151,7 +1151,7 @@ public partial class EthRpcModule(
         ReadOnlyBlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Number, block.Hash);
 
         return bal is null ?
-            ResultWrapper<ReadOnlyBlockAccessList?>.Fail(ErrorCodes.PrunedHistoryUnavailableMessage, ErrorCodes.PrunedHistoryUnavailable)
+            ResultWrapper<ReadOnlyBlockAccessList?>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<ReadOnlyBlockAccessList?>.Success(bal);
     }
 
