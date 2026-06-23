@@ -225,7 +225,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (_pivotSource.Task.IsCompleted)
             return false;
 
-        number = Math.Clamp(number, MinTargetBlockNumber, MaxTargetBlockNumber);
+        number = Math.Max(MinTargetBlockNumber, number);
+        number = Math.Min(MaxTargetBlockNumber, number);
 
         if (number is 0)
             return false;
@@ -354,7 +355,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 int batchSize = _config.MaxBatchSize;
                 int end = isForward ? start + batchSize - 1 : start - batchSize + 1;
-                end = Math.Clamp(end, (int)MinTargetBlockNumber, (int)MaxTargetBlockNumber);
+                end = Math.Max(end, (int)MinTargetBlockNumber);
+                end = Math.Min(end, (int)MaxTargetBlockNumber);
 
                 // from - inclusive, to - exclusive
                 (int from, int to) = isForward
