@@ -123,7 +123,12 @@ public static partial class EvmInstructions
         long initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
         long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
         long extraCost = initCodeWordCost + create2HashCost;
-        long gasCost = (TEip8037.IsActive ? GasCostOf.CreateRegular : GasCostOf.Create) + extraCost;
+        // EIP-8038 reprices the CREATE/CREATE2 account-creation regular cost to CREATE_ACCESS (11000);
+        // pre-8038 EIP-8037 uses CreateRegular (9000) and legacy uses GasCostOf.Create (32000).
+        long createBaseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
+            : TEip8037.IsActive ? GasCostOf.CreateRegular
+            : GasCostOf.Create;
+        long gasCost = createBaseCost + extraCost;
         bool createOutOfGas = !TGasPolicy.UpdateGas(ref gas, gasCost);
         if (createOutOfGas) goto OutOfGas;
 
