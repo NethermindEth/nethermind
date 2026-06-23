@@ -24,15 +24,19 @@ internal sealed class MdbxEnvironment : IDisposable
 
     private readonly object _writeLock = new();
     private readonly object _batchGroupLock = new();
+    private readonly object _readTransactionPoolLock = new();
     private readonly Queue<MdbxBatchGroupRequest> _batchGroupQueue = new();
     private readonly ILogger _logger;
     private readonly MdbxProfiler? _profiler;
     private readonly MdbxValueCompression _valueCompression;
+    private readonly Queue<MdbxReusableReadTransaction> _readTransactions = new();
     private readonly bool _batchGroupingEnabled;
     private readonly bool _appendEnabled;
     private readonly MdbxDisableWalSyncMode _disableWalSyncMode;
     private readonly int _maxBatchGroupOperations;
     private readonly long _maxBatchGroupBytes;
+    private readonly int _maxPooledReadTransactions;
+    private int _pooledReadTransactionCount;
     private uint? _statsDbi;
     private bool _batchGroupActive;
     private bool _disposed;
@@ -51,6 +55,7 @@ internal sealed class MdbxEnvironment : IDisposable
         _valueCompression = MdbxValueCompression.Create(rocksDbConfig, logger, Path);
 
         MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger, Path);
+        _maxPooledReadTransactions = CalculateMaxPooledReadTransactions(tuning.MaxReaders);
 
         MdbxNative.ThrowOnError(MdbxNative.EnvCreate(out MdbxNative.SafeMdbxEnvHandle env), "mdbx_env_create");
         Env = env;
@@ -142,6 +147,19 @@ internal sealed class MdbxEnvironment : IDisposable
     public string Path { get; }
 
     public MdbxNative.SafeMdbxEnvHandle Env { get; }
+
+    internal int MaxPooledReadTransactionCount => _maxPooledReadTransactions;
+
+    internal int PooledReadTransactionCount
+    {
+        get
+        {
+            lock (_readTransactionPoolLock)
+            {
+                return _pooledReadTransactionCount;
+            }
+        }
+    }
 
     public uint OpenTable(string? name)
     {
@@ -694,14 +712,16 @@ internal sealed class MdbxEnvironment : IDisposable
 
     public byte[]? Get(uint dbi, ReadOnlySpan<byte> key)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         long started = _profiler?.StartReadTransaction() ?? 0;
+        MdbxReusableReadTransaction readTransaction = RentReadTransaction();
         try
         {
-            using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
-            return Get(txn, dbi, key);
+            return readTransaction.Get(dbi, key);
         }
         finally
         {
+            ReturnReadTransaction(readTransaction);
             if (_profiler is not null)
             {
                 _profiler.RecordReadTransaction(started);
@@ -733,14 +753,16 @@ internal sealed class MdbxEnvironment : IDisposable
 
     public bool KeyExists(uint dbi, ReadOnlySpan<byte> key)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         long started = _profiler?.StartReadTransaction() ?? 0;
+        MdbxReusableReadTransaction readTransaction = RentReadTransaction();
         try
         {
-            using MdbxNative.SafeMdbxTxnHandle txn = BeginReadOnlyTransaction();
-            return KeyExists(txn, dbi, key);
+            return readTransaction.KeyExists(dbi, key);
         }
         finally
         {
+            ReturnReadTransaction(readTransaction);
             if (_profiler is not null)
             {
                 _profiler.RecordReadTransaction(started);
@@ -939,6 +961,7 @@ internal sealed class MdbxEnvironment : IDisposable
         finally
         {
             _disposed = true;
+            DisposeReadTransactions();
             _valueCompression.Dispose();
             Env.Dispose();
         }
@@ -949,6 +972,67 @@ internal sealed class MdbxEnvironment : IDisposable
 
     public void RecordQueuedWrite(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, int pendingOperations) =>
         _profiler?.RecordQueuedWrite(key.Length, value.Length, pendingOperations);
+
+    internal void LogReadTransactionResetFailure(int result)
+    {
+        if (_logger.IsWarn) _logger.Warn($"Failed to reset MDBX read transaction for {Path}: {MdbxNative.GetErrorMessage(result)}");
+    }
+
+    private void DisposeReadTransactions()
+    {
+        lock (_readTransactionPoolLock)
+        {
+            while (_readTransactions.Count != 0)
+            {
+                MdbxReusableReadTransaction readTransaction = _readTransactions.Dequeue();
+                _pooledReadTransactionCount--;
+                readTransaction.Dispose();
+            }
+        }
+    }
+
+    private MdbxReusableReadTransaction RentReadTransaction()
+    {
+        lock (_readTransactionPoolLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_readTransactions.Count != 0)
+            {
+                MdbxReusableReadTransaction readTransaction = _readTransactions.Dequeue();
+                _pooledReadTransactionCount--;
+                return readTransaction;
+            }
+        }
+
+        return new MdbxReusableReadTransaction(this);
+    }
+
+    private void ReturnReadTransaction(MdbxReusableReadTransaction readTransaction)
+    {
+        lock (_readTransactionPoolLock)
+        {
+            if (_disposed || _pooledReadTransactionCount >= _maxPooledReadTransactions)
+            {
+                readTransaction.Dispose();
+                return;
+            }
+
+            _pooledReadTransactionCount++;
+            _readTransactions.Enqueue(readTransaction);
+        }
+    }
+
+    private static int CalculateMaxPooledReadTransactions(ulong maxReaders)
+    {
+        if (maxReaders < 2)
+        {
+            return 0;
+        }
+
+        int processorBound = Math.Clamp(System.Environment.ProcessorCount * 2, 4, 128);
+        ulong readerBound = maxReaders / 2;
+        return Math.Clamp((int)Math.Min((ulong)processorBound, readerBound), 0, 128);
+    }
 
     private MdbxNative.SafeMdbxTxnHandle BeginWriteTransaction(uint flags = 0)
     {

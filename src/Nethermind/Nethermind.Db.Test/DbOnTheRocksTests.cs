@@ -171,6 +171,22 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Reusable_read_transaction_pool_does_not_hold_only_reader_slot() =>
+            WithEnvironmentVariable("NETHERMIND_MDBX_MAX_READERS", "1", () =>
+            {
+                using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(".", "Blocks"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+                byte[] key = [1, 2, 3];
+                byte[] value = [4, 5, 6];
+
+                db.Set(key, value);
+                Assert.That(db.Get(key), Is.EqualTo(value));
+                Assert.That(db.KeyExists(key), Is.True);
+
+                using IKeyValueStoreSnapshot snapshot = db.CreateSnapshot();
+                Assert.That(snapshot.Get(key), Is.EqualTo(value));
+            });
+
+        [Test]
         public void Mdbx_value_compression_round_trips_and_shrinks_compressible_values()
         {
             using MdbxValueCompression compression = new(enabled: true);
@@ -962,6 +978,58 @@ namespace Nethermind.Db.Test
                 Assert.That(snapshot.KeyExists(key), Is.True);
                 Assert.That(snapshot.KeyExists(missingKey), Is.False);
             }
+        }
+
+        [Test]
+        public void Reusable_read_transaction_observes_latest_committed_values()
+        {
+            byte[] key = [1, 2, 3];
+
+            _db[key] = [4, 5, 6];
+            AssertCanGetViaAllMethod(_db, key, [4, 5, 6]);
+            Assert.That(_db.KeyExists(key), Is.True);
+
+            _db[key] = [7, 8, 9];
+            AssertCanGetViaAllMethod(_db, key, [7, 8, 9]);
+
+            _db[key] = null;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_db.Get(key), Is.Null);
+                Assert.That(_db.KeyExists(key), Is.False);
+            }
+        }
+
+        [Test]
+        public async Task Reusable_read_transaction_pool_handles_concurrent_reads()
+        {
+            byte[] key = [1, 2, 3];
+            byte[] value = [4, 5, 6];
+            _db[key] = value;
+
+            const int workerCount = 64;
+            const int readsPerWorker = 64;
+            Task[] tasks = new Task[workerCount];
+            for (int workerIndex = 0; workerIndex < tasks.Length; workerIndex++)
+            {
+                tasks[workerIndex] = Task.Run(() =>
+                {
+                    for (int readIndex = 0; readIndex < readsPerWorker; readIndex++)
+                    {
+                        Assert.That(_db.KeyExists(key), Is.True);
+                        Assert.That(_db.Get(key), Is.EqualTo(value));
+                    }
+                });
+            }
+
+            await Task.WhenAll(tasks);
+
+            if (_db is not DbOnTheRocks db)
+            {
+                return;
+            }
+
+            Assert.That(db.Mdbx.PooledReadTransactionCount, Is.LessThanOrEqualTo(db.Mdbx.MaxPooledReadTransactionCount));
         }
 
         [Test]

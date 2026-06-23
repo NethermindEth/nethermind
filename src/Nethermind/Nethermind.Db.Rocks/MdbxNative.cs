@@ -147,6 +147,12 @@ internal static class MdbxNative
     [DllImport(LibraryName, EntryPoint = "mdbx_txn_abort")]
     private static extern int TxnAbort(IntPtr txn);
 
+    [DllImport(LibraryName, EntryPoint = "mdbx_txn_reset")]
+    internal static extern int TxnReset(SafeMdbxTxnHandle txn);
+
+    [DllImport(LibraryName, EntryPoint = "mdbx_txn_renew")]
+    internal static extern int TxnRenew(SafeMdbxTxnHandle txn);
+
     [DllImport(LibraryName, EntryPoint = "mdbx_dbi_open")]
     internal static extern unsafe int DbiOpen(SafeMdbxTxnHandle txn, byte* name, uint flags, out uint dbi);
 
