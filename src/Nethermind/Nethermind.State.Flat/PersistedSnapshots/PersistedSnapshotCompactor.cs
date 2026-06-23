@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
 using System.Threading.Channels;
@@ -379,23 +380,27 @@ public class PersistedSnapshotCompactor(
     }
 
     /// <summary>
-    /// Pre-fault the sorted table's offset region (the binary-search index at the tail of a
+    /// Pre-fault the sorted table's tail index (separators, offset arrays and footer of a
     /// freshly-written large-tier snapshot) so it lands in the page-residency tracker. Without
-    /// this, the first lookups take a chain of inline minor page faults walking the offsets.
+    /// this, the first lookups take a chain of inline minor page faults walking the index.
     /// </summary>
     internal static void WarmAddressColumnIndex(PersistedSnapshot snapshot)
     {
         ArenaReservation reservation = snapshot.Reservation;
         ArenaByteReader reader = reservation.CreateReader();
         Bound table = new(0, reader.Length);
-        if (!SortedTable.TryReadFooter<ArenaByteReader, NoOpPin>(in reader, table, out _, out _, out long offsetRegionStart))
+        if (!SortedTable.TryReadFooter<ArenaByteReader, NoOpPin>(in reader, table, out SortedTable.Footer footer))
             return;
 
-        // The reader is reservation-relative, and TouchRangePopulate takes reservation-relative
-        // offsets, so offsetRegionStart maps directly. The warmed range covers the offset array
-        // plus the footer up to the table end.
-        long indexLen = table.Length - offsetRegionStart;
+        // The reader is reservation-relative and TouchRangePopulate takes reservation-relative
+        // offsets. The tail index starts at the block-offset sentinel (= end of the data blocks)
+        // and runs to the table end, covering the separators region, both offset arrays and the footer.
+        Span<byte> offBuf = stackalloc byte[SortedTable.IndexOffsetSize];
+        long sentinel = footer.BlockOffsetsStart + (long)footer.NumBlocks * SortedTable.IndexOffsetSize;
+        if (!reader.TryRead(sentinel, offBuf)) return;
+        long indexStart = BinaryPrimitives.ReadUInt32LittleEndian(offBuf);
+        long indexLen = table.Length - indexStart;
         if (indexLen <= 0) return;
-        reservation.TouchRangePopulate(offsetRegionStart, indexLen);
+        reservation.TouchRangePopulate(indexStart, indexLen);
     }
 }

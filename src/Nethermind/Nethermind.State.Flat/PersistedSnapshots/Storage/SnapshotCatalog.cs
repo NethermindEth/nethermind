@@ -33,7 +33,9 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
     // per-id ref-id records — incompatible with the v2 dense-offset layout.
     // v4: sorted-table keys are front-coded (per-block prefix compression) — incompatible record
     // layout vs v3.
-    private const int CurrentVersion = 4;
+    // v5: sorted table became two-level — 4 KB data blocks with an in-block restart table and a
+    // tail separator-key index — incompatible with the v4 single-level sparse-offset layout.
+    private const int CurrentVersion = 5;
 
     private static readonly byte[] MetadataKey = new byte[4];
 

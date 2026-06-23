@@ -53,8 +53,8 @@ public static class PersistedSnapshotMerger
         for (int i = 0; i < views.Length; i++)
         {
             TReader r = views[i].CreateReader();
-            if (SortedTable.TryReadFooter<TReader, TPin>(in r, new Bound(0, r.Length), out long c, out _, out _))
-                estimatedKeys += c;
+            if (SortedTable.TryReadFooter<TReader, TPin>(in r, new Bound(0, r.Length), out SortedTable.Footer footer))
+                estimatedKeys += footer.Count;
         }
 
         SortedTableBuilder<TWriter> table = new(ref writer, (int)Math.Min(estimatedKeys + 8, int.MaxValue));

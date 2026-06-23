@@ -11,18 +11,19 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 /// <summary>
-/// Builds a single-level <see cref="SortedTable"/>. Records are buffered off-heap as they are
+/// Builds a two-level <see cref="SortedTable"/>. Records are buffered off-heap as they are
 /// <see cref="Add"/>ed (in arbitrary order), then at <see cref="Build"/> sorted by key and written
-/// to the destination <em>in sorted, contiguous order</em> with front-coded keys (block-start keys
-/// stored in full), followed by a sparse offset region (one entry per
-/// <see cref="SortedTable.BlockSize"/> records) and the footer.
+/// to the destination <em>in sorted, contiguous order</em> as <see cref="SortedTable.BlockSizeTarget"/>-bounded
+/// data blocks (front-coded keys, per-block restart table), followed by the separator-key index and
+/// the footer.
 /// </summary>
 /// <remarks>
-/// Physically sorting the records is what lets the offset index be sparse: a lookup binary searches
-/// the sparse offsets to a block, then sequentially scans that block's records. Buffering records
-/// also decouples on-disk order from <see cref="Add"/> order, so the snapshot builder can emit in
-/// any convenient order (e.g. computing the metadata <c>blob_range</c> only after all trie RLP is
-/// written). Values are small, so buffering them is cheap; the per-record index is one <c>int</c>.
+/// Physically sorting the records is what lets the index be sparse: a lookup binary searches the
+/// separators to a block, binary searches that block's restarts, then scans one restart run.
+/// Buffering records also decouples on-disk order from <see cref="Add"/> order, so the snapshot
+/// builder can emit in any convenient order (e.g. computing the metadata <c>blob_range</c> only after
+/// all trie RLP is written). Only the current block's packed records and the (small) tail index are
+/// buffered during <see cref="Build"/>; finished blocks stream straight to the writer.
 /// </remarks>
 internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWriter
 {
@@ -54,8 +55,8 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         _recordBuf.AddRange(value);
     }
 
-    /// <summary>Sort the buffered records by key and emit the sorted records, the sparse offset
-    /// region, and the footer.</summary>
+    /// <summary>Sort the buffered records by key and emit the data blocks, the separator index, and
+    /// the footer.</summary>
     public unsafe void Build()
     {
         Span<int> entries = _entries.AsSpan();
@@ -66,13 +67,20 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
             _entries.Sort(new KeyComparer(recordBase));
         }
 
-        long blockCount = (entries.Length + SortedTable.BlockSize - 1) / SortedTable.BlockSize;
-        using NativeMemoryList<uint> blockOffsets = new((int)Math.Max(1, blockCount));
+        // Tail index, accumulated as blocks flush and written after all data blocks.
+        using NativeMemoryList<byte> separators = new(Math.Max(16, entries.Length));     // [sepLen u8][sep] × M
+        using NativeMemoryList<uint> sepEntryOffsets = new(8);                           // offset within separators of each entry
+        using NativeMemoryList<uint> blockDataOffsets = new(8);                          // table-relative start of each block
 
-        // Front-code keys against the previous record's key, resetting (cp = 0, full key) at every
-        // block start so each block — entered via its sparse offset — decodes standalone.
-        Span<byte> prevKey = stackalloc byte[256];
+        // Reusable per-block scratch — the block's packed records and its restart offsets within them.
+        using NativeMemoryList<byte> blockBody = new(SortedTable.BlockSizeTarget + 512);
+        using NativeMemoryList<ushort> restarts = new(64);
+
+        Span<byte> prevKey = stackalloc byte[256]; // last key packed into the current block (cp basis + separator basis)
         int prevKeyLen = 0;
+        int recordsInBlock = 0;
+        Span<byte> hdr = stackalloc byte[2];
+
         for (int i = 0; i < entries.Length; i++)
         {
             int off = entries[i];
@@ -82,45 +90,139 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
             int vs = records[vsOff];
             ReadOnlySpan<byte> value = records.Slice(vsOff + SortedTable.SizePrefix, vs);
 
-            int cp;
-            if (i % SortedTable.BlockSize == 0)
+            bool opensRestart = recordsInBlock % SortedTable.RestartInterval == 0;
+
+            // Close the current block before it would exceed the target (worst-case record, cp = 0).
+            if (recordsInBlock > 0)
             {
-                blockOffsets.Add(checked((uint)(_writer.Written - _tableStart)));
+                int header = (restarts.Count + (opensRestart ? 1 : 0) + 1) * SortedTable.RestartOffsetSize;
+                int recordMax = 2 + ks + SortedTable.SizePrefix + vs;
+                if (header + blockBody.Count + recordMax > SortedTable.BlockSizeTarget)
+                {
+                    FlushBlock(blockBody, restarts, separators, sepEntryOffsets, blockDataOffsets, prevKey[..prevKeyLen], key, isLast: false);
+                    recordsInBlock = 0;
+                    opensRestart = true;
+                }
+            }
+
+            int cp;
+            if (opensRestart)
+            {
+                restarts.Add(checked((ushort)blockBody.Count));
                 cp = 0;
             }
             else
             {
-                ReadOnlySpan<byte> prev = prevKey[..prevKeyLen];
-                cp = prev.CommonPrefixLength(key);
+                cp = ((ReadOnlySpan<byte>)prevKey[..prevKeyLen]).CommonPrefixLength(key);
             }
 
-            Span<byte> hdr = _writer.GetSpan(2);
             hdr[0] = (byte)cp;
             hdr[1] = (byte)(ks - cp);
-            _writer.Advance(2);
-            IByteBufferWriter.Copy(ref _writer, key[cp..]);
-            Span<byte> vsHdr = _writer.GetSpan(SortedTable.SizePrefix);
-            vsHdr[0] = (byte)vs;
-            _writer.Advance(SortedTable.SizePrefix);
-            IByteBufferWriter.Copy(ref _writer, value);
+            blockBody.AddRange(hdr);
+            blockBody.AddRange(key[cp..]);
+            hdr[0] = (byte)vs;
+            blockBody.AddRange(hdr[..1]);
+            blockBody.AddRange(value);
 
             key.CopyTo(prevKey);
             prevKeyLen = ks;
+            recordsInBlock++;
         }
 
-        Span<uint> blocks = blockOffsets.AsSpan();
-        for (int b = 0; b < blocks.Length; b++)
-        {
-            Span<byte> dst = _writer.GetSpan(SortedTable.OffsetSize);
-            BinaryPrimitives.WriteUInt32LittleEndian(dst, blocks[b]);
-            _writer.Advance(SortedTable.OffsetSize);
-        }
+        if (recordsInBlock > 0)
+            FlushBlock(blockBody, restarts, separators, sepEntryOffsets, blockDataOffsets, prevKey[..prevKeyLen], default, isLast: true);
+
+        // Separators region, then the two fixed-width offset arrays the footer locates by block count.
+        long sepRegionStart = _writer.Written - _tableStart;
+        IByteBufferWriter.Copy(ref _writer, separators.AsSpan());
+
+        Span<uint> seo = sepEntryOffsets.AsSpan();
+        for (int k = 0; k < seo.Length; k++)
+            WriteUInt32(checked((uint)(sepRegionStart + seo[k])));
+
+        Span<uint> bdo = blockDataOffsets.AsSpan();
+        for (int k = 0; k < bdo.Length; k++)
+            WriteUInt32(bdo[k]);
+        WriteUInt32(checked((uint)sepRegionStart)); // sentinel: separators-region start = end of data
 
         Span<byte> footer = _writer.GetSpan(SortedTable.FooterSize);
         BinaryPrimitives.WriteInt64LittleEndian(footer, entries.Length);
-        footer[sizeof(long)] = (byte)SortedTable.BlockSize;
-        footer[sizeof(long) + 1] = SortedTable.FormatVersion;
+        BinaryPrimitives.WriteUInt32LittleEndian(footer[sizeof(long)..], checked((uint)blockDataOffsets.Count));
+        footer[sizeof(long) + sizeof(uint)] = (byte)SortedTable.RestartInterval;
+        footer[sizeof(long) + sizeof(uint) + 1] = SortedTable.FormatVersion;
         _writer.Advance(SortedTable.FooterSize);
+    }
+
+    /// <summary>Prepend the restart table, stream the buffered block, and record its data offset and
+    /// separator. The separator is the shortest key in <c>[lastKey, nextFirstKey)</c>; the final block
+    /// (<paramref name="isLast"/>) uses its own last key. Clears the per-block scratch.</summary>
+    private void FlushBlock(
+        NativeMemoryList<byte> blockBody, NativeMemoryList<ushort> restarts,
+        NativeMemoryList<byte> separators, NativeMemoryList<uint> sepEntryOffsets, NativeMemoryList<uint> blockDataOffsets,
+        scoped ReadOnlySpan<byte> lastKey, scoped ReadOnlySpan<byte> nextFirstKey, bool isLast)
+    {
+        int n = restarts.Count;
+        int headerSize = (n + 1) * SortedTable.RestartOffsetSize; // [numRestarts u16] + n restart offsets
+
+        blockDataOffsets.Add(checked((uint)(_writer.Written - _tableStart)));
+
+        Span<byte> num = _writer.GetSpan(SortedTable.RestartOffsetSize);
+        BinaryPrimitives.WriteUInt16LittleEndian(num, checked((ushort)n));
+        _writer.Advance(SortedTable.RestartOffsetSize);
+        Span<ushort> rs = restarts.AsSpan();
+        for (int k = 0; k < n; k++)
+        {
+            Span<byte> dst = _writer.GetSpan(SortedTable.RestartOffsetSize);
+            BinaryPrimitives.WriteUInt16LittleEndian(dst, checked((ushort)(headerSize + rs[k])));
+            _writer.Advance(SortedTable.RestartOffsetSize);
+        }
+        IByteBufferWriter.Copy(ref _writer, blockBody.AsSpan());
+
+        Span<byte> sepBuf = stackalloc byte[256];
+        int sepLen;
+        if (isLast)
+        {
+            lastKey.CopyTo(sepBuf);
+            sepLen = lastKey.Length;
+        }
+        else
+        {
+            sepLen = FindShortestSeparator(lastKey, nextFirstKey, sepBuf);
+        }
+        sepEntryOffsets.Add(checked((uint)separators.Count));
+        Span<byte> sl = stackalloc byte[1];
+        sl[0] = (byte)sepLen;
+        separators.AddRange(sl);
+        separators.AddRange(sepBuf[..sepLen]);
+
+        blockBody.Clear();
+        restarts.Clear();
+    }
+
+    private void WriteUInt32(uint value)
+    {
+        Span<byte> dst = _writer.GetSpan(SortedTable.IndexOffsetSize);
+        BinaryPrimitives.WriteUInt32LittleEndian(dst, value);
+        _writer.Advance(SortedTable.IndexOffsetSize);
+    }
+
+    /// <summary>Shortest key <c>S</c> with <paramref name="a"/> ≤ <c>S</c> &lt; <paramref name="b"/>
+    /// (caller guarantees <paramref name="a"/> &lt; <paramref name="b"/>), written to
+    /// <paramref name="dst"/>; returns its length. Falls back to <paramref name="a"/> when it cannot be
+    /// shortened.</summary>
+    private static int FindShortestSeparator(scoped ReadOnlySpan<byte> a, scoped ReadOnlySpan<byte> b, scoped Span<byte> dst)
+    {
+        int min = Math.Min(a.Length, b.Length);
+        int l = 0;
+        while (l < min && a[l] == b[l]) l++;
+        if (l < min && a[l] + 1 < b[l])
+        {
+            a[..l].CopyTo(dst);
+            dst[l] = (byte)(a[l] + 1);
+            return l + 1;
+        }
+        a.CopyTo(dst);
+        return a.Length;
     }
 
     public void Dispose()
