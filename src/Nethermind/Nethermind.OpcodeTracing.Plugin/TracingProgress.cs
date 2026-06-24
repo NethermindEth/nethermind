@@ -12,7 +12,7 @@ public sealed class TracingProgress(ulong startBlock, ulong endBlock)
     private readonly ulong _startBlock = startBlock;
     private readonly ulong _totalBlocks = endBlock - startBlock + 1;
     private readonly DateTime _startTime = DateTime.UtcNow;
-    private ulong _lastLoggedBlock = startBlock - 1;
+    private ulong _lastLoggedBlock = startBlock.SaturatingSub(1);
 
     /// <summary>
     /// Gets the last fully processed block number.
