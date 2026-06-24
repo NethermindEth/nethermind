@@ -1753,7 +1753,10 @@ namespace Nethermind.Evm.TransactionProcessing
             long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
             long initialReservoir = Math.Max(0, txGasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
             long initialRegularGas = txGasLimit - intrinsicRegularGas - intrinsicStateGas - initialReservoir;
-            long stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution);
+            // Net spill = gross spill minus the portion already refunded back to regular gas (gas_left)
+            // via the source-based LIFO refill. Only the net unrefunded spill is reclassified out of the
+            // block's regular-gas dimension; the refunded portion is already reflected in remainingRegularGas.
+            long stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution) - TGasPolicy.GetStateGasSpillRefunded(in gasAfterExecution);
             long stateGasSpillReclassified = TGasPolicy.GetStateGasSpillReclassified(in gasAfterExecution);
             return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
                 intrinsicRegularGas,
