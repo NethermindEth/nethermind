@@ -233,6 +233,17 @@ public static class Metrics
         set => Volatile.Write(ref _pageTrackerEvictionsInlineFallback, value);
     }
 
+    internal static long _pageTrackerPagesRefreshed;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Page-tracker resident pages re-touched by the keep-warm hand to hold their page-cache position")]
+    public static long PageTrackerPagesRefreshed
+    {
+        get => Volatile.Read(ref _pageTrackerPagesRefreshed);
+        set => Volatile.Write(ref _pageTrackerPagesRefreshed, value);
+    }
+
     internal static long _arenaReservationCount;
 
     [DetailedMetric]

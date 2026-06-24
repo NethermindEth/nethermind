@@ -47,6 +47,7 @@ public sealed class ArenaManager : IArenaManager
     internal long EvictionsInlineFallback => _pageAdvisor?.InlineFallback ?? 0;
     internal long EvictionsSkippedRetouched => _pageAdvisor?.SkippedRetouched ?? 0;
     internal long EvictionsDispatched => _pageAdvisor?.Dispatched ?? 0;
+    internal long PagesRefreshed => _pageAdvisor?.Refreshed ?? 0;
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
@@ -403,6 +404,7 @@ public sealed class ArenaManager : IArenaManager
         private long _inlineFallback;
         private long _skippedRetouched;
         private long _dispatched;
+        private long _refreshed;
 
         public PageResidencyAdvisor(ArenaManager manager, int ringCapacity)
         {
@@ -432,7 +434,12 @@ public sealed class ArenaManager : IArenaManager
                 // Userspace load on a torn-down mapping would SIGSEGV (madvise tolerates a bad pointer; a
                 // raw load does not) — pin the file for the duration of the read.
                 if (!warmArena.TryAcquireLease()) continue;
-                try { warmArena.TouchByte(warmOffset); }
+                try
+                {
+                    warmArena.TouchByte(warmOffset);
+                    Interlocked.Increment(ref _refreshed);
+                    Interlocked.Increment(ref Metrics._pageTrackerPagesRefreshed);
+                }
                 finally { warmArena.Dispose(); }
             }
         }
@@ -447,6 +454,7 @@ public sealed class ArenaManager : IArenaManager
         public long InlineFallback => Volatile.Read(ref _inlineFallback);
         public long SkippedRetouched => Volatile.Read(ref _skippedRetouched);
         public long Dispatched => Volatile.Read(ref _dispatched);
+        public long Refreshed => Volatile.Read(ref _refreshed);
 
         public void Queue(int arenaId, int pageIdx)
         {

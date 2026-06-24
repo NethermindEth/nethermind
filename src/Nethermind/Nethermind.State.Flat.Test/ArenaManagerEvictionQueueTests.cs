@@ -138,6 +138,35 @@ public class ArenaManagerEvictionQueueTests
     }
 
     [Test]
+    public void WarmTouch_RefreshesRegisteredArenaPage_BumpsPagesRefreshed()
+    {
+        // One 8-way set (capacity 8) so the bounded keep-warm probe is guaranteed to find the
+        // lone resident slot rather than missing it probabilistically.
+        using ArenaManager manager = NewManager(8L * Environment.SystemPageSize);
+        manager.Initialize([]);
+
+        // Register a real arena so the keep-warm hand's TouchByte has a live mapping to read.
+        byte[] data = [1, 2, 3, 4];
+        SnapshotLocation location;
+        using (ArenaWriter writer = manager.CreateWriter(data.Length))
+        {
+            data.CopyTo(writer.GetWriter().GetSpan(data.Length));
+            writer.GetWriter().Advance(data.Length);
+            (location, _) = writer.Complete();
+        }
+
+        // Seed the tracker with that arena's resident page, then forget an unrelated (stale)
+        // range: its per-page Forget is a no-op, but it still fires the keep-warm hand, which
+        // picks the resident page and TouchByte-refreshes it.
+        int page = (int)(location.Offset / Environment.SystemPageSize);
+        manager.PageTracker.TryTouch(location.ArenaId, page, out _, out _);
+        Assert.That(manager.PagesRefreshed, Is.EqualTo(0));
+
+        manager.ForgetTrackerRange(location.ArenaId + 1000, byteOffset: 0, byteSize: 4L * Environment.SystemPageSize);
+        Assert.That(manager.PagesRefreshed, Is.GreaterThan(0));
+    }
+
+    [Test]
     public void Dispose_DrainsRemainingEntries()
     {
         long budget = 1024L * Environment.SystemPageSize;
