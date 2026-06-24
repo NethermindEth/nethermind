@@ -46,5 +46,18 @@ namespace Nethermind.Trie.Test.Pruning
             _baseStrategy.ShouldPruneDirtyNode(state).Returns(false);
             Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.False);
         }
+
+        // Regression: ulong subtraction must not wrap. The block count since last persist is
+        // below the max (so master delegated to the base strategy), but a naive ulong subtraction
+        // underflows to near-ulong.MaxValue and would force a prune on every low block.
+        [TestCase(10ul, 0ul, TestName = "latest committed block below prune boundary")]
+        [TestCase(40ul, 20ul, TestName = "last persisted block ahead of reorg boundary")]
+        public void ShouldPruneDirtyNode_should_not_force_prune_without_underflow_when_few_blocks_since_persist(ulong latestCommittedBlock, ulong lastPersistedBlock)
+        {
+            TrieStoreState state = new(100, 200, latestCommittedBlock, lastPersistedBlock);
+
+            _baseStrategy.ShouldPruneDirtyNode(state).Returns(false);
+            Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.False);
+        }
     }
 }
