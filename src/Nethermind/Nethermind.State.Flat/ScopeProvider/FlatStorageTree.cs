@@ -156,18 +156,26 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        // A trie-less (history-backed) scope must never bulk-write or hash the storage trie (its persistence reader
+        // throws on trie-node access). Storage VALUES still reach the flat overlay via storageTree.Set /
+        // storageTree.SelfDestruct so subsequent reads resolve; only the delegated trie batch is skipped.
+        private readonly bool _trieless = storageTree._scope.Trieless;
+
         public void Set(in UInt256 index, byte[] value)
         {
-            storageTreeBulkWriteBatch.Set(in index, value);
+            if (!_trieless) storageTreeBulkWriteBatch.Set(in index, value);
             storageTree.Set(index, value);
         }
 
         public void Clear()
         {
-            storageTreeBulkWriteBatch.Clear();
+            if (!_trieless) storageTreeBulkWriteBatch.Clear();
             storageTree.SelfDestruct();
         }
 
-        public void Dispose() => storageTreeBulkWriteBatch.Dispose();
+        public void Dispose()
+        {
+            if (!_trieless) storageTreeBulkWriteBatch.Dispose();
+        }
     }
 }
