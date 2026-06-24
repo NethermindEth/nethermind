@@ -159,10 +159,9 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
 
         if ((entry.Memory?.Length ?? 0) != 0)
         {
-            const int wordSize = 32;
-            byte[] raw = new byte[entry.Memory!.Length * wordSize];
+            byte[] raw = new byte[entry.Memory!.Length * 32];
             for (int i = 0; i < entry.Memory.Length; i++)
-                entry.Memory[i].ToBigEndian(raw.AsSpan(i * wordSize, wordSize));
+                entry.Memory[i].ToBigEndian(raw.AsSpan(i * 32, 32));
             writer.WritePropertyName("memory");
             writer.WriteStringValue($"0x{Convert.ToHexString(raw).ToLowerInvariant()}");
         }
