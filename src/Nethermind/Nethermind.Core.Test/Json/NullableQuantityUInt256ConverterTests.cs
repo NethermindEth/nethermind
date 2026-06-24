@@ -109,6 +109,13 @@ public class NullableQuantityUInt256ConverterTests
     }
 
     [Test]
+    public void Write_max_value_produces_minimal_hex()
+    {
+        string result = JsonSerializer.Serialize((UInt256?)UInt256.MaxValue, _options);
+        Assert.That(result, Is.EqualTo("\"0x" + new string('f', 64) + "\""));
+    }
+
+    [Test]
     public void Write_null_produces_null()
     {
         string result = JsonSerializer.Serialize((UInt256?)null, _options);
