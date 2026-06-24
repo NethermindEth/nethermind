@@ -89,6 +89,12 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         }
     }
 
+    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
+        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
+            CurrentTraceEntry.ReturnData = returnData.Span.ToHexString(true);
+    }
+
     public override void ReportRefund(long refund) => _refund += refund;
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
