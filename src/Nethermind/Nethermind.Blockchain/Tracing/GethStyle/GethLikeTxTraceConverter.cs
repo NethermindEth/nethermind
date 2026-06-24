@@ -136,8 +136,8 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
                     runningByAddress[delta.Address] = map = [];
                 map[delta.Key] = delta.Value;
                 entry.Storage = map;
-                JsonSerializer.Serialize(writer, entry, options);
-                entry.Storage = null;
+                try { JsonSerializer.Serialize(writer, entry, options); }
+                finally { entry.Storage = null; }
             }
             else
             {
