@@ -79,8 +79,8 @@ internal class SignTransactionManager(
             return;
 
         // Sign only recent head blocks; older ones are replayed during catch-up.
-        long window = spec.MergeSignRange * spec.MinePeriod * XdcConstants.MaxSignableBlockPeriods;
-        if ((long)xdcHeader.Timestamp + window < _timestamper.UnixTime.SecondsLong)
+        ulong window = spec.MergeSignRange * spec.MinePeriod * (ulong)XdcConstants.MaxSignableBlockPeriods;
+        if (xdcHeader.Timestamp + window < _timestamper.UnixTime.Seconds)
             return;
 
         if (xdcHeader.Number % spec.MergeSignRange != 0)
