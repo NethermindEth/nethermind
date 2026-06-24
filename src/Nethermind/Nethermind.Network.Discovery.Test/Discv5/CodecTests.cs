@@ -202,8 +202,8 @@ public class CodecTests
     {
         using FindNodeMsg message = new([0, 0, 0, 1], [255, 254, 256]);
 
-        using NettyRlpStream encoded = MessageCodec.Encode(message);
-        using Discv5Message decoded = MessageCodec.Decode(encoded.AsSpan());
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.Decode(encoded);
 
         Assert.That(decoded, Is.InstanceOf<FindNodeMsg>());
         FindNodeMsg decodedFindNode = (FindNodeMsg)decoded;
@@ -228,8 +228,8 @@ public class CodecTests
     {
         using PongMsg message = new([0, 0, 0, 2], 3, IPAddress.Parse("192.0.2.1"), 30303);
 
-        using NettyRlpStream encoded = MessageCodec.Encode(message);
-        using Discv5Message decoded = MessageCodec.Decode(encoded.AsSpan());
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.Decode(encoded);
 
         Assert.That(decoded, Is.InstanceOf<PongMsg>());
         PongMsg decodedPong = (PongMsg)decoded;
@@ -256,10 +256,8 @@ public class CodecTests
     {
         using TalkReqMsg message = new([0, 0, 0, 3], "eth"u8.ToArray(), new byte[] { 1, 2, 3, 4 });
 
-        using NettyRlpStream encoded = MessageCodec.Encode(message);
-        ArrayPoolSpan<byte> owner = new(encoded.AsSpan().Length);
-        encoded.AsSpan().CopyTo(owner);
-        using Discv5Message decoded = MessageCodec.DecodeOwned(owner.AsReadOnlyMemory(), owner);
+        ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.DecodeOwned(encoded.AsReadOnlyMemory(), encoded);
 
         Assert.That(decoded, Is.InstanceOf<TalkReqMsg>());
         TalkReqMsg decodedTalkReq = (TalkReqMsg)decoded;
@@ -273,10 +271,8 @@ public class CodecTests
     {
         using TalkRespMsg message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
 
-        using NettyRlpStream encoded = MessageCodec.Encode(message);
-        ArrayPoolSpan<byte> owner = new(encoded.AsSpan().Length);
-        encoded.AsSpan().CopyTo(owner);
-        using Discv5Message decoded = MessageCodec.DecodeOwned(owner.AsReadOnlyMemory(), owner);
+        ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.DecodeOwned(encoded.AsReadOnlyMemory(), encoded);
 
         Assert.That(decoded, Is.InstanceOf<TalkRespMsg>());
         TalkRespMsg decodedTalkResp = (TalkRespMsg)decoded;
@@ -288,9 +284,9 @@ public class CodecTests
     public void MessageCodec_Requires_Owned_Memory_For_Talk_Messages()
     {
         using TalkRespMsg message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
-        using NettyRlpStream encoded = MessageCodec.Encode(message);
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
 
-        Assert.That(() => MessageCodec.Decode(encoded.AsSpan()), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(encoded), Throws.TypeOf<RlpException>());
     }
 
     [Test]
@@ -301,8 +297,8 @@ public class CodecTests
         NodeRecord[] records = [skippedRecord, expectedRecord];
         using NodesMsg message = new([0, 0, 0, 5], 1, new ArraySegment<NodeRecord>(records, 1, 1));
 
-        using NettyRlpStream encoded = MessageCodec.Encode(message);
-        using Discv5Message decoded = MessageCodec.Decode(encoded.AsSpan());
+        using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
+        using Discv5Message decoded = MessageCodec.Decode(encoded);
 
         Assert.That(decoded, Is.InstanceOf<NodesMsg>());
         NodesMsg decodedNodes = (NodesMsg)decoded;

@@ -116,12 +116,12 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         {
             if (current.IsLeaf)
             {
-                if (_logger.IsDebug) _logger.Debug($"Reached leaf node at depth {depth}");
+                if (_logger.IsTrace) _logger.Trace($"Reached leaf node at depth {depth}");
                 return current.Bucket;
             }
 
             bool goRight = _distance.GetBit(nodeHash, depth);
-            if (_logger.IsDebug) _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
+            if (_logger.IsTrace) _logger.Trace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
 
             current = goRight ? current.Right! : current.Left!;
             depth++;
@@ -131,7 +131,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     private bool ShouldSplit(int depth, int targetLogDistance)
     {
         bool shouldSplit = depth < _distance.MaxDistance && targetLogDistance + _b >= depth;
-        if (_logger.IsDebug) _logger.Debug($"ShouldSplit at depth {depth}: {shouldSplit}");
+        if (_logger.IsTrace) _logger.Trace($"ShouldSplit at depth {depth}: {shouldSplit}");
         return shouldSplit;
     }
 
@@ -140,7 +140,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         node.Left = new TreeNode(_k, node.Prefix);
         node.Right = new TreeNode(_k, _distance.SetBit(node.Prefix, depth));
 
-        if (_logger.IsDebug) _logger.Debug($"Created children at depth {depth + 1}");
+        if (_logger.IsTrace) _logger.Trace($"Created children at depth {depth + 1}");
 
         // Iterate from oldest to newest so the new buckets preserve original LRU order.
         (TKadKey, TNode)[] items = node.Bucket.GetAllWithHash();
@@ -149,7 +149,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
             (TKadKey itemHash, TNode value) = items[i];
             TreeNode? targetNode = _distance.GetBit(itemHash, depth) ? node.Right : node.Left;
             targetNode.Bucket.TryAddOrRefresh(itemHash, value, out _);
-            if (_logger.IsDebug) _logger.Debug($"Moved item ({itemHash}, {value}) to {(_distance.GetBit(itemHash, depth) ? "right" : "left")} child");
+            if (_logger.IsTrace) _logger.Trace($"Moved item ({itemHash}, {value}) to {(_distance.GetBit(itemHash, depth) ? "right" : "left")} child");
         }
 
         node.Bucket.Clear();

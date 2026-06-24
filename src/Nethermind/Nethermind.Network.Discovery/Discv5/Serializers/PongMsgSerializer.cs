@@ -18,14 +18,14 @@ internal sealed class PongMsgSerializer() : MsgSerializerBase<PongMsg>(MessageTy
             IPAddressRlp.GetLength(msg.RecipientIp) +
             Rlp.LengthOf(msg.RecipientPort);
 
-    protected override void SerializeCore(NettyRlpStream stream, PongMsg msg)
+    protected override void SerializeCore<TWriter>(ref TWriter writer, PongMsg msg)
     {
-        Encode(stream, msg.EnrSequence);
-        IPAddressRlp.Encode(stream, msg.RecipientIp);
-        Encode(stream, msg.RecipientPort);
+        Encode(ref writer, msg.EnrSequence);
+        IPAddressRlp.Encode(ref writer, msg.RecipientIp);
+        Encode(ref writer, msg.RecipientPort);
     }
 
-    protected override PongMsg DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override PongMsg DeserializeCore(in RequestId requestId, ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         ulong enrSequence = ctx.DecodeULong();
         IPAddress recipientIp = new(ctx.DecodeByteArraySpan(IpAddressRlpLimit));

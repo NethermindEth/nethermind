@@ -26,28 +26,29 @@ public class LightTxDecoder : TxDecoder<Transaction>
 
     public static byte[] Encode(Transaction tx)
     {
-        RlpStream rlpStream = new(GetLength(tx));
+        byte[] bytes = new byte[GetLength(tx)];
+        RlpWriter writer = new(bytes);
 
-        rlpStream.Encode(tx.Timestamp);
-        rlpStream.Encode(tx.SenderAddress);
-        rlpStream.Encode(tx.Nonce);
-        rlpStream.Encode(tx.Hash);
-        rlpStream.Encode(in tx.ValueRef);
-        rlpStream.Encode(tx.GasLimit);
-        rlpStream.Encode(tx.GasPrice);
-        rlpStream.Encode(tx.DecodedMaxFeePerGas);
-        rlpStream.Encode(tx.MaxFeePerBlobGas!.Value);
-        rlpStream.Encode(tx.BlobVersionedHashes!);
-        rlpStream.Encode(tx.PoolIndex);
-        rlpStream.Encode(tx.GetLength());
-        rlpStream.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        writer.Encode(tx.Timestamp);
+        writer.Encode(tx.SenderAddress);
+        writer.Encode(tx.Nonce);
+        writer.Encode(tx.Hash);
+        writer.Encode(in tx.ValueRef);
+        writer.Encode(tx.GasLimit);
+        writer.Encode(tx.GasPrice);
+        writer.Encode(tx.DecodedMaxFeePerGas);
+        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        writer.Encode(tx.BlobVersionedHashes!);
+        writer.Encode(tx.PoolIndex);
+        writer.Encode(tx.GetLength());
+        writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
 
-        return rlpStream.Data.ToArray()!;
+        return bytes;
     }
 
     public static LightTransaction Decode(byte[] data)
     {
-        Rlp.ValueDecoderContext ctx = new(data);
+        RlpReader ctx = new(data);
         return new LightTransaction(
             timestamp: ctx.DecodeUInt256(),
             sender: ctx.DecodeAddress()!,

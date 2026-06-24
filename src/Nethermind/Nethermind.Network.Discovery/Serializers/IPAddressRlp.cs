@@ -19,15 +19,16 @@ internal static class IPAddressRlp
         };
 
     [SkipLocalsInit]
-    public static void Encode(RlpStream stream, IPAddress ip)
+    public static void Encode<TWriter>(ref TWriter writer, IPAddress ip)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         Span<byte> bytes = stackalloc byte[16];
         if (ip.TryWriteBytes(bytes, out int bytesWritten))
         {
-            stream.Encode(bytes[..bytesWritten]);
+            writer.Encode(bytes[..bytesWritten]);
             return;
         }
 
-        stream.Encode(ip.GetAddressBytes());
+        writer.Encode(ip.GetAddressBytes());
     }
 }
