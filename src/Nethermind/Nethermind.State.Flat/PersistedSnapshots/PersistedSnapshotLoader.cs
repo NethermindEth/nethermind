@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Timer = System.Timers.Timer;
 
@@ -73,6 +74,12 @@ public sealed class PersistedSnapshotLoader(
 
     private void LoadSnapshotsParallel(List<CatalogEntry> entries)
     {
+        if (entries.Count == 0) return;
+
+        // Load the first snapshot sequentially and verify its format (the last byte). All snapshots in a
+        // directory share one format, so a mismatch here is a single clean throw that pre-empts the rest.
+        LoadSnapshot(entries[0], verifyFormat: true);
+
         ProgressLogger? loadLog = null;
         Timer? heartbeat = null;
         if (entries.Count > ParallelLoadThreshold && _logger.IsInfo)
@@ -86,10 +93,10 @@ public sealed class PersistedSnapshotLoader(
 
         try
         {
-            long loaded = 0;
-            Parallel.ForEach(entries, entry =>
+            long loaded = 1;
+            Parallel.For(1, entries.Count, i =>
             {
-                LoadSnapshot(entry);
+                LoadSnapshot(entries[i]);
                 if (loadLog is not null) loadLog.Update(Interlocked.Increment(ref loaded));
             });
             loadLog?.LogProgress();
@@ -105,9 +112,20 @@ public sealed class PersistedSnapshotLoader(
     /// which indexes it under the bucket's lock — so this is safe to run from the parallel load.
     /// No catalog write: the entry is already in the catalog (we are reading from it).
     /// </summary>
-    private void LoadSnapshot(CatalogEntry entry)
+    private void LoadSnapshot(CatalogEntry entry, bool verifyFormat = false)
     {
         ArenaReservation reservation = arena.Open(entry.Location);
+
+        // The last byte of the snapshot is its sorted-table format version; a mismatch means the whole
+        // directory predates the current on-disk format. Read it off the open reservation (a plain mmap
+        // read — no lease change) before consuming the reservation below.
+        if (verifyFormat && !FormatMatches(reservation, out byte onDisk))
+        {
+            reservation.Dispose();
+            throw new InvalidOperationException(
+                $"Persisted snapshot format mismatch: on-disk v{onDisk}, runtime expects v{SortedTable.FormatVersion}. " +
+                "The persisted_snapshot/ directory has an incompatible layout — wipe and resync.");
+        }
 
         // The ctor walks its own ref_ids metadata and leases each blob arena file (rolling back on
         // partial failure) and takes its own lease on the reservation, so we drop ours right after.
@@ -117,6 +135,14 @@ public sealed class PersistedSnapshotLoader(
         using PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, blobs, entry.Tier, RefCountedBloomFilter.AlwaysTrue());
         reservation.Dispose();
         repository.AddPersistedSnapshot(snapshot, entry.Tier);
+    }
+
+    private static bool FormatMatches(ArenaReservation reservation, out byte onDisk)
+    {
+        ArenaByteReader reader = reservation.CreateReader();
+        Span<byte> versionByte = stackalloc byte[1];
+        onDisk = reader.TryRead(reservation.Size - 1, versionByte) ? versionByte[0] : (byte)0;
+        return onDisk == SortedTable.FormatVersion;
     }
 
     /// <summary>
