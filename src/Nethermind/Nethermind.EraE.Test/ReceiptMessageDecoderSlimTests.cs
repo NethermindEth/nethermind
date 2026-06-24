@@ -44,7 +44,7 @@ public class ReceiptMessageDecoderSlimTests
 
         byte[] encoded = SlimDecoder.EncodeNew(original, RlpBehaviors.Eip658Receipts);
 
-        Rlp.ValueDecoderContext ctx = new(encoded.AsSpan());
+        RlpReader ctx = new(encoded.AsSpan());
         TxReceipt decoded = SlimDecoder.Decode(ref ctx, RlpBehaviors.Eip658Receipts)!;
 
         Assert.That(decoded.StatusCode, Is.EqualTo(original.StatusCode));
@@ -68,7 +68,7 @@ public class ReceiptMessageDecoderSlimTests
             .TestObject;
 
         byte[] encoded = SlimDecoder.EncodeNew(original, RlpBehaviors.Eip658Receipts);
-        Rlp.ValueDecoderContext ctx = new(encoded.AsSpan());
+        RlpReader ctx = new(encoded.AsSpan());
         TxReceipt decoded = SlimDecoder.Decode(ref ctx, RlpBehaviors.Eip658Receipts)!;
 
         Assert.That(decoded.Bloom, Is.Not.Null);
@@ -84,7 +84,7 @@ public class ReceiptMessageDecoderSlimTests
             .TestObject;
 
         byte[] encoded = SlimDecoder.EncodeNew(receipt, RlpBehaviors.Eip658Receipts);
-        Rlp.ValueDecoderContext ctx = new(encoded.AsSpan());
+        RlpReader ctx = new(encoded.AsSpan());
         TxReceipt decoded = SlimDecoder.Decode(ref ctx, RlpBehaviors.Eip658Receipts)!;
 
         Assert.That(decoded, Is.Not.Null);

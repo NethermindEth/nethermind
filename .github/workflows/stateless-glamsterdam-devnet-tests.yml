@@ -1,0 +1,311 @@
+name: Stateless glamsterdam-devnet tests
+
+on:
+  schedule:
+    - cron: '12 */12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CATALOG_ROOT: https://pub-5345007fbd06486bbb7cbbe9f3112c45.r2.dev/devnets/glamsterdam-devnet-5
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build Nethermind
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
+        run: make build
+
+      - name: Upload guest binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind
+          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
+          if-no-files-found: error
+          retention-days: 1
+
+  select-batches:
+    name: Select block batches
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      selected_count: ${{ steps.select.outputs.selected_count }}
+    env:
+      SUMMARY_DIR: /tmp/stateless-devnet
+    steps:
+      - name: Select block batches
+        id: select
+        run: |
+          set -euo pipefail
+
+          rm -rf "$SUMMARY_DIR"
+          mkdir -p "$SUMMARY_DIR"
+
+          curl -fsSL "$CATALOG_ROOT/batches.jsonl" -o "$SUMMARY_DIR/batches.jsonl"
+
+          python3 - "$SUMMARY_DIR/batches.jsonl" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import math
+          import sys
+
+          # A GitHub Actions matrix generates at most 256 jobs, so pack the batches
+          # into at most that many chunks and let each job process a chunk.
+          MAX_JOBS = 256
+
+          # Per-batch time budget; the job timeout scales with the chunk size but is
+          # capped at GitHub's 360-minute hosted-runner limit.
+          MINUTES_PER_BATCH = 60
+          MAX_TIMEOUT_MINUTES = 360
+
+          batches_path, output_path = sys.argv[1:]
+          with open(batches_path, encoding="utf-8") as file:
+              batches = [json.loads(line) for line in file if line.strip()]
+
+          if not batches:
+              sys.exit("No block batches found in the catalog")
+
+          chunk_size = math.ceil(len(batches) / MAX_JOBS)
+          chunks = [batches[i:i + chunk_size] for i in range(0, len(batches), chunk_size)]
+
+          matrix = {
+              "include": [
+                  {
+                      "range": f"{chunk[0]['batchStartBlock']}-{chunk[-1]['batchEndBlock']}",
+                      "timeout": min(MAX_TIMEOUT_MINUTES, len(chunk) * MINUTES_PER_BATCH),
+                      "batches": [
+                          {"path": batch["path"], "sha256": batch["sha256"]}
+                          for batch in chunk
+                      ],
+                  }
+                  for chunk in chunks
+              ]
+          }
+
+          outputs = {
+              "matrix": json.dumps(matrix, separators=(",", ":")),
+              "selected_count": str(len(batches)),
+          }
+
+          with open(output_path, "a", encoding="utf-8") as file:
+              for name, value in outputs.items():
+                  file.write(f"{name}={value}\n")
+          PY
+
+  test:
+    name: Run blocks ${{ matrix.range }}
+    needs: [build, select-batches]
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select-batches.outputs.matrix) }}
+    env:
+      SUMMARY_DIR: /tmp/stateless-devnet-${{ matrix.range }}
+      MATRIX_BATCH_COUNT: ${{ needs.select-batches.outputs.selected_count }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download guest binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nethermind
+          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
+
+      - name: Run blocks
+        env:
+          BATCH_RANGE: ${{ matrix.range }}
+          BATCHES_JSON: ${{ toJSON(matrix.batches) }}
+        run: |
+          set -euo pipefail
+
+          guest_dir="src/Nethermind/Nethermind.Stateless.ZiskGuest"
+
+          rm -rf "$SUMMARY_DIR"
+          mkdir -p "$SUMMARY_DIR"/{archives,extracted,logs}
+          summary="$SUMMARY_DIR/summary.md"
+
+          curl -fsSL "$CATALOG_ROOT/manifest.json" -o "$SUMMARY_DIR/manifest.json"
+
+          network="$(jq -r '.network' "$SUMMARY_DIR/manifest.json")"
+          artifact_count="$(jq -r '.batches.artifactCount' "$SUMMARY_DIR/manifest.json")"
+          batch_total="$(jq -r '.batches.count' "$SUMMARY_DIR/manifest.json")"
+
+          {
+            echo "# Stateless tests"
+            echo
+            echo "- Catalog: $CATALOG_ROOT"
+            echo "- Network: $network"
+            echo "- Available batches: $batch_total"
+            echo "- Available block artifacts: $artifact_count"
+            echo "- Selected batches: all available batches"
+            echo "- Matrix batches: $MATRIX_BATCH_COUNT"
+            echo "- Current chunk: $BATCH_RANGE"
+            echo
+            echo "| Block | Hash | Result |"
+            echo "| --- | --- | --- |"
+          } > "$summary"
+
+          chmod +x "$guest_dir/bin/nethermind"
+
+          passed=0
+          failed=0
+
+          record_failure() {
+            local block_number="$1"
+            local block_hash="$2"
+            local reason="$3"
+
+            echo "::error title=Stateless execution failed::Block $block_number ($block_hash): $reason"
+            echo "| $block_number | \`$block_hash\` | failed: $reason |" >> "$summary"
+            failed=$((failed + 1))
+          }
+
+          record_batch_failure() {
+            local batch="$1"
+            local reason="$2"
+
+            echo "::error title=Stateless batch failed::Batch $batch: $reason"
+            echo "| batch $batch | | failed: $reason |" >> "$summary"
+            failed=$((failed + 1))
+
+            rm -rf "$archive" "$batch_dir"
+          }
+
+          while IFS= read -r batch; do
+            archive_path="$(jq -r '.path' <<< "$batch")"
+            archive_sha="$(jq -r '.sha256' <<< "$batch" | sed 's/^0x//')"
+            archive_name="$(basename "$archive_path")"
+            archive="$SUMMARY_DIR/archives/$archive_name"
+            batch_dir="$SUMMARY_DIR/extracted/${archive_name%.tar.zst}"
+
+            echo "Downloading $archive_path"
+            if ! curl -fsSL "$CATALOG_ROOT/$archive_path" -o "$archive"; then
+              record_batch_failure "$archive_name" "failed to download archive"
+              continue
+            fi
+
+            if ! echo "$archive_sha  $archive" | sha256sum --check --status; then
+              record_batch_failure "$archive_name" "archive checksum mismatch"
+              continue
+            fi
+
+            mkdir -p "$batch_dir"
+            if ! tar --zstd -xf "$archive" -C "$batch_dir"; then
+              record_batch_failure "$archive_name" "failed to extract archive"
+              continue
+            fi
+
+            if ! jq -e '.artifacts | type == "array" and length > 0' "$batch_dir/manifest.json" > /dev/null 2>&1; then
+              record_batch_failure "$archive_name" "missing or empty block manifest"
+              continue
+            fi
+
+            while IFS= read -r artifact; do
+              block_number="$(jq -r '.blockNumber' <<< "$artifact")"
+              block_hash="$(jq -r '.blockHash' <<< "$artifact")"
+              input_sha="$(jq -r '.statelessInputSha256' <<< "$artifact" | sed 's/^0x//')"
+              artifact_path="$(jq -r '.archivePath' <<< "$artifact")"
+              block_json="$SUMMARY_DIR/block-$block_number.json"
+              input_hex_file="$SUMMARY_DIR/block-$block_number.hex"
+              raw_input_file="$SUMMARY_DIR/block-$block_number.raw.ssz"
+              input_file="$guest_dir/bin/$block_number.ssz"
+              log_file="$SUMMARY_DIR/logs/$block_number.log"
+
+              if ! zstd -dc "$batch_dir/$artifact_path" > "$block_json"; then
+                record_failure "$block_number" "$block_hash" "failed to decompress block artifact"
+                continue
+              fi
+
+              if ! jq -r '.statelessInputBytes // .stateless_input_bytes // empty' "$block_json" > "$input_hex_file"; then
+                record_failure "$block_number" "$block_hash" "failed to read statelessInputBytes"
+                continue
+              fi
+
+              if [ ! -s "$input_hex_file" ]; then
+                record_failure "$block_number" "$block_hash" "statelessInputBytes is missing"
+                continue
+              fi
+
+              if ! python3 -c 'import sys; data = sys.stdin.read().strip(); data = data[2:] if data[:2].lower() == "0x" else data; open(sys.argv[1], "wb").write(bytes.fromhex(data))' "$raw_input_file" < "$input_hex_file"; then
+                record_failure "$block_number" "$block_hash" "failed to decode statelessInputBytes"
+                continue
+              fi
+
+              if ! echo "$input_sha  $raw_input_file" | sha256sum --check --status; then
+                record_failure "$block_number" "$block_hash" "statelessInputBytes checksum mismatch"
+                continue
+              fi
+
+              if ! python3 -c 'import struct, sys; data = open(sys.argv[1], "rb").read(); padding = (-len(data)) % 8; open(sys.argv[2], "wb").write(struct.pack("<Q", len(data)) + data + bytes(padding))' "$raw_input_file" "$input_file"; then
+                record_failure "$block_number" "$block_hash" "failed to frame statelessInputBytes for Zisk"
+                continue
+              fi
+
+              echo "Running block $block_number ($block_hash)"
+              set +e
+              timeout 5m make -C "$guest_dir" run INPUT="$block_number.ssz" 2>&1 | tee "$log_file"
+              run_status=${PIPESTATUS[0]}
+              set -e
+
+              output_hex="$(grep -Eio '(0x)?[0-9a-f]{66,}' "$log_file" | sed 's/^0x//' | awk 'length($0) >= 66 { value=$0 } END { print value }' || true)"
+
+              if [ "$run_status" -ne 0 ]; then
+                record_failure "$block_number" "$block_hash" "guest exited $run_status"
+              elif [ -z "$output_hex" ]; then
+                record_failure "$block_number" "$block_hash" "no encoded output found"
+              elif [ "${output_hex:64:2}" != "01" ]; then
+                record_failure "$block_number" "$block_hash" "stateless result was not successful"
+              else
+                echo "| $block_number | \`$block_hash\` | passed |" >> "$summary"
+                passed=$((passed + 1))
+              fi
+
+              rm -f "$input_file" "$raw_input_file" "$block_json" "$input_hex_file"
+            done < <(jq -c '.artifacts[]' "$batch_dir/manifest.json")
+
+            rm -rf "$archive" "$batch_dir"
+          done < <(jq -c '.[]' <<< "$BATCHES_JSON")
+
+          {
+            echo
+            echo "- Passed: $passed"
+            echo "- Failed: $failed"
+          } >> "$summary"
+
+          if [ "$failed" -ne 0 ]; then
+            cat "$summary"
+            echo "::error title=Stateless tests failed::$failed block(s) failed"
+            exit 1
+          fi
+
+      - name: Append summary
+        if: always()
+        run: |
+          if [ -f "$SUMMARY_DIR/summary.md" ]; then
+            cat "$SUMMARY_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No stateless execution summary was produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stateless-devnet-${{ matrix.range }}-logs
+          path: |
+            ${{ env.SUMMARY_DIR }}/summary.md
+            ${{ env.SUMMARY_DIR }}/manifest.json
+            ${{ env.SUMMARY_DIR }}/logs
+          if-no-files-found: warn
+          retention-days: 7

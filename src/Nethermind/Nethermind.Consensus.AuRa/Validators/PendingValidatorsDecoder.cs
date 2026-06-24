@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     internal sealed class PendingValidatorsDecoder : RlpDecoder<PendingValidators>
     {
-        protected override PendingValidators DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override PendingValidators DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -43,24 +43,24 @@ namespace Nethermind.Consensus.AuRa.Validators
             return result;
         }
 
-        public override void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                rlpStream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
             (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(item.BlockNumber);
-            rlpStream.Encode(item.BlockHash);
-            rlpStream.StartSequence(addressesLength);
+            writer.StartSequence(contentLength);
+            writer.Encode(item.BlockNumber);
+            writer.Encode(item.BlockHash);
+            writer.StartSequence(addressesLength);
             for (int i = 0; i < item.Addresses.Length; i++)
             {
-                rlpStream.Encode(item.Addresses[i]);
+                writer.Encode(item.Addresses[i]);
             }
-            rlpStream.Encode(item.AreFinalized);
+            writer.Encode(item.AreFinalized);
         }
 
         public override int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>

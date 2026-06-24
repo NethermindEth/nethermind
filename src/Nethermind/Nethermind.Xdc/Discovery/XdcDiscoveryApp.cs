@@ -8,6 +8,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv4;
 
 namespace Nethermind.Xdc.Discovery;
 

@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Kademlia;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
@@ -10,7 +11,8 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// A kademlia module.
 /// Application is expected to expose a
 /// - <see cref="IKademliaMessageSender{TKey, TNode}"/>
-/// - <see cref="IKeyOperator{TKey, TNode}"/>
+/// - <see cref="IKeyOperator{TKey, TNode, TKadKey}"/>
+/// - <see cref="IKademliaDistance{TKadKey}"/>
 /// - <see cref="KademliaConfig{TNode}"/>
 /// for the table bootstrap and maintenance to function.
 /// Call <see cref="IKademlia{TKey,TNode}.Run"/> to start the table.
@@ -21,18 +23,21 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// </summary>
 /// <typeparam name="TKey">Key is the type that represent the target or hash.</typeparam>
 /// <typeparam name="TNode">Type of the node.</typeparam>
-public class KademliaModule<TKey, TNode> : Module where TNode : notnull
+/// <typeparam name="TKadKey">Type of the key-space value used by the routing table.</typeparam>
+public class KademliaModule<TKey, TNode, TKadKey> : Module
+    where TNode : notnull
+    where TKadKey : notnull
 {
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
 
         builder
-            .AddSingleton<IKademlia<TKey, TNode>, Kademlia<TKey, TNode>>()
-            .AddSingleton<ILookupAlgo<TNode>, LookupKNearestNeighbour<TKey, TNode>>()
-            .AddSingleton<INodeHashProvider<TNode>, FromKeyNodeHashProvider<TKey, TNode>>()
-            .AddSingleton<IRoutingTable<TNode>, KBucketTree<TNode>>()
-            .AddSingleton<IIteratorNodeLookup<TKey, TNode>, IteratorNodeLookup<TKey, TNode>>()
-            .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>();
+            .AddSingleton<IKademlia<TKey, TNode>, Kademlia<TKey, TNode, TKadKey>>()
+            .AddSingleton<IKademliaDiscovery<TKey, TNode>, RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>>()
+            .AddSingleton<ILookupAlgo<TNode, TKadKey>, LookupKNearestNeighbour<TKey, TNode, TKadKey>>()
+            .AddSingleton<INodeHashProvider<TNode, TKadKey>, FromKeyNodeHashProvider<TKey, TNode, TKadKey>>()
+            .AddSingleton<IRoutingTable<TNode, TKadKey>, KBucketTree<TNode, TKadKey>>()
+            .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode, TKadKey>>();
     }
 }

@@ -21,13 +21,11 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Network;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
-using Nethermind.Stats.Model;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -107,7 +105,7 @@ public class MergePluginTests
                 INethermindApi api = ctx.Resolve<INethermindApi>();
                 Build.MockOutNethermindApi((NethermindApi)api);
 
-                api.BlockProcessingQueue.IsEmpty.Returns(true);
+                ctx.Resolve<IBlockProcessingQueue>().IsEmpty.Returns(true);
             });
 
         configure?.Invoke(builder);
@@ -199,48 +197,6 @@ public class MergePluginTests
     }
 
     [Test]
-    public async Task InitNetworkProtocol_adds_post_merge_eth_capabilities_when_transition_finished()
-    {
-        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
-        poSSwitcher.TransitionFinished.Returns(true);
-
-        await using IContainer container = BuildContainer(configure: builder => builder
-            .RegisterInstance(poSSwitcher)
-            .As<IPoSSwitcher>());
-        INethermindApi api = container.Resolve<INethermindApi>();
-        await _consensusPlugin!.Init(api);
-        await _plugin.Init(api);
-
-        api.ProtocolsManager!.ClearReceivedCalls();
-        await _plugin.InitNetworkProtocol();
-
-        AssertPostMergeEthCapabilitiesAdded(api);
-    }
-
-    [Test]
-    public async Task InitNetworkProtocol_delays_post_merge_eth_capabilities_until_terminal_block()
-    {
-        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
-        poSSwitcher.TransitionFinished.Returns(false);
-
-        await using IContainer container = BuildContainer(configure: builder => builder
-            .RegisterInstance(poSSwitcher)
-            .As<IPoSSwitcher>());
-        INethermindApi api = container.Resolve<INethermindApi>();
-        await _consensusPlugin!.Init(api);
-        await _plugin.Init(api);
-
-        api.ProtocolsManager!.ClearReceivedCalls();
-        await _plugin.InitNetworkProtocol();
-
-        api.ProtocolsManager!.DidNotReceive().AddSupportedCapability(Arg.Any<Capability>());
-
-        poSSwitcher.TerminalBlockReached += Raise.Event();
-
-        AssertPostMergeEthCapabilitiesAdded(api);
-    }
-
-    [Test]
     public async Task Init_registers_gas_limit_calculator_for_testing_rpc_module()
     {
         await using IContainer container = BuildContainer();
@@ -300,14 +256,5 @@ public class MergePluginTests
         Assert.That(jsonRpcConfig.Enabled, Is.True);
         Assert.That(jsonRpcConfig.EnabledModules, Is.Empty);
         Assert.That(jsonRpcConfig.AdditionalRpcUrls, Is.EqualTo(new[] { "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client" }));
-    }
-
-    private static void AssertPostMergeEthCapabilitiesAdded(INethermindApi api)
-    {
-        IProtocolsManager protocolsManager = api.ProtocolsManager!;
-
-        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 69));
-        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 70));
-        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 71));
     }
 }

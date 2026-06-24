@@ -21,24 +21,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             using ArrayPoolSpan<int> returnAccountSlotsLengths = accountSlotsLengths;
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            NettyRlpStream stream = new(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
-            stream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
 
-            stream.Encode(message.RequestId);
+            writer.Encode(message.RequestId);
 
             if (message.Slots is null || message.Slots.Count == 0)
             {
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
             }
             else
             {
-                stream.StartSequence(allSlotsLength);
+                writer.StartSequence(allSlotsLength);
                 ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = message.Slots.AsSpan();
 
                 for (int i = 0; i < slotsSpan.Length; i++)
                 {
-                    stream.StartSequence(accountSlotsLengths[i]);
+                    writer.StartSequence(accountSlotsLengths[i]);
 
                     ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
 
@@ -48,20 +48,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
                         int itemLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
 
-                        stream.StartSequence(itemLength);
-                        stream.Encode(slot.Path);
-                        stream.Encode(slot.SlotRlpValue);
+                        writer.StartSequence(itemLength);
+                        writer.Encode(slot.Path);
+                        writer.Encode(slot.SlotRlpValue);
                     }
                 }
             }
 
-            stream.WriteByteArrayList(message.Proofs);
+            writer.WriteByteArrayList(message.Proofs);
         }
 
         public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startPos = ctx.Position;
 
             StorageRangeMessage message = new();
@@ -71,8 +71,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 ctx.ReadSequenceLength();
                 message.RequestId = ctx.DecodeLong();
 
-                message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref Rlp.ValueDecoderContext outerCtx) =>
-                    outerCtx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext innerCtx) =>
+                message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref RlpReader outerCtx) =>
+                    outerCtx.DecodeArrayPoolList(static (ref RlpReader innerCtx) =>
                     {
                         int length = innerCtx.ReadSequenceLength();
                         int checkPosition = innerCtx.Position + length;

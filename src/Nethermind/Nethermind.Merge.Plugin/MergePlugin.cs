@@ -37,8 +37,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network;
 using Nethermind.Trie.Pruning;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -192,35 +192,14 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         if (MergeEnabled)
         {
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-            ArgumentNullException.ThrowIfNull(_api.ProtocolsManager);
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
 
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
             InitializeMergeFinalization();
-
-            if (_poSSwitcher.TransitionFinished)
-            {
-                AddPostMergeNetworkProtocols();
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug("Delayed adding post-merge eth/* capabilities until terminal block reached");
-                _poSSwitcher.TerminalBlockReached += (_, _) => AddPostMergeNetworkProtocols();
-            }
         }
 
         return Task.CompletedTask;
-    }
-
-    private void AddPostMergeNetworkProtocols()
-    {
-        if (_logger.IsInfo) _logger.Info("Adding eth/69 capability");
-        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
-        if (_logger.IsInfo) _logger.Info("Adding eth/70 capability");
-        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 70));
-        if (_logger.IsInfo) _logger.Info("Adding eth/71 capability");
-        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
     }
 
     /// <summary>
@@ -254,6 +233,8 @@ public class MergePluginModule : Module
                     new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
             .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
+
+            .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
 
             .AddModule(new BaseMergePluginModule());
 }

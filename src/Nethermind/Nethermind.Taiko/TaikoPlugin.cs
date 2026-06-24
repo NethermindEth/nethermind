@@ -147,7 +147,8 @@ public class TaikoModule : Module
             .AddStep(typeof(InitializeBlockchainTaiko))
 
             // L1 origin store
-            .AddSingleton<RlpDecoder<L1Origin>, L1OriginDecoder>()
+            .AddSingleton<L1OriginDecoder>()
+            .AddSingleton<RlpDecoder<L1Origin>>(ctx => ctx.Resolve<L1OriginDecoder>())
             .AddDatabase(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
