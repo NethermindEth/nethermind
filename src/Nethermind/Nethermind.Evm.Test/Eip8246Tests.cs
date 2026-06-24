@@ -53,7 +53,8 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
     private static readonly byte[] Salt = new UInt256(123).ToBigEndian();
 
     private EthereumEcdsa _ecdsa;
-    // Runtime code that self-destructs to its own address (ADDRESS; SELFDESTRUCT).
+    // Runtime code that writes storage slot 0, then self-destructs to its own address
+    // (SSTORE slot0=1; ADDRESS; SELFDESTRUCT). The SSTORE lets tests observe storage clearing.
     private byte[] _selfDestructToSelf;
     private byte[] _selfDestructToSelfInit;
 
@@ -67,6 +68,9 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
         TestState.CommitTree(0);
 
         _selfDestructToSelf = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
             .Op(Instruction.ADDRESS)
             .Op(Instruction.SELFDESTRUCT)
             .Done;
@@ -260,5 +264,6 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
         Assert.That(TestState.GetBalance(address), Is.EqualTo(expectedBalance), "balance preserved");
         Assert.That(TestState.GetNonce(address), Is.EqualTo(UInt256.Zero), "nonce reset");
         Assert.That(TestState.IsContract(address), Is.False, "code cleared");
+        Assert.That(TestState.Get(new StorageCell(address, UInt256.Zero)).IsZero(), Is.True, "storage cleared");
     }
 }
