@@ -266,7 +266,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                if (_logger.IsWarn) _logger.Warn($"Find neighbour op failed: {e}");
+                if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed: {e}");
                 return null;
             }
         }
