@@ -73,14 +73,9 @@ internal static class IndexBlockReader
         long restartTableStart = blockStart + Unsafe.SizeOf<Header>();
         long end = blockStart + header.RecordsEnd;
 
-        // The index block must stay under 2 GiB — reasonable, since it is ≈ 60 MiB even for a 12 GiB
-        // snapshot — so its restart count and offset table fit a 32-bit span and the int restart indices
-        // below cannot overflow.
-        // Pin the whole restart-offset table once and index it in place, instead of reading each offset.
-        long offsetsBytes = (long)header.NumRestarts * sizeof(uint);
-        if (restartTableStart + offsetsBytes > reader.Length) return false;
-        using TPin offsetsPin = reader.PinBuffer(new Bound(restartTableStart, offsetsBytes));
-        ReadOnlySpan<uint> offsets = MemoryMarshal.Cast<byte, uint>(offsetsPin.Buffer);
+        // The index block stays well under 2 GiB (≈ 60 MiB even for a 12 GiB snapshot), so its restart
+        // count fits int and the restart indices below cannot overflow. The offset table can be large, so
+        // each binary-search step reads just the one restart offset it needs rather than pinning the table.
         Block.IndexRecordHeader rec = default;
 
         // Rightmost restart whose first key <= target (cp == 0 there, so the suffix is the full key).
@@ -90,7 +85,9 @@ internal static class IndexBlockReader
         while (lo <= hi)
         {
             int mid = lo + ((hi - lo) >> 1);
-            long recStart = blockStart + offsets[mid];
+            uint offset = 0;
+            if (!reader.TryRead(restartTableStart + (long)mid * sizeof(uint), MemoryMarshal.AsBytes(new Span<uint>(ref offset)))) return false;
+            long recStart = blockStart + offset;
             if (!reader.TryRead(recStart, MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref rec)))) return false;
             using TPin keyPin = reader.PinBuffer(new Bound(recStart + Unsafe.SizeOf<Block.IndexRecordHeader>(), rec.SuffixLength));
             if (keyPin.Buffer.SequenceCompareTo(target) <= 0) { found = mid; lo = mid + 1; }
@@ -99,7 +96,9 @@ internal static class IndexBlockReader
 
         // target < firstKey ⇒ ceiling is the very first record; clamp the scan start to restart 0.
         int scanRestart = found < 0 ? 0 : found;
-        long pos = blockStart + offsets[scanRestart];
+        uint scanOffset = 0;
+        if (!reader.TryRead(restartTableStart + (long)scanRestart * sizeof(uint), MemoryMarshal.AsBytes(new Span<uint>(ref scanOffset)))) return false;
+        long pos = blockStart + scanOffset;
 
         // The value (a u48 byte offset) is stored little-endian as only the low bytes that changed from the
         // previous record; a restart (cp == 0) drops the previous high bytes by resetting to 0. Each record
