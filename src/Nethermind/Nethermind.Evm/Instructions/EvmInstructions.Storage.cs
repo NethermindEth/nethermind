@@ -38,9 +38,6 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Increment the opcode metric for TLOAD.
-        Metrics.TloadOpcode++;
-
         // Deduct the fixed gas cost for TLOAD.
         TGasPolicy.Consume(ref gas, GasCostOf.TLoad);
 
@@ -87,9 +84,6 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionTStore<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Increment the opcode metric for TSTORE.
-        Metrics.TstoreOpcode++;
-
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Disallow storage modification during static calls.
@@ -105,7 +99,7 @@ public static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Pop the 32-byte value from the stack.
-        Span<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytes)) goto StackUnderflow;
 
         // Store either the actual value (if non-zero) or a predefined zero constant.
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
@@ -291,9 +285,6 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Increment the opcode metric for MCOPY.
-        Metrics.MCopyOpcode++;
-
         // Pop destination, source, and length values; if any are missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c)) goto StackUnderflow;
 
@@ -371,7 +362,8 @@ public static partial class EvmInstructions
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
+        ReadOnlySpan<byte> bytes = bytesSpan;
 
         // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
         bool newIsZero = bytes.IsZero();
@@ -485,7 +477,8 @@ public static partial class EvmInstructions
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
+        ReadOnlySpan<byte> bytes = bytesSpan;
 
         // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
         bool newIsZero = bytes.IsZero();

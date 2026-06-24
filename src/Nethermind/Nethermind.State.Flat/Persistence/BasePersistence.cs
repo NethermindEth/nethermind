@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -351,8 +352,8 @@ public static class BasePersistence
                 return;
             }
 
-            using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(addr.ToAccountPath, stream.AsSpan());
+            using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
+            _flatWriteBatch.SetAccount(addr.ToAccountPath, rlp);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
@@ -367,8 +368,8 @@ public static class BasePersistence
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account)
         {
-            using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
+            using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
+            _flatWriteBatch.SetAccount(addrHash, rlp);
         }
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
@@ -397,7 +398,7 @@ public static class BasePersistence
                 return null;
             }
 
-            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
+            RlpReader ctx = new(valueBuffer[..responseSize]);
             return _accountDecoder.Decode(ref ctx);
         }
 

@@ -84,9 +84,9 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
-            Rlp.ValueDecoderContext rlpContext = new(input.AsSpan());
-            ulong rlpPacketType = rlpContext.DecodeULong();
-            int read = rlpContext.Position;
+            RlpReader reader = new(input.AsSpan());
+            ulong rlpPacketType = reader.DecodeULong();
+            int read = reader.Position;
             input.SkipBytes(read);
             IByteBuffer content;
             if (frame.IsChunked)

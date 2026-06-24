@@ -365,6 +365,36 @@ public class BlockchainBridgeTests
         Assert.That(callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover), Is.True);
     }
 
+    [TestCase(null, null)]
+    [TestCase(null, "revert")]
+    [TestCase(null, "some plain error string")]
+    public void CreateAccessList_reverting_tx_returns_execution_reverted_error(byte[]? returnValue, string? tracerError)
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(TestItem.AddressB)
+            .TestObject;
+
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(callInfo =>
+            {
+                ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
+                tracer.ReportAction(tx.GasLimit, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+                tracer.ReportActionError(EvmExceptionType.Revert);
+                tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(21000, 0), returnValue ?? [], tracerError);
+                return TransactionResult.EvmException(EvmExceptionType.Revert);
+            });
+
+        CallOutput callOutput = _blockchainBridge.CreateAccessList(header, tx, null, false, null, default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutput.Error, Is.EqualTo("execution reverted"));
+            Assert.That(callOutput.ExecutionReverted, Is.True);
+        }
+    }
+
     private CallOutput InvokeCreateAccessListWithMockedAccess(
         bool optimize,
         Address[] accessedAddresses,

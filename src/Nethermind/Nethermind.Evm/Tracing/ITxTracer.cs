@@ -84,6 +84,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     bool IsTracingRefunds { get; }
 
     /// <summary>
+    /// Per-opcode return-data buffer (the output of the most recent inner call/create).
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="SetOperationReturnData"/>
+    /// </remarks>
+    bool IsTracingReturnData { get; }
+
+    /// <summary>
     /// Code deployment
     /// </summary>
     /// <remarks>
@@ -143,6 +152,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingMemory
                       || IsTracingInstructions
                       || IsTracingRefunds
+                      || IsTracingReturnData
                       || IsTracingCode
                       || IsTracingStack
                       || IsTracingBlockHash
@@ -244,6 +254,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="newSize"></param>
     /// <remarks>Depends on <see cref="IsTracingMemory"/></remarks>
     void SetOperationMemorySize(ulong newSize);
+
+    /// <summary>
+    /// Reports the return-data buffer visible to the current opcode (the output of the most
+    /// recent inner call or create).
+    /// </summary>
+    /// <param name="returnData">The current return-data buffer.</param>
+    /// <remarks>Depends on <see cref="IsTracingReturnData"/></remarks>
+    void SetOperationReturnData(ReadOnlyMemory<byte> returnData);
 
     /// <summary>
     ///

@@ -13,6 +13,7 @@ namespace Nethermind.Network;
 public class EnodeProvider(
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
     INetworkConfig networkConfig,
+    IIPResolver ipResolver,
     ILogManager logManager)
 {
     private IEnode? _enode;
@@ -21,9 +22,9 @@ public class EnodeProvider(
 
     private IEnode Build()
     {
-        IPAddress ipAddress = networkConfig.ExternalIp is not null
-            ? IPAddress.Parse(networkConfig.ExternalIp)
-            : IPAddress.Loopback;
+        // Resolved on first access (during init). The shared IIPResolver.Resolve result is cached, so the
+        // blocking GetResult only does real work once.
+        IPAddress ipAddress = ipResolver.Resolve().GetAwaiter().GetResult().ExternalIp;
         Enode enode = new(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
         logManager.SetGlobalVariable("enode", enode.ToString());
         return enode;

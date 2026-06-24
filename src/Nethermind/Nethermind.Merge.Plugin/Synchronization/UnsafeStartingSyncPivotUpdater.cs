@@ -21,13 +21,13 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class UnsafeStartingSyncPivotUpdater(
     IBlockTree blockTree,
-    ISyncModeSelector syncModeSelector,
     ISyncPeerPool syncPeerPool,
     ISyncConfig syncConfig,
+    ISyncProgressResolver syncProgressResolver,
     IBlockCacheService blockCacheService,
     IBeaconSyncStrategy beaconSyncStrategy,
     ILogManager logManager)
-    : StartingSyncPivotUpdater(blockTree, syncModeSelector, syncPeerPool, syncConfig,
+    : StartingSyncPivotUpdater(blockTree, syncPeerPool, syncConfig, syncProgressResolver,
         blockCacheService, beaconSyncStrategy, logManager)
 {
     protected override async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)

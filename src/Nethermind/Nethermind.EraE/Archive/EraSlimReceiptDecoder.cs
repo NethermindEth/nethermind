@@ -11,7 +11,7 @@ internal sealed class EraSlimReceiptDecoder
 {
     public TxReceipt[] Decode(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new(buffer.Span);
+        RlpReader ctx = new(buffer.Span);
 
         int outerLength = ctx.ReadSequenceLength();
         int outerEnd = ctx.Position + outerLength;
@@ -29,7 +29,7 @@ internal sealed class EraSlimReceiptDecoder
         return receipts;
     }
 
-    private static TxReceipt DecodeSlimReceipt(ref Rlp.ValueDecoderContext ctx)
+    private static TxReceipt DecodeSlimReceipt(ref RlpReader ctx)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int receiptEnd = ctx.Position + sequenceLength;
