@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 /// <summary>
-/// A single, self-describing, binary-searchable block of front-coded key/value records — the shared
+/// A single, self-describing, binary-searchable block of key/value records with front-coded keys — the shared
 /// unit of both the data blocks and the top-level index of a <see cref="SortedTable"/>.
 /// </summary>
 /// <remarks>
@@ -26,7 +26,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// also arises wherever adjacent keys share no leading byte. The restart table indexes every restart. The
 /// index block's value (a data-block byte offset) keeps the high (little-endian) bytes of the previous
 /// value and stores only the low bytes that changed — reset against 0 at each restart (see
-/// <see cref="BlockBuilder.AddFrontCodedValue"/>). The
+/// <see cref="BlockBuilder.AddChangedPrefixValue"/>). The
 /// header <c>formatFlag</c> records the block's role and thereby its offset width — a data
 /// <c>Block</c> (capped well under 64 KiB) uses 2-byte offsets, the multi-MB <c>Index</c> uses
 /// 4-byte — so one format serves both. <see cref="DataBlockReader.SeekCeiling"/> binary searches the
@@ -69,7 +69,7 @@ internal static class Block
     /// number of little-endian low-order value bytes stored in <see cref="ValueChangedLength"/>. Layout
     /// <c>[cp][suffixLen][valChangedLen][keySuffix][valChanged]</c>; the value (a data-block byte offset)
     /// keeps the high bytes of the previous record's value and overwrites only its low bytes, reset against
-    /// 0 at a <c>cp == 0</c> restart (see <see cref="BlockBuilder.AddFrontCodedValue"/>).</summary>
+    /// 0 at a <c>cp == 0</c> restart (see <see cref="BlockBuilder.AddChangedPrefixValue"/>).</summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal readonly struct IndexRecordHeader(byte commonPrefix, byte suffixLength, byte valueChangedLength)
     {

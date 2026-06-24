@@ -145,8 +145,8 @@ public class BlockTests
         using PooledByteBufferWriter pooled = new(256);
         using BlockBuilder block = new(restartInterval);
         foreach ((byte[] key, long value) in entries)
-            block.AddFrontCodedValue(key, value);
-        // Front-coded values are the index block's encoding, so finish under the Index role flag.
+            block.AddChangedPrefixValue(key, value);
+        // Changed-prefix values are the index block's encoding, so finish under the Index role flag.
         block.Finish(ref pooled.GetWriter(), Block.FlagIndex);
         return pooled.WrittenSpan.ToArray();
     }
@@ -174,7 +174,7 @@ public class BlockTests
     // run's head (a value reset against 0, not built on a stale running value), the before-first case, and a
     // past-end miss.
     [Test]
-    public void Front_coded_value_seek_reconstructs_offsets()
+    public void Changed_prefix_value_seek_reconstructs_offsets()
     {
         const int restartInterval = 4;
         (byte[] Key, long Value)[] entries =

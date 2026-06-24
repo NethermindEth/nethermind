@@ -21,7 +21,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     private readonly NativeMemoryList<byte> _body = new(Math.Max(64, expectedBytes));
     private readonly NativeMemoryList<int> _restarts = new(64);
     private readonly NativeMemoryList<byte> _prevKey = new(256);
-    // Previous index value; only used by AddFrontCodedValue to find which low bytes changed.
+    // Previous index value; only used by AddChangedPrefixValue to find which low bytes changed.
     private ulong _prevValue;
     private int _recordCount;
 
@@ -47,7 +47,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     /// <remarks>Offsets ascend, so the high bytes rarely change and the stored low-byte prefix stays short;
     /// the little-endian layout lets <see cref="IndexBlockReader.SeekCeiling"/> copy those bytes straight
     /// onto the low end of a running value.</remarks>
-    public void AddFrontCodedValue(scoped ReadOnlySpan<byte> key, long value)
+    public void AddChangedPrefixValue(scoped ReadOnlySpan<byte> key, long value)
     {
         Debug.Assert((ulong)value >> 48 == 0, "index value must fit in 48 bits");
         int cp = StartRecord(key);

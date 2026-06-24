@@ -10,7 +10,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <summary>
 /// Read-side ceiling search over a <see cref="SortedTable"/> index block, whose record values are u48 byte
 /// offsets stored little-endian as only the low bytes that changed from the previous value (the high bytes
-/// carry over), reset at every restart (see <see cref="BlockBuilder.AddFrontCodedValue"/>). The restart
+/// carry over), reset at every restart (see <see cref="BlockBuilder.AddChangedPrefixValue"/>). The restart
 /// binary search and forward scan are its own, since the index scan reconstructs the offset where the
 /// data-block scan (<see cref="DataBlockReader.SeekCeiling"/>) returns a value <see cref="Bound"/>.
 /// </summary>

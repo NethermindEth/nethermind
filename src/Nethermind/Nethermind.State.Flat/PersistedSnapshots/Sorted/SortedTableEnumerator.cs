@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <summary>
 /// Forward cursor over a <see cref="SortedTable"/> in ascending key order. Visits the data blocks by
 /// reading the index block in order — each index record's value is the next data block's table-relative
-/// byte offset (front-coded) — so it makes no assumption about data-block alignment. Within
+/// byte offset (changed-prefix coded) — so it makes no assumption about data-block alignment. Within
 /// a block it skips the self-describing header and stops at <c>recordsEnd</c> (never the zero-padding),
 /// reconstructing front-coded keys (the <c>cp = 0</c> reset at every restart and block start makes the
 /// running key self-correct). A plain struct (not a ref struct) so callers — the N-way merger and the
@@ -26,7 +26,7 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
 {
     private readonly long _tableOffset;
     // Index-block cursor: walks (separator → data-block byte offset) records in order, decoding the
-    // front-coded offsets, to locate each data block. _indexPos == _indexEnd ⇒ no more data blocks.
+    // changed-prefix-coded offsets, to locate each data block. _indexPos == _indexEnd ⇒ no more data blocks.
     private long _indexPos;
     private long _indexEnd;
     // Running index value (a data-block byte offset); each record overwrites only its changed low bytes.
@@ -79,7 +79,7 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         return true;
     }
 
-    /// <summary>Read the next index record's data-block byte offset (reconstructing the front-coded value)
+    /// <summary>Read the next index record's data-block byte offset (reconstructing the changed-prefix value)
     /// and position the data cursor at that block's first record. Returns <c>false</c> when the index is
     /// exhausted or a record/header cannot be read.</summary>
     private bool TryAdvanceToNextDataBlock(scoped in TReader reader)
@@ -88,7 +88,7 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
 
         // Index record: [cp u8][suffixLen u8][valChangedLen u8][keySuffix][valChanged]. Only the value (the
         // data block's table-relative byte offset) is needed — its changed low bytes overwrite the running
-        // value in place (see BlockBuilder.AddFrontCodedValue); the separator key is skipped over.
+        // value in place (see BlockBuilder.AddChangedPrefixValue); the separator key is skipped over.
         Block.IndexRecordHeader rec = default;
         if (!reader.TryRead(_indexPos, MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref rec)))) return false;
         int valChangedLen = rec.ValueChangedLength;

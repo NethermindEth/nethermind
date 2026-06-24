@@ -8,7 +8,7 @@ using Nethermind.State.Flat.Io;
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 /// <summary>Read-side search and header parsing for a <see cref="Block"/>'s data records, whose values
-/// are plain inline bytes. The index block's front-coded values are read separately by
+/// are plain inline bytes. The index block's changed-prefix-coded values are read separately by
 /// <see cref="IndexBlockReader"/>.</summary>
 internal static class DataBlockReader
 {
