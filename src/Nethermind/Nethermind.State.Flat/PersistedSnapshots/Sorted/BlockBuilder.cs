@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Io;
@@ -20,67 +21,74 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     private readonly NativeMemoryList<byte> _body = new(Math.Max(64, expectedBytes));
     private readonly NativeMemoryList<int> _restarts = new(64);
     private readonly NativeMemoryList<byte> _prevKey = new(256);
+    // Previous index value as min-width big-endian bytes; only used by AddFrontCodedValue.
+    private readonly NativeMemoryList<byte> _prevValue = new(8);
     private int _recordCount;
-    // Previous record's absolute value, tracked only when records are added through AddDeltaValue.
-    private long _prevValue;
 
     public int RecordCount => _recordCount;
 
-    /// <summary>Append a record. Keys must arrive in ascending order; key and value lengths ≤ 255.</summary>
+    /// <summary>Append a data record <c>[cp][suffixLen][valueLen][keySuffix][value]</c>. Keys must arrive
+    /// in ascending order; key and value lengths ≤ 255.</summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
-        WriteKey(key);
-        _body.Add((byte)value.Length);
+        int cp = StartRecord(key);
+        Block.DataRecordHeader h = new((byte)cp, (byte)(key.Length - cp), (byte)value.Length);
+        _body.AddRange(MemoryMarshal.AsBytes(new Span<Block.DataRecordHeader>(ref h)));
+        _body.AddRange(key[cp..]);
         _body.AddRange(value);
+        EndRecord(key);
     }
 
-    /// <summary>Append a record whose value is a non-negative integer, RocksDB-style: the absolute value at
-    /// every restart head and the delta against the previous record's value in between, each stored as a
-    /// minimal-width little-endian integer in the record's value slot (a zero stored value occupies no bytes
-    /// and reads back as 0). Values must be non-decreasing — the index block's byte offsets ascend — and fit
-    /// in 48 bits.</summary>
-    /// <remarks><see cref="IndexBlockReader.SeekCeiling"/> reconstructs the absolute value by re-summing
-    /// from the restart head it lands on; the absolute-at-restart anchoring is what lets a seek begin at
-    /// any restart.</remarks>
-    public void AddDeltaValue(scoped ReadOnlySpan<byte> key, long value)
+    /// <summary>Append an index record whose value is a non-negative 48-bit integer (a data-block byte
+    /// offset), front-coded as a min-width big-endian integer against the previous record's value:
+    /// <c>[cp][suffixLen][valCp][valSuffixLen][keySuffix][valSuffix]</c>, where <c>valCp</c> is the leading
+    /// bytes shared with the previous value. The value is fully restated (<c>valCp == 0</c>) at every key
+    /// restart (<c>cp == 0</c>) so a seek can begin there.</summary>
+    /// <remarks>Offsets ascend, so nearby values share their high (big-endian leading) bytes;
+    /// <see cref="IndexBlockReader.SeekCeiling"/> reconstructs each by keeping the shared prefix from the
+    /// running value and appending the suffix.</remarks>
+    public void AddFrontCodedValue(scoped ReadOnlySpan<byte> key, long value)
     {
         Debug.Assert((ulong)value >> 48 == 0, "index value must fit in 48 bits");
-        // A restart (cp == 0) re-anchors to an absolute value; in between, the delta against the previous.
-        bool restart = WriteKey(key) == 0;
-        Debug.Assert(restart || value >= _prevValue, "delta-coded values must be non-decreasing");
+        int cp = StartRecord(key);
 
-        long stored = restart ? value : value - _prevValue;
-        _prevValue = value;
+        // Min-width big-endian value, dropping leading zero bytes; value 0 ⇒ empty span.
+        Span<byte> be = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(be, (ulong)value);
+        ReadOnlySpan<byte> valBE = be[(BitOperations.LeadingZeroCount((ulong)value) / 8)..];
+        int valCp = cp == 0 ? 0 : ((ReadOnlySpan<byte>)_prevValue.AsSpan()).CommonPrefixLength(valBE);
+        ReadOnlySpan<byte> valSuffix = valBE[valCp..];
 
-        ulong v = (ulong)stored;
-        int width = stored == 0 ? 0 : BitOperations.Log2(v) / 8 + 1;
-        _body.Add((byte)width);
-        _body.AddRange(MemoryMarshal.AsBytes(new Span<ulong>(ref v))[..width]);
+        Block.IndexRecordHeader h = new((byte)cp, (byte)(key.Length - cp), (byte)valCp, (byte)valSuffix.Length);
+        _body.AddRange(MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref h)));
+        _body.AddRange(key[cp..]);
+        _body.AddRange(valSuffix);
+
+        _prevValue.Clear();
+        _prevValue.AddRange(valBE);
+        EndRecord(key);
     }
 
-    /// <summary>Write a record's front-coded key prefix (<c>[cp][suffixLen][keySuffix]</c>), then advance
-    /// the previous-key and record-count state; returns the record's common-prefix length <c>cp</c>. The
-    /// caller appends the value bytes.</summary>
-    /// <remarks>A record is a <em>restart</em> when <c>cp == 0</c> (it stores a full key): forced every
-    /// <c>restartInterval</c> records to bound scan length, and arising naturally wherever the key shares
-    /// no leading byte with its predecessor. Every restart records its offset, so the restart table indexes
-    /// them all and the index block re-anchors its delta value at each (see <see cref="AddDeltaValue"/>).</remarks>
-    private int WriteKey(scoped ReadOnlySpan<byte> key)
+    /// <summary>Determine the record's key common-prefix length and record a restart-table entry at every
+    /// <c>cp == 0</c>. A record is a <em>restart</em> when <c>cp == 0</c> (it stores a full key): forced
+    /// every <c>restartInterval</c> records to bound scan length, and arising naturally wherever the key
+    /// shares no leading byte with its predecessor.</summary>
+    private int StartRecord(scoped ReadOnlySpan<byte> key)
     {
         int cp = _recordCount % restartInterval == 0
             ? 0
             : ((ReadOnlySpan<byte>)_prevKey.AsSpan()).CommonPrefixLength(key);
         if (cp == 0)
             _restarts.Add(_body.Count);
+        return cp;
+    }
 
-        Block.RecordHeader rh = new((byte)cp, (byte)(key.Length - cp));
-        _body.AddRange(MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rh)));
-        _body.AddRange(key[cp..]);
-
+    /// <summary>Advance the previous-key and record-count state after a record's bytes have been written.</summary>
+    private void EndRecord(scoped ReadOnlySpan<byte> key)
+    {
         _prevKey.Clear();
         _prevKey.AddRange(key);
         _recordCount++;
-        return cp;
     }
 
     /// <summary>Whether adding a record of the given key/value lengths would push the finished block
@@ -90,7 +98,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     {
         // The next record may be a restart (cp == 0), which adds a restart-table entry; count it.
         long header = Block.RecordsStart(2, _restarts.Count + 1);
-        int recordMax = 2 + keyLen + Block.SizePrefix + valueLen;
+        int recordMax = Unsafe.SizeOf<Block.DataRecordHeader>() + keyLen + valueLen;
         return header + _body.Count + recordMax > PageLayout.PageSize;
     }
 
@@ -123,8 +131,8 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         _body.Clear();
         _restarts.Clear();
         _prevKey.Clear();
+        _prevValue.Clear();
         _recordCount = 0;
-        _prevValue = 0;
     }
 
     public void Dispose()
@@ -132,6 +140,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         _body.Dispose();
         _restarts.Dispose();
         _prevKey.Dispose();
+        _prevValue.Dispose();
     }
 
     private static void WriteOffset<TWriter>(ref TWriter writer, int width, long value) where TWriter : IByteBufferWriter

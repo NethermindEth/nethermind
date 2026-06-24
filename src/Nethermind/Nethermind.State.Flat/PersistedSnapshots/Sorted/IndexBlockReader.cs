@@ -9,11 +9,10 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 /// <summary>
 /// Read-side ceiling search over a <see cref="SortedTable"/> index block, whose record values are
-/// RocksDB-style delta-coded u48 byte offsets — absolute at restart heads, deltas in between (see
-/// <see cref="BlockBuilder.AddDeltaValue"/>). Reuses <see cref="Block.RecordHeader"/> for the per-record
-/// key prefix; the restart binary search and forward scan are its own, since the index scan reconstructs
-/// an absolute offset where the data-block scan (<see cref="DataBlockReader.SeekCeiling"/>) returns a value
-/// <see cref="Bound"/>.
+/// front-coded u48 byte offsets — min-width big-endian, sharing leading bytes with the previous value and
+/// fully restated at every restart (see <see cref="BlockBuilder.AddFrontCodedValue"/>). The restart binary
+/// search and forward scan are its own, since the index scan reconstructs the offset where the data-block
+/// scan (<see cref="DataBlockReader.SeekCeiling"/>) returns a value <see cref="Bound"/>.
 /// </summary>
 internal static class IndexBlockReader
 {
@@ -55,9 +54,8 @@ internal static class IndexBlockReader
     /// </summary>
     /// <remarks>
     /// The binary search picks the rightmost restart whose first key ≤ <paramref name="target"/>, so the
-    /// scan starts at a restart record (<c>cp == 0</c>), whose absolute value anchors the running sum; the
-    /// scan crosses at most one further restart, and that record's <c>cp == 0</c> re-anchors it to an
-    /// absolute value.
+    /// scan starts at a restart record (<c>cp == 0</c>) where the value is fully restated, anchoring the
+    /// running value; each later record keeps the shared <c>valCp</c> bytes and appends its suffix.
     /// </remarks>
     internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
         scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf,
@@ -83,7 +81,7 @@ internal static class IndexBlockReader
         if (restartTableStart + offsetsBytes > reader.Length) return false;
         using TPin offsetsPin = reader.PinBuffer(new Bound(restartTableStart, offsetsBytes));
         ReadOnlySpan<uint> offsets = MemoryMarshal.Cast<byte, uint>(offsetsPin.Buffer);
-        Block.RecordHeader rec = default;
+        Block.IndexRecordHeader rec = default;
 
         // Rightmost restart whose first key <= target (cp == 0 there, so the suffix is the full key).
         int lo = 0;
@@ -93,9 +91,8 @@ internal static class IndexBlockReader
         {
             int mid = lo + ((hi - lo) >> 1);
             long recStart = blockStart + offsets[mid];
-            if (!reader.TryRead(recStart, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
-            int firstKeyLen = rec.SuffixLength;
-            using TPin keyPin = reader.PinBuffer(new Bound(recStart + 2, firstKeyLen));
+            if (!reader.TryRead(recStart, MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref rec)))) return false;
+            using TPin keyPin = reader.PinBuffer(new Bound(recStart + Unsafe.SizeOf<Block.IndexRecordHeader>(), rec.SuffixLength));
             if (keyPin.Buffer.SequenceCompareTo(target) <= 0) { found = mid; lo = mid + 1; }
             else hi = mid - 1;
         }
@@ -104,27 +101,32 @@ internal static class IndexBlockReader
         int scanRestart = found < 0 ? 0 : found;
         long pos = blockStart + offsets[scanRestart];
 
-        // A restart record (cp == 0) carries an absolute value, every other record a delta against the
-        // previous one. The scan starts at a restart, so the first record anchors the running sum.
+        // The value (a u48 byte offset) is front-coded: keep valCp leading big-endian bytes of the running
+        // value and append valSuffix (Block.FrontDecodeValue). The scan starts at a restart, where the value
+        // is fully restated (valCp == 0).
         long runningValue = 0;
+        int runningWidth = 0;
+        Span<byte> valSuffixBuf = stackalloc byte[6]; // u48
 
         // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
         while (pos < end)
         {
-            if (!reader.TryRead(pos, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
+            if (!reader.TryRead(pos, MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref rec)))) return false;
             int cp = rec.CommonPrefix;
             int suffixLen = rec.SuffixLength;
-            if (!reader.TryRead(pos + 2, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
+            int valCp = rec.ValueCommonPrefix;
+            int valSuffixLen = rec.ValueSuffixLength;
+            if (valCp > runningWidth || valCp + valSuffixLen > valSuffixBuf.Length) return false; // corrupt
+
+            long keyStart = pos + Unsafe.SizeOf<Block.IndexRecordHeader>();
+            if (!reader.TryRead(keyStart, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
             int kLen = cp + suffixLen;
+            long valueStart = keyStart + suffixLen;
+            ReadOnlySpan<byte> valSuffix = valSuffixBuf[..valSuffixLen];
+            if (valSuffixLen > 0 && !reader.TryRead(valueStart, valSuffixBuf[..valSuffixLen])) return false;
 
-            long valueSizeOffset = pos + 2 + suffixLen;
-            byte valueLen = 0;
-            if (!reader.TryRead(valueSizeOffset, new Span<byte>(ref valueLen))) return false;
-
-            if (valueLen > 6) return false; // u48 ceiling — reject corruption before the shift widens it
-            ulong v = 0;
-            if (valueLen > 0 && !reader.TryRead(valueSizeOffset + Block.SizePrefix, MemoryMarshal.AsBytes(new Span<ulong>(ref v))[..valueLen])) return false;
-            runningValue = cp == 0 ? (long)v : runningValue + (long)v;
+            runningValue = Block.FrontDecodeValue(runningValue, runningWidth, valCp, valSuffix);
+            runningWidth = valCp + valSuffixLen;
 
             if (target.SequenceCompareTo(keyBuf[..kLen]) <= 0)
             {
@@ -132,7 +134,7 @@ internal static class IndexBlockReader
                 byteOffset = runningValue;
                 return true;
             }
-            pos = valueSizeOffset + Block.SizePrefix + valueLen;
+            pos = valueStart + valSuffixLen;
         }
         return false;
     }

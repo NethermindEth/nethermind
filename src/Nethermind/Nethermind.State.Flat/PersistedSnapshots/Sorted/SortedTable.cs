@@ -20,7 +20,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 ///                     The last data block (M-1) is NOT padded — the index follows it immediately.
 ///   index block     ; one Block at byte offset <c>indexOffset</c>; NOT block-aligned (it is located by
 ///                     the footer, not addressed by block number); key = separator,
-///                     value = data-block byte offset (u48), RocksDB-style delta-coded (see Block)
+///                     value = data-block byte offset (u48), front-coded (see Block)
 ///   footer          ; [indexOffset i64][version u8]  (fixed FooterSize)
 /// </code>
 /// Each data block holds a slice of the sorted records; the index block maps the shortest separator in
@@ -29,11 +29,11 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// (<see cref="IndexBlockReader.SeekCeiling"/>) then a data-block seek
 /// (<see cref="DataBlockReader.SeekCeiling"/>): index → byte offset → data block, and a full scan
 /// (<see cref="SortedTableEnumerator{TReader,TPin}"/>) walks the index in order to visit each data block
-/// by offset. The offset is a u48; since offsets ascend, each index record stores its absolute offset
-/// only at a restart (a <c>cp == 0</c> record) and a small delta against the previous record in between
-/// (so the index stays compact while reaching a 256 TiB table). The single index block is addressed directly by the footer's
-/// <c>indexOffset</c>, so it needs no padding and that offset is i64 to
-/// span the full range.
+/// by offset. The offset is a u48; since offsets ascend, each index record front-codes it as a min-width
+/// big-endian integer against the previous record's value — fully restated only at a restart (a
+/// <c>cp == 0</c> record) — so the index stays compact while reaching a 256 TiB table. The single index
+/// block is addressed directly by the footer's <c>indexOffset</c>, so it needs no padding and that offset
+/// is i64 to span the full range.
 /// Both data and index blocks are self-describing (see <see cref="Block"/>), so search needs only a
 /// block's start. Keys carry the column / subcolumn tag bytes as <c>255 − tag</c> so a plain ascending
 /// sort reproduces the reverse-tag emission order the columnar builder/compacter expect (see
@@ -61,10 +61,10 @@ internal static class SortedTable
         internal readonly byte Version;
     }
 
-    internal const byte FormatVersion = 10;
+    internal const byte FormatVersion = 11;
 
     /// <summary>Footer-resolved table geometry: the table-relative byte offset of the (unaligned) index
-    /// block. The delta-coded index values need no stored restart interval — a restart is any
+    /// block. The front-coded index values need no stored restart interval — a restart is any
     /// <c>cp == 0</c> record (see <see cref="Block"/>).</summary>
     internal readonly record struct Footer(long IndexOffset);
 

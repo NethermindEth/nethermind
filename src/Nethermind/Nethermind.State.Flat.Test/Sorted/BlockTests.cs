@@ -62,7 +62,7 @@ public class BlockTests
     }
 
     // The Index block carries 4-byte offsets and a u32 records-end, so it can span past 64 KiB — the
-    // path the multi-MB index block takes for a full-state snapshot. A >64 KiB delta-coded block forces
+    // path the multi-MB index block takes for a full-state snapshot. A >64 KiB index block forces
     // recordsEnd and the restart offsets above the u16 range, exercising the full 4-byte read path.
     [Test]
     public void Index_block_round_trips_past_64KiB()
@@ -76,20 +76,20 @@ public class BlockTests
             BinaryPrimitives.WriteInt32BigEndian(key, i);
             entries[i] = (key, (long)i * 4096);
         }
-        byte[] block = BuildDeltaBlock(restartInterval, entries);
+        byte[] block = BuildIndexBlock(restartInterval, entries);
         Assert.That(block[0], Is.EqualTo(Block.FlagIndex), "the Index flag selects 4-byte offsets");
         Assert.That(block.Length, Is.GreaterThan(ushort.MaxValue), "block must exceed 64 KiB to exercise the 4-byte path");
 
         foreach (int i in (int[])[0, 1, 100, 4000, 11999])
         {
-            Assert.That(SeekCeilingDelta(block, entries[i].Key, out byte[] gotKey, out long gotVal), Is.True);
+            Assert.That(SeekCeilingIndex(block, entries[i].Key, out byte[] gotKey, out long gotVal), Is.True);
             Assert.That(gotKey, Is.EqualTo(entries[i].Key));
-            Assert.That(gotVal, Is.EqualTo(entries[i].Value), $"absolute offset for entry {i}");
+            Assert.That(gotVal, Is.EqualTo(entries[i].Value), $"offset for entry {i}");
         }
 
         byte[] pastEnd = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(pastEnd, count);
-        Assert.That(SeekCeilingDelta(block, pastEnd, out _, out _), Is.False);
+        Assert.That(SeekCeilingIndex(block, pastEnd, out _, out _), Is.False);
     }
 
     [Test]
@@ -140,18 +140,18 @@ public class BlockTests
         Assert.That(SeekCeiling(block, Bytes.FromHexString("00"), out _, out _), Is.False);
     }
 
-    private static byte[] BuildDeltaBlock(int restartInterval, (byte[] Key, long Value)[] entries)
+    private static byte[] BuildIndexBlock(int restartInterval, (byte[] Key, long Value)[] entries)
     {
         using PooledByteBufferWriter pooled = new(256);
         using BlockBuilder block = new(restartInterval);
         foreach ((byte[] key, long value) in entries)
-            block.AddDeltaValue(key, value);
-        // Delta values are the index block's encoding, so finish under the Index role flag.
+            block.AddFrontCodedValue(key, value);
+        // Front-coded values are the index block's encoding, so finish under the Index role flag.
         block.Finish(ref pooled.GetWriter(), Block.FlagIndex);
         return pooled.WrittenSpan.ToArray();
     }
 
-    private static bool SeekCeilingDelta(byte[] block, ReadOnlySpan<byte> target, out byte[] key, out long value)
+    private static bool SeekCeilingIndex(byte[] block, ReadOnlySpan<byte> target, out byte[] key, out long value)
     {
         SpanByteReader reader = new(block);
         Span<byte> keyBuf = stackalloc byte[256];
@@ -166,50 +166,50 @@ public class BlockTests
         return true;
     }
 
-    // Delta-coded index values: 12 ascending offsets over 3 restart runs. Keys share a leading 0x01 byte
-    // so only the forced restarts (every 4 records, heads at index 0, 4, 8) have cp == 0 and re-anchor to
-    // an absolute value; the in-between records have cp == 1 and store a delta. Reconstruction must hit the
-    // right absolute offset for a restart head (incl. the zero/vs=0 head), a mid-run delta record, a gap
-    // probe whose ceiling is the next run's head (the crossing record must re-anchor as an absolute, not
-    // accumulate a stale delta), the before-first case, and a past-end miss.
+    // Front-coded index values: 12 ascending offsets over 3 restart runs. Keys share a leading 0x01 byte
+    // so only the forced restarts (every 4 records, heads at index 0, 4, 8) have cp == 0 and fully restate
+    // the value (valCp == 0); the in-between records share their high big-endian bytes with the previous
+    // value (valCp > 0). Reconstruction must recover the right offset for a restart head (incl. the
+    // zero-byte head), a mid-run record, a gap probe whose ceiling is the next run's head (a fully restated
+    // value, not one built on a stale prefix), the before-first case, and a past-end miss.
     [Test]
-    public void Delta_value_seek_reconstructs_absolute_offsets()
+    public void Front_coded_value_seek_reconstructs_offsets()
     {
         const int restartInterval = 4;
         (byte[] Key, long Value)[] entries =
         [
-            (Bytes.FromHexString("0102"), 0),            // restart head (cp == 0), vs = 0 (zero bytes)
-            (Bytes.FromHexString("0104"), 4096),         // cp == 1 ⇒ delta 4096
+            (Bytes.FromHexString("0102"), 0),            // restart head (cp == 0), value 0 (zero bytes)
+            (Bytes.FromHexString("0104"), 4096),         // cp == 1, value front-coded against the previous
             (Bytes.FromHexString("0106"), 8192),
             (Bytes.FromHexString("0108"), 12288),
-            (Bytes.FromHexString("010a"), 1_000_000),    // restart head (3-byte absolute)
-            (Bytes.FromHexString("010c"), 1_004_096),
+            (Bytes.FromHexString("010a"), 1_000_000),    // restart head (3-byte value)
+            (Bytes.FromHexString("010c"), 1_004_096),    // shares the high byte with the head (valCp == 1)
             (Bytes.FromHexString("010e"), 1_008_192),
             (Bytes.FromHexString("0110"), 1_012_288),
-            (Bytes.FromHexString("0112"), 250_000_000),  // restart head (4-byte absolute)
-            (Bytes.FromHexString("0114"), 250_004_096),
+            (Bytes.FromHexString("0112"), 250_000_000),  // restart head (4-byte value)
+            (Bytes.FromHexString("0114"), 250_004_096),  // shares the two high bytes (valCp == 2)
             (Bytes.FromHexString("0116"), 250_008_192),
             (Bytes.FromHexString("0118"), 250_012_288),
         ];
-        byte[] block = BuildDeltaBlock(restartInterval, entries);
+        byte[] block = BuildIndexBlock(restartInterval, entries);
 
         foreach ((byte[] key, long value) in entries)
         {
-            Assert.That(SeekCeilingDelta(block, key, out byte[] gotKey, out long gotVal), Is.True);
+            Assert.That(SeekCeilingIndex(block, key, out byte[] gotKey, out long gotVal), Is.True);
             Assert.That(gotKey, Is.EqualTo(key));
-            Assert.That(gotVal, Is.EqualTo(value), $"absolute offset for key {key.ToHexString()}");
+            Assert.That(gotVal, Is.EqualTo(value), $"offset for key {key.ToHexString()}");
         }
 
         // Target before the first key ⇒ ceiling is the head record (offset 0).
-        Assert.That(SeekCeilingDelta(block, Bytes.FromHexString("0100"), out _, out long beforeFirst), Is.True);
+        Assert.That(SeekCeilingIndex(block, Bytes.FromHexString("0100"), out _, out long beforeFirst), Is.True);
         Assert.That(beforeFirst, Is.EqualTo(0));
 
         // "0109" sits between run 0's tail (0108) and run 1's head (010a): the ceiling is the next run's
-        // head, whose value must re-anchor to the absolute 1_000_000.
-        Assert.That(SeekCeilingDelta(block, Bytes.FromHexString("0109"), out byte[] crossKey, out long crossVal), Is.True);
+        // head, a restart that fully restates its value to 1_000_000.
+        Assert.That(SeekCeilingIndex(block, Bytes.FromHexString("0109"), out byte[] crossKey, out long crossVal), Is.True);
         Assert.That(crossKey, Is.EqualTo(Bytes.FromHexString("010a")));
         Assert.That(crossVal, Is.EqualTo(1_000_000));
 
-        Assert.That(SeekCeilingDelta(block, Bytes.FromHexString("0119"), out _, out _), Is.False);
+        Assert.That(SeekCeilingIndex(block, Bytes.FromHexString("0119"), out _, out _), Is.False);
     }
 }

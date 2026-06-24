@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <remarks>
 /// Both the data blocks and the index reuse <see cref="BlockBuilder"/>. Each finished data block but the
 /// last is zero-padded to <see cref="SortedTable.BlockSize"/> so block <c>i</c> sits at <c>i·BlockSize</c>;
-/// the index records its table-relative byte offset (delta-coded via <see cref="BlockBuilder.AddDeltaValue"/>).
+/// the index records its table-relative byte offset (front-coded via <see cref="BlockBuilder.AddFrontCodedValue"/>).
 /// The index block is written right after the last (unpadded) data block and located by the footer's
 /// <c>indexOffset</c>. The index entry for a block is the shortest separator between that block's last key
 /// and the next block's first key (the last block uses its own last key). Only the current data block and
@@ -102,7 +102,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
             sepLen = FindShortestSeparator(lastKey, nextFirstKey, sepBuf);
         }
 
-        _indexBlock.AddDeltaValue(sepBuf[..sepLen], blockOffset);
+        _indexBlock.AddFrontCodedValue(sepBuf[..sepLen], blockOffset);
         _dataBlock.Reset();
     }
 

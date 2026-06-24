@@ -8,7 +8,7 @@ using Nethermind.State.Flat.Io;
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 /// <summary>Read-side search and header parsing for a <see cref="Block"/>'s data records, whose values
-/// are plain inline bytes. The index block's delta-coded values are read separately by
+/// are plain inline bytes. The index block's front-coded values are read separately by
 /// <see cref="IndexBlockReader"/>.</summary>
 internal static class DataBlockReader
 {
@@ -69,7 +69,7 @@ internal static class DataBlockReader
         if (restartTableStart + offsetsBytes > reader.Length) return false;
         using TPin offsetsPin = reader.PinBuffer(new Bound(restartTableStart, offsetsBytes));
         ReadOnlySpan<ushort> offsets = MemoryMarshal.Cast<byte, ushort>(offsetsPin.Buffer);
-        Block.RecordHeader rec = default;
+        Block.DataRecordHeader rec = default;
 
         // Rightmost restart whose first key <= target (cp == 0 there, so the suffix is the full key).
         int lo = 0;
@@ -79,9 +79,8 @@ internal static class DataBlockReader
         {
             int mid = lo + ((hi - lo) >> 1);
             long recStart = blockStart + offsets[mid];
-            if (!reader.TryRead(recStart, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
-            int firstKeyLen = rec.SuffixLength;
-            using TPin keyPin = reader.PinBuffer(new Bound(recStart + 2, firstKeyLen));
+            if (!reader.TryRead(recStart, MemoryMarshal.AsBytes(new Span<Block.DataRecordHeader>(ref rec)))) return false;
+            using TPin keyPin = reader.PinBuffer(new Bound(recStart + Unsafe.SizeOf<Block.DataRecordHeader>(), rec.SuffixLength));
             if (keyPin.Buffer.SequenceCompareTo(target) <= 0) { found = mid; lo = mid + 1; }
             else hi = mid - 1;
         }
@@ -90,26 +89,25 @@ internal static class DataBlockReader
         int scanRestart = found < 0 ? 0 : found;
         long pos = blockStart + offsets[scanRestart];
 
-        // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
+        // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target. The
+        // 3-byte prefix blit carries the value length, so the value is just a Bound past the key.
         while (pos < end)
         {
-            if (!reader.TryRead(pos, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
+            if (!reader.TryRead(pos, MemoryMarshal.AsBytes(new Span<Block.DataRecordHeader>(ref rec)))) return false;
             int cp = rec.CommonPrefix;
             int suffixLen = rec.SuffixLength;
-            if (!reader.TryRead(pos + 2, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
+            long keyStart = pos + Unsafe.SizeOf<Block.DataRecordHeader>();
+            if (!reader.TryRead(keyStart, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
             int kLen = cp + suffixLen;
-
-            long valueSizeOffset = pos + 2 + suffixLen;
-            byte valueLen = 0;
-            if (!reader.TryRead(valueSizeOffset, new Span<byte>(ref valueLen))) return false;
+            long valueStart = keyStart + suffixLen;
 
             if (target.SequenceCompareTo(keyBuf[..kLen]) <= 0)
             {
                 keyLen = kLen;
-                value = new Bound(valueSizeOffset + Block.SizePrefix, valueLen);
+                value = new Bound(valueStart, rec.ValueLength);
                 return true;
             }
-            pos = valueSizeOffset + Block.SizePrefix + valueLen;
+            pos = valueStart + rec.ValueLength;
         }
         return false;
     }

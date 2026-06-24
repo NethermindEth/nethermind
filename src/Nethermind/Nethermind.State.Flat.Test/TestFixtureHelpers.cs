@@ -99,18 +99,18 @@ internal static class TestFixtureHelpers
         if (!IndexBlockReader.TryReadRecordRange<SpanByteReader, NoOpPin>(in reader, indexStart, out long recordsStart, out long recordsEnd))
             throw new InvalidOperationException("Unreadable index block.");
 
-        // Step over each index record ([cp u8][suffixLen u8][keySuffix][vs u8][value]) without decoding it.
+        // Step over each index record ([cp u8][suffixLen u8][valCp u8][valSuffixLen u8][keySuffix][valSuffix])
+        // without decoding it.
         long pos = indexStart + recordsStart;
         long end = indexStart + recordsEnd;
         long count = 0;
-        Span<byte> hdr = stackalloc byte[2];
+        Span<byte> hdr = stackalloc byte[4];
         while (pos < end)
         {
             reader.TryRead(pos, hdr);
             int suffixLen = hdr[1];
-            long valueSizeOffset = pos + 2 + suffixLen;
-            reader.TryRead(valueSizeOffset, hdr[..1]);
-            pos = valueSizeOffset + 1 + hdr[0];
+            int valSuffixLen = hdr[3];
+            pos += 4 + suffixLen + valSuffixLen;
             count++;
         }
         return count;
