@@ -18,17 +18,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(contentLength);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
             foreach (BlockBody? body in message.Bodies.Bodies)
             {
                 if (body is null)
                 {
-                    stream.Encode(Rlp.OfEmptyList);
+                    writer.Encode(Rlp.OfEmptyList);
                 }
                 else
                 {
-                    _blockBodyDecoder.Encode(stream, body);
+                    _blockBodyDecoder.Encode(ref writer, body);
                 }
             }
         }
@@ -53,7 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
 
-            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startingPosition = ctx.Position;
             try
             {

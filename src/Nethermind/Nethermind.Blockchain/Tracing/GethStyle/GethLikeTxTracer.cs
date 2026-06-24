@@ -19,6 +19,7 @@ public abstract class GethLikeTxTracer : TxTracer
         IsTracingOpLevelStorage = !options.DisableStorage;
         IsTracingStack = !options.DisableStack;
         IsTracingFullMemory = options.EnableMemory;
+        IsTracingReturnData = options.EnableReturnData;
         IsTracing = IsTracing || IsTracingFullMemory;
     }
 

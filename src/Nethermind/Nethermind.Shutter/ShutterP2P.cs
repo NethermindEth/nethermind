@@ -22,8 +22,8 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Network;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core;
+using Nethermind.Logging.Microsoft;
 using System.Collections.Generic;
-using Nethermind.Network.Discovery.Discv5;
 
 namespace Nethermind.Shutter;
 

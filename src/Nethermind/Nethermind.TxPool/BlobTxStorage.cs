@@ -127,7 +127,7 @@ public class BlobTxStorage : IBlobTxStorage
 
         if (bytes is not null)
         {
-            Rlp.ValueDecoderContext ctx = new(bytes);
+            RlpReader ctx = new(bytes);
             blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm);
             return true;
         }
@@ -172,28 +172,28 @@ public class BlobTxStorage : IBlobTxStorage
             _keyPool.Enqueue(key);
     }
 
-    private static void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueHash256 hash, Span<byte> txHashPrefixed)
+    private static void GetHashPrefixedByTimestamp(in UInt256 timestamp, in ValueHash256 hash, scoped Span<byte> txHashPrefixed)
     {
         timestamp.WriteBigEndian(txHashPrefixed);
         hash.Bytes.CopyTo(txHashPrefixed[32..]);
     }
 
-    private void EncodeAndSaveTx(Transaction transaction, IDb db, Span<byte> txHashPrefixed)
+    private void EncodeAndSaveTx(Transaction transaction, IDb db, scoped Span<byte> txHashPrefixed)
     {
-        using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(transaction, RlpBehaviors.InMempoolForm);
-        db.PutSpan(txHashPrefixed, rlpStream.AsSpan());
+        using ArrayPoolSpan<byte> rlp = _txDecoder.EncodeToArrayPoolSpan(transaction, RlpBehaviors.InMempoolForm);
+        db.PutSpan(txHashPrefixed, rlp);
     }
 
     private void EncodeAndSaveTxs(in ArrayPoolListRef<Transaction> blockBlobTransactions, IDb db, long blockNumber)
     {
-        using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(blockBlobTransactions!, RlpBehaviors.InMempoolForm);
-        db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), rlpStream.AsSpan());
+        using ArrayPoolSpan<byte> rlp = _txDecoder.EncodeToArrayPoolSpan(blockBlobTransactions.AsSpan(), RlpBehaviors.InMempoolForm);
+        db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
     }
 }
 
 internal static class UInt256Extensions
 {
-    public static void WriteBigEndian(in this UInt256 value, Span<byte> output)
+    public static void WriteBigEndian(in this UInt256 value, scoped Span<byte> output)
     {
         BinaryPrimitives.WriteUInt64BigEndian(output[..8], value.u3);
         BinaryPrimitives.WriteUInt64BigEndian(output.Slice(8, 8), value.u2);

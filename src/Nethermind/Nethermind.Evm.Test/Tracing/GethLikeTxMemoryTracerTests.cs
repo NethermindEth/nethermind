@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -429,6 +430,125 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: "0x866833515b6d086c607f", expectedStackCount: 8);
         AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: "0x0", expectedStackCount: 8);
         AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: "0x1", expectedStackCount: 8);
+    }
+
+    [Test]
+    public void Can_trace_refund_on_storage_clear()
+    {
+        // Seed a non-zero slot so clearing it to zero grants a storage-clearing refund.
+        // The account must exist before its storage is committed (an empty account has no storage root).
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .PersistData("0x0", HexZero) // SSTORE 0 -> slot 0 (clears it)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        GethTxTraceEntry sstore = trace.Entries.Single(e => e.Opcode == "SSTORE");
+        GethTxTraceEntry stop = trace.Entries.Single(e => e.Opcode == "STOP");
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The counter is captured before the opcode runs, so SSTORE itself shows no refund yet.
+            Assert.That(sstore.Refund, Is.Null, "refund before SSTORE executes");
+            // The next step carries the accumulated, non-zero refund counter.
+            Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund after the clearing SSTORE");
+        }
+    }
+
+    [Test]
+    public void Refund_is_rolled_back_when_frame_reverts()
+    {
+        // Callee clears its own non-zero slot (earning a refund) and then reverts the whole frame.
+        byte[] calleeCode = Prepare.EvmCode
+            .PersistData("0x0", HexZero) // SSTORE 0 -> slot 0 (clears it, earns refund)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.REVERT)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.Set(new StorageCell(TestItem.AddressC, 0), new byte[] { 1 });
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        GethTxTraceEntry revert = trace.Entries.Single(e => e.Opcode == "REVERT");
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Inside the doomed frame the refund counter is visible.
+            Assert.That(revert.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund visible inside the reverting frame");
+            // Once the frame reverts the refund is discarded, matching geth's journaled counter.
+            Assert.That(topLevelStop.Refund, Is.Null, "refund rolled back after the frame reverts");
+        }
+    }
+
+    [Test]
+    public void Can_trace_returndata_when_enabled()
+    {
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+        byte[] calleeCode = Prepare.EvmCode
+            .StoreDataInMemory(0, word)
+            .Return(32, 0)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(GethTraceOptions.Default with { EnableReturnData = true }, code);
+
+        GethTxTraceEntry call = trace.Entries.Last(e => e.Opcode == "CALL");
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.ReturnData, Is.Null, "no return data before the call executes");
+            Assert.That(topLevelStop.ReturnData, Is.EqualTo($"0x{word}"), "return data visible after the inner call returns");
+        }
+    }
+
+    [Test]
+    public void ReturnData_is_omitted_when_not_enabled()
+    {
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+        byte[] calleeCode = Prepare.EvmCode
+            .StoreDataInMemory(0, word)
+            .Return(32, 0)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        // Default options leave EnableReturnData off, so the field must never be populated.
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        Assert.That(trace.Entries.All(e => e.ReturnData is null), Is.True);
     }
 
     private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, string expectedStackTop, int expectedStackCount)

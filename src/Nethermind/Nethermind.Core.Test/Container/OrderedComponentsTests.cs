@@ -41,6 +41,20 @@ public class OrderedComponentsTests
     }
 
     [Test]
+    public void TestRemove()
+    {
+        // RemoveOrderedComponents drops every component of the given concrete type, keeping the rest in order
+        using IContainer ctx = new ContainerBuilder()
+            .AddLast<IItem>(_ => new Item("1"))
+            .AddLast<IItem>(_ => new OtherItem("2"))
+            .AddLast<IItem>(_ => new Item("3"))
+            .RemoveOrderedComponents<IItem, Item>()
+            .Build();
+
+        Assert.That(ctx.Resolve<IItem[]>().Select(item => item.Name), Is.EqualTo(["2"]));
+    }
+
+    [Test]
     public void TestDisallowIndividualRegistration()
     {
         Action act = () => new ContainerBuilder()
@@ -112,6 +126,7 @@ public class OrderedComponentsTests
     }
     private interface IItem { string Name { get; } }
     private record Item(string Name) : IItem;
+    private record OtherItem(string Name) : IItem;
     private class CompositeItem(IItem[] items) : IItem
     {
         public IItem[] Items { get; } = items;

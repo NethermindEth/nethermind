@@ -31,11 +31,20 @@ public class GethTxTraceEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? Error { get; set; }
 
+    [JsonPropertyName("refund")]
+    [JsonConverter(typeof(LongRawJsonConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? Refund { get; set; }
+
     public string[]? Stack { get; set; }
 
     public string[]? Memory { get; set; }
 
     public Dictionary<string, string>? Storage { get; set; }
+
+    [JsonPropertyName("returnData")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReturnData { get; set; }
 
     internal virtual void UpdateMemorySize(ulong size) { }
 }
