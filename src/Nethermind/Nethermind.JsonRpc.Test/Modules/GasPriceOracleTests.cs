@@ -163,27 +163,27 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GetGasPricesFromRecentBlocks_IfEightBlocksWithTwoTransactions_CheckEightBlocks()
         {
-            int blockNumber = 8;
+            ulong blockNumber = 8;
             IBlockFinder blockFinder = BuildTree(blockNumber);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance);
 
             testGasPriceOracle.GetGasPriceEstimate();
 
-            foreach (ulong receivedBlockNumber in Enumerable.Range(0, blockNumber + 1).Select(i => (ulong)i))
+            foreach (ulong receivedBlockNumber in TestRange.ULongRange(0, (int)blockNumber + 1))
             {
                 blockFinder.Received(1).FindBlock(Arg.Is<ulong>(l => l == receivedBlockNumber));
             }
         }
 
-        private IBlockFinder BuildTree(int maxBlock)
+        private IBlockFinder BuildTree(ulong maxBlock)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Transaction tx = Build.A.Transaction.TestObject;
             Block blockWithTwoTx = Build.A.Block.WithTransactions(tx, tx).TestObject;
-            for (int i = 0; i <= maxBlock; i++)
+            for (ulong i = 0; i <= maxBlock; i++)
             {
-                blockFinder.FindBlock((ulong)i).Returns(blockWithTwoTx);
+                blockFinder.FindBlock(i).Returns(blockWithTwoTx);
             }
 
             blockFinder.Head.Returns(Build.A.Block.WithNumber(maxBlock).TestObject);
@@ -203,7 +203,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             testGasPriceOracle.GetGasPriceEstimate();
 
-            foreach (ulong receivedBlockNumber in Enumerable.Range(3, 5).Select(i => (ulong)i))
+            foreach (ulong receivedBlockNumber in TestRange.ULongRange(3, 5))
             {
                 blockFinder.Received(1).FindBlock(Arg.Is<ulong>(l => l == receivedBlockNumber));
             }
@@ -217,13 +217,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             Transaction tx = Build.A.Transaction.TestObject;
             Block blockWithOneTx = Build.A.Block.WithTransactions(Enumerable.Repeat(tx, 1).ToArray()).TestObject;
             Block blockWithThreeTx = Build.A.Block.WithTransactions(Enumerable.Repeat(tx, 3).ToArray()).TestObject;
-            for (int i = 0; i < 4; i++)
+            for (ulong i = 0; i < 4; i++)
             {
-                blockFinder.FindBlock((ulong)i).Returns(blockWithOneTx);
+                blockFinder.FindBlock(i).Returns(blockWithOneTx);
             }
-            for (int i = 4; i <= 8; i++)
+            for (ulong i = 4; i <= 8; i++)
             {
-                blockFinder.FindBlock((ulong)i).Returns(blockWithThreeTx);
+                blockFinder.FindBlock(i).Returns(blockWithThreeTx);
             }
 
             blockFinder.Head.Returns(Build.A.Block.WithNumber(8).TestObject);

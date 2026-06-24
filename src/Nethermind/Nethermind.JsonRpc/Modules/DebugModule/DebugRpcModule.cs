@@ -62,14 +62,10 @@ public class DebugRpcModule(
             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
     }
 
-    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false)
-    {
-        if (startNumber < 0)
-        {
-            return ResultWrapper<int>.Fail($"startNumber must be non-negative (got {startNumber})", ErrorCodes.InvalidParams);
-        }
-        return ResultWrapper<int>.Success(debugBridge.DeleteChainSlice((ulong)startNumber, force));
-    }
+    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) =>
+        startNumber < 0
+            ? ResultWrapper<int>.Fail($"startNumber must be non-negative (got {startNumber})", ErrorCodes.InvalidParams)
+            : ResultWrapper<int>.Success(debugBridge.DeleteChainSlice((ulong)startNumber, force));
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {

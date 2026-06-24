@@ -27,7 +27,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
-using System.Collections.Generic;
 
 namespace Nethermind.Merge.Plugin.Test.Synchronization;
 
@@ -373,7 +372,7 @@ public class BeaconHeadersSyncTests
         // First batch, should be enough to merge chain
         HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
         Assert.That(request!, Is.Not.Null);
-        request!.Response = ULongRange(request.StartNumber, request.RequestSize)
+        request!.Response = TestRange.ULongRange(request.StartNumber, request.RequestSize)
             .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber))
             .ToPooledList(request.RequestSize);
 
@@ -389,7 +388,7 @@ public class BeaconHeadersSyncTests
         Assert.That(request, Is.Not.Null);
 
         // We respond it again
-        request!.Response = ULongRange(request.StartNumber, request.RequestSize)
+        request!.Response = TestRange.ULongRange(request.StartNumber, request.RequestSize)
             .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber))
             .ToPooledList(request.RequestSize);
         ctx.Feed.HandleResponse(request);
@@ -482,9 +481,4 @@ public class BeaconHeadersSyncTests
         return pivot;
     }
 
-    private static IEnumerable<ulong> ULongRange(ulong start, int count)
-    {
-        for (ulong i = start, end = start + (ulong)count; i < end; i++)
-            yield return i;
-    }
 }

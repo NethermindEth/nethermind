@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Visitors
@@ -34,9 +35,7 @@ namespace Nethermind.Blockchain.Visitors
 
             StartLevelInclusive = startBlockNumber ?? (_blockTree.Head?.Number + 1) ?? 0UL;
             ulong bestKnown = _blockTree.BestKnownNumber;
-            _blocksToLoad = bestKnown >= StartLevelInclusive
-                ? Math.Min(maxBlocksToLoad, bestKnown - StartLevelInclusive)
-                : 0UL;
+            _blocksToLoad = Math.Min(maxBlocksToLoad, bestKnown.SaturatingSub(StartLevelInclusive));
             EndLevelExclusive = StartLevelInclusive + _blocksToLoad + 1;
 
             _progress = new ProgressReporter("DB blocks load", logManager, _blocksToLoad);

@@ -266,7 +266,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             nodes++;
         }
 
-        return new Stats((ulong)nodes, (ulong)parents.Values.Count(p => p == 0), (ulong)_flatCache.Count);
+        return new Stats(nodes, parents.Values.Count(p => p == 0), _flatCache.Count);
     }
 
     /// <summary>
@@ -280,5 +280,8 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         public CacheNode? Parent { get; set; } = parent;
     }
 
-    public record struct Stats(ulong Nodes, ulong Roots, ulong FlatCache);
+    public record struct Stats(ulong Nodes, ulong Roots, ulong FlatCache)
+    {
+        public Stats(int nodes, int roots, int flatCache) : this((ulong)nodes, (ulong)roots, (ulong)flatCache) { }
+    }
 }

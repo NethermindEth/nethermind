@@ -91,7 +91,7 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.MinerPremiumNegative;
             }
 
-            UInt256 txValue = (UInt256)tx.ValueRef;
+            UInt256 txValue = tx.ValueRef;
             if (UInt256.SubtractUnderflow(in senderBalance, in txValue, out UInt256 balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");

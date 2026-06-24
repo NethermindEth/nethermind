@@ -119,8 +119,8 @@ namespace Nethermind.Evm.Test
                 Assert.That(gas.FloorGas, Is.EqualTo(floorCostEnabled ? testCase.FloorCost : 0UL));
 
                 Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(
-                        Standard: 21000UL + (ulong)(isAfterRepricing ? testCase.NewCost : testCase.OldCost),
-                        FloorGas: (ulong)(floorCostEnabled ? testCase.FloorCost : 0))), $"{spec.Name}: {testCase.Data.ToHexString()}");
+                        Standard: 21000UL + (isAfterRepricing ? testCase.NewCost : testCase.OldCost),
+                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0UL)), $"{spec.Name}: {testCase.Data.ToHexString()}");
             }
 
             Test(Homestead.Instance, GasOptions.None);

@@ -58,14 +58,14 @@ public class TraceRpcModuleTests
             await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether);
 
             Hash256 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
-            for (int i = 1; i < 10; i++)
+            for (ulong i = 1; i < 10; i++)
             {
                 List<Transaction> transactions = [];
-                for (int j = 0; j < i; j++)
+                for (ulong j = 0; j < i; j++)
                 {
                     transactions.Add(Core.Test.Builders.Build.A.Transaction
                         .WithTo(Address.Zero)
-                        .WithNonce(Blockchain.StateReader.GetNonce(Blockchain.BlockTree.Head.Header, TestItem.AddressB) + (ulong)j)
+                        .WithNonce(Blockchain.StateReader.GetNonce(Blockchain.BlockTree.Head.Header, TestItem.AddressB) + j)
                         .SignedAndResolved(Blockchain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject);
                 }
                 await Blockchain.AddBlockMayMissTx(transactions.ToArray());

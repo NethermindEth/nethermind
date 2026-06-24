@@ -82,12 +82,12 @@ namespace Nethermind.Consensus.Validators
             parent = orphaned ? null : parent!;
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
-            return ValidateHash(header, ref error)
+            return ValidateFieldLimit(header, ref error)
+                   && ValidateHash(header, ref error)
                    && ValidateExtraData(header, spec = _specProvider.GetSpec(header), isUncle, ref error)
                    && (orphaned || ValidateParent(header, parent, ref error))
                    && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
                    && (orphaned || ValidateSeal(header, parent, isUncle, ref error))
-                   && ValidateAbsoluteGasLimit(header, ref error)
                    && ValidateGasUsed(header, ref error)
                    && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
                    && (orphaned || ValidateTimestamp(header, parent, ref error))
@@ -170,9 +170,8 @@ namespace Nethermind.Consensus.Validators
         }
 
         // Ethereum protocol hard-caps block gas limit at 2^63-1 to prevent overflow and ensure
-        // compatibility with signed 64-bit systems. Runs unconditionally — independent of parent,
-        // orphaned status, or subclass overrides of ValidateGasLimitRange.
-        protected virtual bool ValidateAbsoluteGasLimit(BlockHeader header, ref string? error)
+        // compatibility with signed 64-bit systems.
+        protected virtual bool ValidateFieldLimit(BlockHeader header, ref string? error)
         {
             if (header.GasLimit > 0x7FFFFFFFFFFFFFFF)
             {

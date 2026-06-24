@@ -36,16 +36,16 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    private const int MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
+    private const ulong MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
 
     [TestCase(0UL, 0UL)]
     [TestCase(0UL, 32UL)]
     [TestCase(0UL, 256UL)]
     [TestCase(0UL, 2048UL)]
-    [TestCase(0UL, (ulong)MaxCodeSize)]
-    [TestCase(10UL * MaxCodeSize, (ulong)MaxCodeSize)]
-    [TestCase(100UL * MaxCodeSize, (ulong)MaxCodeSize)]
-    [TestCase(1000UL * MaxCodeSize, (ulong)MaxCodeSize)]
+    [TestCase(0UL, MaxCodeSize)]
+    [TestCase(10UL * MaxCodeSize, MaxCodeSize)]
+    [TestCase(100UL * MaxCodeSize, MaxCodeSize)]
+    [TestCase(1000UL * MaxCodeSize, MaxCodeSize)]
     [TestCase(0UL, (ulong)MemorySizes.MiB)]
     // Note: Int32.MaxValue was removed as a test case because after word alignment
     // it exceeds the maximum allowed memory size and correctly returns out-of-gas.

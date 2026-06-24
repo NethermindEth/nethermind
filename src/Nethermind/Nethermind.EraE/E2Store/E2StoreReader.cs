@@ -32,7 +32,7 @@ public sealed class E2StoreReader : IDisposable
     private readonly long _fileLength;
 
     private ulong _startBlock;
-    private long _blockCount;
+    private ulong _blockCount;
     private int _componentCount; // 3 (post-merge) or 4 (pre-merge/transition)
     private bool _indexLoaded;
     private long _componentIndexTlvStart; // absolute position of ComponentIndex entry header
@@ -52,9 +52,9 @@ public sealed class E2StoreReader : IDisposable
         }
     }
 
-    public ulong LastBlock => First + (ulong)_blockCount - 1;
+    public ulong LastBlock => First + _blockCount - 1;
 
-    public long BlockCount
+    public ulong BlockCount
     {
         get
         {
@@ -158,8 +158,8 @@ public sealed class E2StoreReader : IDisposable
             throw new EraFormatException($"File too small ({_fileLength} bytes) to contain a valid ComponentIndex.");
 
         // Read block_count from the last 8 bytes of file
-        _blockCount = ReadInt64(_fileLength - IndexFieldSize);
-        if (_blockCount <= 0 || _blockCount > EraWriter.MaxEraSize)
+        _blockCount = ReadUInt64(_fileLength - IndexFieldSize);
+        if (_blockCount == 0 || _blockCount > EraWriter.MaxEraSize)
             throw new EraFormatException($"Invalid block count {_blockCount} in EraE ComponentIndex.");
 
         // Read component_count from the 8 bytes before block_count
@@ -171,7 +171,7 @@ public sealed class E2StoreReader : IDisposable
             throw new EraFormatException($"Invalid component count {_componentCount} in EraE ComponentIndex.");
 
         // Total data length = starting_number + offsets + component_count + block_count
-        long indexDataLength = IndexFieldSize + _blockCount * _componentCount * IndexFieldSize + IndexFieldSize + IndexFieldSize;
+        long indexDataLength = IndexFieldSize + (long)_blockCount * _componentCount * IndexFieldSize + IndexFieldSize + IndexFieldSize;
 
         // Verify entry type
         long indexEntryStart = _fileLength - EntryHeaderSize - indexDataLength;
@@ -194,8 +194,8 @@ public sealed class E2StoreReader : IDisposable
     {
         EnsureIndexLoaded();
 
-        if (blockNumber < _startBlock || blockNumber >= _startBlock + (ulong)_blockCount)
-            throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside range [{_startBlock}, {_startBlock + (ulong)_blockCount - 1}].");
+        if (blockNumber < _startBlock || blockNumber >= _startBlock + _blockCount)
+            throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside range [{_startBlock}, {_startBlock + _blockCount - 1}].");
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(componentIdx, _componentCount);
 
         long blockIdx = (long)(blockNumber - _startBlock);

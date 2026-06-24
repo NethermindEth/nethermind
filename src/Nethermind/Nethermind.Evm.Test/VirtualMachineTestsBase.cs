@@ -51,6 +51,9 @@ public abstract class VirtualMachineTestsBase
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
     protected virtual ulong BlockNumber { get; private set; } = MainnetSpecProvider.ByzantiumBlockNumber;
     protected virtual ulong Timestamp { get; private set; } = 0UL;
+
+    /// <summary>Applies a signed <paramref name="adjustment"/> to a block number, e.g. to target just before/after a fork.</summary>
+    protected static ulong AdjustBlockNumber(ulong blockNumber, long adjustment) => (ulong)((long)blockNumber + adjustment);
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 

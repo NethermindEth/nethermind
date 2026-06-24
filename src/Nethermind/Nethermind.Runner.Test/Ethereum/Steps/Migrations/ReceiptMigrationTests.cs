@@ -106,8 +106,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             if (wasMigrated)
             {
-                // Safe: commandStartBlockNumber.Value fits in int for these test cases (max = chainLength = 10).
-                // chainLength - 1 is equally safe.
                 int blockNum = commandStartBlockNumber.HasValue ? (int)commandStartBlockNumber.Value : (chainLength - 1);
                 int txCount = blockNum * 2;
                 defaultDb.KeyWasWritten((item => item.Item2 is null), txCount);

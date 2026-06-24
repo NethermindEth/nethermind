@@ -262,7 +262,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             {
                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
                 {
-                    cachedNonce = test.Nonce; // AccountStruct.Nonce is ulong
+                    cachedNonce = test.Nonce;
                 }
                 // else // Todo think if we shall create account here
             }

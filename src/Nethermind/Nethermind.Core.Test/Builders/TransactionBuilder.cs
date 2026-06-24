@@ -18,7 +18,7 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder() => TestObjectInternal = new T
         {
             GasPrice = 1,
-            GasLimit = Transaction.BaseTxGasCost, // BaseTxGasCost must also be ulong after broader migration
+            GasLimit = Transaction.BaseTxGasCost,
             To = Address.Zero,
             Nonce = 0,
             Value = 1,

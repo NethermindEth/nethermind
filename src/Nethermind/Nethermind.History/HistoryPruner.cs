@@ -107,8 +107,6 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
-
     public ulong? CutoffBlockNumber
     {
         get
@@ -535,15 +533,14 @@ public class HistoryPruner : IHistoryPruner
 
         if (_blocksDeletePointer != _lastSavedBlocksDeletePointer)
         {
-            // On-disk format kept as long for backward compatibility with existing persisted values.
-            _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode((long)_blocksDeletePointer).Bytes);
+            _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_blocksDeletePointer).Bytes);
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
             if (_logger.IsDebug) _logger.Debug($"Persisting oldest block stored = #{_blocksDeletePointer} to disk.");
         }
 
         if (_balsDeletePointer != _lastSavedBalsDeletePointer)
         {
-            _metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode((long)_balsDeletePointer).Bytes);
+            _metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer).Bytes);
             _lastSavedBalsDeletePointer = _balsDeletePointer;
             if (_logger.IsDebug) _logger.Debug($"Persisting oldest BAL stored = #{_balsDeletePointer} to disk.");
         }

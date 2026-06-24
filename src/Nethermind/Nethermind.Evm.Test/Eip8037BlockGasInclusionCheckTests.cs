@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using NUnit.Framework;
 
@@ -143,18 +144,18 @@ public class Eip8037BlockGasInclusionCheckTests
         Random random = new(8037);
         for (int i = 0; i < 2_000; i++)
         {
-            ulong intrinsicRegular = (ulong)random.Next(21_000, 500_000);
-            ulong initialRegular = (ulong)random.Next(0, 5_000_000);
-            ulong spentRegular = (ulong)random.Next(0, (int)Math.Min(initialRegular, int.MaxValue)) + (initialRegular > int.MaxValue ? (ulong)random.Next(0, 2) : 0ul);
+            ulong intrinsicRegular = random.NextUInt64(21_000, 500_000);
+            ulong initialRegular = random.NextUInt64(0, 5_000_000);
+            ulong spentRegular = random.NextUInt64(0, Math.Min(initialRegular, int.MaxValue)) + (initialRegular > int.MaxValue ? random.NextUInt64(0, 2) : 0ul);
             if (spentRegular > initialRegular)
             {
                 spentRegular = initialRegular;
             }
 
-            ulong stateGasSpill = (ulong)random.Next(0, (int)Math.Min(spentRegular, int.MaxValue));
-            ulong stateGasSpillReclassified = (ulong)random.Next(0, (int)Math.Min(stateGasSpill, int.MaxValue));
+            ulong stateGasSpill = random.NextUInt64(0, Math.Min(spentRegular, int.MaxValue));
+            ulong stateGasSpillReclassified = random.NextUInt64(0, Math.Min(stateGasSpill, int.MaxValue));
             ulong remainingRegular = initialRegular - spentRegular;
-            ulong floorGas = (ulong)random.Next(21_000, 200_000);
+            ulong floorGas = random.NextUInt64(21_000, 200_000);
 
             ulong executionRegularGasUsed = initialRegular - remainingRegular - stateGasSpill + stateGasSpillReclassified;
             ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(

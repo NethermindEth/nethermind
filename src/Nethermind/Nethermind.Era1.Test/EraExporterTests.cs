@@ -57,11 +57,11 @@ public class EraExporterTests
         }
     }
 
-    [TestCase(1, 1)]
-    [TestCase(2, 2)]
-    [TestCase(2, 3)]
-    [TestCase(99, 999)]
-    public void Export_ExportBeyondAvailableBlocks_ThrowEraException(int chainLength, int to)
+    [TestCase(1, 1UL)]
+    [TestCase(2, 2UL)]
+    [TestCase(2, 3UL)]
+    [TestCase(99, 999UL)]
+    public void Export_ExportBeyondAvailableBlocks_ThrowEraException(int chainLength, ulong to)
     {
         using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
             .Build();
@@ -69,7 +69,7 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         string tmpDirectory = container.ResolveTempDirPath();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0UL, (ulong)to), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0UL, to), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]

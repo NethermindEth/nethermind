@@ -156,8 +156,8 @@ namespace Nethermind.Core.Test.Builders
             random ??= Random;
 
             Account account = new(
-                (ulong)random.Next(1000),
-                (ulong)random.Next(1000),
+                random.NextUInt64(1000),
+                random.NextUInt64(1000),
                 Keccak.EmptyTreeHash,
                 Keccak.OfAnEmptyString);
 

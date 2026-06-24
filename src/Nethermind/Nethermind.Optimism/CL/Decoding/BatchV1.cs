@@ -115,27 +115,20 @@ public sealed class BatchV1
                             v = 27u + (parityBit ? 1u : 0u);
                         }
 
-                        (UInt256 legacyValue, tx.GasPrice, byte[] legacyData) = DecodeLegacyTransaction(Txs.Data[(int)txIdx].Span);
-                        tx.Value = legacyValue;
-                        tx.Data = legacyData;
+                        (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(Txs.Data[(int)txIdx].Span);
                         break;
                     }
                 case TxType.AccessList:
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
-                        (UInt256 accessValue, tx.GasPrice, byte[] accessData, tx.AccessList) = DecodeAccessListTransaction(Txs.Data[(int)txIdx].Span);
-                        tx.Value = accessValue;
-                        tx.Data = accessData;
+                        (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(Txs.Data[(int)txIdx].Span);
                         break;
                     }
                 case TxType.EIP1559:
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
-                        (UInt256 eipValue, tx.GasPrice, UInt256 maxFee, byte[] eipData, tx.AccessList) =
+                        (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList) =
                             DecodeEip1559Transaction(Txs.Data[(int)txIdx].Span);
-                        tx.Value = eipValue;
-                        tx.DecodedMaxFeePerGas = maxFee;
-                        tx.Data = eipData;
                         break;
                     }
                 default:

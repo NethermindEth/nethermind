@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
@@ -165,9 +166,7 @@ public partial class BlockAccessListManager
             return false;
         }
 
-        ulong surplusReads = _suggestedChargeableStorageReads > _generatedChargeableStorageReads
-            ? _suggestedChargeableStorageReads - _generatedChargeableStorageReads
-            : 0ul;
+        ulong surplusReads = _suggestedChargeableStorageReads.SaturatingSub(_generatedChargeableStorageReads);
         ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
         return true;
     }
@@ -218,9 +217,7 @@ public partial class BlockAccessListManager
             if (!sug.HasNoChangesAtIndex(index)) ThrowSurplusChanges(block, sug.Address, index);
         }
 
-        ulong surplusReads = suggestedReads > generatedReads
-            ? suggestedReads - generatedReads
-            : 0ul;
+        ulong surplusReads = suggestedReads.SaturatingSub(generatedReads);
         ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
     }
 
@@ -267,9 +264,7 @@ public partial class BlockAccessListManager
         }
 
         // Storage-read gas budget — counts already tracked block-cumulative on both sides.
-        ulong surplusReads = _suggestedChargeableStorageReads > _generatedChargeableStorageReads
-            ? _suggestedChargeableStorageReads - _generatedChargeableStorageReads
-            : 0ul;
+        ulong surplusReads = _suggestedChargeableStorageReads.SaturatingSub(_generatedChargeableStorageReads);
         ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
     }
 

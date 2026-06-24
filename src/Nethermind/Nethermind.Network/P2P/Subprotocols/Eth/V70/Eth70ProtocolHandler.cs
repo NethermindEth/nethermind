@@ -33,6 +33,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 {
     private static readonly ReceiptMessageDecoder69 ReceiptMessageDecoder = new();
 
+    /// <summary>Sentinel for <c>lastBlockNumber</c> meaning no receipt block has been seen yet.</summary>
+    private const ulong NoBlockSeen = ulong.MaxValue;
+
     private readonly MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70> _receiptsRequests70;
     private readonly ISpecProvider _specProvider;
 
@@ -168,7 +171,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                 ulong blockReceiptsContentSize = 0;
                 int taken = 0;
-                ulong lastBlockNumber = ulong.MaxValue; // Sentinel: no block seen yet
+                ulong lastBlockNumber = NoBlockSeen;
                 RlpBehaviors behaviors = RlpBehaviors.None;
                 for (int receiptIndex = startIndex; receiptIndex < receipts.Length; receiptIndex++)
                 {
@@ -421,7 +424,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private ulong GetBlockReceiptsSize(TxReceipt[] receipts, int startIndex)
     {
         ulong receiptsContentSize = 0;
-        ulong lastBlockNumber = ulong.MaxValue; // Sentinel: no block seen yet
+        ulong lastBlockNumber = NoBlockSeen;
         RlpBehaviors behaviors = RlpBehaviors.None;
         for (int i = startIndex; i < receipts.Length; i++)
         {

@@ -65,8 +65,8 @@ public class PosForwardHeaderProviderCacheTests
     [TearDown]
     public void TearDown() => _provider.UnsubscribeForTest();
 
-    private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(int skip = 0, int max = Requested) =>
-        _provider.GetBlockHeaders((ulong)skip, (ulong)max, CancellationToken.None);
+    private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(ulong skip = 0, ulong max = Requested) =>
+        _provider.GetBlockHeaders(skip, max, CancellationToken.None);
 
     private void RaiseMainChainUpdate(params Block[] blocks)
     {
@@ -78,7 +78,7 @@ public class PosForwardHeaderProviderCacheTests
     private void AssertChainLevelCalls(int expected) =>
         _chainLevelHelper.ReceivedWithAnyArgs(expected).GetNextHeaders(default, default, default);
 
-    private async Task ExpectCalls(int expected, Action<IOwnedReadOnlyList<BlockHeader?>> between, int firstSkip = 0, int firstMax = Requested, int secondSkip = 0, int secondMax = Requested)
+    private async Task ExpectCalls(int expected, Action<IOwnedReadOnlyList<BlockHeader?>> between, ulong firstSkip = 0, ulong firstMax = Requested, ulong secondSkip = 0, ulong secondMax = Requested)
     {
         using IOwnedReadOnlyList<BlockHeader?>? first = await Get(firstSkip, firstMax);
         between(first!);

@@ -24,7 +24,7 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
 
     public ulong BaseGasCost(IReleaseSpec _) => 37700UL;
 
-    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 32600UL * (uint)(inputData.Length / PairSize);
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 32600UL * (ulong)(inputData.Length / PairSize);
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

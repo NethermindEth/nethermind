@@ -89,8 +89,8 @@ namespace Nethermind.Runner.Test
             SyncConfig syncConfig = new();
             syncConfig.FastSync = fastSync;
 
-            Assert.That(_memoryHintMan.DbMemory, Is.GreaterThan((ulong)((memoryHint - 100 * MB) * 0.5)));
-            Assert.That(_memoryHintMan.DbMemory, Is.LessThan((ulong)((memoryHint - 100 * MB) * 0.9)));
+            Assert.That(_memoryHintMan.DbMemory, Is.GreaterThan((memoryHint - 100 * MB) / 2));
+            Assert.That(_memoryHintMan.DbMemory, Is.LessThan((memoryHint - 100 * MB) * 9 / 10));
         }
 
         [TestCase(100 * GB, 16u, -1)]

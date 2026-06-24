@@ -173,8 +173,9 @@ public class DebugTraceStreamingBenchmarks
     {
         for (int op = 0; op < opcodeCount; op++)
         {
-            tracer.StartOperation(op, Instruction.SSTORE, (ulong)(1_000_000 - op), _env);
-            tracer.ReportOperationRemainingGas((ulong)(900_000 - op));
+            ulong opU = (ulong)op;
+            tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - opU, _env);
+            tracer.ReportOperationRemainingGas(900_000 - opU);
         }
         tracer.MarkAsSuccess(Address.Zero, default, [], []);
     }

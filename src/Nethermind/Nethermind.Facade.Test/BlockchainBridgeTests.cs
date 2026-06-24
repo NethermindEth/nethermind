@@ -117,7 +117,7 @@ public class BlockchainBridgeTests
     {
         int index = 5;
         Transaction[] transactions = Enumerable.Range(0, 10)
-            .Select(static i => Build.A.Transaction.WithNonce((ulong)i).WithHash(TestItem.Keccaks[i]).TestObject)
+            .Select(static i => Build.A.Transaction.WithNonce(i).WithHash(TestItem.Keccaks[i]).TestObject)
             .ToArray();
         Block block = Build.A.Block
             .WithTransactions(transactions.ToArray())
