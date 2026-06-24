@@ -433,19 +433,43 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task executePayloadV1_invalid_hash_records_bad_block()
+    public async Task executePayloadV1_invalid_hash_returns_invalid_and_does_not_store_bad_block()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload payload = await BuildAndGetPayloadResult(chain, rpc);
-        long blockNumber = payload.BlockNumber;
         payload.BlockHash = TestItem.KeccakC;
 
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(payload);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+        // Hash-mismatched payloads are not stored in debug_getBadBlocks: block.Hash is the
+        // caller-supplied (unverified) value, and ReportBadBlock would write it to _invalidBlocks,
+        // which would prevent the legitimate block from being inserted if the CL later sends
         IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
-        Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(blockNumber));
+        Assert.That(badBlockStore.GetAll(), Is.Empty);
+    }
+
+    [Test]
+    public async Task executePayloadV1_invalid_hash_does_not_poison_chain_tracker()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 genesisHash = chain.BlockTree.HeadHash;
+        await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+
+        // Build block 2 on block 1 (BuildAndGetPayloadResult sees block1 as head),
+        // then corrupt BlockHash to genesisHash
+        ExecutionPayload block2 = await BuildAndGetPayloadResult(chain, rpc);
+        Hash256 realBlock2Hash = block2.BlockHash!;
+        block2.BlockHash = genesisHash;
+
+        ResultWrapper<PayloadStatusV1> invalidResult = await rpc.engine_newPayloadV1(block2);
+        Assert.That(invalidResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+
+        block2.BlockHash = realBlock2Hash;
+        ResultWrapper<PayloadStatusV1> validResult = await rpc.engine_newPayloadV1(block2);
+        Assert.That(validResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     [Test]

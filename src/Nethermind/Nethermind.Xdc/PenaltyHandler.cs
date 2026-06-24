@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
@@ -15,6 +16,8 @@ namespace Nethermind.Xdc;
 
 internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
 {
+    private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
+
     public Address[] GetPenalties(XdcBlockHeader header) => epochSwitchManager.GetEpochSwitchInfo(header)?.Penalties ?? [];
 
     private Address[] GetPreviousPenalties(Hash256 currentHash, IXdcReleaseSpec spec, ulong limit)
@@ -104,6 +107,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     foreach (Transaction tx in signingTxs)
                     {
                         Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
+                        tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
                         Address fromSigner = tx.SenderAddress;
 
                         if (blockHashes.Contains(signedBlockHash))
@@ -152,7 +156,8 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     foreach (Transaction tx in signingTxs)
                     {
                         Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
-                        Address fromSigner = tx.SenderAddress!;
+                        tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
+                        Address fromSigner = tx.SenderAddress;
                         if (blockHashes.Contains(signedBlockHash))
                         {
                             txSignerMap[fromSigner] = txSignerMap.TryGetValue(fromSigner, out int count) ? count + 1 : 1;

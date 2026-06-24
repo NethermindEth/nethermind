@@ -64,18 +64,19 @@ public sealed partial class DeferredRlpItemList : IRlpItemList
 
     public int RlpLength => Rlp.LengthOfSequence(Entries[_entryStart].Length);
 
-    public void Write(RlpStream stream)
+    public void Write<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         Span<Builder.Entry> entries = Entries;
         Span<byte> values = ValueBuffer;
-        stream.StartSequence(entries[_entryStart].Length);
+        writer.StartSequence(entries[_entryStart].Length);
         for (int i = _entryStart + 1; i < _entryEnd; i++)
         {
             ref Builder.Entry entry = ref entries[i];
             if (entry.IsLeaf)
-                stream.Encode(values.Slice(entry.ValueOffset, entry.Length));
+                writer.Encode(values.Slice(entry.ValueOffset, entry.Length));
             else
-                stream.StartSequence(entry.Length);
+                writer.StartSequence(entry.Length);
         }
     }
 

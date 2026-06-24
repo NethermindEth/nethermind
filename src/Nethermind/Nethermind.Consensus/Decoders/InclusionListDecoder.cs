@@ -30,8 +30,8 @@ public class InclusionListDecoder(
     {
         TxDecoder decoder = TxDecoder.Instance;
         byte[] buffer = new byte[decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping)];
-        RlpStream stream = new(buffer);
-        decoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+        RlpWriter writer = new(buffer);
+        decoder.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
         return buffer;
     }
 
@@ -40,8 +40,8 @@ public class InclusionListDecoder(
         TxDecoder decoder = TxDecoder.Instance;
         int length = decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
         ArrayPoolList<byte> result = new(length, length);
-        RlpStream stream = new(new CappedArray<byte>(result.UnsafeGetInternalArray(), length));
-        decoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+        RlpWriter writer = new(new CappedArray<byte>(result.UnsafeGetInternalArray(), length));
+        decoder.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
         return result;
     }
 

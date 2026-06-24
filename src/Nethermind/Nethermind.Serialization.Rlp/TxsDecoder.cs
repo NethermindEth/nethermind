@@ -27,7 +27,7 @@ public static class TxsDecoder
         {
             try
             {
-                Rlp.ValueDecoderContext ctx = new(txData[i]);
+                RlpReader ctx = new(txData[i]);
                 Transaction decoded = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
                 transactions[added++] = decoded;
             }
@@ -71,7 +71,7 @@ public static class TxsDecoder
         {
             try
             {
-                Rlp.ValueDecoderContext ctx = new(txData[i]);
+                RlpReader ctx = new(txData[i]);
                 slots[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
             catch (Exception e) when (e is RlpException or ArgumentException)

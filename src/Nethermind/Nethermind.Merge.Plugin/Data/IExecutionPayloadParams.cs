@@ -83,7 +83,7 @@ public class ExecutionPayloadParams(
 
 public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
-    Hash256?[] blobVersionedHashes,
+    Hash256?[]? blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests = null,
     byte[][]? inclusionListTransactions = null)
@@ -158,6 +158,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (spec.IsEip7843Enabled && executionPayload.SlotNumber is null)
         {
             error = "Slot number must be set";
+            return ValidationResult.Fail;
+        }
+
+        if (spec.IsEip4844Enabled && blobVersionedHashes is null)
+        {
+            error = "Blob versioned hashes must not be null";
             return ValidationResult.Fail;
         }
 

@@ -29,7 +29,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Consensus.Transactions;
@@ -177,7 +176,6 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 .AddDecorator<AuRaNethermindApi>((_, api) =>
                 {
                     api.EngineSigner = NullSigner.Instance;
-                    api.NonceManager = Substitute.For<INonceManager>();
                     return api;
                 })
                 .AddModule(new AuRaMergeModule())

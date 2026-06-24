@@ -84,7 +84,7 @@ public class InclusionListBuilderTests
         HashSet<Hash256> originals = [.. txs.Select(t => t.Hash!)];
         foreach (ArrayPoolList<byte> bytes in ilBytes)
         {
-            Rlp.ValueDecoderContext ctx = new(bytes.AsSpan());
+            RlpReader ctx = new(bytes.AsSpan());
             Transaction decoded = TxDecoder.Instance.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
             Assert.That(originals, Does.Contain(decoded.Hash!));
         }

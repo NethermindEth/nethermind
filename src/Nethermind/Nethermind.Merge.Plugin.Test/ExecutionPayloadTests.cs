@@ -138,7 +138,7 @@ public class ExecutionPayloadTests
         Transaction[] serialOracle = new Transaction[encoded.Length];
         for (int i = 0; i < encoded.Length; i++)
         {
-            Rlp.ValueDecoderContext ctx = new(encoded[i]);
+            RlpReader ctx = new(encoded[i]);
             serialOracle[i] = Rlp.GetDecoder<Transaction>()!.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
         }
 
