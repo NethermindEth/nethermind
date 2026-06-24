@@ -56,9 +56,9 @@ internal static class Block
     /// the previous record, then the length of the key suffix that follows. Read by reinterpreting the
     /// two header bytes (both single bytes, so endianness-independent).</summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    internal readonly struct RecordHeader
+    internal readonly struct RecordHeader(byte commonPrefix, byte suffixLength)
     {
-        internal readonly byte CommonPrefix;
-        internal readonly byte SuffixLength;
+        internal readonly byte CommonPrefix = commonPrefix;
+        internal readonly byte SuffixLength = suffixLength;
     }
 }

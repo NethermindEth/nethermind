@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Io;
 
@@ -61,17 +61,17 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         while (_pos >= _blockEnd)
             if (!TryAdvanceToNextDataBlock(in reader)) return false;
 
-        Span<byte> hdr = stackalloc byte[2]; // [commonPrefix u8][suffixLen u8]
-        if (!reader.TryRead(_pos, hdr)) return false;
-        int cp = hdr[0];
-        int suffixLen = hdr[1];
+        Block.RecordHeader rec = default;
+        if (!reader.TryRead(_pos, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
+        int cp = rec.CommonPrefix;
+        int suffixLen = rec.SuffixLength;
         // Front-coded: keep _keyBuf[0..cp) from the previous record, append this record's suffix.
         if (!reader.TryRead(_pos + 2, _keyBuf.AsSpan().Slice(cp, suffixLen))) return false;
         _keyLength = cp + suffixLen;
 
         long valueSizeOffset = _pos + 2 + suffixLen;
-        if (!reader.TryRead(valueSizeOffset, hdr[..1])) return false;
-        int valueLength = hdr[0];
+        byte valueLength = 0;
+        if (!reader.TryRead(valueSizeOffset, new Span<byte>(ref valueLength))) return false;
         _value = new Bound(valueSizeOffset + Block.SizePrefix, valueLength);
 
         _pos = valueSizeOffset + Block.SizePrefix + valueLength;
@@ -88,19 +88,18 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         // Index record: [cp u8][suffixLen u8][keySuffix][vs u8][value]. Only the value (the data block's
         // table-relative byte offset) is needed — absolute at a restart head, a delta against the previous
         // record in between (see BlockBuilder.AddDeltaValue); the separator key is skipped over.
-        Span<byte> hdr = stackalloc byte[2];
-        if (!reader.TryRead(_indexPos, hdr)) return false;
-        int cp = hdr[0];
-        int suffixLen = hdr[1];
+        Block.RecordHeader rec = default;
+        if (!reader.TryRead(_indexPos, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
+        int cp = rec.CommonPrefix;
+        int suffixLen = rec.SuffixLength;
         long valueSizeOffset = _indexPos + 2 + suffixLen;
-        if (!reader.TryRead(valueSizeOffset, hdr[..1])) return false;
-        int valueLen = hdr[0];
+        byte valueLen = 0;
+        if (!reader.TryRead(valueSizeOffset, new Span<byte>(ref valueLen))) return false;
         if (valueLen > 6) return false; // u48 ceiling — reject corruption before the shift widens it
 
-        Span<byte> vbuf = stackalloc byte[sizeof(ulong)];
-        vbuf.Clear();
-        if (valueLen > 0 && !reader.TryRead(valueSizeOffset + Block.SizePrefix, vbuf[..valueLen])) return false;
-        long stored = (long)BinaryPrimitives.ReadUInt64LittleEndian(vbuf);
+        ulong v = 0;
+        if (valueLen > 0 && !reader.TryRead(valueSizeOffset + Block.SizePrefix, MemoryMarshal.AsBytes(new Span<ulong>(ref v))[..valueLen])) return false;
+        long stored = (long)v;
         // A restart record (cp == 0) re-anchors to an absolute offset; in between, a delta. The index walk
         // starts at the first record (cp == 0), so the running offset is anchored before any delta.
         _indexRunningValue = cp == 0 ? stored : _indexRunningValue + stored;

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
@@ -51,6 +51,16 @@ internal static class SortedTable
     /// <summary>Fixed footer: index-block byte offset (i64), version (u8).</summary>
     internal const int FooterSize = sizeof(long) + 1;
 
+    /// <summary>On-disk footer layout: index-block byte offset then version. Read by reinterpreting the
+    /// trailing bytes (the <c>i64</c> field is little-endian on disk, matching the host on supported
+    /// targets). <see cref="FooterSize"/> equals <c>Unsafe.SizeOf&lt;FooterBytes&gt;()</c>.</summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private readonly struct FooterBytes
+    {
+        internal readonly long IndexOffset;
+        internal readonly byte Version;
+    }
+
     internal const byte FormatVersion = 9;
 
     /// <summary>Footer-resolved table geometry: the table-relative byte offset of the (unaligned) index
@@ -74,11 +84,11 @@ internal static class SortedTable
         footer = default;
         if (table.Length < FooterSize) return false;
 
-        Span<byte> buf = stackalloc byte[FooterSize];
-        if (!reader.TryRead(table.Offset + table.Length - FooterSize, buf)) return false;
-        if (buf[FooterSize - 1] != FormatVersion) return false;
+        FooterBytes bytes = default;
+        if (!reader.TryRead(table.Offset + table.Length - FooterSize, MemoryMarshal.AsBytes(new Span<FooterBytes>(ref bytes)))) return false;
+        if (bytes.Version != FormatVersion) return false;
 
-        long indexOffset = BinaryPrimitives.ReadInt64LittleEndian(buf);
+        long indexOffset = bytes.IndexOffset;
         // Bound the offset by the actual table size so a corrupt footer cannot address outside the
         // bound: data blocks live in [0, indexOffset) and the index block + footer fill the tail.
         if (indexOffset < 0) return false;

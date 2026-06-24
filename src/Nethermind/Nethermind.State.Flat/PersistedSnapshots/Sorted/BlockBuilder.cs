@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Io;
 
@@ -51,11 +52,10 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         long stored = restart ? value : value - _prevValue;
         _prevValue = value;
 
-        Span<byte> buf = stackalloc byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64LittleEndian(buf, (ulong)stored);
-        int width = stored == 0 ? 0 : BitOperations.Log2((ulong)stored) / 8 + 1;
+        ulong v = (ulong)stored;
+        int width = stored == 0 ? 0 : BitOperations.Log2(v) / 8 + 1;
         _body.Add((byte)width);
-        _body.AddRange(buf[..width]);
+        _body.AddRange(MemoryMarshal.AsBytes(new Span<ulong>(ref v))[..width]);
     }
 
     /// <summary>Write a record's front-coded key prefix (<c>[cp][suffixLen][keySuffix]</c>), then advance
@@ -73,10 +73,8 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         if (cp == 0)
             _restarts.Add(_body.Count);
 
-        Span<byte> hdr = stackalloc byte[2];
-        hdr[0] = (byte)cp;
-        hdr[1] = (byte)(key.Length - cp);
-        _body.AddRange(hdr);
+        Block.RecordHeader rh = new((byte)cp, (byte)(key.Length - cp));
+        _body.AddRange(MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rh)));
         _body.AddRange(key[cp..]);
 
         _prevKey.Clear();

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.State.Flat.Io;
@@ -102,7 +101,6 @@ internal static class IndexBlockReader
         // A restart record (cp == 0) carries an absolute value, every other record a delta against the
         // previous one. The scan starts at a restart, so the first record anchors the running sum.
         long runningValue = 0;
-        Span<byte> vbuf = stackalloc byte[sizeof(ulong)];
 
         // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
         while (pos < end)
@@ -118,10 +116,9 @@ internal static class IndexBlockReader
             if (!reader.TryRead(valueSizeOffset, new Span<byte>(ref valueLen))) return false;
 
             if (valueLen > 6) return false; // u48 ceiling — reject corruption before the shift widens it
-            vbuf.Clear();
-            if (valueLen > 0 && !reader.TryRead(valueSizeOffset + Block.SizePrefix, vbuf[..valueLen])) return false;
-            long v = (long)BinaryPrimitives.ReadUInt64LittleEndian(vbuf);
-            runningValue = cp == 0 ? v : runningValue + v;
+            ulong v = 0;
+            if (valueLen > 0 && !reader.TryRead(valueSizeOffset + Block.SizePrefix, MemoryMarshal.AsBytes(new Span<ulong>(ref v))[..valueLen])) return false;
+            runningValue = cp == 0 ? (long)v : runningValue + (long)v;
 
             if (target.SequenceCompareTo(keyBuf[..kLen]) <= 0)
             {
