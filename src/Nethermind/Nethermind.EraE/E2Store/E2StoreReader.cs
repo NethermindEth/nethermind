@@ -179,7 +179,13 @@ public sealed class E2StoreReader : IDisposable
 
         _componentIndexTlvStart = indexEntryStart;
 
-        _startBlock = ReadUInt64(indexEntryStart + EntryHeaderSize);
+        // starting_number is int64 on disk; validate >= 0 so a malformed file fails parsing with
+        // EraFormatException instead of reinterpreting the high bit as a huge ulong and only
+        // surfacing later as a misleading ArgumentOutOfRangeException in ComponentOffset.
+        long startBlock = ReadInt64(indexEntryStart + EntryHeaderSize);
+        if (startBlock < 0)
+            throw new EraFormatException($"Invalid starting block number {startBlock} in EraE ComponentIndex.");
+        _startBlock = (ulong)startBlock;
 
         _indexLoaded = true;
     }
