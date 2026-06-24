@@ -293,6 +293,40 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void State_gas_refund_of_spilled_charge_returns_to_regular_gas_not_reservoir()
+    {
+        // EIP-8037 source-based (LIFO) refund: a state-gas charge made when the reservoir was empty
+        // spills into regular gas (gas_left); refunding it must return to regular gas, NOT inflate the
+        // reservoir. Inflating the reservoir would wrongly let later operations (e.g. a forwarded CALL)
+        // draw state gas the spec says is unavailable.
+        EthereumGasPolicy gas = new() { Value = 10_000, StateReservoir = 0 };
+
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 4000), Is.True);
+        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
+            Is.EqualTo((6000L, 0L, 4000L, 4000L)), "charge with empty reservoir spills into regular gas");
+
+        EthereumGasPolicy.RefundStateGas(ref gas, 4000, stateGasFloor: 0);
+        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed),
+            Is.EqualTo((10_000L, 0L, 0L)), "spilled refund returns to regular gas, reservoir stays empty");
+    }
+
+    [Test]
+    public void State_gas_refund_of_reservoir_charge_returns_to_reservoir()
+    {
+        // The complementary case: a charge funded from the reservoir refunds back to the reservoir
+        // (no spill occurred, so nothing returns to regular gas).
+        EthereumGasPolicy gas = new() { Value = 10_000, StateReservoir = 5000 };
+
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 4000), Is.True);
+        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
+            Is.EqualTo((10_000L, 1000L, 4000L, 0L)), "reservoir-funded charge does not touch regular gas");
+
+        EthereumGasPolicy.RefundStateGas(ref gas, 4000, stateGasFloor: 0);
+        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed),
+            Is.EqualTo((10_000L, 5000L, 0L)), "reservoir-funded refund returns to the reservoir");
+    }
+
+    [Test]
     public void Call_depth_exceeded_create_does_not_credit_state_gas_refund()
     {
         byte[] code = Prepare.EvmCode.Create([], UInt256.Zero).Done;
