@@ -22,7 +22,7 @@ namespace Nethermind.Init
     /// </summary>
     public class MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
     {
-        private static readonly ulong OneMB = 1UL.MB;
+        private const ulong OneMB = 1_000_000;
 
         private readonly ILogger _logger = logManager?.GetClassLogger<MemoryHintMan>()
                       ?? throw new ArgumentNullException(nameof(logManager));

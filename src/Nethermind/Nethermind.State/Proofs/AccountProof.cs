@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.State.Proofs
 {
@@ -75,12 +76,10 @@ namespace Nethermind.State.Proofs
     /// </summary>
     public class ProofJsonConverter : JsonConverter<AccountProof>
     {
-        // Resolved once from the options on first use. The registered converters are stateless,
-        // process-wide singletons, so caching the first-seen instances is safe.
-        private static JsonConverter<Address>? _addressConverter;
-        private static JsonConverter<UInt256>? _uint256Converter;
-        private static JsonConverter<Hash256>? _hashConverter;
-        private static JsonConverter<ulong>? _ulongConverter;
+        private static readonly AddressConverter _addressConverter = new();
+        private static readonly UInt256Converter _uint256Converter = new();
+        private static readonly Hash256Converter _hashConverter = new();
+        private static readonly ULongConverter _ulongConverter = new();
 
         public override AccountProof Read(
             ref Utf8JsonReader reader,
@@ -92,30 +91,25 @@ namespace Nethermind.State.Proofs
             AccountProof value,
             JsonSerializerOptions options)
         {
-            JsonConverter<Address> addressConverter = _addressConverter ??= (JsonConverter<Address>)options.GetConverter(typeof(Address));
-            JsonConverter<UInt256> uint256Converter = _uint256Converter ??= (JsonConverter<UInt256>)options.GetConverter(typeof(UInt256));
-            JsonConverter<Hash256> hashConverter = _hashConverter ??= (JsonConverter<Hash256>)options.GetConverter(typeof(Hash256));
-            JsonConverter<ulong> ulongConverter = _ulongConverter ??= (JsonConverter<ulong>)options.GetConverter(typeof(ulong));
-
             writer.WriteStartObject();
 
             writer.WritePropertyName("accountProof"u8);
             JsonSerializer.Serialize(writer, value.Proof, options);
 
             writer.WritePropertyName("address"u8);
-            addressConverter.Write(writer, value.Address, options);
+            _addressConverter.Write(writer, value.Address!, options);
 
             writer.WritePropertyName("balance"u8);
-            uint256Converter.Write(writer, value.Balance, options);
+            _uint256Converter.Write(writer, value.Balance, options);
 
             writer.WritePropertyName("codeHash"u8);
-            hashConverter.Write(writer, value.CodeHash, options);
+            _hashConverter.Write(writer, value.CodeHash, options);
 
             writer.WritePropertyName("nonce"u8);
-            ulongConverter.Write(writer, value.Nonce, options);
+            _ulongConverter.Write(writer, value.Nonce, options);
 
             writer.WritePropertyName("storageHash"u8);
-            hashConverter.Write(writer, value.StorageRoot, options);
+            _hashConverter.Write(writer, value.StorageRoot, options);
 
             writer.WritePropertyName("storageProof"u8);
             JsonSerializer.Serialize(writer, value.StorageProofs, options);
