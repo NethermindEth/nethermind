@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;

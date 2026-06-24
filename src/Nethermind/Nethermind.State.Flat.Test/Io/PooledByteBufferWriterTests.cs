@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.State.Flat.Io;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Io;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Buffers.Binary;
 using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;

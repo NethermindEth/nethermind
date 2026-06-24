@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Test.Io;
