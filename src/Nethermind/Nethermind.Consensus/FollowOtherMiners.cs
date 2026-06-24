@@ -10,7 +10,7 @@ namespace Nethermind.Consensus
     {
         private readonly ISpecProvider _specProvider = specProvider;
 
-        public long GetGasLimit(BlockHeader parentHeader)
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit = null)
         {
             long gasLimit = parentHeader.GasLimit;
             long newBlockNumber = parentHeader.Number + 1;

@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,7 +28,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
 
     private string? _taikoPayloadId;
 
-    public override long? GetGasLimit() => BlockMetadata!.GasLimit;
+    public override long GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator) => BlockMetadata!.GasLimit;
 
     /// <summary>
     /// Computes the Taiko-canonical payload id so it matches the <c>buildPayloadArgsId</c> stored
