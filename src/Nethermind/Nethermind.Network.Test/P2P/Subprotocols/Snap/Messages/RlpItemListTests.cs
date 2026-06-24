@@ -254,18 +254,20 @@ public class RlpItemListTests
             contentLength += Rlp.LengthOf(items[i]);
         int innerSeqLen = Rlp.LengthOfSequence(contentLength);
         int outerSeqLen = Rlp.LengthOfSequence(innerSeqLen);
-        RlpStream expected = new(outerSeqLen);
-        expected.StartSequence(innerSeqLen);
-        expected.StartSequence(contentLength);
+        byte[] expected = new byte[outerSeqLen];
+        RlpWriter expectedWriter = new(expected);
+        expectedWriter.StartSequence(innerSeqLen);
+        expectedWriter.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
-            expected.Encode(items[i]);
+            expectedWriter.Encode(items[i]);
 
         using IRlpItemList view = builder1.ToRlpItemList();
         Assert.That(view.RlpLength, Is.EqualTo(outerSeqLen));
 
-        RlpStream actual = new(view.RlpLength);
-        view.Write(actual);
-        Assert.That(actual.Data.ToArray(), Is.EqualTo(expected.Data.ToArray()));
+        byte[] actual = new byte[view.RlpLength];
+        RlpWriter writer = new(actual);
+        view.Write(ref writer);
+        Assert.That(actual.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(expected));
     }
 
     [Test]
@@ -325,9 +327,10 @@ public class RlpItemListTests
         // inner0 contains [0x01, 0x02] → RLP: c2 01 02
         byte[] expectedBytes = [0xc2, 0x01, 0x02];
         Assert.That(inner0.RlpLength, Is.EqualTo(expectedBytes.Length));
-        RlpStream actual = new(inner0.RlpLength);
-        inner0.Write(actual);
-        Assert.That(actual.Data.ToArray(), Is.EqualTo(expectedBytes));
+        byte[] actual = new byte[inner0.RlpLength];
+        RlpWriter writer = new(actual);
+        inner0.Write(ref writer);
+        Assert.That(actual.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(expectedBytes));
     }
 
     private static RlpItemList CreateList(byte[][] items)
@@ -339,15 +342,15 @@ public class RlpItemListTests
         }
 
         int totalLength = Rlp.LengthOfSequence(contentLength);
-        RlpStream rlpStream = new(totalLength);
+        byte[] data = new byte[totalLength];
+        RlpWriter writer = new(data);
 
-        rlpStream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
         {
-            rlpStream.Encode(items[i]);
+            writer.Encode(items[i]);
         }
 
-        byte[] data = rlpStream.Data.ToArray()!;
         ExactMemoryOwner memoryOwner = new(data);
         return new RlpItemList(memoryOwner, memoryOwner.Memory.Slice(0, totalLength));
     }
@@ -371,9 +374,10 @@ public class RlpItemListTests
         }
 
         int totalLength = Rlp.LengthOfSequence(outerContentLength);
-        RlpStream stream = new(totalLength);
+        byte[] data = new byte[totalLength];
+        RlpWriter writer = new(data);
 
-        stream.StartSequence(outerContentLength);
+        writer.StartSequence(outerContentLength);
         for (int i = 0; i < nestedItems.Length; i++)
         {
             int innerContentLength = 0;
@@ -381,14 +385,13 @@ public class RlpItemListTests
             {
                 innerContentLength += Rlp.LengthOf(nestedItems[i][j]);
             }
-            stream.StartSequence(innerContentLength);
+            writer.StartSequence(innerContentLength);
             for (int j = 0; j < nestedItems[i].Length; j++)
             {
-                stream.Encode(nestedItems[i][j]);
+                writer.Encode(nestedItems[i][j]);
             }
         }
 
-        byte[] data = stream.Data.ToArray()!;
         TrackingMemoryOwner owner = new(data);
         parent = new RlpItemList(owner, owner.Memory.Slice(0, totalLength));
         return owner;

@@ -43,7 +43,7 @@ namespace Nethermind.State
                 return null;
             }
 
-            Rlp.ValueDecoderContext context = new(bytes);
+            RlpReader context = new(bytes);
             return _decoder.Decode(ref context);
         }
 
@@ -51,14 +51,14 @@ namespace Nethermind.State
         public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
-            Rlp.ValueDecoderContext valueDecoderContext = new(bytes);
+            RlpReader reader = new(bytes);
             if (bytes.IsEmpty)
             {
                 account = AccountStruct.TotallyEmpty;
                 return false;
             }
 
-            return _decoder.TryDecodeStruct(ref valueDecoderContext, out account);
+            return _decoder.TryDecodeStruct(ref reader, out account);
         }
 
         [DebuggerStepThrough]
@@ -70,7 +70,7 @@ namespace Nethermind.State
                 return null;
             }
 
-            Rlp.ValueDecoderContext context = new(bytes);
+            RlpReader context = new(bytes);
             return _decoder.Decode(ref context);
         }
 

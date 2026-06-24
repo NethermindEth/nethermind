@@ -452,7 +452,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     {
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
-                        Rlp.ValueDecoderContext decoderContext = new(node.Value.AsSpan());
+                        RlpReader decoderContext = new(node.Value.AsSpan());
                         if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");

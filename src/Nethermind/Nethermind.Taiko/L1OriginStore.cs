@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -57,7 +57,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, Rlp
 
         byte[]? data = db.Get(keyBytes);
         if (data is null) return null;
-        Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
+        RlpReader ctx = new(data);
         return decoder.Decode(ref ctx);
     }
 
@@ -78,18 +78,10 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, Rlp
         CreateL1OriginKey(blockId, key);
 
         int encodedL1OriginLength = decoder.GetLength(l1Origin, RlpBehaviors.None);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(encodedL1OriginLength);
-
-        try
-        {
-            RlpStream stream = new(buffer);
-            decoder.Encode(stream, l1Origin);
-            db.PutSpan(key, buffer.AsSpan(0, encodedL1OriginLength));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using ArrayPoolSpan<byte> buffer = new(encodedL1OriginLength);
+        RlpWriter writer = new(buffer);
+        decoder.Encode(ref writer, l1Origin);
+        db.PutSpan(key, buffer);
     }
 
     public UInt256? ReadHeadL1Origin() => db.Get(L1OriginHeadKey) switch

@@ -70,7 +70,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
             return generated;
         }
 
-        long decoded = stored.AsRlpValueContext().DecodeLong();
+        long decoded = new RlpReader(stored).DecodeLong();
         if (decoded < 0)
         {
             if (logger.IsWarn) logger.Warn($"Stored FlatDb compaction offset {decoded} is negative; regenerating");
