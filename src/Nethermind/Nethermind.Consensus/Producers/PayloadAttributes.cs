@@ -177,9 +177,8 @@ public class PayloadAttributes
         if (actualVersion != timestampVersion)
         {
             error = $"{methodName}{timestampVersion} expected";
-            // FCU also doesn't support this fork → UnsupportedFork (post-Paris only)
-            bool unsupportedFork = timestampVersion >= PayloadAttributesVersions.V2 &&
-                (actualVersion > timestampVersion || fcuVersion != timestampVersion);
+            bool unsupportedFork = timestampVersion >= PayloadAttributesVersions.V2
+                && !IsSupportedFcuForkCombination(fcuVersion, timestampVersion);
             return unsupportedFork
                 ? PayloadAttributesValidationResult.UnsupportedFork
                 : PayloadAttributesValidationResult.InvalidPayloadAttributes;

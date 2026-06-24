@@ -177,7 +177,7 @@ public partial class EthRpcModuleTests
         byte[]? txBytes = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized).Result;
 
         Assert.That(txBytes, Is.Not.Null);
-        Rlp.ValueDecoderContext context = txBytes.AsRlpValueContext();
+        RlpReader context = new(txBytes);
         Transaction tx = TxDecoder.Instance.Decode(ref context, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         Assert.That(tx.IsInMempoolForm(), Is.True);
     }
@@ -1260,7 +1260,7 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32016,\"message\":\"eth_getLogs request was canceled due to enabled timeout.\"},\"id\":67}"));
     }
 
-    [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"latest\"}", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"resource not found message\"},\"id\":67}")]
+    [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"latest\"}", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"pruned history unavailable\"},\"id\":67}")]
     public async Task Eth_get_logs_with_resourceNotFound(string parameter, string expected)
     {
         using Context ctx = await Context.Create();
@@ -1273,6 +1273,30 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
 
         Assert.That(serialized, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Eth_get_filter_logs_with_resourceNotFound()
+    {
+        using Context ctx = await Context.Create();
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+            .Returns(static x =>
+            {
+                x[1] = ThrowsOnIteration();
+                return true;
+            });
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+        string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x01");
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"pruned history unavailable\"},\"id\":67}"));
+
+        static IEnumerable<FilterLog> ThrowsOnIteration()
+        {
+            yield return Throw();
+            static FilterLog Throw() => throw new ResourceNotFoundException("resource not found");
+        }
     }
 
     [Test]
@@ -2582,7 +2606,7 @@ public partial class EthRpcModuleTests
         Block head = ctx.Test.BlockTree.Head!;
         ctx.Test.Bridge.DeleteBlockAccessList(head.Number, head.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", head.Hash!);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"pruned history unavailable\"},\"id\":67}"));
     }
 
     [Test]
@@ -2617,7 +2641,7 @@ public partial class EthRpcModuleTests
         Hash256 blockHash = ctx.Test.BlockTree.FindLevel(number)!.BlockInfos[0].BlockHash;
         ctx.Test.Bridge.DeleteBlockAccessList(number, blockHash);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", number);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"pruned history unavailable\"},\"id\":67}"));
     }
 
     public class AllowNullAuthorizationTuple : AuthorizationTuple

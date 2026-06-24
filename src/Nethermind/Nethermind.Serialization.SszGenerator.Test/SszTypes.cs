@@ -463,4 +463,19 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public new uint X { get; set; }
     }
 
+    [SszContainer(isCollectionItself: true)]
+    public partial struct HugeLimitBasicList
+    {
+        // VALIDATOR_REGISTRY_LIMIT-sized list (2^40), exceeds int.MaxValue
+        [SszList(1_099_511_627_776)]
+        public ulong[] Items { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct HugeLimitCompositeList
+    {
+        [SszList(1_099_511_627_776)]
+        public FixedC[] Items { get; set; }
+    }
+
 }

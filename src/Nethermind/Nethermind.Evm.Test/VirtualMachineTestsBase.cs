@@ -87,6 +87,14 @@ public abstract class VirtualMachineTestsBase
         return tracer.BuildResult();
     }
 
+    protected GethLikeTxTrace ExecuteAndTrace(GethTraceOptions options, params byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, options);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        return tracer.BuildResult();
+    }
+
     protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code);
