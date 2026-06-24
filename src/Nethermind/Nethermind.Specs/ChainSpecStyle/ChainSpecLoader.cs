@@ -72,9 +72,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             if (pricing?.Length > 0)
             {
                 string key = pricing[0].Key;
-                return ulong.TryParse(key, out ulong transition)
-                    ? transition
-                    : ulong.Parse(key, System.Globalization.NumberStyles.AllowHexSpecifier);
+                return ulong.TryParse(key, out ulong transition) ? transition : Convert.ToUInt64(key, 16);
             }
 
             return null;
