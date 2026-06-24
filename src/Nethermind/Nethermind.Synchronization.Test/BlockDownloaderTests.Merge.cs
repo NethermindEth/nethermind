@@ -375,6 +375,7 @@ public partial class BlockDownloaderTests
 
                 AddBlockResult insertResult = BlockTree!.Insert(beaconHeader!, headerOptions);
                 Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
+                if (i == low) break;
             }
         }
 

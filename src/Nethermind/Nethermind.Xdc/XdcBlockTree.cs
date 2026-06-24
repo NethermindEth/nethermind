@@ -50,7 +50,7 @@ internal class XdcBlockTree(
         }
 
         BlockHeader current = header;
-        for (ulong i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
+        while (true)
         {
             if (finalizedBlockInfo.BlockNumber >= current.Number)
                 return AddBlockResult.InvalidBlock;
@@ -62,8 +62,6 @@ internal class XdcBlockTree(
             if (current is null)
                 return AddBlockResult.UnknownParent;
         }
-        //This is not possible to reach
-        return AddBlockResult.InvalidBlock;
     }
 
     protected override bool HeadImprovementRequirementsSatisfied(BlockHeader header)

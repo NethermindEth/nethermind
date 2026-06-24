@@ -1431,8 +1431,9 @@ public class BlockTreeTests
         BlockTree tree = builder.TestObject;
         tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
-        for (ulong i = beginIndex; i > beginIndex - insertedBlocks; i--)
+        for (ulong k = 0; k < insertedBlocks; k++)
         {
+            ulong i = beginIndex - k;
             tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty(i).TestObject);
         }
 
@@ -1562,8 +1563,9 @@ public class BlockTreeTests
 
         tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
-        for (ulong i = beginIndex; i > beginIndex - insertedBlocks; i--)
+        for (ulong k = 0; k < insertedBlocks; k++)
         {
+            ulong i = beginIndex - k;
             Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
             tree.Insert(block.Header);
             tree.Insert(block);

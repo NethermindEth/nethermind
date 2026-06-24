@@ -420,6 +420,7 @@ public partial class BlockTreeTests
                         beaconHeader.TotalDifficulty = 0;
                     AddBlockResult insertResult = NotSyncedTree!.Insert(beaconHeader!, headerOptions);
                     Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
+                    if (i == low) break;
                 }
 
                 return this;
@@ -438,6 +439,7 @@ public partial class BlockTreeTests
 
                     AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
                     Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
+                    if (i == low) break;
                 }
 
                 return this;
