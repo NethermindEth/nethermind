@@ -7,6 +7,10 @@
     <RootNamespace>Nethermind.Stateless.Execution</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Stateless.Executor.Test" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(EnableZkEvm)' == 'true'">
     <PackageReference Include="Nethermind.Zkvm.Abstractions" />
   </ItemGroup>

@@ -148,7 +148,7 @@ public static class StatelessExecutor
         return true;
     }
 
-    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig, BlockHeader header)
+    internal static ISpecProvider GetSpecProvider(ChainConfig chainConfig, BlockHeader header)
     {
         // Real mainnet block: use the code-based MainnetSpecProvider directly and ignore the input's
         // baked ActiveFork. Two reasons: (1) ChainSpecBasedSpecProvider builds its fork/blob-schedule
