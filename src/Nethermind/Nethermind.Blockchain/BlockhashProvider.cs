@@ -27,30 +27,48 @@ namespace Nethermind.Blockchain
         private Hash256[]? _hashes;
         private long _prefetchVersion;
 
-        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec) =>
+            TryGetBlockhash(currentBlock, number, spec, out Hash256? hash)
+                ? hash
+                : throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
+
+        public bool TryGetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec, out Hash256? hash)
         {
             if (number < 0)
             {
-                return ReturnOutOfBounds(currentBlock, number);
+                hash = ReturnOutOfBounds(currentBlock, number);
+                return true;
             }
 
             if (spec.IsBlockHashInStateAvailable)
             {
-                return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
+                hash = _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
+                return true;
             }
 
             long depth = currentBlock.Number - number;
             Hash256[]? hashes = Volatile.Read(ref _hashes);
 
-            return depth switch
+            switch (depth)
             {
-                <= 0 or > MaxDepth => ReturnOutOfBounds(currentBlock, number),
-                1 => currentBlock.ParentHash,
-                _ => hashes is not null
-                    ? hashes[depth - 1]
-                    : blockhashCache.GetHash(currentBlock, (int)depth)
-                      ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation")
-            };
+                case <= 0 or > MaxDepth:
+                    hash = ReturnOutOfBounds(currentBlock, number);
+                    return true;
+                case 1:
+                    hash = currentBlock.ParentHash;
+                    return true;
+                default:
+                    if (hashes is not null)
+                    {
+                        hash = hashes[depth - 1];
+                        return true;
+                    }
+
+                    // A cache miss here is unresolvable rather than out-of-window: report it so callers
+                    // can decide between throwing (canonical processing) and pushing 0 (best-effort simulate).
+                    hash = blockhashCache.GetHash(currentBlock, (int)depth);
+                    return hash is not null;
+            }
         }
 
         private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, long number)
