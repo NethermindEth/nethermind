@@ -38,9 +38,9 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     /// minimal-width little-endian integer in the record's value slot (a zero stored value occupies no bytes
     /// and reads back as 0). Values must be non-decreasing — the index block's byte offsets ascend — and fit
     /// in 48 bits.</summary>
-    /// <remarks>The reader (<see cref="BlockReader.SeekCeiling"/> in delta mode) reconstructs the absolute
-    /// value by re-summing from the restart head it lands on; the absolute-at-restart anchoring is what lets
-    /// a seek begin at any restart.</remarks>
+    /// <remarks><see cref="IndexBlockReader.SeekCeiling"/> reconstructs the absolute value by re-summing
+    /// from the restart head it lands on; the absolute-at-restart anchoring is what lets a seek begin at
+    /// any restart.</remarks>
     public void AddDeltaValue(scoped ReadOnlySpan<byte> key, long value)
     {
         Debug.Assert((ulong)value >> 48 == 0, "index value must fit in 48 bits");

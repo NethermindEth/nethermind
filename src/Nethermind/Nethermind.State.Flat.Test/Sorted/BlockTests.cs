@@ -29,7 +29,7 @@ public class BlockTests
     {
         SpanByteReader reader = new(block);
         Span<byte> keyBuf = stackalloc byte[256];
-        if (!BlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, out int keyLen, out Bound v, out long _))
+        if (!BlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, out int keyLen, out Bound v))
         {
             key = [];
             value = [];
@@ -152,7 +152,7 @@ public class BlockTests
     {
         SpanByteReader reader = new(block);
         Span<byte> keyBuf = stackalloc byte[256];
-        if (!BlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, out int keyLen, out _, out long v, deltaValues: true, restartInterval: restartInterval))
+        if (!IndexBlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, restartInterval, out int keyLen, out long v))
         {
             key = [];
             value = 0;

@@ -6,9 +6,10 @@ using Nethermind.State.Flat.Io;
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 /// <summary>
-/// Lookup over a <see cref="SortedTable"/>: a ceiling search of the index block selects a data block
-/// number, then a ceiling search of that data block resolves the exact key. Two
-/// <see cref="BlockReader.SeekCeiling"/> calls. Wire layout: <see cref="SortedTable"/>.
+/// Lookup over a <see cref="SortedTable"/>: a ceiling search of the index block
+/// (<see cref="IndexBlockReader.SeekCeiling"/>) selects a data block by byte offset, then a ceiling
+/// search of that data block (<see cref="BlockReader.SeekCeiling"/>) resolves the exact key. Wire
+/// layout: <see cref="SortedTable"/>.
 /// </summary>
 internal static class SortedTableReader
 {
@@ -26,14 +27,14 @@ internal static class SortedTableReader
             return false;
 
         // Stage 1: ceiling over the index block — first separator ≥ target → its data block's table-relative
-        // byte offset (index values are RocksDB-style delta-coded, reconstructed by the delta-mode seek).
+        // byte offset (index values are RocksDB-style delta-coded, reconstructed by IndexBlockReader).
         Span<byte> sepBuf = stackalloc byte[256];
-        if (!BlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.IndexBlockStart(table, footer), key, sepBuf, out _, out _, out long byteOffset, deltaValues: true, restartInterval: footer.RestartInterval))
+        if (!IndexBlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.IndexBlockStart(table, footer), key, sepBuf, footer.RestartInterval, out _, out long byteOffset))
             return false;
 
         // Stage 2: ceiling over the data block; a hit requires the ceiling key to equal the target.
         Span<byte> keyBuf = stackalloc byte[256];
-        if (!BlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.DataBlockStart(table, byteOffset), key, keyBuf, out int keyLen, out Bound v, out _))
+        if (!BlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.DataBlockStart(table, byteOffset), key, keyBuf, out int keyLen, out Bound v))
             return false;
         if (!key.SequenceEqual(keyBuf[..keyLen])) return false;
 

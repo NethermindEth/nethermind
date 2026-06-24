@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
-/// <summary>Read-side search and header parsing for a <see cref="Block"/>.</summary>
+/// <summary>Read-side search and header parsing for a <see cref="Block"/>'s data records, whose values
+/// are plain inline bytes. The index block's delta-coded values are read by
+/// <see cref="IndexBlockReader"/>, which reuses <see cref="ReadHeader"/> and
+/// <see cref="TryFindScanStart"/>.</summary>
 internal static class BlockReader
 {
     /// <summary>Parse the block header at <paramref name="blockStart"/>: offset width, the
@@ -37,31 +39,24 @@ internal static class BlockReader
     }
 
     /// <summary>
-    /// Position at the first record whose key ≥ <paramref name="target"/> (the ceiling) in the block
-    /// at <paramref name="blockStart"/>: predecessor-restart binary search, then a forward scan to
-    /// <c>recordsEnd</c>. On a hit copies the ceiling key into <paramref name="keyBuf"/> and returns
-    /// its value <see cref="Bound"/>. Returns <c>false</c> when the block is empty or every key is
-    /// &lt; <paramref name="target"/>.
+    /// Locate where a ceiling scan for <paramref name="target"/> begins in the block at
+    /// <paramref name="blockStart"/>: parse the header, then binary-search the restart table for the
+    /// rightmost restart whose first key ≤ <paramref name="target"/> (clamped to restart 0 when the
+    /// target precedes every key). Outputs that record's start <paramref name="pos"/>, the scan end
+    /// <paramref name="end"/> (block-absolute <c>recordsEnd</c>), and the <paramref name="scanRestart"/>
+    /// index. Returns <c>false</c> when the block has no restarts or is unreadable.
     /// </summary>
-    /// <param name="deltaValue">In delta mode, the reconstructed absolute value of the ceiling record
-    /// (see <paramref name="deltaValues"/>); otherwise 0.</param>
-    /// <param name="deltaValues">When <c>true</c>, record values are read as RocksDB-style delta-coded
-    /// integers (absolute at restart heads, deltas in between, see <see cref="BlockBuilder.AddDeltaValue"/>)
-    /// and accumulated into <paramref name="deltaValue"/>. The binary search picks the rightmost restart
-    /// with first key ≤ <paramref name="target"/>, so the ceiling is within that restart run or is exactly
-    /// the head of the next run — the scan crosses at most one restart boundary, and that crossing record's
-    /// restart-aligned index makes it re-anchor to an absolute value. Requires
-    /// <paramref name="restartInterval"/> &gt; 0.</param>
-    /// <param name="restartInterval">Records per restart run; only consulted in delta mode.</param>
-    internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
-        scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf, out int keyLen, out Bound value,
-        out long deltaValue, bool deltaValues = false, int restartInterval = 0)
+    /// <remarks>Shared by the data-block (<see cref="SeekCeiling"/>) and index-block
+    /// (<see cref="IndexBlockReader.SeekCeiling"/>) seeks; the forward scan that follows differs only in
+    /// how each interprets record values.</remarks>
+    internal static bool TryFindScanStart<TReader, TPin>(scoped in TReader reader, long blockStart,
+        scoped ReadOnlySpan<byte> target, out long pos, out long end, out long scanRestart)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IByteReader<TPin>, allows ref struct
     {
-        keyLen = 0;
-        value = default;
-        deltaValue = 0;
+        pos = 0;
+        end = 0;
+        scanRestart = 0;
         if (!ReadHeader<TReader, TPin>(in reader, blockStart, out int width, out long recordsEnd, out long numRestarts, out _))
             return false;
         if (numRestarts == 0) return false;
@@ -87,17 +82,31 @@ internal static class BlockReader
         }
 
         // target < firstKey ⇒ ceiling is the very first record; clamp the scan start to restart 0.
-        long scanRestart = found < 0 ? 0 : found;
+        scanRestart = found < 0 ? 0 : found;
         if (!reader.TryRead(restartTableStart + scanRestart * width, ob[..width])) return false;
-        long pos = blockStart + Block.ReadOffset(ob, width);
-        long end = blockStart + recordsEnd;
+        pos = blockStart + Block.ReadOffset(ob, width);
+        end = blockStart + recordsEnd;
+        return true;
+    }
 
-        // Delta-value accumulation: the scan starts at a restart head, so recordIndex tracks the global
-        // record number; a record at a restart boundary (recordIndex % restartInterval == 0) carries an
-        // absolute value, every other record a delta against the previous one.
-        long recordIndex = scanRestart * restartInterval;
-        long runningValue = 0;
-        Span<byte> vbuf = stackalloc byte[sizeof(ulong)];
+    /// <summary>
+    /// Position at the first record whose key ≥ <paramref name="target"/> (the ceiling) in the data block
+    /// at <paramref name="blockStart"/>: restart binary search (<see cref="TryFindScanStart"/>) then a
+    /// forward scan to <c>recordsEnd</c>. On a hit copies the ceiling key into <paramref name="keyBuf"/>
+    /// and returns its value <see cref="Bound"/>. Returns <c>false</c> when the block is empty or every
+    /// key is &lt; <paramref name="target"/>.
+    /// </summary>
+    internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
+        scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf, out int keyLen, out Bound value)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
+    {
+        keyLen = 0;
+        value = default;
+        if (!TryFindScanStart<TReader, TPin>(in reader, blockStart, target, out long pos, out long end, out _))
+            return false;
+
+        Span<byte> hdr = stackalloc byte[2];
 
         // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
         while (pos < end)
@@ -112,21 +121,10 @@ internal static class BlockReader
             if (!reader.TryRead(valueSizeOffset, hdr[..1])) return false;
             int valueLen = hdr[0];
 
-            if (deltaValues)
-            {
-                if (valueLen > 6) return false; // u48 ceiling — reject corruption before the shift widens it
-                vbuf.Clear();
-                if (valueLen > 0 && !reader.TryRead(valueSizeOffset + Block.SizePrefix, vbuf[..valueLen])) return false;
-                long v = (long)BinaryPrimitives.ReadUInt64LittleEndian(vbuf);
-                runningValue = recordIndex % restartInterval == 0 ? v : runningValue + v;
-                recordIndex++;
-            }
-
             if (target.SequenceCompareTo(keyBuf[..kLen]) <= 0)
             {
                 keyLen = kLen;
                 value = new Bound(valueSizeOffset + Block.SizePrefix, valueLen);
-                deltaValue = runningValue;
                 return true;
             }
             pos = valueSizeOffset + Block.SizePrefix + valueLen;
