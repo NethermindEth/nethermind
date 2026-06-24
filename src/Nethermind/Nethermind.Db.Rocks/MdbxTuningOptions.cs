@@ -50,7 +50,7 @@ internal readonly record struct MdbxTuningOptions(
     public const ulong DefaultRpAugmentLimit = 256 * 1024;
     public const ulong DefaultStateRpAugmentLimit = 1_000_000_000;
     public const int DefaultMaxBatchGroupOperations = 128 * 1024;
-    public const int DefaultStateMaxBatchGroupOperations = 16 * 1024;
+    public const int DefaultStateMaxBatchGroupOperations = 8 * 1024;
     public const long DefaultMaxBatchGroupBytes = 64L << 20;
     public const long DefaultStateDirtyPagesReserveBytes = 1L << 30;
     public const long DefaultStateTransactionDirtyPagesLimitBytes = 1L << 30;

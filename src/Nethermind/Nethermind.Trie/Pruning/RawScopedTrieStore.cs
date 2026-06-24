@@ -31,7 +31,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags) : ICommitter
     {
-        private const int DisableWalBatchSize = 16 * 1024;
+        private const int DisableWalBatchSize = 8 * 1024;
 
         private INodeStorage.IWriteBatch? _writeBatch;
         private int _pendingWrites;

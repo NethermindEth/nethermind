@@ -535,7 +535,7 @@ namespace Nethermind.Db.Test
                 Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(65_536));
                 Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(65_536));
                 Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(8_192));
-                Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultStateMaxBatchGroupOperations));
+                Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(8 * 1024));
             }
         }
 
