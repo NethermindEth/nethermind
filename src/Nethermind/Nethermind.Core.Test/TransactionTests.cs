@@ -12,8 +12,11 @@ public class TransactionTests
     {
         Transaction transaction = new();
         transaction.To = Address.Zero;
-        Assert.That(transaction.IsMessageCall, Is.True, nameof(Transaction.IsMessageCall));
-        Assert.That(transaction.IsContractCreation, Is.False, nameof(Transaction.IsContractCreation));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.IsMessageCall, Is.True, nameof(Transaction.IsMessageCall));
+            Assert.That(transaction.IsContractCreation, Is.False, nameof(Transaction.IsContractCreation));
+        }
     }
 
     [Test]
@@ -21,8 +24,11 @@ public class TransactionTests
     {
         Transaction transaction = new();
         transaction.To = null;
-        Assert.That(transaction.IsMessageCall, Is.False, nameof(Transaction.IsMessageCall));
-        Assert.That(transaction.IsContractCreation, Is.True, nameof(Transaction.IsContractCreation));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.IsMessageCall, Is.False, nameof(Transaction.IsMessageCall));
+            Assert.That(transaction.IsContractCreation, Is.True, nameof(Transaction.IsContractCreation));
+        }
     }
 
     [TestCase(1, true)]
@@ -32,7 +38,10 @@ public class TransactionTests
         Transaction transaction = new();
         transaction.DecodedMaxFeePerGas = (uint)decodedFeeCap;
         transaction.Type = TxType.EIP1559;
-        Assert.That(transaction.DecodedMaxFeePerGas, Is.EqualTo(transaction.MaxFeePerGas));
-        Assert.That(transaction.Supports1559, Is.EqualTo(expectedSupports1559));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.DecodedMaxFeePerGas, Is.EqualTo(transaction.MaxFeePerGas));
+            Assert.That(transaction.Supports1559, Is.EqualTo(expectedSupports1559));
+        }
     }
 }

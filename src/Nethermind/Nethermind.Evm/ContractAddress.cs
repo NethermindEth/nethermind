@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm
 {
@@ -15,12 +15,15 @@ namespace Nethermind.Evm
         public static Address From(Address? deployingAddress, in UInt256 nonce)
         {
             int contentLength = Rlp.LengthOf(deployingAddress) + Rlp.LengthOf(nonce);
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            stream.StartSequence(contentLength);
-            stream.Encode(deployingAddress);
-            stream.Encode(nonce);
+            int totalLength = Rlp.LengthOfSequence(contentLength);
 
-            ValueHash256 contractAddressKeccak = ValueKeccak.Compute(stream.Data.AsSpan());
+            Span<byte> bytes = stackalloc byte[totalLength];
+            RlpWriter writer = new(bytes);
+            writer.StartSequence(contentLength);
+            writer.Encode(deployingAddress);
+            writer.Encode(nonce);
+
+            ValueHash256 contractAddressKeccak = ValueKeccak.Compute(bytes[..writer.Position]);
 
             return new(in contractAddressKeccak);
         }

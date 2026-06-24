@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -84,13 +84,17 @@ public class RlpxHostIntegrationTests
             MaxActivePeers = 50
         };
 
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, externalIp is null ? IPAddress.None : IPAddress.Parse(externalIp))));
+
         return new RlpxHost(
             Substitute.For<IMessageSerializationService>(),
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
             Substitute.For<IHandshakeService>(),
             Substitute.For<ISessionMonitor>(),
             NullDisconnectsAnalyzer.Instance,
             networkConfig,
+            ipResolver,
             LimboLogs.Instance);
     }
 

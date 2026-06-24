@@ -158,16 +158,19 @@ public partial class BlockTree
     private void LoadForkChoiceInfo()
     {
         Logger.Info("Loading fork choice info");
-        FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpValueContext().DecodeKeccak();
-        SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpValueContext().DecodeKeccak();
+        FinalizedHash ??= DecodeMetadataKeccak(MetadataDbKeys.FinalizedBlockHash);
+        SafeHash ??= DecodeMetadataKeccak(MetadataDbKeys.SafeBlockHash);
+        if (FinalizedHash is not null)
+        {
+            LastFinalizedBlockLevel = _headerStore.GetBlockNumber(FinalizedHash) ?? 0;
+        }
     }
 
     private void LoadLowestInsertedBeaconHeader()
     {
         if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedBeaconHeaderHash))
         {
-            Hash256? lowestBeaconHeaderHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedBeaconHeaderHash)?
-                .AsRlpValueContext().DecodeKeccak();
+            Hash256? lowestBeaconHeaderHash = DecodeMetadataKeccak(MetadataDbKeys.LowestInsertedBeaconHeaderHash);
             _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
     }
@@ -176,8 +179,7 @@ public partial class BlockTree
     {
         if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedFastHeaderHash))
         {
-            Hash256? headerHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash)?
-                .AsRlpValueContext().DecodeKeccak();
+            Hash256? headerHash = DecodeMetadataKeccak(MetadataDbKeys.LowestInsertedFastHeaderHash);
             _lowestInsertedHeader = FindHeader(headerHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
         else
@@ -257,7 +259,7 @@ public partial class BlockTree
         right = Math.Max(0, left) + BestKnownSearchLimit;
         long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
 
-        long? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeLong();
+        long? beaconPivotNumber = DecodeMetadataLong(MetadataDbKeys.BeaconSyncPivotNumber);
         left = Math.Max(Head?.Number ?? 0, beaconPivotNumber ?? 0) - 1;
         right = Math.Max(0, left) + BestKnownSearchLimit;
         long bestBeaconBodyNumber = BinarySearchBlockNumber(left, right, BodyExists, findBeacon: true) ?? 0;
@@ -298,6 +300,18 @@ public partial class BlockTree
             : FindBlock(bestBeaconBodyHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
     }
 
+    private Hash256? DecodeMetadataKeccak(int key)
+    {
+        byte[]? rlp = _metadataDb.Get(key);
+        return rlp is null ? null : new RlpReader(rlp).DecodeKeccak();
+    }
+
+    private long? DecodeMetadataLong(int key)
+    {
+        byte[]? rlp = _metadataDb.Get(key);
+        return rlp is null ? null : new RlpReader(rlp).DecodeLong();
+    }
+
     public enum BinarySearchDirection
     {
         Up,
@@ -323,7 +337,7 @@ public partial class BlockTree
     {
         Block? startBlock = null;
         byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-        BestPersistedState = persistedNumberData is null ? null : new Rlp.ValueDecoderContext(persistedNumberData).DecodeLong();
+        BestPersistedState = persistedNumberData is null ? null : new RlpReader(persistedNumberData).DecodeLong();
         long? persistedNumber = BestPersistedState;
         if (persistedNumber is not null)
         {
@@ -376,9 +390,9 @@ public partial class BlockTree
             return;
         }
 
-        Rlp.ValueDecoderContext pivotStream = new(pivotFromDb!);
-        long updatedPivotBlockNumber = pivotStream.DecodeLong();
-        Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
+        RlpReader pivotReader = new(pivotFromDb!);
+        long updatedPivotBlockNumber = pivotReader.DecodeLong();
+        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak()!;
 
         if (updatedPivotBlockHash.IsZero)
         {

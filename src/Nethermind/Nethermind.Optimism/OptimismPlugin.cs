@@ -33,10 +33,13 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Optimism.Precompiles;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.Optimism;
 
@@ -74,8 +77,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api.FinalizationManager = new ManualBlockFinalizationManager();
-
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
@@ -83,17 +84,15 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         return Task.CompletedTask;
     }
 
-    public Task InitRpcModules()
+    public async Task InitRpcModules()
     {
         if (_api is null)
-            return Task.CompletedTask;
+            return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
-
-        ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
 
         IEngineRpcModule engineRpcModule = _api.Context.Resolve<IEngineRpcModule>();
 
@@ -145,7 +144,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 // Configs
                 config,
                 clParameters,
-                _api.IpResolver.ExternalIp,
+                (await _api.IpResolver.Resolve()).ExternalIp,
                 _api.SpecProvider.ChainId,
                 _api.ChainSpec.Genesis.Timestamp,
                 // Logging
@@ -166,7 +165,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
-        return Task.CompletedTask;
     }
 
     public bool MustInitialize => true;
@@ -191,6 +189,10 @@ public class OptimismModule(ChainSpec chainSpec) : Module
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
             .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
             .AddSingleton<ICostHelper, OptimismCostHelper>()
+
+            .AddSingleton<ISpecProvider, OptimismChainSpecBasedSpecProvider>()
+            .AddSingleton<IPrecompileProvider, OptimismPrecompileProvider>()
+            .AddSingleton<IRpcCapabilitiesProvider, OptimismEngineRpcCapabilitiesProvider>()
 
             .AddSingleton<OptimismBlockProducerFactory>()
             .Bind<IBlockProducerFactory, OptimismBlockProducerFactory>()

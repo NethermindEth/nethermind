@@ -61,4 +61,23 @@ public static class Wait
             unregister(handler);
         }
     }
+
+    /// <summary>Polls <paramref name="condition"/> until it returns true, the timeout elapses, or <paramref name="cancellationToken"/> is signaled.</summary>
+    /// <returns><c>true</c> if the condition was met within the timeout; <c>false</c> on timeout.</returns>
+    /// <exception cref="OperationCanceledException">Thrown if <paramref name="cancellationToken"/> is signaled before the condition is met.</exception>
+    public static async Task<bool> ForCondition(
+        Func<bool> condition,
+        TimeSpan timeout,
+        TimeSpan pollInterval = default,
+        CancellationToken cancellationToken = default)
+    {
+        if (pollInterval == default) pollInterval = TimeSpan.FromMilliseconds(25);
+        long deadline = Environment.TickCount64 + (long)timeout.TotalMilliseconds;
+        while (!condition())
+        {
+            if (Environment.TickCount64 >= deadline) return false;
+            await Task.Delay(pollInterval, cancellationToken);
+        }
+        return true;
+    }
 }

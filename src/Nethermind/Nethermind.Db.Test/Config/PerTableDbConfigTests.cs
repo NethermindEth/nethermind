@@ -23,7 +23,6 @@ public class PerTableDbConfigTests
             DbNames.Headers,
             DbNames.Receipts,
             DbNames.BlockInfos,
-            DbNames.Bloom,
             DbNames.Metadata
         ];
 
@@ -71,6 +70,18 @@ public class PerTableDbConfigTests
 
         PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
         Assert.That(config.MaxOpenFiles, Is.EqualTo(2));
+    }
+
+    [TestCase(null, FlushOnExitMode.WalOnly, TestName = "FlushOnExit defaults to WalOnly")]
+    [TestCase(FlushOnExitMode.None, FlushOnExitMode.None)]
+    [TestCase(FlushOnExitMode.Full, FlushOnExitMode.Full)]
+    public void FlushOnExit_reads_general_config(FlushOnExitMode? configured, FlushOnExitMode expected)
+    {
+        DbConfig dbConfig = new();
+        if (configured is not null) dbConfig.FlushOnExit = configured.Value;
+
+        PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
+        Assert.That(config.FlushOnExit, Is.EqualTo(expected));
     }
 
     [Test]

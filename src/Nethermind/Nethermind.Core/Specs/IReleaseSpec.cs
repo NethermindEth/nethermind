@@ -347,18 +347,6 @@ namespace Nethermind.Core.Specs
         bool IsRip7212Enabled { get; }
         bool IsEip7951Enabled { get; }
 
-        /// OP Granite
-        bool IsOpGraniteEnabled { get; }
-
-        /// OP Holocene
-        bool IsOpHoloceneEnabled { get; }
-
-        /// OP Jovian
-        bool IsOpJovianEnabled { get; }
-
-        // OP Isthmus
-        bool IsOpIsthmusEnabled { get; }
-
         /// <summary>
         ///  Increase call data cost
         /// </summary>

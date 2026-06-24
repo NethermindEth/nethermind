@@ -26,6 +26,7 @@ using Nethermind.Config;
 using Nethermind.Synchronization;
 using NSubstitute;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Consensus.Rewards;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
@@ -56,6 +57,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
         public IDebugRpcModule DebugRpcModule => Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         public ITraceRpcModule TraceRpcModule => Container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
+        public IProofRpcModule ProofRpcModule => Container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
         public IBlockchainBridge Bridge => Container.Resolve<IBlockchainBridge>();
         public ITxSealer TxSealer { get; private set; } = null!;
         public ITxSender TxSender { get; private set; } = null!;
@@ -231,6 +233,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IProtocolValidator>(),
                 Substitute.For<INetworkStorage>(),
                 Array.Empty<IProtocolHandlerFactory>(),
+                [new DefaultP2PCapabilityResolver()],
                 LimboLogs.Instance
             );
 

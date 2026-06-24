@@ -105,7 +105,6 @@ public class StandardDbInitializerTests
     {
         Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
         Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.BloomDb, Is.TypeOf(dbType));
         Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
         Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
         Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));

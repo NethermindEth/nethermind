@@ -24,5 +24,8 @@
   "JsonRpc": {
     "Enabled": true,
     "Port": 8545
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

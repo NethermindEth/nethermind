@@ -21,15 +21,15 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Metrics = Nethermind.Db.Metrics;
-using EvmMetrics = Nethermind.Evm.Metrics;
 using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
 
-internal class StateProvider(ILogManager logManager) : IJournal<int>
+internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
 {
     private static readonly UInt256 _zero = UInt256.Zero;
+
+    private readonly LocalMetrics _metrics = metrics;
 
     private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = [];
     private readonly HashSet<AddressAsKey> _committedThisRound = [];
@@ -136,8 +136,8 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             _blockCodeInsertFilter.Set(codeHash);
             inserted = true;
 
-            EvmMetrics.IncrementCodeWrites();
-            EvmMetrics.IncrementCodeBytesWritten(code.Length);
+            _metrics.IncrementCodeWrites();
+            _metrics.IncrementCodeBytesWritten(code.Length);
         }
 
         Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
@@ -710,9 +710,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         }
 
         if (writes > 0)
-            Metrics.IncrementStateTreeWrites(writes);
+            _metrics.IncrementStateTreeWrites(writes);
         if (skipped > 0)
-            Metrics.IncrementStateSkippedWrites(skipped);
+            _metrics.IncrementStateSkippedWrites(skipped);
     }
 
     public bool WarmUp(Address address)
@@ -724,24 +724,24 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
         if (!exists)
         {
-            Metrics.IncrementStateTreeReads();
+            _metrics.IncrementStateTreeReads();
             Account? account = _tree.Get(address);
 
             accountChanges = new(account, account);
         }
         else
         {
-            Metrics.IncrementStateTreeCacheHits();
+            _metrics.IncrementStateTreeCacheHits();
         }
         return accountChanges.After;
     }
 
     internal void SetState(Address address, Account? account)
     {
-        EvmMetrics.IncrementAccountWrites();
+        _metrics.IncrementAccountWrites();
         if (account is null)
         {
-            EvmMetrics.IncrementAccountDeleted();
+            _metrics.IncrementAccountDeleted();
         }
 
         ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);

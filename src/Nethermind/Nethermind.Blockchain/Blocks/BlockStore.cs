@@ -6,6 +6,7 @@ using System.Buffers;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -40,11 +41,8 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
-        // if we carry Rlp from the network message all the way here we could avoid encoding back to RLP here
-        // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
-        using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-
-        _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
+        _blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
     }
 
     public void Delete(long blockNumber, Hash256 blockHash)

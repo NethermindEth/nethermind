@@ -17,7 +17,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
-using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
@@ -153,9 +152,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IJsonRpcConfig, string>(configWildcard, static c => c.Host, "127.0.0.1");
     }
 
-    [TestCase("sepolia", DiscoveryVersion.V4)]
-    [TestCase("hoodi", DiscoveryVersion.V4)]
-    [TestCase("mainnet", DiscoveryVersion.V4)]
+    [TestCase("sepolia", DiscoveryVersion.V5)]
+    [TestCase("hoodi", DiscoveryVersion.V5)]
+    [TestCase("mainnet", DiscoveryVersion.All)]
     public void Discovery_versions_are_correct(string configWildcard, DiscoveryVersion discoveryVersion) =>
         Test<IDiscoveryConfig, DiscoveryVersion>(configWildcard, static c => c.DiscoveryVersion, discoveryVersion);
 
@@ -196,12 +195,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard) => Test<IInitConfig, DiagnosticMode>(configWildcard, static c => c.DiagnosticMode, DiagnosticMode.None);
 
     [TestCase("*")]
-    public void Migrations_are_not_enabled_by_default(string configWildcard)
-    {
-        Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
-        Test<IBloomConfig, bool>(configWildcard, static c => c.Migration, false);
-        Test<IBloomConfig, bool>(configWildcard, static c => c.MigrationStatistics, false);
-    }
+    public void Migrations_are_not_enabled_by_default(string configWildcard) => Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
 
     [TestCase("^mainnet ^gnosis ^sepolia", 0L)]
     [TestCase("mainnet ^archive", 15537394L)]
@@ -258,20 +252,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode) => Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, static c => c.BlobsSupport, blobsSupportMode);
 
 
-    [TestCase("mainnet")]
-    [TestCase("poacore.json", new[] { 16, 16, 16, 16 })]
-    [TestCase("poacore_archive.json", new[] { 16, 16, 16, 16 })]
-    [TestCase("poacore_validator.json", new[] { 16, 16, 16, 16 }, false)]
-    [TestCase("gnosis.json", new[] { 16, 16, 16 })]
-    [TestCase("gnosis_archive.json", new[] { 16, 16, 16 })]
-    [TestCase("volta")]
-    public void Bloom_configs_are_as_expected(string configWildcard, int[] levels = null, bool index = true)
-    {
-        Test<IBloomConfig, bool>(configWildcard, c => c.Index, index);
-        Test<IBloomConfig, bool>(configWildcard, c => c.Migration, false);
-        Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
-        Test<IBloomConfig, int[]>(configWildcard, c => c.IndexLevelBucketSizes, (cf, p) => Assert.That(p, Is.EqualTo(levels ?? new BloomConfig().IndexLevelBucketSizes), cf));
-    }
 
     [Test]
     public void All_config_files_can_be_loaded_without_duplicate_modules()
@@ -345,7 +325,17 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IBlocksConfig, long?>(configWildcard, static c => c.TargetBlockGasLimit, targetBlockGasLimit);
         Test<IBlocksConfig, ulong>(configWildcard, static c => c.SecondsPerSlot, secondsPerSlot);
         Test<IBlocksConfig, int>(configWildcard, static c => c.BlockProductionTimeoutMs, blockProductionTimeout);
+    }
 
+    [Test]
+    public void TargetBlockGasLimit_does_not_exceed_DefaultMaxBlockGasLimit()
+    {
+        BlocksConfig defaultConfig = new();
+        Test<IBlocksConfig, long?>("*", static c => c.TargetBlockGasLimit, (configFile, value) =>
+        {
+            if (value is not null)
+                Assert.That(value.Value, Is.LessThanOrEqualTo(defaultConfig.MaxGasLimit), configFile);
+        });
     }
 
     [Test]

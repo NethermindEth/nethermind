@@ -45,13 +45,6 @@
   "Metrics": {
     "NodeName": "Gnosis"
   },
-  "Bloom": {
-    "IndexLevelBucketSizes": [
-      16,
-      16,
-      16
-    ]
-  },
   "Db": {
     "SkipCheckingSstFileSizesOnDbOpen": true
   }

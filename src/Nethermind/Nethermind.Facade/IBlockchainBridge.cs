@@ -57,7 +57,7 @@ namespace Nethermind.Facade
         bool HasStateForBlock(BlockHeader? baseBlock);
 
         Witness GenerateExecutionWitness(BlockHeader parent, Block block);
-        Witness GenerateExecutionWitness(BlockHeader header, Transaction tx);
+        SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default);
 
         ReadOnlyBlockAccessList? GetBlockAccessList(long blockNumber, Hash256 blockHash);
         MemoryManager<byte>? GetBlockAccessListRlp(long blockNumber, Hash256 blockHash);

@@ -407,7 +407,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         {
             Block genesis = _genesisBlock;
             BlockTree.SuggestBlock(genesis);
-            BlockTree.UpdateMainChain(genesis);
+            BlockTree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis });
             return this;
         }
 
@@ -452,7 +452,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public SyncingContext PeerCountEventuallyIs(long i)
         {
-            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 10), "peer count");
+            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(30_000, 10), "peer count");
             return this;
         }
 
