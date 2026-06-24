@@ -49,5 +49,9 @@ public class GethTxTraceEntry
     [JsonIgnore]
     internal (Address Address, UInt256 Key, UInt256 Value)? StorageDelta { get; set; }
 
+    [JsonPropertyName("returnData")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReturnData { get; set; }
+
     internal virtual void UpdateMemorySize(ulong size) { }
 }

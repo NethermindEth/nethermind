@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -68,6 +69,12 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     {
         base.StartOperation(pc, opcode, gas, env);
         CurrentTraceEntry.Refund = _refund != 0 ? _refund : null;
+    }
+
+    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
+        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
+            CurrentTraceEntry.ReturnData = returnData.Span.ToHexString(true);
     }
 
     public override void ReportRefund(long refund) => _refund += refund;

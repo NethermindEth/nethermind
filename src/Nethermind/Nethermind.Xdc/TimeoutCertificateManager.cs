@@ -302,9 +302,9 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     internal static ValueHash256 ComputeTimeoutMsgHash(ulong round, ulong gap)
     {
         Timeout timeout = new(round, null, gap);
-        KeccakRlpStream stream = new();
-        _timeoutDecoder.Encode(stream, timeout, RlpBehaviors.ForSealing);
-        return stream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        _timeoutDecoder.Encode(ref writer, timeout, RlpBehaviors.ForSealing);
+        return writer.GetValueHash();
     }
 
     public long GetTimeoutsCount(Timeout timeout) => _timeouts.GetCount(timeout);

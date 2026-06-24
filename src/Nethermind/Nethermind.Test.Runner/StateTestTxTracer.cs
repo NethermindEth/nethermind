@@ -26,6 +26,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingDetailedMemory { get; set; } = true;
     public bool IsTracingInstructions => true;
     public bool IsTracingRefunds { get; } = false;
+    public bool IsTracingReturnData { get; } = false;
     public bool IsTracingCode => false;
     public bool IsTracingStack { get; set; } = true;
     public bool IsTracingState => false;
@@ -147,6 +148,10 @@ public class StateTestTxTracer : ITxTracer, IDisposable
             if (diff > 0)
                 _traceEntry.Memory += new string('0', diff);
         }
+    }
+
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
     }
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)

@@ -16,7 +16,7 @@ using System.Linq;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies]
-    public class SetupKeyStore(INethermindApi api) : IStep
+    public class SetupKeyStore(INethermindApi api, ICryptoRandom cryptoRandom) : IStep
     {
         public Task Execute(CancellationToken cancellationToken)
         {
@@ -33,7 +33,7 @@ namespace Nethermind.Init.Steps
                 keyStoreConfig,
                 get.EthereumJsonSerializer,
                 encrypter,
-                get.CryptoRandom,
+                cryptoRandom,
                 get.LogManager,
                 new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
 
@@ -41,7 +41,7 @@ namespace Nethermind.Init.Steps
             {
                 { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: true } => new DevWallet(get.Config<IWalletConfig>(), get.LogManager),
                 { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: false } => new DevKeyStoreWallet(get.KeyStore, get.LogManager),
-                _ => new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(get.CryptoRandom, get.Timestamper, keyStoreConfig.KeyStoreDirectory),
+                _ => new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(cryptoRandom, get.Timestamper, keyStoreConfig.KeyStoreDirectory),
                     get.Timestamper, get.LogManager),
             };
 
@@ -51,7 +51,7 @@ namespace Nethermind.Init.Steps
             BasePasswordProvider passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
                 .OrReadFromConsole($"Provide password for validator account {keyStoreConfig.BlockAuthorAccount}");
 
-            INodeKeyManager nodeKeyManager = new NodeKeyManager(get.CryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
+            INodeKeyManager nodeKeyManager = new NodeKeyManager(cryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
             IProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
 
             IMiningConfig miningConfig = get.Config<IMiningConfig>();
