@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class CompositeBlockTracer : IBlockTracer, ITracerBag
+public class CompositeBlockTracer : IBlockTracer
 {
     private readonly List<IBlockTracer> _childTracers = [];
     private IBlockTracer? _parallelSafeTracerCache;

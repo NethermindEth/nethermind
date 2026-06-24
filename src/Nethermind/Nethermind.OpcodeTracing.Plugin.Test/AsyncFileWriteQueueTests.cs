@@ -52,7 +52,7 @@ public class AsyncFileWriteQueueTests
     [TestCase(50)]
     public async Task PendingWrites_reaches_zero_after_flush(int count)
     {
-        for (int i = 0; i < count; i++) _queue.Enqueue(CreateTrace(i));
+        for (int i = 0; i < count; i++) _queue.Enqueue(CreateTrace((ulong)i));
 
         bool flushed = await _queue.FlushAsync(TimeSpan.FromSeconds(10));
 
