@@ -162,6 +162,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip7251ContractAddress = config.PragueTime is null ? null : Eip7251Constants.ConsolidationRequestPredeployAddress,
             Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,
 
+            Eip8198TransitionTimestamp = config.BogotaTime,
+
             BlobSchedule = blobSchedule
         };
 
@@ -183,9 +185,10 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             [nameof(BPO1)] = new(3),
             [nameof(BPO2)] = new(4),
             [nameof(Amsterdam)] = new(5),
-            [nameof(BPO3)] = new(6),
-            [nameof(BPO4)] = new(7),
-            [nameof(BPO5)] = new(8),
+            [nameof(Bogota)] = new(6),
+            [nameof(BPO3)] = new(7),
+            [nameof(BPO4)] = new(8),
+            [nameof(BPO5)] = new(9),
         };
 
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, ChainSpec chainSpec)

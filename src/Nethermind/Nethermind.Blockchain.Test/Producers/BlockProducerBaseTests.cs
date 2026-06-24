@@ -8,10 +8,13 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -29,7 +32,8 @@ public partial class BlockProducerBaseTests
         IGasLimitCalculator gasLimitCalculator,
         ITimestamper timestamper,
         ILogManager logManager,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        ISpecProvider? specProvider = null)
         : BlockProducerBase(txSource,
             processor,
             sealer,
@@ -37,7 +41,7 @@ public partial class BlockProducerBaseTests
             stateProvider,
             gasLimitCalculator,
             timestamper,
-            MainnetSpecProvider.Instance,
+            specProvider ?? MainnetSpecProvider.Instance,
             logManager,
             new TimestampDifficultyCalculator(),
             blocksConfig)
@@ -93,5 +97,39 @@ public partial class BlockProducerBaseTests
         ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;
         Block block = producerUnderTest.Prepare(Build.A.BlockHeader.WithTimestamp(futureTime).TestObject);
         Assert.That(new UInt256(block.Timestamp), Is.EqualTo(block.Difficulty));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip8198_transition_block_gas_limit_is_scaled_by_slot_duration()
+    {
+        const long parentGasLimit = 30_000_000;
+        const long forkBlockNumber = 5;
+        // 30_000_000 * 8000 / 12000 = 20_000_000
+        const long expectedGasLimit = 20_000_000;
+
+        OverridableReleaseSpec preForkSpec = new(Osaka.Instance) { IsEip8198Enabled = false };
+        OverridableReleaseSpec postForkSpec = new(Osaka.Instance) { IsEip8198Enabled = true, SlotDurationMs = Eip8198Constants.NewSlotDurationMs };
+        TestSpecProvider specProvider = new(preForkSpec)
+        {
+            NextForkSpec = postForkSpec,
+            ForkOnBlockNumber = forkBlockNumber
+        };
+
+        ProducerUnderTest producerUnderTest = new(
+            EmptyTxSource.Instance,
+            Substitute.For<IBlockchainProcessor>(),
+            NullSealEngine.Instance,
+            Build.A.BlockTree().TestObject,
+            Substitute.For<IWorldState>(),
+            Substitute.For<IGasLimitCalculator>(),
+            new IncrementalTimestamper(),
+            LimboLogs.Instance,
+            new BlocksConfig(),
+            specProvider);
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(forkBlockNumber - 1).WithGasLimit(parentGasLimit).TestObject;
+        Block block = producerUnderTest.Prepare(parent);
+
+        block.GasLimit.Should().Be(expectedGasLimit);
     }
 }

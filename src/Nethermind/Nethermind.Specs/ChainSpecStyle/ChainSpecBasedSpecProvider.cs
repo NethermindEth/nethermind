@@ -348,6 +348,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
             }
 
+            releaseSpec.IsEip8198Enabled = (chainSpec.Parameters.Eip8198TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            if (releaseSpec.IsEip8198Enabled)
+            {
+                releaseSpec.SlotDurationMs = Eip8198Constants.NewSlotDurationMs;
+            }
+
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
             {

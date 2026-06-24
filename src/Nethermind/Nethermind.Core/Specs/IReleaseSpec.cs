@@ -464,6 +464,16 @@ namespace Nethermind.Core.Specs
         public bool IsEip7954Enabled { get; }
 
         /// <summary>
+        /// EIP-8198: Quick Slots - reduces slot duration from 12s to 8s
+        /// </summary>
+        public bool IsEip8198Enabled { get; }
+
+        /// <summary>
+        /// Slot duration in milliseconds.Refer EIP8198
+        /// </summary>
+        public ulong SlotDurationMs { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.

@@ -68,6 +68,8 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? Bpo4Time { get => GetTime(); set => SetTime(value); }
     public ulong? Bpo5Time { get => GetTime(); set => SetTime(value); }
 
+    public ulong? BogotaTime { get; set; }
+
     public UInt256? TerminalTotalDifficulty { get; set; }
     public bool? TerminalTotalDifficultyPassed { get; set; }
     public Address? DepositContractAddress { get; set; }

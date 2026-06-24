@@ -262,6 +262,18 @@ namespace Nethermind.Consensus.Validators
             // Gas-limit-vs-parent comparisons don't apply at genesis, so skip them.
             if (parent is null) return true;
 
+            IReleaseSpec parentSpec = _specProvider.GetSpec(parent);
+            if (spec.IsEip8198Enabled && !parentSpec.IsEip8198Enabled)
+            {
+                long expectedGasLimit = parent.GasLimit * (long)spec.SlotDurationMs / (long)parentSpec.SlotDurationMs;
+                if (header.GasLimit != expectedGasLimit)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit should be parent gas limit scaled by slot duration change when EIP-8198 is activated. Expected: {expectedGasLimit}, actual: {header.GasLimit}");
+                    error = BlockErrorMessages.InvalidGasLimit;
+                    return false;
+                }
+                return true;
+            }
             long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 

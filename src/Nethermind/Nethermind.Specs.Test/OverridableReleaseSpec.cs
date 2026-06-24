@@ -126,5 +126,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         public SpecGasCosts GasCosts => new(this);
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
+        public bool IsEip8198Enabled { get; set; } = spec.IsEip8198Enabled;
+        public ulong SlotDurationMs { get; set; } = spec.SlotDurationMs;
     }
 }

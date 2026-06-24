@@ -169,6 +169,8 @@ public class ReleaseSpec : IReleaseSpec
 
     public bool IsEip7708Enabled { get; set; }
     public bool IsEip7954Enabled { get; set; }
+    public bool IsEip8198Enabled { get; set; }
+    public ulong SlotDurationMs { get; set; } = 12_000;
 
     private ReleaseSpec? _systemSpec;
 

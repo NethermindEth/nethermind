@@ -230,6 +230,41 @@ public class HeaderValidatorTests
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(30_000_000, 5, 20_000_000, true, TestName = "Eip8198_activation_block_exact_scaled_limit_is_valid")]
+    [TestCase(30_000_000, 5, 20_000_001, false, TestName = "Eip8198_activation_block_above_scaled_limit_is_invalid")]
+    [TestCase(30_000_000, 5, 19_999_999, false, TestName = "Eip8198_activation_block_below_scaled_limit_is_invalid")]
+    public void When_gaslimit_is_on_eip8198_activation(long parentGasLimit, long forkBlock, long gasLimit, bool expectedResult)
+    {
+        OverridableReleaseSpec preForkSpec = new(Osaka.Instance) { IsEip8198Enabled = false };
+        OverridableReleaseSpec postForkSpec = new(Osaka.Instance) { IsEip8198Enabled = true, SlotDurationMs = Eip8198Constants.NewSlotDurationMs };
+        TestSpecProvider specProvider = new(preForkSpec);
+        specProvider.NextForkSpec = postForkSpec;
+        specProvider.ForkOnBlockNumber = forkBlock;
+
+        _validator = new HeaderValidator(_blockTree, _ethash, specProvider, new OneLoggerLogManager(new(_testLogger)));
+        _parentBlock = Build.A.Block.WithDifficulty(1)
+            .WithGasLimit(parentGasLimit)
+            .WithNumber(forkBlock - 1)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithRequestsHash(Keccak.Zero)
+            .TestObject;
+        _block = Build.A.Block.WithParent(_parentBlock)
+            .WithDifficulty(131072)
+            .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+            .WithGasLimit(gasLimit)
+            .WithNumber(forkBlock)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithRequestsHash(Keccak.Zero)
+            .WithNonce(0).TestObject;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+        Assert.That(result, Is.EqualTo(expectedResult));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_is_long_max_value()
     {
