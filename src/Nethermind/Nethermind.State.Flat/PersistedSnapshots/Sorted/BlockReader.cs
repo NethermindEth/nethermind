@@ -21,14 +21,16 @@ internal static class BlockReader
         numRestarts = 0;
         recordsStart = 0;
 
-        Span<byte> buf = stackalloc byte[4];
+        // The body width (recordsEnd, numRestarts) is per-block variable — 2 bytes for a data Block,
+        // 4 for the Index — so it cannot map to one fixed-layout struct; read the flag, then both
+        // body fields together in a single read.
+        Span<byte> buf = stackalloc byte[8]; // 2 × the max offset width (4, used by the Index)
         if (!reader.TryRead(blockStart, buf[..1])) return false;
         int w = Block.WidthFromFlag(buf[0]);
         if (w == 0) return false;
-        if (!reader.TryRead(blockStart + 1, buf[..w])) return false;
+        if (!reader.TryRead(blockStart + 1, buf[..(2 * w)])) return false;
         recordsEnd = Block.ReadOffset(buf, w);
-        if (!reader.TryRead(blockStart + 1 + w, buf[..w])) return false;
-        numRestarts = Block.ReadOffset(buf, w);
+        numRestarts = Block.ReadOffset(buf[w..], w);
         width = w;
         recordsStart = Block.RecordsStart(w, numRestarts);
         return true;
