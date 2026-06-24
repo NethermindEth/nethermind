@@ -83,7 +83,8 @@ public class PayloadAttributes
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
-        + (SlotNumber is null ? 0 : sizeof(ulong)); // slot number
+        + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
+        ;
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -158,21 +159,22 @@ public class PayloadAttributes
         string methodName,
         [NotNullWhen(false)] out string? error)
     {
+        // Attributes structure doesn't match what the fork expects (e.g. V3 attrs sent when FCUv3 not yet activated in spec).
+        if (actualVersion != timestampVersion)
+        {
+            error = $"{methodName}{timestampVersion} expected";
+            bool unsupportedFork = timestampVersion >= PayloadAttributesVersions.V2
+                && !IsSupportedFcuForkCombination(fcuVersion, timestampVersion);
+            return unsupportedFork
+                ? PayloadAttributesValidationResult.UnsupportedFork
+                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
         // This FCU version doesn't support this fork at all (e.g. V3 attrs sent to FCUv2).
         if (!IsSupportedFcuForkCombination(fcuVersion, actualVersion))
         {
             error = $"{methodName}{fcuVersion} expected";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-        }
-
-        // Attributes structure doesn't match what the fork expects (e.g. V3 attrs sent to when FCUv3 not yet activated in spec).
-        if (actualVersion != timestampVersion)
-        {
-            error = $"{methodName}{timestampVersion} expected";
-            // FCU also doesn't support this fork → UnsupportedFork (post-Paris only)
-            return fcuVersion != timestampVersion && timestampVersion >= PayloadAttributesVersions.V2
-                ? PayloadAttributesValidationResult.UnsupportedFork
-                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
         error = null;
@@ -185,10 +187,25 @@ public class PayloadAttributes
         [NotNullWhen(false)] out string? error)
     {
         int actualVersion = this.GetVersion();
+        int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
+
+        // When attrs are below the timestamp-implied version and the FCU doesn't accept this
+        // combination (i.e. it's not the V2-accepts-V1 backward-compat case), report the
+        // specific missing field rather than a generic version-mismatch.
+        if (actualVersion < timestampVersion && !IsSupportedFcuForkCombination(fcuVersion, actualVersion))
+        {
+            string? fieldError = ValidateFields(timestampVersion);
+            if (fieldError is not null)
+            {
+                error = fieldError;
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+        }
+
         PayloadAttributesValidationResult result = ValidateVersion(
             fcuVersion,
             actualVersion,
-            timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion(),
+            timestampVersion,
             "PayloadAttributesV",
             out error);
 

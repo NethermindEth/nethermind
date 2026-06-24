@@ -54,9 +54,16 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            return !block.IsGenesis && balManager.ParallelExecutionEnabled
+            TxReceipt[] receipts = !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
+
+            // Seed empty/system-only blocks with the base fee, then publish gauges once - after workers
+            // join - from the final aggregates so a stale worker view cannot overwrite them.
+            Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
+            Metrics.PublishBlockGasPriceGauges();
+
+            return receipts;
         }
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
@@ -149,10 +156,7 @@ public partial class BlockProcessor
                             {
                                 if (i == 0)
                                 {
-                                    // ApplyStateChanges mutates the shared stateProvider so runs inside
-                                    // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                                    // workers read from BAL-backed world states, not stateProvider, so
-                                    // neither races with this write.
+                                    state.balManager.WaitForBalWarmup();
                                     BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                                     return state;
                                 }

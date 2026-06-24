@@ -9,7 +9,6 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -41,7 +40,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -95,7 +93,7 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
             _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
-                ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
+                ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_api.BlockTree!, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
                 _api.DisposeStack.Push(processedTransactionsDbCleaner);
             }
 
@@ -197,7 +195,7 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
 
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-            _api.FinalizationManager = InitializeMergeFinalizationManager();
+            InitializeMergeFinalization();
 
             if (_poSSwitcher.TransitionFinished)
             {
@@ -223,7 +221,11 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
     }
 
-    protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager() => new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
+    /// <summary>
+    /// Hook for derived plugins (e.g. AuRaMergePlugin) to set up merge-transition lifecycle
+    /// (e.g. disposing AuRa's finalization manager at terminal block). Default: no-op.
+    /// </summary>
+    protected virtual void InitializeMergeFinalization() { }
 
     public bool MustInitialize { get => true; }
 
@@ -284,8 +286,7 @@ public class BaseMergePluginModule : Module
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
 
             .AddSingleton<StartingSyncPivotUpdater>()
-            .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
-            .AddSingleton<IManualBlockFinalizationManager, ManualBlockFinalizationManager>()
+            .Bind<ISyncPivotResolver, StartingSyncPivotUpdater>()
 
             // Invalid chain tracker wrapper should be after other validator.
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
@@ -318,6 +319,7 @@ public class BaseMergePluginModule : Module
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
                 .AddSingleton<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>, GetBlobsHandler>()
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
+                .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
 

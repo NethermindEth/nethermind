@@ -1,0 +1,23 @@
+[
+  {
+    "run": "EveryBlocks(5)",
+    "test": {
+      "description": "WETH transfers to Uniswap V3"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "eth_getLogs",
+      "params": [{
+        "fromBlock": "{{Hex(RecentBlock - 9)}}",
+        "toBlock": "{{Hex(RecentBlock)}}",
+        "address": ["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "0xdAC17F958D2ee523a2206206994597C13D831ec7"],
+        "topics": [
+          "{{Topic.Transfer}}",
+          null,
+          "0x0000000000000000000000003fc91a3afd70395cd496c647d5a6cc9d4b2b7fad"
+        ]
+      }],
+      "id": "{{Request.Number}}"
+    }
+  }
+]

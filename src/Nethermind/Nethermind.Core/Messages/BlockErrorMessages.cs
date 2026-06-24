@@ -11,8 +11,8 @@ public static class BlockErrorMessages
     public static string ExceededUncleLimit(int maxUncleCount) =>
         $"ExceededUncleLimit: Cannot have more than {maxUncleCount}.";
 
-    public const string InsufficientMaxFeePerBlobGas =
-        "InsufficientMaxFeePerBlobGas: Not enough to cover blob gas fee.";
+    public static string InsufficientMaxFeePerBlobGas(Address? address, UInt256? blobGasFeeCap, UInt256 blobBaseFee) =>
+        $"max fee per blob gas less than block blob gas fee: address {address?.ToString(withEip55Checksum: true)}, blobGasFeeCap: {blobGasFeeCap}, blobBaseFee: {blobBaseFee}";
 
     public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
         $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";
@@ -175,8 +175,6 @@ public static class BlockErrorMessages
         $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 
     public const string MissingSlotNumber = "MissingSlotNumber: Must be present in block header.";
-    public const string InvalidSlotNumber =
-        "InvalidSlotNumber: Slot number in header must exceed parent.";
 
     public const string SlotNumberNotEnabled =
         "SlotNumberNotEnabled: Block header cannot have slot number.";

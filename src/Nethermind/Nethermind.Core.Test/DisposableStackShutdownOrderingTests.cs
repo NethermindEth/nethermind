@@ -52,8 +52,11 @@ public class DisposableStackShutdownOrderingTests
 
         await scope.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.That(readerError, Is.Null, "the store must not be disposed while a request is still reading from it");
-        Assert.That(store.Disposed, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readerError, Is.Null, "the store must not be disposed while a request is still reading from it");
+            Assert.That(store.Disposed, Is.True);
+        }
     }
 
     private sealed class AsyncDisposableAction(Func<ValueTask> action) : IAsyncDisposable

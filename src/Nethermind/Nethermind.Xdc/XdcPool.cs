@@ -38,7 +38,6 @@ public class XdcPool<T> where T : IXdcPoolItem
     {
         using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            // Safe: removing during enumeration is allowed in .NET Core 3.0+
             foreach ((ulong Round, Hash256 Hash) key in _items.Keys)
             {
                 if (key.Round <= round)
@@ -86,6 +85,20 @@ public class XdcPool<T> where T : IXdcPoolItem
                 result.Add(pair.Value.Values.ToArray());
         }
         return result;
+    }
+
+    public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> GetItems()
+    {
+        using McsLock.Disposable lockRelease = _lock.Acquire();
+        {
+            Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> snapshot = new(_items.Count);
+            foreach (KeyValuePair<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pair in _items)
+            {
+                snapshot[pair.Key] = new Dictionary<Address, T>(pair.Value);
+            }
+
+            return snapshot;
+        }
     }
 
     // Forensics needs same-round votes across different pool keys to detect signer equivocation.

@@ -166,7 +166,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncProgressResolver.FindBestHeader().Returns(0);
                     SyncProgressResolver.FindBestFullBlock().Returns(0);
                     SyncProgressResolver.FindBestFullState().Returns(0);
-                    SyncProgressResolver.IsLoadingBlocksFromDb().Returns(false);
                     SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
                     SyncProgressResolver.SyncPivot.Returns((Pivot.Number, Keccak.Zero));
 
@@ -305,6 +304,23 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "mid fast sync and fast blocks";
+                        }
+                    );
+                    return this;
+                }
+
+                public ScenarioBuilder IfThisNodeIsBehindThePivotInFastSync()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(MidWayToPivot.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
+                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            return "behind the pivot in fast sync";
                         }
                     );
                     return this;
@@ -624,15 +640,28 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder WhenSynchronizationIsDisabled()
+                public ScenarioBuilder AndAPeerExactlyAtThePivotIsKnown()
                 {
-                    _overwrites.Add(() => SyncConfig.SynchronizationEnabled = false);
+                    AddPeeringSetup("peer at pivot", AddPeer(Pivot));
                     return this;
                 }
 
-                public ScenarioBuilder WhenThisNodeIsLoadingBlocksFromDb()
+                public ScenarioBuilder WhenStaticSnapPivotIsConfigured()
                 {
-                    _overwrites.Add(() => SyncProgressResolver.IsLoadingBlocksFromDb().Returns(true));
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.SnapSync = true;
+                        SyncConfig.StaticSnapPivot = true;
+                        return "static snap pivot";
+                    });
+
+                    return this;
+                }
+
+                public ScenarioBuilder WhenSynchronizationIsDisabled()
+                {
+                    _overwrites.Add(() => SyncConfig.SynchronizationEnabled = false);
                     return this;
                 }
 
@@ -809,20 +838,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder WhenMergeSyncPivotNotResolvedYet()
-                {
-                    _syncProgressSetups.Add(
-                        () =>
-                        {
-                            SyncConfig.MaxAttemptsToUpdatePivot = 3;
-                            BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-                            BeaconSyncStrategy.MergeTransitionFinished.Returns(true);
-                            return "merge sync pivot not resolved yet";
-                        }
-                    );
-
-                    return this;
-                }
             }
 
             public static ScenarioBuilder GoesLikeThis(bool needToWaitForHeaders) =>

@@ -23,6 +23,7 @@ namespace Nethermind.State.Proofs
     {
         private readonly Address _address = Address.Zero;
         private readonly AccountProof _accountProof;
+        private bool _accountExists;
 
         private readonly Nibble[] _fullAccountPath;
         private readonly Nibble[][] _fullStoragePaths;
@@ -91,6 +92,14 @@ namespace Nethermind.State.Proofs
 
         public AccountProof BuildResult()
         {
+            // EIP-1186 distinguishes a non-existent account from an empty existing account by
+            // returning zero hashes for the absent account case instead of the canonical empty hashes.
+            if (!_accountExists)
+            {
+                _accountProof.CodeHash = Hash256.Zero;
+                _accountProof.StorageRoot = Hash256.Zero;
+            }
+
             _accountProof.Proof = _accountProofItems.ToArray();
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
@@ -156,6 +165,7 @@ namespace Nethermind.State.Proofs
             // ctx.Path here already includes the leaf's key (it's leafContext, not nodeContext).
             if (!IsFullPathMatch(_fullAccountPath, ctx.Path)) return;
 
+            _accountExists = true;
             _accountProof.Nonce = account.Nonce;
             _accountProof.Balance = account.Balance;
             _accountProof.StorageRoot = account.StorageRoot.ToCommitment();

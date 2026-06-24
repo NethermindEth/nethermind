@@ -89,4 +89,11 @@ public interface IBlocksConfig : IConfig
                       "Set to `0` to log all transactions. Set to `-1` to disable per-transaction logging.",
         DefaultValue = "-1")]
     long SlowBlockPerTxThresholdMs { get; set; }
+
+    [ConfigItem(
+        Description = "The maximum block gas assumed to be supported. " +
+                      "Used to inherit some RLP limits. ",
+        DefaultValue = "1000000000",
+        HiddenFromDocs = true)]
+    long MaxGasLimit { get; set; }
 }

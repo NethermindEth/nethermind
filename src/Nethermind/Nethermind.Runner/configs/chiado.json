@@ -18,8 +18,8 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 21290000,
-    "PivotHash": "0xf71edbc27bbb2c2ebb05f867c460c1e845904fb2f0debb8c856c4901051d0673",
+    "PivotNumber": 21500000,
+    "PivotHash": "0xc7f68d6262b23b9c39f20bdd7c30e9fead89e5a49b38133e56b952fdba0725b2",
     "PivotTotalDifficulty": "231708131825107706987652208063906496124457284",
     "FastSyncCatchUpHeightDelta": 10000000000,
     "UseGethLimitsInFastBlocks": false
@@ -50,12 +50,5 @@
   },
   "Metrics": {
     "NodeName": "Nethermind Chiado"
-  },
-  "Bloom": {
-    "IndexLevelBucketSizes": [
-      16,
-      16,
-      16
-    ]
   }
 }

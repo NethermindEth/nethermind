@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Text;
 using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
@@ -53,4 +55,65 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
     [TestCase("192c207ae0491ac1b74673d0f05126dc5a3c4fa0e6d277492fe6f3f6ebb4880c168b043bbbd7ae8e60606a7adf85c3602d0cd195af875ad061b5a6b1ef19b64507caa9e61fc843cf2f3769884e7467dd341a07fac1374f901d6e0da3f47fd2ec2b31ee53ccd0449de5b996cb8159066ba398078ec282102f016265ddec59c3541b38870e413a29c6b0b709e0705b55ab61ccc2ce24bbee322f97bb40b1732a4b28d255308f12e81dc16363f0f4f1410e1e9dd297ccc79032c0379aeb707822f9", "0000000000000000000000000000000000000000000000000000000000000000", true)]
     [TestCase("3431d14cfbe9a5a1244e88ada99303090b48f7580ae1e3aa0c82cd92025c03e41b1c9200304be38b893bd18ca5b528bb34fbcd8126c1104f0465a7ae1bf4455607caa9e61fc843cf2f3769884e7467dd341a07fac1374f901d6e0da3f47fd2ec2b31ee53ccd0449de5b996cb8159066ba398078ec282102f016265ddec59c3541b38870e413a29c6b0b709e0705b55ab61ccc2ce24bbee322f97bb40b1732a4b28d255308f12e81dc16363f0f4f1410e1e9dd297ccc79032c0379aeb707822f9", "", false)]
     public void Test(string input, string output, bool status) => RunTest(input, output, status);
+
+    // Coverage for the pair-count dispatch in BN254.CheckPairing. The method routes 1 pair to a single-pairing
+    // fast path and >=2 pairs through the vectorized mclBn_millerLoopVec, processed in chunks of at most
+    // MaxStackPairCount (32) so the stack scratch stays bounded; each chunk's Miller-loop product is combined in
+    // GT before a single final exponentiation. The inline [TestCase] vectors above only reach 8 pairs (a single
+    // chunk), so these cases exercise the 32-pair chunk boundary and the multi-chunk accumulation for >32 pairs
+    // using inputs whose pairing product is known analytically, guarding against the chunks combining incorrectly.
+
+    // EIP-197 two-point match: e(P, Q) * e(-P, Q) == 1, so repeating the block keeps the product equal to one.
+    private const string TwoPairsProductOne = "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed275dc4a288d1afb3cbb1ac09187524c7db36395df7be3b99e673b13a075a65ec1d9befcd05a5323e6da4d435f3b617cdb3af83285c2df711ef39c01571827f9d";
+
+    // A single valid pair whose pairing is not one (result byte 0, the call still succeeds).
+    private const string OnePairNotOne = "0341b65d1b32805aedf29c4704ae125b98bb9b736d6e05bd934320632bf46bb60d22bc985718acbcf51e3740c1565f66ff890dfd2302fc51abc999c83d8774ba0d2c492bf135ed45b0d6265c274d145d35b73afd41ee95d3f1da4bc8761038800251d138db1b9748ffc257b147a1aea66413b14df767f98f7ba02489c617eae51065ff2bd9a5b167db36225a35fd712d781309f4e2c8541a335b2c42bd2bcae4191cd528d749c52f3e198e534868d537867109419a32314886f6bb2bcd337773";
+
+    private const string ResultOne = "0000000000000000000000000000000000000000000000000000000000000001";
+    private const string ResultNotOne = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    private const int PairHexLength = 384; // a 192-byte BN254 pair encoded as hex
+
+    private static string Repeat(string pair, int times)
+    {
+        StringBuilder builder = new(pair.Length * times);
+        for (int i = 0; i < times; i++)
+            builder.Append(pair);
+        return builder.ToString();
+    }
+
+    private static string InfinityPairs(int count) => new('0', PairHexLength * count);
+
+    private static IEnumerable<TestCaseData> MultiPairBoundaryCases()
+    {
+        // 4 pairs (single chunk): vectorized path whose product is not one (guards against an always-one vector result).
+        yield return new TestCaseData(TwoPairsProductOne + OnePairNotOne + InfinityPairs(1), ResultNotOne, true)
+            .SetName("CheckPairing_4_pairs_product_not_one_single_chunk");
+        // 32 pairs == MaxStackPairCount: exactly one full chunk; 16 cancelling blocks multiply to one.
+        yield return new TestCaseData(Repeat(TwoPairsProductOne, 16), ResultOne, true)
+            .SetName("CheckPairing_32_pairs_product_one_chunk_boundary");
+        // 33 pairs > MaxStackPairCount: two chunks (32 + 1); the trailing point at infinity leaves the second chunk
+        // empty, so it is skipped and the product stays one.
+        yield return new TestCaseData(Repeat(TwoPairsProductOne, 16) + InfinityPairs(1), ResultOne, true)
+            .SetName("CheckPairing_33_pairs_with_infinity_multi_chunk");
+        // 34 pairs > MaxStackPairCount: two chunks (32 + 2), all pairs non-zero, both chunk products are one.
+        yield return new TestCaseData(Repeat(TwoPairsProductOne, 17), ResultOne, true)
+            .SetName("CheckPairing_34_pairs_product_one_multi_chunk");
+        // 33 pairs > MaxStackPairCount: two chunks (32 + 1); the second chunk's pair makes the cross-chunk product
+        // not one (guards against the chunk combination collapsing to an always-one result).
+        yield return new TestCaseData(Repeat(TwoPairsProductOne, 16) + OnePairNotOne, ResultNotOne, true)
+            .SetName("CheckPairing_33_pairs_product_not_one_multi_chunk");
+        // 33 pairs > MaxStackPairCount: every pair is a point at infinity, so all chunks are empty and the result is one.
+        yield return new TestCaseData(InfinityPairs(33), ResultOne, true)
+            .SetName("CheckPairing_33_pairs_all_infinity_multi_chunk");
+    }
+
+    [TestCaseSource(nameof(MultiPairBoundaryCases))]
+    public void Multi_pair_boundary(string input, string output, bool status) => RunTest(input, output, status);
+
+    // A point at infinity in the first pair must be skipped, leaving the remaining pairing product unchanged.
+    // Complements the boundary cases above, which only place infinity pairs at the tail or use all-infinity input.
+    [Test]
+    public void Pairing_with_leading_infinity_pair_is_skipped_and_result_unchanged() =>
+        RunTest(InfinityPairs(1) + TwoPairsProductOne, ResultOne, true);
 }

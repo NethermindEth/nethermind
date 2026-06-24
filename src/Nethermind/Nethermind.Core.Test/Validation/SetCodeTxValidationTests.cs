@@ -34,8 +34,11 @@ public class SetCodeTxValidationTests
 
         ValidationResult result = SetCodeTxValidation.ValidateNoContractCreation(tx);
 
-        Assert.That(result.AsBool(), Is.False);
-        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.NotAllowedCreateTransaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool(), Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.NotAllowedCreateTransaction));
+        }
     }
 
     private static IEnumerable<TestCaseData> MissingAuthorizationListCases()
@@ -58,8 +61,11 @@ public class SetCodeTxValidationTests
 
         ValidationResult result = SetCodeTxValidation.ValidateAuthorizationList(tx);
 
-        Assert.That(result.AsBool(), Is.False);
-        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.MissingAuthorizationList));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool(), Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.MissingAuthorizationList));
+        }
     }
 
     [Test]

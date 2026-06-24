@@ -13,26 +13,40 @@ public static class EraPathUtils
 {
     private static readonly char[] _separator = ['-'];
 
-    public const string FileExtension = ".erae";
+    // Canonical e2store EraE extension, used for export.
+    // See https://github.com/eth-clients/e2store-format-specs/blob/main/formats/ere.md.
+    public const string FileExtension = ".ere";
+
+    // Legacy extension still accepted on import until producers migrate to .ere.
+    public const string LegacyFileExtension = ".erae";
+
+    // Nethermind does not generate Proof entries, so exports carry the "noproofs" profile
+    // postfix per the spec — matching go-ethereum's execdb writer.
+    public const string NoProofsProfile = "noproofs";
+
+    public static bool IsEraFile(string path)
+    {
+        ReadOnlySpan<char> extension = Path.GetExtension(path.AsSpan());
+        return extension.Equals(FileExtension, StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(LegacyFileExtension, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsCanonicalEraFile(string path) =>
+        Path.GetExtension(path.AsSpan()).Equals(FileExtension, StringComparison.OrdinalIgnoreCase);
 
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network, IFileSystem fileSystem)
     {
-        string[] entries = fileSystem.Directory.GetFiles(directoryPath, $"*{FileExtension}", new EnumerationOptions
-        {
-            RecurseSubdirectories = false,
-            MatchCasing = MatchCasing.PlatformDefault
-        });
+        EnumerationOptions options = new() { RecurseSubdirectories = false, MatchCasing = MatchCasing.PlatformDefault };
 
-        if (entries.Length == 0)
-            yield break;
-
-        foreach (string file in entries)
+        foreach (string file in fileSystem.Directory.EnumerateFiles(directoryPath, "*", options))
         {
-            // Format: <network>-<epoch>-<hexroot>.erae
+            if (!IsEraFile(file)) continue;
+
+            // <network>-<epoch>-<hexhash>[-<profile>...]
             string[] parts = Path.GetFileNameWithoutExtension(file).Split(_separator);
-            if (parts.Length != 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase)) continue;
+            if (parts.Length < 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase)) continue;
             if (!uint.TryParse(parts[1], out _))
-                throw new EraException($"Invalid erae filename: {Path.GetFileName(file)}");
+                throw new EraException($"Invalid era filename: {Path.GetFileName(file)}");
 
             yield return file;
         }
@@ -41,13 +55,13 @@ public static class EraPathUtils
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
         => GetAllEraFiles(directoryPath, network, new RealFileSystem());
 
-    public static string Filename(string network, long epoch, Hash256 accumulatorRoot)
+    public static string Filename(string network, long epoch, Hash256 lastBlockHash)
     {
         ArgumentException.ThrowIfNullOrEmpty(network);
-        ArgumentNullException.ThrowIfNull(accumulatorRoot);
+        ArgumentNullException.ThrowIfNull(lastBlockHash);
         ArgumentOutOfRangeException.ThrowIfLessThan(epoch, 0);
 
-        return $"{network}-{epoch:D5}-{accumulatorRoot.ToString(true)[2..10]}{FileExtension}";
+        return $"{network}-{epoch:D5}-{lastBlockHash.ToString(true)[2..10]}-{NoProofsProfile}{FileExtension}";
     }
 
     public static ValueHash256 ExtractHashFromChecksumEntry(string s)
@@ -71,7 +85,7 @@ public static class EraPathUtils
         string filename = line[(nameStart + 1)..].TrimStart();
         string nameWithoutExt = Path.GetFileNameWithoutExtension(filename);
         string[] parts = nameWithoutExt.Split(_separator);
-        if (parts.Length != 3 || !long.TryParse(parts[1], out long epoch))
+        if (parts.Length < 3 || !long.TryParse(parts[1], out long epoch))
             throw new ArgumentException($"Invalid checksum entry filename: {filename}");
 
         return (epoch, hash);

@@ -23,5 +23,8 @@
   },
   "TraceStore": {
     "Enabled": false
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

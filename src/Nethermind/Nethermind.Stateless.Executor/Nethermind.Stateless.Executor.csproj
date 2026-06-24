@@ -23,6 +23,8 @@
     <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszNumericChecks.cs" Link="IO\EngineApiDto\SszNumericChecks.cs" />
     <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszKzgCommitment.cs" Link="IO\EngineApiDto\SszKzgCommitment.cs" />
     <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszKzgCommitmentVectorTypeConverter.cs" Link="IO\EngineApiDto\SszKzgCommitmentVectorTypeConverter.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszBlobCell.cs" Link="IO\EngineApiDto\SszBlobCell.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszBlobCellVectorTypeConverter.cs" Link="IO\EngineApiDto\SszBlobCellVectorTypeConverter.cs" />
     <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszWireTypes.cs" Link="IO\EngineApiDto\SszWireTypes.cs" />
   </ItemGroup>
 

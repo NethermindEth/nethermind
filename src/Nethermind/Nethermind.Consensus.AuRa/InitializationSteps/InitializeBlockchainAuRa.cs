@@ -14,12 +14,13 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
+public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy, IChainLevelInfoRepository chainLevelInfoRepository)
     : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     protected AuRaNethermindApi Api => api;
@@ -28,9 +29,9 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
     protected override async Task InitBlockchain()
     {
         AuRaChainSpecEngineParameters chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        api.FinalizationManager = new AuRaBlockFinalizationManager(
+        api.AuRaFinalizationManager = new AuRaBlockFinalizationManager(
             api.BlockTree!,
-            api.ChainLevelInfoRepository!,
+            chainLevelInfoRepository,
             api.ValidatorStore!,
             api.LogManager,
             chainSpecAuRa.TwoThirdsMajorityTransition);
@@ -49,7 +50,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
     /// Got cyclic dependency. AuRaBlockFinalizationManager -> IAuraValidator -> AuraBlockProcessor -> AuraBlockFinalizationManager.
     /// </remarks>
     protected virtual void WireFinalizationBranchProcessor() =>
-        api.FinalizationManager!.SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
+        api.AuRaFinalizationManager!.SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {

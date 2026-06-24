@@ -28,21 +28,15 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         // Capture the BAL's RLP slice so the wire hash can be cached on the returned instance;
         // BlockValidator would otherwise recompute the same keccak per block.
         int startPosition = ctx.Position;
-        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
-        ReadOnlySpan<byte> wireRlp = ctx.Data.Slice(startPosition, ctx.Position - startPosition);
+
+        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, limit: _accountsLimit);
+        ReadOnlySpan<byte> wireRlp = ctx.Data[startPosition..ctx.Position];
 
         Address? lastAddress = null;
         int itemCount = 0;
         foreach (ReadOnlyAccountChanges a in accountChanges)
         {
-            // EIP-7928 AccountChanges is a 6-field sequence; an empty inner
-            // list (RLP 0xc0) is rejected by DecodeArray as defaultElement -> null.
-            if (a is null)
-            {
-                ThrowEmptyAccountChanges();
-            }
-
-            Address address = a.Address;
+            Address address = a!.Address;
             if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
             {
                 ThrowAccountChangesOutOfOrder();
@@ -185,10 +179,6 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
             accountChangesDecoder.EncodePrepared(stream, sortedAccounts[i], in accountLengths[i], rlpBehaviors);
         }
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowEmptyAccountChanges() =>
-        throw new RlpException("Empty AccountChanges entry; EIP-7928 requires a 6-field sequence.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowAccountChangesOutOfOrder() =>

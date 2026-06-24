@@ -13,7 +13,7 @@ public sealed class BlocksRequest : IDisposable
     public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
     public OwnedBlockBodies? OwnedBodies { get; set; }
     public IOwnedReadOnlyList<BlockHeader> BlockAccessListsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
-    public IByteArrayList? BlockAccessLists { get; set; }
+    public IOwnedReadOnlyList<byte[]?>? BlockAccessLists { get; set; }
     public IOwnedReadOnlyList<BlockHeader> ReceiptsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
     public IOwnedReadOnlyList<TxReceipt[]?>? Receipts { get; set; }
 

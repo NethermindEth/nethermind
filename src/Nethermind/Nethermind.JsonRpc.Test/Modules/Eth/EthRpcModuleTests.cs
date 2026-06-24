@@ -500,7 +500,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_storage_at_missing_trie_node()
     {
-        using Context ctx = await Context.Create();
+        // Asserts the patricia "missing trie node" error, which has no equivalent in the flat backend.
+        using Context ctx = await Context.Create(useFlatDb: false);
         await Task.Delay(100); // Wait a bit for pruning
         ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);
         ctx.Test.StateDb.Clear();
@@ -1545,6 +1546,23 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_proof_for_non_existent_account_returns_zero_hashes()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", "0x000000000000000000000000000000000000dead", "[]", "0x2");
+
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+        Assert.Multiple(() =>
+        {
+            Assert.That((string?)result["address"], Is.EqualTo("0x000000000000000000000000000000000000dead"));
+            Assert.That((string?)result["balance"], Is.EqualTo("0x0"));
+            Assert.That((string?)result["nonce"], Is.EqualTo("0x0"));
+            Assert.That((string?)result["codeHash"], Is.EqualTo(Hash256.Zero.ToString()));
+            Assert.That((string?)result["storageHash"], Is.EqualTo(Hash256.Zero.ToString()));
+        });
+    }
+
+    [Test]
     public async Task Eth_get_block_by_number_empty_param()
     {
         using Context ctx = await Context.Create();
@@ -2195,7 +2213,7 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverrideJson: null, optimize: true);
 
-        Assert.That(result["error"]!.Value<string>(), Is.EqualTo("revert"));
+        Assert.That(result["error"]!.Value<string>(), Is.EqualTo("execution reverted"));
         Assert.That(gasUsed, Is.EqualTo(77496));
         // AL must contain the newly created contract address with storage key 0x81.
         // Contract address is deterministic: keccak256(rlp([sender, nonce=0]))[12:]
@@ -2708,7 +2726,8 @@ public partial class EthRpcModuleTests
 
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
-            Action<ContainerBuilder>? configurer = null)
+            Action<ContainerBuilder>? configurer = null,
+            bool? useFlatDb = null)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -2722,6 +2741,7 @@ public partial class EthRpcModuleTests
                     .WithBlockchainBridge(blockchainBridge!)
                     .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0 })
                     .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
+                    .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
                     .Build(wrappedConfigurer).Result,
 
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
@@ -2744,5 +2764,44 @@ public partial class EthRpcModuleTests
             _testCtx?.Dispose();
             _auraCtx?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Builds the state-override and transaction for EIP-7610 CREATE2 collision regression tests.
+    /// </summary>
+    internal static (object StateOverride, object Transaction) BuildEip7610Fixture()
+    {
+        byte[] initCode = Bytes.FromHexString("602a6000556001601160003960016000f300");
+
+        Address factoryAddress = new("0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1");
+        byte[] create2Input = new byte[85];
+        create2Input[0] = 0xff;
+        factoryAddress.Bytes.CopyTo(create2Input.AsSpan(1, 20));
+        // bytes 21-52: salt = 0 (already zeroed)
+        Keccak.Compute(initCode).Bytes.CopyTo(create2Input.AsSpan(53, 32));
+        Address contractC = new(Keccak.Compute(create2Input).Bytes[12..]);
+
+        const string factoryBytecode =
+            "0x601260376000397f0000000000000000000000000000000000000000000000000000000000000000" +
+            "601260006000f5600052602060" +
+            "00f3602a6000556001601160003960016000f300";
+
+        object stateOverride = JsonSerializer.Deserialize<object>($$"""
+            {
+                "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1": { "code": "{{factoryBytecode}}", "balance": "0xde0b6b3a7640000" },
+                "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11": { "balance": "0xde0b6b3a7640000" },
+                "{{contractC}}": { "stateDiff": { "0x0000000000000000000000000000000000000000000000000000000000000000": "0x000000000000000000000000000000000000000000000000000000000000002a" } }
+            }
+            """)!;
+
+        object transaction = JsonSerializer.Deserialize<object>("""
+            {
+                "from": "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11",
+                "to": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
+                "gas": "0xf4240"
+            }
+            """)!;
+
+        return (stateOverride, transaction);
     }
 }

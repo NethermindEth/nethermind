@@ -264,7 +264,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (Stopwatch.GetElapsedTime(sw) > GatherGiveUpDeadline)
                 {
-                    throw new InvalidOperationException($"Unable to gather {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} in {Stopwatch.GetElapsedTime(sw)}");
+                    throw new InvalidOperationException($"Timed out gathering {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} after {attempt} retries over {Stopwatch.GetElapsedTime(sw)}");
                 }
 
                 int delayMs = Math.Min(1 << Math.Min(attempt, 30), 100);  // 1, 2, 4, 8, 16, 32, 64, 100ms max
@@ -287,25 +287,20 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             }
 
 
-            if (snapshots.Count == 0)
+            // Empty result + reader not at baseBlock means the path was removed concurrently;
+            // retry unless baseBlock itself was pruned (orphaned), which no retry can recover.
+            if (snapshots.Count == 0 && persistenceReader.CurrentState != baseBlock)
             {
-                if (persistenceReader.CurrentState != baseBlock)
+                snapshots.Dispose();
+                persistenceReader.Dispose();
+
+                if (!_snapshotRepository.HasState(baseBlock))
                 {
-                    persistenceReader.Dispose();
-                    throw new InvalidOperationException($"Unable to gather snapshots for state {baseBlock}.");
+                    throw new InvalidOperationException($"State {baseBlock} no longer exists; concurrently removed.");
                 }
-            }
-            else
-            {
-                if (snapshots[0].From != persistenceReader.CurrentState)
-                {
-                    // Cannot assemble snapshot that reaches the persisted state snapshot. It could be that the snapshots was removed
-                    // concurrently. We will retry.
-                    snapshots.Dispose();
-                    persistenceReader.Dispose();
-                    attempt++;
-                    continue;
-                }
+
+                attempt++;
+                continue;
             }
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
@@ -345,6 +340,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             snapshot.Dispose();
             return;
         }
+
+        // The latest block the main processing scope committed; used as the head for forced persists.
+        _snapshotRepository.SetLastCommittedStateId(endBlock);
 
         if (_inlineCompaction)
         {

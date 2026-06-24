@@ -4,11 +4,11 @@
 #nullable enable
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -108,10 +108,10 @@ public class StateCompositionServiceIncrementalRecoveryTests
 
         // ScheduleBaselineRescan is fire-and-forget. Against the substitute
         // IStateReader, AnalyzeAsync completes quickly — wait for it to reseed.
-        await WaitForConditionAsync(
-            () => stateHolder.HasScanBaseline,
-            TimeSpan.FromSeconds(5),
-            "Auto-rescan did not set HasScanBaseline=true within 5s").ConfigureAwait(false);
+        Assert.That(
+            await Wait.ForCondition(() => stateHolder.HasScanBaseline, TimeSpan.FromSeconds(5)).ConfigureAwait(false),
+            Is.True,
+            "Auto-rescan did not set HasScanBaseline=true within 5s");
 
         using (Assert.EnterMultipleScope())
         {
@@ -181,10 +181,10 @@ public class StateCompositionServiceIncrementalRecoveryTests
 
         blockTree.NewHeadBlock += Raise.EventWith(blockTree, new BlockEventArgs(headBlock));
 
-        await WaitForConditionAsync(
-            () => stateHolder.HasScanBaseline,
-            TimeSpan.FromSeconds(5),
-            "Deferred bootstrap did not set HasScanBaseline=true within 5s").ConfigureAwait(false);
+        Assert.That(
+            await Wait.ForCondition(() => stateHolder.HasScanBaseline, TimeSpan.FromSeconds(5)).ConfigureAwait(false),
+            Is.True,
+            "Deferred bootstrap did not set HasScanBaseline=true within 5s");
 
         using (Assert.EnterMultipleScope())
         {
@@ -195,19 +195,4 @@ public class StateCompositionServiceIncrementalRecoveryTests
         }
     }
 
-    private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout, string message)
-    {
-        using CancellationTokenSource cts = new(timeout);
-        try
-        {
-            while (!condition())
-            {
-                await Task.Delay(25, cts.Token).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            Assert.Fail(message);
-        }
-    }
 }

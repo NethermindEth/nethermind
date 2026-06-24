@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -43,6 +47,9 @@ public static class BaseFlatPersistence
     private const int StoragePostfixPortion = 16;
     private const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
+    // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32 bytes.
+    private const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
+
     private static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
         address.Bytes[..AccountKeyLength].CopyTo(buffer);
@@ -62,10 +69,18 @@ public static class BaseFlatPersistence
         return buffer[..StorageKeyLength];
     }
 
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowSlotValueTooLong(int length, bool rlpWrapSlots) =>
+        throw new InvalidConfigurationException(
+            $"Flat DB storage slot value is {length} bytes, exceeding the {SlotValue.ByteCount}-byte maximum " +
+            $"(rlpWrapSlots={rlpWrapSlots}). The slot-encoding metadata is likely missing or mismatched " +
+            $"(RLP-wrapped values read as raw). Re-sync the flat DB to recover.", -1);
+
     public readonly struct Reader(
         ISortedKeyValueStore state,
         ISortedKeyValueStore storage,
-        bool isPreimageMode = false
+        bool isPreimageMode = false,
+        bool rlpWrapSlots = false
     ) : BasePersistence.IHashedFlatReader
     {
         public bool IsPreimageMode => isPreimageMode;
@@ -76,19 +91,30 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
+        [SkipLocalsInit]
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
             ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], address, slot);
 
-            Span<byte> buffer = stackalloc byte[40];
+            Span<byte> buffer = stackalloc byte[RlpSlotValueBufferSize];
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
-            Span<byte> value = buffer[..resultSize];
+            ReadOnlySpan<byte> value = buffer[..resultSize];
+            if (rlpWrapSlots)
+            {
+                Rlp.ValueDecoderContext ctx = new(value);
+                value = ctx.DecodeByteArraySpan();
+            }
 
-            // Bypass bounds check on the slice - the length is already validated by the if guard above.
-            // This writes the variable-length DB value into the end of the 32-byte struct.
+            // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
+            // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
+            // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
             int len = value.Length;
+            if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
+
+            // len is now guaranteed <= SlotValue.ByteCount, so the unchecked writes below stay in bounds.
+            // This writes the variable-length DB value into the end of the 32-byte struct.
             if (len == SlotValue.ByteCount)
             {
                 outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
@@ -138,7 +164,8 @@ public static class BaseFlatPersistence
 
             return new StorageIterator(
                 storage.GetViewBetween(firstKey, lastKey),
-                accountKey.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)].ToArray());
+                accountKey.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)].ToArray(),
+                rlpWrapSlots);
         }
     }
 
@@ -167,7 +194,7 @@ public static class BaseFlatPersistence
         public void Dispose() => view.Dispose();
     }
 
-    public struct StorageIterator(ISortedView view, byte[] addressSuffix) : IPersistence.IFlatIterator
+    public struct StorageIterator(ISortedView view, byte[] addressSuffix, bool rlpWrapSlots) : IPersistence.IFlatIterator
     {
         // 16-byte suffix to match
         private ValueHash256 _currentKey = default;
@@ -186,7 +213,14 @@ public static class BaseFlatPersistence
 
                 // Extract the 32-byte slot hash from the middle of the key
                 _currentKey = new ValueHash256(view.CurrentKey.Slice(StoragePrefixPortion, StorageSlotKeySize));
-                _currentValue = view.CurrentValue.ToArray();
+                ReadOnlySpan<byte> slotValue = rlpWrapSlots
+                    ? view.CurrentValue.AsRlpValueContext().DecodeByteArraySpan()
+                    : view.CurrentValue;
+                // Mirror TryGetStorage: a slot value over 32 bytes means the encoding is mismatched (e.g. a
+                // marker-less DB read as raw). Fail loudly here too, rather than handing snap-sync healing a
+                // bad value that would build wrong trie nodes.
+                if (slotValue.Length > SlotValue.ByteCount) ThrowSlotValueTooLong(slotValue.Length, rlpWrapSlots);
+                _currentValue = slotValue.ToArray();
                 return true;
             }
             return false;
@@ -203,7 +237,8 @@ public static class BaseFlatPersistence
         ISortedKeyValueStore storageSnap,
         IWriteBatch state,
         IWriteBatch storage,
-        WriteFlags flags
+        WriteFlags flags,
+        bool rlpWrapSlots = false
     ) : BasePersistence.IHashedFlatWriteBatch
     {
         [SkipLocalsInit]
@@ -222,6 +257,7 @@ public static class BaseFlatPersistence
             state.Remove(key);
         }
 
+        [SkipLocalsInit]
         public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], addrHash, slotHash);
@@ -229,12 +265,37 @@ public static class BaseFlatPersistence
             if (slot.HasValue)
             {
                 ReadOnlySpan<byte> withoutLeadingZeros = slot.Value.AsSpan.WithoutLeadingZeros();
-                storage.PutSpan(theKey, withoutLeadingZeros, flags);
+                if (rlpWrapSlots)
+                {
+                    Span<byte> rlpBuffer = stackalloc byte[RlpSlotValueBufferSize];
+                    int written = Rlp.Encode(withoutLeadingZeros, rlpBuffer);
+                    storage.PutSpan(theKey, rlpBuffer[..written], flags);
+                }
+                else
+                {
+                    storage.PutSpan(theKey, withoutLeadingZeros, flags);
+                }
             }
             else
             {
                 storage.Remove(theKey);
             }
+        }
+
+        [SkipLocalsInit]
+        public void SetStorageEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
+        {
+            // The input is the trie leaf value, i.e. RLP(stripped), which is byte-identical to our on-disk format
+            // only when wrapping is on. In raw mode there is no verbatim shortcut, so this path is unsupported.
+            if (!rlpWrapSlots) throw new NotSupportedException("Encoded slot writes require RLP slot wrapping");
+
+            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], addrHash, slotHash);
+
+            // The bytes are stored verbatim — no decode + re-encode round-trip. The single DecodeByteArraySpan
+            // call validates canonical form and bounds the item exactly (trimming any trailing bytes).
+            Rlp.ValueDecoderContext ctx = new(rlpValue);
+            ctx.DecodeByteArraySpan();
+            storage.PutSpan(theKey, rlpValue[..ctx.Position], flags);
         }
 
         public void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> account)
