@@ -494,7 +494,7 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateBlocksDeletePointer(long.Max(blocksVal.AsRlpValueContext().DecodeLong(), _minDeletableBlockNumber));
+            UpdateBlocksDeletePointer(long.Max(new RlpReader(blocksVal).DecodeLong(), _minDeletableBlockNumber));
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
         }
 
@@ -503,7 +503,7 @@ public class HistoryPruner : IHistoryPruner
         // deleted alongside blocks in PruneBlocksAndReceipts. Default to the blocks pointer on first load.
         _balsDeletePointer = balsVal is null
             ? _blocksDeletePointer
-            : long.Max(balsVal.AsRlpValueContext().DecodeLong(), _blocksDeletePointer);
+            : long.Max(new RlpReader(balsVal).DecodeLong(), _blocksDeletePointer);
         _lastSavedBalsDeletePointer = balsVal is null ? long.MinValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
 

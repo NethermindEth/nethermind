@@ -35,40 +35,40 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
-        public static long StateTreeCache => _mainStateTreeCacheHits + _otherStateTreeCacheHits;
-        private static long _mainStateTreeCacheHits;
-        private static long _otherStateTreeCacheHits;
+        public static long StateTreeCache => _mainStateTreeCacheHits.Value + _otherStateTreeCacheHits.Value;
+        private static CacheLinePaddedLong _mainStateTreeCacheHits;
+        private static CacheLinePaddedLong _otherStateTreeCacheHits;
         // Exposed so consumers (e.g. ProcessingStats) can compute block-level deltas that exclude
         // background prewarmer activity, which runs with IsBlockProcessingThread = false.
-        internal static long MainThreadStateTreeCache => _mainStateTreeCacheHits;
-        internal static void IncrementStateTreeCacheHits() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeCacheHits : ref _otherStateTreeCacheHits);
+        internal static long MainThreadStateTreeCache => _mainStateTreeCacheHits.Value;
+        internal static void AddStateTreeCacheHits(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateTreeCacheHits.Value : ref _otherStateTreeCacheHits.Value, count);
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
-        public static long StateTreeReads => _mainStateTreeReads + _otherStateTreeReads;
-        private static long _mainStateTreeReads;
-        private static long _otherStateTreeReads;
-        internal static long MainThreadStateTreeReads => _mainStateTreeReads;
-        internal static void IncrementStateTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeReads : ref _otherStateTreeReads);
+        public static long StateTreeReads => _mainStateTreeReads.Value + _otherStateTreeReads.Value;
+        private static CacheLinePaddedLong _mainStateTreeReads;
+        private static CacheLinePaddedLong _otherStateTreeReads;
+        internal static long MainThreadStateTreeReads => _mainStateTreeReads.Value;
+        internal static void AddStateTreeReads(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateTreeReads.Value : ref _otherStateTreeReads.Value, count);
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]
-        public static long StateReaderReads => _mainStateReaderReads + _otherStateReaderReads;
-        private static long _mainStateReaderReads;
-        private static long _otherStateReaderReads;
-        internal static void IncrementStateReaderReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateReaderReads : ref _otherStateReaderReads);
+        public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Value;
+        private static CacheLinePaddedLong _mainStateReaderReads;
+        private static CacheLinePaddedLong _otherStateReaderReads;
+        internal static void IncrementStateReaderReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateReaderReads.Value : ref _otherStateReaderReads.Value);
 
         [CounterMetric]
         [Description("Number of state trie writes.")]
-        public static long StateTreeWrites => _stateTreeWrites;
-        private static long _stateTreeWrites;
-        internal static void IncrementStateTreeWrites(long value) => Interlocked.Add(ref _stateTreeWrites, value);
+        public static long StateTreeWrites => _stateTreeWrites.Value;
+        private static CacheLinePaddedLong _stateTreeWrites;
+        internal static void IncrementStateTreeWrites(long value) => Interlocked.Add(ref _stateTreeWrites.Value, value);
 
         [CounterMetric]
         [Description("Number of state trie writes skipped in net.")]
-        public static long StateSkippedWrites => _stateSkippedWrites;
-        private static long _stateSkippedWrites;
-        internal static void IncrementStateSkippedWrites(long value) => Interlocked.Add(ref _stateSkippedWrites, value);
+        public static long StateSkippedWrites => _stateSkippedWrites.Value;
+        private static CacheLinePaddedLong _stateSkippedWrites;
+        internal static void IncrementStateSkippedWrites(long value) => Interlocked.Add(ref _stateSkippedWrites.Value, value);
 
         [CounterMetric]
         [Description("Number of State DB duplicate writes during full pruning.")]
@@ -76,35 +76,37 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of storage trie cache hits.")]
-        public static long StorageTreeCache => _mainStorageTreeCache + _otherStorageTreeCache;
-        private static long _mainStorageTreeCache;
-        private static long _otherStorageTreeCache;
-        internal static long MainThreadStorageTreeCache => _mainStorageTreeCache;
-        internal static void IncrementStorageTreeCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeCache : ref _otherStorageTreeCache);
+        public static long StorageTreeCache => _mainStorageTreeCache.Value + _otherStorageTreeCache.Value;
+        private static CacheLinePaddedLong _mainStorageTreeCache;
+        private static CacheLinePaddedLong _otherStorageTreeCache;
+        internal static long MainThreadStorageTreeCache => _mainStorageTreeCache.Value;
+        internal static void AddStorageTreeCache(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageTreeCache.Value : ref _otherStorageTreeCache.Value, count);
 
         [CounterMetric]
         [Description("Number of storage trie reads.")]
-        public static long StorageTreeReads => _mainStorageTreeReads + _otherStorageTreeReads;
-        private static long _mainStorageTreeReads;
-        private static long _otherStorageTreeReads;
-        internal static long MainThreadStorageTreeReads => _mainStorageTreeReads;
-        internal static void IncrementStorageTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeReads : ref _otherStorageTreeReads);
+        public static long StorageTreeReads => _mainStorageTreeReads.Value + _otherStorageTreeReads.Value;
+        private static CacheLinePaddedLong _mainStorageTreeReads;
+        private static CacheLinePaddedLong _otherStorageTreeReads;
+        internal static long MainThreadStorageTreeReads => _mainStorageTreeReads.Value;
+        internal static void AddStorageTreeReads(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageTreeReads.Value : ref _otherStorageTreeReads.Value, count);
 
         [CounterMetric]
         [Description("Number of storage reader reads.")]
-        public static long StorageReaderReads { get; set; }
+        public static long StorageReaderReads => _storageReaderReads.Value;
+        private static CacheLinePaddedLong _storageReaderReads;
+        internal static void IncrementStorageReaderReads() => Interlocked.Increment(ref _storageReaderReads.Value);
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]
-        public static long StorageTreeWrites => _storageTreeWrites;
-        private static long _storageTreeWrites;
-        internal static void IncrementStorageTreeWrites(long value) => Interlocked.Add(ref _storageTreeWrites, value);
+        public static long StorageTreeWrites => _storageTreeWrites.Value;
+        private static CacheLinePaddedLong _storageTreeWrites;
+        internal static void IncrementStorageTreeWrites(long value) => Interlocked.Add(ref _storageTreeWrites.Value, value);
 
         [CounterMetric]
         [Description("Number of storage trie writes skipped in net.")]
-        public static long StorageSkippedWrites => _storageSkippedWrites;
-        private static long _storageSkippedWrites;
-        internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites, value);
+        public static long StorageSkippedWrites => _storageSkippedWrites.Value;
+        private static CacheLinePaddedLong _storageSkippedWrites;
+        internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites.Value, value);
 
         [GaugeMetric]
         [Description("Indicator if StateDb is being pruned.")]

@@ -177,7 +177,7 @@ public partial class EthRpcModuleTests
         byte[]? txBytes = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized).Result;
 
         Assert.That(txBytes, Is.Not.Null);
-        Rlp.ValueDecoderContext context = txBytes.AsRlpValueContext();
+        RlpReader context = new(txBytes);
         Transaction tx = TxDecoder.Instance.Decode(ref context, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         Assert.That(tx.IsInMempoolForm(), Is.True);
     }
@@ -2213,7 +2213,7 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverrideJson: null, optimize: true);
 
-        Assert.That(result["error"]!.Value<string>(), Is.EqualTo("revert"));
+        Assert.That(result["error"]!.Value<string>(), Is.EqualTo("execution reverted"));
         Assert.That(gasUsed, Is.EqualTo(77496));
         // AL must contain the newly created contract address with storage key 0x81.
         // Contract address is deterministic: keccak256(rlp([sender, nonce=0]))[12:]

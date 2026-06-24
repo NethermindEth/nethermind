@@ -45,11 +45,11 @@ public static class InputSerializer
         WriteUInt64(chainId, output, ref offset);
         WriteInt32(blockLen, output, ref offset);
 
-        RlpStream rlpStream = new(output) { Position = offset };
-        blockDecoder.Encode(rlpStream, block, RlpBehaviors.None);
+        RlpWriter rlpWriter = new(output.AsSpan(offset, blockLen));
+        blockDecoder.Encode(ref rlpWriter, block, RlpBehaviors.None);
         offset += blockLen;
 
-        if (rlpStream.Position != offset)
+        if (rlpWriter.Position != blockLen)
             throw new InvalidDataException("Unexpected block RLP length");
 
         WriteJaggedArray(witness.Codes, codesLen, output, ref offset);
@@ -84,7 +84,7 @@ public static class InputSerializer
         int blockLength = ReadInt32(input, ref offset);
 
         IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!; // cannot be null
-        Rlp.ValueDecoderContext blockContext = new(input.Slice(offset, blockLength));
+        RlpReader blockContext = new(input.Slice(offset, blockLength));
         Block block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
         blockContext.Check(blockLength);
         offset += blockLength;

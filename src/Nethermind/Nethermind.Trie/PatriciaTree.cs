@@ -1069,8 +1069,8 @@ namespace Nethermind.Trie
                 {
                     ReadOnlySpan<byte> bytes = Get(address.Bytes, root);
                     if (bytes.IsEmpty) return Keccak.EmptyTreeHash;
-                    Rlp.ValueDecoderContext valueContext = bytes.AsRlpValueContext();
-                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
+                    RlpReader valueReader = new(bytes);
+                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueReader);
                 }
 
                 rootHash = storageRoot ?? DecodeStorageRoot(rootHash, storageAddr);

@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution.IO;
 
@@ -149,17 +150,19 @@ public static class StatelessExecutor
 
     private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
     {
-        if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider))
-            throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
+        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider);
 
-        // Empty arrays mean ActiveFork was omitted — use the base provider as-is.
+        // No ActiveFork: nothing to pin, so use the chain's own schedule; an unknown chain id can't proceed.
         if (chainConfig.ActiveFork.Fork == 0 &&
             chainConfig.ActiveFork.Activation.BlockNumber.Length == 0 &&
             chainConfig.ActiveFork.Activation.Timestamp.Length == 0)
         {
-            return baseProvider;
+            return baseProvider ?? throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
         }
 
-        return StatelessSpecProvider.Create(baseProvider, chainConfig.ActiveFork);
+        // ActiveFork pins the spec by name on any compatible schedule; unknown chains (e.g. devnets) use Mainnet rules.
+        baseProvider ??= MainnetSpecProvider.Instance;
+
+        return StatelessSpecProvider.Create(baseProvider, chainConfig.ChainId, chainConfig.ActiveFork);
     }
 }
