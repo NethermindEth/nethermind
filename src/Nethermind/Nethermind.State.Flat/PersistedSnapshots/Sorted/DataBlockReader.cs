@@ -49,6 +49,11 @@ internal static class DataBlockReader
     /// <see cref="Bound"/>. Returns <c>false</c> when the block is empty or every key is
     /// &lt; <paramref name="target"/>.
     /// </summary>
+    /// <remarks>A data block normally fits within one <see cref="SortedTable.BlockSize"/> page, so the page
+    /// is pinned once and the search runs over a <see cref="SpanByteReader"/> on the pinned span — a
+    /// copy-on-pin reader does a single read instead of one per record and field. A block whose records
+    /// reach past the pinned page (not expected for a well-formed data block) is searched straight through
+    /// <paramref name="reader"/> instead, so it is still read in full.</remarks>
     internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
         scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf, out int keyLen, out Bound value)
         where TPin : struct, IBufferPin, allows ref struct
@@ -57,9 +62,42 @@ internal static class DataBlockReader
         keyLen = 0;
         value = default;
 
+        long remaining = reader.Length - blockStart;
+        if (remaining <= 0) return false;
+        long pageLen = remaining < SortedTable.BlockSize ? remaining : SortedTable.BlockSize;
+
+        using TPin pagePin = reader.PinBuffer(new Bound(blockStart, pageLen));
+        SpanByteReader page = new(pagePin.Buffer);
+
+        // Read and validate the header once from the pinned page; the core search reuses it.
         Header header = default;
-        if (!reader.TryRead(blockStart, MemoryMarshal.AsBytes(new Span<Header>(ref header)))) return false;
+        if (!page.TryRead(0, MemoryMarshal.AsBytes(new Span<Header>(ref header)))) return false;
         if (header.Flag != Block.FlagBlock || header.NumRestarts == 0) return false;
+
+        // Whole block in the pinned page ⇒ search the span; otherwise fall back to the original reader.
+        if (header.RecordsEnd <= pageLen)
+        {
+            if (!SeekCeilingCore<SpanByteReader, NoOpPin>(in page, 0, in header, target, keyBuf, out keyLen, out Bound local))
+                return false;
+            // local.Offset is page-relative; lift it back to reader-absolute for the caller.
+            value = new Bound(blockStart + local.Offset, local.Length);
+            return true;
+        }
+
+        return SeekCeilingCore<TReader, TPin>(in reader, blockStart, in header, target, keyBuf, out keyLen, out value);
+    }
+
+    /// <summary>Restart binary search then forward scan over the data block at <paramref name="blockStart"/>
+    /// described by the already-parsed <paramref name="header"/> (<see cref="Block.FlagBlock"/>,
+    /// <c>NumRestarts &gt; 0</c>), reading through <paramref name="reader"/>. The returned value
+    /// <see cref="Bound"/> is in <paramref name="reader"/> coordinates.</summary>
+    private static bool SeekCeilingCore<TReader, TPin>(scoped in TReader reader, long blockStart, in Header header,
+        scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf, out int keyLen, out Bound value)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
+    {
+        keyLen = 0;
+        value = default;
 
         long restartTableStart = blockStart + Unsafe.SizeOf<Header>();
         long end = blockStart + header.RecordsEnd;
