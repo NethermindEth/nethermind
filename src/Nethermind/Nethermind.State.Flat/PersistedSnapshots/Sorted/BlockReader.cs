@@ -67,9 +67,8 @@ internal static class BlockReader
         keyLen = 0;
         value = default;
 
-        Span<byte> hbuf = stackalloc byte[Unsafe.SizeOf<Header>()];
-        if (!reader.TryRead(blockStart, hbuf)) return false;
-        Header header = MemoryMarshal.Read<Header>(hbuf);
+        Header header = default;
+        if (!reader.TryRead(blockStart, MemoryMarshal.AsBytes(new Span<Header>(ref header)))) return false;
         if (header.Flag != Block.FlagBlock || header.NumRestarts == 0) return false;
 
         long restartTableStart = blockStart + Unsafe.SizeOf<Header>();

@@ -51,9 +51,8 @@ internal static class IndexBlockReader
         keyLen = 0;
         byteOffset = 0;
 
-        Span<byte> hbuf = stackalloc byte[Unsafe.SizeOf<Header>()];
-        if (!reader.TryRead(blockStart, hbuf)) return false;
-        Header header = MemoryMarshal.Read<Header>(hbuf);
+        Header header = default;
+        if (!reader.TryRead(blockStart, MemoryMarshal.AsBytes(new Span<Header>(ref header)))) return false;
         if (header.Flag != Block.FlagIndex || header.NumRestarts == 0) return false;
 
         long restartTableStart = blockStart + Unsafe.SizeOf<Header>();
