@@ -48,7 +48,7 @@ public static class StatelessExecutor
         {
             try
             {
-                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
+                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig, payload.Block.Header);
                 IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
                 Mark("M3 spec-ready");
 #if !ZK_EVM
@@ -148,8 +148,22 @@ public static class StatelessExecutor
         return true;
     }
 
-    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
+    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig, BlockHeader header)
     {
+        // Real mainnet block: use the code-based MainnetSpecProvider directly and ignore the input's
+        // baked ActiveFork. Two reasons: (1) ChainSpecBasedSpecProvider builds its fork/blob-schedule
+        // transitions via reflection (GetProperties/GetValue), which the trimmed bflat AOT guest strips,
+        // dropping the BPO blob-schedule overrides; (2) StatelessInputGen bakes ActiveFork+BlobSchedule
+        // computed from that same broken provider, so a post-BPO block carries prague-era blob params
+        // (wrong TargetBlobCount/BlobBaseFeeUpdateFraction → wrong excess blob gas / blob base fee).
+        // MainnetSpecProvider resolves BPO forks correctly without reflection. EEST synthetic tests reuse
+        // chain_id 1 with forks pinned at time 0 and a tiny timestamp, so gate on a post-genesis
+        // timestamp to keep those on the ActiveFork-pinning path below.
+        if (chainConfig.ChainId == BlockchainIds.Mainnet && header.Timestamp >= MainnetSpecProvider.GenesisBlockTimestamp)
+        {
+            return MainnetSpecProvider.Instance;
+        }
+
         ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider);
 
         // No ActiveFork: nothing to pin, so use the chain's own schedule; an unknown chain id can't proceed.
