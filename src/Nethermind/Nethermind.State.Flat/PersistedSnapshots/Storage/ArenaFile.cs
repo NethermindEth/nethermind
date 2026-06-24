@@ -206,6 +206,15 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     }
 
     /// <summary>
+    /// Volatile single-byte read at <paramref name="offset"/> within this arena's mmap. Used by
+    /// the keep-warm path to refresh the kernel's LRU position on a resident page. Caller must
+    /// hold a lease (<see cref="TryAcquireLease"/>) so <see cref="BasePtr"/> stays valid for the
+    /// duration of the read — unlike <see cref="AdviseDontNeed"/>, a userspace load on a torn-down
+    /// mapping would SIGSEGV instead of returning a syscall error.
+    /// </summary>
+    public byte TouchByte(long offset) => Volatile.Read(ref *(_basePtr + offset));
+
+    /// <summary>
     /// posix_fadvise(POSIX_FADV_DONTNEED) on the underlying file descriptor for the
     /// page-aligned subrange of <c>[offset, offset+size)</c>. Drops the corresponding
     /// pages from the OS file cache. Redundant with <see cref="AdviseDontNeed"/> on

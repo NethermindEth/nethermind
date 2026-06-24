@@ -70,6 +70,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Estimated-size threshold (bytes) at or above which a persisted-snapshot arena write goes to its own dedicated file instead of being packed into a shared arena.", DefaultValue = "1073741824")]
     long PersistedSnapshotDedicatedArenaThresholdBytes { get; set; }
 
+    [ConfigItem(Description = "Page-cache budget (bytes) for the persisted-snapshot arena. Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker.", DefaultValue = "4294967296")]
+    long PersistedSnapshotArenaPageCacheBytes { get; set; }
+
     [ConfigItem(Description = "When reclaiming dead persisted-snapshot arena ranges — metadata reservation cleanup and blob-file frontier reset — call fallocate(FALLOC_FL_PUNCH_HOLE) to free the underlying disk blocks. Linux-only; automatically and permanently disabled per arena pool if the filesystem reports the operation unsupported. Set false to skip hole-punching entirely (the page-cache posix_fadvise still runs).", DefaultValue = "true")]
     bool PersistedSnapshotPunchHoleOnReclaim { get; set; }
 

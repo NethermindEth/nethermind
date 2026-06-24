@@ -150,6 +150,7 @@ public class StorageLayerTests
         string arenaDir = Path.Combine(_testDir, "arenas");
         using ArenaManager manager = new(arenaDir, new FlatDbConfig
         {
+            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = 4096,
         }, LimboLogs.Instance);
         manager.Initialize([]);
@@ -180,6 +181,7 @@ public class StorageLayerTests
         // 64 KiB so two page-aligned reservations fit in one shared arena file.
         using ArenaManager manager = new(arenaDir, new FlatDbConfig
         {
+            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = 64 * 1024,
         }, LimboLogs.Instance);
         manager.Initialize([]);
@@ -221,6 +223,7 @@ public class StorageLayerTests
         // 64 KiB so two page-aligned reservations fit in one shared arena file.
         using ArenaManager manager = new(arenaDir, new FlatDbConfig
         {
+            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = 64 * 1024,
         }, LimboLogs.Instance);
         manager.Initialize([]);
@@ -258,6 +261,7 @@ public class StorageLayerTests
         // Lower the dedicated threshold so the test doesn't need to allocate 512 MiB.
         using ArenaManager manager = new(arenaDir, new FlatDbConfig
         {
+            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = 4096,
             PersistedSnapshotDedicatedArenaThresholdBytes = 64 * 1024,
         }, LimboLogs.Instance);
@@ -287,6 +291,7 @@ public class StorageLayerTests
         string arenaDir = Path.Combine(_testDir, "arenas");
         using ArenaManager manager = new(arenaDir, new FlatDbConfig
         {
+            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = 200,
         }, LimboLogs.Instance);
         manager.Initialize([]);
@@ -314,6 +319,7 @@ public class StorageLayerTests
         // Ample headroom: without pool separation all three writes would pack into one file.
         using ArenaManager manager = new(arenaDir, new FlatDbConfig
         {
+            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = 64 * 1024,
         }, LimboLogs.Instance);
         manager.Initialize([]);
@@ -336,6 +342,7 @@ public class StorageLayerTests
         string arenaDir = Path.Combine(_testDir, "arenas");
         FlatDbConfig config = new()
         {
+            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = 64 * 1024,
         };
         byte[] data = [9, 8, 7, 6, 5];
