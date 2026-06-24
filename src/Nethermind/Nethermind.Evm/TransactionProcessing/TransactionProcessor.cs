@@ -743,6 +743,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
             int refunds = 0;
             authBaseRefunds = 0;
+            // Tracks each authority's delegation status as of tx start, so AUTH_BASE refills can
+            // distinguish a delegation that pre-existed the tx from one installed by an earlier
+            // authorization within the same tx.
+            Dictionary<Address, bool>? delegatedBeforeTx = null;
             foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
             {
                 Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
@@ -762,8 +766,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     bool accountExists = WorldState.AccountExists(authority);
-                    bool hasDelegation = accountExists && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
+                    // Current delegation status, i.e. as left by any earlier authorization in this tx.
+                    bool nowDelegated = accountExists && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
                     bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
+
+                    // The first time an authority is seen, its current status is its tx-start status.
+                    delegatedBeforeTx ??= [];
+                    if (!delegatedBeforeTx.TryGetValue(authority, out bool delegatedBefore))
+                    {
+                        delegatedBefore = nowDelegated;
+                        delegatedBeforeTx[authority] = delegatedBefore;
+                    }
 
                     if (!accountExists)
                     {
@@ -775,7 +788,16 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    if (hasDelegation || clearsDelegation)
+                    // EIP-7702/EIP-8038 AUTH_BASE refill (EELS set_delegation): clearing always refills
+                    // AUTH_BASE, plus a second refill when the cleared delegation was installed earlier in
+                    // THIS tx (delegated now but not at tx start). Setting refills AUTH_BASE when the slot
+                    // already holds a delegation either now or at tx start.
+                    if (clearsDelegation)
+                    {
+                        authBaseRefunds++;
+                        if (nowDelegated && !delegatedBefore) authBaseRefunds++;
+                    }
+                    else if (nowDelegated || delegatedBefore)
                     {
                         authBaseRefunds++;
                     }
