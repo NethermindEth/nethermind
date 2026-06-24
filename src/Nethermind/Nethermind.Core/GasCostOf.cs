@@ -93,7 +93,7 @@ namespace Nethermind.Core
         public const long MinModExpEip7883 = 500; // eip-7883
 
         // eip-2780: reduce intrinsic transaction gas and reprice state-touching primitives.
-        public const long TransactionEip2780 = 4500; // TX_BASE_COST = 3000 ECRECOVER + 1000 STATE_UPDATE + 500 sender cold no-code
+        public const long TransactionEip2780 = 4500; // TX_BASE_COST = 3000 (ECRECOVER) + StateUpdateEip2780 + ColdAccountAccessNoCodeEip2780 (sender cold no-code)
         public const long StateUpdateEip2780 = 1000; // one account-leaf write (nonce/balance coalesced)
         public const long ColdAccountAccessNoCodeEip2780 = 500; // cold touch of an account known to have no code
         public const long TransferLogEip2780 = 1756; // eip-7708 LOG3 transfer event: 375 + 3*375 + 32*8
