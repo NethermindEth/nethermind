@@ -235,7 +235,10 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
 
-            Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular));
+            // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000; the value-bearing recipient touch adds
+            // COLD_ACCOUNT_ACCESS + TRANSFER_LOG + TX_VALUE; the authorization adds ACCOUNT_WRITE + base.
+            long recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+            Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular));
             Assert.That(intrinsicGas.Standard.StateReservoir, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
         }
 
@@ -247,7 +250,9 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            long expectedRegular = GasCostOf.Transaction + GasCostOf.CreateRegular;
+            // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000, create regular = CREATE_ACCESS (+ TRANSFER_LOG
+            // for the value endowment), create state = NEW_ACCOUNT.
+            long expectedRegular = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780;
             long expectedState = GasCostOf.CreateState;
             Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
             Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
@@ -261,7 +266,9 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            long expectedRegular = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular;
+            // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000; value-bearing recipient touch + authorization.
+            long recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+            long expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular;
             long expectedState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
             Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
         }
@@ -275,7 +282,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            long regularPlusState = GasCostOf.Transaction + GasCostOf.CreateRegular + GasCostOf.CreateState;
+            long regularPlusState = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780 + GasCostOf.CreateState;
             Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regularPlusState));
         }
 

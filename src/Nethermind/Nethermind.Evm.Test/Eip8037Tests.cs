@@ -183,11 +183,14 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         IntrinsicGas<EthereumGasPolicy> splitIntrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
-        long accessListBaseCost = GasCostOf.AccessAccountListEntry + 3 * GasCostOf.AccessStorageListEntry;
+        // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000; access-list entries repriced to COLD_ACCOUNT_ACCESS /
+        // COLD_STORAGE_ACCESS; the value-bearing recipient touch adds COLD_ACCOUNT_ACCESS + TRANSFER_LOG + TX_VALUE.
+        long recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+        long accessListBaseCost = Eip8038Constants.AccessListAddressCost + 3 * Eip8038Constants.AccessListStorageKeyCost;
         long accessListFloorTokens = (20L + 3 * 32L) * Amsterdam.Instance.GasCosts.TxDataNonZeroMultiplier;
         long accessListFloorCost = accessListFloorTokens * Amsterdam.Instance.GasCosts.TotalCostFloorPerToken;
-        long expectedRegular = GasCostOf.Transaction + accessListBaseCost + accessListFloorCost;
-        long expectedFloorGas = GasCostOf.Transaction + accessListFloorCost;
+        long expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + accessListBaseCost + accessListFloorCost;
+        long expectedFloorGas = GasCostOf.TransactionEip2780 + accessListFloorCost;
 
         Assert.That(splitIntrinsicGas.Standard.Value, Is.EqualTo(expectedRegular));
         Assert.That(splitIntrinsicGas.Standard.StateReservoir, Is.Zero);
@@ -270,22 +273,23 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Code_insert_state_refund_is_available_to_later_state_gas()
+    public void Code_insert_refund_credits_regular_gas_not_state_under_eip8038()
     {
-        const long intrinsicAuthState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
+        // EIP-8038: the per-authorization code-insert (EIP-7702 existing-authority) refund returns the
+        // worst-case ACCOUNT_WRITE to the regular-gas refund counter and leaves the state-gas dimension
+        // untouched (the NEW_ACCOUNT / AUTH_BASE state refunds are applied separately, pre-execution).
         EthereumGasPolicy gas = new()
         {
-            Value = 2 * GasCostOf.SSetState - GasCostOf.NewAccountState,
-            StateGasUsed = intrinsicAuthState,
+            Value = 0,
+            StateReservoir = 0,
+            StateGasUsed = GasCostOf.PerAuthBaseState,
         };
 
-        long regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, intrinsicAuthState);
-        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState), Is.True);
-        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState), Is.True);
+        long regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, stateGasFloor: 0);
 
-        Assert.That(regularRefund, Is.Zero);
+        Assert.That(regularRefund, Is.EqualTo(Eip8038Constants.AccountWrite));
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
-            Is.EqualTo((0L, 0L, GasCostOf.PerAuthBaseState + 2 * GasCostOf.SSetState, 2 * GasCostOf.SSetState - GasCostOf.NewAccountState)));
+            Is.EqualTo((0L, 0L, GasCostOf.PerAuthBaseState, 0L)));
     }
 
     [Test]
