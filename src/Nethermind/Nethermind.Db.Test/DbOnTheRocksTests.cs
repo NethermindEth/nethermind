@@ -499,8 +499,8 @@ namespace Nethermind.Db.Test
                 Assert.That(options.EnableBatchGrouping, Is.True);
                 Assert.That(options.EnableAppend, Is.True);
                 Assert.That(options.DisableWalSyncMode, Is.EqualTo(MdbxTuningOptions.DefaultDisableWalSyncMode));
-                Assert.That(options.SyncBytes, Is.Zero);
-                Assert.That(options.SyncPeriodSeconds, Is.Zero);
+                Assert.That(options.SyncBytes, Is.EqualTo(MdbxTuningOptions.DefaultSafeNoSyncSyncBytes));
+                Assert.That(options.SyncPeriodSeconds, Is.EqualTo(MdbxTuningOptions.DefaultSafeNoSyncSyncPeriodSeconds));
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupOperations));
                 Assert.That(options.MaxBatchGroupBytes, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupBytes));
                 Assert.That(options.GrowthStep, Is.EqualTo(MdbxTuningOptions.DefaultGrowthStep));

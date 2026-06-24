@@ -54,7 +54,7 @@ internal readonly record struct MdbxTuningOptions(
     public const long DefaultStateDirtyPagesReserveBytes = 1L << 30;
     public const long DefaultStateTransactionDirtyPagesLimitBytes = 1L << 30;
     public const long DefaultStateTransactionDirtyPagesInitialBytes = 128L << 20;
-    public const MdbxDisableWalSyncMode DefaultDisableWalSyncMode = MdbxDisableWalSyncMode.NoMetaSync;
+    public const MdbxDisableWalSyncMode DefaultDisableWalSyncMode = MdbxDisableWalSyncMode.SafeNoSync;
     public const long DefaultSafeNoSyncSyncBytes = 1L << 30;
     public const int DefaultSafeNoSyncSyncPeriodSeconds = 30;
     public const int MaxSyncPeriodSeconds = ushort.MaxValue;
