@@ -252,7 +252,9 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            if (FullSyncBlocksDownloaded.TargetValue - FullSyncBlocksDownloaded.CurrentValue < 32)
+            // Guard against ulong wrap when CurrentValue transiently exceeds TargetValue near
+            // sync completion; the intent is "suppress logs within 32 blocks of target".
+            if (FullSyncBlocksDownloaded.CurrentValue + 32 > FullSyncBlocksDownloaded.TargetValue)
             {
                 return;
             }

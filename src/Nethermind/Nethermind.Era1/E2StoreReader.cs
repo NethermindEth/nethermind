@@ -119,8 +119,12 @@ public class E2StoreReader : IDisposable
 
         if (_fileLength < 32) throw new EraFormatException("Invalid era file. Too small to contain index.");
 
-        // Read the block count
-        _blockCount = ReadUInt64(_fileLength - IndexSectionCount);
+        // count and starting_number are int64 on disk per the era1 spec; validate >= 0 here so a
+        // malformed file fails parsing with EraFormatException instead of reinterpreting the high
+        // bit as a huge ulong and only surfacing as a misleading ArgumentOutOfRangeException later.
+        long blockCount = ReadInt64(_fileLength - IndexSectionCount);
+        if (blockCount < 0) throw new EraFormatException($"Invalid era file: negative block count {blockCount}.");
+        _blockCount = (ulong)blockCount;
 
         // <starting block> + <offsets> * 8 + <count>
         int indexLength = IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
@@ -128,7 +132,9 @@ public class E2StoreReader : IDisposable
         // Verify that its a block index
         _ = ReadEntry(_fileLength - indexLength - HeaderSize, EntryTypes.BlockIndex);
 
-        _startBlock = ReadUInt64(_fileLength - indexLength);
+        long startBlock = ReadInt64(_fileLength - indexLength);
+        if (startBlock < 0) throw new EraFormatException($"Invalid era file: negative starting block number {startBlock}.");
+        _startBlock = (ulong)startBlock;
     }
 
     public ulong First
