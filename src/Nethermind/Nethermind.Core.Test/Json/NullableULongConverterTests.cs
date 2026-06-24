@@ -69,42 +69,4 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
             Assert.That(deserialized, Is.EqualTo(value), $"Roundtrip failed for nibbles={nibbles}, value=0x{value:x}");
         }
     }
-
-    // EIP-1474: leading zeros in QUANTITY hex strings are rejected in strict mode.
-    [NonParallelizable]
-    [TestCase("\"0x0b\"")]
-    [TestCase("\"0x00\"")]
-    [TestCase("\"0x0ff\"")]
-    public void Strict_rejects_leading_zero(string json)
-    {
-        bool original = EthereumJsonSerializer.StrictHexFormat;
-        try
-        {
-            EthereumJsonSerializer.StrictHexFormat = true;
-            Assert.That(() => JsonSerializer.Deserialize<ulong?>(json, options), Throws.InstanceOf<FormatException>());
-        }
-        finally
-        {
-            EthereumJsonSerializer.StrictHexFormat = original;
-        }
-    }
-
-    [NonParallelizable]
-    [TestCase("\"0x0\"", 0UL)]
-    [TestCase("\"0xb\"", 11UL)]
-    [TestCase("\"0xff\"", 255UL)]
-    public void Strict_accepts_valid_quantity(string json, ulong expected)
-    {
-        bool original = EthereumJsonSerializer.StrictHexFormat;
-        try
-        {
-            EthereumJsonSerializer.StrictHexFormat = true;
-            ulong? result = JsonSerializer.Deserialize<ulong?>(json, options);
-            Assert.That(result, Is.EqualTo(expected));
-        }
-        finally
-        {
-            EthereumJsonSerializer.StrictHexFormat = original;
-        }
-    }
 }

@@ -12,9 +12,12 @@ namespace Nethermind.Evm;
 
 public class BlockOverride
 {
+    [JsonConverter(typeof(NullableQuantityULongConverter))]
     public ulong? Number { get; set; }
     public Hash256? PrevRandao { get; set; }
+    [JsonConverter(typeof(NullableQuantityULongConverter))]
     public ulong? Time { get; set; }
+    [JsonConverter(typeof(NullableQuantityULongConverter))]
     public ulong? GasLimit { get; set; }
     public Address? FeeRecipient { get; set; }
     [JsonConverter(typeof(NullableQuantityUInt256Converter))]
