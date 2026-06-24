@@ -332,12 +332,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         long refundableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
         long appliedRefund = Math.Min(amount, refundableStateGas);
+        long toGasLeft = 0;
         if (trackSpillRefund)
         {
-            TrackStateGasSpillRefund(ref gas, appliedRefund);
+            // Source-based LIFO refill (EELS credit_state_gas_refund): a state-gas refund returns to the
+            // pools the charge drew from — gas_left first, up to the amount that spilled, then the
+            // reservoir. Crediting spilled gas back to gas_left (not the reservoir) keeps the runtime
+            // reservoir at the value the spec expects, so e.g. a reverted sub-frame that spilled its
+            // SSTORE state gas does not leave the caller's reservoir inflated.
+            toGasLeft = Math.Min(appliedRefund, GetUnrefundedStateGasSpill(in gas));
+            gas.StateGasSpillRefunded += toGasLeft;
         }
 
-        gas.StateReservoir += appliedRefund;
+        gas.Value += toGasLeft;
+        gas.StateReservoir += appliedRefund - toGasLeft;
         gas.StateGasUsed -= appliedRefund;
     }
 
