@@ -8,6 +8,7 @@ using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
@@ -33,12 +34,16 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 public class SnapProviderTests
 {
 
-    private ContainerBuilder CreateContainerBuilder(TestSyncConfig? testSyncConfig = null) =>
+    private ContainerBuilder CreateContainerBuilder(
+        TestSyncConfig? testSyncConfig = null,
+        Func<INodeStorage, ILogManager, ISnapTrieFactory>? factoryCreator = null) =>
         new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(testSyncConfig ?? new TestSyncConfig()));
+            .AddModule(new TestSynchronizerModule(testSyncConfig ?? new TestSyncConfig(), factoryCreator));
 
-    private IContainer CreateContainer(TestSyncConfig? testSyncConfig = null) =>
-        CreateContainerBuilder(testSyncConfig).Build();
+    private IContainer CreateContainer(
+        TestSyncConfig? testSyncConfig = null,
+        Func<INodeStorage, ILogManager, ISnapTrieFactory>? factoryCreator = null) =>
+        CreateContainerBuilder(testSyncConfig, factoryCreator).Build();
 
     [Test]
     public void AddAccountRange_AccountListIsEmpty_ThrowArgumentException()
@@ -172,6 +177,91 @@ public class SnapProviderTests
         Assert.That(snapProvider.AddStorageRangeForAccount(
             storageRange, 0, slots,
             new ByteArrayListAdapter(proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray().ToPooledList())), Is.EqualTo(AddRangeResult.OK));
+    }
+
+    [Test]
+    public void AddStorageRange_ParallelPath_ReturnsLastAccountResult()
+    {
+        Hash256 firstRoot = TestItem.KeccakA;
+        Hash256 secondRoot = TestItem.KeccakB;
+        using IContainer container = CreateContainer(
+            new TestSyncConfig()
+            {
+                SnapSyncStorageRangeParallelism = 2
+            },
+            (_, _) => new RecordingSnapTrieFactory(
+                new PathRoot(TestItem.KeccakA, firstRoot),
+                new PathRoot(TestItem.KeccakB, secondRoot)));
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        using StorageRange storage = CreateStorageRange(firstRoot, secondRoot);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = CreateStorageResponse(
+                CreateSlots(ValueKeccak.MaxValue, ValueKeccak.Zero),
+                CreateSlots(ValueKeccak.Zero)),
+            Proofs = EmptyByteArrayList.Instance
+        };
+
+        Assert.That(snapProvider.AddStorageRange(storage, response), Is.EqualTo(AddRangeResult.OK));
+    }
+
+    [Test]
+    public void AddStorageRange_ParallelPath_DisposesResponseAfterProcessing()
+    {
+        Hash256 firstRoot = TestItem.KeccakA;
+        Hash256 secondRoot = TestItem.KeccakB;
+        using IContainer container = CreateContainer(
+            new TestSyncConfig()
+            {
+                SnapSyncStorageRangeParallelism = 2
+            },
+            (_, _) => new RecordingSnapTrieFactory(
+                new PathRoot(TestItem.KeccakA, firstRoot),
+                new PathRoot(TestItem.KeccakB, secondRoot)));
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        using StorageRange storage = CreateStorageRange(firstRoot, secondRoot);
+        CountingOwnedReadOnlyList<PathWithStorageSlot> firstSlots = CreateSlots(ValueKeccak.Zero);
+        CountingOwnedReadOnlyList<PathWithStorageSlot> secondSlots = CreateSlots(ValueKeccak.Zero);
+        CountingByteArrayList proofs = new();
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = CreateStorageResponse(firstSlots, secondSlots),
+            Proofs = proofs
+        };
+
+        Assert.That(snapProvider.AddStorageRange(storage, response), Is.EqualTo(AddRangeResult.OK));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstSlots.DisposeCount, Is.EqualTo(1));
+            Assert.That(secondSlots.DisposeCount, Is.EqualTo(1));
+            Assert.That(proofs.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void AddStorageRange_ParallelPath_UnwrapsObjectDisposedException()
+    {
+        using IContainer container = CreateContainer(
+            new TestSyncConfig()
+            {
+                SnapSyncStorageRangeParallelism = 2
+            },
+            (_, _) => new DisposedSnapTrieFactory());
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        using StorageRange storage = CreateStorageRange(TestItem.KeccakA, TestItem.KeccakB);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = CreateStorageResponse(
+                CreateSlots(ValueKeccak.Zero),
+                CreateSlots(ValueKeccak.Zero)),
+            Proofs = EmptyByteArrayList.Instance
+        };
+
+        Assert.That(() => snapProvider.AddStorageRange(storage, response), Throws.TypeOf<ObjectDisposedException>());
     }
 
     [Test]
@@ -493,6 +583,133 @@ public class SnapProviderTests
         return (ss, st.RootHash);
     }
 
+    private static StorageRange CreateStorageRange(Hash256 firstStorageRoot, Hash256 secondStorageRoot) =>
+        new()
+        {
+            StartingHash = ValueKeccak.Zero,
+            LimitHash = ValueKeccak.MaxValue,
+            Accounts = new ArrayPoolList<PathWithAccount>(2)
+            {
+                new(TestItem.KeccakA, new Account(0, 1).WithChangedStorageRoot(firstStorageRoot)),
+                new(TestItem.KeccakB, new Account(0, 1).WithChangedStorageRoot(secondStorageRoot))
+            }
+        };
+
+    private static CountingOwnedReadOnlyList<PathWithStorageSlot> CreateSlots(params ValueHash256[] paths)
+    {
+        PathWithStorageSlot[] slots = new PathWithStorageSlot[paths.Length];
+        for (int i = 0; i < paths.Length; i++)
+        {
+            slots[i] = new PathWithStorageSlot(paths[i], []);
+        }
+
+        return new CountingOwnedReadOnlyList<PathWithStorageSlot>(slots);
+    }
+
+    private static CountingOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> CreateStorageResponse(params IOwnedReadOnlyList<PathWithStorageSlot>[] slots) =>
+        new(slots);
+
+    private readonly record struct PathRoot(ValueHash256 Path, Hash256 RootHash);
+
+    private sealed class RecordingSnapTrieFactory(params PathRoot[] storageRoots) : ISnapTrieFactory
+    {
+        public ISnapTree<PathWithAccount> CreateStateTree() =>
+            throw new NotSupportedException();
+
+        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
+        {
+            for (int i = 0; i < storageRoots.Length; i++)
+            {
+                if (storageRoots[i].Path == accountPath)
+                {
+                    return new FixedRootSnapStorageTree(storageRoots[i].RootHash);
+                }
+            }
+
+            throw new InvalidOperationException($"Unexpected storage account path {accountPath}");
+        }
+    }
+
+    private sealed class FixedRootSnapStorageTree(Hash256 rootHash) : ISnapTree<PathWithStorageSlot>
+    {
+        public Hash256 RootHash { get; private set; } = Keccak.Zero;
+
+        public void SetRootFromProof(TrieNode root)
+        {
+        }
+
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
+            false;
+
+        public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries) =>
+            RootHash = rootHash;
+
+        public void Commit(ValueHash256 upperBound)
+        {
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class DisposedSnapTrieFactory : ISnapTrieFactory
+    {
+        public ISnapTree<PathWithAccount> CreateStateTree() =>
+            throw new NotSupportedException();
+
+        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath) =>
+            new DisposedSnapStorageTree();
+    }
+
+    private sealed class DisposedSnapStorageTree : ISnapTree<PathWithStorageSlot>
+    {
+        public Hash256 RootHash => Keccak.Zero;
+
+        public void SetRootFromProof(TrieNode root)
+        {
+        }
+
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
+            false;
+
+        public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries) =>
+            throw new ObjectDisposedException(nameof(DisposedSnapStorageTree));
+
+        public void Commit(ValueHash256 upperBound)
+        {
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class CountingOwnedReadOnlyList<T>(params T[] items) : IOwnedReadOnlyList<T>
+    {
+        public int Count => items.Length;
+        public int DisposeCount { get; private set; }
+
+        public T this[int index] => items[index];
+
+        public ReadOnlySpan<T> AsSpan() =>
+            items;
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            for (int i = 0; i < items.Length; i++)
+            {
+                yield return items[i];
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() =>
+            GetEnumerator();
+
+        public void Dispose() =>
+            DisposeCount++;
+    }
+
     private sealed class MutableNodeStorage(CountingReadSnapshot? snapshot) : INodeStorage, INodeStorageWithReadSnapshot
     {
         public INodeStorage.KeyScheme Scheme { get; set; }
@@ -563,6 +780,16 @@ public class SnapProviderTests
         public int Count => 1;
         public int DisposeCount { get; private set; }
         public ReadOnlySpan<byte> this[int index] => index == 0 ? item : throw new IndexOutOfRangeException();
+
+        public void Dispose() =>
+            DisposeCount++;
+    }
+
+    private sealed class CountingByteArrayList : IByteArrayList
+    {
+        public int Count => 0;
+        public int DisposeCount { get; private set; }
+        public ReadOnlySpan<byte> this[int index] => throw new IndexOutOfRangeException();
 
         public void Dispose() =>
             DisposeCount++;

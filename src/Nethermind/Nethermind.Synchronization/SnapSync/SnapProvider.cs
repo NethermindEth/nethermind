@@ -7,7 +7,9 @@ using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -19,13 +21,16 @@ using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager) : ISnapProvider
+    public class SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager, ISyncConfig? syncConfig = null) : ISnapProvider
     {
+        private const int MaxStorageRangeParallelism = 8;
+
         private readonly IDb _codeDb = codeDb;
         private readonly ILogger _logger = logManager.GetClassLogger<SnapProvider>();
 
         private readonly ProgressTracker _progressTracker = progressTracker;
         private readonly ISnapTrieFactory _trieFactory = trieFactory;
+        private readonly int _storageRangeParallelism = Math.Clamp(syncConfig?.SnapSyncStorageRangeParallelism ?? 1, 1, MaxStorageRangeParallelism);
 
         // This is actually close to 97% effective.
         private readonly AssociativeKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
@@ -215,59 +220,116 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response)
         {
-            AddRangeResult result = AddRangeResult.OK;
-
-            ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> responses = response.PathsAndSlots.AsSpan();
-            if (responses.Length == 0 && response.Proofs.Count == 0)
+            try
             {
-                _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
+                AddRangeResult result = AddRangeResult.OK;
 
-                _progressTracker.RetryStorageRange(request.Copy());
-                Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: AddRangeResult.ExpiredRootHash));
-
-                return AddRangeResult.ExpiredRootHash;
-            }
-            else
-            {
-                int slotCount = 0;
-
-                int requestLength = request.Accounts.Count;
-
-                for (int i = 0; i < responses.Length; i++)
+                IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> responses = response.PathsAndSlots;
+                int responseCount = responses.Count;
+                if (responseCount == 0 && response.Proofs.Count == 0)
                 {
-                    // only the last can have proofs
-                    IByteArrayList proofs = null;
-                    if (i == responses.Length - 1)
-                    {
-                        proofs = response.Proofs;
-                    }
+                    _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
 
-                    result = AddStorageRangeForAccount(request, i, responses[i], proofs);
-                    Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
+                    _progressTracker.RetryStorageRange(request.Copy());
+                    Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: AddRangeResult.ExpiredRootHash));
 
-                    slotCount += responses[i].Count;
-                }
-
-                if (requestLength > responses.Length)
-                {
-                    _progressTracker.ReportFullStorageRequestFinished(requestLength, request.Accounts.AsSpan()[responses.Length..]);
+                    return AddRangeResult.ExpiredRootHash;
                 }
                 else
                 {
-                    _progressTracker.ReportFullStorageRequestFinished(requestLength);
+                    int slotCount = 0;
+
+                    int requestLength = request.Accounts.Count;
+
+                    if (responseCount > 1 && _storageRangeParallelism > 1)
+                    {
+                        StorageRangeAccountResult[] results = AddStorageRangeInParallel(request, responses, response.Proofs, responseCount);
+                        for (int i = 0; i < results.Length; i++)
+                        {
+                            StorageRangeAccountResult accountResult = results[i];
+                            ApplyStorageRangeResult(request, i, accountResult);
+                            Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: accountResult.Result));
+                            slotCount += accountResult.SlotCount;
+                        }
+
+                        result = results[^1].Result;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < responseCount; i++)
+                        {
+                            // only the last can have proofs
+                            IByteArrayList? proofs = null;
+                            if (i == responseCount - 1)
+                            {
+                                proofs = response.Proofs;
+                            }
+
+                            result = AddStorageRangeForAccount(request, i, responses[i], proofs);
+                            Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
+
+                            slotCount += responses[i].Count;
+                        }
+                    }
+
+                    if (requestLength > responseCount)
+                    {
+                        _progressTracker.ReportFullStorageRequestFinished(requestLength, request.Accounts.AsSpan()[responseCount..]);
+                    }
+                    else
+                    {
+                        _progressTracker.ReportFullStorageRequestFinished(requestLength);
+                    }
+
+                    if (result == AddRangeResult.OK && slotCount > 0)
+                    {
+                        Interlocked.Add(ref Metrics.SnapSyncedStorageSlots, slotCount);
+                    }
                 }
 
-                if (result == AddRangeResult.OK && slotCount > 0)
-                {
-                    Interlocked.Add(ref Metrics.SnapSyncedStorageSlots, slotCount);
-                }
+                return result;
             }
-
-            response.Dispose();
-            return result;
+            finally
+            {
+                response.Dispose();
+            }
         }
 
         public AddRangeResult AddStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IByteArrayList? proofs = null)
+        {
+            StorageRangeAccountResult accountResult = ProcessStorageRangeForAccount(request, accountIndex, slots, proofs);
+            ApplyStorageRangeResult(request, accountIndex, accountResult);
+            return accountResult.Result;
+        }
+
+        private StorageRangeAccountResult[] AddStorageRangeInParallel(
+            StorageRange request,
+            IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> responses,
+            IByteArrayList proofs,
+            int responseCount)
+        {
+            StorageRangeAccountResult[] results = new StorageRangeAccountResult[responseCount];
+            try
+            {
+                Parallel.For(
+                    0,
+                    responseCount,
+                    new ParallelOptions { MaxDegreeOfParallelism = Math.Min(responseCount, _storageRangeParallelism) },
+                    i =>
+                    {
+                        results[i] = ProcessStorageRangeForAccount(request, i, responses[i], i == responseCount - 1 ? proofs : null);
+                    });
+            }
+            catch (AggregateException ae) when (ae.Flatten().InnerExceptions is { Count: > 0 } inners
+                && inners.All(e => e is ObjectDisposedException))
+            {
+                ExceptionDispatchInfo.Capture(inners[0]).Throw();
+            }
+
+            return results;
+        }
+
+        private StorageRangeAccountResult ProcessStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IByteArrayList? proofs)
         {
             ReadOnlySpan<PathWithAccount> accounts = request.Accounts.AsSpan();
             PathWithAccount pathWithAccount = accounts[accountIndex];
@@ -275,48 +337,7 @@ namespace Nethermind.Synchronization.SnapSync
             try
             {
                 (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, pathWithAccount, slots, request.StartingHash, request.LimitHash, proofs);
-                if (result == AddRangeResult.OK)
-                {
-                    if (moreChildrenToRight)
-                    {
-                        _progressTracker.EnqueueNextSlot(request, accountIndex, slots[^1].Path, slots.Count);
-                    }
-                    else if (accountIndex == 0 && request.Accounts.Count == 1)
-                    {
-                        _progressTracker.OnCompletedLargeStorage(pathWithAccount);
-                    }
-
-                    if (!moreChildrenToRight && (request.LimitHash == null || request.LimitHash == ValueKeccak.MaxValue) && !isRootPersisted)
-                    {
-                        // Sometimes the stitching does not work. Likely because part of the storage is using different
-                        // pivot, sometimes the proof is in a form that we cannot cleanly verify if it should persist or not,
-                        // but also because of stitching bug. So we just force trigger healing and continue on with our lives.
-                        _progressTracker.TrackAccountToHeal(accounts[accountIndex].Path);
-                    }
-
-                    return result;
-                }
-
-                if (_logger.IsTrace)
-                {
-                    string message = result switch
-                    {
-                        AddRangeResult.MissingRootHashInProofs => $"SNAP - AddStorageRange failed, missing root hash {actualRootHash} in the proofs, startingHash:{request.StartingHash}",
-                        AddRangeResult.DifferentRootHash => $"SNAP - AddStorageRange failed, expected storage root hash:{pathWithAccount.Account.StorageRoot} but was {actualRootHash}, startingHash:{request.StartingHash}",
-                        AddRangeResult.InvalidOrder => $"SNAP - AddStorageRange failed, slots are not in sorted order, startingHash:{request.StartingHash}",
-                        AddRangeResult.OutOfBounds => $"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}",
-                        AddRangeResult.EmptyRange => $"SNAP - AddStorageRange failed, slots list is empty, startingHash:{request.StartingHash}",
-                        _ => null
-                    };
-                    if (message is not null)
-                    {
-                        _logger.Trace(message);
-                    }
-                }
-
-                _progressTracker.EnqueueAccountRefresh(pathWithAccount, request.StartingHash, request.LimitHash);
-                return result;
-
+                return new StorageRangeAccountResult(result, moreChildrenToRight, actualRootHash, isRootPersisted, slots.Count, slots.Count == 0 ? ValueKeccak.Zero : slots[^1].Path);
             }
             catch (Exception e)
             {
@@ -324,6 +345,61 @@ namespace Nethermind.Synchronization.SnapSync
                 throw;
             }
         }
+
+        private void ApplyStorageRangeResult(StorageRange request, int accountIndex, in StorageRangeAccountResult accountResult)
+        {
+            ReadOnlySpan<PathWithAccount> accounts = request.Accounts.AsSpan();
+            PathWithAccount pathWithAccount = accounts[accountIndex];
+
+            if (accountResult.Result == AddRangeResult.OK)
+            {
+                if (accountResult.MoreChildrenToRight)
+                {
+                    _progressTracker.EnqueueNextSlot(request, accountIndex, accountResult.LastProcessedPath, accountResult.SlotCount);
+                }
+                else if (accountIndex == 0 && request.Accounts.Count == 1)
+                {
+                    _progressTracker.OnCompletedLargeStorage(pathWithAccount);
+                }
+
+                if (!accountResult.MoreChildrenToRight && (request.LimitHash == null || request.LimitHash == ValueKeccak.MaxValue) && !accountResult.IsRootPersisted)
+                {
+                    // Sometimes the stitching does not work. Likely because part of the storage is using different
+                    // pivot, sometimes the proof is in a form that we cannot cleanly verify if it should persist or not,
+                    // but also because of stitching bug. So we just force trigger healing and continue on with our lives.
+                    _progressTracker.TrackAccountToHeal(accounts[accountIndex].Path);
+                }
+
+                return;
+            }
+
+            if (_logger.IsTrace)
+            {
+                string message = accountResult.Result switch
+                {
+                    AddRangeResult.MissingRootHashInProofs => $"SNAP - AddStorageRange failed, missing root hash {accountResult.ActualRootHash} in the proofs, startingHash:{request.StartingHash}",
+                    AddRangeResult.DifferentRootHash => $"SNAP - AddStorageRange failed, expected storage root hash:{pathWithAccount.Account.StorageRoot} but was {accountResult.ActualRootHash}, startingHash:{request.StartingHash}",
+                    AddRangeResult.InvalidOrder => $"SNAP - AddStorageRange failed, slots are not in sorted order, startingHash:{request.StartingHash}",
+                    AddRangeResult.OutOfBounds => $"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}",
+                    AddRangeResult.EmptyRange => $"SNAP - AddStorageRange failed, slots list is empty, startingHash:{request.StartingHash}",
+                    _ => null
+                };
+                if (message is not null)
+                {
+                    _logger.Trace(message);
+                }
+            }
+
+            _progressTracker.EnqueueAccountRefresh(pathWithAccount, request.StartingHash, request.LimitHash);
+        }
+
+        private readonly record struct StorageRangeAccountResult(
+            AddRangeResult Result,
+            bool MoreChildrenToRight,
+            Hash256 ActualRootHash,
+            bool IsRootPersisted,
+            int SlotCount,
+            ValueHash256 LastProcessedPath);
 
         public void RefreshAccounts(AccountsToRefreshRequest request, IByteArrayList response)
         {
