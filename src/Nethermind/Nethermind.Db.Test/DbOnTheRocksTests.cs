@@ -252,7 +252,8 @@ namespace Nethermind.Db.Test
             using MdbxValueCompression compression = MdbxValueCompression.Create(
                 rocksConfig,
                 LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                DbPath);
+                DbPath,
+                isStateDb: false);
 
             byte[] value = Enumerable.Repeat((byte)0x42, 4096).ToArray();
 
@@ -269,7 +270,8 @@ namespace Nethermind.Db.Test
                 using MdbxValueCompression compression = MdbxValueCompression.Create(
                     rocksConfig,
                     LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                    DbPath);
+                    DbPath,
+                    isStateDb: false);
 
                 Assert.That(compression.MinValueLength, Is.EqualTo(4096));
                 Assert.That(compression.TryEncode(Enumerable.Repeat((byte)0x42, 1024).ToArray(), out _, out _), Is.False);
@@ -284,7 +286,8 @@ namespace Nethermind.Db.Test
             using MdbxValueCompression compression = MdbxValueCompression.Create(
                 rocksConfig,
                 LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                Path.Combine(DbPath, "mainnet", "state", "0"));
+                Path.Combine(DbPath, "mainnet", "state", "0"),
+                isStateDb: true);
 
             using (Assert.EnterMultipleScope())
             {
@@ -303,7 +306,8 @@ namespace Nethermind.Db.Test
                 using MdbxValueCompression compression = MdbxValueCompression.Create(
                     rocksConfig,
                     LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                    Path.Combine(DbPath, "mainnet", "state", "0"));
+                    Path.Combine(DbPath, "mainnet", "state", "0"),
+                    isStateDb: true);
 
                 Assert.That(compression.MinValueLength, Is.EqualTo(4096));
                 Assert.That(compression.TryEncode(Enumerable.Repeat((byte)0x42, 4096).ToArray(), out _, out _), Is.True);
@@ -320,7 +324,8 @@ namespace Nethermind.Db.Test
                 using MdbxValueCompression compression = MdbxValueCompression.Create(
                     rocksConfig,
                     LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                    Path.Combine(DbPath, "mainnet", "state", "0"));
+                    Path.Combine(DbPath, "mainnet", "state", "0"),
+                    isStateDb: true);
 
                 Assert.That(compression.MinValueLength, Is.EqualTo(4096));
             });
@@ -334,7 +339,8 @@ namespace Nethermind.Db.Test
             using MdbxValueCompression compression = MdbxValueCompression.Create(
                 rocksConfig,
                 LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                Path.Combine(DbPath, "mainnet", "state"));
+                Path.Combine(DbPath, "mainnet", "state"),
+                isStateDb: true);
 
             Assert.That(compression.MinValueLength, Is.EqualTo(int.MaxValue));
         }
@@ -504,6 +510,7 @@ namespace Nethermind.Db.Test
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupOperations));
                 Assert.That(options.MaxBatchGroupBytes, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupBytes));
                 Assert.That(options.GrowthStep, Is.EqualTo(MdbxTuningOptions.DefaultGrowthStep));
+                Assert.That(options.PageSize, Is.EqualTo(MdbxTuningOptions.DefaultPageSize));
                 Assert.That(options.MaxReaders, Is.EqualTo(MdbxTuningOptions.DefaultMaxReaders));
                 Assert.That(options.RpAugmentLimit, Is.EqualTo(MdbxTuningOptions.DefaultRpAugmentLimit));
                 Assert.That(options.DirtyPagesReserveLimit, Is.Zero);
@@ -515,19 +522,40 @@ namespace Nethermind.Db.Test
         [TestCase("state")]
         [TestCase("state/0")]
         [TestCase("state/1")]
-        public void Mdbx_tuning_uses_larger_dirty_page_defaults_for_state_db(string statePath)
+        public void Mdbx_tuning_uses_state_defaults_for_state_db(string statePath)
         {
             MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(
                 LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                Path.Combine("nethermind_db", "mainnet", statePath));
+                isStateDb: MdbxPathHelpers.IsStateDbPath(Path.Combine("nethermind_db", "mainnet", statePath)));
 
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(options.PageSize, Is.EqualTo(MdbxTuningOptions.DefaultStatePageSize));
                 Assert.That(options.RpAugmentLimit, Is.EqualTo(MdbxTuningOptions.DefaultStateRpAugmentLimit));
-                Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(262_144));
-                Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(262_144));
-                Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(32_768));
+                Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(65_536));
+                Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(65_536));
+                Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(8_192));
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultStateMaxBatchGroupOperations));
+            }
+        }
+
+        [TestCase("blocks")]
+        [TestCase("state/blocks")]
+        [TestCase("mainnet/state/blocks")]
+        public void Mdbx_tuning_does_not_treat_non_state_db_under_state_directory_as_state_db(string dbPath)
+        {
+            MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(
+                LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
+                isStateDb: MdbxPathHelpers.IsStateDbPath(dbPath));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.PageSize, Is.EqualTo(MdbxTuningOptions.DefaultPageSize));
+                Assert.That(options.RpAugmentLimit, Is.EqualTo(MdbxTuningOptions.DefaultRpAugmentLimit));
+                Assert.That(options.DirtyPagesReserveLimit, Is.Zero);
+                Assert.That(options.TransactionDirtyPagesLimit, Is.Zero);
+                Assert.That(options.TransactionDirtyPagesInitial, Is.Zero);
+                Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultMaxBatchGroupOperations));
             }
         }
 
@@ -618,7 +646,7 @@ namespace Nethermind.Db.Test
         {
             MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(
                 LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                Path.Combine("nethermind_db", "mainnet", "state", "0"));
+                isStateDb: true);
 
             MdbxTuningOptions adjusted = options.WithActualPageSize(16 * 1024, isStateDb: true);
 
@@ -641,7 +669,7 @@ namespace Nethermind.Db.Test
                     {
                         MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(
                             LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
-                            Path.Combine("nethermind_db", "mainnet", "state", "0"));
+                            isStateDb: true);
 
                         MdbxTuningOptions adjusted = options.WithActualPageSize(16 * 1024, isStateDb: true);
 
@@ -676,6 +704,49 @@ namespace Nethermind.Db.Test
                     Assert.That(File.ReadAllText(Path.Combine(fullPath, MdbxEnvironment.PageSizeMarkerFileName)).Trim(), Is.EqualTo(pageSize));
                 }
             });
+        }
+
+        [Test]
+        [Platform(Include = "Linux", Reason = "MDBX native backend is linux-x64 only.")]
+        public void Mdbx_state_database_uses_state_page_size_by_default()
+        {
+            string dbPath = Path.Combine("mainnet", "state", "0");
+            string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, DbPath);
+            byte[] key = [1];
+            byte[] value = [2];
+
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(dbPath, "State"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+            db.Set(key, value);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.Get(key), Is.EqualTo(value));
+                Assert.That(File.ReadAllText(Path.Combine(fullPath, MdbxEnvironment.PageSizeMarkerFileName)).Trim(), Is.EqualTo(MdbxTuningOptions.DefaultStatePageSize.ToString(CultureInfo.InvariantCulture)));
+            }
+        }
+
+        [Test]
+        [Platform(Include = "Linux", Reason = "MDBX native backend is linux-x64 only.")]
+        public void Mdbx_non_state_database_under_state_base_path_uses_default_page_size()
+        {
+            string basePath = Path.Combine(DbPath, "root", "state");
+            string dbPath = "blocks";
+            byte[] key = [1];
+            byte[] value = [2];
+
+            using DbOnTheRocks db = new(basePath, GetRocksDbSettings(dbPath, "Blocks"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+            db.Set(key, value);
+
+            MdbxNative.ThrowOnError(
+                MdbxNative.EnvInfoEx(db.Mdbx.Env, IntPtr.Zero, out MdbxNative.MdbxEnvInfo info, (nuint)Marshal.SizeOf<MdbxNative.MdbxEnvInfo>()),
+                "mdbx_env_info_ex");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.Get(key), Is.EqualTo(value));
+                Assert.That(info.DxbPageSize, Is.EqualTo((uint)MdbxTuningOptions.DefaultPageSize));
+                Assert.That(File.Exists(Path.Combine(db.FullPath, MdbxEnvironment.PageSizeMarkerFileName)), Is.False);
+            }
         }
 
         [TestCase(null)]

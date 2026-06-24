@@ -44,6 +44,7 @@ internal readonly record struct MdbxTuningOptions(
     public const long DefaultGrowthStep = 1L << 30;
     public const long DefaultShrinkThreshold = 1L << 30;
     public const int DefaultPageSize = 4 * 1024;
+    public const int DefaultStatePageSize = 16 * 1024;
     public const ulong DefaultMaxDbs = 512;
     public const ulong DefaultMaxReaders = 8192;
     public const ulong DefaultRpAugmentLimit = 256 * 1024;
@@ -63,14 +64,15 @@ internal readonly record struct MdbxTuningOptions(
     private const int DefaultSlowTransactionMilliseconds = 1_000;
     private const int DefaultHotPathSampleRate = 128;
 
-    public static MdbxTuningOptions ReadFromEnvironment(ILogger logger, string? path = null)
+    public static MdbxTuningOptions ReadFromEnvironment(ILogger logger, bool isStateDb = false)
     {
         bool hasOverrides = false;
+        int defaultPageSize = isStateDb ? DefaultStatePageSize : DefaultPageSize;
         long initialMapSize = ReadSize("NETHERMIND_MDBX_INITIAL_MAP_SIZE", DefaultInitialMapSize, logger, ref hasOverrides);
         long maxMapSize = ReadSize("NETHERMIND_MDBX_MAX_MAP_SIZE", DefaultMaxMapSize, logger, ref hasOverrides);
         long growthStep = ReadSize("NETHERMIND_MDBX_GROWTH_STEP", DefaultGrowthStep, logger, ref hasOverrides);
         long shrinkThreshold = ReadSize("NETHERMIND_MDBX_SHRINK_THRESHOLD", DefaultShrinkThreshold, logger, ref hasOverrides);
-        int pageSize = ReadInt32("NETHERMIND_MDBX_PAGE_SIZE", DefaultPageSize, logger, ref hasOverrides);
+        int pageSize = ReadInt32("NETHERMIND_MDBX_PAGE_SIZE", defaultPageSize, logger, ref hasOverrides);
         ulong maxDbs = ReadUInt64("NETHERMIND_MDBX_MAX_DBS", DefaultMaxDbs, logger, ref hasOverrides);
         ulong maxReaders = ReadUInt64("NETHERMIND_MDBX_MAX_READERS", DefaultMaxReaders, logger, ref hasOverrides);
         bool enableReadAhead = ReadBool("NETHERMIND_MDBX_READAHEAD", fallback: false, logger, ref hasOverrides);
@@ -115,10 +117,9 @@ internal readonly record struct MdbxTuningOptions(
         if (!IsValidPageSize(pageSize))
         {
             Warn(logger, "NETHERMIND_MDBX_PAGE_SIZE must be a power of two between 4096 and 65536. Using the default value.");
-            pageSize = DefaultPageSize;
+            pageSize = defaultPageSize;
         }
 
-        bool isStateDb = MdbxPathHelpers.IsStateDbPath(path);
         ulong defaultRpAugmentLimit = isStateDb ? DefaultStateRpAugmentLimit : DefaultRpAugmentLimit;
         ulong defaultDirtyPagesReserveLimit = isStateDb ? BytesToPages(DefaultStateDirtyPagesReserveBytes, pageSize) : 0;
         ulong defaultTransactionDirtyPagesLimit = isStateDb ? BytesToPages(DefaultStateTransactionDirtyPagesLimitBytes, pageSize) : 0;

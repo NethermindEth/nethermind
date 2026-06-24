@@ -45,7 +45,7 @@ public partial class DbOnTheRocks : IDb, IMergeableKeyValueStore, ISortedKeyValu
         }
 
         IRocksDbConfig rocksDbConfig = rocksDbConfigFactory.GetForDatabase(dbSettings.DbName, null);
-        Mdbx = new MdbxEnvironment(FullPath, dbConfig, rocksDbConfig, _logger);
+        Mdbx = new MdbxEnvironment(FullPath, dbSettings.DbPath, dbConfig, rocksDbConfig, _logger);
         _dbi = Mdbx.OpenTable(null);
     }
 
@@ -69,7 +69,7 @@ public partial class DbOnTheRocks : IDb, IMergeableKeyValueStore, ISortedKeyValu
         }
 
         IRocksDbConfig rocksDbConfig = rocksDbConfigFactory.GetForDatabase(dbSettings.DbName, null);
-        Mdbx = new MdbxEnvironment(FullPath, dbConfig, rocksDbConfig, _logger);
+        Mdbx = new MdbxEnvironment(FullPath, dbSettings.DbPath, dbConfig, rocksDbConfig, _logger);
         _dbi = openMainTable ? Mdbx.OpenTable(null) : 0;
     }
 

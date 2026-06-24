@@ -41,7 +41,7 @@ internal sealed class MdbxEnvironment : IDisposable
     private bool _batchGroupActive;
     private bool _disposed;
 
-    public MdbxEnvironment(string path, IDbConfig dbConfig, IRocksDbConfig rocksDbConfig, ILogger logger)
+    public MdbxEnvironment(string path, string dbPath, IDbConfig dbConfig, IRocksDbConfig rocksDbConfig, ILogger logger)
     {
         MdbxNative.EnsureSupported();
 
@@ -50,11 +50,11 @@ internal sealed class MdbxEnvironment : IDisposable
 
         ThrowIfRocksDbStoreExists(Path);
         Directory.CreateDirectory(Path);
-        bool isStateDb = MdbxPathHelpers.IsStateDbPath(Path);
+        bool isStateDb = MdbxPathHelpers.IsStateDbPath(dbPath);
         bool isNewEnvironment = IsNewMdbxEnvironment(Path);
-        _valueCompression = MdbxValueCompression.Create(rocksDbConfig, logger, Path);
+        _valueCompression = MdbxValueCompression.Create(rocksDbConfig, logger, Path, isStateDb);
 
-        MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger, Path);
+        MdbxTuningOptions tuning = MdbxTuningOptions.ReadFromEnvironment(logger, isStateDb);
         _maxPooledReadTransactions = CalculateMaxPooledReadTransactions(tuning.MaxReaders);
 
         MdbxNative.ThrowOnError(MdbxNative.EnvCreate(out MdbxNative.SafeMdbxEnvHandle env), "mdbx_env_create");

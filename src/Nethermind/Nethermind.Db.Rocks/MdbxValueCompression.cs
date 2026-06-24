@@ -41,7 +41,7 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
 
     public int MinValueLength { get; } = Math.Max(0, minValueLength);
 
-    public static MdbxValueCompression Create(IRocksDbConfig rocksDbConfig, ILogger logger, string path)
+    public static MdbxValueCompression Create(IRocksDbConfig rocksDbConfig, ILogger logger, string path, bool isStateDb)
     {
         bool configured = IsCompressionConfigured(rocksDbConfig);
         bool enabled = configured;
@@ -58,7 +58,7 @@ internal sealed class MdbxValueCompression(bool enabled, int minValueLength = Md
             }
         }
 
-        int minValueLength = MdbxPathHelpers.IsStateDbPath(path)
+        int minValueLength = isStateDb
             ? ReadStateMinValueLength(logger)
             : ReadMinValueLength(MinValueLengthVariable, DefaultMinValueLength, logger);
         if (logger.IsInfo)
