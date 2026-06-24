@@ -9,7 +9,6 @@ using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
