@@ -9,8 +9,10 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <summary>
 /// Read-side ceiling search over a <see cref="SortedTable"/> index block, whose record values are
 /// RocksDB-style delta-coded u48 byte offsets — absolute at restart heads, deltas in between (see
-/// <see cref="BlockBuilder.AddDeltaValue"/>). Header parsing and the restart binary search are shared
-/// with <see cref="BlockReader"/>; only the forward scan's value handling differs.
+/// <see cref="BlockBuilder.AddDeltaValue"/>). Reuses <see cref="BlockReader.ReadHeader"/> for header
+/// parsing; the restart binary search and forward scan are its own, since the index scan reconstructs
+/// an absolute offset where the data-block scan (<see cref="BlockReader.SeekCeiling"/>) returns a value
+/// <see cref="Bound"/>.
 /// </summary>
 internal static class IndexBlockReader
 {
@@ -22,11 +24,10 @@ internal static class IndexBlockReader
     /// &lt; <paramref name="target"/>.
     /// </summary>
     /// <remarks>
-    /// <see cref="BlockReader.TryFindScanStart"/> picks the rightmost restart whose first key ≤
-    /// <paramref name="target"/>, so the ceiling lies within that restart run or is exactly the head of
-    /// the next run — the scan crosses at most one restart boundary, and that crossing record's
-    /// restart-aligned index makes it re-anchor to an absolute value. Requires
-    /// <paramref name="restartInterval"/> &gt; 0.
+    /// The binary search picks the rightmost restart whose first key ≤ <paramref name="target"/>, so the
+    /// ceiling lies within that restart run or is exactly the head of the next run — the scan crosses at
+    /// most one restart boundary, and that crossing record's restart-aligned index makes it re-anchor to
+    /// an absolute value. Requires <paramref name="restartInterval"/> &gt; 0.
     /// </remarks>
     internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
         scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf, int restartInterval,
@@ -36,15 +37,41 @@ internal static class IndexBlockReader
     {
         keyLen = 0;
         byteOffset = 0;
-        if (!BlockReader.TryFindScanStart<TReader, TPin>(in reader, blockStart, target, out long pos, out long end, out long scanRestart))
+        if (!BlockReader.ReadHeader<TReader, TPin>(in reader, blockStart, out int width, out long recordsEnd, out long numRestarts, out _))
             return false;
+        if (numRestarts == 0) return false;
+
+        long restartTableStart = blockStart + 1 + 2L * width;
+        Span<byte> ob = stackalloc byte[4];
+        Span<byte> hdr = stackalloc byte[2];
+
+        // Rightmost restart whose first key <= target (cp == 0 there, so the suffix is the full key).
+        long lo = 0;
+        long hi = numRestarts - 1;
+        long found = -1;
+        while (lo <= hi)
+        {
+            long mid = lo + ((hi - lo) >> 1);
+            if (!reader.TryRead(restartTableStart + mid * width, ob[..width])) return false;
+            long recStart = blockStart + Block.ReadOffset(ob, width);
+            if (!reader.TryRead(recStart, hdr)) return false;
+            int firstKeyLen = hdr[1];
+            using TPin keyPin = reader.PinBuffer(new Bound(recStart + 2, firstKeyLen));
+            if (keyPin.Buffer.SequenceCompareTo(target) <= 0) { found = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+
+        // target < firstKey ⇒ ceiling is the very first record; clamp the scan start to restart 0.
+        long scanRestart = found < 0 ? 0 : found;
+        if (!reader.TryRead(restartTableStart + scanRestart * width, ob[..width])) return false;
+        long pos = blockStart + Block.ReadOffset(ob, width);
+        long end = blockStart + recordsEnd;
 
         // The scan starts at a restart head, so recordIndex tracks the global record number; a record at
         // a restart boundary (recordIndex % restartInterval == 0) carries an absolute value, every other
         // record a delta against the previous one.
         long recordIndex = scanRestart * restartInterval;
         long runningValue = 0;
-        Span<byte> hdr = stackalloc byte[2];
         Span<byte> vbuf = stackalloc byte[sizeof(ulong)];
 
         // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
