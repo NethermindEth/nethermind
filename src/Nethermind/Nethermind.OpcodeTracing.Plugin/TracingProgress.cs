@@ -8,7 +8,7 @@ namespace Nethermind.OpcodeTracing.Plugin;
 /// </summary>
 public sealed class TracingProgress(ulong startBlock, ulong endBlock)
 {
-    private ulong _currentBlock = startBlock - 1;
+    private ulong _currentBlock = startBlock.SaturatingSub(1);
     private readonly ulong _startBlock = startBlock;
     private readonly ulong _totalBlocks = endBlock - startBlock + 1;
     private readonly DateTime _startTime = DateTime.UtcNow;
