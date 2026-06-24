@@ -152,9 +152,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IJsonRpcConfig, string>(configWildcard, static c => c.Host, "127.0.0.1");
     }
 
-    [TestCase("sepolia", DiscoveryVersion.V4)]
-    [TestCase("hoodi", DiscoveryVersion.V4)]
-    [TestCase("mainnet", DiscoveryVersion.V4)]
+    [TestCase("sepolia", DiscoveryVersion.V5)]
+    [TestCase("hoodi", DiscoveryVersion.V5)]
+    [TestCase("mainnet", DiscoveryVersion.All)]
     public void Discovery_versions_are_correct(string configWildcard, DiscoveryVersion discoveryVersion) =>
         Test<IDiscoveryConfig, DiscoveryVersion>(configWildcard, static c => c.DiscoveryVersion, discoveryVersion);
 

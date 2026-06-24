@@ -22,6 +22,7 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
@@ -39,6 +40,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Core.Container;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
@@ -306,6 +308,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
+                .AddLast<IP2PCapabilityResolver, PostMergeCapabilitiesResolver>()
                 ;
         }
         else
@@ -320,20 +323,19 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         IContainer container = builder.Build();
 
-        if (isPostMerge)
-        {
-            EnablePostMergeEthCapabilities(container.Resolve<IProtocolsManager>());
-        }
-
         return container;
     }
 
-    private static void EnablePostMergeEthCapabilities(IProtocolsManager protocolsManager)
+    private sealed class PostMergeCapabilitiesResolver : IP2PCapabilityResolver
     {
-        ArgumentNullException.ThrowIfNull(protocolsManager);
-        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth69));
-        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth70));
-        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth71));
+        public event Action? Changed { add { } remove { } }
+
+        public void Resolve(ISet<Capability> capabilities)
+        {
+            capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth69));
+            capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth70));
+            capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth71));
+        }
     }
 
     private static void EnableBlockAccessListsFromGenesis(ChainSpec spec)
@@ -773,6 +775,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IPayloadPreparationService payloadPreparationService,
         IBlockCacheService blockCacheService,
         IMergeSyncController mergeSyncController,
+        ISyncConfig syncConfig,
         ITestEnv preMergeTestEnv
     ) : ITestEnv
     {
@@ -816,7 +819,16 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             blockCacheService.TryAddBlock(headBlock);
             blockCacheService.FinalizedHash = finalizedBlock.Hash!;
 
-            await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
+            // In fast sync the starting pivot is resolved from the finalized block (before the sync mode
+            // selector starts); wait for that before kicking off beacon header sync. Full sync keeps the
+            // config pivot and never resolves a fresh one, so there is nothing to wait for.
+            if (syncConfig.FastSync)
+            {
+                while (blockTree.SyncPivot.BlockHash != finalizedBlock.Hash)
+                {
+                    await Task.Delay(50, cancellationToken);
+                }
+            }
             mergeSyncController.InitBeaconHeaderSync(headBlock.Header);
 
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken, finalizedDistanceFromHead);
@@ -995,10 +1007,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         private void AssertBlockEqual(Block block1, Block block2)
         {
-            using NettyRlpStream stream1 = _blockDecoder.EncodeToNewNettyStream(block1);
-            using NettyRlpStream stream2 = _blockDecoder.EncodeToNewNettyStream(block2);
+            using ArrayPoolSpan<byte> stream1 = _blockDecoder.EncodeToArrayPoolSpan(block1);
+            using ArrayPoolSpan<byte> stream2 = _blockDecoder.EncodeToArrayPoolSpan(block2);
 
-            Assert.That(stream1.AsSpan().ToArray(), Is.EqualTo(stream2.AsSpan().ToArray()));
+            Assert.That(((ReadOnlySpan<byte>)stream1).ToArray(), Is.EqualTo(((ReadOnlySpan<byte>)stream2).ToArray()));
         }
 
         private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>

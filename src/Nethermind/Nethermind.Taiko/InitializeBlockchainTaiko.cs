@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Api;
-using Nethermind.Consensus.Producers;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
 
@@ -15,8 +14,6 @@ public class InitializeBlockchainTaiko(
     TaikoBeaconHeadAdvancer headAdvancer) : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     private readonly TaikoBeaconHeadAdvancer _headAdvancer = headAdvancer;
-
-    protected override IBlockProductionPolicy CreateBlockProductionPolicy() => NeverStartBlockProductionPolicy.Instance;
 
     /// <summary>
     /// Overrides the TxPool creation to disable blob (type-3) transaction support.

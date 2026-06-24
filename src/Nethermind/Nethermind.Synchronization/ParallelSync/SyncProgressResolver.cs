@@ -29,7 +29,6 @@ namespace Nethermind.Synchronization.ParallelSync
         public long FindBestFullState() => _fullStateFinder.FindBestFullState();
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
-        public bool IsLoadingBlocksFromDb() => !_blockTree.CanAcceptNewBlocks;
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
 

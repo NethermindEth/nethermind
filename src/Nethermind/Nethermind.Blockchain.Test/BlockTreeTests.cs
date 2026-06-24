@@ -972,12 +972,19 @@ public class BlockTreeTests
         Assert.That(blockTree.Genesis!.CalculateHash(), Is.EqualTo(block0.Hash));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void ForkChoiceUpdated_update_hashes()
+    // safeBlockHash is null in the AuRa-finalization-post-snap case (#11775): SafeHash has not been
+    // set yet, so ForkChoiceUpdated must tolerate a null safe (and finalized) hash without NRE'ing in
+    // HeaderStore.GetBlockNumber. The subscriber forces evaluation of the OnForkChoiceUpdated args
+    // (the GetBlockNumber lookups), which is skipped when the event has no subscribers.
+    [TestCase(true, TestName = "ForkChoiceUpdated_update_hashes")]
+    [TestCase(false, TestName = "ForkChoiceUpdated_tolerates_null_safe_hash")]
+    public void ForkChoiceUpdated_update_hashes(bool withSafeHash)
     {
         BlockTree blockTree = BuildBlockTree();
+        blockTree.OnForkChoiceUpdated += (_, _) => { };
+
         Hash256 finalizedBlockHash = TestItem.KeccakB;
-        Hash256 safeBlockHash = TestItem.KeccakC;
+        Hash256? safeBlockHash = withSafeHash ? TestItem.KeccakC : null;
         blockTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockHash);
         using (Assert.EnterMultipleScope())
         {

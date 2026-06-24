@@ -65,7 +65,7 @@
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.5.0" />
     <PackageVersion Include="Nethermind.TurboPForBindings" Version="1.0.0" />
     <PackageVersion Include="Nethermind.Zkvm.Abstractions" Version="1.0.0-preview.2" />
-    <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="1.0.0-preview.3" />
+    <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="1.0.0-preview.4" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NJsonSchema" Version="11.6.1" />
     <PackageVersion Include="NLog" Version="5.5.1" />
@@ -76,7 +76,6 @@
     <PackageVersion Include="NUnit.Analyzers" Version="4.14.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="6.2.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
-    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.8" />
     <PackageVersion Include="Polly" Version="8.6.6" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
