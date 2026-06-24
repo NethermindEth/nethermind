@@ -121,6 +121,12 @@ public class E2StoreReader : IDisposable
 
         _blockCount = ReadUInt64(_fileLength - IndexSectionCount);
 
+        ulong maxBlockCount = (ulong)(_fileLength - IndexSectionStartBlock - IndexSectionCount - HeaderSize) / IndexOffsetSize;
+        if (_blockCount == 0 || _blockCount > maxBlockCount || _blockCount > int.MaxValue)
+        {
+            throw new EraFormatException($"Invalid block count {_blockCount} in index (file length {_fileLength} is too small).");
+        }
+
         // <starting block> + <offsets> * 8 + <count>
         int indexLength = IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
 

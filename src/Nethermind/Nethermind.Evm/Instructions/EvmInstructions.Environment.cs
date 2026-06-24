@@ -745,7 +745,7 @@ public static partial class EvmInstructions
 
         // Retrieve the block hash for the given block number.
         BlockHeader header = vm.BlockExecutionContext.Header;
-        Hash256? blockHash = !a.IsUint64 || a.u0 > long.MaxValue || a.u0 >= header.Number
+        Hash256? blockHash = !a.IsUint64 || a.u0 >= header.Number
             ? null // Current block, future block, or unrepresentable block number
             : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
 

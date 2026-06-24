@@ -20,6 +20,8 @@ public sealed class CompactionSchedule : ICompactionSchedule
         ILogManager logManager)
     {
         ulong cs = config.CompactSize;
+        if (cs > int.MaxValue - 8)
+            throw new ArgumentOutOfRangeException(nameof(config.CompactSize), "Compact size must not exceed int.MaxValue - 8");
         if (cs > 1 && (cs & (cs - 1)) != 0)
             throw new ArgumentException("Compact size must be a power of 2");
 

@@ -13,7 +13,7 @@ public readonly record struct StateId(ulong BlockNumber, in ValueHash256 StateRo
     }
 
     public static readonly StateId PreGenesis = new(ulong.MaxValue, Keccak.EmptyTreeHash);
-    public static readonly StateId Sync = new(ulong.MinValue, Keccak.EmptyTreeHash);
+    public static readonly StateId Sync = new(ulong.MaxValue - 1, Keccak.EmptyTreeHash);
 
     public int CompareTo(StateId other)
     {

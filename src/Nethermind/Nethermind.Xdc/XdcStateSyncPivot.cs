@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Xdc;
 
@@ -48,7 +49,7 @@ public class XdcStateSyncPivot(
 
     public void UpdateHeaderForcefully() { }
     public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];
-    public ulong Diff => (_blockTree.BestSuggestedHeader?.Number ?? 0) - (_pivotHeader?.Number ?? 0);
+    public ulong Diff => (_blockTree.BestSuggestedHeader?.Number ?? 0UL).SaturatingSub(_pivotHeader?.Number ?? 0UL);
     public bool CanFinalize(BlockHeader pivot)
     {
         EnsureInitialized();

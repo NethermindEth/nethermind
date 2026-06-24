@@ -181,6 +181,16 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
 public static class LogIndexFilterVisitorExtensions
 {
-    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, ulong fromBlock, ulong toBlock) =>
-        new LogIndexFilterVisitor(storage, filter, (int)fromBlock, (int)toBlock).Select(static i => (long)i);
+    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, ulong fromBlock, ulong toBlock)
+    {
+        if (fromBlock > (ulong)int.MaxValue || fromBlock > toBlock)
+        {
+            return [];
+        }
+
+        int from = (int)fromBlock;
+        int to = (int)Math.Min(toBlock, (ulong)int.MaxValue);
+
+        return new LogIndexFilterVisitor(storage, filter, from, to).Select(static i => (long)i);
+    }
 }
