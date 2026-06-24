@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -101,13 +102,11 @@ public class HistoryBackedPersistenceReaderTests
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], Address.ToAccountPath);
 
-        byte[] buffer = new byte[256];
-        RlpStream rlp = new(buffer);
-        AccountDecoder.Slim.Encode(account, rlp);
+        using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
 
         using IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
         _accountStore.RecordChange(
-            block, flatKey, buffer.AsSpan(0, rlp.Position),
+            block, flatKey, rlp,
             batch.GetColumnBatch(FlatDbColumns.AccountHistory),
             batch.GetColumnBatch(FlatDbColumns.AccountChangeSets));
     }

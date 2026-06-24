@@ -22,18 +22,11 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class HistoryWriter
 {
-    // Slim-format account RLP is at most nonce + balance + two 32-byte hashes; 256 bytes is ample headroom.
-    private const int AccountValueBufferSize = 256;
-
     private readonly IColumnsDb<FlatDbColumns> _db;
     private readonly HistoryStore _accountHistory;
     private readonly HistoryStore _storageHistory;
     private readonly bool _rlpWrapSlots;
     private readonly bool _enabled;
-
-    // Reused across the whole capture loop: a single RLP stream backed by a fixed buffer for account encoding.
-    private readonly byte[] _accountValueBuffer = new byte[AccountValueBufferSize];
-    private readonly RlpStream _accountRlp;
 
     // The highest block whose changeset has been captured; capture resumes strictly after it.
     private long _lastCapturedBlock = -1;
@@ -63,7 +56,6 @@ public sealed class HistoryWriter
         _storageHistory = new HistoryStore(
             db.GetColumnDb(FlatDbColumns.StorageHistory),
             db.GetColumnDb(FlatDbColumns.StorageChangeSets));
-        _accountRlp = new RlpStream(_accountValueBuffer);
     }
 
     public long LastCapturedBlock => _lastCapturedBlock;
@@ -126,9 +118,7 @@ public sealed class HistoryWriter
                 continue;
             }
 
-            _accountRlp.Reset();
-            AccountDecoder.Slim.Encode(change.Value, _accountRlp);
-            ReadOnlySpan<byte> value = _accountValueBuffer.AsSpan(0, _accountRlp.Position);
+            using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(change.Value);
             _accountHistory.RecordChange(block, flatKey, value, accountHistory, accountChangeMarkers);
         }
 

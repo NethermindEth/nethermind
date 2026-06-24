@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -394,10 +395,8 @@ public class HistoryWriterTests
 
     private static byte[] EncodedAccount(Account account)
     {
-        byte[] buffer = new byte[256];
-        RlpStream stream = new(buffer);
-        AccountDecoder.Slim.Encode(account, stream);
-        return buffer[..stream.Position];
+        using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
+        return ((ReadOnlySpan<byte>)rlp).ToArray();
     }
 
     private static byte[] EncodedSlot(ReadOnlySpan<byte> rawSlotBytes)

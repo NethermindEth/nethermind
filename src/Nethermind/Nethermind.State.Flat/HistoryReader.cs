@@ -65,7 +65,7 @@ public sealed class HistoryReader
             return false;
         }
 
-        Rlp.ValueDecoderContext context = new(valueBuffer[..written]);
+        RlpReader context = new(valueBuffer[..written]);
         return AccountDecoder.Slim.TryDecodeStruct(ref context, out account);
     }
 
@@ -92,7 +92,7 @@ public sealed class HistoryReader
         ReadOnlySpan<byte> stored = valueBuffer[..written];
         if (_rlpWrapSlots)
         {
-            Rlp.ValueDecoderContext context = new(stored);
+            RlpReader context = new(stored);
             stored = context.DecodeByteArraySpan();
         }
 

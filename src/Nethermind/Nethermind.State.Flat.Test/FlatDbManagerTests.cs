@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -319,10 +320,8 @@ public class FlatDbManagerTests
             return;
         }
 
-        byte[] buffer = new byte[256];
-        RlpStream rlp = new(buffer);
-        AccountDecoder.Slim.Encode(account, rlp);
-        _accountStore.RecordChange(block, flatKey, buffer.AsSpan(0, rlp.Position), history, changeMarkers);
+        using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
+        _accountStore.RecordChange(block, flatKey, rlp, history, changeMarkers);
     }
 
     private void RecordStorage(long block, ReadOnlySpan<byte> rawValue)
