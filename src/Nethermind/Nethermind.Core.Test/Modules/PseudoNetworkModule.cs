@@ -4,7 +4,6 @@
 using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Network.Config;
 
 namespace Nethermind.Core.Test.Modules;
