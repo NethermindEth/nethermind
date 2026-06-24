@@ -82,7 +82,7 @@ internal sealed partial class TrieDiffWalker
     private static bool TryDecodeAccount(TrieNode leaf, out AccountStruct account)
     {
         CappedArray<byte> value = leaf.Value;
-        Rlp.ValueDecoderContext ctx = new(value.AsSpan());
+        RlpReader ctx = new(value.AsSpan());
         return AccountDecoder.Instance.TryDecodeStruct(ref ctx, out account);
     }
 

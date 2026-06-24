@@ -21,8 +21,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Network;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -131,6 +131,8 @@ public class XdcModule : Module
             .AddMessageSerializer<PingMsg, XdcPingMsgSerializer>()
 
             .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
+            .AddLast<IP2PCapabilityResolver, XdcP2PCapabilityResolver>()
+            .RemoveOrderedComponents<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             // block processing
