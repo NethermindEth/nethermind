@@ -60,15 +60,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
-            // Shared ArenaManager + BlobArenaManager singletons: the persisted-snapshot repo and
-            // the compactor MUST resolve the same instances, otherwise compaction would write
-            // through a different mmap than the repository reads from.
-            .AddSingleton<ArenaManager, IFlatDbConfig, IInitConfig, ILogManager>((cfg, initConfig, logManager) =>
+            .AddSingleton<IArenaManager, IFlatDbConfig, IInitConfig, ILogManager>((cfg, initConfig, logManager) =>
             {
                 string basePath = Path.Combine(initConfig.BaseDbPath, "persisted_snapshot");
                 return new ArenaManager(Path.Combine(basePath, "arena"), cfg, logManager);
             })
-            .AddSingleton<IArenaManager>(ctx => ctx.Resolve<ArenaManager>())
             .AddSingleton<BlobArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
             {
                 string basePath = Path.Combine(initConfig.BaseDbPath, "persisted_snapshot");

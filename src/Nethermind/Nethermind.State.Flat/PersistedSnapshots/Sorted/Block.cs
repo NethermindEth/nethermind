@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <remarks>
 /// Wire layout (offsets relative to the block start):
 /// <code>
-///   [offsetWidth u8]                    ; W = 2 or 4 bytes
+///   [formatFlag u8]                     ; Block ⇒ W = 2, Index ⇒ W = 4 (offset width in bytes)
 ///   [recordsEnd  : W]                   ; block-relative byte offset where records end (content size)
 ///   [numRestarts : W]
 ///   [restartOffset : W × numRestarts]   ; block-relative; restartOffset[0] = 1 + 2W + W·numRestarts
@@ -22,30 +22,43 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// </code>
 /// Keys are front-coded against the previous record, resetting (<c>cp = 0</c>, full key) every
 /// <c>restartInterval</c> records and at the block start — these are the <em>restarts</em>. The
-/// per-block <c>offsetWidth</c> lets a small block (≤ 64 KiB, e.g. a 4 KiB data block) use 2-byte
-/// offsets while a large block (e.g. the multi-MB index) uses 4-byte offsets, so one format serves
-/// both. <see cref="BlockReader.SeekCeiling"/> binary searches the restarts then scans to
-/// <c>recordsEnd</c> for the first key ≥ the target (LevelDB <c>Block::Iter::Seek</c>).
+/// header <c>formatFlag</c> records the block's role and thereby its offset width — a data
+/// <c>Block</c> (capped well under 64 KiB) uses 2-byte offsets, the multi-MB <c>Index</c> uses
+/// 4-byte — so one format serves both. <see cref="BlockReader.SeekCeiling"/> binary searches the
+/// restarts then scans to <c>recordsEnd</c> for the first key ≥ the target (LevelDB
+/// <c>Block::Iter::Seek</c>).
 /// </remarks>
 internal static class Block
 {
     /// <summary>Width of the single-byte record fields (common-prefix, key-suffix size, value size).</summary>
     internal const int SizePrefix = sizeof(byte);
 
-    internal const byte Width2 = 2;
-    internal const byte Width4 = 4;
+    // On-disk header flag selecting the block's role and thereby its offset width. A data Block is
+    // capped at BlockSize (well under 64 KiB) so it uses 2-byte offsets; the Index can be multi-MB
+    // and uses 4-byte offsets — one format serves both.
+    internal const byte FlagBlock = 1;   // 2-byte offsets
+    internal const byte FlagIndex = 2;   // 4-byte offsets
+
+    /// <summary>Offset width in bytes for <paramref name="flag"/>, or 0 if it is neither
+    /// <see cref="FlagBlock"/> nor <see cref="FlagIndex"/>.</summary>
+    internal static int WidthFromFlag(byte flag) => flag switch
+    {
+        FlagBlock => 2,
+        FlagIndex => 4,
+        _ => 0,
+    };
 
     /// <summary>Block-relative byte offset of the first record, given the offset width and restart count.</summary>
     internal static long RecordsStart(int width, long numRestarts) => 1 + 2L * width + (long)width * numRestarts;
 
     internal static long ReadOffset(scoped ReadOnlySpan<byte> src, int width) =>
-        width == Width2 ? BinaryPrimitives.ReadUInt16LittleEndian(src) : BinaryPrimitives.ReadUInt32LittleEndian(src);
+        width == 2 ? BinaryPrimitives.ReadUInt16LittleEndian(src) : BinaryPrimitives.ReadUInt32LittleEndian(src);
 }
 
 /// <summary>
 /// Builds one <see cref="Block"/>: records are added in ascending key order, front-coded and
-/// restart-tracked off-heap, then emitted to a writer at <see cref="Finish"/>, which picks the
-/// narrowest offset width that fits the finished block.
+/// restart-tracked off-heap, then emitted to a writer at <see cref="Finish"/> under the caller's
+/// <see cref="Block.FlagBlock"/>/<see cref="Block.FlagIndex"/> role flag, which fixes the offset width.
 /// </summary>
 internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096) : IDisposable
 {
@@ -91,24 +104,25 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     public bool WouldExceedIfAdded(int keyLen, int valueLen, int contentLimit)
     {
         int nRestarts = _restarts.Count + (_recordCount % restartInterval == 0 ? 1 : 0);
-        long header = Block.RecordsStart(Block.Width2, nRestarts);
+        long header = Block.RecordsStart(2, nRestarts);
         int recordMax = 2 + keyLen + Block.SizePrefix + valueLen;
         return header + _body.Count + recordMax > contentLimit;
     }
 
-    /// <summary>Emit the finished block to <paramref name="writer"/>; returns the bytes written.</summary>
-    public long Finish<TWriter>(ref TWriter writer) where TWriter : IByteBufferWriter
+    /// <summary>Emit the finished block under <paramref name="formatFlag"/>
+    /// (<see cref="Block.FlagBlock"/> for a data block, <see cref="Block.FlagIndex"/> for the index)
+    /// to <paramref name="writer"/>; returns the bytes written. The flag fixes the offset width — a
+    /// data block is capped well under 64 KiB so its 2-byte offsets always fit.</summary>
+    public long Finish<TWriter>(ref TWriter writer, byte formatFlag) where TWriter : IByteBufferWriter
     {
+        int width = Block.WidthFromFlag(formatFlag);
         int n = _restarts.Count;
         int bodyLen = _body.Count;
-        // bodyLen and n are width-independent, so a single trial-at-2 / fall-to-4 is exact.
-        long end2 = Block.RecordsStart(Block.Width2, n) + bodyLen;
-        int width = end2 <= ushort.MaxValue && n <= ushort.MaxValue ? Block.Width2 : Block.Width4;
         long recordsStart = Block.RecordsStart(width, n);
         long recordsEnd = recordsStart + bodyLen;
 
         long start = writer.Written;
-        writer.GetSpan(1)[0] = (byte)width;
+        writer.GetSpan(1)[0] = formatFlag;
         writer.Advance(1);
         WriteOffset(ref writer, width, recordsEnd);
         WriteOffset(ref writer, width, n);
@@ -136,7 +150,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     private static void WriteOffset<TWriter>(ref TWriter writer, int width, long value) where TWriter : IByteBufferWriter
     {
         Span<byte> dst = writer.GetSpan(width);
-        if (width == Block.Width2) BinaryPrimitives.WriteUInt16LittleEndian(dst, checked((ushort)value));
+        if (width == 2) BinaryPrimitives.WriteUInt16LittleEndian(dst, checked((ushort)value));
         else BinaryPrimitives.WriteUInt32LittleEndian(dst, checked((uint)value));
         writer.Advance(width);
     }
@@ -159,8 +173,8 @@ internal static class BlockReader
 
         Span<byte> buf = stackalloc byte[4];
         if (!reader.TryRead(blockStart, buf[..1])) return false;
-        int w = buf[0];
-        if (w != Block.Width2 && w != Block.Width4) return false;
+        int w = Block.WidthFromFlag(buf[0]);
+        if (w == 0) return false;
         if (!reader.TryRead(blockStart + 1, buf[..w])) return false;
         recordsEnd = Block.ReadOffset(buf, w);
         if (!reader.TryRead(blockStart + 1 + w, buf[..w])) return false;

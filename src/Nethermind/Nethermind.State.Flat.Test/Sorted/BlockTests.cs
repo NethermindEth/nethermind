@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.Test.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using NUnit.Framework;
 
@@ -14,13 +15,13 @@ namespace Nethermind.State.Flat.Test.Sorted;
 [TestFixture]
 public class BlockTests
 {
-    private static byte[] BuildBlock(int restartInterval, (byte[] Key, byte[] Value)[] entries)
+    private static byte[] BuildBlock(int restartInterval, (byte[] Key, byte[] Value)[] entries, byte formatFlag = Block.FlagBlock)
     {
         using PooledByteBufferWriter pooled = new(256);
         using BlockBuilder block = new(restartInterval);
         foreach ((byte[] key, byte[] value) in entries)
             block.Add(key, value);
-        block.Finish(ref pooled.GetWriter());
+        block.Finish(ref pooled.GetWriter(), formatFlag);
         return pooled.WrittenSpan.ToArray();
     }
 
@@ -41,7 +42,7 @@ public class BlockTests
     }
 
     [Test]
-    public void Picks_width_2_for_a_small_block()
+    public void Data_block_uses_2_byte_offsets()
     {
         (byte[], byte[])[] entries =
         [
@@ -50,7 +51,7 @@ public class BlockTests
             (Bytes.FromHexString("30"), Bytes.FromHexString("cc")),
         ];
         byte[] block = BuildBlock(8, entries);
-        Assert.That(block[0], Is.EqualTo(Block.Width2));
+        Assert.That(block[0], Is.EqualTo(Block.FlagBlock));
 
         foreach ((byte[] key, byte[] value) in entries)
         {
@@ -60,10 +61,10 @@ public class BlockTests
         }
     }
 
-    // Enough records that recordsEnd exceeds 65535, forcing the 4-byte offset width — the path the
-    // multi-MB index block takes for a full-state snapshot, exercised cheaply at the block layer.
+    // The Index block carries 4-byte offsets so it can span past 64 KiB — the path the multi-MB index
+    // block takes for a full-state snapshot, exercised cheaply here by building a >64 KiB block directly.
     [Test]
-    public void Picks_width_4_when_block_exceeds_64KiB()
+    public void Index_block_round_trips_past_64KiB()
     {
         const int count = 8000;
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
@@ -73,8 +74,8 @@ public class BlockTests
             BinaryPrimitives.WriteInt32BigEndian(key, i);
             entries[i] = (key, [(byte)i, (byte)(i >> 8), 0xAB, 0xCD, 0xEF, 0x01, 0x02, 0x03]);
         }
-        byte[] block = BuildBlock(8, entries);
-        Assert.That(block[0], Is.EqualTo(Block.Width4), "recordsEnd > 65535 must select the 4-byte width");
+        byte[] block = BuildBlock(8, entries, Block.FlagIndex);
+        Assert.That(block[0], Is.EqualTo(Block.FlagIndex), "the Index flag selects 4-byte offsets");
 
         foreach (int i in (int[])[0, 1, 100, 4000, 7999])
         {

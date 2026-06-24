@@ -15,7 +15,7 @@ index block     ; right after the last (unpadded) data block, at the footer's in
 footer          ; [count i64][numDataBlocks i64][indexOffset i64][restartInterval u8][version u8]  (fixed 26 bytes, read first)
 
 Block (data and index alike):
-  [offsetWidth u8]                    ; W = 2 or 4 bytes
+  [formatFlag u8]                     ; Block => W = 2, Index => W = 4 (offset width in bytes)
   [recordsEnd  : W]                   ; block-relative byte offset where records end (content size)
   [numRestarts : W]
   [restartOffset : W × numRestarts]   ; block-relative; restartOffset[0] = 1 + 2W + W·numRestarts
@@ -27,8 +27,8 @@ Block (data and index alike):
   `suffixLen` bytes, so the full key = previous key's first `cp` bytes + `keySuffix`. Front-coding
   **resets** (`cp = 0`, full key) every `restartInterval` (default **8**) records and at every block
   start — these reset points are the **restarts**, and each block prefixes a table of their byte
-  offsets. The per-block **`offsetWidth`** (`W`) is the narrowest of 2 or 4 bytes that addresses the
-  finished block: a ≤ 64 KiB data block uses `W = 2`, the multi-MB index uses `W = 4`. `recordsEnd`
+  offsets. The header **`formatFlag`** records the block's role and thereby its offset width `W`: a
+  data **`Block`** (capped well under 64 KiB) uses `W = 2`, the multi-MB **`Index`** uses `W = 4`. `recordsEnd`
   lets a block be located by its **start alone** — crucial because data blocks are zero-padded; the
   scan/enumeration stops at `recordsEnd` and never reads pad bytes. `cp`, `suffixLen`, and the value
   size `vs` are each one byte: keys are ≤ 55 bytes, every inline value is < 255. The one variable-length

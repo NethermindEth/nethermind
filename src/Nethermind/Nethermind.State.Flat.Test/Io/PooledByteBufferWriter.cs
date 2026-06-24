@@ -1,11 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.InteropServices;
+using Nethermind.State.Flat.Io;
 
-namespace Nethermind.State.Flat.Io;
+namespace Nethermind.State.Flat.Test.Io;
 
-public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset = 0) : IDisposable
+/// <summary>
+/// Test-only in-memory <see cref="IByteBufferWriter"/>: grows a native buffer and exposes the
+/// written bytes via <see cref="WrittenSpan"/>. Production builds stream through the arena writer;
+/// the tests use this to materialize a block/table in memory for assertions.
+/// </summary>
+internal sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset = 0) : IDisposable
 {
     private Writer _writer = new(initialCapacity, firstOffset);
 

@@ -71,7 +71,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         // The index block begins right after the last (unpadded) data block; record its offset so the
         // reader can locate it directly without recomputing it from the block count.
         long indexOffset = _writer.Written - _tableStart;
-        _indexBlock.Finish(ref _writer);
+        _indexBlock.Finish(ref _writer, Block.FlagIndex);
 
         Span<byte> footer = _writer.GetSpan(SortedTable.FooterSize);
         BinaryPrimitives.WriteInt64LittleEndian(footer, _count);
@@ -88,7 +88,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
     /// own last key.</summary>
     private void FlushDataBlock(scoped ReadOnlySpan<byte> nextFirstKey)
     {
-        _dataBlock.Finish(ref _writer);
+        _dataBlock.Finish(ref _writer, Block.FlagBlock);
         bool isLast = nextFirstKey.IsEmpty;
         if (!isLast) PadZeros((-(_writer.Written - _tableStart)) & (SortedTable.BlockSize - 1));
 
