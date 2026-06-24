@@ -247,7 +247,7 @@ namespace Nethermind.Merge.Plugin
                 if (_metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber))
                 {
                     byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.TerminalPoWNumber);
-                    Rlp.ValueDecoderContext ctx = hashFromDb.AsRlpValueContext();
+                    RlpReader ctx = new(hashFromDb);
                     return ctx.DecodeLong();
                 }
             }
@@ -266,7 +266,7 @@ namespace Nethermind.Merge.Plugin
                 if (_metadataDb.KeyExists(key))
                 {
                     byte[]? hashFromDb = _metadataDb.Get(key);
-                    Rlp.ValueDecoderContext ctx = hashFromDb.AsRlpValueContext();
+                    RlpReader ctx = new(hashFromDb);
                     return ctx.DecodeKeccak();
                 }
             }

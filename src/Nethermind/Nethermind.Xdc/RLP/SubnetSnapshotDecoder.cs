@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
@@ -10,7 +9,7 @@ namespace Nethermind.Xdc.RLP;
 internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot>
 {
 
-    protected override SubnetSnapshot DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override SubnetSnapshot DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         SubnetSnapshot subnetSnapshot = DecodeBase<SubnetSnapshot>(ref decoderContext, (number, hash, candidates) => new SubnetSnapshot(number, hash, candidates), rlpBehaviors);
         if (subnetSnapshot is null)
@@ -20,14 +19,14 @@ internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot
         return subnetSnapshot;
     }
 
-    protected override void EncodeContent(RlpStream stream, SubnetSnapshot item, RlpBehaviors rlpBehaviors)
+    protected override void EncodeContent<TWriter>(ref TWriter writer, SubnetSnapshot item, RlpBehaviors rlpBehaviors)
     {
-        base.EncodeContent(stream, item, rlpBehaviors);
+        base.EncodeContent(ref writer, item, rlpBehaviors);
 
         if (item.NextEpochPenalties is null)
-            stream.EncodeArray<Address>([]);
+            writer.StartSequence(0);
         else
-            EncodeAddressSequence(stream, item.NextEpochPenalties);
+            EncodeAddressSequence(ref writer, item.NextEpochPenalties);
     }
 
     protected override int GetContentLength(SubnetSnapshot item, RlpBehaviors rlpBehaviors)

@@ -121,7 +121,7 @@ public static class BaseFlatPersistence
             ReadOnlySpan<byte> value = buffer[..resultSize];
             if (rlpWrapSlots)
             {
-                Rlp.ValueDecoderContext ctx = new(value);
+                RlpReader ctx = new(value);
                 value = ctx.DecodeByteArraySpan();
             }
 
@@ -232,7 +232,7 @@ public static class BaseFlatPersistence
                 // Extract the 32-byte slot hash from the middle of the key
                 _currentKey = new ValueHash256(view.CurrentKey.Slice(StoragePrefixPortion, StorageSlotKeySize));
                 ReadOnlySpan<byte> slotValue = rlpWrapSlots
-                    ? view.CurrentValue.AsRlpValueContext().DecodeByteArraySpan()
+                    ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
                     : view.CurrentValue;
                 // Mirror TryGetStorage: a slot value over 32 bytes means the encoding is mismatched (e.g. a
                 // marker-less DB read as raw). Fail loudly here too, rather than handing snap-sync healing a
@@ -303,7 +303,7 @@ public static class BaseFlatPersistence
 
             // The bytes are stored verbatim — no decode + re-encode round-trip. The single DecodeByteArraySpan
             // call validates canonical form and bounds the item exactly (trimming any trailing bytes).
-            Rlp.ValueDecoderContext ctx = new(rlpValue);
+            RlpReader ctx = new(rlpValue);
             ctx.DecodeByteArraySpan();
             storage.PutSpan(theKey, rlpValue[..ctx.Position], flags);
         }

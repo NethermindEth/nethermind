@@ -42,5 +42,9 @@ public class GethTxTraceEntry
 
     public Dictionary<string, string>? Storage { get; set; }
 
+    [JsonPropertyName("returnData")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReturnData { get; set; }
+
     internal virtual void UpdateMemorySize(ulong size) { }
 }

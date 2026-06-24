@@ -12,10 +12,9 @@ internal sealed class FindNodeMsgSerializer() : MsgSerializerBase<FindNodeMsg>(M
     protected override int GetContentLengthCore(FindNodeMsg msg)
         => GetDistancesLength(msg.Distances);
 
-    protected override void SerializeCore(NettyRlpStream stream, FindNodeMsg msg)
-        => EncodeDistances(stream, msg.Distances);
+    protected override void SerializeCore<TWriter>(ref TWriter writer, FindNodeMsg msg) => EncodeDistances(ref writer, msg.Distances);
 
-    protected override FindNodeMsg DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override FindNodeMsg DeserializeCore(in RequestId requestId, ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, DecodeDistances(ref ctx), owner);
 
     private static int GetDistancesLength(Distances distances)
@@ -29,7 +28,8 @@ internal sealed class FindNodeMsgSerializer() : MsgSerializerBase<FindNodeMsg>(M
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void EncodeDistances(NettyRlpStream stream, Distances distances)
+    private static void EncodeDistances<TWriter>(ref TWriter writer, Distances distances)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int contentLength = 0;
         for (int i = 0; i < distances.Count; i++)
@@ -37,14 +37,14 @@ internal sealed class FindNodeMsgSerializer() : MsgSerializerBase<FindNodeMsg>(M
             contentLength += Rlp.LengthOf(distances[i]);
         }
 
-        stream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
         for (int i = 0; i < distances.Count; i++)
         {
-            Encode(stream, distances[i]);
+            Encode(ref writer, distances[i]);
         }
     }
 
-    private static Distances DecodeDistances(ref Rlp.ValueDecoderContext ctx)
+    private static Distances DecodeDistances(ref RlpReader ctx)
     {
         int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(checkPosition);

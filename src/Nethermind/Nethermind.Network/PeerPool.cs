@@ -74,7 +74,30 @@ namespace Nethermind.Network
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
 
-        private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e) => TryRemove(e.Node.Id, out _);
+        private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
+        {
+            if (!Peers.TryGetValue(e.Node.Id, out Peer? peer))
+                return;
+
+            if (e is not ExplicitNodeRemovalEventArgs)
+            {
+                // Only remove the peer if no P2P session is active.
+                // The dictionary removals are done inside SessionLock so the session check and
+                // removal are atomic against AttachSession. PeerRemoved is fired outside the lock
+                // to avoid holding it across arbitrary event handler code.
+                bool removed;
+                lock (peer.SessionLock)
+                {
+                    removed = peer.InSession is null && peer.OutSession is null && !peer.IsAwaitingConnection
+                              && Peers.TryRemove(e.Node.Id, out _);
+                    if (removed) _staticPeers.TryRemove(e.Node.Id, out _);
+                }
+                if (removed) PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
+                return;
+            }
+
+            TryRemove(e.Node.Id, out _);
+        }
 
         public Peer GetOrAdd(Node node) => Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));
 
@@ -114,18 +137,19 @@ namespace Nethermind.Network
 
         public bool TryRemove(PublicKey id, out Peer peer)
         {
-            if (Peers.TryRemove(id, out peer))
+            if (!Peers.TryRemove(id, out peer))
+                return false;
+
+            _staticPeers.TryRemove(id, out _);
+            lock (peer.SessionLock)
             {
-                _staticPeers.TryRemove(id, out _);
                 peer.InSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
                 peer.OutSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
                 peer.InSession = null;
                 peer.OutSession = null;
-                PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
-                return true;
             }
-
-            return false;
+            PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
+            return true;
         }
 
         public Peer Replace(ISession session)
