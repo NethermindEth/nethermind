@@ -20,8 +20,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// <code>
 ///   Storage node : FA + addrHash(20) + {FF top | FE compact | FD fallback} + path
 ///   State node   : {FD top | FC compact | FB fallback} + path
-///   Slot         : FE + addr(20) + FD + slot(32 BE)
-///   Self-destruct: FE + addr(20) + FE
+///   Self-destruct: FE + addr(20) + FD
+///   Slot         : FE + addr(20) + FE + slot(32 BE)
 ///   Account      : FE + addr(20) + FF
 ///   Metadata     : FF + name(10, NUL-padded)
 /// </code>
@@ -43,10 +43,11 @@ internal static class PersistedSnapshotKey
     internal const byte StateFallbackColumn = 0xFB;  // 255 - 0x04
     internal const byte StorageColumn = 0xFA;        // 255 - 0x05
 
-    // Per-address subcolumn bytes = 255 - per-address sub-tag.
+    // Per-address subcolumn bytes = 255 - per-address sub-tag. Self-destruct sorts before slots so the
+    // merge resolves an address's truncation barrier before the slots it filters, and can stream them.
     internal const byte AccountSub = 0xFF;           // 255 - 0x00
-    internal const byte SelfDestructSub = 0xFE;      // 255 - 0x01
-    internal const byte SlotSub = 0xFD;              // 255 - 0x02
+    internal const byte SelfDestructSub = 0xFD;      // 255 - 0x02
+    internal const byte SlotSub = 0xFE;              // 255 - 0x01
 
     // Storage-trie subcolumn bytes = 255 - storage sub-tag.
     internal const byte StorageTopSub = 0xFF;        // 255 - 0x00

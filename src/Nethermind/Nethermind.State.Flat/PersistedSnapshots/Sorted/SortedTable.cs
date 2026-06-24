@@ -61,7 +61,7 @@ internal static class SortedTable
         internal readonly byte Version;
     }
 
-    internal const byte FormatVersion = 9;
+    internal const byte FormatVersion = 10;
 
     /// <summary>Footer-resolved table geometry: the table-relative byte offset of the (unaligned) index
     /// block. The delta-coded index values need no stored restart interval — a restart is any

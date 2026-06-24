@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.InteropServices;
-using Nethermind.Core.Collections;
+using Nethermind.Core;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
@@ -24,17 +24,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </remarks>
 public static class PersistedSnapshotMerger
 {
-    // A per-address slot deferred during the merge until that address's self-destruct barrier is
-    // known. Offsets index into the run-scoped pending key/value buffers.
-    private struct PendingSlot
-    {
-        public int KeyOffset;
-        public int KeyLength;
-        public int ValueOffset;
-        public int ValueLength;
-        public int WinningSource;
-    }
-
     /// <summary>
     /// N-way merge of N persisted snapshots (oldest-first) into <paramref name="writer"/>. Callers
     /// own the source lifecycle: open one reader source per input up front, pass them here, dispose
@@ -65,9 +54,10 @@ public static class PersistedSnapshotMerger
     }
 
     /// <summary>
-    /// Streaming N-way merge of every non-metadata entry. Per key: newest source wins, except slots,
-    /// which are buffered per address and flushed once that address's self-destruct barrier is known
-    /// (slots sort before self-destruct, which sorts before account, under the reverse-tag order).
+    /// Streaming N-way merge of every non-metadata entry. Per key the newest source wins. Within a
+    /// per-address group the order is self-destruct, then slots, then account (under the reverse-tag
+    /// order), so the self-destruct resolves the truncation barrier before the slots it filters — each
+    /// slot is then emitted or dropped on the fly, with no per-address buffering.
     /// </summary>
     private static void MergeEntries<TWriter, TView, TReader, TPin>(
         ReadOnlySpan<TView> views, ref SortedTableBuilder<TWriter> table, BloomFilter bloom)
@@ -86,11 +76,11 @@ public static class PersistedSnapshotMerger
             hasMore[i] = enums[i].MoveNext(in r);
         }
 
-        using NativeMemoryList<byte> pendingKeys = new(256);
-        using NativeMemoryList<byte> pendingValues = new(256);
-        using NativeMemoryList<PendingSlot> pending = new(16);
-        Span<byte> curAddr = stackalloc byte[PersistedSnapshotKey.AddressKeyLength];
-        bool haveAddr = false;
+        // Cached for the current per-address group: its address (for change detection + bloom keys) and
+        // the self-destruct truncation barrier, resolved when the group's self-destruct record is seen
+        // (it now sorts before the slots) and -1 when the group has none.
+        Address? curAddr = null;
+        ulong addrBloomKey = 0;
         int barrier = -1;
 
         Span<byte> minKey = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
@@ -115,25 +105,15 @@ public static class PersistedSnapshotMerger
             ReadOnlySpan<byte> key = minKey[..keyLen];
 
             // Metadata (column 0xFF) sorts last and is produced separately by MergeMetadata.
-            if (key[0] == PersistedSnapshotKey.MetadataColumn)
-            {
-                if (haveAddr) FlushPendingSlots(ref table, bloom, curAddr, barrier, pendingKeys, pendingValues, pending);
-                break;
-            }
+            if (key[0] == PersistedSnapshotKey.MetadataColumn) break;
 
             bool isPerAddr = key[0] == PersistedSnapshotKey.AccountColumn;
-            // Safety net for a slots-only address (no self-destruct / account record to trigger the
-            // flush): on address change or leaving the per-address column, flush any still-buffered
-            // slots (barrier resolved from this address's self-destruct, or -1 if none).
-            if (haveAddr && (!isPerAddr || !PersistedSnapshotKey.PerAddressAddress(key).SequenceEqual(curAddr)))
+            // On entering a new per-address group, cache its address + bloom key and reset the barrier;
+            // the group's self-destruct record (if any) sorts first and sets it before the slots.
+            if (isPerAddr && (curAddr is null || !PersistedSnapshotKey.PerAddressAddress(key).SequenceEqual(curAddr.Bytes)))
             {
-                FlushPendingSlots(ref table, bloom, curAddr, barrier, pendingKeys, pendingValues, pending);
-                haveAddr = false;
-            }
-            if (isPerAddr && !haveAddr)
-            {
-                PersistedSnapshotKey.PerAddressAddress(key).CopyTo(curAddr);
-                haveAddr = true;
+                curAddr = new Address(PersistedSnapshotKey.PerAddressAddress(key));
+                addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(curAddr);
                 barrier = -1;
             }
 
@@ -146,24 +126,21 @@ public static class PersistedSnapshotMerger
             if (isPerAddr)
             {
                 byte sub = PersistedSnapshotKey.PerAddressSubColumn(key);
-                if (sub == PersistedSnapshotKey.SlotSub)
+                if (sub == PersistedSnapshotKey.SelfDestructSub)
                 {
-                    BufferSlot<TView, TReader, TPin>(views, enums, key, newest, pendingKeys, pendingValues, pending);
-                }
-                else if (sub == PersistedSnapshotKey.SelfDestructSub)
-                {
-                    // Slots (0xFD) sort before self-destruct (0xFE): resolve the barrier from the
-                    // self-destruct record, flush the now barrier-filtered slots so they land in their
-                    // ascending position, then emit the self-destruct record.
+                    // Self-destruct sorts before this address's slots: resolve the truncation barrier
+                    // here so the slots that follow can be filtered and streamed without buffering.
                     barrier = ComputeSelfDestructBarrier<TView, TReader, TPin>(views, enums, matching[..matchCount]);
-                    FlushPendingSlots(ref table, bloom, curAddr, barrier, pendingKeys, pendingValues, pending);
                     EmitSelfDestruct(ref table, bloom, key, barrier);
+                }
+                else if (sub == PersistedSnapshotKey.SlotSub)
+                {
+                    // Stream the slot, dropping it when its newest source predates the self-destruct.
+                    if (barrier < 0 || newest >= barrier)
+                        EmitSlot<TWriter, TView, TReader, TPin>(views, enums, ref table, bloom, key, newest, addrBloomKey);
                 }
                 else // account
                 {
-                    // Account (0xFF) sorts after slots and self-destruct; flush any slots not already
-                    // flushed by a self-destruct (barrier == -1 ⇒ no truncation) before it.
-                    FlushPendingSlots(ref table, bloom, curAddr, barrier, pendingKeys, pendingValues, pending);
                     EmitNewest<TWriter, TView, TReader, TPin>(views, enums, ref table, bloom, key, newest);
                 }
             }
@@ -180,56 +157,23 @@ public static class PersistedSnapshotMerger
             }
         }
 
-        if (haveAddr) FlushPendingSlots(ref table, bloom, curAddr, barrier, pendingKeys, pendingValues, pending);
-
         for (int i = 0; i < n; i++) enums[i].Dispose();
     }
 
-    private static void BufferSlot<TView, TReader, TPin>(
+    /// <summary>Emit the newest source's value for a slot <paramref name="key"/> and its bloom keys.</summary>
+    private static void EmitSlot<TWriter, TView, TReader, TPin>(
         ReadOnlySpan<TView> views, SortedTableEnumerator<TReader, TPin>[] enums,
-        ReadOnlySpan<byte> key, int newest,
-        NativeMemoryList<byte> pendingKeys, NativeMemoryList<byte> pendingValues, NativeMemoryList<PendingSlot> pending)
+        ref SortedTableBuilder<TWriter> table, BloomFilter bloom, scoped ReadOnlySpan<byte> key, int newest, ulong addrBloomKey)
+        where TWriter : IByteBufferWriter
         where TView : IByteReaderSource<TReader, TPin>
         where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
         TReader r = views[newest].CreateReader();
         using TPin pin = r.PinBuffer(enums[newest].CurrentValue);
-        PendingSlot slot = new()
-        {
-            KeyOffset = pendingKeys.Count,
-            KeyLength = key.Length,
-            ValueOffset = pendingValues.Count,
-            ValueLength = pin.Buffer.Length,
-            WinningSource = newest,
-        };
-        pendingKeys.AddRange(key);
-        pendingValues.AddRange(pin.Buffer);
-        pending.Add(slot);
-    }
-
-    /// <summary>Flush this address's buffered slots, dropping any whose newest contributing source is
-    /// older than the self-destruct <paramref name="barrier"/>, then clear the pending buffers.</summary>
-    private static void FlushPendingSlots<TWriter>(
-        ref SortedTableBuilder<TWriter> table, BloomFilter bloom, scoped ReadOnlySpan<byte> addr, int barrier,
-        NativeMemoryList<byte> pendingKeys, NativeMemoryList<byte> pendingValues, NativeMemoryList<PendingSlot> pending)
-        where TWriter : IByteBufferWriter
-    {
-        ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addr);
-        Span<byte> keys = pendingKeys.AsSpan();
-        Span<byte> values = pendingValues.AsSpan();
-        for (int i = 0; i < pending.Count; i++)
-        {
-            PendingSlot s = pending[i];
-            if (barrier >= 0 && s.WinningSource < barrier) continue; // truncated by self-destruct
-            ReadOnlySpan<byte> key = keys.Slice(s.KeyOffset, s.KeyLength);
-            table.Add(key, values.Slice(s.ValueOffset, s.ValueLength));
-            bloom.Add(addrBloomKey);
-            bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, PersistedSnapshotKey.SlotKeyBytes(key)));
-        }
-        pendingKeys.Clear();
-        pendingValues.Clear();
-        pending.Clear();
+        table.Add(key, pin.Buffer);
+        bloom.Add(addrBloomKey);
+        bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, PersistedSnapshotKey.SlotKeyBytes(key)));
     }
 
     /// <summary>The truncation barrier for a self-destruct key — the newest source index that

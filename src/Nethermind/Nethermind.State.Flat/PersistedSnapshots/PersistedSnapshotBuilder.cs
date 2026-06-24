@@ -219,7 +219,15 @@ public static class PersistedSnapshotBuilder
                 ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressBytes);
                 bloom.Add(addrBloomKey);
 
-                // Slots (sub-tag 0x02). Full 32-byte big-endian slot inline — no prefix/suffix split.
+                // Self-destruct (sub-tag 0x02) sorts before slots.
+                if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
+                {
+                    int len = PersistedSnapshotKey.WriteSelfDestructKey(keyBuf, addressBytes);
+                    table.Add(keyBuf[..len],
+                        sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
+                }
+
+                // Slots (sub-tag 0x01). Full 32-byte big-endian slot inline — no prefix/suffix split.
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
                 {
@@ -234,14 +242,6 @@ public static class PersistedSnapshotBuilder
                     int len = PersistedSnapshotKey.WriteSlotKey(keyBuf, addressBytes, slotKey);
                     table.Add(keyBuf[..len], payload);
                     storageIdx++;
-                }
-
-                // Self-destruct (sub-tag 0x01).
-                if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
-                {
-                    int len = PersistedSnapshotKey.WriteSelfDestructKey(keyBuf, addressBytes);
-                    table.Add(keyBuf[..len],
-                        sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
                 }
 
                 // Account (sub-tag 0x00). Slim RLP starts with a list header (0xc0+), so the
