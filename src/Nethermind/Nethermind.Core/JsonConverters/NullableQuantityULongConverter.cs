@@ -37,7 +37,8 @@ public class NullableQuantityULongConverter : JsonConverter<ulong?>
         }
 
         int length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
-        if (length is 0)
+        // "0xffffffffffffffff" (18 bytes) is the longest valid ulong QUANTITY string.
+        if (length is 0 or > 18)
         {
             ThrowJsonException();
         }

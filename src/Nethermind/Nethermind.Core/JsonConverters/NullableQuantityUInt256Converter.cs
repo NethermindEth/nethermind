@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,9 +16,13 @@ using Nethermind.Int256;
 namespace Nethermind.Core.JsonConverters;
 
 /// <summary>
-/// Deserializes a nullable <see cref="UInt256"/> QUANTITY field following EIP-1474 strict rules:
-/// the hex string must not have leading zero digits (the only valid zero representation is <c>"0x0"</c>).
+/// Deserializes a nullable <see cref="UInt256"/> JSON-RPC QUANTITY field.
 /// </summary>
+/// <remarks>
+/// When <see cref="JsonRpcQuantityFormat.StrictMode"/> is <see langword="true"/> (the default),
+/// hex strings that carry leading zero digits (e.g. <c>"0x0b"</c>) are rejected per EIP-1474.
+/// Lenient mode (StrictMode == false) accepts them for backwards compatibility.
+/// </remarks>
 public class NullableQuantityUInt256Converter : JsonConverter<UInt256?>
 {
     [SkipLocalsInit]
