@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Io;
 
@@ -66,11 +68,48 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     private readonly NativeMemoryList<int> _restarts = new(64);
     private readonly NativeMemoryList<byte> _prevKey = new(256);
     private int _recordCount;
+    // Previous record's absolute value, tracked only when records are added through AddDeltaValue.
+    private long _prevValue;
 
     public int RecordCount => _recordCount;
 
     /// <summary>Append a record. Keys must arrive in ascending order; key and value lengths ≤ 255.</summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
+    {
+        WriteKey(key);
+        _body.Add((byte)value.Length);
+        _body.AddRange(value);
+    }
+
+    /// <summary>Append a record whose value is a non-negative integer, RocksDB-style: the absolute value at
+    /// every restart head and the delta against the previous record's value in between, each stored as a
+    /// minimal-width little-endian integer in the record's value slot (a zero stored value occupies no bytes
+    /// and reads back as 0). Values must be non-decreasing — the index block's byte offsets ascend — and fit
+    /// in 48 bits.</summary>
+    /// <remarks>The reader (<see cref="BlockReader.SeekCeiling"/> in delta mode) reconstructs the absolute
+    /// value by re-summing from the restart head it lands on; the absolute-at-restart anchoring is what lets
+    /// a seek begin at any restart.</remarks>
+    public void AddDeltaValue(scoped ReadOnlySpan<byte> key, long value)
+    {
+        Debug.Assert((ulong)value >> 48 == 0, "index value must fit in 48 bits");
+        bool restart = _recordCount % restartInterval == 0;
+        Debug.Assert(restart || value >= _prevValue, "delta-coded values must be non-decreasing");
+        WriteKey(key);
+
+        long stored = restart ? value : value - _prevValue;
+        _prevValue = value;
+
+        Span<byte> buf = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64LittleEndian(buf, (ulong)stored);
+        int width = stored == 0 ? 0 : BitOperations.Log2((ulong)stored) / 8 + 1;
+        _body.Add((byte)width);
+        _body.AddRange(buf[..width]);
+    }
+
+    /// <summary>Write a record's front-coded key prefix (<c>[cp][suffixLen][keySuffix]</c>), opening a new
+    /// restart run every <c>restartInterval</c> records, then advance the previous-key and record-count
+    /// state. The caller appends the value bytes.</summary>
+    private void WriteKey(scoped ReadOnlySpan<byte> key)
     {
         int cp;
         if (_recordCount % restartInterval == 0)
@@ -88,9 +127,6 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         hdr[1] = (byte)(key.Length - cp);
         _body.AddRange(hdr);
         _body.AddRange(key[cp..]);
-        hdr[0] = (byte)value.Length;
-        _body.AddRange(hdr[..1]);
-        _body.AddRange(value);
 
         _prevKey.Clear();
         _prevKey.AddRange(key);
@@ -98,14 +134,14 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     }
 
     /// <summary>Whether adding a record of the given key/value lengths would push the finished block
-    /// (assuming the 2-byte width that any ≤ 64 KiB block uses) past <paramref name="contentLimit"/>.
-    /// Used by the data-block size cap; the index block is never capped.</summary>
-    public bool WouldExceedIfAdded(int keyLen, int valueLen, int contentLimit)
+    /// (assuming the 2-byte width that any ≤ 64 KiB block uses) across a 4 KiB page. Used by the data-block
+    /// size cap so each block stays within one page; the index block is never capped.</summary>
+    public bool WouldCrossPage(int keyLen, int valueLen)
     {
         int nRestarts = _restarts.Count + (_recordCount % restartInterval == 0 ? 1 : 0);
         long header = Block.RecordsStart(2, nRestarts);
         int recordMax = 2 + keyLen + Block.SizePrefix + valueLen;
-        return header + _body.Count + recordMax > contentLimit;
+        return header + _body.Count + recordMax > PageLayout.PageSize;
     }
 
     /// <summary>Emit the finished block under <paramref name="formatFlag"/>
@@ -138,6 +174,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         _restarts.Clear();
         _prevKey.Clear();
         _recordCount = 0;
+        _prevValue = 0;
     }
 
     public void Dispose()
@@ -191,13 +228,25 @@ internal static class BlockReader
     /// its value <see cref="Bound"/>. Returns <c>false</c> when the block is empty or every key is
     /// &lt; <paramref name="target"/>.
     /// </summary>
+    /// <param name="deltaValue">In delta mode, the reconstructed absolute value of the ceiling record
+    /// (see <paramref name="deltaValues"/>); otherwise 0.</param>
+    /// <param name="deltaValues">When <c>true</c>, record values are read as RocksDB-style delta-coded
+    /// integers (absolute at restart heads, deltas in between, see <see cref="BlockBuilder.AddDeltaValue"/>)
+    /// and accumulated into <paramref name="deltaValue"/>. The binary search picks the rightmost restart
+    /// with first key ≤ <paramref name="target"/>, so the ceiling is within that restart run or is exactly
+    /// the head of the next run — the scan crosses at most one restart boundary, and that crossing record's
+    /// restart-aligned index makes it re-anchor to an absolute value. Requires
+    /// <paramref name="restartInterval"/> &gt; 0.</param>
+    /// <param name="restartInterval">Records per restart run; only consulted in delta mode.</param>
     internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
-        scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf, out int keyLen, out Bound value)
+        scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf, out int keyLen, out Bound value,
+        out long deltaValue, bool deltaValues = false, int restartInterval = 0)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IByteReader<TPin>, allows ref struct
     {
         keyLen = 0;
         value = default;
+        deltaValue = 0;
         if (!ReadHeader<TReader, TPin>(in reader, blockStart, out int width, out long recordsEnd, out long numRestarts, out _))
             return false;
         if (numRestarts == 0) return false;
@@ -228,6 +277,13 @@ internal static class BlockReader
         long pos = blockStart + Block.ReadOffset(ob, width);
         long end = blockStart + recordsEnd;
 
+        // Delta-value accumulation: the scan starts at a restart head, so recordIndex tracks the global
+        // record number; a record at a restart boundary (recordIndex % restartInterval == 0) carries an
+        // absolute value, every other record a delta against the previous one.
+        long recordIndex = scanRestart * restartInterval;
+        long runningValue = 0;
+        Span<byte> vbuf = stackalloc byte[sizeof(ulong)];
+
         // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
         while (pos < end)
         {
@@ -241,10 +297,21 @@ internal static class BlockReader
             if (!reader.TryRead(valueSizeOffset, hdr[..1])) return false;
             int valueLen = hdr[0];
 
+            if (deltaValues)
+            {
+                if (valueLen > 6) return false; // u48 ceiling — reject corruption before the shift widens it
+                vbuf.Clear();
+                if (valueLen > 0 && !reader.TryRead(valueSizeOffset + Block.SizePrefix, vbuf[..valueLen])) return false;
+                long v = (long)BinaryPrimitives.ReadUInt64LittleEndian(vbuf);
+                runningValue = recordIndex % restartInterval == 0 ? v : runningValue + v;
+                recordIndex++;
+            }
+
             if (target.SequenceCompareTo(keyBuf[..kLen]) <= 0)
             {
                 keyLen = kLen;
                 value = new Bound(valueSizeOffset + Block.SizePrefix, valueLen);
+                deltaValue = runningValue;
                 return true;
             }
             pos = valueSizeOffset + Block.SizePrefix + valueLen;

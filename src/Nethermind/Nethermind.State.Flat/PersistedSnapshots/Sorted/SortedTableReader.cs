@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
@@ -26,18 +25,15 @@ internal static class SortedTableReader
             || footer.NumDataBlocks == 0)
             return false;
 
-        // Stage 1: ceiling over the index block — first separator ≥ target → its data block number.
+        // Stage 1: ceiling over the index block — first separator ≥ target → its data block's table-relative
+        // byte offset (index values are RocksDB-style delta-coded, reconstructed by the delta-mode seek).
         Span<byte> sepBuf = stackalloc byte[256];
-        if (!BlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.IndexBlockStart(table, footer), key, sepBuf, out _, out Bound blockRef))
+        if (!BlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.IndexBlockStart(table, footer), key, sepBuf, out _, out _, out long byteOffset, deltaValues: true, restartInterval: footer.RestartInterval))
             return false;
-
-        Span<byte> bn = stackalloc byte[SortedTable.IndexValueSize];
-        if (!reader.TryRead(blockRef.Offset, bn)) return false;
-        long blockNumber = BinaryPrimitives.ReadUInt32LittleEndian(bn);
 
         // Stage 2: ceiling over the data block; a hit requires the ceiling key to equal the target.
         Span<byte> keyBuf = stackalloc byte[256];
-        if (!BlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.DataBlockStart(table, blockNumber), key, keyBuf, out int keyLen, out Bound v))
+        if (!BlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.DataBlockStart(table, byteOffset), key, keyBuf, out int keyLen, out Bound v, out _))
             return false;
         if (!key.SequenceEqual(keyBuf[..keyLen])) return false;
 

@@ -47,7 +47,8 @@ internal static class PersistedSnapshotTags
     // through by the merger. Bump when the on-disk layout changes.
     // v5: single-level sorted table (replaces the columnar format).
     // v6: streaming two-level sorted table — i64 footer, index block located by stored byte offset.
-    internal static readonly byte[] MetadataFormatVersion = [0x06];
+    // v7: index values are data-block byte offsets (u48), RocksDB-style delta-coded, not block numbers.
+    internal static readonly byte[] MetadataFormatVersion = [0x07];
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32
     // bytes. Mirrors BaseFlatPersistence.RlpSlotValueBufferSize.

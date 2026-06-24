@@ -11,7 +11,7 @@ in separate blob arenas; the table stores only small inline values (account RLP,
 ```
 data block × M  ; blocks 0..M-2 zero-padded to BlockSize (4096); data block i at i·BlockSize
 index block     ; right after the last (unpadded) data block, at the footer's indexOffset; NOT block-aligned;
-                ;   key = separator, value = u32 blockNumber LE
+                ;   key = separator, value = data-block table-relative byte offset (u48), delta-coded
 footer          ; [count i64][numDataBlocks i64][indexOffset i64][restartInterval u8][version u8]  (fixed 26 bytes, read first)
 
 Block (data and index alike):
@@ -33,27 +33,34 @@ Block (data and index alike):
   scan/enumeration stops at `recordsEnd` and never reads pad bytes. `cp`, `suffixLen`, and the value
   size `vs` are each one byte: keys are ≤ 55 bytes, every inline value is < 255. The one variable-length
   datum, the referenced blob-arena id list, is stored as separate records (see below), so no value
-  overflows.
+  overflows. In the **index block** the value slot instead holds a delta-coded integer (see below): a
+  minimal-width little-endian offset (`vs` = its byte count, 0..6), absolute at restart heads and a delta
+  in between.
 - Records are **streamed and packed** into data blocks in ascending key order; a data block closes once
-  the next record would push its content past `BlockSize` (4096). Blocks 0..M-2 are **zero-padded to
-  4096** so block `i` sits at `i·BlockSize` and is addressed by **block number** — a `u32` block number
-  times 4096 reaches a 16 TiB data region. The **last** data block is left unpadded, with the index
-  block immediately after it.
+  the next record would push its content across a 4 KiB page (`WouldCrossPage`). Blocks 0..M-2 are
+  **zero-padded to 4096** so block `i` sits at `i·BlockSize`; the index records each block's
+  table-relative **byte offset** (a `u48` reaches a 256 TiB data region). The **last** data block is left
+  unpadded, with the index block immediately after it. Byte-offset addressing no longer *requires* the
+  4 KiB alignment, but it is kept so reads stay page-aligned and block `i` stays at `i·BlockSize`.
 - The **index block** maps, per data block, the shortest **separator** key in
   `[lastKey(block), firstKey(next block))` (the last block's separator is its own last key) to that
-  block's number. It is located directly by the footer's `indexOffset` (a table-relative byte offset),
-  so it needs no block-number address and no padding; the i64 footer fields span the full range.
+  block's table-relative **byte offset**, stored RocksDB-style **delta-coded**: the absolute offset at
+  every restart head, the delta against the previous index record in between (offsets ascend, so deltas
+  are small — with 4 KiB alignment they are the constant `0x1000`). It is located directly by the
+  footer's `indexOffset`, so it needs no block-number address and no padding; the i64 footer fields span
+  the full range.
 - A lookup (`SortedTableReader`) reads the footer, then does two `BlockReader.SeekCeiling` calls
-  (LevelDB `Block::Iter::Seek`): (1) ceiling over the **index block** — the first separator ≥ the
-  target yields the data block number (a target past the last separator misses); (2) ceiling over that
-  **data block** — the first key ≥ the target; a hit requires that key to **equal** the target. Each
+  (LevelDB `Block::Iter::Seek`): (1) ceiling over the **index block** (in delta mode) — the first
+  separator ≥ the target yields the data block's byte offset (a target past the last separator misses);
+  (2) ceiling over that **data block** — the first key ≥ the target; a hit requires that key to
+  **equal** the target. Each
   ceiling binary-searches the restarts (rightmost restart whose first key ≤ target, clamped to restart
   0 when the target precedes the block) then scans forward to `recordsEnd`, reconstructing front-coded
   keys. O(log M) + O(log restarts) random reads + a short in-page scan; no caching, no per-table bloom.
 - The **builder** (`SortedTableBuilder`) requires records in **strictly ascending** key order and
   streams them straight into a data `BlockBuilder` (closing + padding at 4096) as they arrive — no
-  record buffer, so the table size is bounded by the 16 TiB data region rather than by memory. The index
-  `BlockBuilder` (separator → block number) accrues one entry per flushed data block; only the current
+  record buffer, so the table size is bounded by the 256 TiB data region rather than by memory. The index
+  `BlockBuilder` (separator → byte offset) accrues one entry per flushed data block; only the current
   data block and the index are held in memory. Producers (`PersistedSnapshotBuilder`,
   `PersistedSnapshotMerger`) therefore emit in ascending key order (see Keys below).
 - `version` rejects a blob written by a different format; the catalog version (`SnapshotCatalog`)

@@ -10,17 +10,18 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <summary>
 /// Builds a <see cref="SortedTable"/> by streaming: records must be <see cref="Add"/>ed in strictly
 /// ascending key order and are written straight into 4 KiB-aligned data blocks as they arrive — no
-/// record buffer, so the table size is bounded by the data region (16 TiB) rather than by an in-memory
-/// buffer. The index (separator → block number) accrues one entry per flushed data block; at
+/// record buffer, so the table size is bounded by the data region (256 TiB) rather than by an in-memory
+/// buffer. The index (separator → data-block byte offset) accrues one entry per flushed data block; at
 /// <see cref="Build"/> the final data block and the single index block are emitted, followed by the footer.
 /// </summary>
 /// <remarks>
 /// Both the data blocks and the index reuse <see cref="BlockBuilder"/>. Each finished data block but the
-/// last is zero-padded to <see cref="SortedTable.BlockSize"/> so block <c>i</c> sits at <c>i·BlockSize</c>
-/// and is addressed by block number; the index block is written right after the last (unpadded) data
-/// block and located by the footer's <c>indexOffset</c>. The index entry for a block is the shortest
-/// separator between that block's last key and the next block's first key (the last block uses its own
-/// last key). Only the current data block and the index are buffered.
+/// last is zero-padded to <see cref="SortedTable.BlockSize"/> so block <c>i</c> sits at <c>i·BlockSize</c>;
+/// the index records its table-relative byte offset (delta-coded via <see cref="BlockBuilder.AddDeltaValue"/>).
+/// The index block is written right after the last (unpadded) data block and located by the footer's
+/// <c>indexOffset</c>. The index entry for a block is the shortest separator between that block's last key
+/// and the next block's first key (the last block uses its own last key). Only the current data block and
+/// the index are buffered.
 /// </remarks>
 internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWriter
 {
@@ -32,8 +33,8 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
     // Last key Added overall — also the last key of the current data block, used to enforce ascending
     // order and to derive the separator when a block flushes. Keys are ≤ 255 bytes.
     private readonly NativeMemoryList<byte> _prevKey;
-    // Number of data blocks flushed so far == the block number to assign to the next flushed block.
-    private long _blockNumber;
+    // Number of data blocks flushed so far (the footer's NumDataBlocks).
+    private long _numDataBlocks;
     private long _count;
 
     public SortedTableBuilder(ref TWriter writer, int restartInterval = SortedTable.DefaultRestartInterval)
@@ -54,7 +55,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         if (_count > 0 && ((ReadOnlySpan<byte>)_prevKey.AsSpan()).SequenceCompareTo(key) >= 0)
             throw new ArgumentException("Keys must be added in strictly ascending order.", nameof(key));
 
-        if (_dataBlock.RecordCount > 0 && _dataBlock.WouldExceedIfAdded(key.Length, value.Length, SortedTable.BlockSize))
+        if (_dataBlock.RecordCount > 0 && _dataBlock.WouldCrossPage(key.Length, value.Length))
             FlushDataBlock(key);
 
         _dataBlock.Add(key, value);
@@ -75,7 +76,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
 
         Span<byte> footer = _writer.GetSpan(SortedTable.FooterSize);
         BinaryPrimitives.WriteInt64LittleEndian(footer, _count);
-        BinaryPrimitives.WriteInt64LittleEndian(footer[sizeof(long)..], _blockNumber);
+        BinaryPrimitives.WriteInt64LittleEndian(footer[sizeof(long)..], _numDataBlocks);
         BinaryPrimitives.WriteInt64LittleEndian(footer[(2 * sizeof(long))..], indexOffset);
         footer[3 * sizeof(long)] = (byte)_restartInterval;
         footer[3 * sizeof(long) + 1] = SortedTable.FormatVersion;
@@ -83,11 +84,13 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
     }
 
     /// <summary>Emit the current data block (4 KiB-padding it unless it is the final block) and record
-    /// its separator → block number in the index. The separator is the shortest key in
+    /// its separator → table-relative byte offset in the index. The separator is the shortest key in
     /// <c>[lastKey, nextFirstKey)</c>; the final block (<paramref name="nextFirstKey"/> empty) uses its
     /// own last key.</summary>
     private void FlushDataBlock(scoped ReadOnlySpan<byte> nextFirstKey)
     {
+        // The data block is written here, so its table-relative start is the current writer position.
+        long blockOffset = _writer.Written - _tableStart;
         _dataBlock.Finish(ref _writer, Block.FlagBlock);
         bool isLast = nextFirstKey.IsEmpty;
         if (!isLast) PadZeros((-(_writer.Written - _tableStart)) & (SortedTable.BlockSize - 1));
@@ -105,10 +108,8 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
             sepLen = FindShortestSeparator(lastKey, nextFirstKey, sepBuf);
         }
 
-        Span<byte> blockNumBuf = stackalloc byte[SortedTable.IndexValueSize];
-        BinaryPrimitives.WriteUInt32LittleEndian(blockNumBuf, checked((uint)_blockNumber));
-        _indexBlock.Add(sepBuf[..sepLen], blockNumBuf);
-        _blockNumber++;
+        _indexBlock.AddDeltaValue(sepBuf[..sepLen], blockOffset);
+        _numDataBlocks++;
         _dataBlock.Reset();
     }
 

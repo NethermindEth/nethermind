@@ -40,7 +40,9 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
     // block number) — incompatible with the v5 byte-offset tail index.
     // v7: sorted-table footer widened to i64 fields and the (unaligned) index block is located by a
     // stored byte offset instead of being recomputed from the block count — incompatible footer.
-    private const int CurrentVersion = 7;
+    // v8: index values are data-block byte offsets (u48), RocksDB-style delta-coded, instead of block
+    // numbers — incompatible index encoding.
+    private const int CurrentVersion = 8;
 
     private static readonly byte[] MetadataKey = new byte[4];
 

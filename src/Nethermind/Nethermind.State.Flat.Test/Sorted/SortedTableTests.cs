@@ -369,10 +369,11 @@ public class SortedTableTests
         Assert.That(BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, SortedTable.IndexBlockStart(table, footer), out _, out _, out _, out _), Is.True, "index block at IndexOffset");
     }
 
-    // u32 block number * 4 KiB reaches ~16 TiB; the helper must widen before multiplying.
+    // DataBlockStart now adds a table-relative byte offset directly (no block-number multiply); a u48
+    // offset reaches a 256 TiB table from any table base without overflow.
     [Test]
-    public void Block_number_addressing_does_not_overflow() =>
-        Assert.That(SortedTable.DataBlockStart(new Bound(0, 0), uint.MaxValue), Is.EqualTo((long)uint.MaxValue * SortedTable.BlockSize));
+    public void Data_block_start_adds_byte_offset() =>
+        Assert.That(SortedTable.DataBlockStart(new Bound(1000, 0), (1L << 48) - 1), Is.EqualTo(1000 + (1L << 48) - 1));
 
     [Test]
     public void Large_table_round_trips_across_many_blocks()
