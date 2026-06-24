@@ -583,7 +583,7 @@ public class DebugRpcModule(
         MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Number, block.Hash);
 
         return balRlp is null
-            ? ResultWrapper<OwnedByteMemory>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
+            ? ResultWrapper<OwnedByteMemory>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<OwnedByteMemory>.Success(new OwnedByteMemory(balRlp));
     }
 
