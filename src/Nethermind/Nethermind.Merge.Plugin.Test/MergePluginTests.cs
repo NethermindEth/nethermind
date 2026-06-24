@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.HealthChecks;
@@ -194,6 +195,7 @@ public class MergePluginTests
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
         IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
         Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
+        Assert.That(container.Resolve<IBlockProductionPolicy>(), Is.InstanceOf<MergeBlockProductionPolicy>());
     }
 
     [Test]

@@ -1425,6 +1425,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             _txTracer.SetOperationStack(new TraceStack(vmState.MemoryStacks(stackValue.Head)));
         }
+
+        if (_txTracer.IsTracingReturnData)
+        {
+            _txTracer.SetOperationReturnData(ReturnDataBuffer);
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

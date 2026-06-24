@@ -37,6 +37,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingMemory => true;
     public bool IsTracingInstructions => true;
     public bool IsTracingRefunds => true;
+    public bool IsTracingReturnData => true;
     public bool IsTracingCode => true;
     public bool IsTracingStack => true;
     public bool IsTracingState => true;
@@ -59,6 +60,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportLog(LogEntry log) => throw new OperationCanceledException(ErrorMessage);
 
     public void SetOperationMemorySize(ulong newSize) => throw new OperationCanceledException(ErrorMessage);
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) => throw new OperationCanceledException(ErrorMessage);
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) => throw new OperationCanceledException(ErrorMessage);

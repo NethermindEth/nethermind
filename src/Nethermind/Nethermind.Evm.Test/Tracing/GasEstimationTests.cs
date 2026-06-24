@@ -1253,6 +1253,78 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Null, "No error for caught DELEGATECALL revert");
         }
 
+        [Test]
+        public void Estimate_subcall_contract_uses_optimistic_multiplier_not_margin_multiplier()
+        {
+            using TestEnvironment testEnvironment = new();
+
+            Address innerAddress = TestItem.AddressB;
+            byte[] innerCode = Prepare.EvmCode
+                .PushData(0x01)
+                .PushData(0x00)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.STOP)
+                .Done;
+            testEnvironment.InsertContract(innerAddress, innerCode);
+
+            Address outerAddress = TestItem.AddressC;
+            byte[] outerCode = Prepare.EvmCode
+                .Call(innerAddress, 100_000)
+                .Op(Instruction.POP)
+                .PushData(0x02)
+                .PushData(0x01)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.STOP)
+                .Done;
+            testEnvironment.InsertContract(outerAddress, outerCode);
+
+            ulong gasLimit = 300_000;
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(gasLimit)
+                .WithTo(outerAddress)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            Block block = Build.A.Block
+                .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
+                .WithTransactions(tx)
+                .WithGasLimit(gasLimit)
+                .TestObject;
+
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err, errorMargin: 0);
+
+            Assert.That(err, Is.Null);
+            Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
+        }
+
+        [Test]
+        public void IsSimpleTransfer_returns_false_for_SetCodeTx_with_authorization_list()
+        {
+            using TestEnvironment testEnvironment = new();
+
+            Address target = TestItem.AddressB;
+
+            ulong gasLimit = 100_000;
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.SetCode)
+                .WithGasLimit(gasLimit)
+                .WithTo(target)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithAuthorizationCode(new AuthorizationTuple(1, Address.Zero, 0, new Signature(new byte[64], 0)))
+                .TestObject;
+
+            Block block = Build.A.Block
+                .WithNumber(MainnetSpecProvider.PragueActivation.BlockNumber)
+                .WithTimestamp(MainnetSpecProvider.PragueActivation.Timestamp!.Value)
+                .WithTransactions(tx)
+                .WithGasLimit(gasLimit)
+                .TestObject;
+
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+
+            Assert.That(err, Is.Null, err);
+            Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
+        }
+
         private class TestEnvironment : IDisposable
         {
             public ISpecProvider _specProvider;

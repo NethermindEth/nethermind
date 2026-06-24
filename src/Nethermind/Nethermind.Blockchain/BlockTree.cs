@@ -1900,8 +1900,8 @@ namespace Nethermind.Blockchain
                 this,
                 new(
                     Head,
-                    _headerStore.GetBlockNumber(safeBlockHash) ?? 0UL,
-                    _headerStore.GetBlockNumber(FinalizedHash) ?? 0UL)
+                    safeBlockHash is null ? 0UL : _headerStore.GetBlockNumber(safeBlockHash) ?? 0UL,
+                    FinalizedHash is null ? 0UL : _headerStore.GetBlockNumber(FinalizedHash) ?? 0UL)
                 );
         }
 

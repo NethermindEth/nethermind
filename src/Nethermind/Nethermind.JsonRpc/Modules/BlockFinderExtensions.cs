@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules
                 if (blockFinder.IsBlockPruned(blockParameter))
                 {
                     return new SearchResult<Block>(
-                        $"pruned history unavailable for block {blockParameter}",
+                        $"{ErrorMessages.PrunedHistoryUnavailable} for block {blockParameter}",
                         ErrorCodes.PrunedHistoryUnavailable);
                 }
 

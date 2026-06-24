@@ -31,6 +31,7 @@ public class CompositeTxTracer : ITxTracer
             IsTracingMemory |= t.IsTracingMemory;
             IsTracingInstructions |= t.IsTracingInstructions;
             IsTracingRefunds |= t.IsTracingRefunds;
+            IsTracingReturnData |= t.IsTracingReturnData;
             IsTracingCode |= t.IsTracingCode;
             IsTracingStack |= t.IsTracingStack;
             IsTracingBlockHash |= t.IsTracingBlockHash;
@@ -49,6 +50,7 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingMemory { get; }
     public bool IsTracingInstructions { get; }
     public bool IsTracingRefunds { get; }
+    public bool IsTracingReturnData { get; }
     public bool IsTracingCode { get; }
     public bool IsTracingStack { get; }
     public bool IsTracingBlockHash { get; }
@@ -268,6 +270,18 @@ public class CompositeTxTracer : ITxTracer
             if (innerTracer.IsTracingMemory)
             {
                 innerTracer.SetOperationMemorySize(newSize);
+            }
+        }
+    }
+
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingReturnData)
+            {
+                innerTracer.SetOperationReturnData(returnData);
             }
         }
     }
