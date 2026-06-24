@@ -97,7 +97,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             await CreateUpdater().EnsureSyncPivot(default);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            Rlp.ValueDecoderContext ctx = new(storedData!);
+            RlpReader ctx = new(storedData!);
             ulong storedPivotBlockNumber = ctx.DecodeULong();
             Hash256 storedFinalizedHash = ctx.DecodeKeccak()!;
 
@@ -135,7 +135,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             await CreateUnsafeUpdater().EnsureSyncPivot(default);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            Rlp.ValueDecoderContext ctx = new(storedData!);
+            RlpReader ctx = new(storedData!);
             ulong storedPivotBlockNumber = ctx.DecodeULong();
             Hash256 storedPivotBlockHash = ctx.DecodeKeccak()!;
 

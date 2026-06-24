@@ -12,9 +12,8 @@ internal sealed class TalkRespMsgSerializer() : MsgSerializerBase<TalkRespMsg>(M
     protected override int GetContentLengthCore(TalkRespMsg msg)
         => Rlp.LengthOf(msg.Response);
 
-    protected override void SerializeCore(NettyRlpStream stream, TalkRespMsg msg)
-        => stream.Encode(msg.Response);
+    protected override void SerializeCore<TWriter>(ref TWriter writer, TalkRespMsg msg) => writer.Encode(msg.Response);
 
-    protected override TalkRespMsg DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override TalkRespMsg DeserializeCore(in RequestId requestId, ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, DecodeByteMemory(ref ctx, ownedMessage), owner);
 }

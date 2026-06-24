@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -53,17 +53,10 @@ internal sealed class StateCompositionSnapshotStore(
         BinaryPrimitives.WriteUInt64BigEndian(key, snapshot.BlockNumber);
 
         int length = Decoder.GetLength(snapshot);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-        try
-        {
-            RlpStream stream = new(buffer);
-            Decoder.Encode(stream, snapshot);
-            db.PutSpan(key, buffer.AsSpan(0, length));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using ArrayPoolSpan<byte> buffer = new(length);
+        RlpWriter writer = new(buffer);
+        Decoder.Encode(ref writer, snapshot);
+        db.PutSpan(key, buffer);
 
         Span<byte> blockBytes = stackalloc byte[8];
         BinaryPrimitives.WriteUInt64BigEndian(blockBytes, snapshot.BlockNumber);
@@ -90,7 +83,7 @@ internal sealed class StateCompositionSnapshotStore(
         // to a fresh scan — callers don't need to distinguish "missing" from "corrupt".
         try
         {
-            Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
+            RlpReader ctx = new(data);
             return Decoder.Decode(ref ctx);
         }
         catch (Exception ex) when (ex is RlpException or InvalidDataException or EndOfStreamException or IOException)

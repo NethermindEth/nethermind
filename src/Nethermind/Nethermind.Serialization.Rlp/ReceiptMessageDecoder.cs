@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
         // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
         private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
 
-        protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (ctx.IsNextItemEmptyList())
             {
@@ -149,16 +149,17 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int length = GetLength(item, rlpBehaviors);
-            RlpStream stream = new(length);
-            Encode(stream, item, rlpBehaviors);
-            return stream.Data.ToArray();
+            byte[] bytes = new byte[length];
+            RlpWriter writer = new(bytes);
+            Encode(ref writer, item, rlpBehaviors);
+            return bytes;
         }
 
-        public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                rlpStream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
@@ -171,34 +172,35 @@ namespace Nethermind.Serialization.Rlp
             {
                 if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
                 {
-                    rlpStream.StartByteArray(sequenceLength + 1, false);
+                    writer.StartByteArray(sequenceLength + 1, false);
                 }
 
-                rlpStream.WriteByte((byte)item.TxType);
+                writer.WriteByte((byte)item.TxType);
             }
 
-            rlpStream.StartSequence(totalContentLength);
+            writer.StartSequence(totalContentLength);
             if (!skipStateAndStatus)
             {
                 if (isEip658Receipts)
                 {
-                    rlpStream.Encode(item.StatusCode);
+                    writer.Encode(item.StatusCode);
                 }
                 else
                 {
-                    rlpStream.Encode(item.PostTransactionState);
+                    writer.Encode(item.PostTransactionState);
                 }
             }
 
-            rlpStream.Encode(item.GasUsedTotal);
+            writer.Encode(item.GasUsedTotal);
             if (!skipBloom)
-                rlpStream.Encode(item.Bloom);
+                writer.Encode(item.Bloom);
 
-            rlpStream.StartSequence(logsLength);
+            writer.StartSequence(logsLength);
             LogEntry[] logs = item.Logs;
+            LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
             for (int i = 0; i < logs.Length; i++)
             {
-                rlpStream.Encode(logs[i]);
+                logEntryDecoder.Encode(ref writer, logs[i]);
             }
         }
     }

@@ -52,7 +52,8 @@ namespace Nethermind.State.Repositories
             void LocalPersistLevel()
             {
                 _blockInfoCache.Set(number, level);
-                _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
+                using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(level);
+                _blockInfoDb.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
             }
 
             bool needLock = batch?.Disposed != false;
@@ -66,7 +67,8 @@ namespace Nethermind.State.Repositories
             else
             {
                 _blockInfoCache.Set(number, level);
-                batch.WriteBatch.Set(number, Rlp.Encode(level).Bytes);
+                using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(level);
+                batch.WriteBatch.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
             }
         }
 
@@ -87,8 +89,8 @@ namespace Nethermind.State.Repositories
             return data.Select(kv =>
                 {
                     if (kv.Value == null || kv.Value.Length == 0) return null;
-                    Rlp.ValueDecoderContext rlpValueContext = kv.Value.AsRlpValueContext();
-                    return _decoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
+                    RlpReader reader = new(kv.Value);
+                    return _decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
                 })
                 .ToPooledList(data.Length);
         }

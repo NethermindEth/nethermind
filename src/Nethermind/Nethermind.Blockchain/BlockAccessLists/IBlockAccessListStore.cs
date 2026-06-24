@@ -33,7 +33,7 @@ public interface IBlockAccessListStore
     }
 
     void Insert(ulong blockNumber, Hash256 blockHash, byte[] bal);
-    void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlySpan<byte> bal);
+    void Insert(ulong blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> bal);
     void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal);
     MemoryManager<byte>? GetRlp(ulong blockNumber, Hash256 blockHash);
     ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash);

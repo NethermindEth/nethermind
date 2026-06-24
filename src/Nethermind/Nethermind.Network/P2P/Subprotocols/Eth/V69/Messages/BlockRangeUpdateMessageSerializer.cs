@@ -12,21 +12,20 @@ public class BlockRangeUpdateMessageSerializer :
 {
     public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message)
     {
-        NettyRlpStream rlpStream = new(byteBuffer);
-
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        rlpStream.StartSequence(contentLength);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
 
-        rlpStream.Encode(message.EarliestBlock);
-        rlpStream.Encode(message.LatestBlock);
-        rlpStream.Encode(message.LatestBlockHash);
+        writer.Encode(message.EarliestBlock);
+        writer.Encode(message.LatestBlock);
+        writer.Encode(message.LatestBlockHash);
     }
 
     public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer) =>
         byteBuffer.DeserializeRlp(Deserialize);
 
-    private static BlockRangeUpdateMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+    private static BlockRangeUpdateMessage Deserialize(ref RlpReader ctx)
     {
         ctx.ReadSequenceLength();
 

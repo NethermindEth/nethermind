@@ -4,7 +4,6 @@
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using System;
@@ -30,9 +29,9 @@ internal class XdcSealer(ISigner signer, ILogManager logManager) : ISealer
             throw new ArgumentException("Only XDC headers are supported.");
         if (block.IsGenesis) throw new InvalidOperationException("Can't sign genesis block");
 
-        KeccakRlpStream hashStream = new();
-        _xdcHeaderDecoder.Encode(hashStream, xdcBlockHeader, RlpBehaviors.ForSealing);
-        ValueHash256 hash = hashStream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        _xdcHeaderDecoder.Encode(ref writer, xdcBlockHeader, RlpBehaviors.ForSealing);
+        ValueHash256 hash = writer.GetValueHash();
         if (!signer.TrySign(in hash, out Signature signature))
         {
             if (_logger.IsWarn) _logger.Warn($"XDC signer {signer.Address} could not sign block {block.Number} — skipping seal.");

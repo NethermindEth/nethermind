@@ -26,7 +26,7 @@ public class CompactionScheduleTests
         Assert.That(schedule.Offset, Is.InRange(0UL, (ulong)int.MaxValue - 1));
         byte[]? stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset);
         Assert.That(stored, Is.Not.Null);
-        Assert.That(stored.AsRlpValueContext().DecodeLong(), Is.EqualTo(schedule.Offset));
+        Assert.That(new RlpReader(stored).DecodeLong(), Is.EqualTo(schedule.Offset));
     }
 
     [Test]
@@ -67,7 +67,7 @@ public class CompactionScheduleTests
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
         Assert.That(schedule.Offset, Is.EqualTo(7));
-        long stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!.AsRlpValueContext().DecodeLong();
+        long stored = new RlpReader(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
         Assert.That(stored, Is.EqualTo(5), "configured offset should not modify the stored offset");
     }
 
@@ -94,7 +94,7 @@ public class CompactionScheduleTests
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
         Assert.That(schedule.Offset, Is.InRange(0UL, (ulong)int.MaxValue - 1));
-        long stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!.AsRlpValueContext().DecodeLong();
+        long stored = new RlpReader(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
         Assert.That(stored, Is.EqualTo(schedule.Offset));
     }
 
@@ -109,7 +109,7 @@ public class CompactionScheduleTests
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
         Assert.That(schedule.Offset, Is.InRange(0UL, (ulong)int.MaxValue - 1));
-        long stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!.AsRlpValueContext().DecodeLong();
+        long stored = new RlpReader(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
         Assert.That(stored, Is.EqualTo(schedule.Offset));
     }
 

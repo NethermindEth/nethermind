@@ -13,10 +13,9 @@ public static class EthereumEcdsaExtensions
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
     public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
-        KeccakRlpStream stream = new();
-        stream.WriteByte(Eip7702Constants.Magic);
-        AuthorizationTupleDecoder.EncodeWithoutSignature(stream, chainId, codeAddress, nonce);
-        Signature sig = ecdsa.Sign(signer, stream.GetValueHash());
+        KeccakRlpWriter writer = new();
+        AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, chainId, codeAddress, nonce);
+        Signature sig = ecdsa.Sign(signer, writer.GetValueHash());
         return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
     }
 
@@ -27,7 +26,9 @@ public static class EthereumEcdsaExtensions
             tx.ChainId = ecdsa.ChainId;
         }
 
-        ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, ecdsa.ChainId).Bytes);
+        KeccakRlpWriter writer = new();
+        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, ecdsa.ChainId);
+        ValueHash256 hash = writer.GetValueHash();
         tx.Signature = ecdsa.Sign(privateKey, in hash);
 
         if (tx.Type == TxType.Legacy && isEip155Enabled)
@@ -95,19 +96,18 @@ public static class EthereumEcdsaExtensions
             _ => tx.ChainId!.Value,
         };
 
-        KeccakRlpStream stream = new();
-        _txDecoder.EncodeTx(stream, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
+        KeccakRlpWriter writer = new();
+        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
 
-        return stream.GetValueHash();
+        return writer.GetValueHash();
     }
 
     public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
 
     public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
     {
-        KeccakRlpStream stream = new();
-        stream.WriteByte(Eip7702Constants.Magic);
-        AuthorizationTupleDecoder.EncodeWithoutSignature(stream, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-        return ecdsa.RecoverAddress(tuple.AuthoritySignature, stream.GetValueHash());
+        KeccakRlpWriter writer = new();
+        AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+        return ecdsa.RecoverAddress(tuple.AuthoritySignature, writer.GetValueHash());
     }
 }

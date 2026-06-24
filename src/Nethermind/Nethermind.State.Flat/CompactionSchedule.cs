@@ -78,7 +78,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
         }
 
         // On-disk RLP format uses long for backward compatibility; decode as long to detect corrupt negatives.
-        long decoded = stored.AsRlpValueContext().DecodeLong();
+        long decoded = new RlpReader(stored).DecodeLong();
         if (decoded < 0)
         {
             if (logger.IsWarn) logger.Warn($"Stored FlatDb compaction offset {decoded} is negative; regenerating");

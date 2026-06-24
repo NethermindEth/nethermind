@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -155,8 +156,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     {
         (Block block, TxReceipt[] receipts) = PrepareBlock();
 
-        using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = rlpStream.AsSpan().ToArray();
+        using ArrayPoolSpan<byte> encodedReceipts = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = ((ReadOnlySpan<byte>)encodedReceipts).ToArray();
 
         CreateStorage();
         _storage.Get(block);
@@ -179,8 +180,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
         block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
 
-        using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = rlpStream.AsSpan().ToArray();
+        using ArrayPoolSpan<byte> encodedReceipts = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = ((ReadOnlySpan<byte>)encodedReceipts).ToArray();
 
         Assert.That(_storage.Get(block).Length, Is.EqualTo(receipts.Length));
     }

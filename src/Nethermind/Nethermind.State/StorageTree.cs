@@ -126,7 +126,7 @@ namespace Nethermind.State
                 return ZeroBytes;
             }
 
-            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+            RlpReader rlp = new(value);
             return rlp.DecodeByteArray();
         }
 

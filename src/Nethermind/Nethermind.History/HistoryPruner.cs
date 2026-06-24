@@ -507,7 +507,7 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateBlocksDeletePointer(ulong.Max(blocksVal.AsRlpValueContext().DecodeULong(), _minDeletableBlockNumber));
+            UpdateBlocksDeletePointer(ulong.Max(new RlpReader(blocksVal).DecodeULong(), _minDeletableBlockNumber));
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
         }
 
@@ -516,7 +516,7 @@ public class HistoryPruner : IHistoryPruner
         // deleted alongside blocks in PruneBlocksAndReceipts. Default to the blocks pointer on first load.
         _balsDeletePointer = balsVal is null
             ? _blocksDeletePointer
-            : ulong.Max(balsVal.AsRlpValueContext().DecodeULong(), _blocksDeletePointer);
+            : ulong.Max(new RlpReader(balsVal).DecodeULong(), _blocksDeletePointer);
         // ulong.MaxValue is used as sentinel: guarantees SaveDeletePointers saves on the very first call.
         _lastSavedBalsDeletePointer = balsVal is null ? ulong.MaxValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;

@@ -179,19 +179,19 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
     private BlockBody DecodeBody(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new(buffer.Span);
+        RlpReader ctx = new(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new(buffer.Span);
+        RlpReader ctx = new(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
     }
 
     private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new(buffer.Span);
+        RlpReader ctx = new(buffer.Span);
         // ReceiptMessageDecoder returns null for empty-list (0xC0) items
         return ctx.DecodeArray<TxReceipt>(_receiptDecoder, allowNulls: true);
     }

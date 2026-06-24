@@ -17,7 +17,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp.ValueDecoderContext ctx = Encode(decoder, account);
+            RlpReader ctx = Encode(decoder, account);
             (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(ref ctx);
             using (Assert.EnterMultipleScope())
             {
@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp.ValueDecoderContext ctx = Encode(decoder, account);
+            RlpReader ctx = Encode(decoder, account);
             Account decoded = decoder.Decode(ref ctx)!;
             using (Assert.EnterMultipleScope())
             {
@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp.ValueDecoderContext ctx = Encode(decoder, account);
+            RlpReader ctx = Encode(decoder, account);
 
             int positionBefore = ctx.Position;
             ctx.SkipLength();
@@ -65,11 +65,12 @@ namespace Nethermind.Core.Test.Encoding
             }
         }
 
-        private static Rlp.ValueDecoderContext Encode(AccountDecoder decoder, Account account)
+        private static RlpReader Encode(AccountDecoder decoder, Account account)
         {
             byte[] bytes = new byte[decoder.GetLength(account)];
-            decoder.Encode(new RlpStream(bytes), account);
-            return new Rlp.ValueDecoderContext(bytes);
+            RlpWriter writer = new(bytes);
+            decoder.Encode(ref writer, account);
+            return new RlpReader(bytes);
         }
     }
 }

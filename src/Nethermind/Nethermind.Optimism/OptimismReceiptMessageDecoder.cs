@@ -18,7 +18,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
 {
     private readonly bool _skipStateAndStatus = skipStateAndStatus;
 
-    protected override OptimismTxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override OptimismTxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         OptimismTxReceipt txReceipt = new();
         if (!ctx.IsSequenceNext())
@@ -141,11 +141,11 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         return result;
     }
 
-    public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            rlpStream.EncodeNullObject();
+            writer.WriteByte(Rlp.EmptyListByte);
             return;
         }
 
@@ -156,36 +156,36 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         {
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
             {
-                rlpStream.StartByteArray(sequenceLength + 1, false);
+                writer.StartByteArray(sequenceLength + 1, false);
             }
 
-            rlpStream.WriteByte((byte)item.TxType);
+            writer.WriteByte((byte)item.TxType);
         }
 
-        rlpStream.StartSequence(totalContentLength);
+        writer.StartSequence(totalContentLength);
         if (!_skipStateAndStatus)
         {
-            rlpStream.Encode(item.StatusCode);
+            writer.Encode(item.StatusCode);
         }
 
-        rlpStream.Encode(item.GasUsedTotal);
-        rlpStream.Encode(item.Bloom);
+        writer.Encode(item.GasUsedTotal);
+        writer.Encode(item.Bloom);
 
-        rlpStream.StartSequence(logsLength);
+        writer.StartSequence(logsLength);
         for (int i = 0; i < item.Logs?.Length; i++)
         {
-            rlpStream.Encode(item.Logs[i]);
+            LogEntryDecoder.Instance.Encode(ref writer, item.Logs[i]);
         }
 
         if (item.IsOptimismTxReceipt(out OptimismTxReceipt? opItem))
         {
             if (opItem.DepositNonce is not null && (opItem.DepositReceiptVersion is not null || !isEncodedForTrie))
             {
-                rlpStream.Encode(opItem.DepositNonce.Value);
+                writer.Encode(opItem.DepositNonce.Value);
 
                 if (opItem.DepositReceiptVersion is not null)
                 {
-                    rlpStream.Encode(opItem.DepositReceiptVersion.Value);
+                    writer.Encode(opItem.DepositReceiptVersion.Value);
                 }
             }
         }

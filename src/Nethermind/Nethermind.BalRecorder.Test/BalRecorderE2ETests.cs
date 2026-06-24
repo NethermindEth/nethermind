@@ -15,6 +15,7 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -66,8 +67,8 @@ public class BalRecorderE2ETests
             {
                 ReadOnlyBlockAccessList? reread = store.Get(number);
                 Assert.That(reread, Is.Not.Null);
-                using NettyRlpStream reencoded = BalDecoder.EncodeToNewNettyStream(reread!);
-                Assert.That(reencoded.AsSpan().ToArray(), Is.EqualTo(expected));
+                using ArrayPoolSpan<byte> reencoded = BalDecoder.EncodeToArrayPoolSpan(reread!);
+                Assert.That(((ReadOnlySpan<byte>)reencoded).ToArray(), Is.EqualTo(expected));
             }
         }
         finally
@@ -87,8 +88,8 @@ public class BalRecorderE2ETests
             Assert.That(block, Is.Not.Null);
             ReadOnlyBlockAccessList? bal = store.Get(block!.Number);
             Assert.That(bal, Is.Not.Null, $"block {i} should have a recorded BAL");
-            using NettyRlpStream encoded = BalDecoder.EncodeToNewNettyStream(bal!);
-            result.Add((block.Number, encoded.AsSpan().ToArray()));
+            using ArrayPoolSpan<byte> encoded = BalDecoder.EncodeToArrayPoolSpan(bal!);
+            result.Add((block.Number, ((ReadOnlySpan<byte>)encoded).ToArray()));
         }
         return result;
     }

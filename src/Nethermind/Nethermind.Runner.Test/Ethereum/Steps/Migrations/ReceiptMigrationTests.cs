@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -76,9 +77,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             // Put the last block receipt encoding
             Block lastBlock = blockTree.FindBlock((ulong)(chainLength - 1));
             TxReceipt[] receipts = inMemoryReceiptStorage.Get(lastBlock);
-            using (NettyRlpStream nettyStream = receiptArrayStorageDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage))
+            using (ArrayPoolSpan<byte> encodedReceipts = receiptArrayStorageDecoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage))
             {
-                ((IKeyValueStoreWithBatching)blocksDb).PutSpan(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()).AsSpan(), nettyStream.AsSpan());
+                ((IKeyValueStoreWithBatching)blocksDb).PutSpan(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()).AsSpan(), encodedReceipts);
             }
 
             ReceiptMigration migration = new(

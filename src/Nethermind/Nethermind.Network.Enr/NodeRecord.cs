@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Text;
+using System.Net;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using System.Net;
 
 namespace Nethermind.Network.Enr;
 
@@ -73,9 +75,9 @@ public class NodeRecord
 
     private Hash256 CalculateContentHash()
     {
-        KeccakRlpStream rlpStream = new();
-        EncodeContent(rlpStream);
-        return rlpStream.GetHash();
+        KeccakRlpWriter writer = new();
+        EncodeContent(ref writer);
+        return writer.GetHash();
     }
 
     /// <summary>
@@ -205,9 +207,9 @@ public class NodeRecord
         ArgumentNullException.ThrowIfNull(ecdsa);
 
         NodeRecordSigner signer = new(ecdsa);
-        Rlp.ValueDecoderContext ctx = new(bytes);
-        NodeRecord nodeRecord = signer.Deserialize(ref ctx);
-        if (ctx.Position != bytes.Length)
+        RlpReader reader = new(bytes);
+        NodeRecord nodeRecord = signer.Deserialize(ref reader);
+        if (reader.Position != bytes.Length)
         {
             throw new RlpException("Unexpected trailing bytes in ENR.");
         }
@@ -311,15 +313,16 @@ public class NodeRecord
     /// <summary>
     /// Applies Rlp([seq, k, v, ...]]).
     /// </summary>
-    /// <param name="rlpStream">An RLP stream to encode the content to.</param>
-    private void EncodeContent(RlpStream rlpStream)
+    /// <param name="writer">An RLP writer to encode the content to.</param>
+    private void EncodeContent<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int contentLength = GetContentLengthWithoutSignature();
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(EnrSequence);
+        writer.StartSequence(contentLength);
+        writer.Encode(EnrSequence);
         foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
-            contentEntry.Encode(rlpStream);
+            contentEntry.Encode(ref writer);
         }
     }
 
@@ -338,32 +341,33 @@ public class NodeRecord
 
         int rlpLength = GetRlpLengthWithSignature();
         byte[] bytes = GC.AllocateUninitializedArray<byte>(rlpLength);
-        RlpStream rlpStream = new(bytes);
-        Encode(rlpStream);
+        RlpWriter writer = new(bytes);
+        Encode(ref writer);
         return bytes;
     }
 
     /// <summary>
     /// Applies Rlp([signature, seq, k, v, ...]]).
     /// </summary>
-    /// <param name="rlpStream">An RLP stream to encode the content to.</param>
-    public void Encode(RlpStream rlpStream)
+    /// <param name="writer">An RLP writer to encode the content to.</param>
+    public void Encode<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (OriginalRlp is not null)
         {
-            rlpStream.Write(OriginalRlp);
+            writer.Write(OriginalRlp);
             return;
         }
 
         RequireSignature();
 
         int contentLength = GetContentLengthWithSignature();
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(Signature!.Bytes);
-        rlpStream.Encode(EnrSequence); // a different sequence here (not RLP sequence)
+        writer.StartSequence(contentLength);
+        writer.Encode(Signature!.Bytes);
+        writer.Encode(EnrSequence);
         foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
-            contentEntry.Encode(rlpStream);
+            contentEntry.Encode(ref writer);
         }
     }
 
@@ -372,9 +376,15 @@ public class NodeRecord
         RequireSignature();
 
         const string prefix = "enr:";
-        string base64String = Convert.ToBase64String(ToRlpBytes()).Replace('+', '-').Replace('/', '_');
-        int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0;
-        return string.Concat(prefix, base64String.AsSpan(0, base64String.Length - skipLast));
+        if (OriginalRlp is not null)
+        {
+            return string.Concat(prefix, Base64Url.EncodeToString(OriginalRlp));
+        }
+
+        using ArrayPoolSpan<byte> bytes = new(GetRlpLengthWithSignature());
+        RlpWriter writer = new(bytes);
+        Encode(ref writer);
+        return string.Concat(prefix, Base64Url.EncodeToString(bytes));
     }
 
     private void RequireSignature()

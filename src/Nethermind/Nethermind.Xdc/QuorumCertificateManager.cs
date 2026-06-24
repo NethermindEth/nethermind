@@ -7,7 +7,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Errors;
@@ -255,9 +254,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
     private static ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
     {
-        KeccakRlpStream stream = new();
-        _voteDecoder.Encode(stream, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
-        return stream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        _voteDecoder.Encode(ref writer, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
+        return writer.GetValueHash();
     }
 
     public void Initialize(XdcBlockHeader current)

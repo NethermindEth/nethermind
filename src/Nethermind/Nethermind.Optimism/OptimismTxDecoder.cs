@@ -14,11 +14,11 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
 {
     protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;
 
-    protected override void EncodeSignature(Signature? signature, RlpStream stream, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+    protected override void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
     {
     }
 
-    protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
+    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         transaction.SourceHash = decoderContext.DecodeKeccak();
@@ -46,15 +46,15 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         + Rlp.LengthOf(transaction.IsOPSystemTransaction)
         + Rlp.LengthOf(transaction.Data);
 
-    protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.Encode(transaction.SourceHash);
-        stream.Encode(transaction.SenderAddress);
-        stream.Encode(transaction.To);
-        stream.Encode(transaction.Mint);
-        stream.Encode(transaction.ValueRef);
-        stream.Encode(transaction.GasLimit);
-        stream.Encode(transaction.IsOPSystemTransaction);
-        stream.Encode(transaction.Data);
+        writer.Encode(transaction.SourceHash);
+        writer.Encode(transaction.SenderAddress);
+        writer.Encode(transaction.To);
+        writer.Encode(transaction.Mint);
+        writer.Encode(in transaction.ValueRef);
+        writer.Encode(transaction.GasLimit);
+        writer.Encode(transaction.IsOPSystemTransaction);
+        writer.Encode(transaction.Data);
     }
 }

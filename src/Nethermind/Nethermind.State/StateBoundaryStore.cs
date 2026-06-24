@@ -25,7 +25,7 @@ public sealed class StateBoundaryStore(IKeyValueStore kv, ILogManager? logManage
 
     private readonly ILogger _logger = logManager?.GetClassLogger<StateBoundaryStore>() ?? default;
     private readonly Lock _lock = new();
-    private ulong? _value = kv[OldestStateBlockKey]?.AsRlpValueContext().DecodeULong();
+    private ulong? _value = DecodeOldestStateBlock(kv[OldestStateBlockKey]);
 
     public ulong? OldestStateBlock
     {
@@ -54,4 +54,7 @@ public sealed class StateBoundaryStore(IKeyValueStore kv, ILogManager? logManage
             }
         }
     }
+
+    private static ulong? DecodeOldestStateBlock(byte[]? rlp) =>
+        rlp is null ? null : new RlpReader(rlp).DecodeULong();
 }

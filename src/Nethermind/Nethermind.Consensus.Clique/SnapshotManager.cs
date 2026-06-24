@@ -13,11 +13,13 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -231,8 +233,11 @@ namespace Nethermind.Consensus.Clique
             return bytes is null ? null : _decoder.Decode(bytes);
         }
 
-        private void Store(Snapshot snapshot) =>
-            _blocksDb.Set(GetSnapshotKey(snapshot.Hash), _decoder.Encode(snapshot).Bytes);
+        private void Store(Snapshot snapshot)
+        {
+            using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(snapshot);
+            _blocksDb.PutSpan(GetSnapshotKey(snapshot.Hash).Bytes, rlp);
+        }
 
         private Snapshot Apply(Snapshot original, List<BlockHeader> headers, ulong epoch)
         {

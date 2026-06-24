@@ -68,8 +68,9 @@ namespace Nethermind.Benchmarks.Rlp
         public byte[] Improved3()
         {
             int length = _blockDecoder.GetLength(_block, RlpBehaviors.None);
-            RlpStream stream = new(length);
-            _blockDecoder.Encode(stream, _block);
+            byte[] bytes = new byte[length];
+            RlpWriter writer = new(bytes);
+            _blockDecoder.Encode(ref writer, _block);
             return Bytes.Empty;
         }
 

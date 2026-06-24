@@ -159,8 +159,8 @@ public partial class BlockTree
     private void LoadForkChoiceInfo()
     {
         Logger.Info("Loading fork choice info");
-        FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpValueContext().DecodeKeccak();
-        SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpValueContext().DecodeKeccak();
+        FinalizedHash ??= DecodeMetadataKeccak(MetadataDbKeys.FinalizedBlockHash);
+        SafeHash ??= DecodeMetadataKeccak(MetadataDbKeys.SafeBlockHash);
         if (FinalizedHash is not null)
         {
             LastFinalizedBlockLevel = _headerStore.GetBlockNumber(FinalizedHash) ?? 0UL;
@@ -171,8 +171,7 @@ public partial class BlockTree
     {
         if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedBeaconHeaderHash))
         {
-            Hash256? lowestBeaconHeaderHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedBeaconHeaderHash)?
-                .AsRlpValueContext().DecodeKeccak();
+            Hash256? lowestBeaconHeaderHash = DecodeMetadataKeccak(MetadataDbKeys.LowestInsertedBeaconHeaderHash);
             _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
     }
@@ -181,8 +180,7 @@ public partial class BlockTree
     {
         if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedFastHeaderHash))
         {
-            Hash256? headerHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash)?
-                .AsRlpValueContext().DecodeKeccak();
+            Hash256? headerHash = DecodeMetadataKeccak(MetadataDbKeys.LowestInsertedFastHeaderHash);
             _lowestInsertedHeader = FindHeader(headerHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
         else
@@ -248,7 +246,7 @@ public partial class BlockTree
         right = left + BestKnownSearchLimit;
         ulong bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
 
-        ulong? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeULong();
+        ulong? beaconPivotNumber = DecodeMetadataULong(MetadataDbKeys.BeaconSyncPivotNumber);
         left = Math.Max(Head?.Number ?? 0, beaconPivotNumber ?? 0);
         left = left.SaturatingSub(1);
         right = left + BestKnownSearchLimit;
@@ -277,6 +275,18 @@ public partial class BlockTree
             : FindBlock(bestBeaconBodyHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
     }
 
+    private Hash256? DecodeMetadataKeccak(int key)
+    {
+        byte[]? rlp = _metadataDb.Get(key);
+        return rlp is null ? null : new RlpReader(rlp).DecodeKeccak();
+    }
+
+    private ulong? DecodeMetadataULong(int key)
+    {
+        byte[]? rlp = _metadataDb.Get(key);
+        return rlp is null ? null : new RlpReader(rlp).DecodeULong();
+    }
+
     public enum BinarySearchDirection
     {
         Up,
@@ -302,7 +312,7 @@ public partial class BlockTree
     {
         Block? startBlock = null;
         byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-        BestPersistedState = persistedNumberData is null ? null : new Rlp.ValueDecoderContext(persistedNumberData).DecodeULong();
+        BestPersistedState = persistedNumberData is null ? null : new RlpReader(persistedNumberData).DecodeULong();
         ulong? persistedNumber = BestPersistedState;
         if (persistedNumber is not null)
         {
@@ -355,9 +365,9 @@ public partial class BlockTree
             return;
         }
 
-        Rlp.ValueDecoderContext pivotStream = new(pivotFromDb!);
-        ulong updatedPivotBlockNumber = pivotStream.DecodeULong();
-        Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
+        RlpReader pivotReader = new(pivotFromDb!);
+        ulong updatedPivotBlockNumber = pivotReader.DecodeULong();
+        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak()!;
 
         if (updatedPivotBlockHash.IsZero)
         {

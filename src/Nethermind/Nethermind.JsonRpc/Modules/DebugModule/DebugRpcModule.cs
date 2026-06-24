@@ -883,7 +883,7 @@ public class DebugRpcModule(
 
         try
         {
-            Rlp.ValueDecoderContext context = blockRlp.Bytes.AsRlpValueContext();
+            RlpReader context = new(blockRlp.Bytes);
             block = _blockDecoder.Decode(ref context);
             if (block is null)
             {

@@ -76,7 +76,7 @@ public class SyncPointers : ISyncPointers
         }
 
         byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
-        _lowestInsertedReceiptBlock = lowestBytes is null ? (ulong?)null : new Rlp.ValueDecoderContext(lowestBytes).DecodeULong();
+        _lowestInsertedReceiptBlock = lowestBytes is null ? (ulong?)null : new RlpReader(lowestBytes).DecodeULong();
 
         _lowestInsertedBlockAccessListBlock =
             ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
@@ -95,7 +95,7 @@ public class SyncPointers : ISyncPointers
     }
 
     private static ulong DecodePointer(byte[] pointerBytes) =>
-        new Rlp.ValueDecoderContext(pointerBytes).DecodeULong();
+        new RlpReader(pointerBytes).DecodeULong();
 
     private void MigrateLegacyLowestInsertedBodyNumber(IDb blocksDb)
     {
