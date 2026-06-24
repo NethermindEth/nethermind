@@ -18,13 +18,13 @@ public class EthEntry(byte[] forkHash, long nextBlock) : EnrContentEntry<ForkId>
         return Rlp.LengthOfSequence(Rlp.LengthOfSequence(forkIdContentLength));
     }
 
-    protected override void EncodeValue(RlpStream rlpStream)
+    protected override void EncodeValue<TWriter>(ref TWriter writer)
     {
         int contentLength = GetForkIdContentLength();
-        rlpStream.StartSequence(Rlp.LengthOfSequence(contentLength));
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(Value.ForkHash);
-        rlpStream.Encode(Value.NextBlock);
+        writer.StartSequence(Rlp.LengthOfSequence(contentLength));
+        writer.StartSequence(contentLength);
+        writer.Encode(Value.ForkHash);
+        writer.Encode(Value.NextBlock);
     }
 
     private int GetForkIdContentLength() => Rlp.LengthOf(Value.ForkHash) + Rlp.LengthOf(Value.NextBlock);

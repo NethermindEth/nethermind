@@ -294,19 +294,20 @@ public class DiscoveryMessageSerializerTests
         int nodesContentLength = Rlp.LengthOfSequence(nodeContentLength) + Rlp.OfEmptyList.Bytes.Length;
         int contentLength = Rlp.LengthOfSequence(nodesContentLength) + Rlp.LengthOf(expirationTime);
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
-        stream.StartSequence(nodesContentLength);
-        stream.StartSequence(nodeContentLength);
-        stream.Encode(ip);
-        stream.Encode(port);
-        stream.Encode(port);
-        stream.Encode(id);
-        stream.Encode(Rlp.OfEmptyList);
-        stream.Encode(expirationTime);
+        byte[] data = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(data);
+        writer.StartSequence(contentLength);
+        writer.StartSequence(nodesContentLength);
+        writer.StartSequence(nodeContentLength);
+        writer.Encode(ip);
+        writer.Encode(port);
+        writer.Encode(port);
+        writer.Encode(id);
+        writer.Encode(Rlp.OfEmptyList);
+        writer.Encode(expirationTime);
 
         NeighborsMsg deserialized = _messageSerializationService.Deserialize<NeighborsMsg>(
-            SignAndWrapDiscoveryPacket((byte)MsgType.Neighbors, stream.Data.ToArray()!));
+            SignAndWrapDiscoveryPacket((byte)MsgType.Neighbors, data));
 
         Assert.That(deserialized.Nodes, Has.Count.EqualTo(1));
         Assert.That(deserialized.Nodes[0].Id, Is.EqualTo(TestItem.PublicKeyA));
@@ -372,19 +373,20 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void PongMessage_Rejects_Oversized_Ping_Mdc()
     {
-        RlpStream stream = new(128);
         long expirationTime = 60 + _timestamper.UnixTime.MillisecondsLong;
         int addressContentLength = Rlp.LengthOf(new byte[] { 127, 0, 0, 1 }) + Rlp.LengthOf(30303) + Rlp.LengthOf(30303);
         int contentLength = Rlp.LengthOfSequence(addressContentLength) + Rlp.LengthOf(new byte[33]) + Rlp.LengthOf(expirationTime);
-        stream.StartSequence(contentLength);
-        stream.StartSequence(addressContentLength);
-        stream.Encode(new byte[] { 127, 0, 0, 1 });
-        stream.Encode(30303);
-        stream.Encode(30303);
-        stream.Encode(new byte[33]);
-        stream.Encode(expirationTime);
+        byte[] data = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(data);
+        writer.StartSequence(contentLength);
+        writer.StartSequence(addressContentLength);
+        writer.Encode(new byte[] { 127, 0, 0, 1 });
+        writer.Encode(30303);
+        writer.Encode(30303);
+        writer.Encode(new byte[33]);
+        writer.Encode(expirationTime);
 
         Assert.Throws<RlpLimitException>(() => _messageSerializationService.Deserialize<PongMsg>(
-            SignAndWrapDiscoveryPacket((byte)MsgType.Pong, stream.Data.ToArray()!)));
+            SignAndWrapDiscoveryPacket((byte)MsgType.Pong, data)));
     }
 }

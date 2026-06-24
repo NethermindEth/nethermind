@@ -17,20 +17,20 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, GetBlockAccessListsMessage message)
     {
-        NettyRlpStream stream = new(byteBuffer);
+        ByteBufferRlpWriter writer = new(byteBuffer);
         int hashesContentLength = GetHashesContentLength(message.Hashes);
-        stream.StartSequence(hashesContentLength);
+        writer.StartSequence(hashesContentLength);
 
         foreach (Hash256 hash in message.Hashes.AsSpan())
         {
-            stream.Encode(hash);
+            writer.Encode(hash);
         }
     }
 
-    protected override GetBlockAccessListsMessage DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId)
+    protected override GetBlockAccessListsMessage DeserializeInternal(ref RlpReader ctx, long requestId)
     {
         ArrayPoolList<Hash256> hashes =
-            ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext nestedContext) => nestedContext.DecodeKeccak(), limit: RlpLimit);
+            ctx.DecodeArrayPoolList(static (ref RlpReader nestedContext) => nestedContext.DecodeKeccak(), limit: RlpLimit);
 
         return new GetBlockAccessListsMessage(requestId, hashes);
     }

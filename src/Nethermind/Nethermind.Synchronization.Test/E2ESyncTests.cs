@@ -22,6 +22,7 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
@@ -1005,10 +1006,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         private void AssertBlockEqual(Block block1, Block block2)
         {
-            using NettyRlpStream stream1 = _blockDecoder.EncodeToNewNettyStream(block1);
-            using NettyRlpStream stream2 = _blockDecoder.EncodeToNewNettyStream(block2);
+            using ArrayPoolSpan<byte> stream1 = _blockDecoder.EncodeToArrayPoolSpan(block1);
+            using ArrayPoolSpan<byte> stream2 = _blockDecoder.EncodeToArrayPoolSpan(block2);
 
-            Assert.That(stream1.AsSpan().ToArray(), Is.EqualTo(stream2.AsSpan().ToArray()));
+            Assert.That(((ReadOnlySpan<byte>)stream1).ToArray(), Is.EqualTo(((ReadOnlySpan<byte>)stream2).ToArray()));
         }
 
         private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>

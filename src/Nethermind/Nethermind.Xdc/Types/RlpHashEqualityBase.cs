@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc.Types;
 
@@ -14,11 +14,11 @@ public abstract class RlpHashEqualityBase
 
     private Hash256 CalculateHash()
     {
-        KeccakRlpStream stream = new();
-        Encode(stream);
-        return stream.GetHash();
+        KeccakRlpWriter writer = new();
+        Encode(ref writer);
+        return writer.GetHash();
     }
-    protected abstract void Encode(KeccakRlpStream stream);
+    protected abstract void Encode(ref KeccakRlpWriter writer);
 
     public override bool Equals(object? obj) =>
                 obj is RlpHashEqualityBase other && Hash == other.Hash;

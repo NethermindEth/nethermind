@@ -525,9 +525,9 @@ public class XdcTestBlockchain : TestBlockchain
             newRoundWaitHandle.SetResult();
         void SignRandom(Vote vote)
         {
-            KeccakRlpStream stream = new();
-            voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-            ValueHash256 hash = stream.GetValueHash();
+            KeccakRlpWriter writer = new();
+            voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
+            ValueHash256 hash = writer.GetValueHash();
             RandomSigner!.TrySign(in hash, out Signature signature);
             vote.Signature = signature;
             vote.Signer = RandomSigner.Address;
