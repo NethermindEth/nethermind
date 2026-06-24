@@ -81,8 +81,11 @@ public partial class BlockProcessor(
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-        if (!blockValidator.ValidateInclusionList(block, suggestedBlock, _stateProvider, options))
-            throw new InclusionListUnsatisfiedException(suggestedBlock);
+        // EIP-7805 (FOCIL): IL satisfaction is a *signal*, not a rejection. The block is
+        // structurally valid + executable; we still commit it and let the CL decide canonical
+        // inclusion based on the INCLUSION_LIST_UNSATISFIED status returned by newPayload.
+        block.IsInclusionListSatisfied = blockValidator.ValidateInclusionList(block, suggestedBlock, _stateProvider, options);
+        suggestedBlock.IsInclusionListSatisfied = block.IsInclusionListSatisfied;
 
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {

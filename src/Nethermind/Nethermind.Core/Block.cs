@@ -139,6 +139,12 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
+    // EIP-7805: set by BlockProcessor after the post-execution IL check. False means the block
+    // is structurally valid + executable but didn't honour the inclusion list; the CL is
+    // expected to receive an INCLUSION_LIST_UNSATISFIED status while the block stays in the tree.
+    [JsonIgnore]
+    public bool IsInclusionListSatisfied { get; set; } = true;
+
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
 

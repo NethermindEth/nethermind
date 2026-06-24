@@ -391,15 +391,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 {
                     NotifyFailedOrSkipped(blockRef, block, error);
                 }
+                else if (!processedBlock.IsInclusionListSatisfied)
+                {
+                    // EIP-7805: block was committed normally; signal the CL via newPayload status only.
+                    NotifyInclusionListUnsatisfied(blockRef, processedBlock);
+                }
                 else
                 {
                     if (isTrace) TraceProcessed(block);
                     BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                 }
-            }
-            catch (InclusionListUnsatisfiedException)
-            {
-                NotifyInclusionListUnsatisfied(blockRef, blockRef.Block!);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

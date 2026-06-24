@@ -368,7 +368,9 @@ public abstract class BlockchainTestBase
                 PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
                 AssertPayloadStatus(payloadStatus, enginePayload.Status, validationError, newPayloadVersion);
 
-                if (payloadStatus.Status == PayloadStatus.Valid)
+                // FCU after VALID — and also after INCLUSION_LIST_UNSATISFIED so the chain head
+                // advances to the committed block, matching the EELS fixture's lastblockhash/postState.
+                if (payloadStatus.Status == PayloadStatus.Valid || payloadStatus.Status == PayloadStatus.InclusionListUnsatisfied)
                 {
                     string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
                     AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
