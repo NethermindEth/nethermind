@@ -29,9 +29,8 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
     // front-coded offsets, to locate each data block. _indexPos == _indexEnd ⇒ no more data blocks.
     private long _indexPos;
     private long _indexEnd;
-    // Running front-coded index value (a data-block byte offset) and its min-width big-endian byte count.
+    // Running index value (a data-block byte offset); each record overwrites only its changed low bytes.
     private long _indexRunningValue;
-    private int _indexValueWidth;
     // Data-block cursor within the block located by the index.
     private long _pos;
     private long _blockEnd;
@@ -87,23 +86,21 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
     {
         if (_indexPos >= _indexEnd) return false;
 
-        // Index record: [cp u8][suffixLen u8][valCp u8][valSuffixLen u8][keySuffix][valSuffix]. Only the
-        // value (the data block's table-relative byte offset) is needed — front-coded against the previous
-        // record's value (see BlockBuilder.AddFrontCodedValue); the separator key is skipped over.
+        // Index record: [cp u8][suffixLen u8][valChangedLen u8][keySuffix][valChanged]. Only the value (the
+        // data block's table-relative byte offset) is needed — its changed low bytes overwrite the running
+        // value in place (see BlockBuilder.AddFrontCodedValue); the separator key is skipped over.
         Block.IndexRecordHeader rec = default;
         if (!reader.TryRead(_indexPos, MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref rec)))) return false;
-        int valCp = rec.ValueCommonPrefix;
-        int valSuffixLen = rec.ValueSuffixLength;
-        if (valCp > _indexValueWidth || valCp + valSuffixLen > 6) return false; // corrupt front-coding / > u48
+        int valChangedLen = rec.ValueChangedLength;
+        if (valChangedLen > 6) return false; // > u48 ⇒ corrupt
 
         long valueStart = _indexPos + Unsafe.SizeOf<Block.IndexRecordHeader>() + rec.SuffixLength;
-        Span<byte> valSuffix = stackalloc byte[6]; // u48
-        if (valSuffixLen > 0 && !reader.TryRead(valueStart, valSuffix[..valSuffixLen])) return false;
-        // The index walk starts at the first record (cp == 0 ⇒ valCp == 0), so the running offset is fully
-        // restated before any front-coded record.
-        _indexRunningValue = Block.FrontDecodeValue(_indexRunningValue, _indexValueWidth, valCp, valSuffix[..valSuffixLen]);
-        _indexValueWidth = valCp + valSuffixLen;
-        _indexPos = valueStart + valSuffixLen;
+        // A restart (cp == 0) drops the previous record's high bytes; the walk's first record is a restart,
+        // so the running value is reset before any record that keeps high bytes.
+        if (rec.CommonPrefix == 0) _indexRunningValue = 0;
+        if (valChangedLen > 0 &&
+            !reader.TryRead(valueStart, MemoryMarshal.AsBytes(new Span<long>(ref _indexRunningValue))[..valChangedLen])) return false;
+        _indexPos = valueStart + valChangedLen;
 
         long blockStart = _tableOffset + _indexRunningValue;
         if (!DataBlockReader.TryReadRecordRange<TReader, TPin>(in reader, blockStart, out long recordsStart, out long recordsEnd))

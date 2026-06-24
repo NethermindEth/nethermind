@@ -11,7 +11,7 @@ in separate blob arenas; the table stores only small inline values (account RLP,
 ```
 data block × M  ; blocks 0..M-2 zero-padded to BlockSize (4096); data block i at i·BlockSize
 index block     ; right after the last (unpadded) data block, at the footer's indexOffset; NOT block-aligned;
-                ;   key = separator, value = data-block table-relative byte offset (u48), front-coded
+                ;   key = separator, value = data-block table-relative byte offset (u48), changed low bytes only
 footer          ; [indexOffset i64][version u8]  (fixed 9 bytes, read first)
 
 Block (data and index alike):
@@ -20,7 +20,7 @@ Block (data and index alike):
   [numRestarts : W]
   [restartOffset : W × numRestarts]   ; block-relative; restartOffset[0] = 1 + 2W + W·numRestarts
   data record                         ; [cp u8][suffixLen u8][valueLen u8][keySuffix][value]
-  index record                        ; [cp u8][suffixLen u8][valCp u8][valSuffixLen u8][keySuffix][valSuffix]
+  index record                        ; [cp u8][suffixLen u8][valChangedLen u8][keySuffix][valChanged]
 ```
 
 - Both levels reuse one `Block` (`Block.cs`). Within a block, keys are **front-coded**: `cp` is the
@@ -37,8 +37,8 @@ Block (data and index alike):
   inline value) after it. In a **data record** `valueLen` is the inline value's byte count (`cp`,
   `suffixLen`, `valueLen` each one byte: keys are ≤ 55 bytes, every inline value is < 255 — the one
   variable-length datum, the referenced blob-arena id list, is stored as separate records, so no value
-  overflows). In an **index record** the value is front-coded (see below): `valCp` big-endian bytes
-  shared with the previous value and `valSuffixLen` remaining bytes (`valCp + valSuffixLen` ≤ 6).
+  overflows). In an **index record** the value is stored as `valChangedLen` (≤ 6) low little-endian bytes —
+  only the bytes that differ from the previous record's value (see below).
 - Records are **streamed and packed** into data blocks in ascending key order; a data block closes once
   the next record would push its content across a 4 KiB page (`WouldCrossPage`). Blocks 0..M-2 are
   **zero-padded to 4096** so block `i` sits at `i·BlockSize`; the index records each block's
@@ -47,21 +47,23 @@ Block (data and index alike):
   4 KiB alignment, but it is kept so reads stay page-aligned and block `i` stays at `i·BlockSize`.
 - The **index block** maps, per data block, the shortest **separator** key in
   `[lastKey(block), firstKey(next block))` (the last block's separator is its own last key) to that
-  block's table-relative **byte offset**, stored **front-coded** as a minimal-width **big-endian**
-  integer: `valCp` leading bytes shared with the previous record's value, the rest as `valSuffix`, and the
-  value fully restated (`valCp = 0`) at every restart (`cp = 0`). Offsets ascend, so adjacent values share
-  their high big-endian bytes and `valSuffix` stays short. It is located directly by the footer's
-  `indexOffset`, so it needs no block-number address and no padding; that i64 offset spans the full range.
+  block's table-relative **byte offset**, stored **little-endian** as only the low bytes that changed from
+  the previous record's value (`valChangedLen` = their count): the reader keeps the unchanged high bytes
+  and overwrites the low ones in place, fully restating the value (against 0) at every restart (`cp = 0`).
+  Offsets ascend, so the high bytes rarely change and `valChanged` stays short; the little-endian layout
+  lets the reader copy `valChanged` straight onto the low end of a running value. It is located directly by
+  the footer's `indexOffset`, so it needs no block-number address and no padding; that i64 offset spans the
+  full range.
 - A lookup (`SortedTableReader`) reads the footer, then does two ceiling searches
   (LevelDB `Block::Iter::Seek`): (1) `IndexBlockReader.SeekCeiling` over the **index block** — the first
-  separator ≥ the target yields the data block's byte offset, reconstructing the front-coded value (a
+  separator ≥ the target yields the data block's byte offset, reconstructing the changed-byte value (a
   target past the last separator misses); (2) `DataBlockReader.SeekCeiling` over that **data block** — the
   first key ≥ the target; a hit requires that key to **equal** the target. Each ceiling binary-searches the
   restarts (rightmost restart whose first key ≤ target, clamped to restart 0 when the target precedes the
   block) then scans forward to `recordsEnd`, reconstructing front-coded keys. O(log M) + O(log restarts)
   random reads + a short in-page scan; no caching, no per-table bloom.
-- A full scan (`SortedTableEnumerator`) walks the **index block** in order, reconstructing each
-  front-coded value to get the next data block's byte offset, then emits that block's records — so
+- A full scan (`SortedTableEnumerator`) walks the **index block** in order, reconstructing each value from
+  its changed low bytes to get the next data block's byte offset, then emits that block's records — so
   iteration relies on the index, not on the 4 KiB alignment (which is kept only for page-aligned reads).
 - The **builder** (`SortedTableBuilder`) requires records in **strictly ascending** key order and
   streams them straight into a data `BlockBuilder` (closing + padding at 4096) as they arrive — no

@@ -17,15 +17,15 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 ///   [numRestarts : W]
 ///   [restartOffset : W × numRestarts]   ; block-relative; restartOffset[0] = 1 + 2W + W·numRestarts
 ///   data record                         ; [cp u8][suffixLen u8][valueLen u8][keySuffix][value]
-///   index record                        ; [cp u8][suffixLen u8][valCp u8][valSuffixLen u8][keySuffix][valSuffix]
+///   index record                        ; [cp u8][suffixLen u8][valChangedLen u8][keySuffix][valChanged]
 /// </code>
 /// Each record opens with a fixed prefix carrying all the lengths, so a reader blits the prefix then
 /// slices the key (and value) after it. Keys are front-coded against the previous record. A record with
 /// <c>cp == 0</c> (it stores a full key) is a <em>restart</em>: the builder forces one at least every
 /// <c>restartInterval</c> records (a build-time knob, not stored on disk) to bound scan length, and one
 /// also arises wherever adjacent keys share no leading byte. The restart table indexes every restart. The
-/// index block's value (a data-block byte offset) is itself front-coded as a min-width big-endian integer
-/// — <c>valCp</c> leading bytes shared with the previous value, reset to 0 at each restart (see
+/// index block's value (a data-block byte offset) keeps the high (little-endian) bytes of the previous
+/// value and stores only the low bytes that changed — reset against 0 at each restart (see
 /// <see cref="BlockBuilder.AddFrontCodedValue"/>). The
 /// header <c>formatFlag</c> records the block's role and thereby its offset width — a data
 /// <c>Block</c> (capped well under 64 KiB) uses 2-byte offsets, the multi-MB <c>Index</c> uses
@@ -53,18 +53,6 @@ internal static class Block
     /// <summary>Block-relative byte offset of the first record, given the offset width and restart count.</summary>
     internal static long RecordsStart(int width, long numRestarts) => 1 + 2L * width + (long)width * numRestarts;
 
-    /// <summary>Reconstruct a front-coded index value: keep the top <paramref name="valueCommonPrefix"/>
-    /// big-endian bytes of the running value (which is <paramref name="runningWidth"/> bytes wide) and
-    /// append <paramref name="valueSuffix"/>. The new value is <c>valueCommonPrefix + valueSuffix.Length</c>
-    /// bytes wide. At a restart <paramref name="valueCommonPrefix"/> is 0, so the value is fully restated.</summary>
-    internal static long FrontDecodeValue(long running, int runningWidth, int valueCommonPrefix, scoped ReadOnlySpan<byte> valueSuffix)
-    {
-        long suffix = 0;
-        foreach (byte b in valueSuffix) suffix = (suffix << 8) | b;
-        long prefix = valueCommonPrefix == 0 ? 0 : running >> ((runningWidth - valueCommonPrefix) * 8);
-        return (prefix << (valueSuffix.Length * 8)) | suffix;
-    }
-
     /// <summary>Fixed 3-byte prefix of a data record: the key's common-prefix length with the previous
     /// record, the length of the key suffix that follows, and the inline value's length. Layout
     /// <c>[cp][suffixLen][valueLen][keySuffix][value]</c>, so the prefix is read in one blit and the key
@@ -77,17 +65,16 @@ internal static class Block
         internal readonly byte ValueLength = valueLength;
     }
 
-    /// <summary>Fixed 4-byte prefix of an index record: the front-coded key (cp, suffixLen) then the
-    /// front-coded value — <see cref="ValueCommonPrefix"/> leading bytes shared with the previous record's
-    /// value (0 at a <c>cp == 0</c> restart) and <see cref="ValueSuffixLength"/> remaining bytes. Layout
-    /// <c>[cp][suffixLen][valCp][valSuffixLen][keySuffix][valSuffix]</c>; the value is a min-width
-    /// big-endian integer (see <see cref="BlockBuilder.AddFrontCodedValue"/>).</summary>
+    /// <summary>Fixed 3-byte prefix of an index record: the front-coded key (cp, suffixLen) then the
+    /// number of little-endian low-order value bytes stored in <see cref="ValueChangedLength"/>. Layout
+    /// <c>[cp][suffixLen][valChangedLen][keySuffix][valChanged]</c>; the value (a data-block byte offset)
+    /// keeps the high bytes of the previous record's value and overwrites only its low bytes, reset against
+    /// 0 at a <c>cp == 0</c> restart (see <see cref="BlockBuilder.AddFrontCodedValue"/>).</summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    internal readonly struct IndexRecordHeader(byte commonPrefix, byte suffixLength, byte valueCommonPrefix, byte valueSuffixLength)
+    internal readonly struct IndexRecordHeader(byte commonPrefix, byte suffixLength, byte valueChangedLength)
     {
         internal readonly byte CommonPrefix = commonPrefix;
         internal readonly byte SuffixLength = suffixLength;
-        internal readonly byte ValueCommonPrefix = valueCommonPrefix;
-        internal readonly byte ValueSuffixLength = valueSuffixLength;
+        internal readonly byte ValueChangedLength = valueChangedLength;
     }
 }

@@ -166,12 +166,13 @@ public class BlockTests
         return true;
     }
 
-    // Front-coded index values: 12 ascending offsets over 3 restart runs. Keys share a leading 0x01 byte
-    // so only the forced restarts (every 4 records, heads at index 0, 4, 8) have cp == 0 and fully restate
-    // the value (valCp == 0); the in-between records share their high big-endian bytes with the previous
-    // value (valCp > 0). Reconstruction must recover the right offset for a restart head (incl. the
-    // zero-byte head), a mid-run record, a gap probe whose ceiling is the next run's head (a fully restated
-    // value, not one built on a stale prefix), the before-first case, and a past-end miss.
+    // Index values, little-endian changed-prefix coded: 12 ascending offsets over 3 restart runs. Keys
+    // share a leading 0x01 byte so only the forced restarts (every 4 records, heads at index 0, 4, 8) have
+    // cp == 0 and reset the value against 0; the in-between records keep the unchanged high bytes from the
+    // previous value and store only the low bytes that changed. Reconstruction must recover the right offset
+    // for a restart head (incl. the zero-byte head), a mid-run record, a gap probe whose ceiling is the next
+    // run's head (a value reset against 0, not built on a stale running value), the before-first case, and a
+    // past-end miss.
     [Test]
     public void Front_coded_value_seek_reconstructs_offsets()
     {
@@ -179,15 +180,15 @@ public class BlockTests
         (byte[] Key, long Value)[] entries =
         [
             (Bytes.FromHexString("0102"), 0),            // restart head (cp == 0), value 0 (zero bytes)
-            (Bytes.FromHexString("0104"), 4096),         // cp == 1, value front-coded against the previous
+            (Bytes.FromHexString("0104"), 4096),         // cp == 1, only the changed low bytes stored
             (Bytes.FromHexString("0106"), 8192),
             (Bytes.FromHexString("0108"), 12288),
             (Bytes.FromHexString("010a"), 1_000_000),    // restart head (3-byte value)
-            (Bytes.FromHexString("010c"), 1_004_096),    // shares the high byte with the head (valCp == 1)
+            (Bytes.FromHexString("010c"), 1_004_096),    // keeps the high byte, 2 low bytes change
             (Bytes.FromHexString("010e"), 1_008_192),
             (Bytes.FromHexString("0110"), 1_012_288),
             (Bytes.FromHexString("0112"), 250_000_000),  // restart head (4-byte value)
-            (Bytes.FromHexString("0114"), 250_004_096),  // shares the two high bytes (valCp == 2)
+            (Bytes.FromHexString("0114"), 250_004_096),  // keeps the two high bytes, 2 low bytes change
             (Bytes.FromHexString("0116"), 250_008_192),
             (Bytes.FromHexString("0118"), 250_012_288),
         ];

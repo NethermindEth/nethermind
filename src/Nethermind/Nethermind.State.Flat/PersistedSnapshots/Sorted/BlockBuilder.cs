@@ -21,8 +21,8 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     private readonly NativeMemoryList<byte> _body = new(Math.Max(64, expectedBytes));
     private readonly NativeMemoryList<int> _restarts = new(64);
     private readonly NativeMemoryList<byte> _prevKey = new(256);
-    // Previous index value as min-width big-endian bytes; only used by AddFrontCodedValue.
-    private readonly NativeMemoryList<byte> _prevValue = new(8);
+    // Previous index value; only used by AddFrontCodedValue to find which low bytes changed.
+    private ulong _prevValue;
     private int _recordCount;
 
     public int RecordCount => _recordCount;
@@ -40,32 +40,30 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     }
 
     /// <summary>Append an index record whose value is a non-negative 48-bit integer (a data-block byte
-    /// offset), front-coded as a min-width big-endian integer against the previous record's value:
-    /// <c>[cp][suffixLen][valCp][valSuffixLen][keySuffix][valSuffix]</c>, where <c>valCp</c> is the leading
-    /// bytes shared with the previous value. The value is fully restated (<c>valCp == 0</c>) at every key
-    /// restart (<c>cp == 0</c>) so a seek can begin there.</summary>
-    /// <remarks>Offsets ascend, so nearby values share their high (big-endian leading) bytes;
-    /// <see cref="IndexBlockReader.SeekCeiling"/> reconstructs each by keeping the shared prefix from the
-    /// running value and appending the suffix.</remarks>
+    /// offset). Only the low little-endian bytes that differ from the previous record's value are stored —
+    /// <c>[cp][suffixLen][valChangedLen][keySuffix][valChanged]</c> — and the reader keeps the unchanged
+    /// high bytes. At a key restart (<c>cp == 0</c>) the value is coded against 0 (fully restated) so a
+    /// seek can begin there.</summary>
+    /// <remarks>Offsets ascend, so the high bytes rarely change and the stored low-byte prefix stays short;
+    /// the little-endian layout lets <see cref="IndexBlockReader.SeekCeiling"/> copy those bytes straight
+    /// onto the low end of a running value.</remarks>
     public void AddFrontCodedValue(scoped ReadOnlySpan<byte> key, long value)
     {
         Debug.Assert((ulong)value >> 48 == 0, "index value must fit in 48 bits");
         int cp = StartRecord(key);
 
-        // Min-width big-endian value, dropping leading zero bytes; value 0 ⇒ empty span.
-        Span<byte> be = stackalloc byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64BigEndian(be, (ulong)value);
-        ReadOnlySpan<byte> valBE = be[(BitOperations.LeadingZeroCount((ulong)value) / 8)..];
-        int valCp = cp == 0 ? 0 : ((ReadOnlySpan<byte>)_prevValue.AsSpan()).CommonPrefixLength(valBE);
-        ReadOnlySpan<byte> valSuffix = valBE[valCp..];
+        // Number of low (little-endian) bytes that differ from the previous value (against 0 at a restart):
+        // the byte index of the highest-order change plus one; value/diff 0 ⇒ nothing stored.
+        ulong v = (ulong)value;
+        ulong diff = v ^ (cp == 0 ? 0UL : _prevValue);
+        int changedLen = diff == 0 ? 0 : BitOperations.Log2(diff) / 8 + 1;
 
-        Block.IndexRecordHeader h = new((byte)cp, (byte)(key.Length - cp), (byte)valCp, (byte)valSuffix.Length);
+        Block.IndexRecordHeader h = new((byte)cp, (byte)(key.Length - cp), (byte)changedLen);
         _body.AddRange(MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref h)));
         _body.AddRange(key[cp..]);
-        _body.AddRange(valSuffix);
+        _body.AddRange(MemoryMarshal.AsBytes(new Span<ulong>(ref v))[..changedLen]);
 
-        _prevValue.Clear();
-        _prevValue.AddRange(valBE);
+        _prevValue = v;
         EndRecord(key);
     }
 
@@ -131,7 +129,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         _body.Clear();
         _restarts.Clear();
         _prevKey.Clear();
-        _prevValue.Clear();
+        _prevValue = 0;
         _recordCount = 0;
     }
 
@@ -140,7 +138,6 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         _body.Dispose();
         _restarts.Dispose();
         _prevKey.Dispose();
-        _prevValue.Dispose();
     }
 
     private static void WriteOffset<TWriter>(ref TWriter writer, int width, long value) where TWriter : IByteBufferWriter

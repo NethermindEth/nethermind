@@ -8,11 +8,11 @@ using Nethermind.State.Flat.Io;
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 /// <summary>
-/// Read-side ceiling search over a <see cref="SortedTable"/> index block, whose record values are
-/// front-coded u48 byte offsets — min-width big-endian, sharing leading bytes with the previous value and
-/// fully restated at every restart (see <see cref="BlockBuilder.AddFrontCodedValue"/>). The restart binary
-/// search and forward scan are its own, since the index scan reconstructs the offset where the data-block
-/// scan (<see cref="DataBlockReader.SeekCeiling"/>) returns a value <see cref="Bound"/>.
+/// Read-side ceiling search over a <see cref="SortedTable"/> index block, whose record values are u48 byte
+/// offsets stored little-endian as only the low bytes that changed from the previous value (the high bytes
+/// carry over), reset at every restart (see <see cref="BlockBuilder.AddFrontCodedValue"/>). The restart
+/// binary search and forward scan are its own, since the index scan reconstructs the offset where the
+/// data-block scan (<see cref="DataBlockReader.SeekCeiling"/>) returns a value <see cref="Bound"/>.
 /// </summary>
 internal static class IndexBlockReader
 {
@@ -54,8 +54,8 @@ internal static class IndexBlockReader
     /// </summary>
     /// <remarks>
     /// The binary search picks the rightmost restart whose first key ≤ <paramref name="target"/>, so the
-    /// scan starts at a restart record (<c>cp == 0</c>) where the value is fully restated, anchoring the
-    /// running value; each later record keeps the shared <c>valCp</c> bytes and appends its suffix.
+    /// scan starts at a restart record (<c>cp == 0</c>) that resets the running value to 0; each later
+    /// record overwrites only its low <c>valChangedLen</c> bytes, keeping the unchanged high bytes.
     /// </remarks>
     internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
         scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf,
@@ -101,12 +101,10 @@ internal static class IndexBlockReader
         int scanRestart = found < 0 ? 0 : found;
         long pos = blockStart + offsets[scanRestart];
 
-        // The value (a u48 byte offset) is front-coded: keep valCp leading big-endian bytes of the running
-        // value and append valSuffix (Block.FrontDecodeValue). The scan starts at a restart, where the value
-        // is fully restated (valCp == 0).
+        // The value (a u48 byte offset) is stored little-endian as only the low bytes that changed from the
+        // previous record; a restart (cp == 0) drops the previous high bytes by resetting to 0. Each record
+        // overwrites the running value's low valChangedLen bytes in place — a direct copy, no decode.
         long runningValue = 0;
-        int runningWidth = 0;
-        Span<byte> valSuffixBuf = stackalloc byte[6]; // u48
 
         // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
         while (pos < end)
@@ -114,19 +112,17 @@ internal static class IndexBlockReader
             if (!reader.TryRead(pos, MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref rec)))) return false;
             int cp = rec.CommonPrefix;
             int suffixLen = rec.SuffixLength;
-            int valCp = rec.ValueCommonPrefix;
-            int valSuffixLen = rec.ValueSuffixLength;
-            if (valCp > runningWidth || valCp + valSuffixLen > valSuffixBuf.Length) return false; // corrupt
+            int valChangedLen = rec.ValueChangedLength;
+            if (valChangedLen > 6) return false; // > u48 ⇒ corrupt
 
             long keyStart = pos + Unsafe.SizeOf<Block.IndexRecordHeader>();
             if (!reader.TryRead(keyStart, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
             int kLen = cp + suffixLen;
             long valueStart = keyStart + suffixLen;
-            ReadOnlySpan<byte> valSuffix = valSuffixBuf[..valSuffixLen];
-            if (valSuffixLen > 0 && !reader.TryRead(valueStart, valSuffixBuf[..valSuffixLen])) return false;
 
-            runningValue = Block.FrontDecodeValue(runningValue, runningWidth, valCp, valSuffix);
-            runningWidth = valCp + valSuffixLen;
+            if (cp == 0) runningValue = 0;
+            if (valChangedLen > 0 &&
+                !reader.TryRead(valueStart, MemoryMarshal.AsBytes(new Span<long>(ref runningValue))[..valChangedLen])) return false;
 
             if (target.SequenceCompareTo(keyBuf[..kLen]) <= 0)
             {
@@ -134,7 +130,7 @@ internal static class IndexBlockReader
                 byteOffset = runningValue;
                 return true;
             }
-            pos = valueStart + valSuffixLen;
+            pos = valueStart + valChangedLen;
         }
         return false;
     }
