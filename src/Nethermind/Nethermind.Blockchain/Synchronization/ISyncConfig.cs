@@ -111,7 +111,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
 
-    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "32")]
+    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "8")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
     [ConfigItem(Description = "Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. If `true`, the pivot number must be same one used originally as it's used as a cut-off point.", DefaultValue = "false")]
@@ -139,7 +139,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = nameof(ITunableDb.TuneType.EnableBlobFiles), HiddenFromDocs = true)]
     ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
 
-    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors.", DefaultValue = "0")]
+    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors, except snap sync, which uses a bounded higher auto-concurrency to keep storage requests active.", DefaultValue = "0")]
     public int MaxProcessingThreads { get; set; }
 
     [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]

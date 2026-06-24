@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -406,6 +407,26 @@ public class SyncDispatcherTests
         await executorTask.WaitAsync(cancellationToken);
 
         Assert.That(syncFeed.ResultCount, Is.EqualTo(MaxConcurrency * 8));
+    }
+
+    [TestCase(0, 8, 8, 32)]
+    [TestCase(0, 16, 8, 32)]
+    [TestCase(0, 8, 64, 32)]
+    [TestCase(0, 64, 8, 64)]
+    [TestCase(24, 8, 8, 24)]
+    public void Snap_auto_concurrency_keeps_storage_workers_available(
+        int maxProcessingThreads,
+        int accountRangePartitionCount,
+        int processorCount,
+        int expectedConcurrency)
+    {
+        SyncConfig syncConfig = new()
+        {
+            MaxProcessingThreads = maxProcessingThreads,
+            SnapSyncAccountRangePartitionCount = accountRangePartitionCount,
+        };
+
+        Assert.That(SynchronizerModule.ResolveSnapConcurrency(syncConfig, processorCount), Is.EqualTo(expectedConcurrency));
     }
 
     // [NonParallelizable]: this test relies on the dispatcher's Task.Run reaching HandleResponse

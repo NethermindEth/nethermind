@@ -26,6 +26,8 @@ using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
 
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Nethermind.Synchronization.Test")]
+
 namespace Nethermind.Synchronization
 {
     public class Synchronizer(
@@ -292,6 +294,9 @@ namespace Nethermind.Synchronization
 
 public class SynchronizerModule(ISyncConfig syncConfig) : Module
 {
+    private const int MaxAutoSnapConcurrency = 32;
+    private const int SnapConcurrencyPerProcessor = 4;
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -417,9 +422,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         serviceCollection.Register(static ctx =>
         {
             ISyncConfig syncConfig = ctx.Resolve<ISyncConfig>();
-            int snapConcurrency = syncConfig.MaxProcessingThreads == 0
-                ? Math.Max(Environment.ProcessorCount, syncConfig.SnapSyncAccountRangePartitionCount)
-                : syncConfig.MaxProcessingThreads;
 
             return new SimpleDispatcher<SnapSyncBatch>(
                 ctx.Resolve<ISimpleSyncFeed<SnapSyncBatch>>(),
@@ -429,10 +431,21 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
                 ctx.Resolve<ISyncPeerPool>(),
                 syncConfig,
                 ctx.Resolve<ILogManager>(),
-                snapConcurrency);
+                ResolveSnapConcurrency(syncConfig, Environment.ProcessorCount));
         })
             .AsSelf()
             .SingleInstance();
+    }
+
+    internal static int ResolveSnapConcurrency(ISyncConfig syncConfig, int processorCount)
+    {
+        if (syncConfig.MaxProcessingThreads != 0)
+        {
+            return syncConfig.MaxProcessingThreads;
+        }
+
+        int autoConcurrency = Math.Min(processorCount * SnapConcurrencyPerProcessor, MaxAutoSnapConcurrency);
+        return Math.Max(autoConcurrency, syncConfig.SnapSyncAccountRangePartitionCount);
     }
 
     private void ConfigureReceiptSyncComponent(ContainerBuilder serviceCollection)
