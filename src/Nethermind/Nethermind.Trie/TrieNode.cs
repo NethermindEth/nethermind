@@ -594,41 +594,6 @@ namespace Nethermind.Trie
             return length == 32 ? rlpReader.DecodeKeccak() : null;
         }
 
-        /// Gets child hash or the Value of the node in case it's an inline.
-        public byte[]? GetChildHashOrInlineValue(int i)
-        {
-            CappedArray<byte> rlp = ReadRlp();
-            if (rlp.IsNull)
-            {
-                return null;
-            }
-
-            RlpReader rlpReader = new(rlp);
-            SeekChild(ref rlpReader, i);
-
-            int prefix = rlpReader.PeekByte();
-
-            // If it's a hash (32 bytes), decode and return it
-            if (prefix == 160)
-            {
-                return rlpReader.DecodeKeccak().Bytes.ToArray();
-            }
-
-            int prefixValue = rlpReader.PeekByte();
-            if (prefixValue < 192)
-            {
-                return null;
-            }
-            else
-            {
-                // If it's an RLP list (inline node), return the full item as a byte array
-                rlpReader.PeekNextItem();
-                rlpReader.SkipLength();
-                rlpReader.SkipItem();
-                return rlpReader.DecodeByteArraySpan().ToArray();
-            }
-        }
-
         public byte[]? GetInlineNodeRlp(int i)
         {
             CappedArray<byte> rlp = ReadRlp();
