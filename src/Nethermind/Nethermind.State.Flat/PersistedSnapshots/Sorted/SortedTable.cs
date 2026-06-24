@@ -21,7 +21,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 ///   index block     ; one Block at byte offset <c>indexOffset</c>; NOT block-aligned (it is located by
 ///                     the footer, not addressed by block number); key = separator,
 ///                     value = data-block byte offset (u48), RocksDB-style delta-coded (see Block)
-///   footer          ; [indexOffset i64][restartInterval u8][version u8]  (fixed FooterSize)
+///   footer          ; [indexOffset i64][version u8]  (fixed FooterSize)
 /// </code>
 /// Each data block holds a slice of the sorted records; the index block maps the shortest separator in
 /// <c>[lastKey(block i), firstKey(block i+1))</c> (the last block's separator is its own last key) to
@@ -30,8 +30,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// (<see cref="BlockReader.SeekCeiling"/>): index → byte offset → data block, and a full scan
 /// (<see cref="SortedTableEnumerator{TReader,TPin}"/>) walks the index in order to visit each data block
 /// by offset. The offset is a u48; since offsets ascend, each index record stores its absolute offset
-/// only at a restart head and a small delta against the previous record in between (so the index stays
-/// compact while reaching a 256 TiB table). The single index block is addressed directly by the footer's
+/// only at a restart (a <c>cp == 0</c> record) and a small delta against the previous record in between
+/// (so the index stays compact while reaching a 256 TiB table). The single index block is addressed directly by the footer's
 /// <c>indexOffset</c>, so it needs no padding and that offset is i64 to
 /// span the full range.
 /// Both data and index blocks are self-describing (see <see cref="Block"/>), so search needs only a
@@ -48,15 +48,15 @@ internal static class SortedTable
     /// <summary>Default front-coding restart interval (records per restart run).</summary>
     internal const int DefaultRestartInterval = 8;
 
-    /// <summary>Fixed footer: index-block byte offset (i64), restart interval (u8), version (u8).</summary>
-    internal const int FooterSize = sizeof(long) + 1 + 1;
+    /// <summary>Fixed footer: index-block byte offset (i64), version (u8).</summary>
+    internal const int FooterSize = sizeof(long) + 1;
 
-    internal const byte FormatVersion = 8;
+    internal const byte FormatVersion = 9;
 
     /// <summary>Footer-resolved table geometry: the table-relative byte offset of the (unaligned) index
-    /// block, and the front-coding restart interval (needed to decode the index block's delta-coded
-    /// values, both for lookup and for the full-scan enumerator).</summary>
-    internal readonly record struct Footer(long IndexOffset, int RestartInterval);
+    /// block. The delta-coded index values need no stored restart interval — a restart is any
+    /// <c>cp == 0</c> record (see <see cref="Block"/>).</summary>
+    internal readonly record struct Footer(long IndexOffset);
 
     /// <summary>Reader-absolute start of the index block.</summary>
     internal static long IndexBlockStart(Bound table, in Footer footer) => table.Offset + footer.IndexOffset;
@@ -65,7 +65,7 @@ internal static class SortedTable
     internal static long DataBlockStart(Bound table, long byteOffset) => table.Offset + byteOffset;
 
     /// <summary>Read the footer of the table occupying <paramref name="table"/> and resolve the
-    /// index-block offset and restart interval.</summary>
+    /// index-block offset.</summary>
     /// <returns><c>false</c> when the bound is too small, unreadable, or carries an unknown version.</returns>
     internal static bool TryReadFooter<TReader, TPin>(scoped in TReader reader, Bound table, out Footer footer)
         where TPin : struct, IBufferPin, allows ref struct
@@ -79,14 +79,12 @@ internal static class SortedTable
         if (buf[FooterSize - 1] != FormatVersion) return false;
 
         long indexOffset = BinaryPrimitives.ReadInt64LittleEndian(buf);
-        int restartInterval = buf[sizeof(long)];
         // Bound the offset by the actual table size so a corrupt footer cannot address outside the
         // bound: data blocks live in [0, indexOffset) and the index block + footer fill the tail.
         if (indexOffset < 0) return false;
-        if (restartInterval <= 0) return false; // guards the index-value delta decode's restart modulo
         if (indexOffset > table.Length - FooterSize) return false;
 
-        footer = new Footer(indexOffset, restartInterval);
+        footer = new Footer(indexOffset);
         return true;
     }
 }

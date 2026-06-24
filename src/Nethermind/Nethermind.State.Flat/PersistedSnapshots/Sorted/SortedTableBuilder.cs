@@ -27,7 +27,6 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
 {
     private ref TWriter _writer;
     private readonly long _tableStart;
-    private readonly int _restartInterval;
     private readonly BlockBuilder _dataBlock;
     private readonly BlockBuilder _indexBlock;
     // Last key Added overall — also the last key of the current data block, used to enforce ascending
@@ -40,7 +39,6 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
     {
         _writer = ref writer;
         _tableStart = writer.Written;
-        _restartInterval = restartInterval;
         _dataBlock = new BlockBuilder(restartInterval, SortedTable.BlockSize);
         _indexBlock = new BlockBuilder(restartInterval);
         _prevKey = new NativeMemoryList<byte>(256);
@@ -75,8 +73,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
 
         Span<byte> footer = _writer.GetSpan(SortedTable.FooterSize);
         BinaryPrimitives.WriteInt64LittleEndian(footer, indexOffset);
-        footer[sizeof(long)] = (byte)_restartInterval;
-        footer[sizeof(long) + 1] = SortedTable.FormatVersion;
+        footer[sizeof(long)] = SortedTable.FormatVersion;
         _writer.Advance(SortedTable.FooterSize);
     }
 

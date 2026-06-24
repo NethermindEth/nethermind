@@ -44,9 +44,9 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     public void AddDeltaValue(scoped ReadOnlySpan<byte> key, long value)
     {
         Debug.Assert((ulong)value >> 48 == 0, "index value must fit in 48 bits");
-        bool restart = _recordCount % restartInterval == 0;
+        // A restart (cp == 0) re-anchors to an absolute value; in between, the delta against the previous.
+        bool restart = WriteKey(key) == 0;
         Debug.Assert(restart || value >= _prevValue, "delta-coded values must be non-decreasing");
-        WriteKey(key);
 
         long stored = restart ? value : value - _prevValue;
         _prevValue = value;
@@ -58,21 +58,20 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         _body.AddRange(buf[..width]);
     }
 
-    /// <summary>Write a record's front-coded key prefix (<c>[cp][suffixLen][keySuffix]</c>), opening a new
-    /// restart run every <c>restartInterval</c> records, then advance the previous-key and record-count
-    /// state. The caller appends the value bytes.</summary>
-    private void WriteKey(scoped ReadOnlySpan<byte> key)
+    /// <summary>Write a record's front-coded key prefix (<c>[cp][suffixLen][keySuffix]</c>), then advance
+    /// the previous-key and record-count state; returns the record's common-prefix length <c>cp</c>. The
+    /// caller appends the value bytes.</summary>
+    /// <remarks>A record is a <em>restart</em> when <c>cp == 0</c> (it stores a full key): forced every
+    /// <c>restartInterval</c> records to bound scan length, and arising naturally wherever the key shares
+    /// no leading byte with its predecessor. Every restart records its offset, so the restart table indexes
+    /// them all and the index block re-anchors its delta value at each (see <see cref="AddDeltaValue"/>).</remarks>
+    private int WriteKey(scoped ReadOnlySpan<byte> key)
     {
-        int cp;
-        if (_recordCount % restartInterval == 0)
-        {
+        int cp = _recordCount % restartInterval == 0
+            ? 0
+            : ((ReadOnlySpan<byte>)_prevKey.AsSpan()).CommonPrefixLength(key);
+        if (cp == 0)
             _restarts.Add(_body.Count);
-            cp = 0;
-        }
-        else
-        {
-            cp = ((ReadOnlySpan<byte>)_prevKey.AsSpan()).CommonPrefixLength(key);
-        }
 
         Span<byte> hdr = stackalloc byte[2];
         hdr[0] = (byte)cp;
@@ -83,6 +82,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         _prevKey.Clear();
         _prevKey.AddRange(key);
         _recordCount++;
+        return cp;
     }
 
     /// <summary>Whether adding a record of the given key/value lengths would push the finished block
@@ -90,8 +90,8 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     /// size cap so each block stays within one page; the index block is never capped.</summary>
     public bool WouldCrossPage(int keyLen, int valueLen)
     {
-        int nRestarts = _restarts.Count + (_recordCount % restartInterval == 0 ? 1 : 0);
-        long header = Block.RecordsStart(2, nRestarts);
+        // The next record may be a restart (cp == 0), which adds a restart-table entry; count it.
+        long header = Block.RecordsStart(2, _restarts.Count + 1);
         int recordMax = 2 + keyLen + Block.SizePrefix + valueLen;
         return header + _body.Count + recordMax > PageLayout.PageSize;
     }

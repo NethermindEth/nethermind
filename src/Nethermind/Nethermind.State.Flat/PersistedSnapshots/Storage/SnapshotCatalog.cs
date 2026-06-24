@@ -44,7 +44,9 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
     // numbers — incompatible index encoding.
     // v9: sorted-table footer dropped the record-count and data-block-count fields (the enumerator now
     // walks the index block to locate data blocks) — incompatible footer.
-    private const int CurrentVersion = 9;
+    // v10: sorted-table footer dropped the restart-interval byte; restarts are now marked by cp == 0,
+    // which also re-anchors the index block's delta-coded values — incompatible footer + index decode.
+    private const int CurrentVersion = 10;
 
     private static readonly byte[] MetadataKey = new byte[4];
 

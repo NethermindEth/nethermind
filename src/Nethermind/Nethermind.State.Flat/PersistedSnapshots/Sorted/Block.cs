@@ -19,8 +19,11 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 ///   [restartOffset : W × numRestarts]   ; block-relative; restartOffset[0] = 1 + 2W + W·numRestarts
 ///   [records...]                        ; [cp u8][suffixLen u8][keySuffix][vs u8][value]
 /// </code>
-/// Keys are front-coded against the previous record, resetting (<c>cp = 0</c>, full key) every
-/// <c>restartInterval</c> records and at the block start — these are the <em>restarts</em>. The
+/// Keys are front-coded against the previous record. A record with <c>cp == 0</c> (it stores a full
+/// key) is a <em>restart</em>: the builder forces one at least every <c>restartInterval</c> records (a
+/// build-time knob, not stored on disk) to bound scan length, and one also arises wherever adjacent keys
+/// share no leading byte. The restart table indexes every restart, and the index block re-anchors its
+/// delta-coded value to an absolute at each (see <see cref="BlockBuilder.AddDeltaValue"/>). The
 /// header <c>formatFlag</c> records the block's role and thereby its offset width — a data
 /// <c>Block</c> (capped well under 64 KiB) uses 2-byte offsets, the multi-MB <c>Index</c> uses
 /// 4-byte — so one format serves both. <see cref="BlockReader.SeekCeiling"/> binary searches the

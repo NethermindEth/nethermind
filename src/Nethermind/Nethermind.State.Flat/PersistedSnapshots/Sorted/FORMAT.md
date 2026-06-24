@@ -12,7 +12,7 @@ in separate blob arenas; the table stores only small inline values (account RLP,
 data block × M  ; blocks 0..M-2 zero-padded to BlockSize (4096); data block i at i·BlockSize
 index block     ; right after the last (unpadded) data block, at the footer's indexOffset; NOT block-aligned;
                 ;   key = separator, value = data-block table-relative byte offset (u48), delta-coded
-footer          ; [indexOffset i64][restartInterval u8][version u8]  (fixed 10 bytes, read first)
+footer          ; [indexOffset i64][version u8]  (fixed 9 bytes, read first)
 
 Block (data and index alike):
   [formatFlag u8]                     ; Block => W = 2, Index => W = 4 (offset width in bytes)
@@ -24,18 +24,19 @@ Block (data and index alike):
 
 - Both levels reuse one `Block` (`Block.cs`). Within a block, keys are **front-coded**: `cp` is the
   number of leading bytes shared with the previous record's key and `keySuffix` is the remaining
-  `suffixLen` bytes, so the full key = previous key's first `cp` bytes + `keySuffix`. Front-coding
-  **resets** (`cp = 0`, full key) every `restartInterval` (default **8**) records and at every block
-  start — these reset points are the **restarts**, and each block prefixes a table of their byte
-  offsets. The header **`formatFlag`** records the block's role and thereby its offset width `W`: a
+  `suffixLen` bytes, so the full key = previous key's first `cp` bytes + `keySuffix`. A record with
+  `cp = 0` (full key) is a **restart**: the builder forces one at least every `restartInterval`
+  (default **8**) records — a build-time knob, **not stored on disk** — to bound scan length, and one
+  also arises wherever adjacent keys share no leading byte. Each block prefixes a table of the byte
+  offsets of all its restarts. The header **`formatFlag`** records the block's role and thereby its offset width `W`: a
   data **`Block`** (capped well under 64 KiB) uses `W = 2`, the multi-MB **`Index`** uses `W = 4`. `recordsEnd`
   lets a block be located by its **start alone** — crucial because data blocks are zero-padded; the
   scan/enumeration stops at `recordsEnd` and never reads pad bytes. `cp`, `suffixLen`, and the value
   size `vs` are each one byte: keys are ≤ 55 bytes, every inline value is < 255. The one variable-length
   datum, the referenced blob-arena id list, is stored as separate records (see below), so no value
   overflows. In the **index block** the value slot instead holds a delta-coded integer (see below): a
-  minimal-width little-endian offset (`vs` = its byte count, 0..6), absolute at restart heads and a delta
-  in between.
+  minimal-width little-endian offset (`vs` = its byte count, 0..6), absolute at restarts (`cp = 0`) and a
+  delta in between.
 - Records are **streamed and packed** into data blocks in ascending key order; a data block closes once
   the next record would push its content across a 4 KiB page (`WouldCrossPage`). Blocks 0..M-2 are
   **zero-padded to 4096** so block `i` sits at `i·BlockSize`; the index records each block's
@@ -45,8 +46,8 @@ Block (data and index alike):
 - The **index block** maps, per data block, the shortest **separator** key in
   `[lastKey(block), firstKey(next block))` (the last block's separator is its own last key) to that
   block's table-relative **byte offset**, stored RocksDB-style **delta-coded**: the absolute offset at
-  every restart head, the delta against the previous index record in between (offsets ascend, so deltas
-  are small — with 4 KiB alignment they are the constant `0x1000`). It is located directly by the
+  every restart (`cp = 0`), the delta against the previous index record in between (offsets ascend, so
+  deltas are small — with 4 KiB alignment they are the constant `0x1000`). It is located directly by the
   footer's `indexOffset`, so it needs no block-number address and no padding; that i64 offset spans
   the full range.
 - A lookup (`SortedTableReader`) reads the footer, then does two `BlockReader.SeekCeiling` calls

@@ -82,14 +82,14 @@ public class BlockTests
 
         foreach (int i in (int[])[0, 1, 100, 4000, 11999])
         {
-            Assert.That(SeekCeilingDelta(block, restartInterval, entries[i].Key, out byte[] gotKey, out long gotVal), Is.True);
+            Assert.That(SeekCeilingDelta(block, entries[i].Key, out byte[] gotKey, out long gotVal), Is.True);
             Assert.That(gotKey, Is.EqualTo(entries[i].Key));
             Assert.That(gotVal, Is.EqualTo(entries[i].Value), $"absolute offset for entry {i}");
         }
 
         byte[] pastEnd = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(pastEnd, count);
-        Assert.That(SeekCeilingDelta(block, restartInterval, pastEnd, out _, out _), Is.False);
+        Assert.That(SeekCeilingDelta(block, pastEnd, out _, out _), Is.False);
     }
 
     [Test]
@@ -151,11 +151,11 @@ public class BlockTests
         return pooled.WrittenSpan.ToArray();
     }
 
-    private static bool SeekCeilingDelta(byte[] block, int restartInterval, ReadOnlySpan<byte> target, out byte[] key, out long value)
+    private static bool SeekCeilingDelta(byte[] block, ReadOnlySpan<byte> target, out byte[] key, out long value)
     {
         SpanByteReader reader = new(block);
         Span<byte> keyBuf = stackalloc byte[256];
-        if (!IndexBlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, restartInterval, out int keyLen, out long v))
+        if (!IndexBlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, out int keyLen, out long v))
         {
             key = [];
             value = 0;
@@ -166,48 +166,50 @@ public class BlockTests
         return true;
     }
 
-    // Delta-coded index values: 12 ascending offsets over 3 restart runs (heads at index 0, 4, 8).
-    // Reconstruction must hit the right absolute offset for a restart head (incl. the zero/vs=0 head),
-    // a mid-run record, a gap probe whose ceiling is the next run's head (the crossing record must
-    // re-anchor as an absolute, not accumulate a stale delta), the before-first case, and a past-end miss.
+    // Delta-coded index values: 12 ascending offsets over 3 restart runs. Keys share a leading 0x01 byte
+    // so only the forced restarts (every 4 records, heads at index 0, 4, 8) have cp == 0 and re-anchor to
+    // an absolute value; the in-between records have cp == 1 and store a delta. Reconstruction must hit the
+    // right absolute offset for a restart head (incl. the zero/vs=0 head), a mid-run delta record, a gap
+    // probe whose ceiling is the next run's head (the crossing record must re-anchor as an absolute, not
+    // accumulate a stale delta), the before-first case, and a past-end miss.
     [Test]
     public void Delta_value_seek_reconstructs_absolute_offsets()
     {
         const int restartInterval = 4;
         (byte[] Key, long Value)[] entries =
         [
-            (Bytes.FromHexString("02"), 0),            // restart head, vs = 0 (zero bytes)
-            (Bytes.FromHexString("04"), 4096),
-            (Bytes.FromHexString("06"), 8192),
-            (Bytes.FromHexString("08"), 12288),
-            (Bytes.FromHexString("0a"), 1_000_000),    // restart head (3-byte absolute)
-            (Bytes.FromHexString("0c"), 1_004_096),
-            (Bytes.FromHexString("0e"), 1_008_192),
-            (Bytes.FromHexString("10"), 1_012_288),
-            (Bytes.FromHexString("12"), 250_000_000),  // restart head (4-byte absolute)
-            (Bytes.FromHexString("14"), 250_004_096),
-            (Bytes.FromHexString("16"), 250_008_192),
-            (Bytes.FromHexString("18"), 250_012_288),
+            (Bytes.FromHexString("0102"), 0),            // restart head (cp == 0), vs = 0 (zero bytes)
+            (Bytes.FromHexString("0104"), 4096),         // cp == 1 ⇒ delta 4096
+            (Bytes.FromHexString("0106"), 8192),
+            (Bytes.FromHexString("0108"), 12288),
+            (Bytes.FromHexString("010a"), 1_000_000),    // restart head (3-byte absolute)
+            (Bytes.FromHexString("010c"), 1_004_096),
+            (Bytes.FromHexString("010e"), 1_008_192),
+            (Bytes.FromHexString("0110"), 1_012_288),
+            (Bytes.FromHexString("0112"), 250_000_000),  // restart head (4-byte absolute)
+            (Bytes.FromHexString("0114"), 250_004_096),
+            (Bytes.FromHexString("0116"), 250_008_192),
+            (Bytes.FromHexString("0118"), 250_012_288),
         ];
         byte[] block = BuildDeltaBlock(restartInterval, entries);
 
         foreach ((byte[] key, long value) in entries)
         {
-            Assert.That(SeekCeilingDelta(block, restartInterval, key, out byte[] gotKey, out long gotVal), Is.True);
+            Assert.That(SeekCeilingDelta(block, key, out byte[] gotKey, out long gotVal), Is.True);
             Assert.That(gotKey, Is.EqualTo(key));
             Assert.That(gotVal, Is.EqualTo(value), $"absolute offset for key {key.ToHexString()}");
         }
 
         // Target before the first key ⇒ ceiling is the head record (offset 0).
-        Assert.That(SeekCeilingDelta(block, restartInterval, Bytes.FromHexString("01"), out _, out long beforeFirst), Is.True);
+        Assert.That(SeekCeilingDelta(block, Bytes.FromHexString("0100"), out _, out long beforeFirst), Is.True);
         Assert.That(beforeFirst, Is.EqualTo(0));
 
-        // "09" sits between run 0's tail (08) and run 1's head (0a): the ceiling is the next run's head,
-        // whose value must re-anchor to the absolute 1_000_000.
-        Assert.That(SeekCeilingDelta(block, restartInterval, Bytes.FromHexString("09"), out byte[] crossKey, out long crossVal), Is.True);
-        Assert.That(crossKey, Is.EqualTo(Bytes.FromHexString("0a")));
+        // "0109" sits between run 0's tail (0108) and run 1's head (010a): the ceiling is the next run's
+        // head, whose value must re-anchor to the absolute 1_000_000.
+        Assert.That(SeekCeilingDelta(block, Bytes.FromHexString("0109"), out byte[] crossKey, out long crossVal), Is.True);
+        Assert.That(crossKey, Is.EqualTo(Bytes.FromHexString("010a")));
         Assert.That(crossVal, Is.EqualTo(1_000_000));
 
-        Assert.That(SeekCeilingDelta(block, restartInterval, Bytes.FromHexString("19"), out _, out _), Is.False);
+        Assert.That(SeekCeilingDelta(block, Bytes.FromHexString("0119"), out _, out _), Is.False);
     }
 }

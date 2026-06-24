@@ -30,7 +30,7 @@ internal static class SortedTableReader
         // Stage 1: ceiling over the index block — first separator ≥ target → its data block's table-relative
         // byte offset (index values are RocksDB-style delta-coded, reconstructed by IndexBlockReader).
         Span<byte> sepBuf = stackalloc byte[256];
-        if (!IndexBlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.IndexBlockStart(table, footer), key, sepBuf, footer.RestartInterval, out _, out long byteOffset))
+        if (!IndexBlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.IndexBlockStart(table, footer), key, sepBuf, out _, out long byteOffset))
             return false;
 
         // Stage 2: ceiling over the data block; a hit requires the ceiling key to equal the target.

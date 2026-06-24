@@ -38,12 +38,12 @@ internal static class IndexBlockReader
     /// </summary>
     /// <remarks>
     /// The binary search picks the rightmost restart whose first key ≤ <paramref name="target"/>, so the
-    /// ceiling lies within that restart run or is exactly the head of the next run — the scan crosses at
-    /// most one restart boundary, and that crossing record's restart-aligned index makes it re-anchor to
-    /// an absolute value. Requires <paramref name="restartInterval"/> &gt; 0.
+    /// scan starts at a restart record (<c>cp == 0</c>), whose absolute value anchors the running sum; the
+    /// scan crosses at most one further restart, and that record's <c>cp == 0</c> re-anchors it to an
+    /// absolute value.
     /// </remarks>
     internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
-        scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf, int restartInterval,
+        scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf,
         out int keyLen, out long byteOffset)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IByteReader<TPin>, allows ref struct
@@ -81,10 +81,8 @@ internal static class IndexBlockReader
         if (!reader.TryRead(restartTableStart + scanRestart * sizeof(uint), ob)) return false;
         long pos = blockStart + MemoryMarshal.Read<uint>(ob);
 
-        // The scan starts at a restart head, so recordIndex tracks the global record number; a record at
-        // a restart boundary (recordIndex % restartInterval == 0) carries an absolute value, every other
-        // record a delta against the previous one.
-        long recordIndex = scanRestart * restartInterval;
+        // A restart record (cp == 0) carries an absolute value, every other record a delta against the
+        // previous one. The scan starts at a restart, so the first record anchors the running sum.
         long runningValue = 0;
         Span<byte> vbuf = stackalloc byte[sizeof(ulong)];
 
@@ -106,8 +104,7 @@ internal static class IndexBlockReader
             vbuf.Clear();
             if (valueLen > 0 && !reader.TryRead(valueSizeOffset + Block.SizePrefix, vbuf[..valueLen])) return false;
             long v = (long)BinaryPrimitives.ReadUInt64LittleEndian(vbuf);
-            runningValue = recordIndex % restartInterval == 0 ? v : runningValue + v;
-            recordIndex++;
+            runningValue = cp == 0 ? v : runningValue + v;
 
             if (target.SequenceCompareTo(keyBuf[..kLen]) <= 0)
             {

@@ -28,8 +28,6 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
     // delta-coded offsets, to locate each data block. _indexPos == _indexEnd ⇒ no more data blocks.
     private long _indexPos;
     private long _indexEnd;
-    private readonly int _restartInterval;
-    private long _indexRecordIndex;
     private long _indexRunningValue;
     // Data-block cursor within the block located by the index.
     private long _pos;
@@ -53,7 +51,6 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
                 _indexEnd = indexStart + recordsEnd;
             }
         }
-        _restartInterval = footer.RestartInterval;
         // _pos == _blockEnd == 0 ⇒ the first MoveNext pulls the first data block from the index.
     }
 
@@ -93,6 +90,7 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         // record in between (see BlockBuilder.AddDeltaValue); the separator key is skipped over.
         Span<byte> hdr = stackalloc byte[2];
         if (!reader.TryRead(_indexPos, hdr)) return false;
+        int cp = hdr[0];
         int suffixLen = hdr[1];
         long valueSizeOffset = _indexPos + 2 + suffixLen;
         if (!reader.TryRead(valueSizeOffset, hdr[..1])) return false;
@@ -103,8 +101,9 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         vbuf.Clear();
         if (valueLen > 0 && !reader.TryRead(valueSizeOffset + Block.SizePrefix, vbuf[..valueLen])) return false;
         long stored = (long)BinaryPrimitives.ReadUInt64LittleEndian(vbuf);
-        _indexRunningValue = _indexRecordIndex % _restartInterval == 0 ? stored : _indexRunningValue + stored;
-        _indexRecordIndex++;
+        // A restart record (cp == 0) re-anchors to an absolute offset; in between, a delta. The index walk
+        // starts at the first record (cp == 0), so the running offset is anchored before any delta.
+        _indexRunningValue = cp == 0 ? stored : _indexRunningValue + stored;
         _indexPos = valueSizeOffset + Block.SizePrefix + valueLen;
 
         long blockStart = _tableOffset + _indexRunningValue;
