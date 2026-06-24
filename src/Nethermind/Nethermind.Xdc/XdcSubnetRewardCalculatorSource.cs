@@ -9,22 +9,22 @@ using Nethermind.Xdc.Contracts;
 
 namespace Nethermind.Xdc;
 
-internal class XdcRewardCalculatorSource(
+internal sealed class XdcSubnetRewardCalculatorSource(
     IEpochSwitchManager epochSwitchManager,
     ISpecProvider specProvider,
     IBlockTree blockTree,
     IMasternodeVotingContract masternodeVotingContract,
     IMintedRecordContract mintedRecordContract,
-    ISigningTxCache signingTxCache) : IRewardCalculatorSource
+    ISigningTxCache signingTxCache)
+    : XdcRewardCalculatorSource(
+        epochSwitchManager,
+        specProvider,
+        blockTree,
+        masternodeVotingContract,
+        mintedRecordContract,
+        signingTxCache)
 {
-    protected IEpochSwitchManager EpochSwitchManager { get; } = epochSwitchManager;
-    protected ISpecProvider SpecProvider { get; } = specProvider;
-    protected IBlockTree BlockTree { get; } = blockTree;
-    protected IMasternodeVotingContract MasternodeVotingContract { get; } = masternodeVotingContract;
-    protected IMintedRecordContract MintedRecordContract { get; } = mintedRecordContract;
-    protected ISigningTxCache SigningTxCache { get; } = signingTxCache;
-
-    public virtual IRewardCalculator Get(ITransactionProcessor processor) => new XdcRewardCalculator(
+    public override IRewardCalculator Get(ITransactionProcessor processor) => new XdcSubnetRewardCalculator(
         EpochSwitchManager,
         SpecProvider,
         BlockTree,

@@ -32,6 +32,38 @@ namespace Nethermind.Xdc.Test.ModuleTests;
 [NonParallelizable]
 public class RewardTests
 {
+    [TestCase(false, 3)]
+    [TestCase(true, 0)]
+    public void GetRewardMasternodes_GenesisHeader_UsesExpectedValidatorSource(bool isSubnet, int expectedCount)
+    {
+        Address[] extraDataMasternodes =
+        [
+            Address.FromNumber(1),
+            Address.FromNumber(2),
+            Address.FromNumber(3),
+        ];
+        XdcBlockHeaderBuilder builder = isSubnet
+            ? Build.A.XdcSubnetBlockHeader()
+            : Build.A.XdcBlockHeader();
+        builder.WithNumber(0);
+        builder.WithValidators(Array.Empty<Address>());
+        builder.WithExtraData(XdcTestHelper.BuildV1ExtraData(extraDataMasternodes));
+        XdcBlockHeader checkpointHeader = builder.TestObject;
+        IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
+        spec.SwitchBlock.Returns(0);
+        XdcRewardCalculatorSource source = CreateRewardCalculatorSource(isSubnet);
+        XdcRewardCalculator rewardCalculator = (XdcRewardCalculator)source.Get(Substitute.For<ITransactionProcessor>());
+
+        HashSet<Address> masternodes = rewardCalculator.GetRewardMasternodes(checkpointHeader, spec);
+
+        Assert.That(rewardCalculator, isSubnet ? Is.TypeOf<XdcSubnetRewardCalculator>() : Is.TypeOf<XdcRewardCalculator>());
+        Assert.That(masternodes, Has.Count.EqualTo(expectedCount));
+        if (!isSubnet)
+        {
+            Assert.That(masternodes, Is.EquivalentTo(extraDataMasternodes));
+        }
+    }
+
     [Test]
     public void SigningTxCache_CacheSigningTransactions_CachesSigningTransactions()
     {
@@ -715,6 +747,20 @@ public class RewardTests
             .ToBlockSignerContract(spec)
             .SignedAndResolved(signer)
             .TestObject;
+    }
+
+    private static XdcRewardCalculatorSource CreateRewardCalculatorSource(bool isSubnet)
+    {
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        IMintedRecordContract mintedRecordContract = Substitute.For<IMintedRecordContract>();
+        ISigningTxCache signingTxCache = Substitute.For<ISigningTxCache>();
+
+        return isSubnet
+            ? new XdcSubnetRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache)
+            : new XdcRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache);
     }
 
     private static UInt256 ReadStorageUInt256(IWorldState worldState, Address address, UInt256 slot)

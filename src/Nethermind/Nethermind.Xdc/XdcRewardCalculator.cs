@@ -155,11 +155,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                 if (epochCount == rewardEpochCount)
                 {
                     startBlockNumber = i + 1;
-                    // Get masternodes from epoch switch header
-                    if (h.Number <= spec.SwitchBlock)
-                        masternodes = [.. h.ExtraData.ParseV1Masternodes()];
-                    else
-                        masternodes = [.. h.ValidatorsAddress!];
+                    masternodes = GetRewardMasternodes(h, spec);
 
                     if (spec.IsTipUpgradeRewardEnabled)
                     {
@@ -220,6 +216,16 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         if (epochHeader.Number == 1800)
             Console.WriteLine($"[XDC-DBG][Reward1800Count] startBlock={startBlockNumber} endBlock={endBlockNumber} countedStart={start} mergeSignRange={mergeSignRange} masternodes={FormatAddresses(masternodes)} protectors={FormatAddresses(protectors)} observers={FormatAddresses(observers)} masternodeSigners={FormatSignerCounts(masternodeSigners)} protectorSigners={FormatSignerCounts(protectorSigners)} observerSigners={FormatSignerCounts(observerSigners)}");
         return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
+    }
+
+    protected internal virtual HashSet<Address> GetRewardMasternodes(XdcBlockHeader checkpointHeader, IXdcReleaseSpec spec)
+    {
+        if (checkpointHeader.Number <= spec.SwitchBlock)
+        {
+            return [.. checkpointHeader.ExtraData.ParseV1Masternodes()];
+        }
+
+        return [.. checkpointHeader.ValidatorsAddress!];
     }
 
     private Address[] GetCandidatesByStakeForReward(XdcBlockHeader checkpointHeader)
