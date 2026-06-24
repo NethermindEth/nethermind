@@ -267,8 +267,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                // Transport-level failures (e.g. unreachable network/host) are an expected part of peer
-                // discovery, equivalent to a timed-out request, so they are logged quietly without a stack trace.
+                // Transport failures (e.g. unreachable host) are expected during discovery, so log them quietly.
                 bool shouldWarn = e is not SocketException && e.InnerException is not SocketException;
                 if (shouldWarn)
                 {
