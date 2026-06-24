@@ -15,13 +15,13 @@ namespace Nethermind.State.Flat.Test.Sorted;
 [TestFixture]
 public class BlockTests
 {
-    private static byte[] BuildBlock(int restartInterval, (byte[] Key, byte[] Value)[] entries, byte formatFlag = Block.FlagBlock)
+    private static byte[] BuildBlock(int restartInterval, (byte[] Key, byte[] Value)[] entries)
     {
         using PooledByteBufferWriter pooled = new(256);
         using BlockBuilder block = new(restartInterval);
         foreach ((byte[] key, byte[] value) in entries)
             block.Add(key, value);
-        block.Finish(ref pooled.GetWriter(), formatFlag);
+        block.Finish(ref pooled.GetWriter(), Block.FlagBlock);
         return pooled.WrittenSpan.ToArray();
     }
 
@@ -61,32 +61,35 @@ public class BlockTests
         }
     }
 
-    // The Index block carries 4-byte offsets so it can span past 64 KiB — the path the multi-MB index
-    // block takes for a full-state snapshot, exercised cheaply here by building a >64 KiB block directly.
+    // The Index block carries 4-byte offsets and a u32 records-end, so it can span past 64 KiB — the
+    // path the multi-MB index block takes for a full-state snapshot. A >64 KiB delta-coded block forces
+    // recordsEnd and the restart offsets above the u16 range, exercising the full 4-byte read path.
     [Test]
     public void Index_block_round_trips_past_64KiB()
     {
-        const int count = 8000;
-        (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
+        const int restartInterval = 8;
+        const int count = 12000;
+        (byte[] Key, long Value)[] entries = new (byte[], long)[count];
         for (int i = 0; i < count; i++)
         {
             byte[] key = new byte[4];
             BinaryPrimitives.WriteInt32BigEndian(key, i);
-            entries[i] = (key, [(byte)i, (byte)(i >> 8), 0xAB, 0xCD, 0xEF, 0x01, 0x02, 0x03]);
+            entries[i] = (key, (long)i * 4096);
         }
-        byte[] block = BuildBlock(8, entries, Block.FlagIndex);
+        byte[] block = BuildDeltaBlock(restartInterval, entries);
         Assert.That(block[0], Is.EqualTo(Block.FlagIndex), "the Index flag selects 4-byte offsets");
+        Assert.That(block.Length, Is.GreaterThan(ushort.MaxValue), "block must exceed 64 KiB to exercise the 4-byte path");
 
-        foreach (int i in (int[])[0, 1, 100, 4000, 7999])
+        foreach (int i in (int[])[0, 1, 100, 4000, 11999])
         {
-            Assert.That(SeekCeiling(block, entries[i].Key, out byte[] gotKey, out byte[] gotVal), Is.True);
+            Assert.That(SeekCeilingDelta(block, restartInterval, entries[i].Key, out byte[] gotKey, out long gotVal), Is.True);
             Assert.That(gotKey, Is.EqualTo(entries[i].Key));
-            Assert.That(gotVal, Is.EqualTo(entries[i].Value));
+            Assert.That(gotVal, Is.EqualTo(entries[i].Value), $"absolute offset for entry {i}");
         }
 
         byte[] pastEnd = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(pastEnd, count);
-        Assert.That(SeekCeiling(block, pastEnd, out _, out _), Is.False);
+        Assert.That(SeekCeilingDelta(block, restartInterval, pastEnd, out _, out _), Is.False);
     }
 
     [Test]

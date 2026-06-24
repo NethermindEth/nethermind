@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
@@ -51,4 +52,14 @@ internal static class Block
 
     internal static long ReadOffset(scoped ReadOnlySpan<byte> src, int width) =>
         width == 2 ? BinaryPrimitives.ReadUInt16LittleEndian(src) : BinaryPrimitives.ReadUInt32LittleEndian(src);
+
+    /// <summary>The fixed 2-byte prefix every record starts with: the key's common-prefix length with
+    /// the previous record, then the length of the key suffix that follows. Read by reinterpreting the
+    /// two header bytes (both single bytes, so endianness-independent).</summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal readonly struct RecordHeader
+    {
+        internal readonly byte CommonPrefix;
+        internal readonly byte SuffixLength;
+    }
 }
