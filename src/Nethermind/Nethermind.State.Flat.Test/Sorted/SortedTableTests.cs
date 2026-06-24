@@ -353,13 +353,13 @@ public class SortedTableTests
         Assert.That(m, Is.GreaterThan(1));
 
         for (long i = 0; i < m; i++)
-            Assert.That(BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, i * SortedTable.BlockSize, out int w, out _, out _, out _) && (w is 2 or 4),
+            Assert.That(BlockReader.TryReadRecordRange<SpanByteReader, NoOpPin>(in reader, i * SortedTable.BlockSize, out _, out _),
                 Is.True, $"data block {i} at {i * SortedTable.BlockSize}");
 
         // The index block is located directly by the footer's IndexOffset (it is not block-aligned and
         // begins right after the last, unpadded, data block).
         Assert.That(footer.IndexOffset, Is.GreaterThanOrEqualTo((m - 1) * SortedTable.BlockSize));
-        Assert.That(BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, SortedTable.IndexBlockStart(table, footer), out _, out _, out _, out _), Is.True, "index block at IndexOffset");
+        Assert.That(IndexBlockReader.TryReadRecordRange<SpanByteReader, NoOpPin>(in reader, SortedTable.IndexBlockStart(table, footer), out _, out _), Is.True, "index block at IndexOffset");
     }
 
     // DataBlockStart now adds a table-relative byte offset directly (no block-number multiply); a u48

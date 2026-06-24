@@ -23,32 +23,22 @@ internal static class BlockReader
         internal readonly ushort NumRestarts;
     }
 
-    /// <summary>Parse the block header at <paramref name="blockStart"/>: offset width, the
-    /// block-relative records-end, restart count, and the block-relative records start.</summary>
-    /// <remarks>Width-agnostic; used by <see cref="SortedTableEnumerator{TReader,TPin}"/>, which walks
-    /// data blocks without assuming a fixed width.</remarks>
-    internal static bool ReadHeader<TReader, TPin>(scoped in TReader reader, long blockStart,
-        out int width, out long recordsEnd, out long numRestarts, out long recordsStart)
+    /// <summary>Block-relative start and end of the data block's records at <paramref name="blockStart"/>
+    /// — the byte range a forward walk covers, after the header and restart table. Returns <c>false</c> if
+    /// the block is unreadable or not a data block. Used by <see cref="SortedTableEnumerator{TReader,TPin}"/>
+    /// to walk a data block without binary-searching it.</summary>
+    internal static bool TryReadRecordRange<TReader, TPin>(scoped in TReader reader, long blockStart,
+        out long recordsStart, out long recordsEnd)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IByteReader<TPin>, allows ref struct
     {
-        width = 0;
-        recordsEnd = 0;
-        numRestarts = 0;
         recordsStart = 0;
-
-        // The body width (recordsEnd, numRestarts) is per-block variable — 2 bytes for a data Block,
-        // 4 for the Index — so it cannot map to one fixed-layout struct; read the flag, then both
-        // body fields together in a single read.
-        Span<byte> buf = stackalloc byte[8]; // 2 × the max offset width (4, used by the Index)
-        if (!reader.TryRead(blockStart, buf[..1])) return false;
-        int w = Block.WidthFromFlag(buf[0]);
-        if (w == 0) return false;
-        if (!reader.TryRead(blockStart + 1, buf[..(2 * w)])) return false;
-        recordsEnd = Block.ReadOffset(buf, w);
-        numRestarts = Block.ReadOffset(buf[w..], w);
-        width = w;
-        recordsStart = Block.RecordsStart(w, numRestarts);
+        recordsEnd = 0;
+        Header header = default;
+        if (!reader.TryRead(blockStart, MemoryMarshal.AsBytes(new Span<Header>(ref header)))) return false;
+        if (header.Flag != Block.FlagBlock) return false;
+        recordsStart = Unsafe.SizeOf<Header>() + (long)sizeof(ushort) * header.NumRestarts;
+        recordsEnd = header.RecordsEnd;
         return true;
     }
 

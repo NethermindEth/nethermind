@@ -96,7 +96,7 @@ internal static class TestFixtureHelpers
         if (!SortedTable.TryReadFooter<SpanByteReader, NoOpPin>(in reader, table, out SortedTable.Footer footer))
             throw new InvalidOperationException("Not a readable sorted table.");
         long indexStart = SortedTable.IndexBlockStart(table, footer);
-        if (!BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, indexStart, out _, out long recordsEnd, out _, out long recordsStart))
+        if (!IndexBlockReader.TryReadRecordRange<SpanByteReader, NoOpPin>(in reader, indexStart, out long recordsStart, out long recordsEnd))
             throw new InvalidOperationException("Unreadable index block.");
 
         // Step over each index record ([cp u8][suffixLen u8][keySuffix][vs u8][value]) without decoding it.

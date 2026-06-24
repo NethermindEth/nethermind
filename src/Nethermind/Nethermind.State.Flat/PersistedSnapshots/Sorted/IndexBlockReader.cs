@@ -29,6 +29,24 @@ internal static class IndexBlockReader
         internal readonly uint NumRestarts;
     }
 
+    /// <summary>Block-relative start and end of the index block's records at <paramref name="blockStart"/>.
+    /// Returns <c>false</c> if the block is unreadable or not an index block. Used by
+    /// <see cref="SortedTableEnumerator{TReader,TPin}"/> to walk the index in order.</summary>
+    internal static bool TryReadRecordRange<TReader, TPin>(scoped in TReader reader, long blockStart,
+        out long recordsStart, out long recordsEnd)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IByteReader<TPin>, allows ref struct
+    {
+        recordsStart = 0;
+        recordsEnd = 0;
+        Header header = default;
+        if (!reader.TryRead(blockStart, MemoryMarshal.AsBytes(new Span<Header>(ref header)))) return false;
+        if (header.Flag != Block.FlagIndex) return false;
+        recordsStart = Unsafe.SizeOf<Header>() + (long)sizeof(uint) * header.NumRestarts;
+        recordsEnd = header.RecordsEnd;
+        return true;
+    }
+
     /// <summary>
     /// Position at the first separator ≥ <paramref name="target"/> (the ceiling) in the index block at
     /// <paramref name="blockStart"/> and return the reconstructed absolute byte offset

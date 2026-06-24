@@ -45,7 +45,7 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         if (SortedTable.TryReadFooter<TReader, TPin>(in reader, table, out SortedTable.Footer footer))
         {
             long indexStart = SortedTable.IndexBlockStart(table, footer);
-            if (BlockReader.ReadHeader<TReader, TPin>(in reader, indexStart, out _, out long recordsEnd, out _, out long recordsStart))
+            if (IndexBlockReader.TryReadRecordRange<TReader, TPin>(in reader, indexStart, out long recordsStart, out long recordsEnd))
             {
                 _indexPos = indexStart + recordsStart;
                 _indexEnd = indexStart + recordsEnd;
@@ -107,7 +107,7 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         _indexPos = valueSizeOffset + Block.SizePrefix + valueLen;
 
         long blockStart = _tableOffset + _indexRunningValue;
-        if (!BlockReader.ReadHeader<TReader, TPin>(in reader, blockStart, out _, out long recordsEnd, out _, out long recordsStart))
+        if (!BlockReader.TryReadRecordRange<TReader, TPin>(in reader, blockStart, out long recordsStart, out long recordsEnd))
             return false;
         _pos = blockStart + recordsStart;
         _blockEnd = blockStart + recordsEnd;

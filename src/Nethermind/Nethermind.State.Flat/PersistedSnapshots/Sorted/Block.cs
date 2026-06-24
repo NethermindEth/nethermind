@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
@@ -52,9 +51,6 @@ internal static class Block
 
     /// <summary>Block-relative byte offset of the first record, given the offset width and restart count.</summary>
     internal static long RecordsStart(int width, long numRestarts) => 1 + 2L * width + (long)width * numRestarts;
-
-    internal static long ReadOffset(scoped ReadOnlySpan<byte> src, int width) =>
-        width == 2 ? BinaryPrimitives.ReadUInt16LittleEndian(src) : BinaryPrimitives.ReadUInt32LittleEndian(src);
 
     /// <summary>The fixed 2-byte prefix every record starts with: the key's common-prefix length with
     /// the previous record, then the length of the key suffix that follows. Read by reinterpreting the
