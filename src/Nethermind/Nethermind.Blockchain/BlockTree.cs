@@ -1260,10 +1260,11 @@ namespace Nethermind.Blockchain
             {
                 if (Logger.IsTrace) Logger.Trace($"Sync pivot updated from {SyncPivot} to {value}");
 
-                RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
-                pivotData.Encode(value.BlockNumber);
-                pivotData.Encode(value.BlockHash);
-                _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data.ToArray()!);
+                Span<byte> pivotData = stackalloc byte[38]; //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
+                RlpWriter writer = new(pivotData);
+                writer.Encode(value.BlockNumber);
+                writer.Encode(value.BlockHash);
+                _metadataDb.PutSpan(((long)MetadataDbKeys.UpdatedPivotData).ToBigEndianSpanWithoutLeadingZeros(out _), pivotData);
                 _syncPivot = value;
             }
         }

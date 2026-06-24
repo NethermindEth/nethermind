@@ -33,7 +33,7 @@ public interface IBlockAccessListStore
     }
 
     void Insert(long blockNumber, Hash256 blockHash, byte[] bal);
-    void Insert(long blockNumber, Hash256 blockHash, ReadOnlySpan<byte> bal);
+    void Insert(long blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> bal);
     void Insert(long blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal);
     MemoryManager<byte>? GetRlp(long blockNumber, Hash256 blockHash);
     ReadOnlyBlockAccessList? Get(long blockNumber, Hash256 blockHash);

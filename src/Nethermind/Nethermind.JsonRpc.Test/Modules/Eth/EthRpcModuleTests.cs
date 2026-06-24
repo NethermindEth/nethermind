@@ -177,7 +177,7 @@ public partial class EthRpcModuleTests
         byte[]? txBytes = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized).Result;
 
         Assert.That(txBytes, Is.Not.Null);
-        Rlp.ValueDecoderContext context = txBytes.AsRlpValueContext();
+        RlpReader context = new(txBytes);
         Transaction tx = TxDecoder.Instance.Decode(ref context, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         Assert.That(tx.IsInMempoolForm(), Is.True);
     }

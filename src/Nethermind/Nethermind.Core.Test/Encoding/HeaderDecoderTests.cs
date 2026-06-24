@@ -27,7 +27,7 @@ public class HeaderDecoderTests
 
         HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
-        Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
+        RlpReader decoderContext = new(rlp.Bytes);
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
@@ -45,7 +45,7 @@ public class HeaderDecoderTests
 
         HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
-        Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
+        RlpReader decoderContext = new(rlp.Bytes);
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
