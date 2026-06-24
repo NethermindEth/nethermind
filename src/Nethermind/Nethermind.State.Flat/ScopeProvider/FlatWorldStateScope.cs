@@ -32,6 +32,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
+    private readonly IStateTrieMaintainer _stateTrie;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private bool _isDisposed = false;
 
@@ -95,6 +96,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // A history-backed scope is trie-less: its persistence reader serves account/storage values only and throws
         // for trie-node access. Post-block state-root recomputation must therefore not traverse the state trie.
         _trieless = snapshotBundle.IsHistorical;
+
+        // Pick the state-trie maintenance strategy once: trie-less scopes keep the known root on _stateTree and never
+        // touch trie nodes, so they use the no-op maintainer; normal scopes maintain the state trie.
+        _stateTrie = _trieless ? NoOpStateTrieMaintainer.Instance : new TrieStateMaintainer(_stateTree);
     }
 
     public void Dispose()
@@ -146,13 +151,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _stateTree.RootHash;
 
-    public void UpdateRootHash()
-    {
-        // A trie-less (history-backed) scope has no trie nodes to recompute over and its persistence reader throws on
-        // trie access. The root is already known (set from currentStateId at construction), so retain it as-is.
-        if (_trieless) return;
-        _stateTree.UpdateRootHash();
-    }
+    public void UpdateRootHash() => _stateTrie.UpdateRootHash();
 
     public Account? Get(Address address)
     {
@@ -384,9 +383,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        // A trie-less (history-backed) scope never wrote into the state tree, so there is nothing to commit and its
-        // persistence reader throws on trie access — skip to uphold the zero-trie-op invariant.
-        if (!_trieless) _stateTree.Commit();
+        _stateTrie.Commit();
 
         _storages.Clear();
 
@@ -472,18 +469,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
-                // A trie-less (history-backed) scope serves trace re-execution from the flat overlay only; its
-                // persistence reader throws on trie-node access. The per-account flat writes above
-                // (scope._snapshotBundle.SetAccount) already carry intra-block state for subsequent txs, so skip the
-                // state-tree bulk write that would otherwise resolve and load trie nodes.
-                if (!scope._trieless)
-                {
-                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
-                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                    {
-                        stateSetter.Set(kv.Key, kv.Value);
-                    }
-                }
+                // The per-account flat writes above (scope._snapshotBundle.SetAccount) already carry intra-block state
+                // for subsequent txs; the maintainer additionally bulk-applies the dirty accounts into the state trie
+                // for normal scopes (and is a no-op for trie-less scopes).
+                scope._stateTrie.Apply(_dirtyAccounts);
             }
             finally
             {
@@ -496,5 +485,44 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             void Trace(Address address, Hash256 storageRoot, Account? account) =>
                 logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
+    }
+
+    // Strategy for state-trie maintenance, chosen once at scope construction so the commit/update paths carry no
+    // per-call trie-less branches.
+    private interface IStateTrieMaintainer
+    {
+        void Apply(Dictionary<AddressAsKey, Account?> dirtyAccounts);
+        void Commit();
+        void UpdateRootHash();
+    }
+
+    private sealed class TrieStateMaintainer(StateTree stateTree) : IStateTrieMaintainer
+    {
+        public void Apply(Dictionary<AddressAsKey, Account?> dirtyAccounts)
+        {
+            using StateTree.StateTreeBulkSetter stateSetter = stateTree.BeginSet(dirtyAccounts.Count);
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in dirtyAccounts)
+            {
+                stateSetter.Set(kv.Key, kv.Value);
+            }
+        }
+
+        public void Commit() => stateTree.Commit();
+
+        public void UpdateRootHash() => stateTree.UpdateRootHash();
+    }
+
+    private sealed class NoOpStateTrieMaintainer : IStateTrieMaintainer
+    {
+        public static readonly NoOpStateTrieMaintainer Instance = new();
+
+        // A trie-less (history-backed) scope serves reads from the flat overlay and its persistence reader throws on
+        // trie-node access; the known root set on _stateTree at construction is retained, so all trie maintenance is a
+        // no-op to uphold the zero-trie-op invariant.
+        public void Apply(Dictionary<AddressAsKey, Account?> dirtyAccounts) { }
+
+        public void Commit() { }
+
+        public void UpdateRootHash() { }
     }
 }
