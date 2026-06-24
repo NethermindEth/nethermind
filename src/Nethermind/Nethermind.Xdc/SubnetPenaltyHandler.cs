@@ -7,12 +7,15 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
 internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
 {
+    private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
+
     public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
     {
         // Triggered only at gap blocks
@@ -90,6 +93,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             foreach (Transaction tx in signingTxs)
             {
                 Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
+                tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
                 Address fromSigner = tx.SenderAddress;
 
                 if (blockHashes.Contains(signedBlockHash))

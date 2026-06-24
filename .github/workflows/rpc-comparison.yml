@@ -142,7 +142,7 @@ jobs:
       network: ${{ inputs.network }}
       convert_to_paprika: "${{ inputs.convert_to_paprika }}"
 
-  # Spawn a pruned Geth node via the smoke-tests framework 
+  # Spawn a pruned Geth node via the smoke-tests framework
   create_geth_node:
     name: Spawn pruned Geth node
     uses: ./.github/workflows/run-a-geth-node.yml

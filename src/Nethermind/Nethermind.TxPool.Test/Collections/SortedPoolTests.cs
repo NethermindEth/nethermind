@@ -105,6 +105,27 @@ namespace Nethermind.TxPool.Test.Collections
             Assert.That(_sortedPool.TryGetBucket(tx.SenderAddress, out _), Is.False);
         }
 
+        [Test]
+        public void GetBest_returns_first_transaction_without_removing_it()
+        {
+            Transaction lowPriority = Build.A.Transaction
+                .WithGasPrice(1)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            lowPriority.Hash = lowPriority.CalculateHash();
+            Transaction highPriority = Build.A.Transaction
+                .WithGasPrice(2)
+                .WithSenderAddress(TestItem.AddressB)
+                .TestObject;
+            highPriority.Hash = highPriority.CalculateHash();
+
+            _sortedPool.TryInsert(lowPriority.Hash, lowPriority);
+            _sortedPool.TryInsert(highPriority.Hash, highPriority);
+
+            Assert.That(_sortedPool.GetBest(), Is.EqualTo(highPriority));
+            Assert.That(_sortedPool.Count, Is.EqualTo(2));
+        }
+
         private static IEnumerable<TestCaseData> VisitBucketCases()
         {
             yield return new TestCaseData(Array.Empty<int>(), int.MaxValue, Array.Empty<int>())

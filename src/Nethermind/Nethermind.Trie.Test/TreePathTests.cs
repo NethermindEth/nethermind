@@ -82,6 +82,22 @@ public class TreePathTests
         Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }
 
+    [Test]
+    public void To_bytes_returns_packed_prefix()
+    {
+        byte[] nibbles = new byte[64];
+        for (int i = 0; i < nibbles.Length; i++)
+        {
+            nibbles[i] = (byte)(i & 0xF);
+        }
+
+        TreePath treePath = TreePath.FromNibble(nibbles);
+
+        byte[] result = Nibbles.ToBytes(treePath);
+
+        Assert.That(result, Is.EqualTo(Nibbles.ToBytes(nibbles)).AsCollection);
+    }
+
     [TestCase(1, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
     [TestCase(16, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
     [TestCase(30, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
@@ -117,6 +133,47 @@ public class TreePathTests
         Assert.That(path.Span.ToHexString(), Is.EqualTo(expectedHashHex));
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(63)]
+    [TestCase(64)]
+    public void TestToNibble(int nibbleLength)
+    {
+        byte[] nibbles = new byte[nibbleLength];
+        for (int i = 0; i < nibbles.Length; i++)
+        {
+            nibbles[i] = (byte)(i & 0x0F);
+        }
+
+        TreePath path = TreePath.FromNibble(nibbles);
+
+        byte[] result = path.ToNibble();
+
+        Assert.That(result, Is.EqualTo(nibbles).AsCollection);
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(20)]
+    [TestCase(63)]
+    [TestCase(64)]
+    public void TestEncodePathMatchesNibbleSpan(int nibbleLength)
+    {
+        byte[] nibbles = new byte[nibbleLength];
+        for (int i = 0; i < nibbles.Length; i++)
+        {
+            nibbles[i] = (byte)(i & 0x0F);
+        }
+
+        TreePath path = TreePath.FromNibble(nibbles);
+
+        Assert.That(Nibbles.EncodePath(path), Is.EqualTo(Nibbles.EncodePath(nibbles)).AsCollection);
+    }
+
     [TestCase("", "", 0)]
     [TestCase("00", "00", 0)]
     [TestCase("01", "01", 0)]
@@ -126,6 +183,8 @@ public class TreePathTests
     [TestCase("010", "01", 1)]
     [TestCase("012", "0120", -1)]
     [TestCase("0120", "012", 1)]
+    [TestCase("000102030405060708090a0b0c0d0e", "000102030405060708090a0b0c0d0f", -1)]
+    [TestCase("000102030405060708090a0b0c0d0f", "000102030405060708090a0b0c0d0e", 1)]
     public void TestCompareTo(string nibbleHex1, string nibbleHex2, int expectedResult)
     {
         TreePath path1 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex1));
@@ -142,6 +201,8 @@ public class TreePathTests
     [TestCase("0003", 2, "0002", 1)]
     [TestCase("000101", 2, "000100", -1)]
     [TestCase("000101", 3, "000100", 1)]
+    [TestCase("000102030405060708090a0b0c0d0e00", 15, "000102030405060708090a0b0c0d0f00", -1)]
+    [TestCase("000102030405060708090a0b0c0d0f00", 15, "000102030405060708090a0b0c0d0e00", 1)]
     public void TestCompareToTruncated(string nibbleHex1, int truncateLength, string nibbleHex2, int expectedResult)
     {
         TreePath path1 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex1));

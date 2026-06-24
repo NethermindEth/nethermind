@@ -126,7 +126,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     persistence = new PreimageRecordingPersistence(persistence, preimageDb);
                 }
 
-                return new CachedReaderPersistence(persistence, exitSource, logManager);
+                IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
+                return new CarryForwardCachingPersistence(cachedReader);
             })
             ;
 

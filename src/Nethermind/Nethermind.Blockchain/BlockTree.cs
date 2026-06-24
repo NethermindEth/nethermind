@@ -1260,10 +1260,11 @@ namespace Nethermind.Blockchain
             {
                 if (Logger.IsTrace) Logger.Trace($"Sync pivot updated from {SyncPivot} to {value}");
 
-                RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
-                pivotData.Encode(value.BlockNumber);
-                pivotData.Encode(value.BlockHash);
-                _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data.ToArray()!);
+                Span<byte> pivotData = stackalloc byte[38]; //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
+                RlpWriter writer = new(pivotData);
+                writer.Encode(value.BlockNumber);
+                writer.Encode(value.BlockHash);
+                _metadataDb.PutSpan(((long)MetadataDbKeys.UpdatedPivotData).ToBigEndianSpanWithoutLeadingZeros(out _), pivotData);
                 _syncPivot = value;
             }
         }
@@ -1538,6 +1539,9 @@ namespace Nethermind.Blockchain
         public Hash256? PendingHash => Head?.Hash;
         public Hash256? FinalizedHash { get; private set; }
         public Hash256? SafeHash { get; private set; }
+        public long LastFinalizedBlockLevel { get; private set; }
+
+        public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
 
         public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
@@ -1857,21 +1861,36 @@ namespace Nethermind.Blockchain
 
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
+            bool finalizedAdvanced = finalizedBlockHash is not null
+                && finalizedBlockHash != Keccak.Zero
+                && finalizedBlockHash != FinalizedHash;
+            BlockHeader? finalizedHeader = finalizedAdvanced
+                ? FindHeader(finalizedBlockHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                : null;
+
             FinalizedHash = finalizedBlockHash;
             SafeHash = safeBlockHash;
+            if (finalizedHeader is not null) LastFinalizedBlockLevel = finalizedHeader.Number;
+
             using (_metadataDb.StartWriteBatch())
             {
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
+
+            if (finalizedHeader is not null)
+            {
+                BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizedHeader));
+            }
+
             TryUpdateSyncPivot();
 
             OnForkChoiceUpdated?.Invoke(
                 this,
                 new(
                     Head,
-                    _headerStore.GetBlockNumber(safeBlockHash) ?? 0,
-                    _headerStore.GetBlockNumber(FinalizedHash) ?? 0)
+                    safeBlockHash is null ? 0 : _headerStore.GetBlockNumber(safeBlockHash) ?? 0,
+                    FinalizedHash is null ? 0 : _headerStore.GetBlockNumber(FinalizedHash) ?? 0)
                 );
         }
 

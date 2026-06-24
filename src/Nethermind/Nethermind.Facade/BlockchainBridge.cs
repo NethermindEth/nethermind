@@ -245,6 +245,7 @@ namespace Nethermind.Facade
             GasEstimator gasEstimator = new(txProcessor, worldState, specProvider, blocksConfig);
 
             string? error = tryCallResult.GetErrorMessage(estimateGasTracer.Error);
+            string? probeError = error;
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             error = err switch
@@ -270,7 +271,7 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = !executionReverted && error is not null && (!tryCallResult.TransactionExecuted || err is not null),
+                InputError = !executionReverted && error is not null && (error != probeError),
                 ExecutionReverted = executionReverted
             };
         }
@@ -341,13 +342,21 @@ namespace Nethermind.Facade
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
 
+            bool executionReverted = result.EvmExceptionType == EvmExceptionType.Revert;
+            // Geth always surfaces plain "execution reverted" for eth_createAccessList,
+            // regardless of whether the revert payload carries a decoded reason.
+            string? error = executionReverted
+                ? "execution reverted"
+                : result.GetErrorMessage(outputTracer.Error);
+
             return new CallOutput
             {
-                Error = result.GetErrorMessage(outputTracer.Error),
+                Error = error,
                 GasSpent = outputTracer.GasSpent,
                 OperationGas = outputTracer.OperationGas,
                 OutputData = outputTracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
+                ExecutionReverted = executionReverted,
                 AccessList = accessTracer.AccessList,
             };
         }
