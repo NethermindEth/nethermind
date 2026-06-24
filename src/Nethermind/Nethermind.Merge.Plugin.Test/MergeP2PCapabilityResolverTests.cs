@@ -13,12 +13,15 @@ namespace Nethermind.Merge.Plugin.Test;
 [Parallelizable(ParallelScope.All)]
 public class MergeP2PCapabilityResolverTests
 {
-    [TestCase(true, true)]
-    [TestCase(false, false)]
-    public void Resolve_advertises_post_merge_eth_capabilities_only_after_transition(bool transitionFinished, bool expected)
+    [TestCase(false, false, false, TestName = "Pre-merge: not advertised")]
+    [TestCase(true, false, true, TestName = "Transition finished (post-merge restart): advertised")]
+    [TestCase(false, true, true, TestName = "Live merge: terminal block reached before transition finished: advertised")]
+    [TestCase(true, true, true, TestName = "Both: advertised")]
+    public void Resolve_advertises_post_merge_eth_capabilities_once_post_merge(bool transitionFinished, bool hasReachedTerminalBlock, bool expected)
     {
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TransitionFinished.Returns(transitionFinished);
+        poSSwitcher.HasEverReachedTerminalBlock().Returns(hasReachedTerminalBlock);
         using MergeP2PCapabilityResolver resolver = new(poSSwitcher);
 
         HashSet<Capability> capabilities = [];

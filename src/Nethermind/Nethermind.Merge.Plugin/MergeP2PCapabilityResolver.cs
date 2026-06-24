@@ -11,7 +11,8 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Merge.Plugin;
 
 /// <summary>
-/// Advertises the post-merge eth/69, eth/70 and eth/71 capabilities once the merge transition has finished.
+/// Advertises the post-merge eth/69, eth/70 and eth/71 capabilities once the node is operating post-merge —
+/// i.e. the merge transition has finished or the terminal PoW block has been reached.
 /// </summary>
 public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 {
@@ -27,7 +28,11 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     public void Resolve(ISet<Capability> capabilities)
     {
-        if (!_poSSwitcher.TransitionFinished) return;
+        // TransitionFinished alone is insufficient on a live TTD transition: it only flips true later in
+        // PoSSwitcher.ForkchoiceUpdated, which raises no event, so the TerminalBlockReached-driven cache
+        // rebuild would still see it false. HasEverReachedTerminalBlock() (set when TerminalBlockReached
+        // fires) mirrors the pre-resolver behaviour of advertising as soon as the terminal block is reached.
+        if (!_poSSwitcher.TransitionFinished && !_poSSwitcher.HasEverReachedTerminalBlock()) return;
 
         capabilities.Add(new Capability(Protocol.Eth, 69));
         capabilities.Add(new Capability(Protocol.Eth, 70));
