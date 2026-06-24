@@ -31,6 +31,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     {
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
+        internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -341,14 +342,22 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     continue;
                 }
 
-                sizeEstimate += MessageSizeEstimator.EstimateSize(block);
+                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                // Cap the message size; return the prefix (bodies match request hashes positionally).
+                if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
                 {
                     break;
                 }
 
                 blocks.Add(block);
+                sizeEstimate += blockSize;
+
+                // Soft limit keeps the common-case response small.
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
             }
 
             return Task.FromResult(new BlockBodiesMessage(blocks));

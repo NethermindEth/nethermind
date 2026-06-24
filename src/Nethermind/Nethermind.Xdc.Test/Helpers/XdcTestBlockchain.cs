@@ -172,7 +172,7 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
             .AddSingleton<IRewardCalculator, ZeroRewardCalculator>()
-            .AddSingleton<ITimestamper>((_) => Timestamper)
+            .AddSingleton<ITimestamper>((ctx) => ctx.Resolve<ManualTimestamper>())
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
 
             .AddSingleton<ITxPool>((ctx) =>

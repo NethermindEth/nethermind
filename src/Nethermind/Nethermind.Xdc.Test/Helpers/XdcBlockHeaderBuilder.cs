@@ -111,6 +111,12 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         return this;
     }
 
+    public new XdcBlockHeaderBuilder WithTimestamp(ulong timestamp)
+    {
+        TestObjectInternal.Timestamp = timestamp;
+        return this;
+    }
+
     public XdcBlockHeaderBuilder WithValidator(Signature signature)
     {
         XdcTestObjectInternal.Validator = signature.Bytes.ToArray();

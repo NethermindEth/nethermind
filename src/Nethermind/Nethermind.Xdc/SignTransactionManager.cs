@@ -26,6 +26,7 @@ internal class SignTransactionManager(
     IBlockTree blockTree,
     ISnapshotManager snapshotManager,
     ISpecProvider specProvider,
+    ITimestamper timestamper,
     ILogManager logManager) : ISignTransactionManager, IStartable, IDisposable
 {
     // Lazy: ISigner and ITxPool are registered during InitializeBlockchain, after this class is instantiated.
@@ -34,6 +35,7 @@ internal class SignTransactionManager(
     private readonly IBlockTree _blockTree = blockTree;
     private readonly ISnapshotManager _snapshotManager = snapshotManager;
     private readonly ISpecProvider _specProvider = specProvider;
+    private readonly ITimestamper _timestamper = timestamper;
     private readonly ILogger _logger = logManager.GetClassLogger<SignTransactionManager>();
     private readonly AssociativeKeyCache<ValueHash256> _alreadySigned = new(128);
 
@@ -74,6 +76,11 @@ internal class SignTransactionManager(
         ulong round = xdcHeader.ExtraConsensusData!.BlockRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, round);
         if (spec is null)
+            return;
+
+        // Sign only recent head blocks; older ones are replayed during catch-up.
+        long window = spec.MergeSignRange * spec.MinePeriod * XdcConstants.MaxSignableBlockPeriods;
+        if ((long)xdcHeader.Timestamp + window < _timestamper.UnixTime.SecondsLong)
             return;
 
         if (xdcHeader.Number % spec.MergeSignRange != 0)
