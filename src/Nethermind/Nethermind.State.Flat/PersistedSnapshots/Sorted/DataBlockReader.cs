@@ -63,18 +63,22 @@ internal static class DataBlockReader
 
         long restartTableStart = blockStart + Unsafe.SizeOf<Header>();
         long end = blockStart + header.RecordsEnd;
-        ushort offset = 0;
+
+        // Pin the whole restart-offset table once and index it in place, instead of reading each offset.
+        long offsetsBytes = (long)header.NumRestarts * sizeof(ushort);
+        if (restartTableStart + offsetsBytes > reader.Length) return false;
+        using TPin offsetsPin = reader.PinBuffer(new Bound(restartTableStart, offsetsBytes));
+        ReadOnlySpan<ushort> offsets = MemoryMarshal.Cast<byte, ushort>(offsetsPin.Buffer);
         Block.RecordHeader rec = default;
 
         // Rightmost restart whose first key <= target (cp == 0 there, so the suffix is the full key).
-        long lo = 0;
-        long hi = header.NumRestarts - 1;
-        long found = -1;
+        int lo = 0;
+        int hi = header.NumRestarts - 1;
+        int found = -1;
         while (lo <= hi)
         {
-            long mid = lo + ((hi - lo) >> 1);
-            if (!reader.TryRead(restartTableStart + mid * sizeof(ushort), MemoryMarshal.AsBytes(new Span<ushort>(ref offset)))) return false;
-            long recStart = blockStart + offset;
+            int mid = lo + ((hi - lo) >> 1);
+            long recStart = blockStart + offsets[mid];
             if (!reader.TryRead(recStart, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
             int firstKeyLen = rec.SuffixLength;
             using TPin keyPin = reader.PinBuffer(new Bound(recStart + 2, firstKeyLen));
@@ -83,9 +87,8 @@ internal static class DataBlockReader
         }
 
         // target < firstKey ⇒ ceiling is the very first record; clamp the scan start to restart 0.
-        long scanRestart = found < 0 ? 0 : found;
-        if (!reader.TryRead(restartTableStart + scanRestart * sizeof(ushort), MemoryMarshal.AsBytes(new Span<ushort>(ref offset)))) return false;
-        long pos = blockStart + offset;
+        int scanRestart = found < 0 ? 0 : found;
+        long pos = blockStart + offsets[scanRestart];
 
         // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
         while (pos < end)

@@ -74,18 +74,25 @@ internal static class IndexBlockReader
 
         long restartTableStart = blockStart + Unsafe.SizeOf<Header>();
         long end = blockStart + header.RecordsEnd;
-        uint offset = 0;
+
+        // The index block must stay under 2 GiB — reasonable, since it is ≈ 60 MiB even for a 12 GiB
+        // snapshot — so its restart count and offset table fit a 32-bit span and the int restart indices
+        // below cannot overflow.
+        // Pin the whole restart-offset table once and index it in place, instead of reading each offset.
+        long offsetsBytes = (long)header.NumRestarts * sizeof(uint);
+        if (restartTableStart + offsetsBytes > reader.Length) return false;
+        using TPin offsetsPin = reader.PinBuffer(new Bound(restartTableStart, offsetsBytes));
+        ReadOnlySpan<uint> offsets = MemoryMarshal.Cast<byte, uint>(offsetsPin.Buffer);
         Block.RecordHeader rec = default;
 
         // Rightmost restart whose first key <= target (cp == 0 there, so the suffix is the full key).
-        long lo = 0;
-        long hi = header.NumRestarts - 1;
-        long found = -1;
+        int lo = 0;
+        int hi = (int)header.NumRestarts - 1;
+        int found = -1;
         while (lo <= hi)
         {
-            long mid = lo + ((hi - lo) >> 1);
-            if (!reader.TryRead(restartTableStart + mid * sizeof(uint), MemoryMarshal.AsBytes(new Span<uint>(ref offset)))) return false;
-            long recStart = blockStart + offset;
+            int mid = lo + ((hi - lo) >> 1);
+            long recStart = blockStart + offsets[mid];
             if (!reader.TryRead(recStart, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
             int firstKeyLen = rec.SuffixLength;
             using TPin keyPin = reader.PinBuffer(new Bound(recStart + 2, firstKeyLen));
@@ -94,9 +101,8 @@ internal static class IndexBlockReader
         }
 
         // target < firstKey ⇒ ceiling is the very first record; clamp the scan start to restart 0.
-        long scanRestart = found < 0 ? 0 : found;
-        if (!reader.TryRead(restartTableStart + scanRestart * sizeof(uint), MemoryMarshal.AsBytes(new Span<uint>(ref offset)))) return false;
-        long pos = blockStart + offset;
+        int scanRestart = found < 0 ? 0 : found;
+        long pos = blockStart + offsets[scanRestart];
 
         // A restart record (cp == 0) carries an absolute value, every other record a delta against the
         // previous one. The scan starts at a restart, so the first record anchors the running sum.
