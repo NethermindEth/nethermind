@@ -49,6 +49,7 @@ public class ArenaMetricsTests
         string arenaDir = Path.Combine(_testDir, "arena");
         using ArenaManager arena = new(arenaDir, new FlatDbConfig
         {
+            PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = maxArenaSize,
         }, LimboLogs.Instance);
 

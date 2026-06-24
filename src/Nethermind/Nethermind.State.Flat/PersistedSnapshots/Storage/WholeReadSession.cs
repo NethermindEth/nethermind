@@ -10,8 +10,10 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// per-reservation mmap view with <c>MADV_NORMAL</c> hint (distinct from the global
 /// random-access view used by point queries) and acquires a lease on the reservation.
 /// Disposing releases the lease; when <c>adviseDontNeedOnDispose</c> is <c>true</c> it
-/// also issues <c>madvise(MADV_DONTNEED)</c> on the range so the kernel can reclaim those
-/// pages from the page cache.
+/// also issues <c>madvise(MADV_DONTNEED)</c> on the range and clears the matching
+/// entries from the per-arena <see cref="PageResidencyTracker"/> — kernel-side and
+/// tracker-side drops travel together so the tracker never holds ghost entries for
+/// pages the kernel has already released.
 /// </summary>
 /// <remarks>
 /// Also serves as the <see cref="IByteReaderSource{TReader,TPin}"/> for the reservation:
@@ -27,11 +29,13 @@ public sealed unsafe class WholeReadSession : IDisposable, IByteReaderSource<Who
     private readonly ArenaFile.MmapWholeView _view;
     private readonly byte* _basePtr;
     private readonly long _size;
+    private readonly bool _adviseDontNeedOnDispose;
     private bool _disposed;
 
     internal WholeReadSession(ArenaReservation reservation, bool adviseDontNeedOnDispose)
     {
         _reservation = reservation;
+        _adviseDontNeedOnDispose = adviseDontNeedOnDispose;
         _reservation.AcquireLease();
         _view = _reservation.OpenWholeView(adviseDontNeedOnDispose);
         _basePtr = _view.DataPtr;
@@ -51,6 +55,8 @@ public sealed unsafe class WholeReadSession : IDisposable, IByteReaderSource<Who
         if (_disposed) return;
         _disposed = true;
         _view.Dispose();
+        if (_adviseDontNeedOnDispose)
+            _reservation.ForgetTracker();
         _reservation.Dispose();
     }
 }

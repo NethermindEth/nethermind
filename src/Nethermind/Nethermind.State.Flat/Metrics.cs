@@ -200,6 +200,50 @@ public static class Metrics
     [KeyIsLabel("tier", "size")]
     public static ConcurrentDictionary<PersistedSnapshotLabel, long> ActivePersistedSnapshotCount { get; } = new();
 
+    // PageResidencyTracker gauges. ResidentBytes is refreshed by ArenaManager on a
+    // 1-second System.Threading.Timer so the tracker's hot path stays untouched; the gauge
+    // lags reality by at most ~1s. MetadataBytes is fixed at tracker construction.
+    [GaugeMetric]
+    [Description("Currently-bounded resident bytes in the page-residency tracker")]
+    public static long PageTrackerResidentBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Unmanaged metadata bytes used by the page-residency tracker (slot + meta arrays)")]
+    public static long PageTrackerMetadataBytes { get; set; }
+
+    internal static long _pageTrackerEvictionsDispatched;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Page-tracker evictions dispatched off the drain ring (madvise issued)")]
+    public static long PageTrackerEvictionsDispatched
+    {
+        get => Volatile.Read(ref _pageTrackerEvictionsDispatched);
+        set => Volatile.Write(ref _pageTrackerEvictionsDispatched, value);
+    }
+
+    internal static long _pageTrackerEvictionsInlineFallback;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Page-tracker evictions dispatched inline because the drain ring was full")]
+    public static long PageTrackerEvictionsInlineFallback
+    {
+        get => Volatile.Read(ref _pageTrackerEvictionsInlineFallback);
+        set => Volatile.Write(ref _pageTrackerEvictionsInlineFallback, value);
+    }
+
+    internal static long _pageTrackerPagesRefreshed;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Page-tracker resident pages re-touched by the keep-warm hand to hold their page-cache position")]
+    public static long PageTrackerPagesRefreshed
+    {
+        get => Volatile.Read(ref _pageTrackerPagesRefreshed);
+        set => Volatile.Write(ref _pageTrackerPagesRefreshed, value);
+    }
+
     internal static long _arenaReservationCount;
 
     [DetailedMetric]

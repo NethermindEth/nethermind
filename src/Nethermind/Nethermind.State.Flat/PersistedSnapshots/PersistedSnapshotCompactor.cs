@@ -280,9 +280,10 @@ public class PersistedSnapshotCompactor(
         // Open one WholeReadSession per source for the whole compaction. Every column
         // helper inside NWayMergeSnapshots reads through these views — one mmap +
         // MADV_NORMAL on open and one MADV_DONTNEED on close per source, regardless of
-        // how many columns we walk. The session-dispose MADV_DONTNEED drops the source's
-        // page cache. The ref_ids union is computed inside the merger directly from each
-        // source's metadata value span — no pre-pass on this side.
+        // how many columns we walk. ForgetTracker after the merge cleans the page-tracker
+        // side; AdviseDontNeed on session dispose handles the page cache. The ref_ids
+        // union is computed inside the merger directly from each source's metadata
+        // value span — no pre-pass on this side.
         int n = snapshots.Count;
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
         try
