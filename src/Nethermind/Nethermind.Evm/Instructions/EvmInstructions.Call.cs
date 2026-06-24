@@ -289,7 +289,7 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
+        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType CreateFullCallFrame(
@@ -305,7 +305,8 @@ public static partial class EvmInstructions
             Address codeSource,
             ExecutionEnvironment env,
             in UInt256 callValue,
-            long gasLimitUl)
+            long gasLimitUl,
+            bool newAccountCharged)
         {
             IWorldState state = vm.WorldState;
             // Take a snapshot of the state for potential rollback.
@@ -343,7 +344,10 @@ public static partial class EvmInstructions
                 isCreateOnPreExistingAccount: false,
                 env: callEnv,
                 stateForAccessLists: in vm.VmState.AccessTracker,
-                snapshot: in snapshot);
+                snapshot: in snapshot,
+                // EIP-8037/EIP-8038: a value transfer to a dead recipient charged NEW_ACCOUNT state gas up-front;
+                // refunded on this frame's failure path (revert/halt) since the account is then not created.
+                newAccountCharged: newAccountCharged);
 
             return EvmExceptionType.None;
         }
