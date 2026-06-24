@@ -277,7 +277,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return new ReadOnlySnapshotBundle(
                 new SnapshotPooledList(0),
                 new HistoryBackedPersistenceReader(_historyReader!, baseBlock),
-                _enableDetailedMetrics);
+                _enableDetailedMetrics,
+                isHistorical: true);
         }
 
         long sw = 0;

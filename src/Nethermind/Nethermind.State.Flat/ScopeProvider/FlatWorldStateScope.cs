@@ -27,6 +27,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
+    private readonly bool _trieless;
 
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
@@ -86,6 +87,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
+
+        // A history-backed scope is trie-less: its persistence reader serves account/storage values only and throws
+        // for trie-node access. Post-block state-root recomputation must therefore not traverse the state trie.
+        _trieless = snapshotBundle.IsHistorical;
     }
 
     public void Dispose()
@@ -136,7 +141,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
-    public void UpdateRootHash() => _stateTree.UpdateRootHash();
+
+    public void UpdateRootHash()
+    {
+        // A trie-less (history-backed) scope has no trie nodes to recompute over and its persistence reader throws on
+        // trie access. The root is already known (set from currentStateId at construction), so retain it as-is.
+        if (_trieless) return;
+        _stateTree.UpdateRootHash();
+    }
 
     public Account? Get(Address address)
     {
