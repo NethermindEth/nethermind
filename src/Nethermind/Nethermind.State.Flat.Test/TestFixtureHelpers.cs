@@ -74,7 +74,7 @@ internal static class TestFixtureHelpers
         where TReader : IByteReader<TPin>, allows ref struct
     {
         List<ushort> ids = [];
-        SortedTableEnumerator<TReader, TPin> e = new(in reader, new Bound(0, reader.Length));
+        using SortedTableEnumerator<TReader, TPin> e = new(in reader, new Bound(0, reader.Length));
         while (e.MoveNext(in reader))
         {
             ReadOnlySpan<byte> key = e.CurrentKey;

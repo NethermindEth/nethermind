@@ -181,6 +181,8 @@ public static class PersistedSnapshotMerger
         }
 
         if (haveAddr) FlushPendingSlots(ref table, bloom, curAddr, barrier, pendingKeys, pendingValues, pending);
+
+        for (int i = 0; i < n; i++) enums[i].Dispose();
     }
 
     private static void BufferSlot<TView, TReader, TPin>(

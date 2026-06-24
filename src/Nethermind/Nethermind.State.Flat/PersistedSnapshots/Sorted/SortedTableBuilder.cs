@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
@@ -30,8 +31,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
     private readonly BlockBuilder _indexBlock;
     // Last key Added overall — also the last key of the current data block, used to enforce ascending
     // order and to derive the separator when a block flushes. Keys are ≤ 255 bytes.
-    private readonly byte[] _prevKey;
-    private int _prevKeyLen;
+    private readonly NativeMemoryList<byte> _prevKey;
     // Number of data blocks flushed so far == the block number to assign to the next flushed block.
     private long _blockNumber;
     private long _count;
@@ -43,7 +43,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         _restartInterval = restartInterval;
         _dataBlock = new BlockBuilder(restartInterval, SortedTable.BlockSize);
         _indexBlock = new BlockBuilder(restartInterval);
-        _prevKey = new byte[256];
+        _prevKey = new NativeMemoryList<byte>(256);
     }
 
     /// <summary>Stream one record. Keys must arrive in strictly ascending order and be unique; key and
@@ -51,15 +51,15 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
     /// <exception cref="ArgumentException">The key is not strictly greater than the previous key.</exception>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
-        if (_count > 0 && ((ReadOnlySpan<byte>)_prevKey.AsSpan(0, _prevKeyLen)).SequenceCompareTo(key) >= 0)
+        if (_count > 0 && ((ReadOnlySpan<byte>)_prevKey.AsSpan()).SequenceCompareTo(key) >= 0)
             throw new ArgumentException("Keys must be added in strictly ascending order.", nameof(key));
 
         if (_dataBlock.RecordCount > 0 && _dataBlock.WouldExceedIfAdded(key.Length, value.Length, SortedTable.BlockSize))
             FlushDataBlock(key);
 
         _dataBlock.Add(key, value);
-        key.CopyTo(_prevKey);
-        _prevKeyLen = key.Length;
+        _prevKey.Clear();
+        _prevKey.AddRange(key);
         _count++;
     }
 
@@ -93,12 +93,12 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         if (!isLast) PadZeros((-(_writer.Written - _tableStart)) & (SortedTable.BlockSize - 1));
 
         Span<byte> sepBuf = stackalloc byte[256];
-        ReadOnlySpan<byte> lastKey = _prevKey.AsSpan(0, _prevKeyLen);
+        ReadOnlySpan<byte> lastKey = _prevKey.AsSpan();
         int sepLen;
         if (isLast)
         {
             lastKey.CopyTo(sepBuf);
-            sepLen = _prevKeyLen;
+            sepLen = lastKey.Length;
         }
         else
         {
@@ -146,5 +146,6 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
     {
         _dataBlock.Dispose();
         _indexBlock.Dispose();
+        _prevKey.Dispose();
     }
 }

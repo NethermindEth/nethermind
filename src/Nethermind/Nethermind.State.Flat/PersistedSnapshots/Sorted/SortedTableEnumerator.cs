@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
@@ -12,9 +13,10 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// reset at every restart and block start makes the running key self-correct). A plain struct (not a
 /// ref struct) so callers — the N-way merger and the scanner — can hold many in an array; it does not
 /// store the reader, taking it via <see cref="MoveNext"/>. The current key is copied into an internal
-/// buffer so it stays valid across reader-minting <see cref="MoveNext"/> calls in the merge.
+/// off-heap buffer so it stays valid across reader-minting <see cref="MoveNext"/> calls in the merge;
+/// callers must <see cref="Dispose"/> the enumerator (or iterate it via <c>foreach</c>) to release it.
 /// </summary>
-internal struct SortedTableEnumerator<TReader, TPin>
+internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IByteReader<TPin>, allows ref struct
 {
@@ -23,14 +25,15 @@ internal struct SortedTableEnumerator<TReader, TPin>
     private long _blockIdx;
     private long _pos;
     private long _blockEnd;
-    private byte[] _keyBuf;
+    private readonly NativeMemoryList<byte> _keyBuf;
     private int _keyLength;
     private Bound _value;
 
     public SortedTableEnumerator(scoped in TReader reader, Bound table)
     {
-        // Fixed: keys are ≤ 255 bytes, and the running key must retain its prefix across records.
-        _keyBuf = new byte[256];
+        // Fixed-size running key: keys are ≤ 255 bytes, and records are written in place at their
+        // common-prefix offset, so the buffer is pre-sized to its full length up front.
+        _keyBuf = new NativeMemoryList<byte>(256, 256);
         _tableOffset = table.Offset;
         if (SortedTable.TryReadFooter<TReader, TPin>(in reader, table, out SortedTable.Footer footer))
             _numDataBlocks = footer.NumDataBlocks;
@@ -56,7 +59,7 @@ internal struct SortedTableEnumerator<TReader, TPin>
         int cp = hdr[0];
         int suffixLen = hdr[1];
         // Front-coded: keep _keyBuf[0..cp) from the previous record, append this record's suffix.
-        if (!reader.TryRead(_pos + 2, _keyBuf.AsSpan(cp, suffixLen))) return false;
+        if (!reader.TryRead(_pos + 2, _keyBuf.AsSpan().Slice(cp, suffixLen))) return false;
         _keyLength = cp + suffixLen;
 
         long valueSizeOffset = _pos + 2 + suffixLen;
@@ -68,6 +71,8 @@ internal struct SortedTableEnumerator<TReader, TPin>
         return true;
     }
 
-    public readonly ReadOnlySpan<byte> CurrentKey => _keyBuf.AsSpan(0, _keyLength);
+    public readonly ReadOnlySpan<byte> CurrentKey => _keyBuf.AsSpan()[.._keyLength];
     public readonly Bound CurrentValue => _value;
+
+    public void Dispose() => _keyBuf.Dispose();
 }

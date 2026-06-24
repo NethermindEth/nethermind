@@ -99,7 +99,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
             ArenaByteReader metaReader = _reservation.CreateReader();
             BlobRange = ReadBlobRange(in metaReader, new Bound(0, metaReader.Length));
 
-            RefIdsEnumerator<ArenaByteReader, NoOpPin> e = GetRefIdsEnumerator();
+            using RefIdsEnumerator<ArenaByteReader, NoOpPin> e = GetRefIdsEnumerator();
             while (e.MoveNext())
             {
                 if (!_blobManager.TryLeaseFile(e.Current, out _))
@@ -110,7 +110,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         catch
         {
             int released = 0;
-            RefIdsEnumerator<ArenaByteReader, NoOpPin> e = GetRefIdsEnumerator();
+            using RefIdsEnumerator<ArenaByteReader, NoOpPin> e = GetRefIdsEnumerator();
             while (released < acquired && e.MoveNext())
             {
                 _blobManager.GetFile(e.Current).Dispose();
@@ -171,7 +171,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     /// <see cref="PersistedSnapshotKey.RefIdColumn"/>), which sort first in the table, and stopping
     /// at the first non-ref-id record.
     /// </summary>
-    private ref struct RefIdsEnumerator<TReader, TPin>
+    private ref struct RefIdsEnumerator<TReader, TPin> : IDisposable
         where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
@@ -197,6 +197,8 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         }
 
         public RefIdsEnumerator<TReader, TPin> GetEnumerator() => this;
+
+        public void Dispose() => _inner.Dispose();
     }
 
     public bool TryGetAccount(Address address, out Account? account)

@@ -64,8 +64,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
 {
     private readonly NativeMemoryList<byte> _body = new(Math.Max(64, expectedBytes));
     private readonly NativeMemoryList<int> _restarts = new(64);
-    private readonly byte[] _prevKey = new byte[256];
-    private int _prevKeyLen;
+    private readonly NativeMemoryList<byte> _prevKey = new(256);
     private int _recordCount;
 
     public int RecordCount => _recordCount;
@@ -81,7 +80,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         }
         else
         {
-            cp = ((ReadOnlySpan<byte>)_prevKey.AsSpan(0, _prevKeyLen)).CommonPrefixLength(key);
+            cp = ((ReadOnlySpan<byte>)_prevKey.AsSpan()).CommonPrefixLength(key);
         }
 
         Span<byte> hdr = stackalloc byte[2];
@@ -93,8 +92,8 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
         _body.AddRange(hdr[..1]);
         _body.AddRange(value);
 
-        key.CopyTo(_prevKey);
-        _prevKeyLen = key.Length;
+        _prevKey.Clear();
+        _prevKey.AddRange(key);
         _recordCount++;
     }
 
@@ -137,7 +136,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     {
         _body.Clear();
         _restarts.Clear();
-        _prevKeyLen = 0;
+        _prevKey.Clear();
         _recordCount = 0;
     }
 
@@ -145,6 +144,7 @@ internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096
     {
         _body.Dispose();
         _restarts.Dispose();
+        _prevKey.Dispose();
     }
 
     private static void WriteOffset<TWriter>(ref TWriter writer, int width, long value) where TWriter : IByteBufferWriter

@@ -166,7 +166,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             _reader, _curAddress!, _hasAccount, _accountBound, _sdFlag,
             _slotKeys.AsSpan(0, _slotCount * PersistedSnapshotKey.SlotLength), _slotValues.AsSpan(0, _slotCount));
 
-        public void Dispose() { }
+        public void Dispose() => _inner.Dispose();
     }
 
     // ---------------- Slot (nested inside PerAddressEntry) ----------------
@@ -276,7 +276,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
 
         public readonly StateNodeEntry Current => new(_snapshot, _inner.CurrentKey, _inner.CurrentValue);
 
-        public void Dispose() { }
+        public void Dispose() => _inner.Dispose();
     }
 
     // ---------------- StorageNode (column 0xFA) ----------------
@@ -346,7 +346,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             }
         }
 
-        public void Dispose() { }
+        public void Dispose() => _inner.Dispose();
     }
 
     private static int StateStage(byte column) => column switch

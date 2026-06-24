@@ -71,7 +71,7 @@ public class SortedTableTests
     private static List<byte[]> Enumerate(byte[] bytes)
     {
         SpanByteReader reader = new(bytes);
-        SortedTableEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, reader.Length));
+        using SortedTableEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, reader.Length));
         List<byte[]> keys = [];
         while (e.MoveNext(in reader)) keys.Add(e.CurrentKey.ToArray());
         return keys;
