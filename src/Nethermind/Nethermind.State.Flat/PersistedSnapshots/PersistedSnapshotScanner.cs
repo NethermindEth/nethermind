@@ -185,7 +185,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             {
                 if (_value.Length == 0) return null;
                 using TPin pin = _reader.PinBuffer(_value);
-                ReadOnlySpan<byte> value = new Rlp.ValueDecoderContext(pin.Buffer).DecodeByteArraySpan();
+                ReadOnlySpan<byte> value = new RlpReader(pin.Buffer).DecodeByteArraySpan();
                 return SlotValue.FromSpanWithoutLeadingZero(value);
             }
         }

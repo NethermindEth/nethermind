@@ -219,7 +219,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
             account = null;
             return true;
         }
-        Rlp.ValueDecoderContext ctx = new(rlp);
+        RlpReader ctx = new(rlp);
         account = AccountDecoder.Slim.Decode(ref ctx);
         return true;
     }
@@ -234,7 +234,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         Span<byte> raw = buf[..checked((int)b.Length)];
         reader.TryRead(b.Offset, raw);
         // length 0 = null/deleted slot (empty payload); a present value is RLP-wrapped.
-        ReadOnlySpan<byte> value = raw.Length == 0 ? raw : new Rlp.ValueDecoderContext(raw).DecodeByteArraySpan();
+        ReadOnlySpan<byte> value = raw.Length == 0 ? raw : new RlpReader(raw).DecodeByteArraySpan();
         slotValue = SlotValue.FromSpanWithoutLeadingZero(value);
         return true;
     }
@@ -282,7 +282,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         BlobArenaFile file = _blobManager.GetFile(blobArenaId);
         Span<byte> buf = stackalloc byte[MaxTrieNodeRlpBytes];
         int bytesRead = file.RandomRead(offset, buf);
-        Rlp.ValueDecoderContext ctx = new(buf[..bytesRead]);
+        RlpReader ctx = new(buf[..bytesRead]);
         int totalLength = ctx.PeekNextRlpLength();
         if (totalLength > bytesRead)
             throw new InvalidDataException(

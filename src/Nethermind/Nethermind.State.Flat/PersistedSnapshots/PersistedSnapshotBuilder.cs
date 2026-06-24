@@ -203,7 +203,6 @@ public static class PersistedSnapshotBuilder
         // buffer — table.Add copies each value out immediately, and slots are emitted before the
         // account for a given address, so there is no overlap.
         byte[] rlpBuffer = ArrayPool<byte>.Shared.Rent(256);
-        RlpStream rlpStream = new(rlpBuffer);
         Span<byte> keyBuf = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
         Span<byte> slotKey = stackalloc byte[32];
         int storageIdx = 0;
@@ -256,8 +255,8 @@ public static class PersistedSnapshotBuilder
                     else
                     {
                         int rlpLen = AccountDecoder.Slim.GetLength(account);
-                        rlpStream.Reset();
-                        AccountDecoder.Slim.Encode(rlpStream, account);
+                        RlpWriter rlpWriter = new(rlpBuffer);
+                        AccountDecoder.Slim.Encode(account, ref rlpWriter);
                         table.Add(keyBuf[..len], rlpBuffer.AsSpan(0, rlpLen));
                     }
                 }
