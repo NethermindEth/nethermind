@@ -22,6 +22,4 @@ public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public IModule Module => new XdcSubnetModule();
 
     public Task Init(INethermindApi nethermindApi) => _xdcPlugin.Init(nethermindApi);
-
-    public Task InitNetworkProtocol() => _xdcPlugin.InitNetworkProtocol();
 }

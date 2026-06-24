@@ -78,6 +78,25 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result, Is.EqualTo(0L));
     }
 
+    [TestCase(70 * 1024)]
+    [TestCase(2 * 1024 * 1024)]
+    public void Large_pooled_buffer_is_zeroed_on_reuse(int size)
+    {
+        EvmPooledMemory dirty = new();
+        UInt256 zero = UInt256.Zero;
+        Span<byte> pattern = new byte[size];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(in zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory clean = new();
+        UInt256 length = (UInt256)size;
+        Assert.That(clean.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
+        Assert.That(data.Length, Is.EqualTo(size));
+        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
+        clean.Dispose();
+    }
+
     [Test]
     public void CalculateMemoryCost_LengthExceedsLongMax_ShouldReturnOutOfGas()
     {
@@ -390,6 +409,7 @@ public class MyTracer : ITxTracer, IDisposable
     public bool IsTracingDetailedMemory { get; set; } = true;
     public bool IsTracingInstructions => true;
     public bool IsTracingRefunds { get; } = false;
+    public bool IsTracingReturnData { get; } = false;
     public bool IsTracingCode => true;
     public bool IsTracingStack { get; set; } = true;
     public bool IsTracingState => false;
@@ -444,6 +464,10 @@ public class MyTracer : ITxTracer, IDisposable
     public void SetOperationMemory(TraceMemory memoryTrace) => lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
 
     public void SetOperationMemorySize(ulong newSize)
+    {
+    }
+
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
     {
     }
 

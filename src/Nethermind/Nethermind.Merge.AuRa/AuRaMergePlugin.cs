@@ -16,6 +16,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -24,6 +25,7 @@ using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Network;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa
@@ -68,6 +70,8 @@ namespace Nethermind.Merge.AuRa
         protected override void Load(ContainerBuilder builder) => builder
                 .AddModule(new BaseMergePluginModule())
 
+                .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
+
                 // Aura (non merge) use `BlockProducerStarter` directly.
                 .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
 
@@ -78,6 +82,7 @@ namespace Nethermind.Merge.AuRa
                         new AuRaPostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
                 .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
                 .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
+                .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
 
                 .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
                 .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))

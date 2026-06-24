@@ -18,6 +18,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Exceptions;
@@ -35,12 +36,11 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Network.Contract.P2P;
+using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -56,8 +56,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
-
-    private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
 
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
@@ -191,34 +189,9 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         if (MergeEnabled)
         {
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-            ArgumentNullException.ThrowIfNull(_api.ProtocolsManager);
-            if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
-
-            _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
-            _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-
-            if (_poSSwitcher.TransitionFinished)
-            {
-                AddPostMergeNetworkProtocols();
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug("Delayed adding post-merge eth/* capabilities until terminal block reached");
-                _poSSwitcher.TerminalBlockReached += (_, _) => AddPostMergeNetworkProtocols();
-            }
         }
 
         return Task.CompletedTask;
-    }
-
-    private void AddPostMergeNetworkProtocols()
-    {
-        if (_logger.IsInfo) _logger.Info("Adding eth/69 capability");
-        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
-        if (_logger.IsInfo) _logger.Info("Adding eth/70 capability");
-        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 70));
-        if (_logger.IsInfo) _logger.Info("Adding eth/71 capability");
-        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
     }
 
     public bool MustInitialize { get => true; }
@@ -246,6 +219,9 @@ public class MergePluginModule : Module
                     new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
             .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
+            .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
+
+            .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
 
             .AddModule(new BaseMergePluginModule());
 }
@@ -280,7 +256,7 @@ public class BaseMergePluginModule : Module
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
 
             .AddSingleton<StartingSyncPivotUpdater>()
-            .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
+            .Bind<ISyncPivotResolver, StartingSyncPivotUpdater>()
 
             // Invalid chain tracker wrapper should be after other validator.
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()

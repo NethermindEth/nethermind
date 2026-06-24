@@ -28,10 +28,11 @@ namespace Nethermind.Clique.Test
             Address candidate = new("0xbe1085bc3e0812f3df63deced87e29b3bc2db524");
             Snapshot expected = GenerateSnapshot(hash, number, candidate);
             // Encode snapshot
-            RlpStream stream = new(decoder.GetLength(expected, RlpBehaviors.None));
-            decoder.Encode(stream, expected);
+            byte[] bytes = new byte[decoder.GetLength(expected, RlpBehaviors.None)];
+            RlpWriter writer = new(bytes);
+            decoder.Encode(ref writer, expected);
             // Decode snapshot
-            Snapshot actual = decoder.Decode(stream.Data.AsSpan());
+            Snapshot actual = decoder.Decode(bytes);
             // Validate fields
             using (Assert.EnterMultipleScope())
             {
