@@ -35,11 +35,6 @@ public sealed class SszMiddleware
     // Path: /engine/v2/{fork}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v2/";
 
-    // The witness endpoint (EIP-7928) keeps its own dedicated, version-less path and a fast-path
-    // dispatch — it is not part of the /engine/v2/{fork}/{resource} routing scheme, and it speaks
-    // application/json rather than application/octet-stream.
-    private const string WitnessPath = "/new-payload-with-witness";
-
     /// <summary>
     /// Maximum allowed request body size in bytes (64 MiB).
     /// Mirrors the <c>payload.max_bytes</c> example value advertised in the Engine API
@@ -52,7 +47,9 @@ public sealed class SszMiddleware
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _postLookup;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _getLookup;
 
-    private readonly ISszEndpointHandler? _witnessHandler;
+    // Handlers that declare an exact ISszEndpointHandler.FixedPath, keyed by that path. These bypass the
+    // /engine/v2/{fork}/{resource} fork/version router (e.g. the EIP-7928 witness endpoint).
+    private readonly FrozenDictionary<string, ISszEndpointHandler> _fixedPathRoutes;
 
     private enum SszRequestKind { NotEngine, EngineWrongMediaType, EngineOk }
 
@@ -61,30 +58,38 @@ public sealed class SszMiddleware
         IJsonRpcUrlCollection urlCollection,
         IRpcAuthentication auth,
         IEnumerable<ISszEndpointHandler> handlers,
-        NewPayloadWithWitnessSszHandler? witnessHandler,
         IProcessExitSource processExitSource,
         ILogManager logManager)
     {
         _next = next;
         _urlCollection = urlCollection;
         _auth = auth;
-        _witnessHandler = witnessHandler;
         _logger = logManager.GetClassLogger<SszMiddleware>();
         _processExitToken = processExitSource.Token;
-        (_postRoutes, _getRoutes) = BuildRoutes(handlers);
+        (_postRoutes, _getRoutes, _fixedPathRoutes) = BuildRoutes(handlers);
         _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
-                    FrozenDictionary<string, List<ISszEndpointHandler>> get)
+                    FrozenDictionary<string, List<ISszEndpointHandler>> get,
+                    FrozenDictionary<string, ISszEndpointHandler> fixedPath)
         BuildRoutes(IEnumerable<ISszEndpointHandler> handlers)
     {
         Dictionary<string, List<ISszEndpointHandler>> postDict = [];
         Dictionary<string, List<ISszEndpointHandler>> getDict = [];
+        Dictionary<string, ISszEndpointHandler> fixedPathDict = new(StringComparer.OrdinalIgnoreCase);
 
         foreach (ISszEndpointHandler h in handlers)
         {
+            // A handler with a FixedPath is matched by exact path, not the fork/version scheme.
+            if (h.FixedPath is { } fixedPath)
+            {
+                if (!fixedPathDict.TryAdd(fixedPath, h))
+                    throw new InvalidOperationException($"Duplicate {nameof(ISszEndpointHandler.FixedPath)} '{fixedPath}'.");
+                continue;
+            }
+
             // Dictionaries are keyed case-insensitively below — keep resource as-is, no lowercasing.
             Dictionary<string, List<ISszEndpointHandler>> dict =
                 h.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
@@ -99,8 +104,9 @@ public sealed class SszMiddleware
 
         FrozenDictionary<string, List<ISszEndpointHandler>> post = postDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
         FrozenDictionary<string, List<ISszEndpointHandler>> get = getDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+        FrozenDictionary<string, ISszEndpointHandler> fixedPaths = fixedPathDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-        return (post, get);
+        return (post, get, fixedPaths);
     }
 
     public Task InvokeAsync(HttpContext ctx)
@@ -145,9 +151,9 @@ public sealed class SszMiddleware
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
                 "Authentication error");
         }
-        else if (IsWitnessPath(ctx.Request.Path.Value ?? string.Empty))
+        else if (_fixedPathRoutes.TryGetValue(ctx.Request.Path.Value ?? string.Empty, out ISszEndpointHandler? fixedHandler))
         {
-            await DispatchWitnessAsync(ctx);
+            await DispatchFixedPathAsync(ctx, fixedHandler);
         }
         else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out string? fork,
                      out ReadOnlyMemory<char> pathSegment, out bool unsupportedFork))
@@ -192,47 +198,38 @@ public sealed class SszMiddleware
         }
     }
 
-    private static bool IsWitnessPath(string path)
-        => path.Equals(WitnessPath, StringComparison.OrdinalIgnoreCase);
-
     /// <summary>
-    /// Fast-path dispatch for the version-less witness endpoint. Validates method (POST only) and
-    /// content-type (application/json) before delegating to the witness handler via <see cref="DispatchAsync"/>.
+    /// Dispatch for a handler bound to an exact <see cref="ISszEndpointHandler.FixedPath"/>. Validates
+    /// the method (against <see cref="ISszEndpointHandler.HttpMethod"/>) and request content-type
+    /// (against <see cref="ISszEndpointHandler.RequestContentType"/>) before delegating to
+    /// <see cref="DispatchAsync"/>.
     /// </summary>
-    private async Task DispatchWitnessAsync(HttpContext ctx)
+    private async Task DispatchFixedPathAsync(HttpContext ctx, ISszEndpointHandler handler)
     {
-        if (!HttpMethods.IsPost(ctx.Request.Method))
+        if (!ctx.Request.Method.Equals(handler.HttpMethod, StringComparison.OrdinalIgnoreCase))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            ctx.Response.Headers.Allow = "POST";
+            ctx.Response.Headers.Allow = handler.HttpMethod;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status405MethodNotAllowed,
-                $"Method '{ctx.Request.Method}' is not allowed on {WitnessPath}. Only POST is supported.",
+                $"Method '{ctx.Request.Method}' is not allowed on {handler.FixedPath}. Only {handler.HttpMethod} is supported.",
                 SszRestErrorCodes.MethodNotFound);
             return;
         }
 
         string? contentType = ctx.Request.ContentType;
-        if (contentType is null || !contentType.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+        if (contentType is null || !contentType.Contains(handler.RequestContentType, StringComparison.OrdinalIgnoreCase))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            ctx.Response.Headers["Accept"] = "application/json";
+            ctx.Response.Headers["Accept"] = handler.RequestContentType;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status415UnsupportedMediaType,
-                $"Content-Type must be application/json for {WitnessPath}.",
+                $"Content-Type must be {handler.RequestContentType} for {handler.FixedPath}.",
                 SszRestErrorCodes.UnsupportedMediaType);
             return;
         }
 
-        if (_witnessHandler is null)
-        {
-            Metrics.SszRestRequestsClientErrorTotal++;
-            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                "Endpoint not available", SszRestErrorCodes.MethodNotFound);
-            return;
-        }
+        if (_logger.IsTrace) _logger.Trace($"SSZ-REST {handler.HttpMethod} {handler.FixedPath}");
 
-        if (_logger.IsTrace) _logger.Trace($"SSZ-REST POST {WitnessPath}");
-
-        await DispatchAsync(ctx, _witnessHandler, version: 0, extra: default);
+        await DispatchAsync(ctx, handler, handler.Version ?? 0, extra: default);
     }
 
     /// <summary>Shared body-read + handler invocation + metrics + error mapping for both the
@@ -471,15 +468,15 @@ public sealed class SszMiddleware
     }
 
 
-    private static SszRequestKind ClassifySszRequest(HttpContext ctx)
+    private SszRequestKind ClassifySszRequest(HttpContext ctx)
     {
         string path = ctx.Request.Path.Value ?? string.Empty;
 
-        // The witness endpoint is a dedicated, version-less path. Intercept it for ALL methods so
-        // non-POST / wrong content-type get a proper 405/415 from DispatchWitnessAsync rather than
-        // falling through to the next middleware and returning a confusing 404. The application/json
-        // content-type check is deferred to DispatchWitnessAsync (it is not an octet-stream route).
-        if (path.Equals(WitnessPath, StringComparison.OrdinalIgnoreCase))
+        // Fixed-path endpoints (e.g. the witness endpoint) are intercepted for ALL methods so that
+        // non-matching method / content-type get a proper 405/415 from DispatchFixedPathAsync rather
+        // than falling through to the next middleware and returning a confusing 404. The method and
+        // content-type checks are deferred to DispatchFixedPathAsync (the route may not be octet-stream).
+        if (_fixedPathRoutes.ContainsKey(path))
             return SszRequestKind.EngineOk;
 
         if (!path.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))

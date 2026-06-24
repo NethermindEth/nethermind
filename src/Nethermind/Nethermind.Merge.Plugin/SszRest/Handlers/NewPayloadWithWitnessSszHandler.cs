@@ -26,9 +26,13 @@ public sealed class NewPayloadWithWitnessSszHandler(
 
     public override string HttpMethod => "POST";
 
-    // Non-versioned path; SszMiddleware routes via a dedicated fast path for this resource.
     public override string Resource => SszRestPaths.NewPayloadWithWitness;
     public override int? Version => null;
+
+    // The only mixed-format endpoint: its own version-less path, and a JSON (not octet-stream)
+    // request body. Declaring both lets SszMiddleware route and content-negotiate it generically.
+    public override string? FixedPath => SszRestPaths.NewPayloadWithWitnessPath;
+    public override string RequestContentType => "application/json";
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {

@@ -29,4 +29,20 @@ public interface ISszEndpointHandler
     Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body);
 
     bool AcceptsPathExtra => false;
+
+    /// <summary>
+    /// When non-null, binds the handler to this exact, version-less request path
+    /// (e.g. <c>/new-payload-with-witness</c>), bypassing the
+    /// <c>/engine/v2/{fork}/{resource}</c> fork/version routing scheme. Null for the
+    /// fork-routed endpoints, which are matched by <see cref="HttpMethod"/> +
+    /// <see cref="Resource"/> + <see cref="Version"/> instead.
+    /// </summary>
+    string? FixedPath => null;
+
+    /// <summary>
+    /// Media type the request body must carry (matched against <c>Content-Type</c> for POST,
+    /// <c>Accept</c> for GET). Defaults to <c>application/octet-stream</c>, the SSZ-REST
+    /// hot-path encoding; endpoints that exchange JSON (e.g. the witness endpoint) override it.
+    /// </summary>
+    string RequestContentType => "application/octet-stream";
 }

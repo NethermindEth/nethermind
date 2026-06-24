@@ -82,10 +82,9 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         foreach (Type handler in SingletonHandlers)
             services.AddSingleton(typeof(ISszEndpointHandler), handler);
 
-        // EIP-7928 witness endpoint: registered ONLY as the concrete type, which SszMiddleware takes
-        // directly for its dedicated fast-path. Deliberately NOT registered as ISszEndpointHandler so
-        // it never enters the routing table (it has no place there — see SszMiddleware.BuildRoutes).
-        services.AddSingleton<NewPayloadWithWitnessSszHandler>();
+        // EIP-7928 witness endpoint: a normal handler that declares a FixedPath + JSON RequestContentType,
+        // so SszMiddleware routes it through the same machinery as everything else (no special-casing).
+        services.AddSingleton<ISszEndpointHandler, NewPayloadWithWitnessSszHandler>();
     }
 }
 

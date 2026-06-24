@@ -75,9 +75,12 @@ public static class SszRestPaths
 
     public const string Blobs = "blobs";
 
-    // Witness endpoint resource segment (EIP-7928). Routed by SszMiddleware's dedicated witness
-    // fast-path (its own version-less /new-payload-with-witness path), not the fork-segment router.
+    // Witness endpoint resource segment (EIP-7928). The handler declares its own version-less
+    // FixedPath, so SszMiddleware routes it by exact path rather than the fork-segment router.
     public const string NewPayloadWithWitness = "new-payload-with-witness";
+
+    // Absolute request path the witness endpoint binds to (ISszEndpointHandler.FixedPath).
+    public const string NewPayloadWithWitnessPath = "/" + NewPayloadWithWitness;
 
     // Documentation strings for the SSZ-REST routes — used by EngineRpcCapabilitiesProvider
     // (registration) and EngineModuleTests (coverage assertions). Built at static-init time from
