@@ -60,6 +60,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private byte[]? _returnDataBuffer;
     private int _returnDataByteCount;
+    private byte[]? _returnDataHexBuffer;
 
     private ArrayPoolList<PooledDictionary<UInt256, UInt256>>? _storageByDepth;
     private int _activeStorageDepth;
@@ -264,6 +265,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (_stackBuffer is not null) { ArrayPool<byte>.Shared.Return(_stackBuffer); _stackBuffer = null; }
         if (_memoryBuffer is not null) { ArrayPool<byte>.Shared.Return(_memoryBuffer); _memoryBuffer = null; }
         if (_returnDataBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataBuffer); _returnDataBuffer = null; }
+        if (_returnDataHexBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataHexBuffer); _returnDataHexBuffer = null; }
         if (_storageByDepth is not null)
         {
             for (int i = 0; i < _storageByDepth.Count; i++) _storageByDepth[i].Dispose();
@@ -297,10 +299,28 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (IsTracingStack) WriteStackArrayIfPresent();
         if (IsTracingFullMemory) WriteMemoryArrayIfPresent();
         if (IsTracingOpLevelStorage) WriteStorageObjectIfPresent();
-        if (IsTracingReturnData && _returnDataByteCount > 0)
-            _writer.WriteString("returnData"u8, _returnDataBuffer.AsSpan(0, _returnDataByteCount).ToHexString(true));
+        if (IsTracingReturnData && _returnDataByteCount > 0) WriteReturnDataValue();
 
         _writer.WriteEndObject();
+    }
+
+    private void WriteReturnDataValue()
+    {
+        // Encode "0x"-prefixed hex straight into a pooled scratch buffer and emit it as a raw JSON
+        // string, avoiding the intermediate string allocation on every traced opcode after a call.
+        int hexLength = _returnDataByteCount * 2;
+        int tokenLength = hexLength + 4; // quotes + "0x"
+        EnsureBuffer(ref _returnDataHexBuffer, tokenLength);
+
+        Span<byte> token = _returnDataHexBuffer.AsSpan(0, tokenLength);
+        token[0] = (byte)'"';
+        token[1] = (byte)'0';
+        token[2] = (byte)'x';
+        _returnDataBuffer.AsSpan(0, _returnDataByteCount).OutputBytesToByteHex(token.Slice(3, hexLength), extraNibble: false);
+        token[tokenLength - 1] = (byte)'"';
+
+        _writer.WritePropertyName("returnData"u8);
+        _writer.WriteRawValue(token, skipInputValidation: true);
     }
 
     private void WriteStackArrayIfPresent()

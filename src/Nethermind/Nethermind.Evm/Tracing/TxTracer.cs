@@ -22,6 +22,7 @@ public abstract class TxTracer : ITxTracer
                               || IsTracingMemory
                               || IsTracingInstructions
                               || IsTracingRefunds
+                              || IsTracingReturnData
                               || IsTracingCode
                               || IsTracingStack
                               || IsTracingBlockHash

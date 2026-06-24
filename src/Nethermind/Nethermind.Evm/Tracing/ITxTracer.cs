@@ -152,6 +152,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingMemory
                       || IsTracingInstructions
                       || IsTracingRefunds
+                      || IsTracingReturnData
                       || IsTracingCode
                       || IsTracingStack
                       || IsTracingBlockHash
