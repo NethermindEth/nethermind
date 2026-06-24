@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../tests.props" />
+
+  <PropertyGroup>
+    <RootNamespace>Nethermind.Stateless.Execution.Test</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="..\Nethermind.Stateless.Executor\Nethermind.Stateless.Executor.csproj" />
+  </ItemGroup>
+
+</Project>

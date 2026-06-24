@@ -472,7 +472,9 @@ public sealed partial class KeccakHash
     private static class Pool
     {
         private const int MaxPooledPerThread = 4;
+#if !ZK_EVM
         [ThreadStatic]
+#endif
         private static Queue<byte[]>? s_remainderCache;
 
         public static byte[] RentRemainder() => s_remainderCache?.TryDequeue(out byte[]? remainder)
@@ -494,7 +496,9 @@ public sealed partial class KeccakHash
             remainder = [];
         }
 
+#if !ZK_EVM
         [ThreadStatic]
+#endif
         private static Queue<ulong[]>? s_stateCache;
 
         public static ulong[] RentState() => s_stateCache?.TryDequeue(out ulong[]? state)

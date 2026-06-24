@@ -152,13 +152,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     {
         ReadOnlySpan<byte> data = transaction.Data.Span;
         int totalZeros = data.CountZeros();
-        return totalZeros + (data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
+        return totalZeros + (data.Length - totalZeros) * spec.GasCostsFast.TxDataNonZeroMultiplier;
     }
 
     // 0 when floor pricing is not active.
     public static long CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec) =>
         spec.IsEip7981Enabled && transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) }
-            ? (addressesCount * Address.Size + storageKeysCount * AccessList.StorageKeySize) * spec.GasCosts.TxDataNonZeroMultiplier
+            ? (addressesCount * Address.Size + storageKeysCount * AccessList.StorageKeySize) * spec.GasCostsFast.TxDataNonZeroMultiplier
             : 0L;
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec spec, long floorTokensInAccessList)
@@ -174,7 +174,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         (int addressesCount, int storageKeysCount) = accessList.Count;
         return addressesCount * GasCostOf.AccessAccountListEntry
             + storageKeysCount * GasCostOf.AccessStorageListEntry
-            + spec.GasCosts.TotalCostFloorPerToken * floorTokensInAccessList;
+            + spec.GasCostsFast.TotalCostFloorPerToken * floorTokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec spec) =>
@@ -208,12 +208,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     }
 
     private static long CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
-        transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
+        transaction.Data.Length * spec.GasCostsFast.TxDataNonZeroMultiplier;
 
     protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData, long floorTokensInAccessList) => spec switch
     {
-        { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
-        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
+        { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCostsFast.TotalCostFloorPerToken,
+        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCostsFast.TotalCostFloorPerToken,
         _ => 0L
     };
 }

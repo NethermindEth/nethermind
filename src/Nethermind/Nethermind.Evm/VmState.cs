@@ -21,7 +21,11 @@ namespace Nethermind.Evm;
 public class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+#if ZK_EVM
+    private static readonly ZkPool<VmState<TGasPolicy>> _statePool = new();
+#else
     private static readonly ConcurrentQueue<VmState<TGasPolicy>> _statePool = new();
+#endif
     private static readonly StackPool _stackPool = new();
 
     public byte[]? DataStack;
@@ -106,7 +110,10 @@ public class VmState<TGasPolicy> : IDisposable
     }
 
     private static VmState<TGasPolicy> Rent()
-        => _statePool.TryDequeue(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
+    {
+        if (_statePool.TryDequeue(out VmState<TGasPolicy>? state)) return state;
+        return new VmState<TGasPolicy>();
+    }
 
     [SkipLocalsInit]
     private void Initialize(
@@ -124,6 +131,11 @@ public class VmState<TGasPolicy> : IDisposable
         _env = env;
         _snapshot = snapshot;
         _accessTracker = stateForAccessLists;
+        // This VmState is pooled and reused across transactions. Its EVM memory buffer lives on the
+        // per-tx scratch arena (reclaimed at the per-tx reset), so any buffer reference left over
+        // from a previous transaction is now dangling. Reset it here so the first memory growth
+        // allocates a fresh buffer instead of reading the reclaimed one in the resize path.
+        _memory = default;
         if (executionType.IsAnyCreate())
         {
             _accessTracker.WasCreated(env.ExecutingAccount);

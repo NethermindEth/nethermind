@@ -52,6 +52,18 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
+#if ZK_EVM
+    // Single-entry cache in front of _intraTxCache: the EVM accesses the same
+    // account many times in a row. A cheap return when the address' change
+    // stack is unchanged (stack.Count); a push for any *other* address leaves
+    // it valid. Invalidated when a restore/reset recycles the stacks (epoch).
+    private Address? _gtcAddress;
+    private StackList<int>? _gtcStack;
+    private Account? _gtcAccount;
+    private int _gtcStackCount;
+    private int _gtcEpoch = -1;
+    private int _epoch;
+#endif
 
     public void RecalculateStateRoot()
     {
@@ -359,6 +371,9 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         if (_logger.IsTrace) Trace(snapshot);
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
+#if ZK_EVM
+        _epoch++;
+#endif
 
         int stepsBack = lastIndex - snapshot;
         // Reserve capacity up‐front (avoid grows)
@@ -610,6 +625,9 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
         trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
 
+#if ZK_EVM
+        _epoch++;
+#endif
         _changes.Clear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
@@ -718,10 +736,14 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
     public bool WarmUp(Address address)
         => GetState(address) is not null;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref ChangeTrace GetOrAddBlockChange(AddressAsKey key, out bool exists)
+        => ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, key, out exists);
+
     private Account? GetState(Address address)
     {
         AddressAsKey addressAsKey = address;
-        ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(addressAsKey, out bool exists);
         if (!exists)
         {
             _metrics.IncrementStateTreeReads();
@@ -744,7 +766,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
             _metrics.IncrementAccountDeleted();
         }
 
-        ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }
@@ -767,10 +789,32 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         return account;
     }
 
-    internal Account? GetThroughCache(Address address) =>
-        _intraTxCache.TryGetValue(address, out StackList<int> value)
+    internal Account? GetThroughCache(Address address)
+    {
+#if ZK_EVM
+        if (_gtcEpoch == _epoch && _gtcAddress is not null && _gtcAddress.Equals(address))
+        {
+            StackList<int> s = _gtcStack!;
+            int count = s.Count;
+            if (count == _gtcStackCount) return _gtcAccount;
+            _gtcStackCount = count;
+            return _gtcAccount = _changes[s.Peek()].Account;
+        }
+        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        {
+            _gtcAddress = address;
+            _gtcStack = value;
+            _gtcStackCount = value.Count;
+            _gtcEpoch = _epoch;
+            return _gtcAccount = _changes[value.Peek()].Account;
+        }
+        return GetAndAddToCache(address);
+#else
+        return _intraTxCache.TryGetValue(address, out StackList<int> value)
             ? _changes[value.Peek()].Account
             : GetAndAddToCache(address);
+#endif
+    }
 
     private void PushJustCache(Address address, Account account)
         => Push(address, account, ChangeType.JustCache);
@@ -815,6 +859,14 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
     private StackList<int> SetupCache(Address address)
     {
+#if ZK_EVM
+        // A push almost always follows a read of the same account; the front
+        // cache already holds that account's (live) change stack.
+        if (_gtcEpoch == _epoch && _gtcAddress is not null && _gtcAddress.Equals(address))
+        {
+            return _gtcStack!;
+        }
+#endif
         ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
         if (!exists)
         {
@@ -854,6 +906,9 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         _intraTxCache.ResetAndClear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
+#if ZK_EVM
+        _epoch++;
+#endif
         _changes.Clear();
         _needsStateRootUpdate = false;
 

@@ -30,8 +30,15 @@ public readonly struct ValueAddress
     }
 
     /// <summary>Exposes the 20 backing bytes as a read-only span over the struct's storage.</summary>
+    // Hot: read per Address.Equals (via FirstByte) and Address.Bytes. Without this hint
+    // the JIT leaves it as an out-of-line call (1.85% of zkVM steps in the profile), so
+    // the already-AggressiveInlining FirstByte/Bytes getters can't fully collapse to a
+    // direct ref computation. Force-inline so the whole chain folds.
     public ReadOnlySpan<byte> AsSpan
-        => MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Bytes20, byte>(ref Unsafe.AsRef(in _bytes)), Address.Size);
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Bytes20, byte>(ref Unsafe.AsRef(in _bytes)), Address.Size);
+    }
 
     /// <summary>Materializes a managed <see cref="Address"/> from this value-typed address.</summary>
     public Address ToAddress() => new(AsSpan);

@@ -71,14 +71,16 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public void AnalyzeInBackgroundIfRequired()
     {
+#if ZK_EVM
+        // Leave jump-destination analysis lazy: ValidateJump builds the bitmap
+        // on the first JUMP/JUMPI. Code that never jumps (e.g. fully unrolled
+        // benchmark contracts) then skips the analysis pass entirely.
+#else
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
         {
-#if ZK_EVM
-            _analyzer.Execute();
-#else
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
-#endif
         }
+#endif
     }
 
     public override bool Equals(object? obj)

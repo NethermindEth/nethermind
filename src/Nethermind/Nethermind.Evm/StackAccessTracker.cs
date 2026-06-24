@@ -88,8 +88,16 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     private sealed class TrackingState
     {
+#if ZK_EVM
+        private static readonly ZkPool<TrackingState> _trackerPool = new();
+#else
         private static readonly ConcurrentQueue<TrackingState> _trackerPool = new();
-        public static TrackingState RentState() => _trackerPool.TryDequeue(out TrackingState tracker) ? tracker : new TrackingState();
+#endif
+        public static TrackingState RentState()
+        {
+            if (_trackerPool.TryDequeue(out TrackingState tracker)) return tracker;
+            return new TrackingState();
+        }
 
         public static void ResetAndReturn(TrackingState state)
         {

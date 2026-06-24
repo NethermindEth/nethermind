@@ -49,7 +49,12 @@ public readonly struct ExecutionMetricsFlag : IFlag
 
 public class Metrics
 {
+#if ZK_EVM
+    // Single-threaded guest: skip the AsyncLocal lookup on every metric bump.
+    private static bool IsBlockProcessingThread => true;
+#else
     private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
+#endif
 
     [CounterMetric]
     [Description("Number of Code DB cache reads.")]

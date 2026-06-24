@@ -356,7 +356,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.SStoreResetCost))
+        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCostsFast.SStoreResetCost))
             goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
@@ -383,7 +383,7 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = spec.GasCosts.SClearRefund;
+        long sClearRefunds = spec.GasCostsFast.SClearRefund;
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -639,7 +639,7 @@ public static partial class EvmInstructions
         Metrics.IncrementSLoadOpcode();
 
         // Deduct the gas cost for performing an SLOAD.
-        TGasPolicy.Consume(ref gas, spec.GasCosts.SLoadCost);
+        TGasPolicy.Consume(ref gas, spec.GasCostsFast.SLoadCost);
 
         // Pop the key from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
