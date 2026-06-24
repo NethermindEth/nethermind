@@ -54,7 +54,13 @@ public static class Eip8037BlockGasInclusionCheck
         ulong stateGasSpillReclassified,
         ulong floorGas)
     {
-        ulong executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill + stateGasSpillReclassified;
+        // SaturatingSub preserves the master-side defense-in-depth: any upstream
+        // accounting flaw clamps to 0 and Math.Max below falls back to floorGas,
+        // rather than wrapping to a giant value and corrupting header.GasUsed.
+        ulong executionRegularGasUsed = initialRegularGas
+            .SaturatingSub(remainingRegularGas)
+            .SaturatingSub(stateGasSpill)
+            + stateGasSpillReclassified;
         ulong blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
         return Math.Max(blockRegularGas, floorGas);
     }

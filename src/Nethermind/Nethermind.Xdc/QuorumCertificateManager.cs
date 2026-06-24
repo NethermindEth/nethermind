@@ -109,7 +109,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
 
-        if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
+        // Rewritten from `(Number - 2) <= SwitchBlock` to avoid ulong underflow at Number < 2,
+        // which would otherwise wrap to a huge value and invert the guard.
+        if (proposedBlockHeader.Number <= spec.SwitchBlock + 2)
         {
             if (_logger.IsDebug) _logger.Debug($"Block {proposedBlockHeader.Number} is too close to switch block {spec.SwitchBlock}, skipping commit.");
             return null;

@@ -52,13 +52,24 @@ public class DebugRpcModule(
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
     {
-        ChainLevelInfo? levelInfo = debugBridge.GetLevelInfo(number >= 0 ? (ulong)number : 0UL);
+        if (number < 0)
+        {
+            return ResultWrapper<ChainLevelForRpc>.Fail($"Chain level must be non-negative (got {number})", ErrorCodes.InvalidParams);
+        }
+        ChainLevelInfo? levelInfo = debugBridge.GetLevelInfo((ulong)number);
         return levelInfo is null
             ? ResultWrapper<ChainLevelForRpc>.Fail($"Chain level {number} does not exist", ErrorCodes.ResourceNotFound)
             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
     }
 
-    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) => ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber >= 0 ? (ulong)startNumber : 0UL, force));
+    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false)
+    {
+        if (startNumber < 0)
+        {
+            return ResultWrapper<int>.Fail($"startNumber must be non-negative (got {startNumber})", ErrorCodes.InvalidParams);
+        }
+        return ResultWrapper<int>.Success(debugBridge.DeleteChainSlice((ulong)startNumber, force));
+    }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {

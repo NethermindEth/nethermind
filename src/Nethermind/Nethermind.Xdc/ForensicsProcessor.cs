@@ -247,7 +247,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
 
         BlockRoundInfo proposedBlockInfo = higherBlockNumQCs[0].ProposedBlockInfo;
         ulong blockDifference = higherBlockNumQCs[0].ProposedBlockInfo.BlockNumber - lowerBlockNumQCs[0].ProposedBlockInfo.BlockNumber;
-        if (blockDifference < 0 || blockDifference > MaxForensicsTraversalDepth)
+        if (blockDifference > MaxForensicsTraversalDepth)
         {
             return false;
         }
@@ -433,8 +433,13 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
 
     private bool IsExtendingFromAncestor(BlockRoundInfo currentBlock, BlockRoundInfo ancestorBlock)
     {
+        // Callers do not all guarantee ordering, so guard against ulong underflow explicitly.
+        if (currentBlock.BlockNumber < ancestorBlock.BlockNumber)
+        {
+            return false;
+        }
         ulong blockNumDiff = currentBlock.BlockNumber - ancestorBlock.BlockNumber;
-        if (blockNumDiff < 0 || blockNumDiff > MaxForensicsTraversalDepth)
+        if (blockNumDiff > MaxForensicsTraversalDepth)
         {
             return false;
         }

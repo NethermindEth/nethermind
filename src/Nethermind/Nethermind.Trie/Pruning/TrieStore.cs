@@ -66,7 +66,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly bool _pastKeyTrackingEnabled = false;
 
     private bool _lastPersistedReachedReorgBoundary;
-    private ulong _toBePersistedBlockNumber = ulong.MinValue;
+    // ulong.MaxValue is the "not yet set" sentinel; block 0 (genesis) is a valid value during fresh sync,
+    // so we cannot use ulong.MinValue here.
+    private ulong _toBePersistedBlockNumber = ulong.MaxValue;
 
     private static readonly long IncompletePersistedPruneWarnIntervalTicks = Stopwatch.Frequency * 5 * 60;
     private long _incompletePersistedPruneWarnNextTicks;
@@ -347,7 +349,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (_commitBuffer is null)
             {
                 ulong persistedBoundary = Interlocked.Read(ref _toBePersistedBlockNumber);
-                if (persistedBoundary == ulong.MinValue)
+                if (persistedBoundary == ulong.MaxValue)
                 {
                     // This can happen in the tiny time in between pruningLock was acquired but the exact block to
                     // persist was not determined yet.
@@ -609,8 +611,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 // When `_pruningLock` is held, the begin commit will check for _toBePersistedBlockNumber in order
                 // to decide which block to be used as the boundary for the commit buffer. This number was re-set
-                // to MinValue in `PersistAndPruneDirtyCache`. So we need to re-set it here, otherwise `BeginScope`
-                // will hang until the prune persisted node loop is completed.
+                // to the "not yet set" sentinel in `PersistAndPruneDirtyCache`. So we need to re-set it here,
+                // otherwise `BeginScope` will hang until the prune persisted node loop is completed.
                 _toBePersistedBlockNumber = LastPersistedBlockNumber;
 
                 // `PrunePersistedNodes` only work on part of the partition at any one time. With commit buffer,
@@ -639,7 +641,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
             finally
             {
-                _toBePersistedBlockNumber = ulong.MinValue;
+                _toBePersistedBlockNumber = ulong.MaxValue;
             }
         }
     }
@@ -681,7 +683,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         finally
         {
-            _toBePersistedBlockNumber = ulong.MinValue;
+            _toBePersistedBlockNumber = ulong.MaxValue;
         }
     }
 
