@@ -176,6 +176,45 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 _ => throw new ArgumentOutOfRangeException(nameof(msgType), msgType, null)
             };
 
+        private NodeRecord ConfigureRemoteEnrRefresh(ulong advertisedSequence, ulong responseSequence)
+        {
+            NodeRecord remoteRecord = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyB,
+                IPAddress.Parse("192.168.1.2"),
+                tcpPort: null,
+                udpPort: 30303,
+                enrSequence: responseSequence);
+
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<PingMsg>()))
+                .Do(ci =>
+                {
+                    PingMsg sent = (PingMsg)ci[0]!;
+                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
+                    PongMsg pong = new(
+                        msg.FarPublicKey!,
+                        _timestamper.UnixTime.SecondsLong + 1,
+                        sent.Mdc!.Value,
+                        advertisedSequence);
+                    pong.FarAddress = _receiver.Address;
+                    Task.Run(() => _adapter.OnIncomingMsg(pong));
+                });
+
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
+                .Do(ci =>
+                {
+                    EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
+                    ValueHash256 requestHash = TestItem.KeccakA.ValueHash256;
+                    sent.Hash = requestHash;
+                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(_receiver.Address, remoteRecord, new Hash256(requestHash)));
+                    Task.Run(() => _adapter.OnIncomingMsg(response));
+                });
+
+            return remoteRecord;
+        }
+
         [Test]
         [CancelAfter(10000)]
         public async Task Ping_should_send_ping_and_receive_pong(CancellationToken token)
@@ -259,6 +298,34 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             EnrResponseMsg? result = await _adapter.SendEnrRequest(_receiver, token);
 
             Assert.That(result, Is.Null);
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_should_request_and_cache_remote_enr_when_pong_advertises_newer_sequence(CancellationToken token)
+        {
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(advertisedSequence: 2, responseSequence: 2);
+
+            bool result = await _adapter.Ping(_receiver, token);
+
+            Assert.That(result, Is.True);
+            await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
+            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                n.Id.Equals(_receiver.Id) &&
+                n.Enr == remoteRecord.EnrString));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_should_not_cache_remote_enr_when_response_sequence_is_below_advertised_sequence(CancellationToken token)
+        {
+            ConfigureRemoteEnrRefresh(advertisedSequence: 3, responseSequence: 2);
+
+            bool result = await _adapter.Ping(_receiver, token);
+
+            Assert.That(result, Is.True);
+            await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
+            _kademliaMessageReceiver.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
         }
 
         [Test]

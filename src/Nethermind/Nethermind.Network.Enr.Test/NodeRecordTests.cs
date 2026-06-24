@@ -43,6 +43,25 @@ public class NodeRecordTests
         Assert.Throws<Exception>(() => _ = nodeRecord.EnrString);
     }
 
+    [Test]
+    public void Enr_request_sequence_tracks_single_active_request()
+    {
+        NodeRecord nodeRecord = new();
+
+        Assert.That(nodeRecord.TryRequestEnrSequence(5), Is.True);
+        Assert.That(nodeRecord.TryRequestEnrSequence(4), Is.False);
+        Assert.That(nodeRecord.TryRequestEnrSequence(7), Is.False);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.RequestingEnrSequence, Is.EqualTo(7));
+            Assert.That(nodeRecord.TryClearEnrRequest(5), Is.False);
+            Assert.That(nodeRecord.RequestingEnrSequence, Is.EqualTo(7));
+            Assert.That(nodeRecord.TryClearEnrRequest(7), Is.True);
+            Assert.That(nodeRecord.RequestingEnrSequence, Is.Zero);
+        }
+    }
+
     [TestCase("192.0.2.1", "", -1, 30304, "", -1)]
     [TestCase("", "2001:db8::1", 30303, -1, "2001:db8::1", 30303)]
     public void Discovery_endpoint_uses_expected_ip_udp_fallback(string ip, string ip6, int udp, int udp6, string expectedIp, int expectedPort)

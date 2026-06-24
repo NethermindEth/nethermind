@@ -79,13 +79,14 @@ namespace Nethermind.Stats.Model
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
         public string Enr { get; set; }
+        public NodeRecord EnrRecord { get; set; }
 
         public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
         {
             if (networkNode.IsEnr)
             {
-                Enr = networkNode.Enr.EnrString;
+                SetEnrRecord(networkNode.Enr);
             }
         }
 
@@ -119,9 +120,16 @@ namespace Nethermind.Stats.Model
 
             node = new Node(key, new IPEndPoint(ip, port.Value))
             {
-                Enr = enr.EnrString
+                Enr = enr.EnrString,
+                EnrRecord = enr
             };
             return true;
+        }
+
+        public void SetEnrRecord(NodeRecord record)
+        {
+            Enr = record.EnrString;
+            EnrRecord = record;
         }
 
         public Node(PublicKey id, string host, int port, bool isStatic = false)

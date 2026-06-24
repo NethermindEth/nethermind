@@ -135,24 +135,6 @@ public class KademliaAdapterTests
     private static Node CreateNode(PublicKey publicKey, int hostSuffix) =>
         new(publicKey, $"192.168.1.{hostSuffix}", 30303);
 
-    [Test]
-    public void TrySetKnownRecord_ShouldNotDowngradeSequence()
-    {
-        KademliaAdapter adapter = CreateAdapter();
-        NodeRecord newer = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"), enrSequence: 2);
-        NodeRecord stale = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.4.4"), enrSequence: 1);
-
-        Assert.That(adapter.TrySetKnownRecord(TestItem.PrivateKeyB.PublicKey.Hash, newer, out NodeRecord current), Is.True);
-        Assert.That(current, Is.SameAs(newer));
-
-        Assert.That(adapter.TrySetKnownRecord(TestItem.PrivateKeyB.PublicKey.Hash, stale, out current), Is.False);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(current, Is.SameAs(newer));
-            Assert.That(current.EnrSequence, Is.EqualTo(2));
-        }
-    }
-
     private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, ulong enrSequence = 1, bool includeEth2 = false) =>
         TestEnrBuilder.BuildSigned(
             privateKey,

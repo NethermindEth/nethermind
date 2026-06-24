@@ -3,7 +3,9 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -52,6 +54,11 @@ public class DiscoveryV5AppTests
         IEnode enode = new Enode(nodeKey.PublicKey, externalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
         IIPResolver ipResolver = new FixedIpResolver(networkConfig);
         EthereumEcdsa ecdsa = new(0);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        Block head = Build.A.Block.Genesis.TestObject;
+        blockTree.Head.Returns(head);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.GetForkId(head.Header.Number, head.Header.Timestamp).Returns(new Nethermind.Network.ForkId(0, 0));
         ContainerBuilder builder = new();
         builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
         builder.RegisterInstance(networkConfig).As<INetworkConfig>();
@@ -59,6 +66,9 @@ public class DiscoveryV5AppTests
         builder.RegisterInstance(ipResolver).As<IIPResolver>();
         builder.RegisterInstance(nodeKey).Keyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey);
         builder.RegisterInstance(ecdsa).As<IEthereumEcdsa>().As<IEcdsa>();
+        builder.RegisterInstance(blockTree).As<IBlockTree>();
+        builder.RegisterInstance(forkInfo).As<IForkInfo>();
+        builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
         builder.RegisterInstance(new CryptoRandom()).As<ICryptoRandom>();
         builder.RegisterInstance(new NetworkStorage(_discoveryDb, LimboLogs.Instance)).Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);
         builder.RegisterInstance(Substitute.For<INodeStatsManager>()).As<INodeStatsManager>();

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Text;
@@ -25,6 +25,8 @@ public class NodeRecord
     private Hash256? _contentHash;
 
     private Signature? _signature;
+
+    private long _requestingEnrSequence;
 
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new(StringComparer.Ordinal);
 
@@ -92,6 +94,62 @@ public class NodeRecord
             OriginalRlp = null;
             _enrString = null;
             _contentHash = null;
+        }
+    }
+
+    /// <summary>
+    /// Highest advertised ENR sequence currently being requested for this record; <c>0</c> means no request is active.
+    /// </summary>
+    public ulong RequestingEnrSequence => ToEnrSequence(Volatile.Read(ref _requestingEnrSequence));
+
+    /// <summary>
+    /// Stores the highest advertised ENR sequence that should be fetched.
+    /// </summary>
+    /// <param name="sequence">Advertised ENR sequence to fetch.</param>
+    /// <returns><see langword="true"/> when the caller should start the refresh request.</returns>
+    public bool TryRequestEnrSequence(ulong sequence)
+    {
+        if (sequence == 0)
+        {
+            return false;
+        }
+
+        while (true)
+        {
+            long currentRaw = Volatile.Read(ref _requestingEnrSequence);
+            ulong current = ToEnrSequence(currentRaw);
+            if (current >= sequence)
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _requestingEnrSequence, ToRequestingEnrSequence(sequence), currentRaw) == currentRaw)
+            {
+                return current == 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears the in-flight ENR request when no higher sequence was advertised meanwhile.
+    /// </summary>
+    /// <param name="sequence">Sequence that the completed request tried to satisfy.</param>
+    /// <returns><see langword="true"/> when the request state was cleared.</returns>
+    public bool TryClearEnrRequest(ulong sequence)
+    {
+        while (true)
+        {
+            long currentRaw = Volatile.Read(ref _requestingEnrSequence);
+            ulong current = ToEnrSequence(currentRaw);
+            if (current == 0 || current > sequence)
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _requestingEnrSequence, 0, currentRaw) == currentRaw)
+            {
+                return true;
+            }
         }
     }
 
@@ -394,4 +452,8 @@ public class NodeRecord
             throw new Exception("Cannot encode a node record with an empty signature.");
         }
     }
+
+    private static long ToRequestingEnrSequence(ulong sequence) => unchecked((long)sequence);
+
+    private static ulong ToEnrSequence(long sequence) => unchecked((ulong)sequence);
 }

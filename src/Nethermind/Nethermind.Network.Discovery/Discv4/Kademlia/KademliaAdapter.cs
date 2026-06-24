@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -9,9 +9,11 @@ using Nethermind.Logging;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NonBlocking;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
@@ -200,6 +202,7 @@ public sealed class KademliaAdapter(
         if (!response.HasResponse) return false;
 
         session.OnPongReceived(response.Value.FarAddress ?? receiver.Address);
+        await RefreshRemoteRecordIfNewer(receiver, response.Value.EnrSequence, token);
         return true;
     }
 
@@ -215,6 +218,110 @@ public sealed class KademliaAdapter(
 
         return response.HasResponse ? response.Value : null;
     }
+
+    private async Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
+    {
+        if (advertisedSequence is not { } sequence || sequence == 0)
+        {
+            return;
+        }
+
+        NodeRecord recordState = GetOrSetRecordState(node);
+        if (recordState.Signature is not null && recordState.EnrSequence >= sequence)
+        {
+            return;
+        }
+
+        if (!recordState.TryRequestEnrSequence(sequence))
+        {
+            return;
+        }
+
+        try
+        {
+            while (true)
+            {
+                ulong requestedSequence = recordState.RequestingEnrSequence;
+                if (requestedSequence == 0)
+                {
+                    return;
+                }
+
+                if (recordState.Signature is not null && recordState.EnrSequence >= requestedSequence)
+                {
+                    recordState.TryClearEnrRequest(recordState.EnrSequence);
+                    return;
+                }
+
+                EnrResponseMsg? response = await SendEnrRequest(node, token);
+                if (response is null)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"No discv4 ENR response received from {node} after advertised sequence {requestedSequence}.");
+                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                NodeRecord record = response.NodeRecord;
+                if (record.EnrSequence < recordState.RequestingEnrSequence)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring stale discv4 ENR response from {node}; requested sequence {recordState.RequestingEnrSequence}, received {record.EnrSequence}.");
+                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                if (!HasExpectedNodeId(record, node.Id))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring discv4 ENR response from {node}; record belongs to a different node.");
+                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                if (!Node.TryFromDiscoveryEnr(record, out Node? refreshedNode))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring discv4 ENR response from {node}; record has no usable discovery endpoint.");
+                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                DiscoveryNodeRecord.TransferRequest(recordState, record);
+                recordState = record;
+                kademlia.Value.AddOrRefresh(refreshedNode);
+                if (recordState.TryClearEnrRequest(recordState.EnrSequence))
+                {
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            recordState.TryClearEnrRequest(recordState.RequestingEnrSequence);
+            if (_logger.IsDebug) _logger.Debug($"Failed to refresh discv4 ENR for {node}: {e}");
+        }
+    }
+
+    private NodeRecord GetOrSetRecordState(Node node) => DiscoveryNodeRecord.GetOrSetState(node, _logger, "discv4", IsExpectedRecord);
+
+    private bool TryGetRecord(Node node, [NotNullWhen(true)] out NodeRecord? record) => DiscoveryNodeRecord.TryGet(node, _logger, "discv4", IsExpectedRecord, out record);
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
     {
@@ -281,9 +388,10 @@ public sealed class KademliaAdapter(
             return;
         }
 
-        PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc);
+        PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc, (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
         session.OnPingReceived();
         await SendMessage(session, msg, token);
+        await RefreshRemoteRecordIfNewer(node, ping.EnrSequence, token);
 
         if (!session.HasReceivedPong)
         {
@@ -378,6 +486,11 @@ public sealed class KademliaAdapter(
 
         return false;
     }
+
+    private static bool HasExpectedNodeId(NodeRecord record, PublicKey expectedNodeId)
+        => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Equals(expectedNodeId) == true;
+
+    private static bool IsExpectedRecord(Node node, NodeRecord record) => HasExpectedNodeId(record, node.Id);
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

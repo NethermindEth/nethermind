@@ -39,7 +39,6 @@ public sealed class KademliaAdapter(
     private const int MaxSentChallenges = 4_096;
     private const int MaxPendingRequests = 4_096;
     private const int MaxResponseHandlers = 1_024;
-    private const int MaxKnownRecords = 16_384;
     private const int MaxEndpointChecks = 4_096;
     private const int PacketWorkerCount = 4;
     private const long SentChallengeTtlMilliseconds = 60_000;
@@ -59,8 +58,6 @@ public sealed class KademliaAdapter(
     private long _lastSentChallengeTrimMilliseconds;
     private readonly LruCache<PendingNonceKey, PendingRequest> _pendingByNonce = new(MaxPendingRequests, "discv5 pending requests");
     private readonly LruCache<ResponseKey, IResponseHandler> _responseHandlers = new(MaxResponseHandlers, "discv5 response handlers");
-    private readonly LruCache<ValueHash256, NodeRecord> _knownRecords = new(MaxKnownRecords, "discv5 known records");
-    private readonly Lock _knownRecordsLock = new();
     private readonly LruCache<SessionKey, long> _endpointChecks = new(MaxEndpointChecks, "discv5 endpoint checks");
     private readonly AddressBurstLimiter _challengeRateLimiter = new(ChallengeRateLimitBurstPerIp, ChallengeRateLimitFilterSize, ChallengeRateLimitWindow);
 
@@ -103,7 +100,7 @@ public sealed class KademliaAdapter(
     /// <inheritdoc/>
     public async Task<bool> Ping(Node receiver, CancellationToken token)
     {
-        RegisterKnownRecord(receiver);
+        TryGetRecord(receiver, out _);
         ReserveEndpointCheck(receiver);
         using PingMsg ping = new(CreateRequestId(), (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
         PongResponseHandler responseHandler = new(receiver);
@@ -117,13 +114,14 @@ public sealed class KademliaAdapter(
 
         if (_logger.IsTrace) _logger.Trace($"Discv5 PING {ping.RequestId} to {receiver:s} succeeded.");
         kademlia.Value.AddOrRefresh(receiver);
+        await RefreshRemoteRecordIfNewer(receiver, responseHandler.EnrSequence, token);
         return true;
     }
 
     /// <inheritdoc/>
     public async Task<Node[]?> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
     {
-        RegisterKnownRecord(receiver);
+        TryGetRecord(receiver, out _);
         Distances distances = GetLookupDistances(receiver, target);
         using FindNodeMsg findNode = new(CreateRequestId(), distances);
         using NodesResponseHandler responseHandler = new(receiver, distances, _distance, recordFilter);
@@ -461,7 +459,7 @@ public sealed class KademliaAdapter(
             return;
         }
 
-        TryGetKnownRecord(nodeId, out NodeRecord? knownRecord);
+        TryGetKnownSignedRecord(nodeId, out NodeRecord? knownRecord);
         if (!PacketCodec.TryDecode(sentChallenge.Packet, nodeId.Bytes, out Packet challengePacket))
         {
             if (_logger.IsTrace) _logger.Trace($"Unable to decode matching discv5 WHOAREYOU challenge for {endpoint}.");
@@ -501,7 +499,7 @@ public sealed class KademliaAdapter(
             return;
         }
 
-        ulong enrSequence = TryGetKnownRecord(nodeId, out NodeRecord? record) ? record.EnrSequence : 0UL;
+        ulong enrSequence = TryGetKnownSignedRecord(nodeId, out NodeRecord? record) ? record.EnrSequence : 0UL;
         byte[] packet = packetCodec.EncodeWhoAreYou(nodeId.Bytes, requestPacket.Nonce.Span, enrSequence);
         SetSentChallenge(challengeKey, packet);
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 WHOAREYOU challenge to {endpoint}, known ENR seq: {enrSequence}, bytes: {packet.Length}.");
@@ -531,8 +529,7 @@ public sealed class KademliaAdapter(
 
                 if (IsAcceptableNodeRecord(nodeRecord, nodeId, endpoint.Address.IsLoopbackOrPrivateOrLinkLocal, recordFilter))
                 {
-                    TrySetKnownRecord(nodeId, nodeRecord, out NodeRecord currentRecord);
-                    messageRecord = currentRecord;
+                    messageRecord = nodeRecord;
                 }
             }
 
@@ -555,10 +552,16 @@ public sealed class KademliaAdapter(
     private async Task HandleMessage(PublicKey remotePublicKey, IPEndPoint endpoint, Discv5Message message, CancellationToken token, NodeRecord? nodeRecord = null)
     {
         ValueHash256 remoteNodeId = remotePublicKey.Hash.ValueHash256;
-        Node remoteNode = new(remotePublicKey, endpoint)
+        Node remoteNode = new(remotePublicKey, endpoint);
+        if (nodeRecord?.Signature is not null)
         {
-            Enr = GetKnownEnr(remoteNodeId, nodeRecord)
-        };
+            remoteNode.SetEnrRecord(nodeRecord);
+        }
+        else if (TryGetKnownSignedRecord(remoteNodeId, out NodeRecord? knownRecord))
+        {
+            remoteNode.SetEnrRecord(knownRecord);
+        }
+
         if (HandleResponse(remoteNodeId, message))
         {
             if (_logger.IsTrace) _logger.Trace($"Handled discv5 response {message.MessageType} {message.RequestId} from {endpoint}.");
@@ -576,6 +579,7 @@ public sealed class KademliaAdapter(
                 }
 
                 kademlia.Value.AddOrRefresh(remoteNode);
+                StartRemoteRecordRefresh(remoteNode, ping.EnrSequence, token);
                 if (!string.IsNullOrEmpty(remoteNode.Enr))
                 {
                     StartEndpointCheck(remoteNode, token);
@@ -595,8 +599,120 @@ public sealed class KademliaAdapter(
         }
     }
 
-    private string? GetKnownEnr(ValueHash256 nodeId, NodeRecord? nodeRecord)
-        => nodeRecord?.EnrString ?? (_knownRecords.TryGet(nodeId, out NodeRecord? knownRecord) ? knownRecord.EnrString : null);
+    private void StartRemoteRecordRefresh(Node node, ulong advertisedSequence, CancellationToken token)
+        => _ = RunRemoteRecordRefresh(node, advertisedSequence, token);
+
+    private async Task RunRemoteRecordRefresh(Node node, ulong advertisedSequence, CancellationToken token)
+    {
+        try
+        {
+            await RefreshRemoteRecordIfNewer(node, advertisedSequence, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task RefreshRemoteRecordIfNewer(Node node, ulong advertisedSequence, CancellationToken token)
+    {
+        if (advertisedSequence == 0)
+        {
+            return;
+        }
+
+        NodeRecord recordState = GetOrSetRecordState(node);
+        if (recordState.Signature is not null && recordState.EnrSequence >= advertisedSequence)
+        {
+            return;
+        }
+
+        if (!recordState.TryRequestEnrSequence(advertisedSequence))
+        {
+            return;
+        }
+
+        try
+        {
+            while (true)
+            {
+                ulong requestedSequence = recordState.RequestingEnrSequence;
+                if (requestedSequence == 0)
+                {
+                    return;
+                }
+
+                if (recordState.Signature is not null && recordState.EnrSequence >= requestedSequence)
+                {
+                    recordState.TryClearEnrRequest(recordState.EnrSequence);
+                    return;
+                }
+
+                using FindNodeMsg findNode = new(CreateRequestId(), new Distances([0]));
+                using SelfRecordResponseHandler responseHandler = new(node, requestedSequence, recordFilter);
+                if (!await SendRequest(node, findNode, responseHandler, _findNodeTimeout, token))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"No discv5 self-record response received from {node} after advertised sequence {requestedSequence}.");
+                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                NodeRecord? record = responseHandler.GetRecord();
+                if (record is null)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 self-record response from {node}; no usable record at advertised sequence {requestedSequence}.");
+                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                if (record.EnrSequence < recordState.RequestingEnrSequence)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring stale discv5 self-record response from {node}; requested sequence {recordState.RequestingEnrSequence}, received {record.EnrSequence}.");
+                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                if (!Node.TryFromDiscoveryEnr(record, out Node? refreshedNode))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 self-record response from {node}; record has no usable discovery endpoint.");
+                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                DiscoveryNodeRecord.TransferRequest(recordState, record);
+                recordState = record;
+                kademlia.Value.AddOrRefresh(refreshedNode);
+                if (recordState.TryClearEnrRequest(recordState.EnrSequence))
+                {
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            recordState.TryClearEnrRequest(recordState.RequestingEnrSequence);
+            if (_logger.IsTrace) _logger.Trace($"Failed to refresh discv5 ENR for {node}: {e}");
+        }
+    }
 
     private bool HandleResponse(ValueHash256 nodeId, Discv5Message message)
     {
@@ -691,7 +807,7 @@ public sealed class KademliaAdapter(
 
     private NodeRecord? GetFindNodeRecord(Node node, bool allowNonRoutableRelays)
     {
-        if (TryGetKnownRecord(node.Id.Hash, out NodeRecord? knownRecord))
+        if (TryGetRecord(node, out NodeRecord? knownRecord))
         {
             return IsAcceptableNodeRecord(knownRecord, node.Id.Hash, allowNonRoutableRelays, recordFilter) ? knownRecord : null;
         }
@@ -705,34 +821,6 @@ public sealed class KademliaAdapter(
         {
             if (_logger.IsTrace) _logger.Trace($"Unable to parse discv5 FINDNODE ENR for {node}: {e}");
             return null;
-        }
-    }
-
-    private void RegisterKnownRecord(Node node)
-    {
-        if (string.IsNullOrEmpty(node.Enr))
-        {
-            return;
-        }
-
-        ValueHash256 nodeId = node.Id.Hash.ValueHash256;
-        if (TryGetKnownRecord(nodeId, out NodeRecord? knownRecord) &&
-            knownRecord.EnrString == node.Enr)
-        {
-            return;
-        }
-
-        try
-        {
-            NodeRecord record = NodeRecord.FromEnrString(node.Enr);
-            if (IsAcceptableNodeRecord(record, node.Id.Hash, node.Address.Address.IsLoopbackOrPrivateOrLinkLocal, recordFilter))
-            {
-                TrySetKnownRecord(node.Id.Hash, record, out _);
-            }
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Unable to parse known discv5 ENR for {node}: {e}");
         }
     }
 
@@ -799,23 +887,34 @@ public sealed class KademliaAdapter(
     private void SetSession(SessionKey sessionKey, Session session)
         => _sessions.Set(sessionKey, session);
 
-    private bool TryGetKnownRecord(ValueHash256 nodeId, [NotNullWhen(true)] out NodeRecord? record) => _knownRecords.TryGet(nodeId, out record);
-
-    internal bool TrySetKnownRecord(ValueHash256 nodeId, NodeRecord record, out NodeRecord currentRecord)
+    private bool TryGetKnownSignedRecord(ValueHash256 nodeId, [NotNullWhen(true)] out NodeRecord? record)
     {
-        lock (_knownRecordsLock)
+        foreach (Node node in kademlia.Value.IterateNodes())
         {
-            if (_knownRecords.TryGet(nodeId, out NodeRecord? knownRecord) && knownRecord.EnrSequence >= record.EnrSequence)
+            if (node.Id.Hash != nodeId)
             {
-                currentRecord = knownRecord;
-                return false;
+                continue;
             }
 
-            _knownRecords.Set(nodeId, record);
-            currentRecord = record;
-            return true;
+            if (TryGetRecord(node, out record) && record.Signature is not null)
+            {
+                return true;
+            }
+
+            record = null;
+            return false;
         }
+
+        record = null;
+        return false;
     }
+
+    private NodeRecord GetOrSetRecordState(Node node) => DiscoveryNodeRecord.GetOrSetState(node, _logger, "discv5", IsAcceptableKnownRecord);
+
+    private bool TryGetRecord(Node node, [NotNullWhen(true)] out NodeRecord? record) => DiscoveryNodeRecord.TryGet(node, _logger, "discv5", IsAcceptableKnownRecord, out record);
+
+    private bool IsAcceptableKnownRecord(Node node, NodeRecord record)
+        => IsAcceptableNodeRecord(record, node.Id.Hash, node.Address.Address.IsLoopbackOrPrivateOrLinkLocal, recordFilter);
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, ValueHash256 expectedNodeId, bool allowNonRoutable, IDiscv5RecordFilter recordFilter)
         => !recordFilter.Excludes(record) &&
