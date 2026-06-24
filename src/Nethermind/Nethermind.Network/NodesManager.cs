@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
 
@@ -130,6 +131,25 @@ public abstract class NodesManager(string path, ILogger logger)
             _logger.Info($"Loaded {nodes.Count} nodes from {Path.GetFullPath(path)}");
 
         return nodes;
+    }
+
+    /// <summary>
+    /// Raised when a node is explicitly removed from this source.
+    /// </summary>
+    public event EventHandler<NodeEventArgs>? NodeRemoved;
+
+    /// <summary>
+    /// Removes a node from the in-memory store and fires <see cref="NodeRemoved"/> as an
+    /// <see cref="ExplicitNodeRemovalEventArgs"/> so downstream listeners (e.g. <c>PeerPool</c>)
+    /// know to disconnect the peer unconditionally.
+    /// </summary>
+    protected bool TryRemoveNode(PublicKey nodeId)
+    {
+        if (!_nodes.TryRemove(nodeId, out NetworkNode? removed))
+            return false;
+
+        NodeRemoved?.Invoke(this, new ExplicitNodeRemovalEventArgs(new Node(removed)));
+        return true;
     }
 
     protected virtual Task SaveFileAsync(CancellationToken cancellationToken = default)

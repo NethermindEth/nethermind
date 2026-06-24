@@ -72,5 +72,5 @@ internal sealed class TestEth2Entry() : EnrContentEntry<byte[]>([1, 2, 3, 4])
 
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
-    protected override void EncodeValue(RlpStream rlpStream) => rlpStream.Encode(Value);
+    protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.Encode(Value);
 }

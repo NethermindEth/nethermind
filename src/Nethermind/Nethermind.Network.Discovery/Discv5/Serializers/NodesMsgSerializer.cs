@@ -19,13 +19,13 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
     protected override int GetContentLengthCore(NodesMsg msg)
         => Rlp.LengthOf(msg.Total) + GetNodeRecordsLength(msg.Records);
 
-    protected override void SerializeCore(NettyRlpStream stream, NodesMsg msg)
+    protected override void SerializeCore<TWriter>(ref TWriter writer, NodesMsg msg)
     {
-        Encode(stream, msg.Total);
-        EncodeNodeRecords(stream, msg.Records);
+        Encode(ref writer, msg.Total);
+        EncodeNodeRecords(ref writer, msg.Records);
     }
 
-    protected override NodesMsg DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override NodesMsg DeserializeCore(in RequestId requestId, ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         int total = ctx.DecodePositiveInt();
         return new NodesMsg(requestId, total, DecodeNodeRecords(ref ctx), owner);
@@ -42,7 +42,8 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void EncodeNodeRecords(NettyRlpStream stream, IReadOnlyList<NodeRecord> records)
+    private static void EncodeNodeRecords<TWriter>(ref TWriter writer, IReadOnlyList<NodeRecord> records)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int contentLength = 0;
         for (int i = 0; i < records.Count; i++)
@@ -50,14 +51,14 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
             contentLength += records[i].GetRlpLengthWithSignature();
         }
 
-        stream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
         for (int i = 0; i < records.Count; i++)
         {
-            records[i].Encode(stream);
+            records[i].Encode(ref writer);
         }
     }
 
-    private NodeRecord[] DecodeNodeRecords(ref Rlp.ValueDecoderContext ctx)
+    private NodeRecord[] DecodeNodeRecords(ref RlpReader ctx)
     {
         int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(checkPosition);

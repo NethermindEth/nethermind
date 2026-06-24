@@ -21,7 +21,7 @@ public sealed class NeighborsMsgSerializer(
 {
     private static readonly RlpLimit NodesRlpLimit = RlpLimit.For<NeighborsMsg>(16, nameof(NeighborsMsg.Nodes));
 
-    private static Node DecodeNode(ref Rlp.ValueDecoderContext ctx)
+    private static Node DecodeNode(ref RlpReader ctx)
     {
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
@@ -42,23 +42,23 @@ public sealed class NeighborsMsgSerializer(
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(contentLength);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
         if (msg.Nodes.Count != 0)
         {
-            stream.StartSequence(nodesContentLength);
+            writer.StartSequence(nodesContentLength);
             for (int i = 0; i < msg.Nodes.Count; i++)
             {
                 Node node = msg.Nodes[i];
-                SerializeNode(stream, node.Address, node.Id.Bytes);
+                SerializeNode(ref writer, node.Address, node.Id.Bytes);
             }
         }
         else
         {
-            stream.Encode(Rlp.OfEmptyList);
+            writer.Encode(Rlp.OfEmptyList);
         }
 
-        stream.Encode(msg.ExpirationTime);
+        writer.Encode(msg.ExpirationTime);
         byteBuffer.ResetIndex();
 
         AddSignatureAndMdc(byteBuffer, totalLength + 1);
@@ -68,7 +68,7 @@ public sealed class NeighborsMsgSerializer(
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
 
-        Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
+        RlpReader ctx = new(Data.AsSpan());
         ctx.ReadSequenceLength();
         int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(nodesEnd);
