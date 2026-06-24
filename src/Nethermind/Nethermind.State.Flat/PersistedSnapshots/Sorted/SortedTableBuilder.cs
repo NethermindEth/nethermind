@@ -33,8 +33,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
     // Last key Added overall — also the last key of the current data block, used to enforce ascending
     // order and to derive the separator when a block flushes. Keys are ≤ 255 bytes.
     private readonly NativeMemoryList<byte> _prevKey;
-    // Number of data blocks flushed so far (the footer's NumDataBlocks).
-    private long _numDataBlocks;
+    // Records Added so far; only its non-zero-ness is consulted, to skip the ascending check on the first.
     private long _count;
 
     public SortedTableBuilder(ref TWriter writer, int restartInterval = SortedTable.DefaultRestartInterval)
@@ -75,11 +74,9 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         _indexBlock.Finish(ref _writer, Block.FlagIndex);
 
         Span<byte> footer = _writer.GetSpan(SortedTable.FooterSize);
-        BinaryPrimitives.WriteInt64LittleEndian(footer, _count);
-        BinaryPrimitives.WriteInt64LittleEndian(footer[sizeof(long)..], _numDataBlocks);
-        BinaryPrimitives.WriteInt64LittleEndian(footer[(2 * sizeof(long))..], indexOffset);
-        footer[3 * sizeof(long)] = (byte)_restartInterval;
-        footer[3 * sizeof(long) + 1] = SortedTable.FormatVersion;
+        BinaryPrimitives.WriteInt64LittleEndian(footer, indexOffset);
+        footer[sizeof(long)] = (byte)_restartInterval;
+        footer[sizeof(long) + 1] = SortedTable.FormatVersion;
         _writer.Advance(SortedTable.FooterSize);
     }
 
@@ -109,7 +106,6 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         }
 
         _indexBlock.AddDeltaValue(sepBuf[..sepLen], blockOffset);
-        _numDataBlocks++;
         _dataBlock.Reset();
     }
 

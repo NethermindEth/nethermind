@@ -392,8 +392,7 @@ public class PersistedSnapshotCompactor(
         ArenaReservation reservation = snapshot.Reservation;
         ArenaByteReader reader = reservation.CreateReader();
         Bound table = new(0, reader.Length);
-        if (!SortedTable.TryReadFooter<ArenaByteReader, NoOpPin>(in reader, table, out SortedTable.Footer footer)
-            || footer.NumDataBlocks == 0)
+        if (!SortedTable.TryReadFooter<ArenaByteReader, NoOpPin>(in reader, table, out SortedTable.Footer footer))
             return;
 
         // The reader is reservation-relative and TouchRangePopulate takes reservation-relative offsets.

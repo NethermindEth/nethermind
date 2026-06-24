@@ -85,6 +85,38 @@ internal static class TestFixtureHelpers
     }
 
     /// <summary>
+    /// Counts the data blocks in the sorted table held in <paramref name="bytes"/> by walking its index
+    /// block — there is one index record per data block. Test-only: the footer does not store a block
+    /// count, and tests use this to assert a fixture exercised the single- vs multi-block paths it intends.
+    /// </summary>
+    public static long DataBlockCount(byte[] bytes)
+    {
+        SpanByteReader reader = new(bytes);
+        Bound table = new(0, reader.Length);
+        if (!SortedTable.TryReadFooter<SpanByteReader, NoOpPin>(in reader, table, out SortedTable.Footer footer))
+            throw new InvalidOperationException("Not a readable sorted table.");
+        long indexStart = SortedTable.IndexBlockStart(table, footer);
+        if (!BlockReader.ReadHeader<SpanByteReader, NoOpPin>(in reader, indexStart, out _, out long recordsEnd, out _, out long recordsStart))
+            throw new InvalidOperationException("Unreadable index block.");
+
+        // Step over each index record ([cp u8][suffixLen u8][keySuffix][vs u8][value]) without decoding it.
+        long pos = indexStart + recordsStart;
+        long end = indexStart + recordsEnd;
+        long count = 0;
+        Span<byte> hdr = stackalloc byte[2];
+        while (pos < end)
+        {
+            reader.TryRead(pos, hdr);
+            int suffixLen = hdr[1];
+            long valueSizeOffset = pos + 2 + suffixLen;
+            reader.TryRead(valueSizeOffset, hdr[..1]);
+            pos = valueSizeOffset + 1 + hdr[0];
+            count++;
+        }
+        return count;
+    }
+
+    /// <summary>
     /// Write <paramref name="data"/> into a fresh reservation on <paramref name="arena"/>,
     /// lease the blob ids referenced by its metadata (skipped when
     /// <paramref name="leaseBlobIds"/> is false) and wrap the result in a

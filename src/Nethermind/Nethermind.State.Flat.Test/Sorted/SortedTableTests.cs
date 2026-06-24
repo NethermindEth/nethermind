@@ -48,13 +48,6 @@ public class SortedTableTests
         return pooled.WrittenSpan.ToArray();
     }
 
-    private static long DataBlockCount(byte[] bytes)
-    {
-        SpanByteReader reader = new(bytes);
-        Assert.That(SortedTable.TryReadFooter<SpanByteReader, NoOpPin>(in reader, new Bound(0, reader.Length), out SortedTable.Footer footer), Is.True);
-        return footer.NumDataBlocks;
-    }
-
     private static bool Seek(byte[] bytes, ReadOnlySpan<byte> key, out byte[] value)
     {
         SpanByteReader reader = new(bytes);
@@ -135,7 +128,7 @@ public class SortedTableTests
     public void Empty_table_seeks_and_enumerates_nothing()
     {
         byte[] bytes = BuildTable([]);
-        Assert.That(DataBlockCount(bytes), Is.EqualTo(0));
+        Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.EqualTo(0));
         Assert.That(Seek(bytes, Bytes.FromHexString("00"), out _), Is.False);
         Assert.That(Enumerate(bytes), Is.Empty);
     }
@@ -146,7 +139,7 @@ public class SortedTableTests
         (byte[] Key, byte[] Value)[] entries = [(Bytes.FromHexString("abcdef"), Bytes.FromHexString("1234"))];
         byte[] bytes = BuildTable(entries);
 
-        Assert.That(DataBlockCount(bytes), Is.EqualTo(1));
+        Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.EqualTo(1));
         Assert.That(Seek(bytes, entries[0].Key, out byte[] got), Is.True);
         Assert.That(got, Is.EqualTo(entries[0].Value));
         Assert.That(Seek(bytes, Bytes.FromHexString("abcdee"), out _), Is.False); // before
@@ -174,7 +167,7 @@ public class SortedTableTests
         }
         byte[] bytes = BuildTable(entries);
 
-        Assert.That(DataBlockCount(bytes), Is.EqualTo(1), "small values keep all records in one block");
+        Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.EqualTo(1), "small values keep all records in one block");
         for (int i = 0; i < count; i++)
         {
             Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
@@ -232,7 +225,7 @@ public class SortedTableTests
         }
         byte[] bytes = BuildTable(entries);
 
-        Assert.That(DataBlockCount(bytes), Is.GreaterThan(1), "200-byte values span multiple 4 KB blocks");
+        Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.GreaterThan(1), "200-byte values span multiple 4 KB blocks");
 
         for (int i = 0; i < count; i++)
         {
@@ -356,7 +349,7 @@ public class SortedTableTests
         SpanByteReader reader = new(bytes);
         Bound table = new(0, reader.Length);
         Assert.That(SortedTable.TryReadFooter<SpanByteReader, NoOpPin>(in reader, table, out SortedTable.Footer footer), Is.True);
-        long m = footer.NumDataBlocks;
+        long m = TestFixtureHelpers.DataBlockCount(bytes);
         Assert.That(m, Is.GreaterThan(1));
 
         for (long i = 0; i < m; i++)
@@ -388,7 +381,7 @@ public class SortedTableTests
             entries[i] = (key, [(byte)(i & 0xFF), (byte)((i >> 8) & 0xFF)]);
         }
         byte[] bytes = BuildTable(entries);
-        Assert.That(DataBlockCount(bytes), Is.GreaterThan(1));
+        Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.GreaterThan(1));
 
         for (int i = 0; i < count; i++)
         {

@@ -22,8 +22,9 @@ internal static class SortedTableReader
         where TReader : IByteReader<TPin>, allows ref struct
     {
         value = default;
-        if (!SortedTable.TryReadFooter<TReader, TPin>(in reader, table, out SortedTable.Footer footer)
-            || footer.NumDataBlocks == 0)
+        // An empty table has an empty index block (no restarts), so the stage-1 ceiling below returns
+        // false — no separate empty check needed.
+        if (!SortedTable.TryReadFooter<TReader, TPin>(in reader, table, out SortedTable.Footer footer))
             return false;
 
         // Stage 1: ceiling over the index block — first separator ≥ target → its data block's table-relative

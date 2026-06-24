@@ -12,7 +12,7 @@ in separate blob arenas; the table stores only small inline values (account RLP,
 data block × M  ; blocks 0..M-2 zero-padded to BlockSize (4096); data block i at i·BlockSize
 index block     ; right after the last (unpadded) data block, at the footer's indexOffset; NOT block-aligned;
                 ;   key = separator, value = data-block table-relative byte offset (u48), delta-coded
-footer          ; [count i64][numDataBlocks i64][indexOffset i64][restartInterval u8][version u8]  (fixed 26 bytes, read first)
+footer          ; [indexOffset i64][restartInterval u8][version u8]  (fixed 10 bytes, read first)
 
 Block (data and index alike):
   [formatFlag u8]                     ; Block => W = 2, Index => W = 4 (offset width in bytes)
@@ -47,7 +47,7 @@ Block (data and index alike):
   block's table-relative **byte offset**, stored RocksDB-style **delta-coded**: the absolute offset at
   every restart head, the delta against the previous index record in between (offsets ascend, so deltas
   are small — with 4 KiB alignment they are the constant `0x1000`). It is located directly by the
-  footer's `indexOffset`, so it needs no block-number address and no padding; the i64 footer fields span
+  footer's `indexOffset`, so it needs no block-number address and no padding; that i64 offset spans
   the full range.
 - A lookup (`SortedTableReader`) reads the footer, then does two `BlockReader.SeekCeiling` calls
   (LevelDB `Block::Iter::Seek`): (1) ceiling over the **index block** (in delta mode) — the first
@@ -57,6 +57,9 @@ Block (data and index alike):
   ceiling binary-searches the restarts (rightmost restart whose first key ≤ target, clamped to restart
   0 when the target precedes the block) then scans forward to `recordsEnd`, reconstructing front-coded
   keys. O(log M) + O(log restarts) random reads + a short in-page scan; no caching, no per-table bloom.
+- A full scan (`SortedTableEnumerator`) walks the **index block** in order, decoding each delta-coded
+  value to get the next data block's byte offset, then emits that block's records — so iteration relies
+  on the index, not on the 4 KiB alignment (which is kept only for page-aligned reads).
 - The **builder** (`SortedTableBuilder`) requires records in **strictly ascending** key order and
   streams them straight into a data `BlockBuilder` (closing + padding at 4096) as they arrive — no
   record buffer, so the table size is bounded by the 256 TiB data region rather than by memory. The index
