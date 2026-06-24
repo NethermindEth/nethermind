@@ -12,7 +12,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// RocksDB-style delta-coded u48 byte offsets — absolute at restart heads, deltas in between (see
 /// <see cref="BlockBuilder.AddDeltaValue"/>). Reuses <see cref="Block.RecordHeader"/> for the per-record
 /// key prefix; the restart binary search and forward scan are its own, since the index scan reconstructs
-/// an absolute offset where the data-block scan (<see cref="BlockReader.SeekCeiling"/>) returns a value
+/// an absolute offset where the data-block scan (<see cref="DataBlockReader.SeekCeiling"/>) returns a value
 /// <see cref="Bound"/>.
 /// </summary>
 internal static class IndexBlockReader

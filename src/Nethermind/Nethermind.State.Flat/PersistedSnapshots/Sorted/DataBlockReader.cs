@@ -10,7 +10,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <summary>Read-side search and header parsing for a <see cref="Block"/>'s data records, whose values
 /// are plain inline bytes. The index block's delta-coded values are read separately by
 /// <see cref="IndexBlockReader"/>.</summary>
-internal static class BlockReader
+internal static class DataBlockReader
 {
     /// <summary>Data-block header (<see cref="Block.FlagBlock"/>, 2-byte offsets): the role flag then
     /// the block-relative records-end and restart count. Read by reinterpreting the leading bytes (the

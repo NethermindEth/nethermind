@@ -27,7 +27,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <c>[lastKey(block i), firstKey(block i+1))</c> (the last block's separator is its own last key) to
 /// that block's table-relative byte offset, so a lookup is an index seek
 /// (<see cref="IndexBlockReader.SeekCeiling"/>) then a data-block seek
-/// (<see cref="BlockReader.SeekCeiling"/>): index → byte offset → data block, and a full scan
+/// (<see cref="DataBlockReader.SeekCeiling"/>): index → byte offset → data block, and a full scan
 /// (<see cref="SortedTableEnumerator{TReader,TPin}"/>) walks the index in order to visit each data block
 /// by offset. The offset is a u48; since offsets ascend, each index record stores its absolute offset
 /// only at a restart (a <c>cp == 0</c> record) and a small delta against the previous record in between

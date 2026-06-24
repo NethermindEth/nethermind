@@ -106,7 +106,7 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         _indexPos = valueSizeOffset + Block.SizePrefix + valueLen;
 
         long blockStart = _tableOffset + _indexRunningValue;
-        if (!BlockReader.TryReadRecordRange<TReader, TPin>(in reader, blockStart, out long recordsStart, out long recordsEnd))
+        if (!DataBlockReader.TryReadRecordRange<TReader, TPin>(in reader, blockStart, out long recordsStart, out long recordsEnd))
             return false;
         _pos = blockStart + recordsStart;
         _blockEnd = blockStart + recordsEnd;

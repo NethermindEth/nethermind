@@ -29,7 +29,7 @@ public class BlockTests
     {
         SpanByteReader reader = new(block);
         Span<byte> keyBuf = stackalloc byte[256];
-        if (!BlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, out int keyLen, out Bound v))
+        if (!DataBlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, out int keyLen, out Bound v))
         {
             key = [];
             value = [];

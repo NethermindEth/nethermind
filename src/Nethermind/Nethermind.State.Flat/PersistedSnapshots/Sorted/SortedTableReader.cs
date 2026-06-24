@@ -8,7 +8,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// <summary>
 /// Lookup over a <see cref="SortedTable"/>: a ceiling search of the index block
 /// (<see cref="IndexBlockReader.SeekCeiling"/>) selects a data block by byte offset, then a ceiling
-/// search of that data block (<see cref="BlockReader.SeekCeiling"/>) resolves the exact key. Wire
+/// search of that data block (<see cref="DataBlockReader.SeekCeiling"/>) resolves the exact key. Wire
 /// layout: <see cref="SortedTable"/>.
 /// </summary>
 internal static class SortedTableReader
@@ -35,7 +35,7 @@ internal static class SortedTableReader
 
         // Stage 2: ceiling over the data block; a hit requires the ceiling key to equal the target.
         Span<byte> keyBuf = stackalloc byte[256];
-        if (!BlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.DataBlockStart(table, byteOffset), key, keyBuf, out int keyLen, out Bound v))
+        if (!DataBlockReader.SeekCeiling<TReader, TPin>(in reader, SortedTable.DataBlockStart(table, byteOffset), key, keyBuf, out int keyLen, out Bound v))
             return false;
         if (!key.SequenceEqual(keyBuf[..keyLen])) return false;
 

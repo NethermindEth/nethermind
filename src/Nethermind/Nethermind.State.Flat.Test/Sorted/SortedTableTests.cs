@@ -353,7 +353,7 @@ public class SortedTableTests
         Assert.That(m, Is.GreaterThan(1));
 
         for (long i = 0; i < m; i++)
-            Assert.That(BlockReader.TryReadRecordRange<SpanByteReader, NoOpPin>(in reader, i * SortedTable.BlockSize, out _, out _),
+            Assert.That(DataBlockReader.TryReadRecordRange<SpanByteReader, NoOpPin>(in reader, i * SortedTable.BlockSize, out _, out _),
                 Is.True, $"data block {i} at {i * SortedTable.BlockSize}");
 
         // The index block is located directly by the footer's IndexOffset (it is not block-aligned and

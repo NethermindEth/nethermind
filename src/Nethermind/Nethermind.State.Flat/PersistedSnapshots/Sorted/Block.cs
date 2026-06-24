@@ -25,7 +25,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// delta-coded value to an absolute at each (see <see cref="BlockBuilder.AddDeltaValue"/>). The
 /// header <c>formatFlag</c> records the block's role and thereby its offset width — a data
 /// <c>Block</c> (capped well under 64 KiB) uses 2-byte offsets, the multi-MB <c>Index</c> uses
-/// 4-byte — so one format serves both. <see cref="BlockReader.SeekCeiling"/> binary searches the
+/// 4-byte — so one format serves both. <see cref="DataBlockReader.SeekCeiling"/> binary searches the
 /// restarts then scans to <c>recordsEnd</c> for the first key ≥ the target (LevelDB
 /// <c>Block::Iter::Seek</c>).
 /// </remarks>
