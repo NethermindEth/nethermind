@@ -157,9 +157,11 @@ public static class StatelessExecutor
         // computed from that same broken provider, so a post-BPO block carries prague-era blob params
         // (wrong TargetBlobCount/BlobBaseFeeUpdateFraction → wrong excess blob gas / blob base fee).
         // MainnetSpecProvider resolves BPO forks correctly without reflection. EEST synthetic tests reuse
-        // chain_id 1 with forks pinned at time 0 and a tiny timestamp, so gate on a post-genesis
-        // timestamp to keep those on the ActiveFork-pinning path below.
-        if (chainConfig.ChainId == BlockchainIds.Mainnet && header.Timestamp >= MainnetSpecProvider.GenesisBlockTimestamp)
+        // chain_id 1 but only ever reach tiny block heights (the zkevm fixtures top out at block #258) and
+        // can pin arbitrary timestamps (e.g. beacon-root tests at ts=ulong.MaxValue), so gate on the block
+        // NUMBER — not the timestamp — to keep every synthetic test on the ActiveFork-pinning path below.
+        const long MainnetRealBlockThreshold = 1_000_000;
+        if (chainConfig.ChainId == BlockchainIds.Mainnet && header.Number >= MainnetRealBlockThreshold)
         {
             return MainnetSpecProvider.Instance;
         }
