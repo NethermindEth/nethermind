@@ -218,7 +218,12 @@ public partial class BlockProcessor(
             receipts,
             static (i, receipts) =>
             {
-                receipts[i].CalculateBloom();
+                // Parallel BAL execution precomputes the bloom; skip recomputing it here.
+                TxReceipt receipt = receipts[i];
+                if (!receipt.IsBloomCalculated)
+                {
+                    receipt.CalculateBloom();
+                }
                 return receipts;
             });
     }

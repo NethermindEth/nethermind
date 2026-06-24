@@ -89,6 +89,9 @@ namespace Nethermind.Core
 
         public Bloom CalculateBloom()
             => _bloom = Logs?.Length == 0 ? Bloom.Empty : new Bloom(Logs);
+
+        /// <summary>Whether the bloom is already set; unlike <see cref="Bloom"/>, reading this does not compute it.</summary>
+        internal bool IsBloomCalculated => _bloom is not null;
     }
 
     public ref struct TxReceiptStructRef(TxReceipt receipt)
