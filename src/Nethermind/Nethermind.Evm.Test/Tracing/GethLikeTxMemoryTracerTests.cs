@@ -495,6 +495,62 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Can_trace_returndata_when_enabled()
+    {
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+        byte[] calleeCode = Prepare.EvmCode
+            .StoreDataInMemory(0, word)
+            .Return(32, 0)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(GethTraceOptions.Default with { EnableReturnData = true }, code);
+
+        GethTxTraceEntry call = trace.Entries.Last(e => e.Opcode == "CALL");
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.ReturnData, Is.Null, "no return data before the call executes");
+            Assert.That(topLevelStop.ReturnData, Is.EqualTo($"0x{word}"), "return data visible after the inner call returns");
+        }
+    }
+
+    [Test]
+    public void ReturnData_is_omitted_when_not_enabled()
+    {
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+        byte[] calleeCode = Prepare.EvmCode
+            .StoreDataInMemory(0, word)
+            .Return(32, 0)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        // Default options leave EnableReturnData off, so the field must never be populated.
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        Assert.That(trace.Entries.All(e => e.ReturnData is null), Is.True);
+    }
+
     private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, string expectedStackTop, int expectedStackCount)
     {
         using (Assert.EnterMultipleScope())
