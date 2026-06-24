@@ -48,7 +48,7 @@ public class XdcPool<T> where T : IXdcPoolItem
         }
     }
 
-    public IReadOnlyCollection<T> GetItems(T item)
+    public IReadOnlyCollection<T> GetItemsByKey(T item)
     {
         using McsLock.Disposable lockRelease = _lock.Acquire();
         {
