@@ -73,8 +73,8 @@ internal static class BlockReader
 
         long restartTableStart = blockStart + Unsafe.SizeOf<Header>();
         long end = blockStart + header.RecordsEnd;
-        Span<byte> ob = stackalloc byte[sizeof(ushort)];
-        Span<byte> rh = stackalloc byte[2]; // [cp u8][suffixLen u8]
+        ushort offset = 0;
+        Block.RecordHeader rec = default;
 
         // Rightmost restart whose first key <= target (cp == 0 there, so the suffix is the full key).
         long lo = 0;
@@ -83,10 +83,10 @@ internal static class BlockReader
         while (lo <= hi)
         {
             long mid = lo + ((hi - lo) >> 1);
-            if (!reader.TryRead(restartTableStart + mid * sizeof(ushort), ob)) return false;
-            long recStart = blockStart + MemoryMarshal.Read<ushort>(ob);
-            if (!reader.TryRead(recStart, rh)) return false;
-            int firstKeyLen = MemoryMarshal.Read<Block.RecordHeader>(rh).SuffixLength;
+            if (!reader.TryRead(restartTableStart + mid * sizeof(ushort), MemoryMarshal.AsBytes(new Span<ushort>(ref offset)))) return false;
+            long recStart = blockStart + offset;
+            if (!reader.TryRead(recStart, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
+            int firstKeyLen = rec.SuffixLength;
             using TPin keyPin = reader.PinBuffer(new Bound(recStart + 2, firstKeyLen));
             if (keyPin.Buffer.SequenceCompareTo(target) <= 0) { found = mid; lo = mid + 1; }
             else hi = mid - 1;
@@ -94,22 +94,21 @@ internal static class BlockReader
 
         // target < firstKey ⇒ ceiling is the very first record; clamp the scan start to restart 0.
         long scanRestart = found < 0 ? 0 : found;
-        if (!reader.TryRead(restartTableStart + scanRestart * sizeof(ushort), ob)) return false;
-        long pos = blockStart + MemoryMarshal.Read<ushort>(ob);
+        if (!reader.TryRead(restartTableStart + scanRestart * sizeof(ushort), MemoryMarshal.AsBytes(new Span<ushort>(ref offset)))) return false;
+        long pos = blockStart + offset;
 
         // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
         while (pos < end)
         {
-            if (!reader.TryRead(pos, rh)) return false;
-            Block.RecordHeader record = MemoryMarshal.Read<Block.RecordHeader>(rh);
-            int cp = record.CommonPrefix;
-            int suffixLen = record.SuffixLength;
+            if (!reader.TryRead(pos, MemoryMarshal.AsBytes(new Span<Block.RecordHeader>(ref rec)))) return false;
+            int cp = rec.CommonPrefix;
+            int suffixLen = rec.SuffixLength;
             if (!reader.TryRead(pos + 2, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
             int kLen = cp + suffixLen;
 
             long valueSizeOffset = pos + 2 + suffixLen;
-            if (!reader.TryRead(valueSizeOffset, rh[..1])) return false;
-            int valueLen = rh[0];
+            byte valueLen = 0;
+            if (!reader.TryRead(valueSizeOffset, new Span<byte>(ref valueLen))) return false;
 
             if (target.SequenceCompareTo(keyBuf[..kLen]) <= 0)
             {
