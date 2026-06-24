@@ -299,10 +299,17 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
-            // EIP-8037 top-frame charge: a value transfer materialising a new (dead, non-precompile)
-            // recipient pays NEW_ACCOUNT state gas, evaluated against pre-transfer state. This mirrors the
-            // ExecuteSimpleTransfer charge for the EVM path (transactions carrying code, calldata, or an
-            // authorization list, which bypass the simple-transfer fast path).
+            // EIP-8037 top-frame charges. At most one of the two below applies: a delegated recipient
+            // has code and is therefore never a dead account, so the branches are mutually exclusive
+            // (expressed as if/else-if to make that explicit and avoid running the second check on
+            // already-exhausted gas). Each exhausts the frame on failure so the EVM halts out of gas.
+            bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
+                && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
+
+            // A value transfer materialising a new (dead, non-precompile) recipient pays NEW_ACCOUNT
+            // state gas, evaluated against pre-transfer state. This mirrors the ExecuteSimpleTransfer
+            // charge for the EVM path (transactions carrying code, calldata, or an authorization list,
+            // which bypass the simple-transfer fast path).
             if (spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
                 && tx.To is not null && tx.SenderAddress != tx.To
                 && !spec.IsPrecompile(tx.To) && WorldState.IsDeadAccount(tx.To))
@@ -310,18 +317,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost(in gasAvailable)))
                     TGasPolicy.Consume(ref gasAvailable, TGasPolicy.GetRemainingGas(in gasAvailable));
             }
-
-            // EIP-8037 top-frame charge: a top-level call whose recipient is an EIP-7702 delegation
-            // also touches the delegation target with a (flat) cold account access. The target is
-            // already pre-warmed for the frame, so this is the sole charge for it. If the gas cannot
-            // be covered the frame is exhausted and the EVM halts out of gas. The delegation is read
-            // from post-authorization state, so a delegation installed by this same transaction's
-            // authorization list is included (and one cleared by it is excluded). Gated on EIP-8037
-            // (the 2-D state-gas model); the standalone EIP-2780 model instead prices the delegation
-            // target touch in the intrinsic cost, so charging here would double-charge.
-            bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
-                && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
-            if (spec.IsEip8037Enabled && !tx.IsContractCreation && recipientIsDelegated)
+            // A top-level call whose recipient is an EIP-7702 delegation also touches the delegation
+            // target with a (flat) cold account access. The target is already pre-warmed for the frame,
+            // so this is the sole charge for it. The delegation is read from post-authorization state,
+            // so a delegation installed by this same transaction's authorization list is included (and
+            // one cleared by it is excluded). Gated on EIP-8037 (the 2-D state-gas model); the standalone
+            // EIP-2780 model instead prices the delegation target touch in the intrinsic cost, so
+            // charging here would double-charge.
+            else if (spec.IsEip8037Enabled && !tx.IsContractCreation && recipientIsDelegated)
             {
                 long delegationCold = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
                 if (!TGasPolicy.UpdateGas(ref gasAvailable, delegationCold))

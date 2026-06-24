@@ -312,9 +312,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // EIP-8038 reprices the SSTORE write component (charged on the first change to a slot,
         // for both fresh slots and resets) to a flat STORAGE_WRITE.
-        long regularWriteCost = spec.IsEip8038Enabled ? Eip8038Constants.StorageWrite : GasCostOf.SSetRegular;
         if (!TIsSlotCreation.IsActive)
             return UpdateGas(ref gas, spec.IsEip8038Enabled ? Eip8038Constants.StorageWrite : spec.GasCosts.SStoreResetCost);
+
+        long regularWriteCost = spec.IsEip8038Enabled ? Eip8038Constants.StorageWrite : GasCostOf.SSetRegular;
         return TEip8037.IsActive switch
         {
             // EIP-8037: charge the regular component first so an OOG halt does not
@@ -634,7 +635,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // precompiles are warm at tx start and charged zero.
         if (!senderIsRecipient && !isPrecompile)
         {
-            cost += RecipientTouchCost(spec, worldState, to, AccessListAddresses(tx));
+            cost += RecipientTouchCost(tx, spec, worldState, to);
             // The new-account surcharge already covers the recipient leaf write.
             if (hasValue && !recipientDead)
                 cost += GasCostOf.StateUpdateEip2780;
@@ -643,29 +644,33 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return cost;
     }
 
-    private static long RecipientTouchCost(IReleaseSpec spec, IReadOnlyStateProvider worldState, Address to, IReadOnlySet<Address>? accessList)
+    private static long RecipientTouchCost(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider worldState, Address to)
     {
-        long cost = accessList?.Contains(to) == true
+        bool toHasCode = worldState.IsContract(to);
+        long cost = IsInAccessList(tx, to)
             ? GasCostOf.WarmStateRead
-            : worldState.IsContract(to) ? GasCostOf.ColdAccountAccess : GasCostOf.ColdAccountAccessNoCodeEip2780;
+            : ColdAccountAccessCost(spec, toHasCode);
 
         // EIP-7702: a delegated recipient also touches its delegation target (always carries code).
         // The EVM warms (does not gas-charge) this target for the top-level frame, so this is the sole charge.
-        if (spec.IsEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(to).AsSpan(), out Address? target))
-            cost += accessList?.Contains(target) == true ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess;
+        // Only an account with code can carry a delegation, so plain EOAs skip the code read entirely.
+        if (spec.IsEip7702Enabled && toHasCode
+            && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(to).AsSpan(), out Address? target))
+            cost += IsInAccessList(tx, target) ? GasCostOf.WarmStateRead : ColdAccountAccessCost(spec, hasCode: true);
 
         return cost;
     }
 
-    private static IReadOnlySet<Address>? AccessListAddresses(Transaction tx)
+    // A single linear scan beats materialising a HashSet: access lists are small and we probe at
+    // most two addresses (the recipient and an optional EIP-7702 delegation target) per transaction.
+    private static bool IsInAccessList(Transaction tx, Address? address)
     {
-        if (tx.AccessList is null) return null;
-        HashSet<Address> set = [];
-        foreach ((Address address, _) in tx.AccessList)
+        if (tx.AccessList is null) return false;
+        foreach ((Address entry, _) in tx.AccessList)
         {
-            set.Add(address);
+            if (entry == address) return true;
         }
-        return set;
+        return false;
     }
 
 }

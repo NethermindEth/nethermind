@@ -36,6 +36,9 @@ public class GasEstimator(
     private const int MaxErrorMargin = 10000;
     private const double BasisPointsDivisor = 10000d;
 
+    // EIP-150: each CALL site reserves 1/64 for the caller, so the optimistic guess must use 64/63, not the search-stop margin.
+    private const double OptimisticMultiplier = 64d / 63d;
+
     private const string InvalidErrorMarginNegative = "Invalid error margin, cannot be negative.";
     private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
     private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
@@ -147,7 +150,7 @@ public class GasEstimator(
 
         double marginMultiplier = errorMargin == 0 ? 1d : errorMargin / BasisPointsDivisor + 1d;
         long cap = bounds.RightBound;
-        (long leftBound, long rightBound) = TryOptimisticEstimate(tx, header, gasTracer, bounds, marginMultiplier, token);
+        (long leftBound, long rightBound) = TryOptimisticEstimate(tx, header, gasTracer, bounds, OptimisticMultiplier, token);
 
         // Narrow bounds until within the error margin (Geth approach).
         while (ShouldContinueSearch(leftBound, rightBound, marginMultiplier - 1d))
@@ -167,13 +170,13 @@ public class GasEstimator(
 
     private (long Left, long Right) TryOptimisticEstimate(
         Transaction tx, BlockHeader header, EstimateGasTracer gasTracer,
-        EstimationBounds bounds, double marginMultiplier, CancellationToken token)
+        EstimationBounds bounds, double optimisticMultiplier, CancellationToken token)
     {
         long leftBound = bounds.LeftBound;
         long rightBound = bounds.RightBound;
 
         // Optimistic first guess (Geth approach): reduces binary search iterations in most cases.
-        long optimistic = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginMultiplier);
+        long optimistic = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * optimisticMultiplier);
         if (optimistic > leftBound && optimistic < rightBound)
         {
             if (TryExecute(tx, header, optimistic, gasTracer, token, out _))
@@ -215,7 +218,7 @@ public class GasEstimator(
         (rightBound - leftBound) / (double)leftBound > threshold && leftBound + 1 < rightBound;
 
     private static bool IsSimpleTransfer(Transaction tx) =>
-        tx.To is not null && tx.Data.IsEmpty;
+        tx.To is not null && tx.Data.IsEmpty && !tx.HasAuthorizationList;
 
     private static string GetError(EstimateGasTracer gasTracer, string defaultError = TransactionExecutionFails) =>
         gasTracer switch

@@ -53,9 +53,10 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
     private static readonly byte[] Salt = new UInt256(123).ToBigEndian();
 
     private EthereumEcdsa _ecdsa;
-    // Runtime code that self-destructs to its own address (ADDRESS; SELFDESTRUCT).
-    private byte[] _selfDestructToSelf;
-    private byte[] _selfDestructToSelfInit;
+    // Runtime code that writes storage slot 0, then self-destructs to its own address
+    // (SSTORE slot0=1; ADDRESS; SELFDESTRUCT). The SSTORE lets tests observe storage clearing.
+    private byte[] _sstoreThenSelfDestructToSelf;
+    private byte[] _sstoreThenSelfDestructToSelfInit;
 
     [SetUp]
     public override void Setup()
@@ -66,12 +67,15 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
         TestState.Commit(SpecProvider.GenesisSpec);
         TestState.CommitTree(0);
 
-        _selfDestructToSelf = Prepare.EvmCode
+        _sstoreThenSelfDestructToSelf = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
             .Op(Instruction.ADDRESS)
             .Op(Instruction.SELFDESTRUCT)
             .Done;
-        _selfDestructToSelfInit = Prepare.EvmCode
-            .ForInitOf(_selfDestructToSelf)
+        _sstoreThenSelfDestructToSelfInit = Prepare.EvmCode
+            .ForInitOf(_sstoreThenSelfDestructToSelf)
             .Done;
     }
 
@@ -81,10 +85,10 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
     {
         UInt256 balance = balanceEther.Ether;
         Address createTxAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
-        Address child = ContractAddress.From(createTxAddress, Salt, _selfDestructToSelfInit);
+        Address child = ContractAddress.From(createTxAddress, Salt, _sstoreThenSelfDestructToSelfInit);
 
         byte[] code = Prepare.EvmCode
-            .Create2(_selfDestructToSelfInit, Salt, balance)
+            .Create2(_sstoreThenSelfDestructToSelfInit, Salt, balance)
             .Call(child, 500_000)
             .STOP()
             .Done;
@@ -178,7 +182,7 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
     public void Self_destruct_to_self_not_in_same_tx_is_unchanged_no_op()
     {
         // Already a no-op since EIP-6780; EIP-8246 leaves it untouched (balance kept, code intact).
-        byte[] runtime = _selfDestructToSelf;
+        byte[] runtime = _sstoreThenSelfDestructToSelf;
         byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
         Address contract = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
 
@@ -210,10 +214,10 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
         UInt256 endowment = 1.Ether;
 
         Address factory = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
-        Address child = ContractAddress.From(factory, Salt, _selfDestructToSelf);
+        Address child = ContractAddress.From(factory, Salt, _sstoreThenSelfDestructToSelf);
 
         byte[] factoryRuntime = Prepare.EvmCode
-            .Create2(_selfDestructToSelf, Salt, endowment)
+            .Create2(_sstoreThenSelfDestructToSelf, Salt, endowment)
             .STOP()
             .Done;
         byte[] factoryInit = Prepare.EvmCode.ForInitOf(factoryRuntime).Done;
@@ -256,9 +260,13 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
 
     private void AssertBalanceOnly(Address address, UInt256 expectedBalance)
     {
-        Assert.That(TestState.AccountExists(address), Is.True);
-        Assert.That(TestState.GetBalance(address), Is.EqualTo(expectedBalance), "balance preserved");
-        Assert.That(TestState.GetNonce(address), Is.EqualTo(UInt256.Zero), "nonce reset");
-        Assert.That(TestState.IsContract(address), Is.False, "code cleared");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.AccountExists(address), Is.True);
+            Assert.That(TestState.GetBalance(address), Is.EqualTo(expectedBalance), "balance preserved");
+            Assert.That(TestState.GetNonce(address), Is.EqualTo(UInt256.Zero), "nonce reset");
+            Assert.That(TestState.IsContract(address), Is.False, "code cleared");
+            Assert.That(TestState.Get(new StorageCell(address, UInt256.Zero)).IsZero(), Is.True, "storage cleared");
+        }
     }
 }
