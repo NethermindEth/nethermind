@@ -67,7 +67,7 @@ public class ImporterTests
         {
             byte[]? rlp = reader.GetAccountRaw(new Hash256(addr.ToAccountPath.Bytes));
             Assert.That(rlp, Is.Not.Null, $"account {addr} should have been imported");
-            Rlp.ValueDecoderContext ctx = new(rlp!);
+            RlpReader ctx = new(rlp!);
             Assert.That(AccountDecoder.Instance.Decode(ref ctx), Is.EqualTo(expected));
         }
     }

@@ -147,7 +147,8 @@ public class TaikoModule : Module
             .AddStep(typeof(InitializeBlockchainTaiko))
 
             // L1 origin store
-            .AddSingleton<RlpDecoder<L1Origin>, L1OriginDecoder>()
+            .AddSingleton<L1OriginDecoder>()
+            .AddSingleton<RlpDecoder<L1Origin>>(ctx => ctx.Resolve<L1OriginDecoder>())
             .AddDatabase(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
@@ -168,6 +169,7 @@ public class TaikoModule : Module
             .AddScoped<IBlockProcessor, TaikoBlockProcessor>()
             .AddScoped<IExecutionRequestsProcessor, TaikoExecutionRequestsProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
+            .AddSingleton<IBlockProductionPolicy>(NeverStartBlockProductionPolicy.Instance)
 
             .AddSingleton<IRlpDecoder<Transaction>>((_) => TxDecoder.Instance)
             .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, ISpecProvider, IRlpDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)

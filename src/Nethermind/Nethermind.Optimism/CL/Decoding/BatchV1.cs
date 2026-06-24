@@ -148,7 +148,7 @@ public sealed class BatchV1
     private (UInt256 Value, UInt256 GasPrice, byte[] Data) DecodeLegacyTransaction(ReadOnlySpan<byte> encoded)
     {
         // rlp_encode(value, gasPrice, data)
-        Rlp.ValueDecoderContext decoder = new(encoded);
+        RlpReader decoder = new(encoded);
         int length = decoder.ReadSequenceLength();
         UInt256 value = decoder.DecodeUInt256();
         UInt256 gasPrice = decoder.DecodeUInt256();
@@ -159,7 +159,7 @@ public sealed class BatchV1
     private (UInt256 Value, UInt256 GasPrice, byte[] Data, AccessList? AccessList) DecodeAccessListTransaction(ReadOnlySpan<byte> encoded)
     {
         // 0x01 ++ rlp_encode(value, gasPrice, data, accessList)
-        Rlp.ValueDecoderContext decoder = new(encoded);
+        RlpReader decoder = new(encoded);
         int length = decoder.ReadSequenceLength();
         UInt256 value = decoder.DecodeUInt256();
         UInt256 gasPrice = decoder.DecodeUInt256();
@@ -171,7 +171,7 @@ public sealed class BatchV1
     private (UInt256 Value, UInt256 MaxPriorityFeePerGas, UInt256 MaxFeePerGas, byte[] Data, AccessList? AccessList) DecodeEip1559Transaction(ReadOnlySpan<byte> encoded)
     {
         // 0x02 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)
-        Rlp.ValueDecoderContext decoder = new(encoded);
+        RlpReader decoder = new(encoded);
         int length = decoder.ReadSequenceLength();
         UInt256 value = decoder.DecodeUInt256();
         UInt256 maxPriorityFeePerGas = decoder.DecodeUInt256();

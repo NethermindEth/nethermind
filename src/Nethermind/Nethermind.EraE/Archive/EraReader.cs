@@ -183,13 +183,13 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new(buffer.Span);
+        RlpReader ctx = new(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
     }
 
     private BlockBody DecodeBody(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new(buffer.Span);
+        RlpReader ctx = new(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 }

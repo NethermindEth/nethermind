@@ -42,6 +42,7 @@ public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWra
     public bool IsTracingInstructions => InnerTracer.IsTracingInstructions;
 
     public bool IsTracingRefunds => InnerTracer.IsTracingRefunds;
+    public bool IsTracingReturnData => InnerTracer.IsTracingReturnData;
 
     public bool IsTracingCode => InnerTracer.IsTracingCode;
 
@@ -214,6 +215,9 @@ public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWra
 
     public void SetOperationMemorySize(ulong newSize)
         => InnerTracer.SetOperationMemorySize(newSize);
+
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+        => InnerTracer.SetOperationReturnData(returnData);
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         => InnerTracer.ReportMemoryChange(offset, data);

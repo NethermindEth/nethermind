@@ -138,8 +138,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncPivotHash))
             {
-                Hash256? pivotHash = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash)?
-                    .AsRlpValueContext().DecodeKeccak();
+                byte[]? pivotHashRlp = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash);
+                Hash256? pivotHash = pivotHashRlp is null ? null : new RlpReader(pivotHashRlp).DecodeKeccak();
                 if (pivotHash is not null)
                 {
                     _currentBeaconPivot =
