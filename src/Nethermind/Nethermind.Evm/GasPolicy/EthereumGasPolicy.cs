@@ -589,12 +589,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         long cost = accessList?.Contains(to) == true
             ? GasCostOf.WarmStateRead
-            : worldState.IsContract(to) ? GasCostOf.ColdAccountAccess : GasCostOf.ColdAccountAccessNoCodeEip2780;
+            : ColdAccountAccessCost(spec, worldState.IsContract(to));
 
         // EIP-7702: a delegated recipient also touches its delegation target (always carries code).
         // The EVM warms (does not gas-charge) this target for the top-level frame, so this is the sole charge.
         if (spec.IsEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(to).AsSpan(), out Address? target))
-            cost += accessList?.Contains(target) == true ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess;
+            cost += accessList?.Contains(target) == true ? GasCostOf.WarmStateRead : ColdAccountAccessCost(spec, hasCode: true);
 
         return cost;
     }

@@ -12,6 +12,11 @@ namespace Nethermind.Core;
 /// therefore placeholders equal to the current (pre-8038) costs, so that enabling the EIP is a no-op
 /// for the base constants until the final figures land. The derived parameters are expressed via the
 /// EIP's derivation formulas so they recompute automatically once the base values are finalized.
+/// The EIP's full parameter set is defined here to track the spec and pin the derivation formulas
+/// (see <c>Eip8038ConstantsTests</c>); some parameters (e.g. <see cref="CreateAccess"/>,
+/// <see cref="CallValue"/>, <see cref="StorageWrite"/>, <see cref="StorageClearRefund"/>) are not yet
+/// referenced by the charging code and will be wired in alongside the remaining repricing once the EIP
+/// is finalized.
 /// </remarks>
 public static class Eip8038Constants
 {

@@ -100,6 +100,49 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
                         + ExtraWarmAccess;             // EIP-8038 extra access
         AssertGas(result, expected);
     }
+
+    [Test]
+    public void ExtCodeSize_charges_extra_warm_access_on_warm_account()
+    {
+        // The first EXTCODESIZE warms Target; the second pays the warm access cost plus the EIP-8038 extra.
+        byte[] code = Prepare.EvmCode
+            .PushData(Target).Op(Instruction.EXTCODESIZE).Op(Instruction.POP)
+            .PushData(Target).Op(Instruction.EXTCODESIZE).Op(Instruction.POP)
+            .STOP()
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        long expected = GasCostOf.Transaction
+                        + 2 * GasCostOf.VeryLow        // two PUSH20 target
+                        + GasCostOf.ColdAccountAccess  // cold EXTCODESIZE access (first)
+                        + GasCostOf.WarmStateRead      // warm EXTCODESIZE access (second)
+                        + 2 * ExtraWarmAccess          // EIP-8038 extra access on both
+                        + 2 * GasCostOf.Base;          // two POP
+        AssertGas(result, expected);
+    }
+
+    [Test]
+    public void ExtCodeCopy_charges_extra_warm_access_on_warm_account()
+    {
+        // The first EXTCODECOPY warms Target; the second pays the warm access cost plus the EIP-8038 extra.
+        byte[] code = Prepare.EvmCode
+            .PushData(0).PushData(0).PushData(0).PushData(Target).Op(Instruction.EXTCODECOPY)
+            .PushData(0).PushData(0).PushData(0).PushData(Target).Op(Instruction.EXTCODECOPY)
+            .STOP()
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        long expected = GasCostOf.Transaction
+                        + 8 * GasCostOf.VeryLow        // two groups of three PUSH1 0x00 + PUSH20 target
+                        + GasCostOf.ColdAccountAccess  // cold EXTCODECOPY access (first)
+                        + GasCostOf.WarmStateRead      // warm EXTCODECOPY access (second)
+                        + 2 * ExtraWarmAccess;         // EIP-8038 extra access on both
+        AssertGas(result, expected);
+    }
 }
 
 /// <summary>
