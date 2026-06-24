@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -158,6 +159,77 @@ public class ProgressTrackerTests
         Assert.That(memDb[ProgressTracker.ACC_PROGRESS_KEY], Is.EqualTo(Keccak.MaxValue.BytesToArray()));
     }
 
+    [Test]
+    public void Requeued_account_refresh_request_preserves_paths()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker();
+        progressTracker.EnqueueAccountRefresh(TestItem.Tree.AccountsWithPaths[0], null, null);
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? firstBatch), Is.False);
+        Assert.That(firstBatch!.AccountsToRefreshRequest, Is.Not.Null);
+        Assert.That(firstBatch.AccountsToRefreshRequest!.Paths.Count, Is.EqualTo(1));
+
+        progressTracker.ReportAccountRefreshFinished(firstBatch.AccountsToRefreshRequest);
+        firstBatch.Dispose();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? retryBatch), Is.False);
+        Assert.That(retryBatch!.AccountsToRefreshRequest, Is.Not.Null);
+        Assert.That(retryBatch.AccountsToRefreshRequest!.Paths.Count, Is.EqualTo(1));
+        retryBatch.Dispose();
+    }
+
+    [Test]
+    public void Account_refresh_request_uses_queue_when_counter_lags()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker();
+        progressTracker.EnqueueAccountRefresh(TestItem.Tree.AccountsWithPaths[0], null, null);
+        SetAccountRefreshQueueCount(progressTracker, 0);
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? batch), Is.False);
+        Assert.That(batch!.AccountsToRefreshRequest, Is.Not.Null);
+        Assert.That(batch.AccountsToRefreshRequest!.Paths.Count, Is.EqualTo(1));
+        batch.Dispose();
+    }
+
+    [Test]
+    public void Queued_storage_request_completion_allows_range_phase_to_finish()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker();
+        progressTracker.EnqueueAccountStorage(TestItem.Tree.AccountsWithPaths[0]);
+
+        FinishAccountRangePhase(progressTracker);
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? storageBatch), Is.False);
+        Assert.That(storageBatch!.StorageRangeRequest, Is.Not.Null);
+
+        progressTracker.ReportFullStorageRequestFinished(storageBatch.StorageRangeRequest!.Accounts.Count);
+        storageBatch.Dispose();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? finalBatch), Is.True);
+        Assert.That(finalBatch, Is.Null);
+    }
+
+    [Test]
+    public void Slot_range_request_completion_allows_range_phase_to_finish()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker();
+        progressTracker.EnqueueNextSlot(new StorageRange()
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { TestItem.Tree.AccountsWithPaths[0] },
+        });
+
+        FinishAccountRangePhase(progressTracker);
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? storageBatch), Is.False);
+        Assert.That(storageBatch!.StorageRangeRequest, Is.Not.Null);
+
+        progressTracker.ReportFullStorageRequestFinished(storageBatch.StorageRangeRequest!.Accounts.Count);
+        storageBatch.Dispose();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? finalBatch), Is.True);
+        Assert.That(finalBatch, Is.Null);
+    }
+
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x2000000000000000000000000000000000000000000000000000000000000000", null, "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     [TestCase("0x2000000000000000000000000000000000000000000000000000000000000000", "0x4000000000000000000000000000000000000000000000000000000000000000", "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0x67ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null, "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
@@ -230,5 +302,23 @@ public class ProgressTrackerTests
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
         SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
         return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+    }
+
+    private static void FinishAccountRangePhase(ProgressTracker progressTracker)
+    {
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.False);
+        Assert.That(request!.AccountRangeRequest, Is.Not.Null);
+
+        ValueHash256 hashLimit = request.AccountRangeRequest!.LimitHash!.Value;
+        progressTracker.UpdateAccountRangePartitionProgress(hashLimit, Keccak.MaxValue, false);
+        progressTracker.ReportAccountRangePartitionFinished(hashLimit);
+        request.Dispose();
+    }
+
+    private static void SetAccountRefreshQueueCount(ProgressTracker progressTracker, int value)
+    {
+        FieldInfo? field = typeof(ProgressTracker).GetField("_accountRefreshQueueCount", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(field, Is.Not.Null);
+        field!.SetValue(progressTracker, value);
     }
 }
