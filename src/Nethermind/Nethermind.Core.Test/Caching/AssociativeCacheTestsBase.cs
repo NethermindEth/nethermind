@@ -135,8 +135,11 @@ public abstract class AssociativeCacheTestsBase
 
         if (capacity == 0)
         {
-            Assert.That(Get(in _keys[0]), Is.False);
-            Assert.That(GetCount(), Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Get(in _keys[0]), Is.False);
+                Assert.That(GetCount(), Is.EqualTo(0));
+            }
         }
         else
         {
@@ -267,18 +270,27 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Contains_works()
     {
-        Assert.That(Contains(in _keys[0]), Is.False);
-        Assert.That(Get(in _keys[0]), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.False);
+            Assert.That(Get(in _keys[0]), Is.False);
+        }
 
         Set(in _keys[0], 0);
 
-        Assert.That(Contains(in _keys[0]), Is.True);
-        Assert.That(Get(in _keys[0]), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.True);
+            Assert.That(Get(in _keys[0]), Is.True);
+        }
 
         Delete(in _keys[0]);
 
-        Assert.That(Contains(in _keys[0]), Is.False);
-        Assert.That(Get(in _keys[0]), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.False);
+            Assert.That(Get(in _keys[0]), Is.False);
+        }
     }
 
     [Test]

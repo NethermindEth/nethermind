@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -100,16 +99,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     if (executionReverted)
                     {
-                        // Check the raw revert bytes to determine if the selector is Error(string) or Panic(uint256).
-                        // Using the bytes rather than errorMessage avoids the sentinel-string collision
-                        // (e.g. require(false, "revert") would be misidentified as the Revert sentinel).
-                        bool isKnownRevertType = executionRevertedReason is { Length: >= 4 } &&
-                            (executionRevertedReason.AsSpan(0, 4).SequenceEqual(TransactionSubstate.ErrorFunctionSelector) ||
-                             executionRevertedReason.AsSpan(0, 4).SequenceEqual(TransactionSubstate.PanicFunctionSelector));
-
-                        string revertMessage = isKnownRevertType && errorMessage is not null
-                            ? "execution reverted: " + errorMessage
-                            : "execution reverted";
+                        string revertMessage = TransactionSubstate.BuildRevertMessage(executionRevertedReason, errorMessage);
 
                         if (executionRevertedReason is not null)
                         {
@@ -161,7 +151,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 // Match Geth: eth_estimateGas treats gas: 0x0 the same as an omitted gas field and
                 // bounds the binary search by blockGasLimit (then caps at gasCap inside ToTransaction).
-                if (transactionCall.Gas is null or 0)
+                if (!transactionCall.Gas.IsGasCapped())
                 {
                     if (BlockOverride?.GasLimit is not null)
                     {

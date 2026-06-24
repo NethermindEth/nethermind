@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -19,8 +20,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.Test.Modules.Eth;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -566,10 +569,13 @@ public class TraceRpcModuleTests
         await blockchain.AddBlock(transaction);
         string[] traceTypes = { "trace" };
         ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
-        Assert.That(traces.Data.Action!.From, Is.EqualTo(TestItem.AddressB));
-        Assert.That(traces.Data.Action.To, Is.EqualTo(TestItem.AddressC));
-        Assert.That(traces.Data.Action.CallType, Is.EqualTo("call"));
-        Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Data.Action!.From, Is.EqualTo(TestItem.AddressB));
+            Assert.That(traces.Data.Action.To, Is.EqualTo(TestItem.AddressC));
+            Assert.That(traces.Data.Action.CallType, Is.EqualTo("call"));
+            Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
+        }
     }
 
     [Test]
@@ -595,9 +601,12 @@ public class TraceRpcModuleTests
         await blockchain.AddBlock(transaction);
         string[] traceTypes = { "rewards" };
         ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
-        Assert.That(traces.Data.Action!.CallType, Is.EqualTo("reward"));
-        Assert.That(traces.Data.Action.Value, Is.EqualTo(UInt256.Parse("2000000000000000000")));
-        Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Data.Action!.CallType, Is.EqualTo("reward"));
+            Assert.That(traces.Data.Action.Value, Is.EqualTo(UInt256.Parse("2000000000000000000")));
+            Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
+        }
     }
 
     [Test]
@@ -659,9 +668,12 @@ public class TraceRpcModuleTests
         string[] traceTypes = { "trace" };
 
         ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_call(transactionRpc, traceTypes);
-        Assert.That(traces.Data.Action!.CallType, Is.EqualTo("call"));
-        Assert.That(traces.Data.Action.From, Is.EqualTo(TestItem.AddressB));
-        Assert.That(traces.Data.Action.To, Is.EqualTo(TestItem.AddressC));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Data.Action!.CallType, Is.EqualTo("call"));
+            Assert.That(traces.Data.Action.From, Is.EqualTo(TestItem.AddressB));
+            Assert.That(traces.Data.Action.To, Is.EqualTo(TestItem.AddressC));
+        }
     }
 
     [Test]
@@ -691,10 +703,7 @@ public class TraceRpcModuleTests
             TransactionForRpc.FromTransaction(transaction), traceTypes, new(lastBlockHash)
         );
 
-        ParityAccountStateChange? stateChanges = traces.Data.StateChanges?.GetValueOrDefault(address);
-        Assert.That(stateChanges?.Balance, Is.Not.Null);
-        Assert.That(stateChanges!.Balance!.Before, Is.EqualTo(balance));
-        Assert.That(stateChanges.Balance.After, Is.EqualTo(balance - send));
+        AssertBalanceChange(traces.Data.StateChanges?.GetValueOrDefault(address), balance, balance - send);
     }
 
     [Test]
@@ -725,10 +734,7 @@ public class TraceRpcModuleTests
             new(lastBlockHash)
         );
 
-        ParityAccountStateChange? stateChanges = traces.Data.Single().StateChanges?.GetValueOrDefault(address);
-        Assert.That(stateChanges?.Balance, Is.Not.Null);
-        Assert.That(stateChanges!.Balance!.Before, Is.EqualTo(balance));
-        Assert.That(stateChanges.Balance.After, Is.EqualTo(balance - send));
+        AssertBalanceChange(traces.Data.Single().StateChanges?.GetValueOrDefault(address), balance, balance - send);
     }
 
     [Test]
@@ -757,10 +763,7 @@ public class TraceRpcModuleTests
             TxDecoder.Instance.Encode(transaction).Bytes, traceTypes
         );
 
-        ParityAccountStateChange? stateChanges = traces.Data.StateChanges?.GetValueOrDefault(address);
-        Assert.That(stateChanges?.Balance, Is.Not.Null);
-        Assert.That(stateChanges!.Balance!.Before, Is.EqualTo(balance));
-        Assert.That(stateChanges.Balance.After, Is.EqualTo(balance - send));
+        AssertBalanceChange(traces.Data.StateChanges?.GetValueOrDefault(address), balance, balance - send);
     }
 
     [Test]
@@ -771,8 +774,11 @@ public class TraceRpcModuleTests
 
         ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_rawTransaction([0xC0], ["trace"]);
 
-        Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
-        Assert.That(traces.Result.Error, Is.EqualTo("Invalid RLP."));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+            Assert.That(traces.Result.Error, Is.EqualTo("Invalid RLP."));
+        }
     }
 
     [Test]
@@ -856,8 +862,11 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_callMany", calls);
 
-        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}}],\"id\":67}}"), serialized.Replace("\"", "\\\""));
-        Assert.That(serialized_without_blockParameter_param, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}}],\"id\":67}}"), serialized_without_blockParameter_param.Replace("\"", "\\\""));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}}],\"id\":67}}"), serialized.Replace("\"", "\\\""));
+            Assert.That(serialized_without_blockParameter_param, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}}],\"id\":67}}"), serialized_without_blockParameter_param.Replace("\"", "\\\""));
+        }
     }
 
     [Test]
@@ -942,16 +951,19 @@ public class TraceRpcModuleTests
         Assert.That(System.Linq.Enumerable.Count(traces.Data), Is.EqualTo(1));
         Dictionary<Address, ParityAccountStateChange> state = traces.Data.ElementAt(0).StateChanges!;
 
-        Assert.That(state.Count, Is.EqualTo(3));
-        Assert.That(state[TestItem.AddressA].Nonce!.Before, Is.EqualTo(accountA.Nonce));
-        Assert.That(state[TestItem.AddressD].Balance!.Before, Is.EqualTo(accountD.Balance));
-        Assert.That(state[TestItem.AddressA].Balance!.Before, Is.EqualTo(accountA.Balance));
-        Assert.That(state[TestItem.AddressF].Balance!.Before, Is.EqualTo(null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.Count, Is.EqualTo(3));
+            Assert.That(state[TestItem.AddressA].Nonce!.Before, Is.EqualTo(accountA.Nonce));
+            Assert.That(state[TestItem.AddressD].Balance!.Before, Is.EqualTo(accountD.Balance));
+            Assert.That(state[TestItem.AddressA].Balance!.Before, Is.EqualTo(accountA.Balance));
+            Assert.That(state[TestItem.AddressF].Balance!.Before, Is.EqualTo(null));
 
-        Assert.That(state[TestItem.AddressA].Nonce!.After, Is.EqualTo(accountA.Nonce + 1));
-        Assert.That(state[TestItem.AddressD].Balance!.After, Is.EqualTo(accountD.Balance + 21000 * tx.GasPrice));
-        Assert.That(state[TestItem.AddressA].Balance!.After, Is.EqualTo(accountA.Balance - 21000 * tx.GasPrice - tx.Value));
-        Assert.That(state[TestItem.AddressF].Balance!.After, Is.EqualTo(accountF.Balance + tx.Value));
+            Assert.That(state[TestItem.AddressA].Nonce!.After, Is.EqualTo(accountA.Nonce + 1));
+            Assert.That(state[TestItem.AddressD].Balance!.After, Is.EqualTo(accountD.Balance + 21000 * tx.GasPrice));
+            Assert.That(state[TestItem.AddressA].Balance!.After, Is.EqualTo(accountA.Balance - 21000 * tx.GasPrice - tx.Value));
+            Assert.That(state[TestItem.AddressF].Balance!.After, Is.EqualTo(accountF.Balance + tx.Value));
+        }
     }
 
     [TestCase(
@@ -1179,9 +1191,12 @@ public class TraceRpcModuleTests
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = module.trace_transaction(TestItem.KeccakA);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure), "must not proceed on a block that is not on the canonical chain");
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput), "non-canonical block lookup should signal an invalid request, not a server error");
-        Assert.That(result.Result.Error, Does.Contain("not canonical"), "error message must identify the cause so callers can distinguish this from a missing block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure), "must not proceed on a block that is not on the canonical chain");
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput), "non-canonical block lookup should signal an invalid request, not a server error");
+            Assert.That(result.Result.Error, Does.Contain("not canonical"), "error message must identify the cause so callers can distinguish this from a missing block");
+        }
     }
 
     [Test]
@@ -1191,9 +1206,12 @@ public class TraceRpcModuleTests
 
         ResultWrapper<ParityTxTraceFromReplay> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"]);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure), "must not proceed on a block that is not on the canonical chain");
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput), "non-canonical block lookup should signal an invalid request, not a server error");
-        Assert.That(result.Result.Error, Does.Contain("not canonical"), "error message must identify the cause so callers can distinguish this from a missing block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure), "must not proceed on a block that is not on the canonical chain");
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput), "non-canonical block lookup should signal an invalid request, not a server error");
+            Assert.That(result.Result.Error, Does.Contain("not canonical"), "error message must identify the cause so callers can distinguish this from a missing block");
+        }
     }
 
     [Test]
@@ -1421,10 +1439,13 @@ public class TraceRpcModuleTests
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
             context.TraceRpcModule.trace_block(BlockParameter.Latest, "NonExistentFork");
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(result.Result.Error, Does.Contain(nameof(Berlin)),
-            "the error message must list known fork names so callers can correct the request");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Does.Contain(nameof(Berlin)),
+                "the error message must list known fork names so callers can correct the request");
+        }
     }
 
     [Test]
@@ -1436,9 +1457,12 @@ public class TraceRpcModuleTests
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
             context.TraceRpcModule.trace_block(BlockParameter.Latest, nameof(Berlin));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(result.Result.Error, Does.Contain("does not support fork overrides"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Does.Contain("does not support fork overrides"));
+        }
     }
 
     private static byte[] BuildModExpInput()
@@ -1524,5 +1548,61 @@ public class TraceRpcModuleTests
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
             "tracing a London block with a pre-EIP-1559 fork override must succeed (AdjustHeaderForSpec zeroes BaseFeePerGas)");
+    }
+
+    /// <summary>
+    /// Regression: without the NoEip158Spec fix, state overrides committed with EIP-158 enabled
+    /// would delete an account that is EIP-158 empty (no code/balance/nonce) even if it has storage,
+    /// causing IsNonZeroAccount to short-circuit false and silently bypass EIP-7610 collision detection.
+    /// </summary>
+    [Test]
+    public async Task Trace_call_state_override_with_storage_blocks_create2_via_eip7610()
+    {
+        (object stateOverride, object transaction) = EthRpcModuleTests.BuildEip7610Fixture();
+        Context context = new();
+        await context.Build(new TestSpecProvider(Osaka.Instance));
+        string serialized = await RpcTest.TestSerializedRequest(
+            context.TraceRpcModule,
+            "trace_call", transaction, new[] { "trace" }, "latest", stateOverride);
+
+        JToken parsed = JToken.Parse(serialized);
+        Assert.That(parsed["error"], Is.Null, $"trace_call failed: {parsed["error"]}");
+
+        string output = parsed["result"]!["output"]!.Value<string>()!;
+        Assert.That(output, Is.EqualTo("0x" + new string('0', 64)));
+    }
+
+    // regression test ensuring asynchronous streaming pipe doesn't crash tracing
+    // was caused by synchronously waiting non-completed IValueTaskSource-backed ValueTask
+    [Test]
+    public async Task trace_block_to_async_stream()
+    {
+        Context context = new();
+        await context.Build();
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        Block block = context.Blockchain.BlockTree.Head!;
+        Assert.That(block.Transactions, Is.Not.Empty, "block must contain transactions so AddTrace is exercised");
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_block(new BlockParameter(block.Number));
+        Assert.That(result.Data, Is.AssignableTo<IStreamableResult>());
+        IStreamableResult streaming = (IStreamableResult)result.Data;
+
+        await using AsyncCompletingStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+
+        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+
+        await writer.CompleteAsync();
+    }
+
+    private static void AssertBalanceChange(ParityAccountStateChange? stateChanges, UInt256 before, UInt256 after)
+    {
+        Assert.That(stateChanges?.Balance, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateChanges!.Balance!.Before, Is.EqualTo(before));
+            Assert.That(stateChanges.Balance.After, Is.EqualTo(after));
+        }
     }
 }

@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.FastSync
 {
     public class TreeSync
     {
-        public const int AlreadySavedCapacity = 1024 * 1024;
+        public const int AlreadySavedCapacity = MemorySizes.MiB;
         public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
 
         private const StateSyncBatch EmptyBatch = null;
@@ -904,7 +904,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
-                        Rlp.ValueDecoderContext ctx = new(trieNode.Value.AsSpan());
+                        RlpReader ctx = new(trieNode.Value.AsSpan());
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {

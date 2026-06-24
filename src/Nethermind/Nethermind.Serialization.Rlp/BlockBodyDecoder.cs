@@ -17,8 +17,8 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     private static readonly RlpLimit UnclesCountLimit = RlpLimit.For<BlockBody>(2, nameof(BlockBody.Uncles));
 
     // Actual consensus-level max is 16, see MAX_WITHDRAWALS_PER_PAYLOAD at https://github.com/ethereum/consensus-specs/blob/master/specs/capella/beacon-chain.md
-    // Increased here for compatibility with execution spec tests
-    private static readonly RlpLimit WithdrawalsCountLimit = RlpLimit.For<BlockBody>(1_000, nameof(BlockBody.Withdrawals));
+    // Increased here for compatibility with execution spec tests and benchmarks
+    private static readonly RlpLimit WithdrawalsCountLimit = RlpLimit.For<BlockBody>(64_000, nameof(BlockBody.Withdrawals));
 
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
@@ -83,7 +83,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return sum;
     }
 
-    protected override BlockBody? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockBody? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int startingPosition = ctx.Position;
@@ -95,7 +95,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
+    public BlockBody? DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
     {
         Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
@@ -109,27 +109,27 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
-    public override void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetBodyLength(body));
-        stream.StartSequence(GetTxLength(body.Transactions));
+        writer.StartSequence(GetBodyLength(body));
+        writer.StartSequence(GetTxLength(body.Transactions));
         foreach (Transaction? txn in body.Transactions)
         {
-            stream.Encode(txn);
+            _txDecoder.Encode(ref writer, txn);
         }
 
-        stream.StartSequence(GetUnclesLength(body.Uncles));
+        writer.StartSequence(GetUnclesLength(body.Uncles));
         foreach (BlockHeader? uncle in body.Uncles)
         {
-            stream.Encode(uncle);
+            _headerDecoder.Encode(ref writer, uncle);
         }
 
         if (body.Withdrawals is not null)
         {
-            stream.StartSequence(GetWithdrawalsLength(body.Withdrawals));
+            writer.StartSequence(GetWithdrawalsLength(body.Withdrawals));
             foreach (Withdrawal? withdrawal in body.Withdrawals)
             {
-                stream.Encode(withdrawal);
+                _withdrawalDecoderDecoder.Encode(ref writer, withdrawal);
             }
         }
     }

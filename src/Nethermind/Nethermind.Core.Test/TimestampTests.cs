@@ -26,8 +26,11 @@ namespace Nethermind.Core.Test
             ulong unixUtcUntilNowSeconds = (ulong)utcNow.Subtract(Jan1St1970).TotalSeconds;
             ulong unixUtcUntilNowMilliseconds = (ulong)utcNow.Subtract(Jan1St1970).TotalMilliseconds;
 
-            Assert.That(epochSeconds, Is.EqualTo(unixUtcUntilNowSeconds));
-            Assert.That(epochMilliseconds, Is.EqualTo(unixUtcUntilNowMilliseconds));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(epochSeconds, Is.EqualTo(unixUtcUntilNowSeconds));
+                Assert.That(epochMilliseconds, Is.EqualTo(unixUtcUntilNowMilliseconds));
+            }
         }
     }
 }

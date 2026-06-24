@@ -24,8 +24,6 @@ public class Witness : IDisposable
         State.Dispose();
         Keys.Dispose();
         Headers.Dispose();
-
-        GC.SuppressFinalize(this);
     }
 }
 
@@ -79,9 +77,9 @@ public static class WitnessExtensions
 
                 for (int i = 0; i < headersSpan.Length; i++)
                 {
-                    Rlp.ValueDecoderContext stream = new(headersSpan[i]);
+                    RlpReader reader = new(headersSpan[i]);
 
-                    decodedHeaders[i] = _decoder.Decode(ref stream)
+                    decodedHeaders[i] = _decoder.Decode(ref reader)
                         ?? throw new InvalidOperationException($"No header decoded at index {i}");
 
                     if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))

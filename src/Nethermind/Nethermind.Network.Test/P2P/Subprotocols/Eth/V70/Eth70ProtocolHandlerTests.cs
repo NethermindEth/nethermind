@@ -104,21 +104,24 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-        Assert.That(_handler.Name, Is.EqualTo("eth70"));
-        Assert.That(_handler.ProtocolVersion, Is.EqualTo(70));
-        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
-        Assert.That(_handler.IncludeInTxPool, Is.True);
-        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-        Assert.That(_handler.HeadHash, Is.Null);
-        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth70"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(70));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        }
     }
 
     [Test]
     public void Default_size_limits_match_eth_protocol_limits()
     {
-        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL * 1024 * 1024));
-        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL * 1024 * 1024));
+        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo((ulong)(2 * MemorySizes.MiB)));
+        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo((ulong)(10 * MemorySizes.MiB)));
     }
 
     [Test]
@@ -294,10 +297,13 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(blockHashes, CancellationToken.None);
 
-        Assert.That(result.Count, Is.EqualTo(1));
-        AssertReceiptsEqual(result[0], receipts);
-        Assert.That(requestCount, Is.EqualTo(2));
-        Assert.That(blockHashes.IndexerReadCount, Is.EqualTo(blockHashes.Count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(1));
+            AssertReceiptsEqual(result[0], receipts);
+            Assert.That(requestCount, Is.EqualTo(2));
+            Assert.That(blockHashes.IndexerReadCount, Is.EqualTo(blockHashes.Count));
+        }
     }
 
     [Test]
@@ -364,11 +370,14 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(2));
-        Assert.That(result[0], Is.Empty);
-        Assert.That(result[1], Has.Length.EqualTo(block2Receipts.Length));
-        Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
-        Assert.That(result[1][0].Logs, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Count.EqualTo(2));
+            Assert.That(result[0], Is.Empty);
+            Assert.That(result[1], Has.Length.EqualTo(block2Receipts.Length));
+            Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
+            Assert.That(result[1][0].Logs, Is.Empty);
+        }
     }
 
     [TestCaseSource(nameof(EmptyReceiptsPayloadCases))]
@@ -833,10 +842,13 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
 
-        Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
-        Assert.That(response.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
-        Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
-        Assert.That(response.LastBlockIncomplete, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
+            Assert.That(response.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
+            Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
+            Assert.That(response.LastBlockIncomplete, Is.False);
+        }
     }
 
     [Test]
@@ -1000,11 +1012,14 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero);
 
-        Assert.That(fullResponseLength, Is.GreaterThan((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
-        Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
-        Assert.That(response.TxReceipts[0], Has.Length.EqualTo(1));
-        Assert.That(response.LastBlockIncomplete, Is.True);
-        Assert.That(GetReceiptsMessageLength(response), Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fullResponseLength, Is.GreaterThan((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+            Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
+            Assert.That(response.TxReceipts[0], Has.Length.EqualTo(1));
+            Assert.That(response.LastBlockIncomplete, Is.True);
+            Assert.That(GetReceiptsMessageLength(response), Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+        }
     }
 
     [Test]

@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -65,7 +66,7 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
 
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value)
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
         {
             byte[]? addrPreimage = preimageDb.Get(addrHash.Bytes[..PreimageLookupSize]);
             byte[]? slotPreimage = preimageDb.Get(slotHash.Bytes[..PreimageLookupSize]);
@@ -73,11 +74,12 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
             {
                 Address addr = new(addrPreimage);
                 UInt256 slot = new(slotPreimage, isBigEndian: true);
-                inner.SetStorage(addr, slot, value);
+                RlpReader ctx = new(rlpValue);
+                inner.SetStorage(addr, slot, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
             }
             else
             {
-                inner.SetStorageRaw(addrHash, slotHash, value);
+                inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
             }
         }
 

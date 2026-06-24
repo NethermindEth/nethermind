@@ -60,7 +60,7 @@ class ShutterCryptoTests
 
         Span<byte> decryptedMessage = stackalloc byte[ShutterCrypto.GetDecryptedDataLength(encryptedMessage)];
         ShutterCrypto.Decrypt(ref decryptedMessage, encryptedMessage, key);
-        Assert.That(msg.SequenceEqual(decryptedMessage));
+        Assert.That(msg.SequenceEqual(decryptedMessage), Is.True);
 
         EncryptedMessage decoded = ShutterCrypto.DecodeEncryptedMessage(ShutterCrypto.EncodeEncryptedMessage(encryptedMessage));
         Assert.That(encryptedMessage.C1.IsEqual(decoded.C1));
@@ -162,7 +162,7 @@ class ShutterCryptoTests
         ShutterCrypto.Decrypt(ref decryptedMessage, c, decryptionKey);
         TestContext.Out.WriteLine("decrypted msg: " + Convert.ToHexString(decryptedMessage));
 
-        Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)));
+        Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)), Is.True);
     }
 
     [Test]

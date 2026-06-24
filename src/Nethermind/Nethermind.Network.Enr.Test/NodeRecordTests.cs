@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -17,16 +18,22 @@ public class NodeRecordTests
         nodeRecord.SetEntry(new UdpEntry(12345));
         nodeRecord.SetEntry(new SecP256k1Entry(
             new CompressedPublicKey(new byte[33])));
-        Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(12345));
-        Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.EqualTo(new CompressedPublicKey(new byte[33])));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(12345));
+            Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.EqualTo(new CompressedPublicKey(new byte[33])));
+        }
     }
 
     [Test]
     public void Get_value_or_obj_can_handle_missing_values()
     {
         NodeRecord nodeRecord = new();
-        Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.Null);
-        Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.Null);
+            Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.Null);
+        }
     }
 
     [Test]
@@ -34,6 +41,44 @@ public class NodeRecordTests
     {
         NodeRecord nodeRecord = new();
         Assert.Throws<Exception>(() => _ = nodeRecord.EnrString);
+    }
+
+    [TestCase("192.0.2.1", "", -1, 30304, "", -1)]
+    [TestCase("", "2001:db8::1", 30303, -1, "2001:db8::1", 30303)]
+    public void Discovery_endpoint_uses_expected_ip_udp_fallback(string ip, string ip6, int udp, int udp6, string expectedIp, int expectedPort)
+    {
+        NodeRecord nodeRecord = new();
+
+        if (!string.IsNullOrEmpty(ip))
+        {
+            nodeRecord.SetEntry(new IpEntry(IPAddress.Parse(ip)));
+        }
+
+        if (!string.IsNullOrEmpty(ip6))
+        {
+            nodeRecord.SetEntry(new Ip6Entry(IPAddress.Parse(ip6)));
+        }
+
+        if (udp >= 0)
+        {
+            nodeRecord.SetEntry(new UdpEntry(udp));
+        }
+
+        if (udp6 >= 0)
+        {
+            nodeRecord.SetEntry(new Udp6Entry(udp6));
+        }
+
+        if (expectedPort < 0)
+        {
+            Assert.That(nodeRecord.DiscoveryIp, Is.Null);
+            Assert.That(nodeRecord.DiscoveryPort, Is.Null);
+        }
+        else
+        {
+            Assert.That(nodeRecord.DiscoveryIp, Is.EqualTo(IPAddress.Parse(expectedIp)));
+            Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(expectedPort));
+        }
     }
 
     [Test]

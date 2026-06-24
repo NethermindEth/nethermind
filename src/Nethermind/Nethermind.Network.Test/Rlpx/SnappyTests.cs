@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using DotNetty.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -64,7 +65,7 @@ public class SnappyTests
     public void Can_load_block_rlp_test_file()
     {
         byte[] bytes = File.ReadAllBytes(_uncompressedTestFileName);
-        Assert.That(bytes.Length, Is.GreaterThan(2.9 * 1024 * 1024));
+        Assert.That(bytes.Length, Is.GreaterThan(2.9 * MemorySizes.MiB));
     }
 
     [TestCase("block.go.snappy")]
@@ -72,7 +73,7 @@ public class SnappyTests
     public void Can_load_compressed_test_file(string compressedFileName)
     {
         byte[] bytes = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", compressedFileName)));
-        Assert.That(bytes.Length, Is.GreaterThan(70 * 1024));
+        Assert.That(bytes.Length, Is.GreaterThan(70 * MemorySizes.KiB));
     }
 
     [Test]

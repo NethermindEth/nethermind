@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Producers
         ILifetimeScope rootLifetime,
         IWorldStateManager worldStateManager,
         IBlockProducerTxSourceFactory txSourceFactory)
-        : IBlockProducerEnvFactory
+        : IMainStateBlockProducerEnvFactory
     {
         protected IWorldStateManager WorldStateManager => worldStateManager;
 

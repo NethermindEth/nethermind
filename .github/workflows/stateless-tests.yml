@@ -24,9 +24,6 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
       - name: Build Nethermind
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: make build
@@ -47,22 +44,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - input: 25252773.ssz
-            hash: 6e0317153c19c0782a82db1b4cad6f7d8ff7becac6b53c8151366201b4a4728a
+          - input: 25252737.ssz
+            hash: c92d57065d7f4a65ab83b4bd602a91a0e5240a19225f19f6d7e089adef006f0a
           - input: 25252778.ssz
             hash: 3688e4fd880e78d3000865896c5fe4d3337e560c955293a477e721898af040cc
+          - input: 25252780.ssz
+            hash: 6dee87ba2b6a9274c5bfa96614fddedc821213cf6566c351c43114247c836391
+          - input: 25252794.ssz
+            hash: fd6be1fcb42c2ce0ed7d65b2283bf7ee6c87e667869ac83363ab734d9a298892
           - input: 25252835.ssz
             hash: 8c79b8a6106cc3dd60a9073a23ad0569bfd4d2b5173b5f722b9dd349342158ba
-          - input: 25252841.ssz
-            hash: 726b15d45a7c77e5938855c577c57430e4964f4b40449f675015fdf9183fb397
           - input: 25273697.ssz
             hash: 6a34aa473484709d08b6416a4f8a266025696c288dcc767331de8d13b9b9f6fe
-          - input: 25273710.ssz
-            hash: 4de8c219c36d6e1ea4dd75a1746ef350f053b0abdd151c63f0a7efb3bf2a44fc
-          - input: 25273718.ssz
-            hash: 903166a9c107393cf59539de89c31fa36b45152430556a60b141231e48bea25c
           - input: 25274052.ssz
             hash: 9ed88ee7fd20a1e04e3b2ae1f00c51803266c02d0475909782a715c16b8afbfe
+          - input: 25301641.ssz
+            hash: fb9cba9d13201b31f2788663212836c92b36e8905283dfc1558886dede4722d1
+          - input: 25302208.ssz
+            hash: 404eb7dc779682304b37dec2df8cccc33f5ea6ff5b28505d0138b4dc391b4920
+          - input: 25303404.ssz
+            hash: aba20005ff85b27a3bc3b4a9967d9730b44512cd5dad01fb30cfbc8967311af2
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -76,7 +77,7 @@ jobs:
       - name: Download input
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
         run: |
-          curl -sSL "https://us-southeast-1.linodeobjects.com/zktests/20260608/${{ matrix.input }}" \
+          curl -sSL "https://us-southeast-1.linodeobjects.com/zktests/20260612/${{ matrix.input }}" \
             -o "${{ matrix.input }}"
           echo "${{ matrix.hash }}  ${{ matrix.input }}" | sha256sum --status -c - || \
             { echo "Checksum failed"; exit 1; }

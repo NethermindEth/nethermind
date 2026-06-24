@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -58,7 +59,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     {
         if (pipeWriter is null) return;
         writer.Flush();
-        pipeWriter.FlushAsync(ct).GetAwaiter().GetResult();
+        pipeWriter.FlushAsync(ct).SafeWait();
     }
 
     private ResultWrapper<IEnumerable<T>> BuildStoreStreamingResult<T>(

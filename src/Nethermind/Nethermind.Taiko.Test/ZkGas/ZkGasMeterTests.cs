@@ -31,28 +31,34 @@ public class ZkGasMeterTests
     [Test]
     public void OpcodeMultipliers_Spot_Check_Spec_Values()
     {
-        Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0x20], Is.EqualTo((ushort)31)); // keccak256
-        Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0xf1], Is.EqualTo((ushort)20)); // call
-        Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0xfe], Is.EqualTo((ushort)0));  // invalid
-        Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0x1e], Is.EqualTo((ushort)14)); // clz (EIP-7939)
-        Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0xac], Is.EqualTo(ushort.MaxValue)); // unlisted -> failsafe
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0x20], Is.EqualTo((ushort)31)); // keccak256
+            Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0xf1], Is.EqualTo((ushort)20)); // call
+            Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0xfe], Is.EqualTo((ushort)0));  // invalid
+            Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0x1e], Is.EqualTo((ushort)14)); // clz (EIP-7939)
+            Assert.That(ZkGasTestSchedules.OpcodeMultipliers.Span[0xac], Is.EqualTo(ushort.MaxValue)); // unlisted -> failsafe
+        }
     }
 
     [Test]
     public void PrecompileMultipliers_Spot_Check_Spec_Values()
     {
-        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x05), Is.EqualTo((ushort)154)); // modexp — EIP-7883 6× gas-cost slope
-        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x01), Is.EqualTo((ushort)47));  // ecrecover
-        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x04), Is.EqualTo((ushort)6));   // identity
-        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x0d), Is.EqualTo((ushort)230)); // bls12_g2add (EIP-2537)
-        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x10), Is.EqualTo((ushort)246)); // bls12_map_fp_to_g1
-        Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x11), Is.EqualTo((ushort)208)); // bls12_map_fp2_to_g2 (last canonical EIP-2537 slot)
-        Assert.That(ZkGasTestSchedules.PrecompileMultipliers[Address.FromNumber(0x100)], Is.EqualTo((ushort)163), // p256verify (RIP-7212)
-            "p256verify lives at 0x100 — outside the canonical 0x..XX range");
-        Assert.That(ZkGasTestSchedules.PrecompileMultipliers.ContainsKey(Address.FromNumber(0x12)), Is.False,
-            "0x12 sat on the pre-final EIP-2537 draft and is not in the canonical Osaka set — meter charges fail-safe");
-        Assert.That(ZkGasTestSchedules.PrecompileMultipliers.ContainsKey(Address.FromNumber(0x14)), Is.False,
-            "0x14 is not listed — meter charges fail-safe");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x05), Is.EqualTo((ushort)154)); // modexp — EIP-7883 6× gas-cost slope
+            Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x01), Is.EqualTo((ushort)47));  // ecrecover
+            Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x04), Is.EqualTo((ushort)6));   // identity
+            Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x0d), Is.EqualTo((ushort)230)); // bls12_g2add (EIP-2537)
+            Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x10), Is.EqualTo((ushort)246)); // bls12_map_fp_to_g1
+            Assert.That(ZkGasTestSchedules.PrecompileMultiplier(0x11), Is.EqualTo((ushort)208)); // bls12_map_fp2_to_g2 (last canonical EIP-2537 slot)
+            Assert.That(ZkGasTestSchedules.PrecompileMultipliers[Address.FromNumber(0x100)], Is.EqualTo((ushort)163), // p256verify (RIP-7212)
+                "p256verify lives at 0x100 — outside the canonical 0x..XX range");
+            Assert.That(ZkGasTestSchedules.PrecompileMultipliers.ContainsKey(Address.FromNumber(0x12)), Is.False,
+                "0x12 sat on the pre-final EIP-2537 draft and is not in the canonical Osaka set — meter charges fail-safe");
+            Assert.That(ZkGasTestSchedules.PrecompileMultipliers.ContainsKey(Address.FromNumber(0x14)), Is.False,
+                "0x14 is not listed — meter charges fail-safe");
+        }
     }
 
     [Test]
@@ -70,10 +76,13 @@ public class ZkGasMeterTests
         customMeter.ChargeOpcode(0x20, 1);
         alethiaMeter.ChargeOpcode(0x20, 1);
 
-        Assert.That(customMeter.TxZkGasUsed, Is.EqualTo(85UL), "supplied table is used");
-        Assert.That(alethiaMeter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasTestSchedules.OpcodeMultipliers.Span[0x20]),
-            "alethia meter uses the alethia table");
-        Assert.That(customMeter.TxZkGasUsed, Is.Not.EqualTo(alethiaMeter.TxZkGasUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(customMeter.TxZkGasUsed, Is.EqualTo(85UL), "supplied table is used");
+            Assert.That(alethiaMeter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasTestSchedules.OpcodeMultipliers.Span[0x20]),
+                "alethia meter uses the alethia table");
+            Assert.That(customMeter.TxZkGasUsed, Is.Not.EqualTo(alethiaMeter.TxZkGasUsed));
+        }
     }
 
     [Test]
@@ -118,8 +127,11 @@ public class ZkGasMeterTests
         meter.ChargePrecompile(l1Sload, 1);
         ulong l1SloadCharge = meter.TxZkGasUsed;
 
-        Assert.That(ecrecoverCharge, Is.EqualTo(47UL));
-        Assert.That(l1SloadCharge, Is.EqualTo(200UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ecrecoverCharge, Is.EqualTo(47UL));
+            Assert.That(l1SloadCharge, Is.EqualTo(200UL));
+        }
     }
 
     [Test]
@@ -182,12 +194,15 @@ public class ZkGasMeterTests
     [Test]
     public void SpawnEstimates_Match_Spec()
     {
-        Assert.That(ZkGasSchedule.SpawnEstimateCall, Is.EqualTo(12_500UL));
-        Assert.That(ZkGasSchedule.SpawnEstimateCallCode, Is.EqualTo(12_500UL));
-        Assert.That(ZkGasSchedule.SpawnEstimateDelegateCall, Is.EqualTo(3_500UL));
-        Assert.That(ZkGasSchedule.SpawnEstimateStaticCall, Is.EqualTo(3_500UL));
-        Assert.That(ZkGasSchedule.SpawnEstimateCreate, Is.EqualTo(37_000UL));
-        Assert.That(ZkGasSchedule.SpawnEstimateCreate2, Is.EqualTo(44_500UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ZkGasSchedule.SpawnEstimateCall, Is.EqualTo(12_500UL));
+            Assert.That(ZkGasSchedule.SpawnEstimateCallCode, Is.EqualTo(12_500UL));
+            Assert.That(ZkGasSchedule.SpawnEstimateDelegateCall, Is.EqualTo(3_500UL));
+            Assert.That(ZkGasSchedule.SpawnEstimateStaticCall, Is.EqualTo(3_500UL));
+            Assert.That(ZkGasSchedule.SpawnEstimateCreate, Is.EqualTo(37_000UL));
+            Assert.That(ZkGasSchedule.SpawnEstimateCreate2, Is.EqualTo(44_500UL));
+        }
     }
 
     // ── commit / reset ────────────────────────────────────────────────────────
@@ -201,8 +216,11 @@ public class ZkGasMeterTests
         meter.CommitTransaction();
 
         ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[addOpcode];
-        Assert.That(meter.BlockZkGasUsed, Is.EqualTo(expected));
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(meter.BlockZkGasUsed, Is.EqualTo(expected));
+            Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -232,8 +250,11 @@ public class ZkGasMeterTests
         meter.ChargeOpcode(0x01, 5);
         meter.ResetTransaction();
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
-        Assert.That(meter.BlockZkGasUsed, Is.EqualTo(blockAfterFirst));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
+            Assert.That(meter.BlockZkGasUsed, Is.EqualTo(blockAfterFirst));
+        }
     }
 
     [Test]
@@ -275,8 +296,11 @@ public class ZkGasMeterTests
         meter.CommitTransaction();
 
         bool result = meter.ChargeOpcode(0xf0, 2);
-        Assert.That(result, Is.False);
-        Assert.That(meter.IsLimitExceeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(meter.IsLimitExceeded, Is.True);
+        }
     }
 
     [Test]
@@ -285,8 +309,11 @@ public class ZkGasMeterTests
         ZkGasMeter meter = MeterWithAlethiaTables();
         // ecrecover multiplier = 47; feed enough raw gas to exceed the block limit
         bool result = meter.ChargePrecompile(Address.FromNumber(0x01), ZkGasSchedule.BlockZkGasLimit);
-        Assert.That(result, Is.False);
-        Assert.That(meter.IsLimitExceeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(meter.IsLimitExceeded, Is.True);
+        }
     }
 
     // ── overflow protection ───────────────────────────────────────────────────
@@ -299,8 +326,11 @@ public class ZkGasMeterTests
         ulong overflowRawGas = ulong.MaxValue / ZkGasTestSchedules.OpcodeMultipliers.Span[opcode] + 1;
 
         bool result = meter.ChargeOpcode(opcode, overflowRawGas);
-        Assert.That(result, Is.False);
-        Assert.That(meter.IsLimitExceeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(meter.IsLimitExceeded, Is.True);
+        }
     }
 
     [Test]
@@ -311,8 +341,11 @@ public class ZkGasMeterTests
         ulong overflowRawGas = ulong.MaxValue / ZkGasTestSchedules.PrecompileMultiplier(0x01) + 1;
 
         bool result = meter.ChargePrecompile(ecrecover, overflowRawGas);
-        Assert.That(result, Is.False);
-        Assert.That(meter.IsLimitExceeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(meter.IsLimitExceeded, Is.True);
+        }
     }
 
     [Test]
@@ -321,8 +354,11 @@ public class ZkGasMeterTests
         ZkGasMeter meter = MeterWithAlethiaTables();
         ulong halfMax = ulong.MaxValue / 2 + 1;
         bool charged = meter.ChargeOpcode(0xf0, halfMax);
-        Assert.That(charged, Is.False);
-        Assert.That(meter.IsLimitExceeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(charged, Is.False);
+            Assert.That(meter.IsLimitExceeded, Is.True);
+        }
     }
 
     [Test]
@@ -371,9 +407,12 @@ public class ZkGasMeterTests
 
         bool result = meter.ChargeTxIntrinsic();
 
-        Assert.That(result, Is.True);
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
-        Assert.That(meter.IsLimitExceeded, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
+            Assert.That(meter.IsLimitExceeded, Is.False);
+        }
     }
 
     [Test]
@@ -384,8 +423,11 @@ public class ZkGasMeterTests
 
         bool result = meter.ChargeTxIntrinsic();
 
-        Assert.That(result, Is.False);
-        Assert.That(meter.IsLimitExceeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(meter.IsLimitExceeded, Is.True);
+        }
     }
 
     [Test]
