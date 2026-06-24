@@ -105,7 +105,7 @@ namespace Nethermind.TxPool.Test
             for (int i = 0; i < poolSize; i++)
             {
                 Transaction tx = Build.A.Transaction
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithShardBlobTxTypeAndFields()
                     .WithMaxFeePerGas(1.GWei + (UInt256)(100 - i))
                     .WithMaxPriorityFeePerGas(1.GWei + (UInt256)(100 - i))
@@ -139,7 +139,7 @@ namespace Nethermind.TxPool.Test
             Parallel.For(0, txPoolConfig.Size, (nonce) =>
             {
                 txs[nonce] = Build.A.Transaction
-                    .WithNonce((ulong)nonce)
+                    .WithNonce(nonce)
                     .WithType(txType)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei)
@@ -174,7 +174,7 @@ namespace Nethermind.TxPool.Test
             for (int i = 0; i < poolSize; i++)
             {
                 Transaction tx = Build.A.Transaction
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei + (UInt256)(100 - i))
@@ -843,7 +843,7 @@ namespace Nethermind.TxPool.Test
                 for (int i = 0; i < txsPerSender; i++)
                 {
                     Transaction tx = Build.A.Transaction
-                        .WithNonce((ulong)i)
+                        .WithNonce(i)
                         .WithShardBlobTxTypeAndFields()
                         .WithMaxFeePerGas(1.GWei)
                         .WithMaxPriorityFeePerGas(1.GWei)

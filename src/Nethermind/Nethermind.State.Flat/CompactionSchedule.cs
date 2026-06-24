@@ -19,11 +19,11 @@ public sealed class CompactionSchedule : ICompactionSchedule
         IFlatDbConfig config,
         ILogManager logManager)
     {
-        int cs = config.CompactSize;
+        ulong cs = config.CompactSize;
         if (cs > 1 && (cs & (cs - 1)) != 0)
             throw new ArgumentException("Compact size must be a power of 2");
 
-        _compactSize = (ulong)cs;
+        _compactSize = cs;
 
         ILogger logger = logManager.GetClassLogger<CompactionSchedule>();
         _offset = ResolveOffset(metadataDb, config, logger);
@@ -31,7 +31,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
 
     public ulong Offset => _offset;
 
-    public int GetCompactSize(ulong blockNumber)
+    public ulong GetCompactSize(ulong blockNumber)
     {
         if (_compactSize <= 1 || blockNumber == 0) return 1;
         ulong shifted = blockNumber + _offset;
@@ -39,7 +39,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
         // Isolate the lowest set bit via two's-complement identity: x & (~x + 1).
         ulong lowestBit = shifted & (~shifted + 1UL);
 
-        return (int)Math.Min(lowestBit, _compactSize);
+        return Math.Min(lowestBit, _compactSize);
     }
 
     public ulong NextFullCompactionAfter(ulong from)

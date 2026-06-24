@@ -123,15 +123,17 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ulong Increment(ulong item, int hasher) => Interlocked.Increment(
-            ref _sketch[hasher * numberOfBuckets + (int)(ComputeHash(item, hasher) % (uint)numberOfBuckets)]);
+    private int SketchIndex(ulong item, int hasher) =>
+        hasher * numberOfBuckets + (int)(ComputeHash(item, hasher) % (uint)numberOfBuckets);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ulong Increment(ulong item, int hasher) => Interlocked.Increment(ref _sketch[SketchIndex(item, hasher)]);
 
     public ulong Query(ulong item)
     {
         ulong minCount = ulong.MaxValue;
         for (int hasher = 0; hasher < numberOfhashFunctions; hasher++)
-            minCount = Math.Min(minCount,
-                _sketch[hasher * numberOfBuckets + (int)(ComputeHash(item, hasher) % (uint)numberOfBuckets)]);
+            minCount = Math.Min(minCount, _sketch[SketchIndex(item, hasher)]);
         return minCount;
     }
 

@@ -55,7 +55,7 @@ public class ResourcePoolTests
     {
         // For MainBlockProcessing: capacity = config.CompactSize + 8 = 2 + 8 = 10
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
-        int capacity = _config.CompactSize + 8;
+        int capacity = (int)_config.CompactSize + 8;
         List<SnapshotContent> items = [];
 
         for (int i = 0; i < capacity + 5; i++)

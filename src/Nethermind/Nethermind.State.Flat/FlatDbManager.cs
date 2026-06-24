@@ -77,7 +77,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
-        _compactSize = config.CompactSize;
+        _compactSize = (int)config.CompactSize;
 
         // We assume that the state must be able to be persisted in half the slot time at the very
         // least. If block processing is stalled for longer than this, persistence is simply too slow

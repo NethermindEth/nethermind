@@ -85,25 +85,26 @@ namespace Nethermind.State.Proofs
             AccountProof value,
             JsonSerializerOptions options)
         {
+            JsonConverter<Address> addressConverter = (JsonConverter<Address>)options.GetConverter(typeof(Address));
+            JsonConverter<UInt256> uint256Converter = (JsonConverter<UInt256>)options.GetConverter(typeof(UInt256));
+            JsonConverter<Hash256> hashConverter = (JsonConverter<Hash256>)options.GetConverter(typeof(Hash256));
+            JsonConverter<ulong> ulongConverter = (JsonConverter<ulong>)options.GetConverter(typeof(ulong));
+
             writer.WriteStartObject();
 
             writer.WritePropertyName("accountProof"u8);
             JsonSerializer.Serialize(writer, value.Proof, options);
 
-            JsonConverter<Address> addressConverter = (JsonConverter<Address>)options.GetConverter(typeof(Address));
             writer.WritePropertyName("address"u8);
             addressConverter.Write(writer, value.Address, options);
 
-            JsonConverter<UInt256> uint256Converter = (JsonConverter<UInt256>)options.GetConverter(typeof(UInt256));
             writer.WritePropertyName("balance"u8);
             uint256Converter.Write(writer, value.Balance, options);
 
-            JsonConverter<Hash256> hashConverter = (JsonConverter<Hash256>)options.GetConverter(typeof(Hash256));
             writer.WritePropertyName("codeHash"u8);
             hashConverter.Write(writer, value.CodeHash, options);
 
             writer.WritePropertyName("nonce"u8);
-            JsonConverter<ulong> ulongConverter = (JsonConverter<ulong>)options.GetConverter(typeof(ulong));
             ulongConverter.Write(writer, value.Nonce, options);
 
             writer.WritePropertyName("storageHash"u8);

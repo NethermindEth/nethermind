@@ -862,7 +862,7 @@ internal class SpecialTransactionsTests
         ulong epochLength = spec.EpochLength;
 
         // Add blocks up to epochLength (E) + 15 and create a signing tx that will be inserted in the next block
-        await chain.AddBlocks((int)epochLength + 15 - 3);
+        await chain.AddBlocks(epochLength + 15 - 3);
         XdcBlockHeader? header915 = chain.BlockTree.Head!.Header as XdcBlockHeader;
         Assert.That(header915, Is.Not.Null);
         PrivateKey signer915 = chain.Signer.Key!;

@@ -48,10 +48,13 @@ namespace Nethermind.Xdc
         private CancellationTokenSource? _roundCts;
         private Task? _roundTask;
 
+        // Sentinel meaning "no round recorded yet"; TryAdvance treats it specially so the first advance always succeeds.
+        private const ulong NoRound = ulong.MaxValue;
+
         private DateTime _lastActivityTime = DateTime.UtcNow;
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
-        private ulong _lastStartedRound = ulong.MaxValue;
+        private ulong _lastStartedRound = NoRound;
         private ulong _pendingPrevRound;
         private TimeSpan? _pendingLastRoundDuration;
 
@@ -349,7 +352,7 @@ namespace Nethermind.Xdc
             do
             {
                 current = Interlocked.Read(ref field);
-                if (current != ulong.MaxValue && current >= value) return false;
+                if (current != NoRound && current >= value) return false;
             } while (Interlocked.CompareExchange(ref field, value, current) != current);
             return true;
         }

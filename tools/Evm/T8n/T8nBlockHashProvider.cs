@@ -15,7 +15,7 @@ public class T8nBlockHashProvider(Dictionary<ulong, Hash256> blockHashes) : IBlo
     public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec? spec)
     {
         ulong current = currentBlock.Number;
-        if (number >= current || number < current - Math.Min(current, (ulong)BlockhashProvider.MaxDepth))
+        if (number >= current || number < current - Math.Min(current, BlockhashProvider.MaxDepth))
             return null;
 
         return blockHashes.TryGetValue(number, out Hash256? hash)

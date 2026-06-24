@@ -1018,7 +1018,7 @@ namespace Nethermind.Trie.Test.Pruning
             for (int i = 0; i < 64; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
-                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit((ulong)i, node))
+                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
                 }
@@ -1061,7 +1061,7 @@ namespace Nethermind.Trie.Test.Pruning
             for (int i = 0; i < 64; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
-                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit((ulong)i, node))
+                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
                 }
@@ -1101,7 +1101,7 @@ namespace Nethermind.Trie.Test.Pruning
             for (int i = 0; i < 64; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new CappedArray<byte>(new byte[2]));
-                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit((ulong)i, node))
+                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
                 }
@@ -1192,7 +1192,7 @@ namespace Nethermind.Trie.Test.Pruning
             for (int i = 0; i < 64; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
-                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit((ulong)i, node))
+                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
                 }
@@ -1230,7 +1230,7 @@ namespace Nethermind.Trie.Test.Pruning
             for (int i = 0; i < 2; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new CappedArray<byte>(new byte[2]));
-                using ICommitter committer = fullTrieStore.BeginStateBlockCommit((ulong)(i + 1), node);
+                using ICommitter committer = fullTrieStore.BeginStateBlockCommit(i + 1, node);
                 committer.CommitNode(ref emptyPath, node);
             }
 
@@ -1272,7 +1272,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 10; i++)
             {
-                using (fullTrieStore.BeginBlockCommit((ulong)i))
+                using (fullTrieStore.BeginBlockCommit(i))
                 {
                     if (i == 0)
                     {
@@ -1285,7 +1285,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 10; i < 15; i++)
             {
-                using (fullTrieStore.BeginBlockCommit((ulong)i))
+                using (fullTrieStore.BeginBlockCommit(i))
                 {
                     WriteRandomData(i);
                 }
@@ -1293,7 +1293,7 @@ namespace Nethermind.Trie.Test.Pruning
             // Do a branch
             for (int i = 10; i < 15; i++)
             {
-                using (fullTrieStore.BeginBlockCommit((ulong)i))
+                using (fullTrieStore.BeginBlockCommit(i))
                 {
                     WriteRandomData(i * 10);
                 }
@@ -1302,7 +1302,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 15; i < 20; i++)
             {
-                using (fullTrieStore.BeginBlockCommit((ulong)i))
+                using (fullTrieStore.BeginBlockCommit(i))
                 {
                     WriteRandomData(i);
                 }
@@ -1356,7 +1356,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 16; i++)
             {
-                using (fullTrieStore.BeginBlockCommit((ulong)i))
+                using (fullTrieStore.BeginBlockCommit(i))
                 {
                     WriteRandomData(i);
                 }
@@ -1425,7 +1425,7 @@ namespace Nethermind.Trie.Test.Pruning
                 Hash256 parentRoot = ptree.RootHash ?? Keccak.EmptyTreeHash;
                 using (fullTrieStore.BeginScope(baseBlock))
                 {
-                    using (fullTrieStore.BeginBlockCommit((ulong)i))
+                    using (fullTrieStore.BeginBlockCommit(i))
                     {
                         ptree.RootHash = parentRoot;
                         WriteRandomData(seed);
@@ -1438,7 +1438,7 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     using (fullTrieStore.BeginScope(baseBlock))
                     {
-                        using (fullTrieStore.BeginBlockCommit((ulong)i))
+                        using (fullTrieStore.BeginBlockCommit(i))
                         {
                             ptree.RootHash = parentRoot;
                             WriteRandomData(seed * 10);
@@ -1504,7 +1504,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 10; i++)
             {
-                using (fullTrieStore.BeginBlockCommit((ulong)i))
+                using (fullTrieStore.BeginBlockCommit(i))
                 {
                     if (i == 0)
                     {
@@ -1526,7 +1526,7 @@ namespace Nethermind.Trie.Test.Pruning
             // Write a bit more
             for (int i = 10; i < 12; i++)
             {
-                using (fullTrieStore.BeginBlockCommit((ulong)i))
+                using (fullTrieStore.BeginBlockCommit(i))
                 {
                     WriteRandomData(i);
                 }
@@ -1568,7 +1568,7 @@ namespace Nethermind.Trie.Test.Pruning
             // Write a bit more
             for (int i = 13; i < 13 + (int)pruningBoundary; i++)
             {
-                using (fullTrieStore.BeginBlockCommit((ulong)i))
+                using (fullTrieStore.BeginBlockCommit(i))
                 {
                     WriteRandomData(i);
                 }
@@ -1655,7 +1655,7 @@ namespace Nethermind.Trie.Test.Pruning
                 Hash256 parentRoot = ptree.RootHash ?? Keccak.EmptyTreeHash;
                 using (fullTrieStore.BeginScope(baseBlock))
                 {
-                    using (fullTrieStore.BeginBlockCommit((ulong)i))
+                    using (fullTrieStore.BeginBlockCommit(i))
                     {
                         ptree.RootHash = parentRoot;
                         WriteRandomData(seed);
@@ -1669,7 +1669,7 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     using (fullTrieStore.BeginScope(baseBlock))
                     {
-                        using (fullTrieStore.BeginBlockCommit((ulong)i))
+                        using (fullTrieStore.BeginBlockCommit(i))
                         {
                             ptree.RootHash = parentRoot;
                             WriteRandomData(seed * 1000);

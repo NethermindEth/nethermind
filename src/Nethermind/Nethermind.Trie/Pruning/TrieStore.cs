@@ -66,9 +66,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly bool _pastKeyTrackingEnabled = false;
 
     private bool _lastPersistedReachedReorgBoundary;
-    // ulong.MaxValue is the "not yet set" sentinel; block 0 (genesis) is a valid value during fresh sync,
-    // so we cannot use ulong.MinValue here.
-    private ulong _toBePersistedBlockNumber = ulong.MaxValue;
+    // Sentinel for _toBePersistedBlockNumber meaning "not yet set"; block 0 (genesis) is a valid value
+    // during fresh sync, so we cannot use ulong.MinValue here.
+    private const ulong ToBePersistedBlockNotSet = ulong.MaxValue;
+    private ulong _toBePersistedBlockNumber = ToBePersistedBlockNotSet;
 
     private static readonly long IncompletePersistedPruneWarnIntervalTicks = Stopwatch.Frequency * 5 * 60;
     private long _incompletePersistedPruneWarnNextTicks;
@@ -349,7 +350,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (_commitBuffer is null)
             {
                 ulong persistedBoundary = Interlocked.Read(ref _toBePersistedBlockNumber);
-                if (persistedBoundary == ulong.MaxValue)
+                if (persistedBoundary == ToBePersistedBlockNotSet)
                 {
                     // This can happen in the tiny time in between pruningLock was acquired but the exact block to
                     // persist was not determined yet.
@@ -641,7 +642,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
             finally
             {
-                _toBePersistedBlockNumber = ulong.MaxValue;
+                _toBePersistedBlockNumber = ToBePersistedBlockNotSet;
             }
         }
     }
@@ -683,7 +684,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         finally
         {
-            _toBePersistedBlockNumber = ulong.MaxValue;
+            _toBePersistedBlockNumber = ToBePersistedBlockNotSet;
         }
     }
 

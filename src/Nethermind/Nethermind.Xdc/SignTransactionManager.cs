@@ -79,7 +79,7 @@ internal class SignTransactionManager(
             return;
 
         // Sign only recent head blocks; older ones are replayed during catch-up.
-        ulong window = spec.MergeSignRange * spec.MinePeriod * (ulong)XdcConstants.MaxSignableBlockPeriods;
+        ulong window = spec.MergeSignRange * spec.MinePeriod * XdcConstants.MaxSignableBlockPeriods;
         if (xdcHeader.Timestamp + window < _timestamper.UnixTime.Seconds)
             return;
 

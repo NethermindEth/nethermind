@@ -34,7 +34,7 @@ internal class PenaltyTests
         PenaltyHandler penaltyHandler = CreatePenaltyHandler(chain);
         ISigningTxCache signingTxCache = chain.Container.Resolve<ISigningTxCache>();
         IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec((XdcBlockHeader)chain.BlockTree.Head!.Header);
-        await chain.AddBlocks((int)(spec.EpochLength * 3));
+        await chain.AddBlocks(spec.EpochLength * 3);
 
         spec = chain.SpecProvider.GetXdcSpec((XdcBlockHeader)chain.BlockTree.Head!.Header);
         ulong epoch = spec.EpochLength;
@@ -67,7 +67,7 @@ internal class PenaltyTests
 
         PenaltyHandler penaltyHandler = CreatePenaltyHandler(chain);
         IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec((XdcBlockHeader)chain.BlockTree.Head!.Header);
-        await chain.AddBlocks((int)(spec.EpochLength * 3));
+        await chain.AddBlocks(spec.EpochLength * 3);
 
         spec = chain.SpecProvider.GetXdcSpec((XdcBlockHeader)chain.BlockTree.Head!.Header);
         ulong epoch = spec.EpochLength;
@@ -89,7 +89,7 @@ internal class PenaltyTests
         ConfigureFastPenaltySpec(chain);
         PenaltyHandler penaltyHandler = CreatePenaltyHandler(chain);
         IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec((XdcBlockHeader)chain.BlockTree.Head!.Header);
-        await chain.AddBlocks((int)(spec.EpochLength * 3));
+        await chain.AddBlocks(spec.EpochLength * 3);
 
         spec = chain.SpecProvider.GetXdcSpec((XdcBlockHeader)chain.BlockTree.Head!.Header);
         ulong epoch = spec.EpochLength;

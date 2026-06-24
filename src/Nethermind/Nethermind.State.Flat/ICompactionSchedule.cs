@@ -11,7 +11,7 @@ public interface ICompactionSchedule
     /// not compact in lockstep. Returns 1 when no compaction should run (block 0 or compaction
     /// disabled).
     /// </summary>
-    int GetCompactSize(ulong blockNumber);
+    ulong GetCompactSize(ulong blockNumber);
 
     /// <summary>
     /// The next block strictly greater than <paramref name="from"/> at which a full-size

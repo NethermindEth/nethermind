@@ -26,7 +26,7 @@ public class DifficultyBombDelaysConverter : JsonConverter<IDictionary<ulong, ul
             {
                 if (reader.TokenType != JsonTokenType.PropertyName)
                 {
-                    throw new ArgumentException("Cannot deserialize dictionary.");
+                    throw new JsonException("Cannot deserialize dictionary.");
                 }
 
                 ReadOnlySpan<byte> keySpan = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
@@ -46,7 +46,7 @@ public class DifficultyBombDelaysConverter : JsonConverter<IDictionary<ulong, ul
                 }
                 else
                 {
-                    throw new ArgumentException("Cannot deserialize dictionary.");
+                    throw new JsonException("Cannot deserialize dictionary.");
                 }
 
                 value.Add(key, delay);
@@ -56,7 +56,7 @@ public class DifficultyBombDelaysConverter : JsonConverter<IDictionary<ulong, ul
         }
         else
         {
-            throw new ArgumentException("Cannot deserialize dictionary.");
+            throw new JsonException("Cannot deserialize dictionary.");
         }
 
         return value;

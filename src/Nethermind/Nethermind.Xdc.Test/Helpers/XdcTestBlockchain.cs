@@ -59,7 +59,7 @@ public class XdcTestBlockchain : TestBlockchain
             chain.QuorumCertificateManager.Initialize((XdcBlockHeader)chain.BlockTree.Head!.Header);
         }
 
-        await chain.AddBlocks((int)blocksToAdd, true);
+        await chain.AddBlocks(blocksToAdd, true);
 
         return chain;
     }
@@ -438,11 +438,13 @@ public class XdcTestBlockchain : TestBlockchain
         return BlockProducerRunner.StopAsync();
     }
 
-    public async Task AddBlocks(int count, bool withTransaction = false)
+    public Task AddBlocks(int count, bool withTransaction = false) => AddBlocks((ulong)count, withTransaction);
+
+    public async Task AddBlocks(ulong count, bool withTransaction = false)
     {
         ulong nonce = 0;
 
-        for (int i = 0; i < count; i++)
+        for (ulong i = 0; i < count; i++)
         {
             if (withTransaction)
                 await AddBlock(CreateTransactionBuilder().WithNonce(nonce++).TestObject);

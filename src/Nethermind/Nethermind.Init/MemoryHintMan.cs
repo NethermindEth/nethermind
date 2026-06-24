@@ -199,7 +199,7 @@ namespace Nethermind.Init
             uint arenaCount = (uint)Math.Min(cpuCount * 2, networkConfig.MaxNettyArenaCount);
 
             NettyMemoryEstimator.SetPageSize();
-            long estimate = NettyMemoryEstimator.Estimate(arenaCount, networkConfig.NettyArenaOrder);
+            ulong estimate = NettyMemoryEstimator.Estimate(arenaCount, networkConfig.NettyArenaOrder);
 
             /* first of all we assume that the mainnet will be heavier than any other chain on the side */
             /* we will leave the arena order as in config if it is set to a non-default value */
@@ -216,7 +216,7 @@ namespace Nethermind.Init
                 {
                     estimate = NettyMemoryEstimator.Estimate(arenaCount, i);
                     ulong maxAvailableFoNetty = NettyMemory;
-                    if ((ulong)estimate <= maxAvailableFoNetty)
+                    if (estimate <= maxAvailableFoNetty)
                     {
                         targetNettyArenaOrder = i;
                         break;
@@ -226,7 +226,7 @@ namespace Nethermind.Init
                 networkConfig.NettyArenaOrder = Math.Min(11, targetNettyArenaOrder);
             }
 
-            NettyMemory = (ulong)estimate;
+            NettyMemory = estimate;
 
             // Set PooledByteBufferAllocator.Default configuration.
             // Set it to a fixed 1 MB, 1 arena. Code should prefer NethermindBuffers.Default instead as it is easier to override.

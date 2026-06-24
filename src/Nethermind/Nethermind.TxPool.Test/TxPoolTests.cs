@@ -604,7 +604,7 @@ namespace Nethermind.TxPool.Test
             {
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithGasPrice((UInt256)gasPrice)
                     .WithGasLimit(TxGasLimit)
                     .WithValue(value)
@@ -638,7 +638,7 @@ namespace Nethermind.TxPool.Test
             {
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithGasPrice((UInt256)gasPrice)
                     .WithGasLimit(TxGasLimit)
                     .WithValue(value)
@@ -680,7 +680,7 @@ namespace Nethermind.TxPool.Test
             {
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithGasPrice((UInt256)gasPrice)
                     .WithGasLimit(TxGasLimit)
                     .WithValue(value)
@@ -721,7 +721,7 @@ namespace Nethermind.TxPool.Test
             {
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithGasPrice(halfOfMaxGasPriceWithoutOverflow)
                     .WithGasLimit(GasCostOf.Transaction)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -747,7 +747,7 @@ namespace Nethermind.TxPool.Test
             {
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithGasPrice((UInt256)(i + 2))
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
                 _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
@@ -781,7 +781,7 @@ namespace Nethermind.TxPool.Test
             {
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
-                    .WithNonce((ulong)i + 4)
+                    .WithNonce(i + 4)
                     .WithGasPrice((UInt256)(i + 2))
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
                 _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
@@ -835,7 +835,7 @@ namespace Nethermind.TxPool.Test
             {
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithGasPrice((UInt256)(i + 2))
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             });
@@ -864,7 +864,7 @@ namespace Nethermind.TxPool.Test
             {
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithGasPrice((UInt256)(i + 2))
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
                 _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
@@ -920,7 +920,7 @@ namespace Nethermind.TxPool.Test
             Parallel.For(0, numberOfTxs, i =>
             {
                 transactions[i] = Build.A.Transaction
-                    .WithNonce((ulong)i)
+                    .WithNonce(i)
                     .WithGasLimit(GasCostOf.Transaction)
                     .WithGasPrice(10.GWei)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
@@ -1016,7 +1016,7 @@ namespace Nethermind.TxPool.Test
             {
                 for (uint i = 0; i < 100; i++)
                 {
-                    Transaction tx = GetTransaction((ulong)i, GasCostOf.Transaction, 10.GWei, TestItem.AddressA, [], k);
+                    Transaction tx = GetTransaction(i, GasCostOf.Transaction, 10.GWei, TestItem.AddressA, [], k);
                     _txPool.SubmitTx(tx, TxHandlingOptions.None);
                 }
             });
@@ -1655,7 +1655,7 @@ namespace Nethermind.TxPool.Test
             Parallel.For(0, txPoolConfig.Size, i =>
             {
                 txs[i] = Build.A.Transaction
-                    .WithNonce((ulong)(i + 1))
+                    .WithNonce(i + 1)
                     .WithValue(0)
                     .WithGasPrice(1000)
                     .WithTo(TestItem.AddressB)
@@ -1729,7 +1729,7 @@ namespace Nethermind.TxPool.Test
             Parallel.For(0, txPoolConfig.Size, i =>
             {
                 txs2[i] = Build.A.Transaction
-                    .WithNonce((ulong)(i + 1 + nonceGap))
+                    .WithNonce(i + 1 + nonceGap)
                     .WithGasPrice(1000)
                     .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
             });

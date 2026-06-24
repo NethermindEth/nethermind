@@ -53,13 +53,13 @@ public class RpcModuleTests
     }
 
     private IXdcReleaseSpec CreateDummyXdcReleaseSpec(
-        int? switchEpoch = null,
-        int? epochLength = null,
-        long? switchBlock = null,
+        ulong? switchEpoch = null,
+        ulong? epochLength = null,
+        ulong? switchBlock = null,
         int? maxMasternodes = null,
         double? certThreshold = null,
         int? timeoutPeriod = null,
-        int? minePeriod = null,
+        ulong? minePeriod = null,
         int? configsCount = null)
     {
         List<V2ConfigParams> v2Configs = [];
@@ -75,7 +75,7 @@ public class RpcModuleTests
                 CertificateThreshold = certThreshold ?? 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = timeoutPeriod ?? 30000,
-                MinePeriod = (ulong)(minePeriod ?? 2)
+                MinePeriod = minePeriod ?? 2
             });
         }
 
@@ -83,9 +83,9 @@ public class RpcModuleTests
         XdcReleaseSpec spec = new()
         {
             // Epoch configuration
-            SwitchEpoch = (ulong)(switchEpoch ?? 0),
-            EpochLength = (ulong)(epochLength ?? 900),
-            SwitchBlock = (ulong)(switchBlock ?? 0),
+            SwitchEpoch = switchEpoch ?? 0,
+            EpochLength = epochLength ?? 900,
+            SwitchBlock = switchBlock ?? 0,
             Gap = 5,
 
             // V2 Configuration
@@ -95,7 +95,7 @@ public class RpcModuleTests
             SwitchRound = 0,
 
             // Timing parameters
-            MinePeriod = (ulong)(minePeriod ?? 2),              // 2 seconds per block
+            MinePeriod = minePeriod ?? 2,              // 2 seconds per block
             TimeoutSyncThreshold = 3,                   // Send sync info after 3 timeouts
             TimeoutPeriod = timeoutPeriod ?? 30000,    // 30 seconds timeout
 
@@ -250,7 +250,7 @@ public class RpcModuleTests
         // Arrange
         ulong epochNumber = 3;
         ulong headNumber = 100;
-        int switchEpoch = 5;
+        ulong switchEpoch = 5;
 
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Number = headNumber;
@@ -273,7 +273,7 @@ public class RpcModuleTests
         // Arrange
         ulong epochNumber = 10;
         ulong headNumber = 100;
-        int switchEpoch = 5;
+        ulong switchEpoch = 5;
 
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Number = headNumber;

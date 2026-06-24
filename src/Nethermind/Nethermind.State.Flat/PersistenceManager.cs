@@ -29,9 +29,9 @@ public class PersistenceManager(
     ILogManager logManager) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
-    private readonly ulong _minReorgDepth = (ulong)configuration.MinReorgDepth;
-    private readonly ulong _maxReorgDepth = (ulong)configuration.MaxReorgDepth;
-    private readonly ulong _compactSize = (ulong)configuration.CompactSize;
+    private readonly ulong _minReorgDepth = configuration.MinReorgDepth;
+    private readonly ulong _maxReorgDepth = configuration.MaxReorgDepth;
+    private readonly ulong _compactSize = configuration.CompactSize;
     private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
@@ -49,6 +49,10 @@ public class PersistenceManager(
         }
         return _currentPersistedStateId;
     }
+
+    /// <summary>The first block number that has not yet been persisted, starting from genesis (block 0) when nothing is persisted.</summary>
+    private static ulong NextBlockToPersist(StateId state) =>
+        state == StateId.PreGenesis ? 0UL : state.BlockNumber + 1;
 
     private Snapshot? GetFinalizedSnapshotAtBlockNumber(ulong blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
@@ -143,12 +147,12 @@ public class PersistenceManager(
             // Follow the committed head; fall back to the longest chain when nothing was committed this session.
             StateId head = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
             snapshotToPersist = GetHeadAncestorAtBlockNumber(nextCompactedBoundary, currentPersistedState, head, true) ??
-                                GetHeadAncestorAtBlockNumber(currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1, currentPersistedState, head, false);
+                                GetHeadAncestorAtBlockNumber(NextBlockToPersist(currentPersistedState), currentPersistedState, head, false);
         }
         else
         {
             snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(nextCompactedBoundary, currentPersistedState, true) ??
-                                GetFinalizedSnapshotAtBlockNumber(currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1, currentPersistedState, false);
+                                GetFinalizedSnapshotAtBlockNumber(NextBlockToPersist(currentPersistedState), currentPersistedState, false);
         }
 
         if (snapshotToPersist is null)
@@ -207,7 +211,7 @@ public class PersistenceManager(
                 compactedSnapshot: true);
 
             snapshotToPersist ??= GetFinalizedSnapshotAtBlockNumber(
-                currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1,
+                NextBlockToPersist(currentPersistedState),
                 currentPersistedState,
                 compactedSnapshot: false);
 
@@ -219,7 +223,7 @@ public class PersistenceManager(
                 compactedSnapshot: true);
 
             snapshotToPersist ??= GetHeadAncestorAtBlockNumber(
-                currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1,
+                NextBlockToPersist(currentPersistedState),
                 currentPersistedState,
                 latestStateId.Value,
                 compactedSnapshot: false);
