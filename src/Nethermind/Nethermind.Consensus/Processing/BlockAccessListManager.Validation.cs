@@ -96,14 +96,6 @@ public partial class BlockAccessListManager
         }
     }
 
-    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
-    {
-        if (!spec.IsEip8037Enabled) return;
-
-        IntrinsicGas<EthereumGasPolicy> intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
-        CheckPerTxInclusion(block, index, tx, spec, cumulativeRegular, cumulativeState, in intrinsic);
-    }
-
     // EIP-8037 worst-case 2D inclusion check. Only fires when EIP-8037 is active; legacy and
     // pre-EIP-8037 blocks rely solely on the post-execution running max(R,S) check.
     internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState, in IntrinsicGas<EthereumGasPolicy> intrinsic)
