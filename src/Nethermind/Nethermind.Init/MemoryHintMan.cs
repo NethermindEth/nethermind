@@ -22,6 +22,8 @@ namespace Nethermind.Init
     /// </summary>
     public class MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
     {
+        private static readonly ulong OneMB = 1UL.MB;
+
         private readonly ILogger _logger = logManager?.GetClassLogger<MemoryHintMan>()
                       ?? throw new ArgumentNullException(nameof(logManager));
         private readonly MallocHelper _mallocHelper = mallocHelper ?? MallocHelper.Instance;
@@ -41,7 +43,7 @@ namespace Nethermind.Init
             if (TotalMemory < GeneralMemory)
             {
                 throw new InvalidDataException(
-                    $"Memory hint is not enough to cover general memory. Assign at least {GeneralMemory / 1UL.MB} MB.");
+                    $"Memory hint is not enough to cover general memory. Assign at least {GeneralMemory / OneMB} MB.");
             }
 
             checked
@@ -49,28 +51,28 @@ namespace Nethermind.Init
                 SetupMallocOpts(initConfig);
 
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
-                if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / 1UL.MB,5} MB");
+                if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / OneMB,5} MB");
                 _remainingMemory = memoryHint ?? 1UL.GiB;
                 _remainingMemory -= GeneralMemory;
-                if (_logger.IsInfo) _logger.Info($"  General memory:     {GeneralMemory / 1UL.MB,5} MB");
+                if (_logger.IsInfo) _logger.Info($"  General memory:     {GeneralMemory / OneMB,5} MB");
                 AssignPeersMemory(networkConfig);
                 _remainingMemory -= PeersMemory;
-                if (_logger.IsInfo) _logger.Info($"  Peers memory:       {PeersMemory / 1UL.MB,5} MB");
+                if (_logger.IsInfo) _logger.Info($"  Peers memory:       {PeersMemory / OneMB,5} MB");
                 AssignNettyMemory(networkConfig, cpuCount);
                 _remainingMemory -= NettyMemory;
-                if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1UL.MB,5} MB");
+                if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / OneMB,5} MB");
                 AssignTxPoolMemory(txPoolConfig);
                 _remainingMemory -= TxPoolMemory;
-                if (_logger.IsInfo) _logger.Info($"  Mempool memory:     {TxPoolMemory / 1UL.MB,5} MB");
+                if (_logger.IsInfo) _logger.Info($"  Mempool memory:     {TxPoolMemory / OneMB,5} MB");
                 AssignFastBlocksMemory(syncConfig);
                 _remainingMemory -= FastBlocksMemory;
-                if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / 1UL.MB,5} MB");
+                if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / OneMB,5} MB");
                 AssignTrieCacheMemory(dbConfig);
                 _remainingMemory -= TrieCacheMemory;
-                if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / 1UL.MB,5} MB");
+                if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / OneMB,5} MB");
                 UpdateDbConfig(dbConfig, initConfig);
                 _remainingMemory -= DbMemory;
-                if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1UL.MB,5} MB");
+                if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / OneMB,5} MB");
 
             }
         }

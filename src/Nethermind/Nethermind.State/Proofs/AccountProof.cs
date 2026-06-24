@@ -75,6 +75,13 @@ namespace Nethermind.State.Proofs
     /// </summary>
     public class ProofJsonConverter : JsonConverter<AccountProof>
     {
+        // Resolved once from the options on first use. The registered converters are stateless,
+        // process-wide singletons, so caching the first-seen instances is safe.
+        private static JsonConverter<Address>? _addressConverter;
+        private static JsonConverter<UInt256>? _uint256Converter;
+        private static JsonConverter<Hash256>? _hashConverter;
+        private static JsonConverter<ulong>? _ulongConverter;
+
         public override AccountProof Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
@@ -85,10 +92,10 @@ namespace Nethermind.State.Proofs
             AccountProof value,
             JsonSerializerOptions options)
         {
-            JsonConverter<Address> addressConverter = (JsonConverter<Address>)options.GetConverter(typeof(Address));
-            JsonConverter<UInt256> uint256Converter = (JsonConverter<UInt256>)options.GetConverter(typeof(UInt256));
-            JsonConverter<Hash256> hashConverter = (JsonConverter<Hash256>)options.GetConverter(typeof(Hash256));
-            JsonConverter<ulong> ulongConverter = (JsonConverter<ulong>)options.GetConverter(typeof(ulong));
+            JsonConverter<Address> addressConverter = _addressConverter ??= (JsonConverter<Address>)options.GetConverter(typeof(Address));
+            JsonConverter<UInt256> uint256Converter = _uint256Converter ??= (JsonConverter<UInt256>)options.GetConverter(typeof(UInt256));
+            JsonConverter<Hash256> hashConverter = _hashConverter ??= (JsonConverter<Hash256>)options.GetConverter(typeof(Hash256));
+            JsonConverter<ulong> ulongConverter = _ulongConverter ??= (JsonConverter<ulong>)options.GetConverter(typeof(ulong));
 
             writer.WriteStartObject();
 

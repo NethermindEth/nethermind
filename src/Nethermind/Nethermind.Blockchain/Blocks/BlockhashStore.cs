@@ -26,6 +26,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         if (!worldState.IsContract(eip2935Account)) return;
 
         Hash256 parentBlockHash = blockHeader.ParentHash;
+        // Genesis is excluded above, so Number >= 1 here and the subtraction cannot underflow.
         UInt256 parentBlockIndex = new((blockHeader.Number - 1) % spec.Eip2935RingBufferSize);
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
         worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());

@@ -50,7 +50,7 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
 
     public void ReturnCachedResource(Usage usage, TransientResource transientResource) => _categories[usage].ReturnCachedResource(transientResource);
 
-    public static Usage CompactUsage(int compactSize) => compactSize switch
+    public static Usage CompactUsage(ulong compactSize) => compactSize switch
     {
         <= 2 => Usage.Compact2,
         4 => Usage.Compact4,

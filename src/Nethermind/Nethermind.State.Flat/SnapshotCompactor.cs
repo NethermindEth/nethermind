@@ -118,7 +118,7 @@ public class SnapshotCompactor(
         StateId from = snapshots[0].From;
 
         ulong compactSize = _schedule.GetCompactSize(to.BlockNumber);
-        ResourcePool.Usage usage = ResourcePool.CompactUsage((int)compactSize);
+        ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
         ConcurrentDictionary<HashedKey<Address>, Account?> accounts = snapshot.Content.Accounts;

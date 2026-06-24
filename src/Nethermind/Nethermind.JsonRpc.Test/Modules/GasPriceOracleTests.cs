@@ -170,7 +170,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             testGasPriceOracle.GetGasPriceEstimate();
 
-            foreach (ulong receivedBlockNumber in TestRange.ULongRange(0, (int)blockNumber + 1))
+            foreach (ulong receivedBlockNumber in TestRange.ULongRange(0, blockNumber + 1))
             {
                 blockFinder.Received(1).FindBlock(Arg.Is<ulong>(l => l == receivedBlockNumber));
             }

@@ -155,9 +155,11 @@ namespace Nethermind.Core.Test.Builders
         {
             random ??= Random;
 
+            // Uses Random.Next (not NextUInt64/NextInt64) to preserve the seeded RNG sequence that
+            // deterministic tests (e.g. trie proof hashes) depend on.
             Account account = new(
-                random.NextUInt64(1000),
-                random.NextUInt64(1000),
+                (ulong)random.Next(1000),
+                (ulong)random.Next(1000),
                 Keccak.EmptyTreeHash,
                 Keccak.OfAnEmptyString);
 
