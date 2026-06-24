@@ -169,6 +169,7 @@ public class TaikoModule : Module
             .AddScoped<IBlockProcessor, TaikoBlockProcessor>()
             .AddScoped<IExecutionRequestsProcessor, TaikoExecutionRequestsProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
+            .AddSingleton<IBlockProductionPolicy>(NeverStartBlockProductionPolicy.Instance)
 
             .AddSingleton<IRlpDecoder<Transaction>>((_) => TxDecoder.Instance)
             .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, ISpecProvider, IRlpDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
