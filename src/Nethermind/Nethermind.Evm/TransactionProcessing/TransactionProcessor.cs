@@ -299,6 +299,18 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
+            // EIP-8037 top-frame charge: a value transfer materialising a new (dead, non-precompile)
+            // recipient pays NEW_ACCOUNT state gas, evaluated against pre-transfer state. This mirrors the
+            // ExecuteSimpleTransfer charge for the EVM path (transactions carrying code, calldata, or an
+            // authorization list, which bypass the simple-transfer fast path).
+            if (spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
+                && tx.To is not null && tx.SenderAddress != tx.To
+                && !spec.IsPrecompile(tx.To) && WorldState.IsDeadAccount(tx.To))
+            {
+                if (!TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost(in gasAvailable)))
+                    TGasPolicy.Consume(ref gasAvailable, TGasPolicy.GetRemainingGas(in gasAvailable));
+            }
+
             // EIP-8037 top-frame charge: a top-level call whose recipient is an EIP-7702 delegation
             // also touches the delegation target with a (flat) cold account access. The target is
             // already pre-warmed for the frame, so this is the sole charge for it. If the gas cannot
