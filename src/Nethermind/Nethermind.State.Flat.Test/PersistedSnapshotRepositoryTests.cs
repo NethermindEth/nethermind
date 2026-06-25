@@ -66,6 +66,32 @@ public class PersistedSnapshotRepositoryTests
     }
 
     /// <summary>
+    /// Regression for PersistedSnapshotBucket.Add: it must not re-enter the bucket's non-reentrant
+    /// <see cref="System.Threading.Lock"/> via Set (that deadlocked), and an overwrite at an existing
+    /// <c>To</c> must dispose the displaced snapshot and roll its accounting back net-zero (not
+    /// double-count). Converting the same (From, To) twice drives that overwrite path: a regressed
+    /// deadlock would hang this test, and a double-count would make PersistedSnapshotCount == 2.
+    /// </summary>
+    [Test]
+    public void ConvertToPersistedBase_DuplicateTo_OverwritesNetZero_AndNewestWins()
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+
+        tier.ConvertToPersistedBase(CreateTestSnapshot(s0, s1, TestItem.AddressA, 1000)).Dispose();
+        tier.ConvertToPersistedBase(CreateTestSnapshot(s0, s1, TestItem.AddressA, 2000)).Dispose();
+
+        Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1), "overwrite must be net-zero, not double-counted");
+        Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
+        Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out Account? acct), Is.True);
+        Assert.That(acct!.Balance, Is.EqualTo((UInt256)2000), "the second (newest) snapshot must win the overwrite");
+        persisted.Dispose();
+    }
+
+    /// <summary>
     /// Regression: an address with 256k sequential storage slots fills four fully-dense
     /// 30-byte slot-prefix groups (65536 slots each). The builder writes the per-address
     /// slot column through <c>ArenaBufferWriter</c> (see <see cref="SnapshotRepository"/>),

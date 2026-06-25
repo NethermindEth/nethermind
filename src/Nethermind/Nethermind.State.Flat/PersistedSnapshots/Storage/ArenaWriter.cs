@@ -32,7 +32,6 @@ public sealed class ArenaWriter : IDisposable
     public (SnapshotLocation Location, ArenaReservation Reservation) Complete()
     {
         _writer.Flush();
-        _completed = true;
         long actualSize = _writer.Written;
         long dataEnd = _startOffset + actualSize;
         // Fail loud if the write ran past the arena's mapped extent: the Math.Min cap below would
@@ -60,6 +59,10 @@ public sealed class ArenaWriter : IDisposable
 
         SnapshotLocation location = new(_file.Id, _startOffset, actualSize);
         ArenaReservation reservation = new(_manager, _file, _file.Id, _startOffset, actualSize);
+        // Mark completed only once the write is committed (the reservation now owns the file slice).
+        // Anything that throws above — the overflow guard, Truncate, or the reservation ctor — leaves
+        // _completed false so Dispose() runs the cancel/cleanup path and releases the file + pool slot.
+        _completed = true;
         // Dedicated arenas are one-shot — they never return to the mutable pool. Shared
         // arenas re-enter the pool iff there's still room for the next packing scan.
         bool hasHeadroom = !_dedicated && newFrontier < _file.MappedSize;

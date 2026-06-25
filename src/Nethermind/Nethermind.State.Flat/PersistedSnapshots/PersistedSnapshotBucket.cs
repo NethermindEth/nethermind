@@ -89,6 +89,9 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     {
         if (_byTo.TryGetValue(to, out PersistedSnapshot? old))
         {
+            // Re-inserting the very same instance is a no-op — never roll back / dispose the object we
+            // are about to keep (that would be a use-after-free), and the accounting is already correct.
+            if (ReferenceEquals(old, snapshot)) return;
             Interlocked.Add(ref _memoryBytes, -old.Size);
             Interlocked.Decrement(ref _count);
             PersistedSnapshotLabel oldLabel = LabelFor(old);

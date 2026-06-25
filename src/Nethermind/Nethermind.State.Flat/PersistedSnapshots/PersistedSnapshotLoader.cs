@@ -240,8 +240,19 @@ public sealed class PersistedSnapshotLoader(
         reservation.Dispose();
         try
         {
+            // Catalog first (durable record) for crash recovery; if the in-memory index then throws,
+            // roll the catalog row back so a later load can't resolve an entry whose snapshot the
+            // finally below cleans up.
             _catalog.Add(new CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
-            repository.AddPersistedSnapshot(persisted, SnapshotTier.PersistedBase);
+            try
+            {
+                repository.AddPersistedSnapshot(persisted, SnapshotTier.PersistedBase);
+            }
+            catch
+            {
+                _catalog.Remove(snapshot.To, (long)(snapshot.To.BlockNumber - snapshot.From.BlockNumber));
+                throw;
+            }
 
             if (_validatePersistedSnapshot)
             {
