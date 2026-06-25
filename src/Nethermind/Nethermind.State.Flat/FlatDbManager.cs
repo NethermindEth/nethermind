@@ -77,10 +77,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
-        if (config.CompactSize > int.MaxValue - 8)
-        {
-            throw new ArgumentOutOfRangeException(nameof(config.CompactSize), "Compact size must not exceed int.MaxValue - 8");
-        }
+        config.ValidateCompactSize();
         _compactSize = (int)config.CompactSize;
 
         // We assume that the state must be able to be persisted in half the slot time at the very

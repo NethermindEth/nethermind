@@ -20,10 +20,7 @@ public class ResourcePool : IResourcePool
 
     public ResourcePool(IFlatDbConfig flatConfig)
     {
-        if (flatConfig.CompactSize > int.MaxValue - 8)
-        {
-            throw new ArgumentOutOfRangeException(nameof(flatConfig.CompactSize), "Compact size must not exceed int.MaxValue - 8");
-        }
+        flatConfig.ValidateCompactSize();
 
         _categories = new()
         {

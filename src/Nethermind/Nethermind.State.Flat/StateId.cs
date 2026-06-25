@@ -12,6 +12,8 @@ public readonly record struct StateId(ulong BlockNumber, in ValueHash256 StateRo
     {
     }
 
+    // Reserved sentinels at the top of the block-number range; these heights are never reached by a
+    // real chain, so they cannot collide with a real state id (e.g. block 0 with the empty trie root).
     public static readonly StateId PreGenesis = new(ulong.MaxValue, Keccak.EmptyTreeHash);
     public static readonly StateId Sync = new(ulong.MaxValue - 1, Keccak.EmptyTreeHash);
 
