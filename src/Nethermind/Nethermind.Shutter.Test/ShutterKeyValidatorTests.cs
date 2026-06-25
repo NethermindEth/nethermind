@@ -49,9 +49,6 @@ class ShutterKeyValidatorTests
             .SetName("wrong-length signature");
     }
 
-    // Each corruption targets an attacker-controlled field that previously hit an unchecked access in
-    // CheckDecryptionKeys (Addresses[signerIndex] / signatureBytes[64]) and threw IndexOutOfRangeException;
-    // both must now be rejected gracefully (ValidateKeys returns null instead of throwing).
     [TestCaseSource(nameof(MalformedDecryptionKeysCases))]
     public void Rejects_malformed_decryption_keys(Action<Dto.DecryptionKeys> corrupt)
     {
@@ -61,7 +58,7 @@ class ShutterKeyValidatorTests
         (List<ShutterEventSimulator.Event> _, Dto.DecryptionKeys keys) = api.AdvanceSlot(5);
         Assert.That(api.KeysValidated, Is.EqualTo(1));
 
-        keys.Gnosis.Slot += 1; // a fresh slot so the message is not skipped
+        keys.Gnosis.Slot += 1;
         corrupt(keys);
 
         IShutterKeyValidator.ValidatedKeys? result = null;
