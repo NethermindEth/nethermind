@@ -62,6 +62,7 @@ public class SnapProtocolHandlerTests
             set => _nodeStatsManager = value;
         }
 
+        public SyncConfig SyncConfig { get; set; } = new();
 
         private SnapProtocolHandler? _snapProtocolHandler;
         public SnapProtocolHandler SnapProtocolHandler
@@ -72,7 +73,7 @@ public class SnapProtocolHandlerTests
                 MessageSerializationService,
                 RunImmediatelyScheduler.Instance,
                 LimboLogs.Instance,
-                new SyncConfig(),
+                SyncConfig,
                 NoopSnapServer.Instance);
             set
             {
@@ -122,6 +123,8 @@ public class SnapProtocolHandlerTests
         public void RecordedMessageSizesShouldDecrease() => Assert.That(_recordedResponseBytesLength[^1], Is.LessThan(_recordedResponseBytesLength[^2]));
 
         public void RecordedMessageSizesShouldNotChange() => Assert.That(_recordedResponseBytesLength[^1], Is.EqualTo(_recordedResponseBytesLength[^2]));
+
+        public long LastRecordedMessageSize => _recordedResponseBytesLength[^1];
     }
 
     [Test]
@@ -156,6 +159,21 @@ public class SnapProtocolHandlerTests
     [TestCase(0L, 1L)]
     [TestCase(-1L, 1L)]
     public void ClampResponseBytes_clamps_to_valid_range(long input, long expected) => Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
+
+    [TestCase(1234, 1234L)]
+    [TestCase(0, 50_000L)]
+    [TestCase(-1, 50_000L)]
+    public async Task Account_range_response_bytes_are_capped_by_sync_config(int configuredResponseBytes, long expectedResponseBytes)
+    {
+        Context ctx = new Context
+        {
+            SyncConfig = new SyncConfig { SnapSyncAccountRangeMaxResponseBytes = configuredResponseBytes }
+        }.WithResponseBytesRecorder;
+
+        using AccountsAndProofs response = await ctx.SnapProtocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
+
+        Assert.That(ctx.LastRecordedMessageSize, Is.EqualTo(expectedResponseBytes));
+    }
 
     [Test]
     [Explicit]

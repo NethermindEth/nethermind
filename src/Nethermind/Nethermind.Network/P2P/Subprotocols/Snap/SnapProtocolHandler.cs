@@ -45,6 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private readonly MessageDictionary<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
         private readonly MessageDictionary<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
         private static readonly byte[] _emptyBytes = [0];
+        private readonly long _accountRangeMaxResponseBytes;
 
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
@@ -62,6 +63,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             SyncServer = snapServer;
             CanServe = snapServer.CanServe;
             SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(syncConfig.SnapServingMaxPathsPerGroup, nameof(PathGroup.Group));
+            _accountRangeMaxResponseBytes = syncConfig.SnapSyncAccountRangeMaxResponseBytes <= 0
+                ? SnapMessageLimits.MaxResponseBytes
+                : SnapMessageLimits.ClampResponseBytes(syncConfig.SnapSyncAccountRangeMaxResponseBytes);
         }
 
         public override void Init() => NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
@@ -204,7 +208,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 SendRequest(new GetAccountRangeMessage()
                 {
                     AccountRange = range,
-                    ResponseBytes = bytesLimit
+                    ResponseBytes = Math.Min(bytesLimit, _accountRangeMaxResponseBytes)
                 }, _getAccountRangeRequests, token));
 
             return new AccountsAndProofs { PathAndAccounts = response.PathsWithAccounts, Proofs = response.Proofs };
