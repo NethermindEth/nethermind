@@ -48,7 +48,6 @@ internal readonly record struct MdbxTuningOptions(
     public const ulong DefaultMaxDbs = 512;
     public const ulong DefaultMaxReaders = 8192;
     public const ulong DefaultRpAugmentLimit = 256 * 1024;
-    public const ulong DefaultStateRpAugmentLimit = DefaultRpAugmentLimit;
     public const int DefaultMaxBatchGroupOperations = 128 * 1024;
     public const int DefaultStateMaxBatchGroupOperations = 8 * 1024;
     public const long DefaultMaxBatchGroupBytes = 64L << 20;
@@ -120,13 +119,12 @@ internal readonly record struct MdbxTuningOptions(
             pageSize = defaultPageSize;
         }
 
-        ulong defaultRpAugmentLimit = isStateDb ? DefaultStateRpAugmentLimit : DefaultRpAugmentLimit;
         ulong defaultDirtyPagesReserveLimit = isStateDb ? BytesToPages(DefaultStateDirtyPagesReserveBytes, pageSize) : 0;
         ulong defaultTransactionDirtyPagesLimit = isStateDb ? BytesToPages(DefaultStateTransactionDirtyPagesLimitBytes, pageSize) : 0;
         ulong defaultTransactionDirtyPagesInitial = isStateDb ? BytesToPages(DefaultStateTransactionDirtyPagesInitialBytes, pageSize) : 0;
         int defaultMaxBatchGroupOperations = isStateDb ? DefaultStateMaxBatchGroupOperations : DefaultMaxBatchGroupOperations;
 
-        ulong rpAugmentLimit = ReadUInt64("NETHERMIND_MDBX_RP_AUGMENT_LIMIT", defaultRpAugmentLimit, logger, ref hasOverrides);
+        ulong rpAugmentLimit = ReadUInt64("NETHERMIND_MDBX_RP_AUGMENT_LIMIT", DefaultRpAugmentLimit, logger, ref hasOverrides);
         ulong dirtyPagesReserveLimit = ReadUInt64("NETHERMIND_MDBX_DIRTY_PAGES_RESERVE_LIMIT", defaultDirtyPagesReserveLimit, logger, ref hasOverrides, out bool hasDirtyPagesReserveLimitOverride);
         ulong transactionDirtyPagesLimit = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_LIMIT", defaultTransactionDirtyPagesLimit, logger, ref hasOverrides, out bool hasTransactionDirtyPagesLimitOverride);
         ulong transactionDirtyPagesInitial = ReadUInt64("NETHERMIND_MDBX_TXN_DIRTY_PAGES_INITIAL", defaultTransactionDirtyPagesInitial, logger, ref hasOverrides, out bool hasTransactionDirtyPagesInitialOverride);
