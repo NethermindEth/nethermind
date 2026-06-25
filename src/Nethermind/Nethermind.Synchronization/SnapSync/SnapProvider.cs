@@ -30,6 +30,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly ProgressTracker _progressTracker = progressTracker;
         private readonly ISnapTrieFactory _trieFactory = trieFactory;
+        private readonly SnapRangeProfiler? _rangeProfiler = SnapRangeProfiler.Create(logManager);
         private readonly int _storageRangeParallelism = Math.Clamp(syncConfig?.SnapSyncStorageRangeParallelism ?? 1, 1, MaxStorageRangeParallelism);
 
         // This is actually close to 97% effective.
@@ -85,7 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 effectiveHashLimit = hashLimit ?? ValueKeccak.MaxValue;
 
             (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount>? accountsWithStorage, List<ValueHash256>? codeHashes, Hash256 actualRootHash) =
-                SnapProviderHelper.AddAccountRange(_trieFactory, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
+                SnapProviderHelper.AddAccountRange(_trieFactory, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs, _rangeProfiler);
 
             if (result == AddRangeResult.OK)
             {
@@ -336,7 +337,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, pathWithAccount, slots, request.StartingHash, request.LimitHash, proofs);
+                (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, pathWithAccount, slots, request.StartingHash, request.LimitHash, proofs, _rangeProfiler);
                 return new StorageRangeAccountResult(result, moreChildrenToRight, actualRootHash, isRootPersisted, slots.Count, slots.Count == 0 ? ValueKeccak.Zero : slots[^1].Path);
             }
             catch (Exception e)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -24,12 +25,24 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 limitHash,
             IReadOnlyList<PathWithAccount> accounts,
             IByteArrayList proofs = null
+        ) =>
+            AddAccountRange(factory, blockNumber, expectedRootHash, startingHash, limitHash, accounts, proofs, profiler: null);
+
+        internal static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount>? storageRoots, List<ValueHash256>? codeHashes, Hash256 actualRootHash) AddAccountRange(
+            ISnapTrieFactory factory,
+            long blockNumber,
+            in ValueHash256 expectedRootHash,
+            in ValueHash256 startingHash,
+            in ValueHash256 limitHash,
+            IReadOnlyList<PathWithAccount> accounts,
+            IByteArrayList proofs,
+            SnapRangeProfiler? profiler = null
         )
         {
             using ISnapTree<PathWithAccount> tree = factory.CreateStateTree();
 
             (AddRangeResult result, bool moreChildrenToRight, _) = CommitRange(
-                tree, accounts, startingHash, limitHash, expectedRootHash, proofs);
+                tree, accounts, startingHash, limitHash, expectedRootHash, proofs, profiler, isStorage: false);
             if (result != AddRangeResult.OK)
                 return (result, true, null, null, tree.RootHash);
 
@@ -56,6 +69,17 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256? startingHash,
             in ValueHash256? limitHash,
             IByteArrayList? proofs = null
+        ) =>
+            AddStorageRange(factory, account, slots, startingHash, limitHash, proofs, profiler: null);
+
+        internal static (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) AddStorageRange(
+            ISnapTrieFactory factory,
+            PathWithAccount account,
+            IReadOnlyList<PathWithStorageSlot> slots,
+            in ValueHash256? startingHash,
+            in ValueHash256? limitHash,
+            IByteArrayList? proofs,
+            SnapRangeProfiler? profiler = null
         )
         {
             using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(account.Path);
@@ -64,11 +88,24 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
 
             (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) = CommitRange(
-                tree, slots, effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs);
+                tree, slots, effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs, profiler, isStorage: true);
             if (result != AddRangeResult.OK)
                 return (result, true, tree.RootHash, false);
             return (AddRangeResult.OK, moreChildrenToRight, tree.RootHash, isRootPersisted);
         }
+
+        private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRange<TEntry>(
+            ISnapTree<TEntry> tree,
+            IReadOnlyList<TEntry> entries,
+            in ValueHash256 startingHash,
+            in ValueHash256 limitHash,
+            in ValueHash256 expectedRootHash,
+            IByteArrayList? proofs,
+            SnapRangeProfiler? profiler,
+            bool isStorage) where TEntry : ISnapEntry
+            => profiler is null
+                ? CommitRange(tree, entries, startingHash, limitHash, expectedRootHash, proofs)
+                : CommitRangeProfiled(tree, entries, startingHash, limitHash, expectedRootHash, proofs, profiler, isStorage);
 
         private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRange<TEntry>(
             ISnapTree<TEntry> tree,
@@ -123,6 +160,120 @@ namespace Nethermind.Synchronization.SnapSync
 
             bool isRootPersisted = sortedBoundaryList is not { Count: > 0 } || sortedBoundaryList[0].Item1.IsPersisted;
             return (AddRangeResult.OK, moreChildrenToRight, isRootPersisted);
+        }
+
+        private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRangeProfiled<TEntry>(
+            ISnapTree<TEntry> tree,
+            IReadOnlyList<TEntry> entries,
+            in ValueHash256 startingHash,
+            in ValueHash256 limitHash,
+            in ValueHash256 expectedRootHash,
+            IByteArrayList? proofs,
+            SnapRangeProfiler profiler,
+            bool isStorage) where TEntry : ISnapEntry
+        {
+            long totalStart = Stopwatch.GetTimestamp();
+            long fillTicks = 0;
+            long bulkTicks = 0;
+            long stitchTicks = 0;
+            long commitTicks = 0;
+            int boundaryNodes = 0;
+            int persistedProbes = 0;
+            int persistedHits = 0;
+            AddRangeResult result = AddRangeResult.OK;
+            bool threw = false;
+
+            try
+            {
+                if (entries.Count == 0)
+                {
+                    result = AddRangeResult.EmptyRange;
+                    return (AddRangeResult.EmptyRange, true, false);
+                }
+
+                // Validate sorting order
+                for (int i = 1; i < entries.Count; i++)
+                {
+                    if (entries[i - 1].Path.CompareTo(entries[i].Path) >= 0)
+                    {
+                        result = AddRangeResult.InvalidOrder;
+                        return (AddRangeResult.InvalidOrder, true, false);
+                    }
+                }
+
+                if (entries[0].Path < startingHash)
+                {
+                    result = AddRangeResult.InvalidOrder;
+                    return (AddRangeResult.InvalidOrder, true, false);
+                }
+
+                ValueHash256 lastPath = entries[entries.Count - 1].Path;
+
+                long fillStart = Stopwatch.GetTimestamp();
+                (result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
+                    FillBoundaryTree(tree, startingHash, lastPath, limitHash, expectedRootHash, proofs);
+                fillTicks = Stopwatch.GetElapsedTime(fillStart).Ticks;
+                boundaryNodes = sortedBoundaryList?.Count ?? 0;
+
+                if (result != AddRangeResult.OK)
+                    return (result, true, false);
+
+                // The upper bound is used to prevent proof nodes that covers next range from being persisted, except if
+                // this is the last range. This prevent double node writes per path which break flat. It also prevent leaf o
+                // that is after the range from being persisted, which prevent double write again.
+                ValueHash256 upperBound = lastPath;
+                if (upperBound > limitHash)
+                {
+                    upperBound = limitHash;
+                }
+                else
+                {
+                    if (!moreChildrenToRight) upperBound = ValueKeccak.MaxValue;
+                }
+
+                long bulkStart = Stopwatch.GetTimestamp();
+                tree.BulkSetAndUpdateRootHash(entries);
+                bulkTicks = Stopwatch.GetElapsedTime(bulkStart).Ticks;
+
+                if (tree.RootHash.ValueHash256 != expectedRootHash)
+                {
+                    result = AddRangeResult.DifferentRootHash;
+                    return (AddRangeResult.DifferentRootHash, true, false);
+                }
+
+                long stitchStart = Stopwatch.GetTimestamp();
+                StitchBoundaries(sortedBoundaryList, tree, startingHash, countPersistedProbes: true, ref persistedProbes, ref persistedHits);
+                stitchTicks = Stopwatch.GetElapsedTime(stitchStart).Ticks;
+
+                long commitStart = Stopwatch.GetTimestamp();
+                tree.Commit(upperBound);
+                commitTicks = Stopwatch.GetElapsedTime(commitStart).Ticks;
+
+                bool isRootPersisted = sortedBoundaryList is not { Count: > 0 } || sortedBoundaryList[0].Item1.IsPersisted;
+                return (AddRangeResult.OK, moreChildrenToRight, isRootPersisted);
+            }
+            catch
+            {
+                threw = true;
+                throw;
+            }
+            finally
+            {
+                profiler.ReportRange(
+                    isStorage,
+                    result,
+                    threw,
+                    entries.Count,
+                    proofs?.Count ?? 0,
+                    boundaryNodes,
+                    persistedProbes,
+                    persistedHits,
+                    fillTicks,
+                    bulkTicks,
+                    stitchTicks,
+                    commitTicks,
+                    Stopwatch.GetElapsedTime(totalStart).Ticks);
+            }
         }
 
         [SkipLocalsInit]
@@ -313,6 +464,19 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static void StitchBoundaries<TEntry>(List<(TrieNode, TreePath)>? sortedBoundaryList, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
         {
+            int persistedProbes = 0;
+            int persistedHits = 0;
+            StitchBoundaries(sortedBoundaryList, tree, startPath, countPersistedProbes: false, ref persistedProbes, ref persistedHits);
+        }
+
+        private static void StitchBoundaries<TEntry>(
+            List<(TrieNode, TreePath)>? sortedBoundaryList,
+            ISnapTree<TEntry> tree,
+            ValueHash256 startPath,
+            bool countPersistedProbes,
+            ref int persistedProbes,
+            ref int persistedHits) where TEntry : ISnapEntry
+        {
             if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
             {
                 return;
@@ -327,7 +491,7 @@ namespace Nethermind.Synchronization.SnapSync
                     INodeData nodeData = node.NodeData;
                     if (nodeData is ExtensionData extensionData)
                     {
-                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, tree, startPath))
+                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, tree, startPath, countPersistedProbes, ref persistedProbes, ref persistedHits))
                         {
                             node.IsBoundaryProofNode = false;
                         }
@@ -338,7 +502,7 @@ namespace Nethermind.Synchronization.SnapSync
                         int ci = 0;
                         foreach (object? o in branchData.Branches)
                         {
-                            if (!IsChildPersisted(node, ref path, o, ci, tree, startPath))
+                            if (!IsChildPersisted(node, ref path, o, ci, tree, startPath, countPersistedProbes, ref persistedProbes, ref persistedHits))
                             {
                                 isBoundaryProofNode = true;
                                 break;
@@ -356,14 +520,23 @@ namespace Nethermind.Synchronization.SnapSync
                     //leading to TrieNodeException after sync (as healing may not get to heal the particular storage trie)
                     if (node.IsLeaf)
                     {
-                        node.IsPersisted = tree.IsPersisted(path, node.Keccak);
+                        node.IsPersisted = IsPersisted(tree, path, node.Keccak, countPersistedProbes, ref persistedProbes, ref persistedHits);
                         node.IsBoundaryProofNode = !node.IsPersisted;
                     }
                 }
             }
         }
 
-        private static bool IsChildPersisted<TEntry>(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
+        private static bool IsChildPersisted<TEntry>(
+            TrieNode node,
+            ref TreePath nodePath,
+            object? child,
+            int childIndex,
+            ISnapTree<TEntry> tree,
+            ValueHash256 startPath,
+            bool countPersistedProbes,
+            ref int persistedProbes,
+            ref int persistedHits) where TEntry : ISnapEntry
         {
             if (child is TrieNode childNode)
             {
@@ -383,12 +556,33 @@ namespace Nethermind.Synchronization.SnapSync
             int previousPathLength = node.AppendChildPath(ref nodePath, childIndex);
             try
             {
-                return tree.IsPersisted(nodePath, childKeccak);
+                return IsPersisted(tree, nodePath, childKeccak, countPersistedProbes, ref persistedProbes, ref persistedHits);
             }
             finally
             {
                 nodePath.TruncateMut(previousPathLength);
             }
+        }
+
+        private static bool IsPersisted<TEntry>(
+            ISnapTree<TEntry> tree,
+            in TreePath path,
+            in ValueHash256 keccak,
+            bool countPersistedProbes,
+            ref int persistedProbes,
+            ref int persistedHits) where TEntry : ISnapEntry
+        {
+            bool isPersisted = tree.IsPersisted(path, keccak);
+            if (countPersistedProbes)
+            {
+                persistedProbes++;
+                if (isPersisted)
+                {
+                    persistedHits++;
+                }
+            }
+
+            return isPersisted;
         }
     }
 }
