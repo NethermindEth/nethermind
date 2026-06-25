@@ -57,10 +57,9 @@ public class PageResidencyTrackerTests
     /// <summary>
     /// Minimal <see cref="IArenaManager"/> stub for <see cref="ArenaByteReader"/> tests:
     /// exposes the supplied tracker via <see cref="PageTracker"/> so an
-    /// <see cref="ArenaReservation"/> can call into it, and runs the residency clock
-    /// <em>synchronously</em> in <see cref="Touch"/> (for both the background and inline forms), forwarding
-    /// any displaced page into <paramref name="handler"/>. The synchronous touch keeps the reader tests
-    /// deterministic (production defers the background form to a ring). Lazily backs each arenaId with a
+    /// <see cref="ArenaReservation"/> can call into it directly, and forwards
+    /// <see cref="IArenaManager.QueueEviction"/> into <paramref name="handler"/> so test
+    /// assertions on cross-arena evictions still work. Lazily backs each arenaId with a
     /// small file-backed <see cref="ArenaFile"/> in <paramref name="tempDir"/> so the
     /// non-nullable contract on <see cref="ArenaReservation"/> is satisfied.
     /// </summary>
@@ -69,14 +68,7 @@ public class PageResidencyTrackerTests
         private readonly Dictionary<int, ArenaFile> _files = [];
 
         public PageResidencyTracker PageTracker => tracker;
-        public PageResidencyTracker.TouchOutcome Touch(int arenaId, uint pageIdx, bool inline)
-        {
-            PageResidencyTracker.TouchOutcome outcome =
-                tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out uint evictedPageIdx);
-            if (outcome == PageResidencyTracker.TouchOutcome.Evicted)
-                handler.OnPageEvicted(evictedArenaId, (int)evictedPageIdx);
-            return outcome;
-        }
+        public void QueueEviction(int arenaId, uint pageIdx) => handler.OnPageEvicted(arenaId, (int)pageIdx);
         public ArenaWriter CreateWriter(long estimatedSize, bool small = false) => throw new NotSupportedException();
         public void Initialize(IReadOnlyList<CatalogEntry> entries) => throw new NotSupportedException();
         public ArenaReservation Open(in SnapshotLocation location) => throw new NotSupportedException();
@@ -105,7 +97,7 @@ public class PageResidencyTrackerTests
     /// <summary>
     /// Touch wrapper used by tests that exercise the tracker directly: pumps any displaced
     /// key into <paramref name="handler"/>, mirroring what <see cref="ArenaReservation.TouchRangePopulate"/>
-    /// does in production via <see cref="IArenaManager.Touch"/>.
+    /// does in production via <see cref="IArenaManager.QueueEviction"/>.
     /// </summary>
     private static void Touch(PageResidencyTracker tracker, int arenaId, int pageIdx, IPageEvictionHandler? handler = null)
     {
@@ -408,7 +400,7 @@ public class PageResidencyTrackerTests
     public unsafe void ArenaByteReader_DispatchesCrossArenaEvictionsToHandler()
     {
         // Fill the only set with 8 reads from arena 5, then read from arena 6 to force a clock
-        // eviction. The displaced key (5, 0) surfaces through the stub's synchronous touch → handler.
+        // eviction. The displaced key (5, 0) surfaces through QueueEviction → handler.
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
         using StubArenaManager manager = new(tracker, handler, _tempDir);
