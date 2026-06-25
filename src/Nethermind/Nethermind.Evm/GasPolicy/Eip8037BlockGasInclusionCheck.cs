@@ -36,17 +36,14 @@ public static class Eip8037BlockGasInclusionCheck
         return Outcome.Ok;
     }
 
-    public static long CalculateBlockRegularGas(
-        long intrinsicRegularGas,
-        long initialRegularGas,
-        long remainingRegularGas,
-        long stateGasSpill,
-        long stateGasSpillReclassified)
-    {
-        // EIP-7778/EIP-8037: the block's regular-gas dimension is the pre-refund regular gas actually
-        // consumed. The EIP-7623/7976 calldata floor is a minimum charge on the sender (tx_gas_used /
-        // receipts) only and must NOT inflate the block gasUsed.
-        long executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill + stateGasSpillReclassified;
-        return intrinsicRegularGas + executionRegularGasUsed;
-    }
+    // EIP-8037 (EELS amsterdam/fork.py): tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas).
+    // The block's regular-gas dimension is the pre-refund gas charged minus the state-gas component,
+    // which is accounted independently in the state dimension; block gasUsed = max(ΣregularPreRefund,
+    // Σstate). Deriving it from gas_left/reservoir/spill deltas instead diverges once spilled state gas
+    // is refunded back to gas_left (a clearing-frame SSTORE refund that funds a later CREATE) and can
+    // even go negative when the reservoir survives, so subtract the state component directly. The
+    // EIP-7623/7976 calldata floor is a sender-only minimum (tx_gas_used / receipts) and must NOT
+    // inflate the block's regular-gas dimension.
+    public static long CalculateBlockRegularGas(long preRefundGas, long blockStateGas)
+        => Math.Max(0, preRefundGas - Math.Max(0, blockStateGas));
 }

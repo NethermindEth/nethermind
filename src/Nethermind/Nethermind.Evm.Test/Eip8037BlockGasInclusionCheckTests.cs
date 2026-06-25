@@ -145,50 +145,32 @@ public class Eip8037BlockGasInclusionCheckTests
     }
 
     [Test]
-    public void Calculate_block_regular_gas_keeps_valid_transcripts_non_negative()
+    public void Calculate_block_regular_gas_subtracts_state_component()
     {
-        Random random = new(8037);
-        for (int i = 0; i < 2_000; i++)
-        {
-            long intrinsicRegular = random.Next(21_000, 500_000);
-            long initialRegular = random.Next(0, 5_000_000);
-            long spentRegular = random.Next(0, (int)Math.Min(initialRegular, int.MaxValue)) + (initialRegular > int.MaxValue ? random.Next(0, 2) : 0);
-            if (spentRegular > initialRegular)
-            {
-                spentRegular = initialRegular;
-            }
-
-            long stateGasSpill = random.Next(0, (int)Math.Min(spentRegular, int.MaxValue));
-            long stateGasSpillReclassified = random.Next(0, (int)Math.Min(stateGasSpill, int.MaxValue));
-            long remainingRegular = initialRegular - spentRegular;
-
-            long executionRegularGasUsed = initialRegular - remainingRegular - stateGasSpill + stateGasSpillReclassified;
-            long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-                intrinsicRegular,
-                initialRegular,
-                remainingRegular,
-                stateGasSpill,
-                stateGasSpillReclassified);
-
-            Assert.That(executionRegularGasUsed, Is.GreaterThanOrEqualTo(0L));
-            Assert.That(blockRegularGas, Is.EqualTo(intrinsicRegular + executionRegularGasUsed));
-        }
+        // EELS amsterdam/fork.py: tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas).
+        Assert.That(
+            Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 379_970, blockStateGas: 281_520),
+            Is.EqualTo(98_450));
+        Assert.That(
+            Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 133_379, blockStateGas: 97_920),
+            Is.EqualTo(35_459));
     }
 
+    // When the state component exceeds the pre-refund gas (e.g. a create whose intrinsic state
+    // reservoir survives a revert), the regular dimension floors at zero; the state dimension
+    // dominates block gasUsed via max(ΣregularPreRefund, Σstate).
+    [Test]
+    public void Calculate_block_regular_gas_never_negative()
+        => Assert.That(
+            Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 12_625, blockStateGas: 1_566_720),
+            Is.EqualTo(0));
+
+    // Regression: the EIP-7623/7976 calldata floor is a minimum charge on the sender
+    // (tx_gas_used / receipts) only and must NOT inflate the block's regular-gas dimension.
+    // With no state component the block regular gas is exactly the pre-refund gas charged.
     [Test]
     public void Calculate_block_regular_gas_ignores_calldata_floor()
-    {
-        // Regression: the EIP-7623/7976 calldata floor is a minimum charge on the sender
-        // (tx_gas_used / receipts) only and must NOT inflate the block's regular-gas dimension.
-        // Here the actual regular gas consumed (21_000) is far below any plausible floor, yet the
-        // block regular gas must report the consumed amount, not a floor-clamped value.
-        long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-            intrinsicRegularGas: 21_000,
-            initialRegularGas: 0,
-            remainingRegularGas: 0,
-            stateGasSpill: 0,
-            stateGasSpillReclassified: 0);
-
-        Assert.That(blockRegularGas, Is.EqualTo(21_000));
-    }
+        => Assert.That(
+            Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 21_000, blockStateGas: 0),
+            Is.EqualTo(21_000));
 }
