@@ -85,7 +85,7 @@ public sealed class PersistedSnapshotLoader(
         if (entries.Count > ParallelLoadThreshold && _logger.IsInfo)
         {
             loadLog = new ProgressLogger("Persisted snapshot load", logManager);
-            loadLog.Reset(0, entries.Count);
+            loadLog.Reset(0, (ulong)entries.Count);
             heartbeat = new Timer(ProgressLogIntervalMs);
             heartbeat.Elapsed += (_, _) => loadLog.LogProgress();
             heartbeat.Start();
@@ -93,7 +93,7 @@ public sealed class PersistedSnapshotLoader(
 
         try
         {
-            long loaded = 1;
+            ulong loaded = 1;
             Parallel.For(1, entries.Count, i =>
             {
                 LoadSnapshot(entries[i]);

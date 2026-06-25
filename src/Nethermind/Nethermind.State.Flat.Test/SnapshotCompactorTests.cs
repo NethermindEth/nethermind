@@ -36,16 +36,16 @@ public class SnapshotCompactorTests
     [TearDown]
     public void TearDown() => _tier.Dispose();
 
-    private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
         return new StateId(blockNumber, new ValueHash256(bytes));
     }
 
-    private void BuildSnapshotChain(long startBlock, long endBlock)
+    private void BuildSnapshotChain(ulong startBlock, ulong endBlock)
     {
-        for (long i = startBlock; i < endBlock; i++)
+        for (ulong i = startBlock; i < endBlock; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
@@ -420,11 +420,11 @@ public class SnapshotCompactorTests
     [TestCase(4, 4)]   // 4 & -4 = 4, compact size 4, blocks 0->4
     [TestCase(8, 8)]   // 8 & -8 = 8, compact size 8, blocks 0->8
     [TestCase(12, 4)]  // 12 & -12 = 4, compact size 4, blocks 8->12
-    public void GetSnapshotsToCompact_PowerOf2Compaction_ReturnsCorrectCount(long blockNumber, int expectedCount)
+    public void GetSnapshotsToCompact_PowerOf2Compaction_ReturnsCorrectCount(int blockNumber, int expectedCount)
     {
-        BuildSnapshotChain(0, blockNumber);
+        BuildSnapshotChain(0, (ulong)blockNumber);
 
-        StateId targetTo = CreateStateId(blockNumber);
+        StateId targetTo = CreateStateId((ulong)blockNumber);
         _snapshotRepository.TryLeaseInMemoryState(targetTo, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot!);
@@ -453,7 +453,7 @@ public class SnapshotCompactorTests
     public void GetSnapshotsToCompact_IncompleteChain_ReturnsEmpty()
     {
         // Missing 1
-        for (long i = 2; i < 16; i++)
+        for (ulong i = 2; i < 16; i++)
         {
             StateId from = new(i, Keccak.Zero);
             StateId to = new(i + 1, Keccak.Zero);
@@ -479,7 +479,7 @@ public class SnapshotCompactorTests
         StateId targetFrom = CreateStateId(15);
         StateId targetTo = CreateStateId(16);
         Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        targetSnapshot.Content.Accounts[TestItem.AddressB] = new Account((UInt256)20, (UInt256)2000);
+        targetSnapshot.Content.Accounts[TestItem.AddressB] = new Account(20UL, (UInt256)2000);
         _snapshotRepository.TryAdd(targetSnapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(targetTo);
 
@@ -501,7 +501,7 @@ public class SnapshotCompactorTests
         SnapshotRepository repo = tier.Repository;
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, repo, LimboLogs.Instance);
 
-        for (long i = 0; i < 2; i++)
+        for (ulong i = 0; i < 2; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
@@ -524,12 +524,12 @@ public class SnapshotCompactorTests
     [TestCase(5)]
     [TestCase(7)]
     [TestCase(9)]
-    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty(long blockNumber)
+    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty(int blockNumber)
     {
-        BuildSnapshotChain(0, blockNumber);
+        BuildSnapshotChain(0, (ulong)blockNumber);
 
-        StateId from = CreateStateId(blockNumber - 1);
-        StateId to = CreateStateId(blockNumber);
+        StateId from = CreateStateId((ulong)(blockNumber - 1));
+        StateId to = CreateStateId((ulong)blockNumber);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(snapshot);
@@ -537,7 +537,7 @@ public class SnapshotCompactorTests
         Assert.That(snapshots.Count, Is.EqualTo(0));
     }
 
-    [TestCase(2, 2)]   // blockNumber & -blockNumber = 2
+    [TestCase(2, 2)]   // blockNumber & (~blockNumber + 1UL) = 2
     [TestCase(4, 4)]
     [TestCase(6, 2)]
     [TestCase(8, 8)]
@@ -545,7 +545,7 @@ public class SnapshotCompactorTests
     [TestCase(12, 4)]
     [TestCase(14, 2)]
     [TestCase(16, 16)]
-    public void GetSnapshotsToCompact_PowerOf2_CompactSizeMatchesBlockAlignment(long blockNumber, int expectedCompactSize)
+    public void GetSnapshotsToCompact_PowerOf2_CompactSizeMatchesBlockAlignment(int blockNumber, int expectedCompactSize)
     {
         int actualCompactSize = (int)Math.Min(blockNumber & -blockNumber, 16);
         Assert.That(actualCompactSize, Is.EqualTo(expectedCompactSize));
@@ -561,7 +561,7 @@ public class SnapshotCompactorTests
         SnapshotRepository repo = tier.Repository;
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
 
-        for (long i = 0; i < 29; i++)
+        for (ulong i = 0; i < 29; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);

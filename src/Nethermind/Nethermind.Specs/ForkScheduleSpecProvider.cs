@@ -12,7 +12,7 @@ namespace Nethermind.Specs;
 
 public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
 {
-    public const long GenesisBlockNumber = 0L;
+    public const ulong GenesisBlockNumber = 0;
     public const ulong GenesisTimestamp = 0UL;
 
     private readonly Lazy<ForkSpec[]> _schedule;
@@ -61,12 +61,12 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     /// </remarks>
     private readonly struct Index
     {
-        private readonly long[] _blockKeys;
+        private readonly ulong[] _blockKeys;
         private readonly IReleaseSpec[] _blockSpecs;
         private readonly ulong[] _timestampKeys;
         private readonly IReleaseSpec[] _timestampSpecs;
 
-        private Index(long[] blockKeys, IReleaseSpec[] blockSpecs, ulong[] timestampKeys, IReleaseSpec[] timestampSpecs)
+        private Index(ulong[] blockKeys, IReleaseSpec[] blockSpecs, ulong[] timestampKeys, IReleaseSpec[] timestampSpecs)
         {
             _blockKeys = blockKeys;
             _blockSpecs = blockSpecs;
@@ -74,7 +74,7 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
             _timestampSpecs = timestampSpecs;
         }
 
-        public long LastBlockKey => _blockKeys[^1];
+        public ulong LastBlockKey => _blockKeys[^1];
 
         public static Index Build(ForkSpec[] schedule)
         {
@@ -86,7 +86,7 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
                 else if (fork.Timestamp.HasValue) timestampCount++;
             }
 
-            long[] blockKeys = new long[blockCount];
+            ulong[] blockKeys = new ulong[blockCount];
             IReleaseSpec[] blockSpecs = new IReleaseSpec[blockCount];
             ulong[] timestampKeys = new ulong[timestampCount];
             IReleaseSpec[] timestampSpecs = new IReleaseSpec[timestampCount];
@@ -95,7 +95,7 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
             int ti = 0;
             foreach (ForkSpec fork in schedule)
             {
-                if (fork.Block is long b) { blockKeys[bi] = b; blockSpecs[bi] = fork.Spec; bi++; }
+                if (fork.Block is ulong b) { blockKeys[bi] = b; blockSpecs[bi] = fork.Spec; bi++; }
                 else if (fork.Timestamp is ulong t) { timestampKeys[ti] = t; timestampSpecs[ti] = fork.Spec; ti++; }
             }
 
@@ -103,7 +103,7 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
         }
 
         // Schedule always has a genesis (block 0) entry, so idx >= 0 for any non-negative block number.
-        public IReleaseSpec LookupBlock(long blockNumber) =>
+        public IReleaseSpec LookupBlock(ulong blockNumber) =>
             _blockSpecs[FindLastAtMost(_blockKeys, blockNumber)];
 
         public IReleaseSpec? LookupTimestamp(ulong timestamp)
@@ -126,7 +126,7 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
         }
     }
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
             MergeBlockNumber = (ForkActivation)blockNumber;
@@ -137,7 +137,7 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     public ForkActivation? MergeBlockNumber { get; private set; }
     public UInt256? TerminalTotalDifficulty { get; private set; }
     public IReleaseSpec GenesisSpec => ForkSchedule[0].Spec;
-    public virtual long? DaoBlockNumber => null;
+    public virtual ulong? DaoBlockNumber => null;
     public virtual ulong ChainId => NetworkId;
     public ForkActivation[] TransitionActivations { get; protected set; } = [];
 

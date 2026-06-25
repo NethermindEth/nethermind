@@ -85,7 +85,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         To = to;
         Tier = tier;
         _reservation = reservation;
-        _label = new PersistedSnapshotLabel(tier.MetricTierLabel(), to.BlockNumber - from.BlockNumber);
+        _label = new PersistedSnapshotLabel(tier.MetricTierLabel(), (long)(to.BlockNumber - from.BlockNumber));
         _blobManager = blobManager;
         _bloom = bloom;
         _reservation.AcquireLease();

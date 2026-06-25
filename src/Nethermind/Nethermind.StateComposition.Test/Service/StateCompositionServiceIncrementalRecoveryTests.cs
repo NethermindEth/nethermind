@@ -41,7 +41,7 @@ public class StateCompositionServiceIncrementalRecoveryTests
     private static IStateCompositionConfig CreateConfig() =>
         TestDataBuilders.CreateTestConfig(trackDepthIncrementally: true);
 
-    private static void SeedBaseline(StateCompositionStateHolder holder, long blockNumber, Hash256 stateRoot) =>
+    private static void SeedBaseline(StateCompositionStateHolder holder, ulong blockNumber, Hash256 stateRoot) =>
         holder.InitializeIncremental(TestDataBuilders.EmptyBaseline(), blockNumber, stateRoot);
 
     [Test]

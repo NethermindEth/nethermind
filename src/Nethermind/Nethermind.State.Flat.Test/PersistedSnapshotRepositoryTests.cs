@@ -246,7 +246,7 @@ public class PersistedSnapshotRepositoryTests
         StateId prev = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= count; i++)
         {
-            StateId next = new(i, Keccak.Compute($"s{i}"));
+            StateId next = new((ulong)i, Keccak.Compute($"s{i}"));
             Snapshot snap = CreateTestSnapshot(prev, next, TestItem.Addresses[i % TestItem.Addresses.Length]);
             tier.ConvertToPersistedBase(snap).Dispose();
             prev = next;
@@ -328,7 +328,7 @@ public class PersistedSnapshotRepositoryTests
         ids[0] = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i < 4; i++)
         {
-            ids[i] = new(i, Keccak.Compute($"s{i}"));
+            ids[i] = new((ulong)i, Keccak.Compute($"s{i}"));
             tier.ConvertToPersistedBase(
                 CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i])).Dispose();
         }
@@ -351,7 +351,7 @@ public class PersistedSnapshotRepositoryTests
     {
         StateId[] ids = new StateId[5];
         ids[0] = new(0, Keccak.EmptyTreeHash);
-        for (int i = 1; i <= 4; i++) ids[i] = new(i, Keccak.Compute($"s{i}"));
+        for (int i = 1; i <= 4; i++) ids[i] = new((ulong)i, Keccak.Compute($"s{i}"));
 
         MemDb catalogDb = new();
 
@@ -414,7 +414,7 @@ public class PersistedSnapshotRepositoryTests
     {
         StateId[] ids = new StateId[5];
         ids[0] = new(0, Keccak.EmptyTreeHash);
-        for (int i = 1; i <= 4; i++) ids[i] = new(i, Keccak.Compute($"s{i}"));
+        for (int i = 1; i <= 4; i++) ids[i] = new((ulong)i, Keccak.Compute($"s{i}"));
 
         MemDb catalogDb = new();
 
@@ -463,7 +463,7 @@ public class PersistedSnapshotRepositoryTests
         const int N = 32;
         StateId[] ids = new StateId[N + 1];
         ids[0] = new(0, Keccak.EmptyTreeHash);
-        for (int i = 1; i <= N; i++) ids[i] = new(i, Keccak.Compute($"s{i}"));
+        for (int i = 1; i <= N; i++) ids[i] = new((ulong)i, Keccak.Compute($"s{i}"));
 
         MemDb catalogDb = new();
 

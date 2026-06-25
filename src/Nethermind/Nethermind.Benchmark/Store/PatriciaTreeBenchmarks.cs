@@ -351,7 +351,7 @@ namespace Nethermind.Benchmarks.Store
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new(trieStore, NullLogManager.Instance);
 
-            for (int i = 0; i < _largerEntryCount; i++)
+            for (ulong i = 0; i < _largerEntryCount; i++)
             {
                 if (i % _repeatedlyFactor == 0)
                 {
@@ -359,7 +359,7 @@ namespace Nethermind.Benchmarks.Store
                     tempTree.Commit();
                 }
 
-                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[(int)i];
                 if (isWrite)
                 {
                     tempTree.Set(address, value);

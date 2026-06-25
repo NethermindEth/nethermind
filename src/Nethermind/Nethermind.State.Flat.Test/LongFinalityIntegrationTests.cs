@@ -276,7 +276,7 @@ public class LongFinalityIntegrationTests
         StateId prev = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= snapshotCount; i++)
         {
-            StateId current = new(i, Keccak.Compute(i.ToString()));
+            StateId current = new((ulong)i, Keccak.Compute(i.ToString()));
             tier.ConvertToPersistedBase(CreateSnapshot(prev, current, c =>
                 c.Accounts[new Address(Keccak.Compute(i.ToString()))] =
                     Build.An.Account.WithBalance((UInt256)i).TestObject)).Dispose();

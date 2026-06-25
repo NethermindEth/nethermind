@@ -11,14 +11,14 @@ public interface ICompactionSchedule
     /// not compact in lockstep. Returns 1 when no compaction should run (block 0 or compaction
     /// disabled).
     /// </summary>
-    int GetCompactSize(long blockNumber);
+    ulong GetCompactSize(ulong blockNumber);
 
     /// <summary>
     /// The next block strictly greater than <paramref name="from"/> at which a full-size
     /// compaction (and hence a persistence boundary) will occur. Returns <see cref="long.MaxValue"/>
     /// when compaction is disabled.
     /// </summary>
-    long NextFullCompactionAfter(long from);
+    ulong NextFullCompactionAfter(ulong from);
 
     /// <summary>
     /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
@@ -27,7 +27,7 @@ public interface ICompactionSchedule
     /// perform. Mutually exclusive with <see cref="IsLargeCompactionBoundary"/>; together they
     /// cover every persistence boundary.
     /// </summary>
-    bool IsCompactSizeBoundary(long blockNumber);
+    bool IsCompactSizeBoundary(ulong blockNumber);
 
     /// <summary>
     /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
@@ -36,7 +36,7 @@ public interface ICompactionSchedule
     /// window. Mutually exclusive with <see cref="IsCompactSizeBoundary"/>; together they cover
     /// every persistence boundary.
     /// </summary>
-    bool IsLargeCompactionBoundary(long blockNumber);
+    bool IsLargeCompactionBoundary(ulong blockNumber);
 
     /// <summary>
     /// The persisted-snapshot compaction tier for <paramref name="blockNumber"/> — the lowest
@@ -45,5 +45,5 @@ public interface ICompactionSchedule
     /// <c>PersistedSnapshotMaxCompactSize</c> rather than <c>CompactSize</c>, so callers can act
     /// on the wider merge windows (2×, 4×, …) above the persistence boundary.
     /// </summary>
-    long GetPersistedSnapshotCompactSize(long blockNumber);
+    ulong GetPersistedSnapshotCompactSize(ulong blockNumber);
 }

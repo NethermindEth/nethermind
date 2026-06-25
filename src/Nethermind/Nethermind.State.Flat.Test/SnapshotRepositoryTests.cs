@@ -31,7 +31,7 @@ public class SnapshotRepositoryTests
     [TearDown]
     public void TearDown() => _tier.Dispose();
 
-    private StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    private StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
@@ -48,7 +48,7 @@ public class SnapshotRepositoryTests
         return snapshot;
     }
 
-    private Snapshot AddSnapshotToRepository(long fromBlock, long toBlock, bool compacted = false, bool withData = false)
+    private Snapshot AddSnapshotToRepository(ulong fromBlock, ulong toBlock, bool compacted = false, bool withData = false)
         => AddSnapshotToRepository(CreateStateId(fromBlock), CreateStateId(toBlock), compacted, withData);
 
     private Snapshot AddSnapshotToRepository(StateId from, StateId to, bool compacted = false, bool withData = false)
@@ -70,20 +70,20 @@ public class SnapshotRepositoryTests
     private bool TryLease(StateId state, bool compacted, out Snapshot? snapshot)
         => _repository.TryLeaseInMemoryState(state, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase, out snapshot);
 
-    private List<Snapshot> BuildSnapshotChain(long startBlock, long endBlock)
+    private List<Snapshot> BuildSnapshotChain(ulong startBlock, ulong endBlock)
     {
         List<Snapshot> snapshots = [];
-        for (long i = startBlock; i < endBlock; i++)
+        for (ulong i = startBlock; i < endBlock; i++)
         {
             snapshots.Add(AddSnapshotToRepository(i, i + 1));
         }
         return snapshots;
     }
 
-    private void BuildSnapshotChain(StateId start, long endBlock, byte rootByte = 0)
+    private void BuildSnapshotChain(StateId start, ulong endBlock, byte rootByte = 0)
     {
         StateId prev = start;
-        for (long block = start.BlockNumber + 1; block <= endBlock; block++)
+        for (ulong block = start.BlockNumber + 1; block <= endBlock; block++)
         {
             StateId next = CreateStateId(block, rootByte);
             AddSnapshotToRepository(prev, next);
@@ -256,9 +256,10 @@ public class SnapshotRepositoryTests
         states.Dispose();
     }
 
-    [TestCase(-1)]
-    [TestCase(long.MinValue)]
-    public void GetStatesUpToBlock_NegativeBlockNumber_ReturnsEmpty(long blockNumber)
+    // ulong.MaxValue is the PreGenesis sentinel ("before any state") — the ulong equivalent of the
+    // old negative block number — so GetStatesUpToBlock must return empty for it.
+    [TestCase(ulong.MaxValue)]
+    public void GetStatesUpToBlock_PreGenesisSentinel_ReturnsEmpty(ulong blockNumber)
     {
         _repository.AddStateId(CreateStateId(1));
 
@@ -458,7 +459,7 @@ public class SnapshotRepositoryTests
 
         _repository.RemoveSiblingAndDescendents(CreateStateId(5));
 
-        for (long block = 1; block <= 10; block++)
+        for (ulong block = 1; block <= 10; block++)
         {
             Assert.That(_repository.HasState(CreateStateId(block)), Is.True, $"State {block} should be kept");
         }

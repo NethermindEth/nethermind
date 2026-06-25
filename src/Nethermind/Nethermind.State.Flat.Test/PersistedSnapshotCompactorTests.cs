@@ -66,7 +66,7 @@ public class PersistedSnapshotCompactorTests
         StateId prev = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= n; i++)
         {
-            StateId next = new(i, Keccak.Compute($"s{i}"));
+            StateId next = new((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             // Shared overlapping account: same AddressA every block, distinct balance and
@@ -136,7 +136,7 @@ public class PersistedSnapshotCompactorTests
         StateId prev = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= snapshotCount; i++)
         {
-            StateId next = new(i, Keccak.Compute($"s{i}"));
+            StateId next = new((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             TestFixtureHelpers.AddSequentialSlots(c, TestItem.AddressA,
                 firstSlot: (i - 1) * slotsPerSnapshot + 1, count: slotsPerSnapshot);
@@ -329,7 +329,7 @@ public class PersistedSnapshotCompactorTests
         HashSet<ushort> baseRefIds = [];
         for (int i = 1; i <= 8; i++)
         {
-            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+            states[i] = new StateId((ulong)i, Keccak.Compute($"{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             c.StateNodes[new TreePath(Keccak.Compute($"path{i}"), 4)] = new TrieNode(NodeType.Leaf, [(byte)(0xC1), (byte)i]);
@@ -645,7 +645,7 @@ public class PersistedSnapshotCompactorTests
         states[0] = new StateId(0, Keccak.EmptyTreeHash);
         for (int i = 0; i < contents.Length; i++)
         {
-            states[i + 1] = new StateId(i + 1, Keccak.Compute($"{i + 1}"));
+            states[i + 1] = new StateId((ulong)(i + 1), Keccak.Compute($"{i + 1}"));
             tier.ConvertToPersistedBase(
                 new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
         }
@@ -670,31 +670,31 @@ public class PersistedSnapshotCompactorTests
     private static IEnumerable<TestCaseData> PartialWindowCompactionCases()
     {
         // Full 8-block range present: compacts the whole window. Linked s0→s8.
-        yield return new TestCaseData(new[] { 1, 2, 3, 4, 5, 6, 7, 8 }, true, 0L, 8L)
+        yield return new TestCaseData(new[] { 1, 2, 3, 4, 5, 6, 7, 8 }, true, 0UL, 8UL)
             .SetName("PartialWindow_FullRange_Compacts0To8");
 
         // Blocks 3–8 present: the chain reaches back to s2, a non-power-of-2 boundary.
         // The old power-of-2 step-down would have compacted only [4,8]; now the whole
         // assembled chain [2,8] is compacted instead.
-        yield return new TestCaseData(new[] { 3, 4, 5, 6, 7, 8 }, true, 2L, 8L)
+        yield return new TestCaseData(new[] { 3, 4, 5, 6, 7, 8 }, true, 2UL, 8UL)
             .SetName("PartialWindow_NonPowerOfTwoStart_Compacts2To8");
 
         // Only blocks 5–8 present: chain reaches back to s4. Compacts [4,8].
-        yield return new TestCaseData(new[] { 5, 6, 7, 8 }, true, 4L, 8L)
+        yield return new TestCaseData(new[] { 5, 6, 7, 8 }, true, 4UL, 8UL)
             .SetName("PartialWindow_Half_Compacts4To8");
 
         // Only blocks 7–8 present: chain reaches back to s6. Compacts [6,8].
-        yield return new TestCaseData(new[] { 7, 8 }, true, 6L, 8L)
+        yield return new TestCaseData(new[] { 7, 8 }, true, 6UL, 8UL)
             .SetName("PartialWindow_Quarter_Compacts6To8");
 
         // Only 1 block present: no pair available, no compaction.
-        yield return new TestCaseData(new[] { 8 }, false, 0L, 0L)
+        yield return new TestCaseData(new[] { 8 }, false, 0UL, 0UL)
             .SetName("PartialWindow_NoRange_NoCompact");
     }
 
     [TestCaseSource(nameof(PartialWindowCompactionCases))]
     public void DoCompactSnapshot_CompactsPartialWindow(
-        int[] presentBlocks, bool expectCompacted, long expectedFromBlock, long expectedToBlock)
+        int[] presentBlocks, bool expectCompacted, ulong expectedFromBlock, ulong expectedToBlock)
     {
         // CompactSize=1 makes every block a boundary; block 8 → window [0, 8].
         using FlatTestContainer tier = new(
@@ -706,7 +706,7 @@ public class PersistedSnapshotCompactorTests
         StateId[] states = new StateId[9];
         states[0] = new StateId(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= 8; i++)
-            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+            states[i] = new StateId((ulong)i, Keccak.Compute($"{i}"));
 
         foreach (int block in presentBlocks)
         {
@@ -740,15 +740,15 @@ public class PersistedSnapshotCompactorTests
     private static IEnumerable<TestCaseData> ClampToPersistenceCases()
     {
         // P at genesis: no clamp, the walk follows the [0,8] large-compacted skip-pointer to From=0.
-        yield return new TestCaseData(0L, 0L).SetName("ClampToPersistence_GenesisP_NoClamp_From0");
+        yield return new TestCaseData(0UL, 0UL).SetName("ClampToPersistence_GenesisP_NoClamp_From0");
         // P inside the [0,8] span: the below-P edge is skipped, the walk wins at From=P via the bases.
-        yield return new TestCaseData(4L, 4L).SetName("ClampToPersistence_PInsideSpan_ClampsFrom4");
+        yield return new TestCaseData(4UL, 4UL).SetName("ClampToPersistence_PInsideSpan_ClampsFrom4");
         // P at the [0,8] To boundary: still clamped, never reaching the From=0 edge.
-        yield return new TestCaseData(8L, 8L).SetName("ClampToPersistence_PAtBoundary_ClampsFrom8");
+        yield return new TestCaseData(8UL, 8UL).SetName("ClampToPersistence_PAtBoundary_ClampsFrom8");
     }
 
     [TestCaseSource(nameof(ClampToPersistenceCases))]
-    public void DoCompactSnapshot_ClampsWindowToPersistencePoint(long persistedBlock, long expectedFromBlock)
+    public void DoCompactSnapshot_ClampsWindowToPersistencePoint(ulong persistedBlock, ulong expectedFromBlock)
     {
         // CompactSize=1 makes every block a boundary; MaxCompactSize=16 so block 16's window is [0, 16].
         using FlatTestContainer tier = new(
@@ -762,7 +762,7 @@ public class PersistedSnapshotCompactorTests
         StateId[] states = new StateId[17];
         states[0] = new StateId(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= 16; i++)
-            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+            states[i] = new StateId((ulong)i, Keccak.Compute($"{i}"));
 
         // Build base snapshots [0..8], then the [0,8] large-compacted skip-pointer.
         for (int i = 1; i <= 8; i++)
@@ -830,7 +830,7 @@ public class PersistedSnapshotCompactorTests
         StateId prev = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= 8; i++)
         {
-            StateId next = new(i, Keccak.Compute($"{i}"));
+            StateId next = new((ulong)i, Keccak.Compute($"{i}"));
             SnapshotContent c = new();
             if (i == 1)
             {
@@ -1036,7 +1036,7 @@ public class PersistedSnapshotCompactorTests
         StateId tip = prev;
         for (int i = 1; i <= 45; i++)
         {
-            StateId next = new(i, Keccak.Compute($"s{i}"));
+            StateId next = new((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
             tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
@@ -1062,7 +1062,7 @@ public class PersistedSnapshotCompactorTests
     private static FlatTestContainer NewTier(int compactSize) => new(
         arenaFileSizeBytes: 256 * 1024,
         blobFileSizeBytes: 4 * 1024 * 1024,
-        configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = compactSize }, 0)));
+        configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = (ulong)compactSize }, 0)));
 
     [Test]
     public void DoCompactSnapshot_NoOp_WhenWindowSizeOneOrTooFewSnapshots()
@@ -1101,7 +1101,7 @@ public class PersistedSnapshotCompactorTests
         StateId tip = prev;
         for (int i = 1; i <= 4; i++)
         {
-            tip = new(i, Keccak.Compute($"p{i}"));
+            tip = new((ulong)i, Keccak.Compute($"p{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
             tier.ConvertToPersistedBase(new Snapshot(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
@@ -1132,7 +1132,7 @@ public class PersistedSnapshotCompactorTests
         StateId tip = prev;
         for (int i = 1; i <= 2; i++)
         {
-            tip = new(i, Keccak.Compute($"sn{i}"));
+            tip = new((ulong)i, Keccak.Compute($"sn{i}"));
             SnapshotContent c = new();
             TreePath path = new(Keccak.Compute($"node{i}"), 4);
             c.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, (byte)i]);
@@ -1170,7 +1170,7 @@ public class PersistedSnapshotCompactorTests
         states[0] = prev;
         for (int i = 1; i <= 8; i++)
         {
-            states[i] = new StateId(i, Keccak.Compute($"s{i}"));
+            states[i] = new StateId((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
@@ -1217,7 +1217,7 @@ public class PersistedSnapshotCompactorTests
         states[0] = prev;
         for (int i = 1; i <= 2; i++)
         {
-            states[i] = new StateId(i, Keccak.Compute($"s{i}"));
+            states[i] = new StateId((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
@@ -1261,7 +1261,7 @@ public class PersistedSnapshotCompactorTests
         states[0] = prev;
         for (int i = 1; i <= 8; i++)
         {
-            states[i] = new StateId(i, Keccak.Compute($"s{i}"));
+            states[i] = new StateId((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
@@ -1324,7 +1324,7 @@ public class PersistedSnapshotCompactorTests
         StateId[] states = new StateId[17];
         states[0] = new StateId(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= 16; i++)
-            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+            states[i] = new StateId((ulong)i, Keccak.Compute($"{i}"));
 
         // Build base [0..8], then the [0,8] large-compacted skip-pointer.
         for (int i = 1; i <= 8; i++)
@@ -1372,7 +1372,7 @@ public class PersistedSnapshotCompactorTests
         StateId[] states = new StateId[17];
         states[0] = new StateId(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= 16; i++)
-            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+            states[i] = new StateId((ulong)i, Keccak.Compute($"{i}"));
 
         // Build base [0..8], then the [0,8] large-compacted skip-pointer — it shares its bloom over [1,8].
         for (int i = 1; i <= 8; i++)

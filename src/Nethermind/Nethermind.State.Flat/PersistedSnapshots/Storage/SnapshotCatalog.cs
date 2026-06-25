@@ -21,9 +21,11 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct EntryBytes(CatalogEntry entry)
     {
-        internal readonly long FromBlock = entry.From.BlockNumber;
+        // On-disk key/value layout stays Int64; the PreGenesis sentinel (ulong.MaxValue) round-trips
+        // through long as -1, preserving the pre-ulong encoding.
+        internal readonly long FromBlock = (long)entry.From.BlockNumber;
         internal readonly ValueHash256 FromRoot = entry.From.StateRoot;
-        internal readonly long ToBlock = entry.To.BlockNumber;
+        internal readonly long ToBlock = (long)entry.To.BlockNumber;
         internal readonly ValueHash256 ToRoot = entry.To.StateRoot;
         internal readonly int ArenaId = entry.Location.ArenaId;
         internal readonly long Offset = entry.Location.Offset;
@@ -54,7 +56,7 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
         return true;
     }
 
-    private static long Depth(CatalogEntry entry) => entry.To.BlockNumber - entry.From.BlockNumber;
+    private static long Depth(CatalogEntry entry) => (long)(entry.To.BlockNumber - entry.From.BlockNumber);
 
     /// <summary>
     /// Streams catalog entries lazily (unordered). The catalog carries no version of its own; the on-disk
@@ -73,7 +75,7 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
 
     private static void WriteKey(Span<byte> span, in StateId to, long depth)
     {
-        BinaryPrimitives.WriteInt64BigEndian(span, to.BlockNumber);
+        BinaryPrimitives.WriteInt64BigEndian(span, (long)to.BlockNumber);
         to.StateRoot.BytesAsSpan.CopyTo(span[8..]);
         BinaryPrimitives.WriteInt64BigEndian(span[40..], depth);
     }
@@ -88,8 +90,8 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
                 "The persisted_snapshot/ directory has an incompatible or corrupted layout — wipe and resync.");
 
         return new CatalogEntry(
-            new StateId(e.FromBlock, e.FromRoot),
-            new StateId(e.ToBlock, e.ToRoot),
+            new StateId((ulong)e.FromBlock, e.FromRoot),
+            new StateId((ulong)e.ToBlock, e.ToRoot),
             new SnapshotLocation(e.ArenaId, e.Offset, e.Size),
             tier);
     }

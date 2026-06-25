@@ -83,7 +83,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
 
-        _compactSize = config.CompactSize;
+        config.ValidateCompactSize();
+        _compactSize = (int)config.CompactSize;
 
         // We assume that the state must be able to be persisted in half the slot time at the very
         // least. If block processing is stalled for longer than this, persistence is simply too slow

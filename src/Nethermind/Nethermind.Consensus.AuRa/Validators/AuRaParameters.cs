@@ -30,7 +30,7 @@ public class AuRaParameters
         ///
         /// This has to sorted in order of starting blocks.
         /// </remarks>
-        public IDictionary<long, Validator>? Validators { get; set; }
+        public IDictionary<ulong, Validator>? Validators { get; set; }
 
         /// <summary>
         /// Addresses for validator.

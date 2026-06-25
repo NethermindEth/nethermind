@@ -20,7 +20,7 @@ public class StorageLayerTests
     // Look up a catalog entry by (To, depth) over the loaded list — the catalog has no Find method
     // and no in-memory index; Load() reads the current state from the DB each call.
     private static CatalogEntry? FindEntry(SnapshotCatalog catalog, StateId to, long depth) =>
-        catalog.Load().FirstOrDefault(e => e.To.Equals(to) && e.To.BlockNumber - e.From.BlockNumber == depth);
+        catalog.Load().FirstOrDefault(e => e.To.Equals(to) && (long)(e.To.BlockNumber - e.From.BlockNumber) == depth);
 
     [SetUp]
     public void SetUp()

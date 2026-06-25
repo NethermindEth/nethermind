@@ -80,7 +80,7 @@ public class PersistenceManagerTests
         _tier.Dispose();
     }
 
-    private StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    private StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
@@ -250,7 +250,7 @@ public class PersistenceManagerTests
     // but one past MinReorgDepth + CompactSize does.
     [TestCase(90001, false, TestName = "DetermineSnapshotAction_BackstopRaised_BelowMinPlusCompactSize_NoForce")]
     [TestCase(90000 + 16 + 1, true, TestName = "DetermineSnapshotAction_BackstopRaised_AboveMinPlusCompactSize_Forces")]
-    public void DetermineSnapshotAction_BackstopRaisedAboveMinReorgDepth(long latestBlock, bool expectForcedPersist)
+    public void DetermineSnapshotAction_BackstopRaisedAboveMinReorgDepth(int latestBlock, bool expectForcedPersist)
     {
         // MinReorgDepth == configured backstop == 90000, CompactSize 16 → effective backstop 90016.
         FlatDbConfig config = new()
@@ -279,7 +279,7 @@ public class PersistenceManagerTests
         using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
         _finalizedStateProvider.SetFinalizedBlockNumber(5);
 
-        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
+        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId((ulong)latestBlock));
 
         Assert.That(toPersist is not null, Is.EqualTo(expectForcedPersist));
         toPersist?.Dispose();
@@ -988,16 +988,16 @@ public class PersistenceManagerTests
 
     private class TestFinalizedStateProvider : IFinalizedStateProvider
     {
-        private long _finalizedBlockNumber;
-        private readonly Dictionary<long, Hash256> _finalizedStateRoots = [];
+        private ulong _finalizedBlockNumber;
+        private readonly Dictionary<ulong, Hash256> _finalizedStateRoots = [];
 
-        public long FinalizedBlockNumber => _finalizedBlockNumber;
+        public ulong FinalizedBlockNumber => _finalizedBlockNumber;
 
-        public void SetFinalizedBlockNumber(long blockNumber) => _finalizedBlockNumber = blockNumber;
+        public void SetFinalizedBlockNumber(ulong blockNumber) => _finalizedBlockNumber = blockNumber;
 
-        public void SetFinalizedStateRootAt(long blockNumber, Hash256 stateRoot) => _finalizedStateRoots[blockNumber] = stateRoot;
+        public void SetFinalizedStateRootAt(ulong blockNumber, Hash256 stateRoot) => _finalizedStateRoots[blockNumber] = stateRoot;
 
-        public Hash256? GetFinalizedStateRootAt(long blockNumber) =>
+        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) =>
             _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
     }
 

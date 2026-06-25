@@ -8,7 +8,7 @@ namespace Nethermind.Network;
 
 public interface IForkInfo
 {
-    ForkId GetForkId(long headNumber, ulong headTimestamp);
+    ForkId GetForkId(ulong headNumber, ulong headTimestamp);
 
     /// <summary>
     /// Verify that the forkid from peer matches our forks.

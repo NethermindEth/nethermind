@@ -74,7 +74,7 @@ public interface ISnapshotRepository
     void MarkPersistedTierForShutdown();
 
     /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
-    void RemovePersistedStatesUntil(long blockNumber);
+    void RemovePersistedStatesUntil(ulong blockNumber);
     /// <summary>Assemble the backward chain from <paramref name="stateId"/> down to
     /// <paramref name="targetStateId"/> across both tiers, returning the in-memory and persisted snapshots
     /// along the winning path (oldest-first). Empty when no path reaches the target; caller disposes the result.</summary>
@@ -83,7 +83,7 @@ public interface ISnapshotRepository
     /// <summary>Assemble the backward chain of in-memory snapshots from <paramref name="toStateId"/> down to
     /// <paramref name="minBlockNumber"/> for compaction (widest in-memory edge first). Oldest-first; empty when
     /// the terminus is unreachable. Caller disposes the list.</summary>
-    SnapshotPooledList AssembleInMemorySnapshotsForCompaction(in StateId toStateId, long minBlockNumber, int estimatedSize);
+    SnapshotPooledList AssembleInMemorySnapshotsForCompaction(in StateId toStateId, ulong minBlockNumber, int estimatedSize);
 
     /// <summary>
     /// Backward BFS from <paramref name="seed"/> over the two-tier snapshot graph for the first
@@ -91,14 +91,14 @@ public interface ISnapshotRepository
     /// to persist. Returns the leased persisted or in-memory snapshot (caller disposes), or
     /// <c>(null, null)</c> when none is reachable.
     /// </summary>
-    (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(in StateId seed, in StateId currentPersistedState, int compactSize);
+    (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(in StateId seed, in StateId currentPersistedState, ulong compactSize);
 
     /// <summary>
     /// Assemble the backward chain of persisted snapshots for compaction from <paramref name="toStateId"/>
     /// down to <paramref name="minBlockNumber"/> (widest persisted edge first). Oldest-first; empty when
     /// fewer than two are found. Caller disposes the returned list.
     /// </summary>
-    PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, long minBlockNumber);
+    PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, ulong minBlockNumber);
     /// <summary>The greatest known <see cref="StateId"/> across the in-memory ordered set and the
     /// persisted-tier maxima (the true cross-tier tip). <c>null</c> when empty.</summary>
     StateId? GetLastSnapshotId();
@@ -120,17 +120,17 @@ public interface ISnapshotRepository
 
     /// <summary>All registered in-memory state ids at <paramref name="blockNumber"/> (a fork can have
     /// several). Caller disposes the list.</summary>
-    ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
+    ArrayPoolList<StateId> GetStatesAtBlockNumber(ulong blockNumber);
 
     /// <summary>All registered in-memory state ids with <c>BlockNumber</c> up to and including
     /// <paramref name="blockNumber"/>. Caller disposes the list.</summary>
-    ArrayPoolList<StateId> GetStatesUpToBlock(long blockNumber);
+    ArrayPoolList<StateId> GetStatesUpToBlock(ulong blockNumber);
 
     /// <summary>Remove every snapshot a persist to <paramref name="blockNumber"/> supersedes: in-memory
     /// snapshots (both tiers) with <c>To.BlockNumber</c> up to and including <paramref name="blockNumber"/>,
     /// and persisted-tier snapshots with <c>To.BlockNumber</c> strictly below it (the base at the persisted
     /// block stays until the state advances past it). Folds in <see cref="RemovePersistedStatesUntil"/>.</summary>
-    void RemoveStatesUntil(long blockNumber);
+    void RemoveStatesUntil(ulong blockNumber);
 
     /// <summary>
     /// Removes in-memory snapshots belonging to non-canonical forks that persisting

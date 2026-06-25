@@ -289,6 +289,20 @@ namespace Nethermind.Serialization.Rlp
             _ => new([136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
         };
 
+        public static Rlp Encode(ulong value) => value switch
+        {
+            0UL => OfZero,
+            < 0x80 => new((byte)value),
+            < 0x100 => new([129, (byte)value]),
+            < 0x1_0000 => new([130, (byte)(value >> 8), (byte)value]),
+            < 0x100_0000 => new([131, (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000 => new([132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000 => new([133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000_0000 => new([134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000_0000 => new([135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            _ => new([136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+        };
+
         // caller is responsible for allocating buffer large enough (max 9 bytes)
         [SuppressMessage("ReSharper", "IntVariableOverflowInUncheckedContext")]
         public static Span<byte> Encode(ulong value, Span<byte> buffer)
@@ -870,11 +884,17 @@ namespace Nethermind.Serialization.Rlp
         [StackTraceHidden]
         private static void ThrowCountOverLimit(uint count, int bytesLeft, RlpLimit limit)
         {
-            string message = string.IsNullOrEmpty(limit.CollectionExpression)
-                ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
-                : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
-            _logger.DebugError($"{message}; {new StackTrace()}");
-            throw new RlpLimitException(message);
+            if (_logger.IsTrace)
+            {
+                string message = string.IsNullOrEmpty(limit.CollectionExpression)
+                    ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
+                    : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
+                _logger.Error($"{message}; {new StackTrace()}");
+
+                throw new RlpLimitException(message);
+            }
+
+            throw new RlpLimitException("An RLP limit exceeded");
         }
 
         [DoesNotReturn]

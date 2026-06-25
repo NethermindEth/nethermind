@@ -49,7 +49,7 @@ namespace Nethermind.Config
         }
 
         public bool Enabled { get; set; }
-        public long? TargetBlockGasLimit { get; set; } = null;
+        public ulong? TargetBlockGasLimit { get; set; } = null;
 
         public UInt256 MinGasPrice { get; set; } = 1.Wei;
 
@@ -108,6 +108,6 @@ namespace Nethermind.Config
 
         public long SlowBlockPerTxThresholdMs { get; set; } = -1;
 
-        public long MaxGasLimit { get; set; } = 1_000_000_000;
+        public ulong MaxGasLimit { get; set; } = 1_000_000_000;
     }
 }

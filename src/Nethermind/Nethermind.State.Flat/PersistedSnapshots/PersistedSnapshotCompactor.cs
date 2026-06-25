@@ -51,8 +51,8 @@ public class PersistedSnapshotCompactor(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
 
-    private readonly Channel<(ArrayPoolList<StateId> Batch, long PersistedBlockNumber)> _compactPersistedJobs = Channel.CreateBounded<(ArrayPoolList<StateId>, long)>(16);
-    private readonly Channel<(StateId Boundary, long PersistedBlockNumber)> _boundaryCompactJobs = Channel.CreateBounded<(StateId, long)>(16);
+    private readonly Channel<(ArrayPoolList<StateId> Batch, ulong PersistedBlockNumber)> _compactPersistedJobs = Channel.CreateBounded<(ArrayPoolList<StateId>, ulong)>(16);
+    private readonly Channel<(StateId Boundary, ulong PersistedBlockNumber)> _boundaryCompactJobs = Channel.CreateBounded<(StateId, ulong)>(16);
     // Background workers and their in-flight compaction observe process-exit directly; graceful
     // disposal instead completes the channels and drains the remaining work (see DisposeAsync).
     private readonly CancellationToken _shutdownToken = processExitSource.Token;
@@ -64,7 +64,7 @@ public class PersistedSnapshotCompactor(
     private const int BoundaryCompactorWorkerCount = 4;
 
     /// <inheritdoc/>
-    public async ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, long persistedBlockNumber, CancellationToken cancellationToken)
+    public async ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken)
     {
         // Fire-and-forget: EnsureStarted returns the long-running compactor task, which must not be awaited.
         _ = EnsureStarted();
@@ -103,7 +103,7 @@ public class PersistedSnapshotCompactor(
     {
         try
         {
-            await foreach ((ArrayPoolList<StateId> batch, long persistedBlockNumber) in _compactPersistedJobs.Reader.ReadAllAsync(cancellationToken))
+            await foreach ((ArrayPoolList<StateId> batch, ulong persistedBlockNumber) in _compactPersistedJobs.Reader.ReadAllAsync(cancellationToken))
             {
                 try
                 {
@@ -121,12 +121,12 @@ public class PersistedSnapshotCompactor(
         }
         catch (OperationCanceledException)
         {
-            while (_compactPersistedJobs.Reader.TryRead(out (ArrayPoolList<StateId> Batch, long PersistedBlockNumber) item))
+            while (_compactPersistedJobs.Reader.TryRead(out (ArrayPoolList<StateId> Batch, ulong PersistedBlockNumber) item))
                 item.Batch.Dispose();
         }
     }
 
-    private async Task ProcessCompactBatch(ArrayPoolList<StateId> batch, long persistedBlockNumber, CancellationToken cancellationToken)
+    private async Task ProcessCompactBatch(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken)
     {
         if (batch.Count == 0) return;
 
@@ -136,7 +136,7 @@ public class PersistedSnapshotCompactor(
         for (int i = 0; i < batch.Count; i++)
         {
             StateId s = batch[i];
-            long b = s.BlockNumber;
+            ulong b = s.BlockNumber;
             if (b == 0) continue;
 
             if (_schedule.IsLargeCompactionBoundary(b))
@@ -182,7 +182,7 @@ public class PersistedSnapshotCompactor(
     {
         try
         {
-            await foreach ((StateId state, long persistedBlockNumber) in _boundaryCompactJobs.Reader.ReadAllAsync(cancellationToken))
+            await foreach ((StateId state, ulong persistedBlockNumber) in _boundaryCompactJobs.Reader.ReadAllAsync(cancellationToken))
             {
                 try
                 {
@@ -227,9 +227,9 @@ public class PersistedSnapshotCompactor(
     /// <see cref="ProcessCompactBatch"/> routes those boundaries away from here, so this method
     /// only ever sees sub-<c>CompactSize</c> intermediates and <c>&gt;CompactSize</c> merges.
     /// </remarks>
-    public void DoCompactSnapshot(StateId snapshotTo, long persistedBlockNumber = 0)
+    public void DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber = 0)
     {
-        long blockNumber = snapshotTo.BlockNumber;
+        ulong blockNumber = snapshotTo.BlockNumber;
         int size = (int)_schedule.GetPersistedSnapshotCompactSize(blockNumber);
         // size 1 is a single snapshot — nothing to merge.
         if (size <= 1) return;
@@ -242,7 +242,11 @@ public class PersistedSnapshotCompactor(
         // large-compacted skip-pointer (whose To is above the persisted block but whose From is below it)
         // and instead assemble from the persisted block upward via narrower edges. A no-op when
         // persistedBlockNumber <= blockNumber - size.
-        long startingBlockNumber = Math.Max(blockNumber - size, persistedBlockNumber);
+        // Compute the clamp in signed space: blockNumber - size can dip below genesis (offset can push
+        // a boundary's natural window left of 0), and an unsigned Math.Max would then wrongly pick the
+        // wrapped-huge window edge over persistedBlockNumber. The (ulong) round-trip preserves a
+        // below-genesis result, which the assemble walk reads back via its signed Height() comparison.
+        ulong startingBlockNumber = (ulong)Math.Max((long)blockNumber - size, (long)persistedBlockNumber);
         CompactRange(snapshotTo, startingBlockNumber, size, isCompactSized: false);
     }
 
@@ -254,7 +258,7 @@ public class PersistedSnapshotCompactor(
     /// </summary>
     public void DoCompactCompactSized(StateId snapshotTo)
     {
-        long blockNumber = snapshotTo.BlockNumber;
+        ulong blockNumber = snapshotTo.BlockNumber;
         if (!_schedule.IsCompactSizeBoundary(blockNumber) && !_schedule.IsLargeCompactionBoundary(blockNumber)) return;
 
         if (snapshotRepository.PersistedSnapshotCount < 2) return;
@@ -263,11 +267,11 @@ public class PersistedSnapshotCompactor(
         // any boundary (it caps there), so the window is (blockNumber - CompactSize, blockNumber]. No
         // persistence clamp: this CompactSize-wide window lands on a persistence boundary and never dips
         // below the persisted block.
-        int compactSize = _schedule.GetCompactSize(blockNumber);
-        CompactRange(snapshotTo, blockNumber - compactSize, compactSize, isCompactSized: true);
+        int compactSize = (int)_schedule.GetCompactSize(blockNumber);
+        CompactRange(snapshotTo, blockNumber - (ulong)compactSize, compactSize, isCompactSized: true);
     }
 
-    private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isCompactSized)
+    private bool CompactRange(StateId snapshotTo, ulong startingBlockNumber, int compactSize, bool isCompactSized)
     {
         using PersistedSnapshotList snapshots = snapshotRepository.AssemblePersistedSnapshotsForCompaction(snapshotTo, startingBlockNumber);
         if (snapshots.Count < 2) return false;

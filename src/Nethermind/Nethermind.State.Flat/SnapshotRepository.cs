@@ -30,7 +30,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // individually-locked. A `To` can live in more than one bucket (a base and a compacted snapshot
     // can share it).
     private readonly ISnapshotCatalog _catalog;
-    private readonly int _compactSize;
+    private readonly ulong _compactSize;
     private readonly PersistedSnapshotBucket _base;
     private readonly PersistedSnapshotBucket _smallCompacted;
     private readonly PersistedSnapshotBucket _largeCompacted;
@@ -98,7 +98,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// below <paramref name="minBlockNumber"/> are pruned, so an overshooting compacted jump yields to
     /// the narrower base edge. Wins at the first node reaching <paramref name="minBlockNumber"/>.
     /// </remarks>
-    public SnapshotPooledList AssembleInMemorySnapshotsForCompaction(in StateId baseBlock, long minBlockNumber, int estimatedSize)
+    public SnapshotPooledList AssembleInMemorySnapshotsForCompaction(in StateId baseBlock, ulong minBlockNumber, int estimatedSize)
     {
         InMemoryCompactionPolicy policy = new(minBlockNumber);
         AssembledSnapshotResult result = WalkAndAssemble(baseBlock, estimatedSize, ref policy);
@@ -120,9 +120,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// and drops the rest.
     /// </remarks>
     public (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(
-        in StateId seed, in StateId currentPersistedState, int compactSize)
+        in StateId seed, in StateId currentPersistedState, ulong compactSize)
     {
-        if (seed.BlockNumber <= currentPersistedState.BlockNumber) return (null, null);
+        // currentPersistedState == PreGenesis (nothing persisted) must not early-return: its
+        // ulong.MaxValue height would make any seed look "at or below" it. Height() restores the
+        // signed ordering, and the seed - PreGenesis subtraction is modular-correct (seed + 1).
+        if (Height(seed) <= Height(currentPersistedState)) return (null, null);
 
         int estimatedSize = (int)Math.Clamp(seed.BlockNumber - currentPersistedState.BlockNumber, 4, 4096);
         FindPersistPolicy policy = new(currentPersistedState, compactSize);
@@ -150,7 +153,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// contiguous chain reaching the deepest block <c>&gt;= </c><paramref name="minBlockNumber"/>
     /// (oldest-first). Need not be fully populated; empty when fewer than two snapshots are found.
     /// </summary>
-    public PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, long minBlockNumber)
+    public PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, ulong minBlockNumber)
     {
         int estimatedSize = (int)Math.Clamp(toStateId.BlockNumber - minBlockNumber, 4, 4096);
         PersistedCompactionPolicy policy = new(minBlockNumber);
@@ -215,7 +218,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         return false;
     }
 
-    public ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber)
+    public ArrayPoolList<StateId> GetStatesAtBlockNumber(ulong blockNumber)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
@@ -225,7 +228,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         return sortedSnapshots.GetViewBetween(min, max).ToPooledList(0);
     }
 
-    private bool HasForkAt(long blockNumber)
+    private bool HasForkAt(ulong blockNumber)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
@@ -254,6 +257,16 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     private static StateId? MaxState(StateId? a, StateId? b) =>
         a is null ? b : b is null ? a : a.Value.CompareTo(b.Value) >= 0 ? a : b;
+
+    // The PreGenesis / Sync sentinels sit at the top of the ulong range (ulong.MaxValue and
+    // ulong.MaxValue-1) but must sort BELOW genesis in the backward walks, exactly as the old
+    // signed sentinels (-1 / long.MinValue) did. Reinterpreting the block number as a signed long
+    // maps the sentinels to small negatives (PreGenesis -> -1, Sync -> -2) and leaves every real
+    // height unchanged (heights are far below long.MaxValue), so ORDERING comparisons recover the
+    // pre-ulong behavior. A walk bound computed by an underflowing subtraction (e.g. a
+    // blockNumber - compactSize that dips below genesis) likewise reinterprets to the right negative.
+    // Subtractions stay in ulong (modular arithmetic already makes `x - PreGenesis == x + 1`).
+    private static long Height(in StateId s) => (long)s.BlockNumber;
 
     public void SetLastCommittedStateId(in StateId stateId)
     {
@@ -317,9 +330,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         return false;
     }
 
-    public ArrayPoolList<StateId> GetStatesUpToBlock(long blockNumber)
+    public ArrayPoolList<StateId> GetStatesUpToBlock(ulong blockNumber)
     {
-        if (blockNumber < 0)
+        // ulong.MaxValue is the PreGenesis sentinel ("before any state"); preserve the old
+        // `blockNumber < 0 -> empty` guard so it does not get read as "every state up to the top".
+        if (blockNumber == ulong.MaxValue)
             return ArrayPoolList<StateId>.Empty();
 
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
@@ -329,7 +344,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             .ToPooledList(0);
     }
 
-    public void RemoveStatesUntil(long blockNumber)
+    public void RemoveStatesUntil(ulong blockNumber)
     {
         using ArrayPoolList<StateId> statesUpToBlock = GetStatesUpToBlock(blockNumber);
         foreach (StateId stateToRemove in statesUpToBlock)
@@ -349,7 +364,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public void RemoveSiblingAndDescendents(in StateId canonicalStateId)
     {
-        long canonicalBlock = canonicalStateId.BlockNumber;
+        ulong canonicalBlock = canonicalStateId.BlockNumber;
 
         // Fast-fail when the block has no sibling in either tier: with a single state at the block,
         // everything above it chains down through the canonical one, so nothing above can be orphaned.
@@ -360,15 +375,20 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         // Bound the orphan walk by the highest block in either tier. GetLastSnapshotId folds in the
         // persisted tips, covering a persisted orphan above the in-memory tip (DoConvert moves a
         // converted range into the persisted tier and drops it from in-memory).
-        long maxBlock = GetLastSnapshotId()?.BlockNumber ?? long.MinValue;
-        if (maxBlock <= canonicalBlock) return;
+        // No snapshot in either tier -> nothing above the canonical block to prune. Use Height()
+        // for the comparison so a (real) maxBlock is always treated as >= the canonical block only
+        // when it genuinely is; the `?? 0` default trips the early return when empty.
+        StateId? lastSnapshotId = GetLastSnapshotId();
+        if (lastSnapshotId is null) return;
+        ulong maxBlock = lastSnapshotId.Value.BlockNumber;
+        if (Height(lastSnapshotId.Value) <= Height(canonicalStateId)) return;
 
-        long batchStart = canonicalBlock + 1;
+        ulong batchStart = canonicalBlock + 1;
         int totalPruned = 0;
 
         while (batchStart <= maxBlock)
         {
-            long batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
+            ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
 
             // In-memory orphans above the persisted block.
             using (ArrayPoolListRef<StateId> inMemory = GetStatesInRange(batchStart, batchEnd))
@@ -463,14 +483,16 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 snapshot.Dispose();
 
                 if (parentFrom == target) return true;
-                if (parentFrom.BlockNumber > target.BlockNumber && seen.Add(parentFrom))
+                // parentFrom can be PreGenesis (a genesis-spanning snapshot's From); Height() keeps it
+                // sorting below the real target so it is not chased as if above it.
+                if (Height(parentFrom) > Height(target) && seen.Add(parentFrom))
                     stack.Push(new WalkNode(parentFrom, tier.IsPersisted(), -1));
             }
         }
         return false;
     }
 
-    private ArrayPoolListRef<StateId> GetStatesInRange(long blockStartInclusive, long blockEndInclusive)
+    private ArrayPoolListRef<StateId> GetStatesInRange(ulong blockStartInclusive, ulong blockEndInclusive)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
@@ -541,7 +563,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         PersistedSnapshotList result = new(0);
         StateId current = to;
-        while (current != from && current.BlockNumber > from.BlockNumber)
+        // `from` can be PreGenesis (genesis-spanning range); Height() keeps the walk running down to it.
+        while (current != from && Height(current) > Height(from))
         {
             if (!_base.TryGet(current, out PersistedSnapshot? snapshot) || !snapshot.TryAcquire())
                 break;
@@ -557,7 +580,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     public void ShareBloomAcrossRange(StateId from, StateId to, RefCountedBloomFilter sharedBloom, BlobArenaManager blobs)
     {
         StateId current = to;
-        while (current.BlockNumber > from.BlockNumber)
+        while (Height(current) > Height(from))
         {
             // Advance pointer is the base chain only: a compacted snapshot's From can dip below `from`,
             // and following it would walk out of the window. A gap in the base chain simply stops the
@@ -592,8 +615,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using (s)
         {
             if (ReferenceEquals(s.BloomRef, sharedBloom)) return;   // the big snapshot itself / already shared
-            if (s.From.BlockNumber < from.BlockNumber) return;      // extends below window → not a subset
-            if (s.To.BlockNumber > to.BlockNumber) return;          // belt-and-suspenders (true on a backward walk)
+            if (Height(s.From) < Height(from)) return;              // extends below window → not a subset
+            if (Height(s.To) > Height(to)) return;                  // belt-and-suspenders (true on a backward walk)
             sharedBloom.AcquireLease();
             using PersistedSnapshot twin = new(s.From, s.To, s.Reservation, blobs, tier, sharedBloom);
             // false on a racing prune → twin's `using` drops the cloned bloom lease, self-healing.
@@ -606,7 +629,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// surviving compacted snapshots stay alive via the <see cref="BlobArenaManager"/> refcount — no
     /// explicit "referenced base id" check is needed here.
     /// </summary>
-    public void RemovePersistedStatesUntil(long blockNumber)
+    public void RemovePersistedStatesUntil(ulong blockNumber)
     {
         _base.PruneBefore(blockNumber);
         _smallCompacted.PruneBefore(blockNumber);
@@ -618,7 +641,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// Enumerate persisted <c>To</c>-StateIds across all buckets whose <c>To.BlockNumber</c> is in
     /// <c>[startBlockInclusive, endBlockInclusive]</c>, deduped. Caller disposes the returned list.
     /// </summary>
-    private ArrayPoolList<StateId> GetPersistedStatesInRange(long startBlockInclusive, long endBlockInclusive)
+    private ArrayPoolList<StateId> GetPersistedStatesInRange(ulong startBlockInclusive, ulong endBlockInclusive)
     {
         if (endBlockInclusive < startBlockInclusive) return ArrayPoolList<StateId>.Empty();
 
@@ -737,7 +760,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
-            if (from.BlockNumber < target.BlockNumber)
+            if (Height(from) < Height(target))
                 return tier.IsPersisted() ? AssembleStep.WinAndStop : AssembleStep.Skip;
             if (from == target) return AssembleStep.WinAndStop;
             // A different state at the target's block is a sibling fork — don't win there.
@@ -747,12 +770,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     // In-memory-only walk for AssembleInMemorySnapshotsForCompaction: widest-jump first, pruning edges
     // below minBlockNumber, winning at the first node reaching it.
-    private readonly struct InMemoryCompactionPolicy(long minBlockNumber) : IAssemblePolicy
+    private readonly struct InMemoryCompactionPolicy(ulong minBlockNumber) : IAssemblePolicy
     {
         public ReadOnlySpan<SnapshotTier> EdgePriority => [SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase];
 
         public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier) =>
-            from.BlockNumber < minBlockNumber ? AssembleStep.Skip
+            Height(from) < (long)minBlockNumber ? AssembleStep.Skip
             : from.BlockNumber == minBlockNumber ? AssembleStep.WinAndStop
             : AssembleStep.Traverse;
     }
@@ -760,8 +783,10 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // Best-effort persisted-only compaction walk: prunes edges overshooting minBlockNumber and wins on
     // the deepest (lowest-block) node reached. Widest-first + BFS gives the widest path to each depth;
     // the window need not be fully populated.
-    private struct PersistedCompactionPolicy(long minBlockNumber) : IAssemblePolicy
+    private struct PersistedCompactionPolicy(ulong minBlockNumber) : IAssemblePolicy
     {
+        // Signed height of the deepest winner so far; PreGenesis/Sync (and an underflowing min bound)
+        // sort below genesis via Height(), so long is the right tracking type.
         private long _winnerBlock = long.MaxValue;
 
         public readonly ReadOnlySpan<SnapshotTier> EdgePriority =>
@@ -769,11 +794,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
-            if (from.BlockNumber < minBlockNumber) return AssembleStep.Skip;
+            if (Height(from) < (long)minBlockNumber) return AssembleStep.Skip;
             if (from.BlockNumber == minBlockNumber) return AssembleStep.WinAndStop; // window start, deepest possible
-            if (from.BlockNumber < _winnerBlock)
+            if (Height(from) < _winnerBlock)
             {
-                _winnerBlock = from.BlockNumber;
+                _winnerBlock = Height(from);
                 return AssembleStep.Win;
             }
             return AssembleStep.Traverse;
@@ -784,7 +809,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // edge reaching it that spans at most CompactSize. The >CompactSize large-compacted is a navigation-only
     // skip-pointer (followed above the target, never won onto it). Dedup runs only on retained edges, so a
     // skipped edge can't shadow the real candidate edge to the same target.
-    private readonly struct FindPersistPolicy(StateId currentPersistedState, int compactSize) : IAssemblePolicy
+    private readonly struct FindPersistPolicy(StateId currentPersistedState, ulong compactSize) : IAssemblePolicy
     {
         // LargeCompacted (>CompactSize) leads as a navigation-only skip-pointer; the rest are candidates,
         // CompactSized (the ==CompactSize boundary unit) first.
@@ -795,8 +820,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         {
             if (from == currentPersistedState)
                 // Any chunk spanning at most CompactSize is persistable; a wider large-compacted is skip-only.
+                // from == PreGenesis makes to - from wrap to to + 1 (the genesis-spanning span), as intended.
                 return to.BlockNumber - from.BlockNumber <= compactSize ? AssembleStep.WinAndStop : AssembleStep.Skip;
-            return from.BlockNumber > currentPersistedState.BlockNumber ? AssembleStep.Traverse : AssembleStep.Skip;
+            return Height(from) > Height(currentPersistedState) ? AssembleStep.Traverse : AssembleStep.Skip;
         }
     }
 

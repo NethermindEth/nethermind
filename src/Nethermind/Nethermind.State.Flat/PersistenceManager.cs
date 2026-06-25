@@ -41,7 +41,7 @@ public class PersistenceManager(
     // Linked to process exit so the conversion Parallel.ForEach below cancels at shutdown-start —
     // before DI disposal order matters — letting the owning FlatDbManager.RunPersistence task drain.
     private readonly CancellationTokenSource _cts = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
-    private readonly int _minReorgDepth = configuration.MinReorgDepth;
+    private readonly ulong _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxInMemoryBaseSnapshotCount = configuration.MaxInMemoryBaseSnapshotCount;
     // Force-persist backstop depth: the long-finality window when enabled (the persisted tier serves
     // deep reorgs), otherwise the smaller non-long-finality MaxReorgDepth. Raised to at least one
@@ -49,10 +49,10 @@ public class PersistenceManager(
     // MinReorgDepth) always has room to act before the backstop fires. This lets MinReorgDepth be
     // configured at or above the backstop without the two thresholds colliding — the backstop is
     // adjusted up accordingly.
-    private readonly int _backstopReorgDepth = Math.Max(
+    private readonly ulong _backstopReorgDepth = Math.Max(
         configuration.EnableLongFinality ? configuration.LongFinalityMaxReorgDepth : configuration.MaxReorgDepth,
         configuration.MinReorgDepth + configuration.CompactSize);
-    private readonly int _compactSize = configuration.CompactSize;
+    private readonly ulong _compactSize = configuration.CompactSize;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
@@ -99,11 +99,17 @@ public class PersistenceManager(
     internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, ConversionCandidate? ToConvert) DetermineSnapshotAction(StateId latestSnapshot)
     {
         StateId currentPersistedState = GetCurrentPersistedStateId();
-        long snapshotsDepth = latestSnapshot.BlockNumber - currentPersistedState.BlockNumber;
+        // PreGenesis (nothing persisted) carries the ulong.MaxValue sentinel, so subtracting it
+        // would wrap; the in-memory depth from genesis is then latestSnapshot.BlockNumber + 1.
+        Debug.Assert(currentPersistedState == StateId.PreGenesis || latestSnapshot.BlockNumber >= currentPersistedState.BlockNumber,
+            "Latest snapshot must be at or ahead of the last persisted block.");
+        ulong snapshotsDepth = currentPersistedState == StateId.PreGenesis
+            ? latestSnapshot.BlockNumber + 1
+            : latestSnapshot.BlockNumber - currentPersistedState.BlockNumber;
 
         // ---- Phase 1: persistence to RocksDB ----
-        long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
-        long nextBoundary = schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+        ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
+        ulong nextBoundary = schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
 
         // Normal finalized-driven persistence. Anchor at the next boundary block, not at the
         // CL-reported finalized tip. The outer gate guarantees boundary <= finalizedBlockNumber, so
@@ -264,11 +270,12 @@ public class PersistenceManager(
     {
         try
         {
-            long start = compacted.From.BlockNumber + 1;
-            long end = compacted.To.BlockNumber;
+            // From == PreGenesis (ulong.MaxValue) wraps to 0 here, i.e. the first block after genesis.
+            ulong start = compacted.From.BlockNumber + 1;
+            ulong end = compacted.To.BlockNumber;
 
             ArrayPoolList<StateId> allStateIds = new(64);
-            for (long b = start; b <= end; b++)
+            for (ulong b = start; b <= end; b++)
             {
                 using ArrayPoolList<StateId> statesAtBlock = snapshotRepository.GetStatesAtBlockNumber(b);
                 foreach (StateId state in statesAtBlock)
@@ -371,11 +378,11 @@ public class PersistenceManager(
         // available — that biases the walk onto the canonical chain. Falls back to the committed
         // head (then the longest chain) when no finalized state root is exposed, which also covers
         // a persisted-only backlog after the in-memory tier has been drained.
-        while (currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
+        while (currentPersistedState == StateId.PreGenesis || currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
         {
             StateId? seed = null;
-            long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
-            if (finalizedBlockNumber > currentPersistedState.BlockNumber)
+            ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
+            if (currentPersistedState == StateId.PreGenesis || finalizedBlockNumber > currentPersistedState.BlockNumber)
             {
                 Hash256? finalizedStateRoot = finalizedStateProvider.GetFinalizedStateRootAt(finalizedBlockNumber);
                 if (finalizedStateRoot is not null)
@@ -429,7 +436,8 @@ public class PersistenceManager(
 
     internal void PersistSnapshot(Snapshot snapshot)
     {
-        long compactLength = snapshot.To.BlockNumber! - snapshot.From.BlockNumber!;
+        // From == PreGenesis (ulong.MaxValue) wraps so the span is To.BlockNumber + 1 (a genesis-spanning snapshot).
+        ulong compactLength = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
 
         // Usually at the start of the application
         if (compactLength != _compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");

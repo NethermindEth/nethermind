@@ -38,10 +38,10 @@ public class Eip7823Tests
 
         Assert.That(TestSuccess(input, spec), Is.EqualTo(success));
 
-        long gas = TestGas(input, spec);
+        ulong gas = TestGas(input, spec);
         if (success)
         {
-            Assert.That(gas, Is.LessThan(long.MaxValue));
+            Assert.That(gas, Is.LessThan(ulong.MaxValue));
         }
     }
 
@@ -58,8 +58,8 @@ public class Eip7823Tests
         Assert.That(TestSuccess(input, specDisabled), Is.EqualTo(false));
         Assert.That(TestSuccess(input, specEnabled), Is.EqualTo(false));
 
-        Assert.That(TestGas(input, specDisabled), Is.EqualTo(long.MaxValue));
-        Assert.That(TestGas(input, specEnabled), Is.EqualTo(long.MaxValue));
+        Assert.That(TestGas(input, specDisabled), Is.EqualTo(ulong.MaxValue));
+        Assert.That(TestGas(input, specEnabled), Is.EqualTo(ulong.MaxValue));
     }
 
     private static IEnumerable<object> LimitTests
@@ -89,6 +89,6 @@ public class Eip7823Tests
         return result;
     }
 
-    private static long TestGas(byte[] input, IReleaseSpec spec)
+    private static ulong TestGas(byte[] input, IReleaseSpec spec)
         => ModExpPrecompile.Instance.DataGasCost(input, spec);
 }

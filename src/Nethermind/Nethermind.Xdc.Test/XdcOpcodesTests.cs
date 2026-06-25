@@ -72,11 +72,11 @@ public class XdcOpcodesTests : VirtualMachineTestsBase
     // In XDC, PREVRANDAO returns keccak(blockNumber) instead of the header Random field,
     // matching Go-XDC's big.Int.Bytes() behavior (block 0 produces empty bytes → keccak of empty).
     [
-        TestCase(0L, "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-        TestCase(1L, "0x5fe7f977e71dba2ea1a68e21057beebb9be2ac30c6410aa38d4f3fbe41dcffd2"),
-        TestCase(100L, "0xf1918e8562236eb17adc8502332f4c9c82bc14e19bfc0aa10ab674ff75b3d2f3"),
+        TestCase(0UL, "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
+        TestCase(1UL, "0x5fe7f977e71dba2ea1a68e21057beebb9be2ac30c6410aa38d4f3fbe41dcffd2"),
+        TestCase(100UL, "0xf1918e8562236eb17adc8502332f4c9c82bc14e19bfc0aa10ab674ff75b3d2f3"),
     ]
-    public void PrevRandao_opcode_returns_keccak_of_block_number(long blockNumber, string expectedPrevRandaoHex)
+    public void PrevRandao_opcode_returns_keccak_of_block_number(ulong blockNumber, string expectedPrevRandaoHex)
     {
         byte[] code = Prepare.EvmCode
             .Op(Instruction.PREVRANDAO)

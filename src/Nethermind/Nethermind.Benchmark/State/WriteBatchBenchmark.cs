@@ -52,7 +52,7 @@ public class WriteBatchBenchmark
 
         int totalAccountCount = 0;
 
-        for (int block = 0; block < SnapshotCount; block++)
+        for (ulong block = 0; block < SnapshotCount; block++)
         {
             int accountCount = 500;
             int storageAccountCount = 10;

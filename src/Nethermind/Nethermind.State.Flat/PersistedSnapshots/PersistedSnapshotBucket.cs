@@ -40,7 +40,7 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     }
 
     private PersistedSnapshotLabel LabelFor(PersistedSnapshot snapshot) =>
-        new(_tierName, snapshot.To.BlockNumber - snapshot.From.BlockNumber);
+        new(_tierName, (long)(snapshot.To.BlockNumber - snapshot.From.BlockNumber));
 
     /// <summary>Live snapshots, for one-off lifecycle iteration (bloom rebuild) at construction.
     /// Enumerates the dictionary directly — does not allocate a Values snapshot.</summary>
@@ -108,7 +108,7 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     /// Prune the block-ordered prefix whose <c>To.BlockNumber &lt; beforeBlock</c>, removing each
     /// entry (catalog + index + leases) under this bucket's lock.
     /// </summary>
-    public void PruneBefore(long beforeBlock)
+    public void PruneBefore(ulong beforeBlock)
     {
         using Lock.Scope scope = _lock.EnterScope();
         // Materialise the prefix first — the removal loop mutates the ordered set.
@@ -170,7 +170,7 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
         // underlying reservation/file leases are released by Dispose. The catalog key scopes the
         // removal to this bucket's entry (the other buckets' entries at the same To carry a
         // different depth and stay put).
-        long depth = to.BlockNumber - snapshot.From.BlockNumber;
+        long depth = (long)(to.BlockNumber - snapshot.From.BlockNumber);
         Interlocked.Add(ref _memoryBytes, -snapshot.Size);
         Interlocked.Decrement(ref _count);
         PersistedSnapshotLabel label = LabelFor(snapshot);
