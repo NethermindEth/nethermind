@@ -16,7 +16,7 @@
           "value": "0x229322"
           // gas/gasPrice omitted: the historical gasPrice is below today's base fee.
         },
-        "{{Hex(RecentBlock)}}"
+        "{{Hex(Recent.Number)}}"
       ],
       "id": "{{Request.Number}}"
     },

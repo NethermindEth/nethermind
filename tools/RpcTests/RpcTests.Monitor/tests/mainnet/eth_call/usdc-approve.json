@@ -20,7 +20,7 @@
           // gas/gasPrice intentionally omitted: the historical gasPrice is below today's base fee
           // and would turn the result into a fee-cap error.
         },
-        "{{Hex(RecentBlock)}}"
+        "{{Hex(Recent.Number)}}"
       ],
       "id": "{{Request.Number}}"
     },

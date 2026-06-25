@@ -17,7 +17,7 @@
           // decimals()
           "data": "0x313ce567"
         },
-        "{{Hex(RecentBlock)}}"
+        "{{Hex(Recent.Number)}}"
       ],
       "id": "{{Request.Number}}"
     },

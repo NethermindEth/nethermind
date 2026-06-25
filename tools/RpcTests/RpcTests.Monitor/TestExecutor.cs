@@ -18,7 +18,7 @@ internal class TestExecutor(IStatsReporter stats, RpcClient target, RpcClient? r
 
         JsonNode request = test.Definition.Request.Compile(test);
 
-        Console.WriteLine($"{test.Definition.FilePath} @ {test.RecentBlock}/{test.Head.Number}\n{request.ToCompactString()}\n");
+        Console.WriteLine($"{test.Definition.FilePath} @ {test.RecentNumber}/{test.Head.Number}\n{request.ToCompactString()}\n");
 
         // TODO: add test identifier to request params
         // TODO: inject custom IRcpClient implementation finding corresponding test

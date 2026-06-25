@@ -9,7 +9,7 @@
       "jsonrpc": "2.0",
       "method": "eth_getBlockByNumber",
       "params": [
-        "{{Hex(RecentBlock)}}",
+        "{{Hex(Recent.Number)}}",
         false
       ],
       "id": "{{Request.Number}}"

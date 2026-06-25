@@ -21,7 +21,7 @@
           // balanceOf(0xef04bc7821433f080461bbae815182e3d7bbb61a)
           "data": "0x70a08231000000000000000000000000ef04bc7821433f080461bbae815182e3d7bbb61a"
         },
-        "{{Hex(RecentBlock)}}",
+        "{{Hex(Recent.Number)}}",
         // stateOverrides
         {
           "0xEF04bc7821433f080461BBAE815182E3d7bBb61A": {

@@ -65,8 +65,8 @@ Example:
       "jsonrpc": "2.0",
       "method": "eth_getLogs",
       "params": [{
-        "fromBlock": "{{Hex(RecentBlock - 9)}}",
-        "toBlock": "{{Hex(RecentBlock)}}",
+        "fromBlock": "{{Hex(Recent.Number - 9)}}",
+        "toBlock": "{{Hex(Recent.Number)}}",
         "address": ["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "0xdAC17F958D2ee523a2206206994597C13D831ec7"],
         "topics": [
           "{{Topic.Transfer}}",
@@ -93,7 +93,7 @@ Some of them support custom C# expressions using [DynamicExpresso](https://githu
    these are strings denoted as `{{ expression }}`.
 
 [TestContext](./TestContext.cs) provides helper methods and properties for common patterns
-available to be called directly (like `EveryBlocks`, `RecentBlock`, `Hex(n)`, etc.)
+available to be called directly (like `EveryBlocks`, `Recent`, `Hex(n)`, etc.)
 
 Test files may contain comments – these are stripped on load and never sent in requests.
 

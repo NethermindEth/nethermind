@@ -15,15 +15,15 @@ namespace Nethermind.RpcTests.Monitor;
 /// </summary>
 internal readonly record struct TestContext(TestDefinition Definition, BlockInfo Head)
 {
+    /// <summary>
+    /// Shift behind the head of a block close to the latest, but old enough to assume to be available in all nodes.
+    /// </summary>
+    internal long RecentNumber => Head.Number - 5;
+
     public RequestContext Request { get; init; }
+    public BlockInfo Recent { get; init; } = null!;
 
     #region Helper Methods
-
-    // TODO: store actual block info
-    /// <summary>
-    /// Number of a block close to the latest head, but old enough to assume to be available in all nodes.
-    /// </summary>
-    public long RecentBlock => Math.Max(1, Head.Number - 5);
 
     public static bool Maybe => Random.Shared.Next(0, 2) == 0;
 

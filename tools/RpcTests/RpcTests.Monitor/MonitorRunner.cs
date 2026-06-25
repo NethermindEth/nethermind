@@ -10,7 +10,8 @@ internal class MonitorRunner(
     ExecutionArgs args,
     INotifier notifier,
     IStatsReporter stats,
-    HttpClient client,
+    RpcClient target,
+    RpcClient? reference,
     ReorgTracker reorgTracker,
     BlockProvider blockProvider
 )
@@ -18,7 +19,7 @@ internal class MonitorRunner(
     private static readonly TimeSpan ReorgsPeriodOnFail = TimeSpan.FromMinutes(15);
 
     private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs, requiresResponse: args.ReferenceUrl is null);
-    private readonly TestExecutor _executor = new(stats, client);
+    private readonly TestExecutor _executor = new(stats, target, reference);
     private readonly ErrorReporter _errorReporter = new(notifier, stats);
 
     public async Task RunAsync(CancellationToken ct)
@@ -111,7 +112,9 @@ internal class MonitorRunner(
     {
         try
         {
-            if (await _executor.ExecuteAsync(args, test, ct) is not { } testFailure)
+            test = test with {Recent = await blockProvider.GetAsync(test.RecentNumber, ct)};
+
+            if (await _executor.ExecuteAsync(test, ct) is not { } testFailure)
                 return null;
 
             stats.RecordTestFailure();

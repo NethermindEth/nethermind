@@ -2,7 +2,7 @@
   {
     "run": "EveryBlocks(3)",
     "test": {
-      "description": "Only eth transfer"
+      "description": "ETH transfer"
     },
     "request": {
       "jsonrpc": "2.0",
@@ -15,7 +15,7 @@
           "gasPrice": "0x2CB417800",
           "value": "0x229322"
         },
-        "{{Hex(RecentBlock)}}"
+        "{{Hex(Recent.Number)}}"
       ],
       "id": "{{Request.Number}}"
     },
