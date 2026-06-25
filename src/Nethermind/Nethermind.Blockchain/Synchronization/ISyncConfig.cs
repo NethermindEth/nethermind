@@ -123,7 +123,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Max degree of parallelism for per-account storage import inside a single Snap storage range response. Allowed values are between 1 and 8.", DefaultValue = "1", HiddenFromDocs = true)]
     int SnapSyncStorageRangeParallelism { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Maximum active Snap storage-range batches. Values less than or equal to 0 disable this cap.", DefaultValue = "4", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Maximum active Snap storage-range batches. Values less than or equal to 0 disable this cap.", DefaultValue = "8", HiddenFromDocs = true)]
     int SnapSyncMaxActiveStorageRangeBatches { get; set; }
 
     [ConfigItem(Description = "Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. If `true`, the pivot number must be same one used originally as it's used as a cut-off point.", DefaultValue = "false")]
