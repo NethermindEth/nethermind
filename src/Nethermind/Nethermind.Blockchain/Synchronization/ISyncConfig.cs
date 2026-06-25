@@ -118,10 +118,10 @@ public interface ISyncConfig : IConfig
     public bool FixReceipts { get; set; }
 
     [ConfigItem(Description = "The first block (inclusive) to verify/fix receipts for. When not set, defaults to the ancient receipts barrier, which depends on the pivot number; in that case the pivot number must be the same one used originally as it's the cut-off point.", DefaultValue = "null")]
-    public long? FixReceiptsStartingBlock { get; set; }
+    public ulong? FixReceiptsStartingBlock { get; set; }
 
     [ConfigItem(Description = "The last block (inclusive) to verify/fix receipts for. When not set, defaults to the chain head minus 2, to which it's always clamped.", DefaultValue = "null")]
-    public long? FixReceiptsLastBlock { get; set; }
+    public ulong? FixReceiptsLastBlock { get; set; }
 
     [ConfigItem(Description = $"Whether to recalculate the total difficulty from `{nameof(FixTotalDifficultyStartingBlock)}` to `{nameof(FixTotalDifficultyLastBlock)}`.", DefaultValue = "false")]
     public bool FixTotalDifficulty { get; set; }

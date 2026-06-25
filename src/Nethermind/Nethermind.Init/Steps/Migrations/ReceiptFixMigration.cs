@@ -35,15 +35,9 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (syncConfig.FixReceipts)
             {
-                ulong endExcl = (blockTree.Head?.Number ?? 0UL).SaturatingSub(2UL);
-                if (syncConfig.FixReceiptsLastBlock is { } last)
-                {
-                    endExcl = Math.Min((ulong)last + 1, endExcl);
-                }
-
-                ulong startIncl = syncConfig.FixReceiptsStartingBlock is { } start
-                    ? (ulong)start
-                    : syncConfig.AncientReceiptsBarrierCalc;
+                ulong startIncl = syncConfig.FixReceiptsStartingBlock ?? syncConfig.AncientReceiptsBarrierCalc;
+                ulong endExcl = syncConfig.FixReceiptsLastBlock + 1 ?? ulong.MaxValue;
+                endExcl = Math.Clamp(endExcl, 0UL, (blockTree.Head?.Number ?? 0UL).SaturatingSub(2UL));
 
                 if (endExcl <= startIncl)
                 {
