@@ -404,7 +404,6 @@ public class BlockhashProviderTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Returns_null_when_in_window_hash_cannot_be_resolved()
     {
-        // No ancestor headers are available, so the in-window hash cannot be resolved from the cache.
         IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
         BlockhashProvider provider = CreateBlockHashProvider(headerFinder, Frontier.Instance);
         BlockHeader current = Build.A.BlockHeader.WithNumber(300).WithParentHash(TestItem.KeccakA).TestObject;
