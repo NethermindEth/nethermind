@@ -36,19 +36,11 @@ internal static class PersistedSnapshotTags
     internal static readonly byte[] MetadataNodeRefsKey = "noderefs\0\0"u8.ToArray();
     internal static readonly byte[] MetadataToBlockKey = "to_block\0\0"u8.ToArray();
     internal static readonly byte[] MetadataToHashKey = "to_hash\0\0\0"u8.ToArray();
-    internal static readonly byte[] MetadataVersionKey = "version\0\0\0"u8.ToArray();
 
     // Referenced blob-arena ids are stored as one record per id (key = ref-id column + id; see
     // PersistedSnapshotKey.WriteRefIdKey) rather than a single list value, so they merge/dedup
     // through the normal N-way merge and iterate like any other records. This is the per-id value.
     internal static readonly byte[] RefIdValue = [0x01];
-
-    // On-disk format version, written as the value of MetadataVersionKey by the builder and copied
-    // through by the merger. Bump when the on-disk layout changes.
-    // v5: single-level sorted table (replaces the columnar format).
-    // v6: streaming two-level sorted table — i64 footer, index block located by stored byte offset.
-    // v7: index values are data-block byte offsets (u48), changed-prefix coded, not block numbers.
-    internal static readonly byte[] MetadataFormatVersion = [0x07];
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32
     // bytes. Mirrors BaseFlatPersistence.RlpSlotValueBufferSize.

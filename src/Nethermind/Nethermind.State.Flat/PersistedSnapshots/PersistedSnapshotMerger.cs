@@ -284,7 +284,6 @@ public static class PersistedSnapshotMerger
 
         AddMetadataField<TWriter, TReader, TPin>(ref table, in newest, newestTable, PersistedSnapshotTags.MetadataToBlockKey);
         AddMetadataField<TWriter, TReader, TPin>(ref table, in newest, newestTable, PersistedSnapshotTags.MetadataToHashKey);
-        AddMetadataField<TWriter, TReader, TPin>(ref table, in newest, newestTable, PersistedSnapshotTags.MetadataVersionKey);
 
         // ref-id records (column 0x00) are not metadata — they flow through the normal entry merge
         // (MergeEntries), which dedups them across sources into the union for free.

@@ -61,7 +61,7 @@ internal static class SortedTable
         internal readonly byte Version;
     }
 
-    internal const byte FormatVersion = 12;
+    internal const byte FormatVersion = 1;
 
     /// <summary>Footer-resolved table geometry: the table-relative byte offset of the (unaligned) index
     /// block. The index values need no stored restart interval — a restart is any <c>cp == 0</c> record

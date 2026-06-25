@@ -377,8 +377,6 @@ public static class PersistedSnapshotBuilder
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.To.BlockNumber);
         AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataToBlockKey, blockNumBytes);
         AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataToHashKey, snapshot.To.StateRoot.Bytes);
-
-        AddMetadata(ref table, keyBuf, PersistedSnapshotTags.MetadataVersionKey, PersistedSnapshotTags.MetadataFormatVersion);
     }
 
     private static void AddMetadata<TWriter>(ref SortedTableBuilder<TWriter> table, scoped Span<byte> keyBuf,
