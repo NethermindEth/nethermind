@@ -31,11 +31,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithNumber(long number)
+        public BlockBuilder WithNumber(ulong number)
         {
             TestObjectInternal.Header.Number = number;
             return this;
         }
+
+        public BlockBuilder WithNumber(int number) => WithNumber((ulong)number);
 
         public BlockBuilder WithBaseFeePerGas(UInt256 baseFeePerGas)
         {
@@ -49,7 +51,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithGasLimit(long gasLimit)
+        public BlockBuilder WithGasLimit(ulong gasLimit)
         {
             TestObjectInternal.Header.GasLimit = gasLimit;
             return this;
@@ -135,6 +137,12 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithTotalDifficulty(long difficulty)
         {
             TestObjectInternal.Header.TotalDifficulty = (ulong)difficulty;
+            return this;
+        }
+
+        public BlockBuilder WithTotalDifficulty(ulong difficulty)
+        {
+            TestObjectInternal.Header.TotalDifficulty = difficulty;
             return this;
         }
 
@@ -254,7 +262,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithGasUsed(long gasUsed)
+        public BlockBuilder WithGasUsed(ulong gasUsed)
         {
             TestObjectInternal.Header.GasUsed = gasUsed;
             return this;

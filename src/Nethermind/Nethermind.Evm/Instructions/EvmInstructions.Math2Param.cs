@@ -23,7 +23,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing this math operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        virtual static ulong GasCost => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the math operation on two 256-bit operands.
         /// </summary>
@@ -97,7 +97,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpMul : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static ulong GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Multiply(in a, in b, out result);
     }
@@ -108,7 +108,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpDiv : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static ulong GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -132,7 +132,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSDiv : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static ulong GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -163,7 +163,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpMod : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static ulong GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -185,7 +185,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSMod : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static ulong GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -281,7 +281,7 @@ public static partial class EvmInstructions
             return stack.PushOne<TTracingInst>();
         }
 
-        int expSize = 32 - leadingZeros;
+        ulong expSize = (ulong)(32 - leadingZeros);
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
         TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
 

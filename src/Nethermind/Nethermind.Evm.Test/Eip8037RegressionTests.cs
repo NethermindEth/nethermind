@@ -28,7 +28,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Nonexistent
     }
 
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
 
     private static Prepare BuildCreateFactory(byte[] initCode, UInt256 value, bool create2, byte[]? salt = null) =>
@@ -68,7 +68,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         {
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.GasLimitBelowIntrinsicGas));
-            Assert.That(TestState.GetNonce(Sender), Is.EqualTo(UInt256.Zero));
+            Assert.That(TestState.GetNonce(Sender), Is.Zero);
         }
     }
 
@@ -80,9 +80,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     /// Without the fix, the pre-check passes against each component separately and the
     /// charge runs on the merged parent+child pool, silently borrowing parent gas.
     /// </summary>
-    [TestCase(false, 215187L, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas_CREATE")]
-    [TestCase(true, 215187L + GasCostOf.VeryLow + GasCostOf.Sha3Word, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas_CREATE2")]
-    public void Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas(bool create2, long gasLimit)
+    [TestCase(false, 215187UL, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas_CREATE")]
+    [TestCase(true, 215187UL + GasCostOf.VeryLow + GasCostOf.Sha3Word, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas_CREATE2")]
+    public void Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas(bool create2, ulong gasLimit)
     {
         // Init code: deploys 1 byte of zeros from memory
         // PUSH1 1, PUSH1 0, RETURN = 5 bytes, costs 9 gas (3+3+3 memory expansion)
@@ -176,7 +176,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        long gasLimit = 1_000_000;
+        ulong gasLimit = 1_000_000ul;
 
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, initCode, value: 1, blockGasLimit: DynamicStatePricingBlockGasLimit);
         transaction.To = null;
@@ -221,7 +221,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Done;
 
         byte[] oversizedInitCode = new byte[(int)Spec.MaxInitCodeSize + 1];
-        long gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.CreateState;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.CreateState;
 
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, createFromCalldataCode, oversizedInitCode, UInt256.Zero);
         block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
@@ -296,8 +296,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        long expectedAuthorizationStateGas = GasCostOf.PerAuthBaseState;
-        long expectedPaidGas = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular + GasCostOf.PerAuthBaseState;
+        ulong expectedAuthorizationStateGas = GasCostOf.PerAuthBaseState;
+        ulong expectedPaidGas = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular + GasCostOf.PerAuthBaseState;
 
         using (Assert.EnterMultipleScope())
         {
@@ -403,7 +403,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        long refundedStateGas = 3 * GasCostOf.CreateState;
+        ulong refundedStateGas = 3ul * GasCostOf.CreateState;
 
         using (Assert.EnterMultipleScope())
         {
@@ -547,7 +547,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-        Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(UInt256.Zero));
+        Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(0ul));
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }
 
@@ -577,7 +577,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
         Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }));
         Assert.That(TestState.Get(new StorageCell(Recipient, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
-        Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(UInt256.Zero));
+        Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(0ul));
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }
 
@@ -618,7 +618,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState + GasCostOf.SSetState));
-        Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(UInt256.One));
+        Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(1ul));
         AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
         AssertStorage(new StorageCell(Recipient, 1), UInt256.Zero);
         AssertStorage(new StorageCell(Recipient, 2), UInt256.One);
@@ -787,7 +787,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.INVALID)
             .Done;
 
-        long gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.SSetState;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.SSetState;
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
@@ -876,8 +876,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         block.Header.GasUsed = Math.Max(tracer.CumulativeRegularGasUsed, tracer.GasConsumedResult.BlockStateGas);
 
-        long legacyRemaining = block.Header.GasLimit - block.Header.GasUsed;
-        long secondTxGasLimit = legacyRemaining + 1;
+        ulong legacyRemaining = block.Header.GasLimit - block.Header.GasUsed;
+        ulong secondTxGasLimit = legacyRemaining + 1ul;
 
         SenderRecipientAndMiner secondParticipants = new()
         {
@@ -943,7 +943,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             value: zeroValue,
             blockGasLimit: blockGasLimit);
 
-        long secondTxGasLimit = blockGasLimit - GasCostOf.Transaction + 1;
+        ulong secondTxGasLimit = blockGasLimit - GasCostOf.Transaction + 1ul;
         (_, Transaction secondTx) = PrepareTx(
             Activation,
             secondTxGasLimit,
@@ -998,7 +998,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        long expectedStateGas = fundContract ? GasCostOf.NewAccountState : 0;
+        ulong expectedStateGas = fundContract ? GasCostOf.NewAccountState : 0ul;
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
@@ -1037,7 +1037,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     public void Eip8037_same_tx_created_selfdestruct_to_new_beneficiary_keeps_created_account_state_gas(
         bool create2,
         int createdBalance,
-        long expectedStateGas)
+        ulong expectedStateGas)
     {
         Address beneficiary = TestItem.AddressC;
         byte[] childInitCode = Prepare.EvmCode
@@ -1080,7 +1080,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
-        long expectedStateGas = 2 * GasCostOf.CreateState + GasCostOf.CodeDepositState;
+        ulong expectedStateGas = 2ul * GasCostOf.CreateState + GasCostOf.CodeDepositState;
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
@@ -1134,7 +1134,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, 600_000, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState + selfDestructRuntime.Length * GasCostOf.CodeDepositState),
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState + (ulong)selfDestructRuntime.Length * GasCostOf.CodeDepositState),
             "CREATE account state and code-deposit state gas should not be refunded after same-tx SELFDESTRUCT.");
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }
@@ -1189,7 +1189,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     public void Eip8037_create_tx_selfdestruct_initcode_keeps_create_state_gas(
         ulong txValue,
         SelfDestructBeneficiaryKind beneficiaryKind,
-        long expectedStateGas)
+        ulong expectedStateGas)
     {
         Address contractAddress = ContractAddress.From(Sender, 0);
         Address beneficiary = beneficiaryKind switch
@@ -1233,9 +1233,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(tracer.GasConsumedResult.EffectiveBlockGas, expectedStateGas)));
     }
 
-    [TestCase(16_777_216L, TestName = "Eip8037_subcall_set_clear_revert_pays_no_state_gas_spill")]
-    [TestCase(16_875_136L, TestName = "Eip8037_subcall_set_clear_revert_pays_no_state_gas_reservoir")]
-    public void Eip8037_subcall_set_clear_revert_pays_no_state_gas(long gasLimit)
+    [TestCase(16_777_216ul, TestName = "Eip8037_subcall_set_clear_revert_pays_no_state_gas_spill")]
+    [TestCase(16_875_136ul, TestName = "Eip8037_subcall_set_clear_revert_pays_no_state_gas_reservoir")]
+    public void Eip8037_subcall_set_clear_revert_pays_no_state_gas(ulong gasLimit)
     {
         byte[] childCode = Bytes.FromHexString("6001600055600060005560006000fd");
 

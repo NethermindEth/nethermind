@@ -19,7 +19,7 @@ internal class XdcSealer(ISigner signer, ILogManager logManager) : ISealer
     private readonly ILogger _logger = logManager.GetClassLogger<XdcSealer>();
     public Address Address => signer.Address;
 
-    public bool CanSeal(long blockNumber, Hash256 parentHash) =>
+    public bool CanSeal(ulong blockNumber, Hash256 parentHash) =>
         //We might want to add more logic here in the future
         true;
 

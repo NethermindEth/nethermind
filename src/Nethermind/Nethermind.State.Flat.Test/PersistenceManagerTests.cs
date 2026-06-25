@@ -60,7 +60,7 @@ public class PersistenceManagerTests
     {
     }
 
-    private StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    private StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
@@ -118,7 +118,7 @@ public class PersistenceManagerTests
         StateId latest = CreateStateId(100);
 
         // Vary target block and compaction based on parameter
-        int targetBlock = useCompacted ? 16 : 1; // compacted uses 16, fallback uses 1
+        ulong targetBlock = useCompacted ? 16UL : 1UL; // compacted uses 16, fallback uses 1
         StateId target = CreateStateId(targetBlock);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -165,7 +165,7 @@ public class PersistenceManagerTests
         StateId latest = CreateStateId(300);
 
         // Vary target block and compaction based on parameter
-        int targetBlock = useCompacted ? 16 : 1; // compacted uses 16, fallback uses 1
+        ulong targetBlock = useCompacted ? 16UL : 1UL; // compacted uses 16, fallback uses 1
         StateId target = CreateStateId(targetBlock);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
@@ -448,10 +448,10 @@ public class PersistenceManagerTests
 
     #region Offset Behavior
 
-    [TestCase(3, 13)]
-    [TestCase(5, 11)]
-    [TestCase(0, 16)]
-    public void DetermineSnapshotToPersist_WithOffset_FirstBoundaryShifted(int offset, int expectedTargetBlock)
+    [TestCase(3, 13UL)]
+    [TestCase(5, 11UL)]
+    [TestCase(0, 16UL)]
+    public void DetermineSnapshotToPersist_WithOffset_FirstBoundaryShifted(int offset, ulong expectedTargetBlock)
     {
         // Fresh DB: currentPersistedState = Block0 (block 0).
         // With CompactSize=16 and offset=N, the next full compaction boundary is at block 16-N.
@@ -657,16 +657,16 @@ public class PersistenceManagerTests
 
     private class TestFinalizedStateProvider : IFinalizedStateProvider
     {
-        private long _finalizedBlockNumber;
-        private readonly Dictionary<long, Hash256> _finalizedStateRoots = [];
+        private ulong _finalizedBlockNumber;
+        private readonly Dictionary<ulong, Hash256> _finalizedStateRoots = [];
 
-        public long FinalizedBlockNumber => _finalizedBlockNumber;
+        public ulong FinalizedBlockNumber => _finalizedBlockNumber;
 
-        public void SetFinalizedBlockNumber(long blockNumber) => _finalizedBlockNumber = blockNumber;
+        public void SetFinalizedBlockNumber(ulong blockNumber) => _finalizedBlockNumber = blockNumber;
 
-        public void SetFinalizedStateRootAt(long blockNumber, Hash256 stateRoot) => _finalizedStateRoots[blockNumber] = stateRoot;
+        public void SetFinalizedStateRootAt(ulong blockNumber, Hash256 stateRoot) => _finalizedStateRoots[blockNumber] = stateRoot;
 
-        public Hash256? GetFinalizedStateRootAt(long blockNumber) =>
+        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) =>
             _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
     }
 

@@ -8,7 +8,7 @@ namespace Nethermind.AuRa.Test;
 
 public static class AuRaBuilderExtensions
 {
-    public static BlockHeaderBuilder WithAura(this BlockHeaderBuilder builder, long step, byte[]? signature = null)
+    public static BlockHeaderBuilder WithAura(this BlockHeaderBuilder builder, ulong step, byte[]? signature = null)
     {
         AuRaBlockHeader header = AuRaBlockHeader.UpgradeFrom(builder.TestObjectInternal);
         header.AuRaStep = step;
@@ -17,7 +17,7 @@ public static class AuRaBuilderExtensions
         return builder;
     }
 
-    public static BlockBuilder WithAura(this BlockBuilder builder, long step, byte[]? signature = null)
+    public static BlockBuilder WithAura(this BlockBuilder builder, ulong step, byte[]? signature = null)
     {
         AuRaBlockHeader header = AuRaBlockHeader.UpgradeFrom(builder.TestObjectInternal.Header);
         header.AuRaStep = step;

@@ -52,8 +52,8 @@ public class Eth70ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
-        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
-        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 2UL.MiB;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         NetworkDiagTracer.IsEnabled = true;
 
         _session = Substitute.For<ISession>();
@@ -67,7 +67,7 @@ public class Eth70ProtocolHandlerTests
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
         _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
-        _syncManager.LowestBlock.Returns(0);
+        _syncManager.LowestBlock.Returns(0UL);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
@@ -120,15 +120,15 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Default_size_limits_match_eth_protocol_limits()
     {
-        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo((ulong)(2 * MemorySizes.MiB)));
-        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo((ulong)(10 * MemorySizes.MiB)));
+        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL.MiB));
+        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL.MiB));
     }
 
     [Test]
     public void Should_mark_last_block_incomplete_when_truncated()
     {
-        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)1.MB;
-        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = (ulong)1.MB;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 1UL.MB;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = 1UL.MB;
 
         const int receiptCount = 20000;
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
@@ -678,7 +678,7 @@ public class Eth70ProtocolHandlerTests
         BlockHeader header = Build.A.BlockHeader
             .WithHash(blockHash)
             .WithNumber(1)
-            .WithGasUsed(GasCostOf.Transaction * headerGasUsedMultiplier)
+            .WithGasUsed(GasCostOf.Transaction * (ulong)headerGasUsedMultiplier)
             .TestObject;
         _syncManager.FindHeader(blockHash).Returns(header);
 
@@ -690,7 +690,7 @@ public class Eth70ProtocolHandlerTests
         TxReceipt[] receipts = new TxReceipt[receiptGasUsedMultiplier];
         for (int i = 0; i < receipts.Length; i++)
         {
-            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] };
+            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (ulong)(i + 1), Logs = [] };
         }
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
@@ -755,7 +755,7 @@ public class Eth70ProtocolHandlerTests
             int toReturn = Math.Min(7, actualRequested);
 
             TxReceipt[][] payload = Enumerable.Range(0, toReturn)
-                .Select(i => new[] { new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] } })
+                .Select(i => new[] { new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (ulong)(i + 1), Logs = [] } })
                 .ToArray();
 
             ReceiptsMessage70 response = new(sent.RequestId, payload.ToPooledList(), lastBlockIncomplete: false);
@@ -1050,7 +1050,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_not_split_small_block_when_hitting_limit_single_block()
     {
-        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)10.MB;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 10UL.MB;
 
         TxReceipt[] smallBlockReceipts =
         [
@@ -1095,20 +1095,20 @@ public class Eth70ProtocolHandlerTests
         TxReceipt[] receipts = new TxReceipt[count];
         for (int i = 0; i < receipts.Length; i++)
         {
-            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] };
+            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (ulong)(i + 1), Logs = [] };
         }
 
         return receipts;
     }
 
-    private static TxReceipt BuildReceiptWithLogData(long gasUsedTotal, int logDataSize) =>
+    private static TxReceipt BuildReceiptWithLogData(ulong gasUsedTotal, int logDataSize) =>
         new()
         {
             GasUsedTotal = gasUsedTotal,
             Logs = [new LogEntry(TestItem.AddressA, new byte[logDataSize], [])]
         };
 
-    private void SetupBlockMetadata(Hash256 blockHash, long gasLimit, long gasUsed, params long[] txGasLimits)
+    private void SetupBlockMetadata(Hash256 blockHash, ulong gasLimit, ulong gasUsed, params ulong[] txGasLimits)
     {
         Transaction[] transactions = new Transaction[txGasLimits.Length];
         for (int i = 0; i < txGasLimits.Length; i++)
@@ -1162,8 +1162,8 @@ public class Eth70ProtocolHandlerTests
     public sealed record InvalidPartialContinuationCase(
         Hash256[] RequestedHashes,
         Dictionary<long, ReceiptsPageResponse> Responses,
-        long FirstBlockGasUsed,
-        long? SecondBlockGasUsed,
+        ulong FirstBlockGasUsed,
+        ulong? SecondBlockGasUsed,
         string ExpectedExceptionMessage);
 
     public sealed record ReceiptsPageResponse(TxReceipt[][] Receipts, bool LastBlockIncomplete);

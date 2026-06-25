@@ -72,7 +72,7 @@ public interface IWorldStateScopeProvider
         /// That said, <see cref="WorldState"/> will always call <see cref="IStateTree.UpdateRootHash"/>
         /// first.
         /// </summary>
-        void Commit(long blockNumber);
+        void Commit(ulong blockNumber);
 
         /// <summary>
         /// Hint that the given Block Access List will be accessed during block execution.

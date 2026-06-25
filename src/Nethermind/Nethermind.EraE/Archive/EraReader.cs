@@ -25,21 +25,21 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
     private readonly IRlpDecoder<BlockBody> _blockBodyDecoder = Rlp.GetDecoderOrThrow<BlockBody>();
     private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
 
-    public long FirstBlock => e2.First;
-    public long LastBlock => e2.LastBlock;
+    public ulong FirstBlock => e2.First;
+    public ulong LastBlock => e2.LastBlock;
 
     public EraReader(string fileName) : this(new E2StoreReader(fileName)) { }
 
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        for (long blockNumber = e2.First; blockNumber <= e2.LastBlock; blockNumber++)
+        for (ulong blockNumber = e2.First; blockNumber <= e2.LastBlock; blockNumber++)
         {
             (Block block, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, cancellation);
             yield return (block, receipts);
         }
     }
 
-    public async Task<(Block, TxReceipt[])> GetBlockByNumber(long number, CancellationToken cancellation = default)
+    public async Task<(Block, TxReceipt[])> GetBlockByNumber(ulong number, CancellationToken cancellation = default)
     {
         if (number < e2.First)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than first block {e2.First}.");
@@ -77,14 +77,14 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         if (verifyConcurrency <= 0)
             verifyConcurrency = Environment.ProcessorCount;
 
-        long startBlock = e2.First;
+        ulong startBlock = e2.First;
         int blockCount = (int)e2.BlockCount;
 
         (Hash256 Hash, UInt256 Td, bool IsPreMerge)[] blockMeta =
             new (Hash256 Hash, UInt256 Td, bool IsPreMerge)[blockCount];
 
-        ConcurrentQueue<long> blockNumbers = new();
-        for (long n = startBlock; n <= e2.LastBlock; n++)
+        ConcurrentQueue<ulong> blockNumbers = new();
+        for (ulong n = startBlock; n <= e2.LastBlock; n++)
         {
             blockNumbers.Enqueue(n);
         }
@@ -94,7 +94,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         {
             workers[i] = Task.Run(async () =>
             {
-                while (blockNumbers.TryDequeue(out long blockNumber))
+                while (blockNumbers.TryDequeue(out ulong blockNumber))
                 {
                     (Block block, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, cancellation);
 
@@ -148,7 +148,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
 
     public void Dispose() => e2.Dispose();
 
-    private async Task<(Block, TxReceipt[])> ReadBlockAndReceipts(long blockNumber, CancellationToken cancellation)
+    private async Task<(Block, TxReceipt[])> ReadBlockAndReceipts(ulong blockNumber, CancellationToken cancellation)
     {
         long headerPos = e2.HeaderOffset(blockNumber);
         (BlockHeader header, _) = await e2.ReadSnappyCompressedEntryAndDecode(

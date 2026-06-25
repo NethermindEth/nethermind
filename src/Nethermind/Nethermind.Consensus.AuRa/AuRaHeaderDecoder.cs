@@ -25,8 +25,8 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
         Hash256? unclesHash,
         Address? beneficiary,
         in UInt256 difficulty,
-        long number,
-        long gasLimit,
+        ulong number,
+        ulong gasLimit,
         ulong timestamp,
         byte[] extraData)
     {
@@ -36,7 +36,7 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
                 ref decoderContext, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData);
         }
 
-        long step = (long)decoderContext.DecodeUInt256();
+        ulong step = decoderContext.DecodeULong();
         byte[] signature = decoderContext.DecodeByteArray();
         return new AuRaBlockHeader(parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData)
         {

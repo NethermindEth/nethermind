@@ -65,7 +65,7 @@ public partial class BlockAccessListManager(
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager,
             transactionProcessorFactory!, witnessMode));
     private const int GasValidationChunkSize = 8;
-    private long? _gasRemaining;
+    private ulong? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
 
@@ -84,8 +84,8 @@ public partial class BlockAccessListManager(
     // generated is incremented as each per-tx slice merges in. ValidateBlockAccessList's
     // fast path checks (suggestedReads - generatedReads) * Eip7928Constants.ItemCost against
     // _gasRemaining instead of re-walking the whole BAL.
-    private int _suggestedChargeableStorageReads;
-    private int _generatedChargeableStorageReads;
+    private ulong _suggestedChargeableStorageReads;
+    private ulong _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
     // for tests
     internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
@@ -153,10 +153,10 @@ public partial class BlockAccessListManager(
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
                 _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
-                int suggestedReads = 0;
+                ulong suggestedReads = 0;
                 foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
                 {
-                    if (!IsSystemContract(ac.Address)) suggestedReads += ac.StorageReads.Length;
+                    if (!IsSystemContract(ac.Address)) suggestedReads += (ulong)ac.StorageReads.Length;
                 }
                 _suggestedChargeableStorageReads = suggestedReads;
             }
@@ -217,7 +217,7 @@ public partial class BlockAccessListManager(
         }
     }
 
-    public void SpendGas(long gas)
+    public void SpendGas(ulong gas)
     {
         CheckInitialized();
         _gasRemaining -= gas;
@@ -306,8 +306,8 @@ public partial class BlockAccessListManager(
         GeneratedBlockAccessList.Reset();
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
-        _suggestedChargeableStorageReads = 0;
-        _generatedChargeableStorageReads = 0;
+        _suggestedChargeableStorageReads = 0ul;
+        _generatedChargeableStorageReads = 0ul;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
         _currentGeneratedBlockAccessList = null;

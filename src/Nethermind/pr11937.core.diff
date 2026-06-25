@@ -1,0 +1,1520 @@
+diff --git a/src/Nethermind/Nethermind.Core/Account.cs b/src/Nethermind/Nethermind.Core/Account.cs
+index 2ef1f1c178..4c16bc8091 100644
+--- a/src/Nethermind/Nethermind.Core/Account.cs
++++ b/src/Nethermind/Nethermind.Core/Account.cs
+@@ -16,7 +16,7 @@ namespace Nethermind.Core
+ 
+         private readonly Hash256? _codeHash;
+         private readonly Hash256? _storageRoot;
+-        public readonly UInt256 Nonce;
++        public readonly ulong Nonce;
+         public readonly UInt256 Balance;
+ 
+         public Account(in UInt256 balance)
+@@ -27,7 +27,7 @@ namespace Nethermind.Core
+             Balance = balance;
+         }
+ 
+-        public Account(in UInt256 nonce, in UInt256 balance)
++        public Account(in ulong nonce, in UInt256 balance)
+         {
+             _codeHash = null;
+             _storageRoot = null;
+@@ -43,7 +43,7 @@ namespace Nethermind.Core
+             Balance = default;
+         }
+ 
+-        public Account(in UInt256 nonce, in UInt256 balance, Hash256 storageRoot, Hash256 codeHash)
++        public Account(in ulong nonce, in UInt256 balance, Hash256 storageRoot, Hash256 codeHash)
+         {
+             _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
+             _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
+@@ -67,7 +67,7 @@ namespace Nethermind.Core
+             Balance = account.Balance;
+         }
+ 
+-        private Account(Account account, in UInt256 nonce, in UInt256 balance)
++        private Account(Account account, in ulong nonce, in UInt256 balance)
+         {
+             _codeHash = account._codeHash;
+             _storageRoot = account._storageRoot;
+@@ -82,7 +82,7 @@ namespace Nethermind.Core
+         public Hash256 StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
+         public Hash256 CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
+         public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;
+-        public bool IsEmpty => _codeHash is null && Balance.IsZero && Nonce.IsZero;
++        public bool IsEmpty => _codeHash is null && Balance.IsZero && Nonce == 0;
+         public bool IsContract => _codeHash is not null;
+         public bool Equals(Account? other)
+         {
+@@ -99,7 +99,7 @@ namespace Nethermind.Core
+         public override int GetHashCode() => (int)BitOperations.Crc32C((uint)CodeHash.GetHashCode(), (ulong)Nonce.GetHashCode() << 8 | (uint)Balance.GetHashCode()) ^ StorageRoot.GetHashCode();
+         public static bool operator !=(Account? left, Account? right) => !(left == right);
+         public Account WithChangedBalance(in UInt256 newBalance) => new(this, Nonce, newBalance);
+-        public Account WithChangedNonce(in UInt256 newNonce) => new(this, newNonce, Balance);
++        public Account WithChangedNonce(in ulong newNonce) => new(this, newNonce, Balance);
+         public Account WithChangedStorageRoot(Hash256 newStorageRoot) => new(this, newStorageRoot);
+         public Account WithChangedCodeHash(Hash256 newCodeHash) => new(newCodeHash, this);
+         public AccountStruct ToStruct() => new(Nonce, Balance, StorageRoot, CodeHash);
+@@ -112,11 +112,11 @@ namespace Nethermind.Core
+         public static ref readonly AccountStruct TotallyEmpty => ref _totallyEmpty;
+ 
+         private readonly UInt256 _balance;
+-        private readonly UInt256 _nonce = default;
++        private readonly ulong _nonce = default;
+         public readonly ValueHash256 CodeHash = Keccak.OfAnEmptyString.ValueHash256;
+         private readonly ValueHash256 _storageRoot = Keccak.EmptyTreeHash.ValueHash256;
+ 
+-        public AccountStruct(in UInt256 nonce, in UInt256 balance, in ValueHash256 storageRoot, in ValueHash256 codeHash)
++        public AccountStruct(in ulong nonce, in UInt256 balance, in ValueHash256 storageRoot, in ValueHash256 codeHash)
+         {
+             _balance = balance;
+             _nonce = nonce;
+@@ -124,7 +124,7 @@ namespace Nethermind.Core
+             _storageRoot = storageRoot;
+         }
+ 
+-        public AccountStruct(in UInt256 nonce, in UInt256 balance)
++        public AccountStruct(in ulong nonce, in UInt256 balance)
+         {
+             _balance = balance;
+             _nonce = nonce;
+@@ -133,11 +133,11 @@ namespace Nethermind.Core
+         public AccountStruct(in UInt256 balance) => _balance = balance;
+         public bool HasCode => CodeHash != Keccak.OfAnEmptyString.ValueHash256;
+         public bool HasStorage => _storageRoot != Keccak.EmptyTreeHash.ValueHash256;
+-        public UInt256 Nonce => _nonce;
++        public ulong Nonce => _nonce;
+         public UInt256 Balance => _balance;
+         public ValueHash256 StorageRoot => _storageRoot;
+         public bool IsTotallyEmpty => IsEmpty && IsStorageEmpty;
+-        public bool IsEmpty => Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString.ValueHash256;
++        public bool IsEmpty => Balance.IsZero && Nonce == 0 && CodeHash == Keccak.OfAnEmptyString.ValueHash256;
+         public bool IsContract => CodeHash != Keccak.OfAnEmptyString.ValueHash256;
+         public bool IsStorageEmpty => _storageRoot == Keccak.EmptyTreeHash.ValueHash256;
+         public bool IsNull
+@@ -163,7 +163,7 @@ namespace Nethermind.Core
+                 //        ret
+                 // ; Total bytes of code: 37
+                 (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _balance)) |
+-                 Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _nonce)) |
++                 Unsafe.As<ulong, Vector256<byte>>(ref Unsafe.AsRef(in _nonce)) |
+                  Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in CodeHash)) |
+                  Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in _storageRoot))) == default;
+         }
+diff --git a/src/Nethermind/Nethermind.Core/Authentication/JwtAuthentication.cs b/src/Nethermind/Nethermind.Core/Authentication/JwtAuthentication.cs
+index b9d76b0a22..64fab8ded1 100644
+--- a/src/Nethermind/Nethermind.Core/Authentication/JwtAuthentication.cs
++++ b/src/Nethermind/Nethermind.Core/Authentication/JwtAuthentication.cs
+@@ -266,7 +266,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
+         // Overflow-safe absolute-difference check: casting to ulong maps negative values to
+         // large positives, so (ulong)(a - b + c) > (ulong)(2*c) is equivalent to |a - b| > c
+         // without needing Math.Abs (which can overflow on long.MinValue).
+-        if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
++        if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
+         {
+             if (_logger.IsWarn) WarnTokenExpiredIat(iat, nowUnixSeconds);
+             return true;
+@@ -402,7 +402,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
+         long issuedAtUnix = jwtToken.IssuedAt.ToUnixTimeSeconds();
+ 
+         // Unsigned range check: |iat - now| <= TTL without Math.Abs overflow guard
+-        if ((ulong)(issuedAtUnix - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
++        if ((ulong)(issuedAtUnix - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
+         {
+             if (_logger.IsWarn) WarnTokenExpired(issuedAtUnix, nowUnixSeconds);
+             return false;
+@@ -478,7 +478,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
+             return false;
+ 
+         // Unsigned range check: |iat - now| <= TTL
+-        if ((ulong)(_cachedTokenIat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
++        if ((ulong)(_cachedTokenIat - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
+         {
+             Volatile.Write(ref _cachedToken, null);
+             return false;
+diff --git a/src/Nethermind/Nethermind.Core/BaseFeeCalculator.cs b/src/Nethermind/Nethermind.Core/BaseFeeCalculator.cs
+index 6987630b47..0ee2ec606e 100644
+--- a/src/Nethermind/Nethermind.Core/BaseFeeCalculator.cs
++++ b/src/Nethermind/Nethermind.Core/BaseFeeCalculator.cs
+@@ -23,7 +23,7 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
+         {
+             UInt256 parentBaseFee = parent.BaseFeePerGas;
+             bool isForkBlockNumber = specFor1559.Eip1559TransitionBlock == parent.Number + 1;
+-            long parentGasTarget = parent.GasLimit / specFor1559.ElasticityMultiplier;
++            ulong parentGasTarget = parent.GasLimit / specFor1559.ElasticityMultiplier;
+             if (isForkBlockNumber)
+                 parentGasTarget = parent.GasLimit;
+ 
+@@ -37,7 +37,7 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
+             }
+             else if (parent.GasUsed > parentGasTarget)
+             {
+-                long gasDelta = parent.GasUsed - parentGasTarget;
++                ulong gasDelta = parent.GasUsed - parentGasTarget;
+                 UInt256 feeDelta = UInt256.Max(
+                     parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator,
+                     UInt256.One);
+@@ -45,7 +45,7 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
+             }
+             else
+             {
+-                long gasDelta = parentGasTarget - parent.GasUsed;
++                ulong gasDelta = parentGasTarget - parent.GasUsed;
+                 UInt256 feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator;
+                 expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
+             }
+diff --git a/src/Nethermind/Nethermind.Core/Block.cs b/src/Nethermind/Nethermind.Core/Block.cs
+index 36aabd73b5..e761ea6332 100644
+--- a/src/Nethermind/Nethermind.Core/Block.cs
++++ b/src/Nethermind/Nethermind.Core/Block.cs
+@@ -92,15 +92,15 @@ public class Block
+ 
+     public Hash256? ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
+ 
+-    public long GasLimit => Header.GasLimit; // do not add setter here
++    public ulong GasLimit => Header.GasLimit; // do not add setter here
+ 
+-    public long GasUsed => Header.GasUsed; // do not add setter here
++    public ulong GasUsed => Header.GasUsed; // do not add setter here
+ 
+     public ulong Timestamp => Header.Timestamp; // do not add setter here
+ 
+     public DateTime TimestampDate => Header.TimestampDate; // do not add setter here
+ 
+-    public long Number => Header.Number; // do not add setter here
++    public ulong Number => Header.Number; // do not add setter here
+ 
+     public UInt256 Difficulty => Header.Difficulty; // do not add setter here
+ 
+diff --git a/src/Nethermind/Nethermind.Core/BlockHeader.cs b/src/Nethermind/Nethermind.Core/BlockHeader.cs
+index bb8731ca12..c79ac27704 100644
+--- a/src/Nethermind/Nethermind.Core/BlockHeader.cs
++++ b/src/Nethermind/Nethermind.Core/BlockHeader.cs
+@@ -21,8 +21,8 @@ public class BlockHeader
+         Hash256 unclesHash,
+         Address beneficiary,
+         in UInt256 difficulty,
+-        long number,
+-        long gasLimit,
++        ulong number,
++        ulong gasLimit,
+         ulong timestamp,
+         byte[] extraData,
+         ulong? blobGasUsed = null,
+@@ -46,7 +46,7 @@ public class BlockHeader
+         SlotNumber = slotNumber;
+     }
+ 
+-    public virtual long GenesisBlockNumber => 0;
++    public virtual ulong GenesisBlockNumber => 0;
+     public bool IsGenesis => Number == GenesisBlockNumber;
+     public Hash256? ParentHash { get; set; }
+     public Hash256? UnclesHash { get; set; }
+@@ -58,9 +58,9 @@ public class BlockHeader
+     public Hash256? ReceiptsRoot { get; set; }
+     public Bloom? Bloom { get; set; }
+     public UInt256 Difficulty;
+-    public long Number { get; set; }
+-    public long GasUsed { get; set; }
+-    public long GasLimit { get; set; }
++    public ulong Number { get; set; }
++    public ulong GasUsed { get; set; }
++    public ulong GasLimit { get; set; }
+     public ulong Timestamp { get; set; }
+     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
+     public byte[] ExtraData { get; set; } = [];
+@@ -70,7 +70,7 @@ public class BlockHeader
+     public Hash256? Hash { get; set; }
+     public UInt256? TotalDifficulty { get; set; }
+     public byte[]? AuRaSignature { get; set; }
+-    public long? AuRaStep { get; set; }
++    public ulong? AuRaStep { get; set; }
+     public UInt256 BaseFeePerGas;
+     public Hash256? WithdrawalsRoot { get; set; }
+     public Hash256? ParentBeaconBlockRoot { get; set; }
+diff --git a/src/Nethermind/Nethermind.Core/BlockInfo.cs b/src/Nethermind/Nethermind.Core/BlockInfo.cs
+index 675639485a..d7b4ba3265 100644
+--- a/src/Nethermind/Nethermind.Core/BlockInfo.cs
++++ b/src/Nethermind/Nethermind.Core/BlockInfo.cs
+@@ -68,7 +68,7 @@ namespace Nethermind.Core
+         /// <summary>
+         /// This property is not serialized
+         /// </summary>
+-        public long BlockNumber { get; set; }
++        public ulong BlockNumber { get; set; }
+ 
+         public override string ToString() => BlockHash.ToString();
+ 
+diff --git a/src/Nethermind/Nethermind.Core/Collections/ListExtensions.cs b/src/Nethermind/Nethermind.Core/Collections/ListExtensions.cs
+index d71b1bd241..e7b1256a9c 100644
+--- a/src/Nethermind/Nethermind.Core/Collections/ListExtensions.cs
++++ b/src/Nethermind/Nethermind.Core/Collections/ListExtensions.cs
+@@ -18,6 +18,8 @@ namespace Nethermind.Core.Collections
+ 
+         public static T? GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int)(index % array.Count)];
+ 
++        public static T? GetItemRoundRobin<T>(this IList<T> array, ulong index) => array.Count == 0 ? default : array[(int)(index % (ulong)array.Count)];
++
+         /// <summary>
+         /// Performs a binary search on the specified collection.
+         /// </summary>
+@@ -57,7 +59,7 @@ namespace Nethermind.Core.Collections
+             return ~lower;
+         }
+ 
+-        public static bool TryGetForBlock(this IList<long> list, in long blockNumber, out long item) =>
++        public static bool TryGetForBlock(this IList<ulong> list, in ulong blockNumber, out ulong item) =>
+             list.TryGetSearchedItem(blockNumber, static (b, c) => b.CompareTo(c), out item);
+ 
+         public static bool TryGetSearchedItem<T, TComparable>(this IList<T> list, in TComparable searchedItem, Func<TComparable, T, int> comparer, out T? item)
+diff --git a/src/Nethermind/Nethermind.Core/Eip1559Constants.cs b/src/Nethermind/Nethermind.Core/Eip1559Constants.cs
+index d3064af750..83243b7f60 100644
+--- a/src/Nethermind/Nethermind.Core/Eip1559Constants.cs
++++ b/src/Nethermind/Nethermind.Core/Eip1559Constants.cs
+@@ -13,6 +13,6 @@ namespace Nethermind.Core
+ 
+         public static readonly UInt256 DefaultBaseFeeMaxChangeDenominator = 8;
+ 
+-        public static readonly int DefaultElasticityMultiplier = 2;
++        public static readonly ulong DefaultElasticityMultiplier = 2;
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Eip2935Constants.cs b/src/Nethermind/Nethermind.Core/Eip2935Constants.cs
+index 1cfd0c1efc..301f40f10e 100644
+--- a/src/Nethermind/Nethermind.Core/Eip2935Constants.cs
++++ b/src/Nethermind/Nethermind.Core/Eip2935Constants.cs
+@@ -18,5 +18,5 @@ public static class Eip2935Constants
+     /// <summary>
+     /// The <c>HISTORY_SERVE_WINDOW</c> parameter.
+     /// </summary>
+-    public static readonly long RingBufferSize = 8191;
++    public static readonly ulong RingBufferSize = 8191;
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Eip4844Constants.cs b/src/Nethermind/Nethermind.Core/Eip4844Constants.cs
+index acf38a1c76..2f2e4d3c2d 100644
+--- a/src/Nethermind/Nethermind.Core/Eip4844Constants.cs
++++ b/src/Nethermind/Nethermind.Core/Eip4844Constants.cs
+@@ -34,7 +34,7 @@ public static class Eip4844Constants
+     /// Gets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter.
+     /// </summary>
+     /// <remarks>Defaults to 3338477.</remarks>
+-    public static UInt256 DefaultBlobGasPriceUpdateFraction { get; private set; } = 3338477;
++    public static ulong DefaultBlobGasPriceUpdateFraction { get; private set; } = 3338477;
+ 
+     /// <summary>
+     /// Gets the <c>MIN_BLOB_GASPRICE</c> parameter, in wei.
+diff --git a/src/Nethermind/Nethermind.Core/Eip7702Constants.cs b/src/Nethermind/Nethermind.Core/Eip7702Constants.cs
+index 19a51c5cb8..53b4e77c0b 100644
+--- a/src/Nethermind/Nethermind.Core/Eip7702Constants.cs
++++ b/src/Nethermind/Nethermind.Core/Eip7702Constants.cs
+@@ -16,7 +16,7 @@ public static class Eip7702Constants
+     public static readonly UInt256 DelegationDesignatorLength = 23;
+ 
+     /// <summary> Gas cost to process one authorization tuple and set the delegation destination. </summary>
+-    public const long PerAuthBaseCost = 12_500;
++    public const ulong PerAuthBaseCost = 12_500;
+ 
+     private static readonly int HeaderLength = DelegationHeader.Length;
+     public static bool IsDelegatedCode(ReadOnlySpan<byte> code) =>
+diff --git a/src/Nethermind/Nethermind.Core/Eip7825Constants.cs b/src/Nethermind/Nethermind.Core/Eip7825Constants.cs
+index beabe71dc4..f21f5feca1 100644
+--- a/src/Nethermind/Nethermind.Core/Eip7825Constants.cs
++++ b/src/Nethermind/Nethermind.Core/Eip7825Constants.cs
+@@ -7,9 +7,9 @@ namespace Nethermind.Core;
+ 
+ public static class Eip7825Constants
+ {
+-    public static readonly long DefaultTxGasLimitCap = 16_777_216;
+-    public static long GetTxGasLimitCap(this IReleaseSpec spec)
++    public static readonly ulong DefaultTxGasLimitCap = 16_777_216;
++    public static ulong GetTxGasLimitCap(this IReleaseSpec spec)
+         => spec.IsEip7825Enabled && !spec.IsEip8037Enabled
+             ? DefaultTxGasLimitCap
+-            : long.MaxValue;
++            : ulong.MaxValue;
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Eip7928Constants.cs b/src/Nethermind/Nethermind.Core/Eip7928Constants.cs
+index 340e8762f0..ba05f974e1 100644
+--- a/src/Nethermind/Nethermind.Core/Eip7928Constants.cs
++++ b/src/Nethermind/Nethermind.Core/Eip7928Constants.cs
+@@ -22,5 +22,5 @@ public static class Eip7928Constants
+     /// <summary>
+     /// Gas cost per BAL item for size limit. bal_items <= block_gas_limit / ItemCost.
+     /// </summary>
+-    public const int ItemCost = 2000;
++    public const ulong ItemCost = 2000;
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Eip8037Constants.cs b/src/Nethermind/Nethermind.Core/Eip8037Constants.cs
+index 186dfcd4d3..2ced743d75 100644
+--- a/src/Nethermind/Nethermind.Core/Eip8037Constants.cs
++++ b/src/Nethermind/Nethermind.Core/Eip8037Constants.cs
+@@ -7,13 +7,13 @@ namespace Nethermind.Core;
+ public static class Eip8037Constants
+ {
+     /// <summary> Regular gas component of the EIP-7702 auth-base cost under the two-dimensional gas model. </summary>
+-    public const long PerAuthBaseRegularCost = 7_500;
++    public const ulong PerAuthBaseRegularCost = 7_500;
+ 
+     /// <summary> State bytes charged per authorization tuple for the state-gas dimension. </summary>
+-    public const long StateBytesPerAuthBase = 23;
++    public const ulong StateBytesPerAuthBase = 23;
+ 
+-    public const long SystemCallBaseGasLimit = 30_000_000L;
+-    public const long SystemMaxSstoresPerCall = 16;
+-    public const long SystemCallStateReservoir = GasCostOf.StateBytesPerStorageSet * GasCostOf.CostPerStateByte * SystemMaxSstoresPerCall;
+-    public const long SystemCallGasLimit = SystemCallBaseGasLimit + SystemCallStateReservoir;
++    public const ulong SystemCallBaseGasLimit = 30_000_000;
++    public const ulong SystemMaxSstoresPerCall = 16;
++    public const ulong SystemCallStateReservoir = GasCostOf.StateBytesPerStorageSet * GasCostOf.CostPerStateByte * SystemMaxSstoresPerCall;
++    public const ulong SystemCallGasLimit = SystemCallBaseGasLimit + SystemCallStateReservoir;
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Extensions/Int64Extensions.cs b/src/Nethermind/Nethermind.Core/Extensions/Int64Extensions.cs
+index deeeff0683..902864aa6d 100644
+--- a/src/Nethermind/Nethermind.Core/Extensions/Int64Extensions.cs
++++ b/src/Nethermind/Nethermind.Core/Extensions/Int64Extensions.cs
+@@ -88,27 +88,12 @@ public static class Int64Extensions
+         return bytes.ToHexString(true, skipLeadingZeros, false);
+     }
+ 
+-    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
+-    {
+-        if (bytes.IsEmpty)
+-        {
+-            return 0L;
+-        }
+-
+-        ulong u = UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
+-        return unchecked((long)u);
+-    }
++    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this ReadOnlySpan<byte> bytes) =>
++        (long)UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
+ 
+-    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this Span<byte> bytes)
+-        => ToLongFromBigEndianByteArrayWithoutLeadingZeros((ReadOnlySpan<byte>)bytes);
++    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this Span<byte> bytes) =>
++        (long)UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
+ 
+-    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes)
+-    {
+-        if (bytes is null)
+-        {
+-            return 0L;
+-        }
+-
+-        return ToLongFromBigEndianByteArrayWithoutLeadingZeros(bytes.AsSpan());
+-    }
++    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes) =>
++        (long)UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Extensions/SizeExtensions.cs b/src/Nethermind/Nethermind.Core/Extensions/SizeExtensions.cs
+index c239de18eb..56ddaad0c2 100644
+--- a/src/Nethermind/Nethermind.Core/Extensions/SizeExtensions.cs
++++ b/src/Nethermind/Nethermind.Core/Extensions/SizeExtensions.cs
+@@ -39,4 +39,14 @@ public static class SizeExtensions
+         public long MiB => ((long)@this).MiB;
+         public long KiB => ((long)@this).KiB;
+     }
++
++    extension(ulong @this)
++    {
++        public ulong GB => @this * 1_000_000_000UL;
++        public ulong MB => @this * 1_000_000UL;
++        public ulong KB => @this * 1_000UL;
++        public ulong GiB => @this * 1024UL * 1024UL * 1024UL;
++        public ulong MiB => @this * 1024UL * 1024UL;
++        public ulong KiB => @this * 1024UL;
++    }
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Extensions/SpanExtensions.cs b/src/Nethermind/Nethermind.Core/Extensions/SpanExtensions.cs
+index ad1bfc153d..b23a22168e 100644
+--- a/src/Nethermind/Nethermind.Core/Extensions/SpanExtensions.cs
++++ b/src/Nethermind/Nethermind.Core/Extensions/SpanExtensions.cs
+@@ -595,6 +595,58 @@ namespace Nethermind.Core.Extensions
+             }
+         }
+ 
++        /// <summary>
++        /// Decodes a big-endian byte span (up to 8 bytes long) into an unsigned 64-bit integer.
++        /// Inputs longer than 8 bytes are accepted only if all leading bytes are zero.
++        /// </summary>
++        public static ulong ToULong(this ReadOnlySpan<byte> bytes)
++        {
++            return bytes.Length switch
++            {
++                0 => 0UL,
++                < 8 => ReadUInt64BigEndian1To7(bytes),
++                8 => BinaryPrimitives.ReadUInt64BigEndian(bytes),
++                _ => ParseLargeSpan(bytes),
++            };
++
++            static ulong ParseLargeSpan(ReadOnlySpan<byte> bytes)
++            {
++                int prefixLen = bytes.Length - 8;
++                if (bytes.Slice(0, prefixLen).IndexOfAnyExcept((byte)0) >= 0)
++                    ThrowExceedsMaxValue(bytes);
++                return BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(prefixLen));
++            }
++
++            [MethodImpl(MethodImplOptions.AggressiveInlining)]
++            static ulong ReadUInt64BigEndian1To7(ReadOnlySpan<byte> s)
++            {
++                Debug.Assert((uint)s.Length - 1u < 7u);
++
++                ref byte r0 = ref MemoryMarshal.GetReference(s);
++
++                return s.Length switch
++                {
++                    1 => r0,
++                    2 => ((ulong)r0 << 8) | Unsafe.Add(ref r0, 1),
++                    3 => ((ulong)r0 << 16) | ((ulong)Unsafe.Add(ref r0, 1) << 8) | Unsafe.Add(ref r0, 2),
++                    4 => BinaryPrimitives.ReadUInt32BigEndian(s),
++                    5 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 8) | Unsafe.Add(ref r0, 4),
++                    6 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 16) | ((ulong)Unsafe.Add(ref r0, 4) << 8) | Unsafe.Add(ref r0, 5),
++                    7 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 24) | ((ulong)Unsafe.Add(ref r0, 4) << 16) | ((ulong)Unsafe.Add(ref r0, 5) << 8) | Unsafe.Add(ref r0, 6),
++                    _ => 0
++                };
++            }
++
++            [DoesNotReturn, StackTraceHidden]
++            static void ThrowExceedsMaxValue(ReadOnlySpan<byte> bytes)
++            {
++                BigInteger value = new(bytes, isUnsigned: true, isBigEndian: true);
++                throw new OverflowException($"Value {value} exceeds maximum allowed value");
++            }
++        }
++
++        public static ulong ToULong(this byte[] bytes) => ToULong((ReadOnlySpan<byte>)bytes);
++
+         /// <summary>
+         /// Computes a very fast, non-cryptographic 64-bit hash of exactly 32 bytes.
+         /// </summary>
+diff --git a/src/Nethermind/Nethermind.Core/Extensions/SpecProviderExtensions.cs b/src/Nethermind/Nethermind.Core/Extensions/SpecProviderExtensions.cs
+index 593fb97824..671df77103 100644
+--- a/src/Nethermind/Nethermind.Core/Extensions/SpecProviderExtensions.cs
++++ b/src/Nethermind/Nethermind.Core/Extensions/SpecProviderExtensions.cs
+@@ -14,7 +14,7 @@ namespace Nethermind.Core.Extensions
+         /// <param name="specProvider"></param>
+         /// <param name="blockNumber"></param>
+         /// <returns>IReceiptSpec</returns>
+-        public static IReceiptSpec GetReceiptSpec(this ISpecProvider specProvider, long blockNumber) => specProvider.GetSpec(blockNumber, null);
++        public static IReceiptSpec GetReceiptSpec(this ISpecProvider specProvider, ulong blockNumber) => specProvider.GetSpec(blockNumber, null);
+ 
+         /// <summary>
+         /// This method only retrieves the spec for 1559.
+@@ -23,7 +23,7 @@ namespace Nethermind.Core.Extensions
+         /// <param name="specProvider"></param>
+         /// <param name="blockNumber"></param>
+         /// <returns>IEip1559Spec</returns>
+-        public static IEip1559Spec GetSpecFor1559(this ISpecProvider specProvider, long blockNumber) => specProvider.GetSpec(blockNumber, null);
++        public static IEip1559Spec GetSpecFor1559(this ISpecProvider specProvider, ulong blockNumber) => specProvider.GetSpec(blockNumber, null);
+ 
+         public static ulong GetFinalMaxBlobGasPerBlock(this ISpecProvider specProvider) => Eip4844Constants.GasPerBlob * specProvider.GetFinalSpec().MaxBlobCount;
+     }
+diff --git a/src/Nethermind/Nethermind.Core/Extensions/UInt64Extensions.cs b/src/Nethermind/Nethermind.Core/Extensions/UInt64Extensions.cs
+index 2cccf21324..d27a08e08f 100644
+--- a/src/Nethermind/Nethermind.Core/Extensions/UInt64Extensions.cs
++++ b/src/Nethermind/Nethermind.Core/Extensions/UInt64Extensions.cs
+@@ -2,11 +2,32 @@
+ // SPDX-License-Identifier: LGPL-3.0-only
+ 
+ using System;
++using System.Buffers.Binary;
++using System.Numerics;
++using System.Runtime.CompilerServices;
++using System.Runtime.InteropServices;
+ 
+ namespace Nethermind.Core.Extensions;
+ 
+ public static class UInt64Extensions
+ {
++    /// <summary>Returns <c>max(0, a - b)</c> without wrapping around 2^64.</summary>
++    [MethodImpl(MethodImplOptions.AggressiveInlining)]
++    public static ulong SaturatingSub(this ulong a, ulong b) => a > b ? a - b : 0UL;
++
++
++    public static ReadOnlySpan<byte> ToBigEndianSpanWithoutLeadingZeros(this ulong value, out ulong buffer)
++    {
++        // Min 7 bytes as we still want a byte if the value is 0.
++        int start = Math.Min(BitOperations.LeadingZeroCount(value) / sizeof(ulong), sizeof(ulong) - 1);
++        buffer = BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
++        ReadOnlySpan<byte> span = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref buffer, 1));
++        return span[start..];
++    }
++
++    public static byte[] ToBigEndianByteArrayWithoutLeadingZeros(this ulong value)
++        => value.ToBigEndianSpanWithoutLeadingZeros(out _).ToArray();
++
+     public static ulong ToULongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes) =>
+         ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes.AsSpan());
+ 
+@@ -27,4 +48,6 @@ public static class UInt64Extensions
+ 
+         return value;
+     }
++
++    public static void WriteBigEndian(this ulong value, Span<byte> output) => BinaryPrimitives.WriteUInt64BigEndian(output, value);
+ }
+diff --git a/src/Nethermind/Nethermind.Core/GasCapExtensions.cs b/src/Nethermind/Nethermind.Core/GasCapExtensions.cs
+index 31614a5c15..2633902bab 100644
+--- a/src/Nethermind/Nethermind.Core/GasCapExtensions.cs
++++ b/src/Nethermind/Nethermind.Core/GasCapExtensions.cs
+@@ -9,8 +9,8 @@ namespace Nethermind.Core;
+ public static class GasCapExtensions
+ {
+     /// <summary>Whether <paramref name="gasCap"/> applies a finite RPC gas limit.</summary>
+-    public static bool IsGasCapped(this long? gasCap) => gasCap is not null and not 0;
++    public static bool IsGasCapped(this ulong? gasCap) => gasCap is not null and not 0;
+ 
+-    /// <summary>Returns <paramref name="gasCap"/> when capped, otherwise <see cref="long.MaxValue"/>.</summary>
+-    public static long EffectiveGasCap(this long? gasCap) => gasCap.IsGasCapped() ? gasCap!.Value : long.MaxValue;
++    /// <summary>Returns <paramref name="gasCap"/> when capped, otherwise <see cref="ulong.MaxValue"/>.</summary>
++    public static ulong EffectiveGasCap(this ulong? gasCap) => gasCap.IsGasCapped() ? gasCap!.Value : ulong.MaxValue;
+ }
+diff --git a/src/Nethermind/Nethermind.Core/GasCostOf.cs b/src/Nethermind/Nethermind.Core/GasCostOf.cs
+index 6f370f7451..df44e2e844 100644
+--- a/src/Nethermind/Nethermind.Core/GasCostOf.cs
++++ b/src/Nethermind/Nethermind.Core/GasCostOf.cs
+@@ -5,92 +5,92 @@ namespace Nethermind.Core
+ {
+     public static class GasCostOf
+     {
+-        public const long Free = 0;
+-        public const long Base = 2;
+-        public const long VeryLow = 3;
+-        public const long Low = 5;
+-        public const long Mid = 8;
+-        public const long High = 10;
+-        public const long Jump = Mid;
+-        public const long JumpI = High;
+-        public const long ExtCode = 20;
+-        public const long ExtCodeEip150 = 700;
+-        public const long Balance = 20;
+-        public const long BalanceEip150 = 400;
+-        public const long BalanceEip1884 = 700;
+-        public const long SLoad = 50;
+-        public const long SLoadEip150 = 200;
+-        public const long SLoadEip1884 = 800;
+-        public const long JumpDest = 1;
+-        public const long SStoreNetMeteredEip1283 = 200;
+-        public const long SStoreNetMeteredEip2200 = 800;
+-        public const long SSet = 20000;
+-        public const long SReset = 5000;
+-        public const long Create = 32000;
+-        public const long CodeDeposit = 200;
+-        public const long Call = 40;
+-        public const long CallEip150 = 700;
+-        public const long CallValue = 9000;
+-        public const long CallStipend = 2300;
+-        public const long NewAccount = 25000;
+-        public const long Exp = 10;
+-        public const long ExpByte = 10;
+-        public const long ExpByteEip160 = 50;
+-        public const long Memory = 3;
+-        public const long TxCreate = 32000;
+-        public const long TxDataZero = 4;
+-        public const long TxDataNonZero = 68;
+-        public const long TxDataNonZeroEip2028 = 16;
+-        public const long Transaction = 21000;
+-        public const long BlobHash = 3;
+-        public const long Log = 375;
+-        public const long LogTopic = 375;
+-        public const long LogData = 8;
+-        public const long Sha3 = 30;
+-        public const long Sha3Word = 6;
+-        public const long BlockHash = 20;
+-        public const long SelfDestruct = 0;
+-        public const long SelfDestructEip150 = 5000;
+-        public const long ExtCodeHash = 400;
+-        public const long ExtCodeHashEip1884 = 700;
+-        public const long SelfBalance = 5;
+-        public const long InitCodeWord = 2; //eip-3860 gas per word cost for init code size
++        public const ulong Free = 0;
++        public const ulong Base = 2;
++        public const ulong VeryLow = 3;
++        public const ulong Low = 5;
++        public const ulong Mid = 8;
++        public const ulong High = 10;
++        public const ulong Jump = Mid;
++        public const ulong JumpI = High;
++        public const ulong ExtCode = 20;
++        public const ulong ExtCodeEip150 = 700;
++        public const ulong Balance = 20;
++        public const ulong BalanceEip150 = 400;
++        public const ulong BalanceEip1884 = 700;
++        public const ulong SLoad = 50;
++        public const ulong SLoadEip150 = 200;
++        public const ulong SLoadEip1884 = 800;
++        public const ulong JumpDest = 1;
++        public const ulong SStoreNetMeteredEip1283 = 200;
++        public const ulong SStoreNetMeteredEip2200 = 800;
++        public const ulong SSet = 20000;
++        public const ulong SReset = 5000;
++        public const ulong Create = 32000;
++        public const ulong CodeDeposit = 200;
++        public const ulong Call = 40;
++        public const ulong CallEip150 = 700;
++        public const ulong CallValue = 9000;
++        public const ulong CallStipend = 2300;
++        public const ulong NewAccount = 25000;
++        public const ulong Exp = 10;
++        public const ulong ExpByte = 10;
++        public const ulong ExpByteEip160 = 50;
++        public const ulong Memory = 3;
++        public const ulong TxCreate = 32000;
++        public const ulong TxDataZero = 4;
++        public const ulong TxDataNonZero = 68;
++        public const ulong TxDataNonZeroEip2028 = 16;
++        public const ulong Transaction = 21000;
++        public const ulong BlobHash = 3;
++        public const ulong Log = 375;
++        public const ulong LogTopic = 375;
++        public const ulong LogData = 8;
++        public const ulong Sha3 = 30;
++        public const ulong Sha3Word = 6;
++        public const ulong BlockHash = 20;
++        public const ulong SelfDestruct = 0;
++        public const ulong SelfDestructEip150 = 5000;
++        public const ulong ExtCodeHash = 400;
++        public const ulong ExtCodeHashEip1884 = 700;
++        public const ulong SelfBalance = 5;
++        public const ulong InitCodeWord = 2; //eip-3860 gas per word cost for init code size
+ 
+-        public const long ColdSLoad = 2100; // eip-2929
++        public const ulong ColdSLoad = 2100; // eip-2929
+ 
+-        public const long ColdAccountAccess = 2600; // eip-2929
+-        public const long WarmStateRead = 100; // eip-2929
+-        public const long CallPrecompileEip2929 = 100; // eip-2929
++        public const ulong ColdAccountAccess = 2600; // eip-2929
++        public const ulong WarmStateRead = 100; // eip-2929
++        public const ulong CallPrecompileEip2929 = 100; // eip-2929
+ 
+-        public const long AccessAccountListEntry = 2400; // eip-2930
+-        public const long AccessStorageListEntry = 1900; // eip-2930
+-        public const long TLoad = WarmStateRead; // eip-1153
+-        public const long TStore = WarmStateRead; // eip-1153
+-        public const long PerAuthBaseCost = Eip7702Constants.PerAuthBaseCost;
+-        public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7623
+-        public const long TotalCostFloorPerTokenEip7976 = 16; // eip-7976
++        public const ulong AccessAccountListEntry = 2400; // eip-2930
++        public const ulong AccessStorageListEntry = 1900; // eip-2930
++        public const ulong TLoad = WarmStateRead; // eip-1153
++        public const ulong TStore = WarmStateRead; // eip-1153
++        public const ulong PerAuthBaseCost = Eip7702Constants.PerAuthBaseCost;
++        public const ulong TotalCostFloorPerTokenEip7623 = 10; // eip-7623
++        public const ulong TotalCostFloorPerTokenEip7976 = 16; // eip-7976
+ 
+-        public const long CostPerStateByte = 1530; // eip-8037
+-        public const long StateBytesPerStorageSet = 64; // eip-8037
+-        public const long StateBytesPerNewAccount = 120; // eip-8037
+-        public const long StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
+-        public const long SSetRegular = 2_900;
+-        public const long SSetState = StateBytesPerStorageSet * CostPerStateByte;
+-        public const long CreateRegular = 9_000;
+-        public const long CreateState = StateBytesPerNewAccount * CostPerStateByte;
+-        public const long NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
+-        public const long CodeDepositRegularPerWord = 6;
+-        public const long CodeDepositState = CostPerStateByte;
+-        public const long PerAuthBaseRegular = Eip8037Constants.PerAuthBaseRegularCost;
+-        public const long PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
+-        public const long PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
+-        public const long BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
++        public const ulong CostPerStateByte = 1530; // eip-8037
++        public const ulong StateBytesPerStorageSet = 64; // eip-8037
++        public const ulong StateBytesPerNewAccount = 120; // eip-8037
++        public const ulong StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
++        public const ulong SSetRegular = 2_900;
++        public const ulong SSetState = StateBytesPerStorageSet * CostPerStateByte;
++        public const ulong CreateRegular = 9_000;
++        public const ulong CreateState = StateBytesPerNewAccount * CostPerStateByte;
++        public const ulong NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
++        public const ulong CodeDepositRegularPerWord = 6;
++        public const ulong CodeDepositState = CostPerStateByte;
++        public const ulong PerAuthBaseRegular = Eip8037Constants.PerAuthBaseRegularCost;
++        public const ulong PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
++        public const ulong PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
++        public const ulong BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
+ 
+-        public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
+-        public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
++        public const ulong TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
++        public const ulong TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
+ 
+-        public const long MinModExpEip2565 = 200; // eip-2565
+-        public const long MinModExpEip7883 = 500; // eip-7883
++        public const ulong MinModExpEip2565 = 200; // eip-2565
++        public const ulong MinModExpEip7883 = 500; // eip-7883
+ 
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.Core/IAccountStateProvider.cs b/src/Nethermind/Nethermind.Core/IAccountStateProvider.cs
+index 5b949c67de..bcb9c9b6ab 100644
+--- a/src/Nethermind/Nethermind.Core/IAccountStateProvider.cs
++++ b/src/Nethermind/Nethermind.Core/IAccountStateProvider.cs
+@@ -12,7 +12,7 @@ namespace Nethermind.Core
+         bool TryGetAccount(Address address, out AccountStruct account);
+ 
+         [SkipLocalsInit]
+-        UInt256 GetNonce(Address address)
++        ulong GetNonce(Address address)
+         {
+             TryGetAccount(address, out AccountStruct account);
+             return account.Nonce;
+diff --git a/src/Nethermind/Nethermind.Core/KeyValueStoreExtensions.cs b/src/Nethermind/Nethermind.Core/KeyValueStoreExtensions.cs
+index 779803ab1d..eb0b69b8e5 100644
+--- a/src/Nethermind/Nethermind.Core/KeyValueStoreExtensions.cs
++++ b/src/Nethermind/Nethermind.Core/KeyValueStoreExtensions.cs
+@@ -52,6 +52,28 @@ namespace Nethermind.Core
+ 
+             public byte[]? Get(long key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
+ 
++            public bool KeyExists(ulong key) => db.KeyExists(key.ToBigEndianSpanWithoutLeadingZeros(out _));
++
++            public Span<byte> GetSpan(ulong key) => db.GetSpan(key.ToBigEndianSpanWithoutLeadingZeros(out _));
++
++            public byte[]? Get(ulong key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
++
++            public ulong GetULongFromBigEndianByteArrayWithoutLeadingZeros(Hash256 key, ulong defaultValue)
++            {
++                Span<byte> bytes = db.GetSpan(key);
++                ulong value = bytes.IsNull() ? defaultValue : bytes.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
++                db.DangerousReleaseMemory(bytes);
++                return value;
++            }
++
++            public ulong GetULongFromBigEndianByteArrayWithoutLeadingZeros(ulong key)
++            {
++                Span<byte> bytes = db.GetSpan(key);
++                ulong value = bytes.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
++                db.DangerousReleaseMemory(bytes);
++                return value;
++            }
++
+             public long GetLongFromBigEndianByteArrayWithoutLeadingZeros(Hash256 key, long defaultValue)
+             {
+                 Span<byte> bytes = db.GetSpan(key);
+@@ -97,7 +119,7 @@ namespace Nethermind.Core
+                 }
+             }
+ 
+-            public void Set(long blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
++            public void Set(ulong blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
+             {
+                 Span<byte> blockNumberPrefixedKey = stackalloc byte[40];
+                 GetBlockNumPrefixedKey(blockNumber, key, blockNumberPrefixedKey);
+@@ -110,8 +132,10 @@ namespace Nethermind.Core
+ 
+             public void Delete(long key) => db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+ 
++            public void Delete(ulong key) => db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
++
+             [SkipLocalsInit]
+-            public void Delete(long blockNumber, Hash256 hash)
++            public void Delete(ulong blockNumber, Hash256 hash)
+             {
+                 Span<byte> key = stackalloc byte[40];
+                 GetBlockNumPrefixedKey(blockNumber, hash, key);
+@@ -119,9 +143,11 @@ namespace Nethermind.Core
+             }
+ 
+             public void Set(long key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
++
++            public void Set(ulong key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
+         }
+ 
+-        public static void GetBlockNumPrefixedKey(long blockNumber, ValueHash256 blockHash, Span<byte> output)
++        public static void GetBlockNumPrefixedKey(ulong blockNumber, ValueHash256 blockHash, Span<byte> output)
+         {
+             blockNumber.WriteBigEndian(output);
+             blockHash!.Bytes.CopyTo(output[8..]);
+diff --git a/src/Nethermind/Nethermind.Core/Messages/BlockErrorMessages.cs b/src/Nethermind/Nethermind.Core/Messages/BlockErrorMessages.cs
+index 02aa6a1fa3..2d328fc43d 100644
+--- a/src/Nethermind/Nethermind.Core/Messages/BlockErrorMessages.cs
++++ b/src/Nethermind/Nethermind.Core/Messages/BlockErrorMessages.cs
+@@ -95,7 +95,7 @@ public static class BlockErrorMessages
+     public static string InvalidTxInBlock(int i) =>
+         $"InvalidTxInBlock: Tx at index {i} in body.";
+ 
+-    public static string HeaderGasUsedMismatch(long expected, long actual) =>
++    public static string HeaderGasUsedMismatch(ulong expected, ulong actual) =>
+         $"HeaderGasUsedMismatch: Gas used in header does not match calculated. Expected {expected}, got {actual}";
+ 
+     public static string BlobGasUsedAboveBlockLimit(ulong blockBlobGasLimit, int blobsCount, ulong blobGasUsed) =>
+@@ -165,7 +165,7 @@ public static class BlockErrorMessages
+     public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
+         $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
+ 
+-    public static string BlockAccessListGasLimitExceeded(long balItems, long maxBalItems) =>
++    public static string BlockAccessListGasLimitExceeded(ulong balItems, ulong maxBalItems) =>
+         $"BlockAccessListGasLimitExceeded: BAL has {balItems} items, exceeds limit of {maxBalItems} (block_gas_limit / {Eip7928Constants.ItemCost}).";
+ 
+     public static string BlockLevelAccessListIndexOutOfRange(uint index, uint maxAllowed) =>
+diff --git a/src/Nethermind/Nethermind.Core/Messages/TxErrorMessages.cs b/src/Nethermind/Nethermind.Core/Messages/TxErrorMessages.cs
+index a9b14b329d..f3eafd69cd 100644
+--- a/src/Nethermind/Nethermind.Core/Messages/TxErrorMessages.cs
++++ b/src/Nethermind/Nethermind.Core/Messages/TxErrorMessages.cs
+@@ -81,10 +81,10 @@ public static class TxErrorMessages
+     public const string InvalidBlobCommitmentHash =
+         "InvalidBlobCommitmentHash: Commitment hash does not match.";
+ 
+-    public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
++    public static string TxGasLimitCapExceeded(ulong gasLimit, ulong gasLimitCap)
+         => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeded cap of {gasLimitCap}.";
+ 
+-    public static string TxIntrinsicGasExceedsCap(long intrinsicRegularGas, long intrinsicFloorGas, long gasLimitCap)
++    public static string TxIntrinsicGasExceedsCap(ulong intrinsicRegularGas, ulong intrinsicFloorGas, ulong gasLimitCap)
+         => $"{IntrinsicGasTooLow}: Intrinsic gas (regular {intrinsicRegularGas}, floor {intrinsicFloorGas}) exceeded cap of {gasLimitCap}.";
+ 
+     public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
+diff --git a/src/Nethermind/Nethermind.Core/ProgressLogger.cs b/src/Nethermind/Nethermind.Core/ProgressLogger.cs
+index b11675d371..f5bd980cb8 100644
+--- a/src/Nethermind/Nethermind.Core/ProgressLogger.cs
++++ b/src/Nethermind/Nethermind.Core/ProgressLogger.cs
+@@ -20,7 +20,7 @@ namespace Nethermind.Core
+         private readonly ILogger _logger;
+         private readonly Action<string>? _logAction;
+         private string _prefix;
+-        private (long, long, long, long) _lastReportState = (0, 0, 0, 0);
++        private (ulong, ulong, long, long) _lastReportState = (0UL, 0UL, 0L, 0L);
+         private Func<ProgressLogger, string>? _formatter;
+ 
+         public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null, LogLevel logLevel = LogLevel.Info)
+@@ -41,7 +41,7 @@ namespace Nethermind.Core
+             };
+         }
+ 
+-        public void Update(long value)
++        public void Update(ulong value)
+         {
+             UtcEndTime = null;
+ 
+@@ -82,7 +82,7 @@ namespace Nethermind.Core
+             }
+         }
+ 
+-        public void Reset(long startValue, long total)
++        public void Reset(ulong startValue, ulong total)
+         {
+             LastMeasurement = UtcEndTime = _timestamper.UtcNow;
+             UtcStartTime = _timestamper.UtcNow;
+@@ -94,7 +94,7 @@ namespace Nethermind.Core
+ 
+         private long _skipped = -1;
+ 
+-        private long StartValue { get; set; }
++        private ulong StartValue { get; set; }
+ 
+         private DateTime? UtcStartTime { get; set; }
+ 
+@@ -102,10 +102,12 @@ namespace Nethermind.Core
+ 
+         private DateTime? LastMeasurement { get; set; }
+ 
+-        private long LastValue { get; set; }
+-        public long TargetValue { get; set; }
++        private ulong LastValue { get; set; }
++        public ulong TargetValue { get; set; }
+ 
+-        public long CurrentValue { get; private set; }
++        public ulong CurrentValue { get; private set; }
++
++        // -1 sentinel = queue tracking disabled.
+         public long CurrentQueued { get; set; } = -1;
+ 
+         private TimeSpan Elapsed => (UtcEndTime ?? _timestamper.UtcNow) - (UtcStartTime ?? DateTime.MinValue);
+@@ -121,7 +123,7 @@ namespace Nethermind.Core
+                     return 0M;
+                 }
+ 
+-                return (CurrentValue - StartValue) / timePassed;
++                return ((decimal)CurrentValue - StartValue) / timePassed;
+             }
+         }
+ 
+@@ -160,7 +162,7 @@ namespace Nethermind.Core
+                     return 0M;
+                 }
+ 
+-                return (CurrentValue - LastValue) / timePassed;
++                return ((decimal)CurrentValue - LastValue) / timePassed;
+             }
+         }
+ 
+@@ -168,7 +170,7 @@ namespace Nethermind.Core
+ 
+         public void LogProgress()
+         {
+-            (long, long, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
++            (ulong, ulong, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
+             if (reportState != _lastReportState)
+             {
+                 _lastReportState = reportState;
+@@ -179,9 +181,9 @@ namespace Nethermind.Core
+ 
+         private string DefaultFormatter() => GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
+ 
+-        private static string GenerateReport(string prefix, long current, long total, long queue, decimal speed, decimal skippedPerSecond)
++        private static string GenerateReport(string prefix, ulong current, ulong total, long queue, decimal speed, decimal skippedPerSecond)
+         {
+-            float percentage = Math.Clamp(current / (float)(Math.Max(total, 1)), 0, 1);
++            float percentage = Math.Clamp(current / (float)Math.Max(total, 1UL), 0, 1);
+             string queuedStr = (queue >= 0 ? $" queue {queue,QueuePaddingLength:N0} | " : " ");
+             string skippedStr = (skippedPerSecond >= 0 ? $"skipped {skippedPerSecond,SkippedPaddingLength:N0} Blk/s | " : "");
+             string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";
+diff --git a/src/Nethermind/Nethermind.Core/ProgressReporter.cs b/src/Nethermind/Nethermind.Core/ProgressReporter.cs
+index 924fc5c2c7..fbd2bbfea8 100644
+--- a/src/Nethermind/Nethermind.Core/ProgressReporter.cs
++++ b/src/Nethermind/Nethermind.Core/ProgressReporter.cs
+@@ -25,7 +25,7 @@ public sealed class ProgressReporter : IDisposable
+     private readonly Timer _timer;
+     private int _disposed;
+ 
+-    public ProgressReporter(string prefix, ILogManager logManager, long total, TimeSpan? interval = null)
++    public ProgressReporter(string prefix, ILogManager logManager, ulong total, TimeSpan? interval = null)
+     {
+         _progressLogger = new ProgressLogger(prefix, logManager);
+         _progressLogger.Reset(0, total);
+@@ -36,7 +36,7 @@ public sealed class ProgressReporter : IDisposable
+ 
+     public ProgressLogger Logger => _progressLogger;
+ 
+-    public void Update(long value)
++    public void Update(ulong value)
+     {
+         lock (_progressLogger) _progressLogger.Update(value);
+     }
+diff --git a/src/Nethermind/Nethermind.Core/RefundOf.cs b/src/Nethermind/Nethermind.Core/RefundOf.cs
+index 3d7fb07d5e..690da1ed03 100644
+--- a/src/Nethermind/Nethermind.Core/RefundOf.cs
++++ b/src/Nethermind/Nethermind.Core/RefundOf.cs
+@@ -5,16 +5,16 @@ namespace Nethermind.Core
+ {
+     public static class RefundOf
+     {
+-        public const long SSetReversedEip1283 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip1283;
+-        public const long SResetReversedEip1283 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip1283;
+-        public const long SSetReversedEip2200 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip2200;
+-        public const long SResetReversedEip2200 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip2200;
+-        public const long SSetReversedHotCold = GasCostOf.SSet - GasCostOf.WarmStateRead;
+-        public const long SResetReversedHotCold = GasCostOf.SReset - GasCostOf.ColdSLoad - GasCostOf.WarmStateRead;
+-        public const long SSetReversedEip8037 = GasCostOf.SSetState + GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
+-        public const long SClearAfterEip3529 = GasCostOf.SReset - GasCostOf.ColdSLoad + GasCostOf.AccessStorageListEntry;
+-        public const long SClearBeforeEip3529 = 15000;
+-        public const long DestroyBeforeEip3529 = 24000;
+-        public const long DestroyAfterEip3529 = GasCostOf.Free;
++        public const ulong SSetReversedEip1283 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip1283;
++        public const ulong SResetReversedEip1283 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip1283;
++        public const ulong SSetReversedEip2200 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip2200;
++        public const ulong SResetReversedEip2200 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip2200;
++        public const ulong SSetReversedHotCold = GasCostOf.SSet - GasCostOf.WarmStateRead;
++        public const ulong SResetReversedHotCold = GasCostOf.SReset - GasCostOf.ColdSLoad - GasCostOf.WarmStateRead;
++        public const ulong SSetReversedEip8037 = GasCostOf.SSetState + GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
++        public const ulong SClearAfterEip3529 = GasCostOf.SReset - GasCostOf.ColdSLoad + GasCostOf.AccessStorageListEntry;
++        public const ulong SClearBeforeEip3529 = 15000;
++        public const ulong DestroyBeforeEip3529 = 24000;
++        public const ulong DestroyAfterEip3529 = GasCostOf.Free;
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Reorganization.cs b/src/Nethermind/Nethermind.Core/Reorganization.cs
+index c0e09a8d14..10b2626b62 100644
+--- a/src/Nethermind/Nethermind.Core/Reorganization.cs
++++ b/src/Nethermind/Nethermind.Core/Reorganization.cs
+@@ -5,7 +5,7 @@ namespace Nethermind.Core
+ {
+     public static class Reorganization
+     {
+-        public static long MaxDepth = 64;
++        public static ulong MaxDepth = 64;
+         public const long PersistenceInterval = 8192;
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Specs/ForkActivation.cs b/src/Nethermind/Nethermind.Core/Specs/ForkActivation.cs
+index 7965f6390b..32340644ab 100644
+--- a/src/Nethermind/Nethermind.Core/Specs/ForkActivation.cs
++++ b/src/Nethermind/Nethermind.Core/Specs/ForkActivation.cs
+@@ -5,12 +5,12 @@ using System;
+ 
+ namespace Nethermind.Core.Specs;
+ 
+-public readonly struct ForkActivation(long blockNumber, ulong? timestamp = null)
++public readonly struct ForkActivation(ulong blockNumber, ulong? timestamp = null)
+     : IEquatable<ForkActivation>, IComparable<ForkActivation>
+ {
+-    public long BlockNumber { get; } = blockNumber;
++    public ulong BlockNumber { get; } = blockNumber;
+     public ulong? Timestamp { get; } = timestamp;
+-    public ulong Activation => Timestamp ?? (ulong)BlockNumber;
++    public ulong Activation => Timestamp ?? BlockNumber;
+ 
+     /// <summary>
+     /// Fork activation for forks past The Merge/Paris
+@@ -20,20 +20,20 @@ public readonly struct ForkActivation(long blockNumber, ulong? timestamp = null)
+     /// <remarks>
+     /// Post Merge are based only on timestamp and we can ignore block number.
+     /// </remarks>
+-    public static ForkActivation TimestampOnly(ulong timestamp) => new(long.MaxValue, timestamp);
++    public static ForkActivation TimestampOnly(ulong timestamp) => new(ulong.MaxValue, timestamp);
+ 
+-    public void Deconstruct(out long blockNumber, out ulong? timestamp)
++    public void Deconstruct(out ulong blockNumber, out ulong? timestamp)
+     {
+         blockNumber = BlockNumber;
+         timestamp = Timestamp;
+     }
+ 
+-    public static explicit operator ForkActivation(long blockNumber) => new(blockNumber);
++    public static explicit operator ForkActivation(ulong blockNumber) => new(blockNumber);
+ 
+-    public static implicit operator ForkActivation((long blocknumber, ulong? timestamp) forkActivation)
++    public static implicit operator ForkActivation((ulong blocknumber, ulong? timestamp) forkActivation)
+         => new(forkActivation.blocknumber, forkActivation.timestamp);
+ 
+-    public static implicit operator (long blocknumber, ulong? timestamp)(ForkActivation forkActivation)
++    public static implicit operator (ulong blocknumber, ulong? timestamp)(ForkActivation forkActivation)
+         => (forkActivation.BlockNumber, forkActivation.Timestamp);
+ 
+     public bool Equals(ForkActivation other) => BlockNumber == other.BlockNumber && Timestamp == other.Timestamp;
+diff --git a/src/Nethermind/Nethermind.Core/Specs/IEip1559Spec.cs b/src/Nethermind/Nethermind.Core/Specs/IEip1559Spec.cs
+index e0a45b3c17..6e315a2858 100644
+--- a/src/Nethermind/Nethermind.Core/Specs/IEip1559Spec.cs
++++ b/src/Nethermind/Nethermind.Core/Specs/IEip1559Spec.cs
+@@ -14,25 +14,25 @@ namespace Nethermind.Core.Specs
+         /// Gas target and base fee, and fee burning.
+         /// </summary>
+         bool IsEip1559Enabled { get; }
+-        public long Eip1559TransitionBlock { get; }
++        public ulong Eip1559TransitionBlock { get; }
+         // Collects for both EIP-1559 and EIP-4844-Pectra
+         public Address? FeeCollector => null;
+         public UInt256? Eip1559BaseFeeMinValue => null;
+         public UInt256 ForkBaseFee { get; }
+         public UInt256 BaseFeeMaxChangeDenominator { get; }
+-        public long ElasticityMultiplier { get; }
++        public ulong ElasticityMultiplier { get; }
+         public IBaseFeeCalculator BaseFeeCalculator { get; }
+     }
+ 
+     public sealed class OverridableEip1559Spec(IEip1559Spec spec) : IEip1559Spec
+     {
+         public bool IsEip1559Enabled { get; init; } = spec.IsEip1559Enabled;
+-        public long Eip1559TransitionBlock { get; init; } = spec.Eip1559TransitionBlock;
++        public ulong Eip1559TransitionBlock { get; init; } = spec.Eip1559TransitionBlock;
+         public Address? FeeCollector { get; init; } = spec.FeeCollector;
+         public UInt256? Eip1559BaseFeeMinValue { get; init; } = spec.Eip1559BaseFeeMinValue;
+         public UInt256 ForkBaseFee { get; init; } = spec.ForkBaseFee;
+         public UInt256 BaseFeeMaxChangeDenominator { get; init; } = spec.BaseFeeMaxChangeDenominator;
+-        public long ElasticityMultiplier { get; init; } = spec.ElasticityMultiplier;
++        public ulong ElasticityMultiplier { get; init; } = spec.ElasticityMultiplier;
+         public IBaseFeeCalculator BaseFeeCalculator { get; init; } = spec.BaseFeeCalculator;
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs b/src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs
+index de720176c8..387b2bddef 100644
+--- a/src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs
++++ b/src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs
+@@ -16,14 +16,14 @@ namespace Nethermind.Core.Specs
+         public string Name { get; }
+         long MaximumExtraDataSize { get; }
+         long MaxCodeSize { get; }
+-        long MinGasLimit { get; }
+-        long MinHistoryRetentionEpochs { get; }
+-        long MinBalRetentionEpochs { get; }
+-        long GasLimitBoundDivisor { get; }
++        ulong MinGasLimit { get; }
++        ulong MinHistoryRetentionEpochs { get; }
++        ulong MinBalRetentionEpochs { get; }
++        ulong GasLimitBoundDivisor { get; }
+         UInt256 BlockReward { get; }
+-        long DifficultyBombDelay { get; }
+-        long DifficultyBoundDivisor { get; }
+-        long? FixedDifficulty { get; }
++        ulong DifficultyBombDelay { get; }
++        ulong DifficultyBoundDivisor { get; }
++        ulong? FixedDifficulty { get; }
+         int MaximumUncleCount { get; }
+ 
+         /// <summary>
+@@ -309,7 +309,7 @@ namespace Nethermind.Core.Specs
+         /// EIP-2935 ring buffer size for historical block hash storage.
+         /// Defaults to 8,191 blocks for Ethereum mainnet.
+         /// </summary>
+-        public long Eip2935RingBufferSize { get; }
++        public ulong Eip2935RingBufferSize { get; }
+ 
+         /// <summary>
+         /// SELFDESTRUCT only in same transaction
+@@ -390,7 +390,7 @@ namespace Nethermind.Core.Specs
+         public ulong TargetBlobCount { get; }
+         public ulong MaxBlobCount { get; }
+         public ulong MaxBlobsPerTx { get; }
+-        public UInt256 BlobBaseFeeUpdateFraction { get; }
++        public ulong BlobBaseFeeUpdateFraction { get; }
+ 
+         public ulong WithdrawalTimestamp { get; }
+ 
+diff --git a/src/Nethermind/Nethermind.Core/Specs/ISpecProvider.cs b/src/Nethermind/Nethermind.Core/Specs/ISpecProvider.cs
+index d0b2287a3b..d753771f9b 100644
+--- a/src/Nethermind/Nethermind.Core/Specs/ISpecProvider.cs
++++ b/src/Nethermind/Nethermind.Core/Specs/ISpecProvider.cs
+@@ -16,7 +16,7 @@ namespace Nethermind.Core.Specs
+         /// The merge block number is different from the rest forks because we don't know the merge block before it happens.
+         /// This function handles change of the merge block
+         /// </summary>
+-        void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null);
++        void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null);
+ 
+         /// <summary>
+         /// We have two different block numbers for merge transition:
+@@ -49,7 +49,7 @@ namespace Nethermind.Core.Specs
+         /// <summary>
+         /// Block number at which DAO happens (only relevant for mainnet)
+         /// </summary>
+-        long? DaoBlockNumber { get; }
++        ulong? DaoBlockNumber { get; }
+ 
+         ulong? BeaconChainGenesisTimestamp { get; }
+ 
+@@ -86,7 +86,7 @@ namespace Nethermind.Core.Specs
+     {
+         extension(ISpecProvider specProvider)
+         {
+-            public IReleaseSpec GetSpec(long blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
++            public IReleaseSpec GetSpec(ulong blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
+             public IReleaseSpec GetSpec(BlockHeader blockHeader) => specProvider.GetSpec(new ForkActivation(blockHeader.Number, blockHeader.Timestamp));
+ 
+             /// <summary>
+diff --git a/src/Nethermind/Nethermind.Core/Specs/ReleaseSpecDecorator.cs b/src/Nethermind/Nethermind.Core/Specs/ReleaseSpecDecorator.cs
+index 1a695e89f9..c466eae2dd 100644
+--- a/src/Nethermind/Nethermind.Core/Specs/ReleaseSpecDecorator.cs
++++ b/src/Nethermind/Nethermind.Core/Specs/ReleaseSpecDecorator.cs
+@@ -12,14 +12,14 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
+     public virtual string Name => spec.Name;
+     public virtual long MaximumExtraDataSize => spec.MaximumExtraDataSize;
+     public virtual long MaxCodeSize => spec.MaxCodeSize;
+-    public virtual long MinGasLimit => spec.MinGasLimit;
+-    public virtual long MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
+-    public virtual long MinBalRetentionEpochs => spec.MinBalRetentionEpochs;
+-    public virtual long GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
++    public virtual ulong MinGasLimit => spec.MinGasLimit;
++    public virtual ulong MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
++    public virtual ulong MinBalRetentionEpochs => spec.MinBalRetentionEpochs;
++    public virtual ulong GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
+     public virtual UInt256 BlockReward => spec.BlockReward;
+-    public virtual long DifficultyBombDelay => spec.DifficultyBombDelay;
+-    public virtual long DifficultyBoundDivisor => spec.DifficultyBoundDivisor;
+-    public virtual long? FixedDifficulty => spec.FixedDifficulty;
++    public virtual ulong DifficultyBombDelay => spec.DifficultyBombDelay;
++    public virtual ulong DifficultyBoundDivisor => spec.DifficultyBoundDivisor;
++    public virtual ulong? FixedDifficulty => spec.FixedDifficulty;
+     public virtual int MaximumUncleCount => spec.MaximumUncleCount;
+     public virtual bool IsTimeAdjustmentPostOlympic => spec.IsTimeAdjustmentPostOlympic;
+     public virtual bool IsEip2Enabled => spec.IsEip2Enabled;
+@@ -54,7 +54,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
+     public virtual bool IsEip2929Enabled => spec.IsEip2929Enabled;
+     public virtual bool IsEip2930Enabled => spec.IsEip2930Enabled;
+     public virtual bool IsEip1559Enabled => spec.IsEip1559Enabled;
+-    public virtual long Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
++    public virtual ulong Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
+     public virtual Address? Eip158IgnoredAccount => spec.Eip158IgnoredAccount;
+     public virtual bool IsEip3198Enabled => spec.IsEip3198Enabled;
+     public virtual bool IsEip3529Enabled => spec.IsEip3529Enabled;
+@@ -78,7 +78,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
+     public virtual bool IsEip2935Enabled => spec.IsEip2935Enabled;
+     public virtual bool IsEip7709Enabled => spec.IsEip7709Enabled;
+     public virtual Address? Eip2935ContractAddress => spec.Eip2935ContractAddress;
+-    public virtual long Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
++    public virtual ulong Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
+     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
+     public virtual bool IsEip7702Enabled => spec.IsEip7702Enabled;
+     public virtual bool IsEip7823Enabled => spec.IsEip7823Enabled;
+@@ -96,7 +96,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
+     public virtual ulong TargetBlobCount => spec.TargetBlobCount;
+     public virtual ulong MaxBlobCount => spec.MaxBlobCount;
+     public virtual ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
+-    public virtual UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
++    public virtual ulong BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
+     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
+     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
+     public virtual bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
+@@ -104,7 +104,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
+     public virtual Address? FeeCollector => spec.FeeCollector;
+     public virtual UInt256 ForkBaseFee => spec.ForkBaseFee;
+     public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
+-    public virtual long ElasticityMultiplier => spec.ElasticityMultiplier;
++    public virtual ulong ElasticityMultiplier => spec.ElasticityMultiplier;
+     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
+     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
+     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
+diff --git a/src/Nethermind/Nethermind.Core/Specs/SpecGasCosts.cs b/src/Nethermind/Nethermind.Core/Specs/SpecGasCosts.cs
+index 124848462b..45072a8847 100644
+--- a/src/Nethermind/Nethermind.Core/Specs/SpecGasCosts.cs
++++ b/src/Nethermind/Nethermind.Core/Specs/SpecGasCosts.cs
+@@ -13,21 +13,21 @@ namespace Nethermind.Core.Specs;
+ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
+ {
+     private readonly int _hashCode;
+-    public readonly long SLoadCost;
+-    public readonly long BalanceCost;
+-    public readonly long ExtCodeCost;
+-    public readonly long ExtCodeHashCost;
+-    public readonly long CallCost;
+-    public readonly long ExpByteCost;
+-    public readonly long SStoreResetCost;
+-    public readonly long TxDataNonZeroMultiplier;
+-    public readonly long TotalCostFloorPerToken;
+-
+-    public readonly long NetMeteredSStoreCost;
+-    public readonly long ClearReversalRefund;
+-    public readonly long SetReversalRefund;
+-    public readonly long SClearRefund;
+-    public readonly long DestroyRefund;
++    public readonly ulong SLoadCost;
++    public readonly ulong BalanceCost;
++    public readonly ulong ExtCodeCost;
++    public readonly ulong ExtCodeHashCost;
++    public readonly ulong CallCost;
++    public readonly ulong ExpByteCost;
++    public readonly ulong SStoreResetCost;
++    public readonly ulong TxDataNonZeroMultiplier;
++    public readonly ulong TotalCostFloorPerToken;
++
++    public readonly ulong NetMeteredSStoreCost;
++    public readonly ulong ClearReversalRefund;
++    public readonly ulong SetReversalRefund;
++    public readonly ulong SClearRefund;
++    public readonly ulong DestroyRefund;
+ 
+     public readonly ulong MaxBlobGasPerBlock;
+     public readonly ulong MaxBlobGasPerTx;
+@@ -41,23 +41,23 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
+         bool netIstanbul = spec.UseIstanbulNetGasMetering;  // EIP-2200
+         bool netConstantinople = spec.UseConstantinopleNetGasMetering;  // EIP-1283
+ 
+-        long clearReversalRefund = ClearReversalRefund =
++        ulong clearReversalRefund = ClearReversalRefund =
+             hotCold ? RefundOf.SResetReversedHotCold
+             : netIstanbul ? RefundOf.SResetReversedEip2200
+             : netConstantinople ? RefundOf.SResetReversedEip1283
+             : GasCostOf.Free;
+ 
+-        long setReversalRefund = SetReversalRefund =
++        ulong setReversalRefund = SetReversalRefund =
+             hotCold ? RefundOf.SSetReversedHotCold
+             : netIstanbul ? RefundOf.SSetReversedEip2200
+             : netConstantinople ? RefundOf.SSetReversedEip1283
+             : GasCostOf.Free;
+ 
+-        long sStoreResetCost = SStoreResetCost = hotCold
++        ulong sStoreResetCost = SStoreResetCost = hotCold
+             ? GasCostOf.SReset - GasCostOf.ColdSLoad
+             : GasCostOf.SReset;
+ 
+-        long netMeteredSStoreCost = NetMeteredSStoreCost =
++        ulong netMeteredSStoreCost = NetMeteredSStoreCost =
+             hotCold ? GasCostOf.WarmStateRead
+             : netIstanbul ? GasCostOf.SStoreNetMeteredEip2200
+             : netConstantinople ? GasCostOf.SStoreNetMeteredEip1283
+@@ -121,7 +121,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
+         _hashCode = HashCode.Combine(hashCode1, hashCode2, DestroyRefund);
+     }
+ 
+-    public long RefundFromReversal(bool originalIsZero) => originalIsZero
++    public ulong RefundFromReversal(bool originalIsZero) => originalIsZero
+         ? SetReversalRefund
+         : ClearReversalRefund;
+ 
+diff --git a/src/Nethermind/Nethermind.Core/Threading/InterlockedEx.cs b/src/Nethermind/Nethermind.Core/Threading/InterlockedEx.cs
+index b5457b85cb..4a80a1a5f4 100644
+--- a/src/Nethermind/Nethermind.Core/Threading/InterlockedEx.cs
++++ b/src/Nethermind/Nethermind.Core/Threading/InterlockedEx.cs
+@@ -99,4 +99,49 @@ public class InterlockedEx
+ 
+         return current;
+     }
++
++    /// <summary>
++    /// Atomically sets a field to the maximum of the field's current value and a specified value.
++    /// </summary>
++    /// <param name="location">The field to update</param>
++    /// <param name="value">The value to compare with the current value</param>
++    /// <returns>The original value of the field</returns>
++    public static ulong Max(ref ulong location, ulong value)
++    {
++        ulong current, newValue;
++        do
++        {
++            current = location;
++            newValue = Math.Max(current, value);
++
++            if (current >= value)
++                return current;
++        }
++        while (Interlocked.CompareExchange(ref location, newValue, current) != current);
++
++        return current;
++    }
++
++    /// <summary>
++    /// Atomically sets a field to the minimum of the field's current value and a specified value.
++    /// </summary>
++    /// <param name="location">The field to update</param>
++    /// <param name="value">The value to compare with the current value</param>
++    /// <returns>The original value of the field</returns>
++    public static ulong Min(ref ulong location, ulong value)
++    {
++        ulong current, newValue;
++        do
++        {
++            current = location;
++            newValue = Math.Min(current, value);
++
++            if (current <= value)
++                return current;
++        }
++        while (Interlocked.CompareExchange(ref location, newValue, current) != current);
++
++        return current;
++    }
+ }
++
+diff --git a/src/Nethermind/Nethermind.Core/Transaction.cs b/src/Nethermind/Nethermind.Core/Transaction.cs
+index 807428142e..13b6e35d7b 100644
+--- a/src/Nethermind/Nethermind.Core/Transaction.cs
++++ b/src/Nethermind/Nethermind.Core/Transaction.cs
+@@ -22,7 +22,7 @@ namespace Nethermind.Core
+     public class Transaction
+     {
+         public const byte MaxTxType = 0x7F;
+-        public const int BaseTxGasCost = 21000;
++        public const uint BaseTxGasCost = 21000;
+ 
+         public ulong? ChainId { get; set; }
+ 
+@@ -43,7 +43,7 @@ namespace Nethermind.Core
+         public bool IsOPSystemTransaction { get; set; }
+ 
+         private UInt256 _gasPrice;
+-        public UInt256 Nonce { get; set; }
++        public ulong Nonce { get; set; }
+         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
+         public UInt256? GasBottleneck { get; set; }
+         public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
+@@ -54,17 +54,17 @@ namespace Nethermind.Core
+         public bool Supports1559 => Type.Supports1559();
+         public bool SupportsBlobs => Type.SupportsBlobs();
+         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
+-        public long GasLimit { get; set; }
+-        private long _spentGas;
+-        private long _blockGasUsed;
++        public ulong GasLimit { get; set; }
++        private ulong _spentGas;
++        private ulong _blockGasUsed;
+         [JsonIgnore]
+-        public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
++        public ulong SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
+         /// <summary>
+         /// Gas used for block accounting (pre-refund when EIP-7778 is enabled).
+         /// Defaults to <see cref="GasLimit"/> when unknown.
+         /// </summary>
+         [JsonIgnore]
+-        public long BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
++        public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
+         public Address? To { get; set; }
+         private UInt256 _value;
+         public UInt256 Value { get => _value; set => _value = value; }
+@@ -361,7 +361,7 @@ namespace Nethermind.Core
+     /// </summary>
+     public sealed class SystemTransaction : Transaction
+     {
+-        private new const long GasLimit = 30_000_000L;
++        private new const ulong GasLimit = 30_000_000UL;
+     }
+ 
+     /// <summary>
+diff --git a/src/Nethermind/Nethermind.Core/TransactionExtensions.cs b/src/Nethermind/Nethermind.Core/TransactionExtensions.cs
+index 7152bfd38c..3d6a82a414 100644
+--- a/src/Nethermind/Nethermind.Core/TransactionExtensions.cs
++++ b/src/Nethermind/Nethermind.Core/TransactionExtensions.cs
+@@ -39,10 +39,10 @@ namespace Nethermind.Core
+                         _ => tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee)
+                     };
+ 
+-                    return effectiveGasPrice * (ulong)tx.GasLimit + tx.ValueRef;
++                    return effectiveGasPrice * tx.GasLimit + tx.ValueRef;
+                 }
+ 
+-                return tx.MaxPriorityFeePerGas * (ulong)tx.GasLimit + tx.ValueRef;
++                return tx.MaxPriorityFeePerGas * tx.GasLimit + tx.ValueRef;
+             }
+ 
+             public UInt256 CalculateEffectiveGasPrice(bool eip1559Enabled, in UInt256 baseFee) =>
+@@ -56,14 +56,14 @@ namespace Nethermind.Core
+             public bool IsAboveInitCode(IReleaseSpec spec) =>
+                 tx.IsContractCreation && spec.IsEip3860Enabled && tx.DataLength > spec.MaxInitCodeSize;
+ 
+-            public ulong GetBlobGas() => (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
++            public ulong GetBlobGas() => (ulong)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
+             public int GetBlobCount() => tx.BlobVersionedHashes?.Length ?? 0;
+ 
+-            public void CapGasLimit(long? gasCap)
++            public void CapGasLimit(ulong? gasCap)
+             {
+                 if (gasCap.IsGasCapped())
+                 {
+-                    tx.GasLimit = long.Min(tx.GasLimit, gasCap!.Value);
++                    tx.GasLimit = ulong.Min(tx.GasLimit, gasCap!.Value);
+                 }
+             }
+         }
+diff --git a/src/Nethermind/Nethermind.Core/TransactionReceipt.cs b/src/Nethermind/Nethermind.Core/TransactionReceipt.cs
+index b9e797c799..db2cdbe59d 100644
+--- a/src/Nethermind/Nethermind.Core/TransactionReceipt.cs
++++ b/src/Nethermind/Nethermind.Core/TransactionReceipt.cs
+@@ -49,12 +49,12 @@ namespace Nethermind.Core
+         ///     EIP-658
+         /// </summary>
+         public byte StatusCode { get; set; }
+-        public long BlockNumber { get; set; }
++        public ulong BlockNumber { get; set; }
+         public Hash256? BlockHash { get; set; }
+         public Hash256? TxHash { get; set; }
+         public int Index { get; set; }
+-        public long GasUsed { get; set; }
+-        public long GasUsedTotal { get; set; }
++        public ulong GasUsed { get; set; }
++        public ulong GasUsedTotal { get; set; }
+ 
+         // Diagnostic-only fields. NOT part of the consensus receipt RLP - the receipt
+         // encoders in Nethermind.Serialization.Rlp write only StatusCode, GasUsed,
+@@ -63,11 +63,11 @@ namespace Nethermind.Core
+         // JSON dump (BlockTraceDumper) to aid investigation of EIP-7778/EIP-8037
+         // gas-accounting issues.
+         /// <summary>EIP-7778 pre-refund gas used by block-level gas accounting (regular dim).</summary>
+-        public long BlockGasUsed { get; set; }
++        public ulong BlockGasUsed { get; set; }
+         /// <summary>EIP-8037 state-dim gas (storage / state-mutating ops) used by block accounting.</summary>
+-        public long StorageGasUsed { get; set; }
++        public ulong StorageGasUsed { get; set; }
+         /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas).</summary>
+-        public long ExecutionGasUsed { get; set; }
++        public ulong ExecutionGasUsed { get; set; }
+         /// <summary>Effective gas price after EIP-1559 baseFee adjustment - computed at receipt-build time.</summary>
+         public UInt256 EffectiveGasPrice { get; set; }
+ 
+@@ -102,12 +102,12 @@ namespace Nethermind.Core
+         ///     EIP-658
+         /// </summary>
+         public byte StatusCode { get; set; } = receipt.StatusCode;
+-        public long BlockNumber { get; set; } = receipt.BlockNumber;
++        public ulong BlockNumber { get; set; } = receipt.BlockNumber;
+         public Hash256StructRef BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();
+         public Hash256StructRef TxHash = (receipt.TxHash ?? Keccak.Zero).ToStructRef();
+         public int Index { get; set; } = receipt.Index;
+-        public long GasUsed { get; set; } = receipt.GasUsed;
+-        public long GasUsedTotal { get; set; } = receipt.GasUsedTotal;
++        public ulong GasUsed { get; set; } = receipt.GasUsed;
++        public ulong GasUsedTotal { get; set; } = receipt.GasUsedTotal;
+         public AddressStructRef Sender = (receipt.Sender ?? Address.Zero).ToStructRef();
+         public AddressStructRef ContractAddress = (receipt.ContractAddress ?? Address.Zero).ToStructRef();
+         public AddressStructRef Recipient = (receipt.Recipient ?? Address.Zero).ToStructRef();

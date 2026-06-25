@@ -35,7 +35,7 @@ public static class AuRaChainSpecLoader
 
     private sealed class AuRaGenesisSealJson
     {
-        public long Step { get; set; }
+        public ulong Step { get; set; }
         public byte[]? Signature { get; set; }
     }
 }

@@ -17,10 +17,10 @@ public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
 
     public static string Name => "SHA256";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 60L;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => 60UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) =>
-        12L * EvmCalculations.Div32Ceiling((ulong)inputData.Length);
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) =>
+        12UL * EvmCalculations.Div32Ceiling(inputData.Length);
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 }

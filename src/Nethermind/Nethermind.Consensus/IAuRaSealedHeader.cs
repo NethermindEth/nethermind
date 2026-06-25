@@ -10,7 +10,7 @@ namespace Nethermind.Consensus;
 /// </summary>
 public interface IAuRaSealedHeader
 {
-    long AuRaStep { get; }
+    ulong AuRaStep { get; }
 
     /// <summary>The sealer's signature; null until the block is sealed.</summary>
     byte[]? AuRaSignature { get; }

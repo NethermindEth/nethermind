@@ -127,8 +127,8 @@ namespace Nethermind.Consensus.AuRa
         {
             if (!_balManager.Enabled) return;
 
-            _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, UInt256.Zero);
-            _stateProvider.CreateAccount(_withdrawalContractAddress, UInt256.Zero, UInt256.Zero);
+            _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, 0);
+            _stateProvider.CreateAccount(_withdrawalContractAddress, UInt256.Zero, 0);
             _stateProvider.Commit(spec.ForSystemTransaction(isGenesis: false), commitRoots: false);
         }
 
@@ -148,7 +148,7 @@ namespace Nethermind.Consensus.AuRa
         private void ValidateGasLimit(Block block)
         {
             BlockHeader parentHeader = GetParentHeader(block);
-            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out long? expectedGasLimit) == false)
+            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out ulong? expectedGasLimit) == false)
             {
                 string reason = $"Invalid gas limit, expected value from contract {expectedGasLimit}, but found {block.GasLimit}";
                 if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {reason}.");

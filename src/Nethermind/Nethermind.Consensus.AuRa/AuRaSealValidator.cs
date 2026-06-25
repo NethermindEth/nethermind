@@ -8,6 +8,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -61,7 +62,7 @@ namespace Nethermind.Consensus.AuRa
             }
 
             // Ensure header is from the step after parent.
-            long step = auraHeader.AuRaStep;
+            ulong step = auraHeader.AuRaStep;
 
             if (step == auraParent.AuRaStep)
             {
@@ -87,7 +88,7 @@ namespace Nethermind.Consensus.AuRa
                 }
             }
 
-            long currentStep = _stepCalculator.CurrentStep;
+            ulong currentStep = _stepCalculator.CurrentStep;
 
             if (step > currentStep + rejectedStepDrift)
             {
@@ -179,9 +180,9 @@ namespace Nethermind.Consensus.AuRa
                 public static bool operator !=(AuthorBlock obj1, AuthorBlock obj2) => !obj1.Equals(obj2);
             }
 
-            private class AuthorBlockForStep(in long step, ReceivedSteps.AuthorBlock? authorBlock)
+            private class AuthorBlockForStep(in ulong step, ReceivedSteps.AuthorBlock? authorBlock)
             {
-                public long Step { get; } = step;
+                public ulong Step { get; } = step;
                 public AuthorBlock? AuthorBlock { get; set; } = authorBlock;
                 public ISet<AuthorBlock> AuthorBlocks { get; set; }
             }
@@ -196,13 +197,13 @@ namespace Nethermind.Consensus.AuRa
             private readonly List<AuthorBlockForStep> _list
                 = [];
 
-            private const int CacheSizeFullRoundsMultiplier = 4;
+            private const ulong CacheSizeFullRoundsMultiplier = 4;
 
             public bool ContainsSiblingOrInsert(BlockHeader header, int validatorCount)
             {
                 using McsLock.Disposable _ = _lock.Acquire();
 
-                long step = header.GetAuRaStepOrZero();
+                ulong step = header.GetAuRaStepOrZero();
                 Address author = header.Beneficiary;
                 Hash256 hash = header.Hash;
                 int index = BinarySearch(step);
@@ -239,17 +240,17 @@ namespace Nethermind.Consensus.AuRa
                 return containsSibling;
             }
 
-            private int BinarySearch(long step) => _list.BinarySearch(new AuthorBlockForStep(step, null), StepElementComparer.Instance);
+            private int BinarySearch(ulong step) => _list.BinarySearch(new AuthorBlockForStep(step, null), StepElementComparer.Instance);
 
             /// <summary>
             /// Remove hash records older than two full N of steps (picked as a reasonable trade-off between memory consumption and fault-tolerance).
             /// </summary>
             /// <param name="step"></param>
             /// <param name="validatorCount"></param>
-            private void ClearOldCache(long step, int validatorCount)
+            private void ClearOldCache(ulong step, int validatorCount)
             {
-                int siblingMaliceDetectionPeriod = CacheSizeFullRoundsMultiplier * validatorCount;
-                long oldestStepToKeep = step - siblingMaliceDetectionPeriod;
+                ulong siblingMaliceDetectionPeriod = CacheSizeFullRoundsMultiplier * (ulong)validatorCount;
+                ulong oldestStepToKeep = step.SaturatingSub(siblingMaliceDetectionPeriod);
                 int index = BinarySearch(oldestStepToKeep);
                 int positiveIndex = index >= 0 ? index : ~index;
                 if (positiveIndex > 0)

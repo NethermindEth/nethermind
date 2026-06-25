@@ -9,9 +9,9 @@ namespace Nethermind.Consensus.AuRa;
 
 public static class AuRaBlockHeaderExtensions
 {
-    public static long? GetAuRaStep(this BlockHeader header) => (header as IAuRaSealedHeader)?.AuRaStep;
+    public static ulong? GetAuRaStep(this BlockHeader header) => (header as IAuRaSealedHeader)?.AuRaStep;
 
-    public static long GetAuRaStepOrZero(this BlockHeader? header) => header?.GetAuRaStep() ?? 0;
+    public static ulong GetAuRaStepOrZero(this BlockHeader? header) => header?.GetAuRaStep() ?? 0;
 
     public static byte[]? GetAuRaSignature(this BlockHeader header) => (header as IAuRaSealedHeader)?.AuRaSignature;
 

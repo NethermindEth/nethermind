@@ -23,7 +23,7 @@ namespace Nethermind.AuRa.Test
     {
         private AuRaSealer _auRaSealer;
         private IBlockTree _blockTree;
-        private int _headStep;
+        private ulong _headStep;
         private IAuRaStepCalculator _auRaStepCalculator;
         private Address _address;
         private IValidatorStore _validatorStore;
@@ -33,7 +33,7 @@ namespace Nethermind.AuRa.Test
         public void Setup()
         {
             _blockTree = Substitute.For<IBlockTree>();
-            _headStep = 10;
+            _headStep = 10UL;
             _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, []).TestObject).TestObject);
 
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
@@ -51,11 +51,11 @@ namespace Nethermind.AuRa.Test
                 LimboLogs.Instance);
         }
 
-        [TestCase(9, true, ExpectedResult = false, TestName = "Step too low-1.")]
-        [TestCase(10, true, ExpectedResult = false, TestName = "Step too low-2.")]
-        [TestCase(11, false, ExpectedResult = false, TestName = "Invalid sealer.")]
-        [TestCase(11, true, ExpectedResult = true, TestName = "Can seal.")]
-        public bool can_seal(long auRaStep, bool validSealer)
+        [TestCase(9UL, true, ExpectedResult = false, TestName = "Step too low-1.")]
+        [TestCase(10UL, true, ExpectedResult = false, TestName = "Step too low-2.")]
+        [TestCase(11UL, false, ExpectedResult = false, TestName = "Invalid sealer.")]
+        [TestCase(11UL, true, ExpectedResult = true, TestName = "Can seal.")]
+        public bool can_seal(ulong auRaStep, bool validSealer)
         {
             _auRaStepCalculator.CurrentStep.Returns(auRaStep);
             _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, auRaStep, out _).Returns(validSealer);
@@ -65,9 +65,9 @@ namespace Nethermind.AuRa.Test
         [Test]
         public async Task seal_can_recover_address()
         {
-            _auRaStepCalculator.CurrentStep.Returns(11);
-            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, 11, out _).Returns(true);
-            Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithBeneficiary(_address).WithAura(11, null).TestObject).TestObject;
+            _auRaStepCalculator.CurrentStep.Returns(11UL);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, 11UL, out _).Returns(true);
+            Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithBeneficiary(_address).WithAura(11UL, null).TestObject).TestObject;
 
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
 

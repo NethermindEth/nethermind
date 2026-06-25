@@ -67,7 +67,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
 
     private bool _gasCostAlreadySetForCurrentOp;
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         if (CurrentTraceEntry is not null)
         {
@@ -88,7 +88,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
             CurrentTraceEntry.Error = GetErrorDescription(error);
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
         {

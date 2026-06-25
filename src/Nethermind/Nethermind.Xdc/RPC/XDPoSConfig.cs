@@ -8,11 +8,11 @@ namespace Nethermind.Xdc.RPC;
 
 public class XDPoSConfig
 {
-    public int Epoch { get; set; }
-    public int Gap { get; set; }
-    public int Period { get; set; }
-    public int Reward { get; set; }
-    public int SwitchEpoch { get; set; }
-    public long SwitchBlock { get; set; }
+    public ulong Epoch { get; set; }
+    public ulong Gap { get; set; }
+    public ulong Period { get; set; }
+    public ulong Reward { get; set; }
+    public ulong SwitchEpoch { get; set; }
+    public ulong SwitchBlock { get; set; }
     public List<V2ConfigParams>? V2Configs { get; set; }
 }

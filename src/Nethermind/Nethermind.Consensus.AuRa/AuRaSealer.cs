@@ -60,19 +60,19 @@ namespace Nethermind.Consensus.AuRa
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash)
+        public bool CanSeal(ulong blockNumber, Hash256 parentHash)
         {
-            bool StepNotYetProduced(long step) => _blockTree.Head.Header.GetAuRaStep() is { } headStep
+            bool StepNotYetProduced(ulong step) => _blockTree.Head.Header.GetAuRaStep() is { } headStep
                 ? headStep < step
                 : throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'");
 
-            bool IsThisNodeTurn(long step)
+            bool IsThisNodeTurn(ulong step)
             {
                 Address[] validators = _validatorStore.GetValidators();
                 return _validSealerStrategy.IsValidSealer(validators, _signer.Address, step, out _);
             }
 
-            long currentStep = _auRaStepCalculator.CurrentStep;
+            ulong currentStep = _auRaStepCalculator.CurrentStep;
             bool stepNotYetProduced = StepNotYetProduced(currentStep);
             bool isThisNodeTurn = IsThisNodeTurn(currentStep);
             if (isThisNodeTurn)

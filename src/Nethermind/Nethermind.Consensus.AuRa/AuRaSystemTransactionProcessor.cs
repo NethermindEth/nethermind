@@ -33,7 +33,7 @@ public sealed class AuRaSystemTransactionProcessor<TGasPolicy>(
     {
         if (!VirtualMachine.BlockExecutionContext.IsGenesis)
         {
-            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, 0);
         }
     }
 

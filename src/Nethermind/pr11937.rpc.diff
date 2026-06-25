@@ -1,0 +1,2143 @@
+diff --git a/src/Nethermind/Nethermind.Facade/BlobBaseFeeOverrideCalculatorDecorator.cs b/src/Nethermind/Nethermind.Facade/BlobBaseFeeOverrideCalculatorDecorator.cs
+index 4478577200..40814a34dd 100644
+--- a/src/Nethermind/Nethermind.Facade/BlobBaseFeeOverrideCalculatorDecorator.cs
++++ b/src/Nethermind/Nethermind.Facade/BlobBaseFeeOverrideCalculatorDecorator.cs
+@@ -13,7 +13,7 @@ public class BlobBaseFeeOverrideCalculatorDecorator(
+     IBlobBaseFeeOverrideProvider overrideProvider) : ITransactionProcessor.IBlobBaseFeeCalculator
+ {
+     public bool TryCalculateBlobFees(BlockHeader header, Transaction transaction,
+-        UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee)
++        ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee)
+     {
+         if (overrideProvider.BlobBaseFeeOverride is not null)
+         {
+diff --git a/src/Nethermind/Nethermind.Facade/BlockchainBridge.cs b/src/Nethermind/Nethermind.Facade/BlockchainBridge.cs
+index 0c2b845766..2d1b0a2336 100644
+--- a/src/Nethermind/Nethermind.Facade/BlockchainBridge.cs
++++ b/src/Nethermind/Nethermind.Facade/BlockchainBridge.cs
+@@ -193,7 +193,7 @@ namespace Nethermind.Facade
+         private static bool HasOverrides(Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride) =>
+             stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null || blockOverride is not null;
+ 
+-        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
++        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken)
+         {
+             using SimulateReadOnlyBlocksProcessingScope env = lazySimulateProcessingEnv.Value.Begin(header);
+             env.SimulateRequestState.Validate = payload.Validation;
+@@ -228,12 +228,12 @@ namespace Nethermind.Facade
+             IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
+             UInt256 senderBalance = worldState.GetBalance(tx.SenderAddress ?? Address.Zero);
+             UInt256 feeCap = tx.CalculateFeeCap();
+-            if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 availableForGas))
++            if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.ValueRef, out UInt256 availableForGas))
+             {
+                 if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref availableForGas))
+                     availableForGas = UInt256.Zero;
+ 
+-                long allowance = (long)UInt256.Min(availableForGas / feeCap, (UInt256)long.MaxValue);
++                ulong allowance = UInt256.Min(availableForGas / feeCap, ulong.MaxValue).u0;
+                 if (tx.GasLimit > allowance)
+                     tx.GasLimit = allowance;
+             }
+@@ -247,7 +247,9 @@ namespace Nethermind.Facade
+             string? error = tryCallResult.GetErrorMessage(estimateGasTracer.Error);
+             string? probeError = error;
+ 
+-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
++            ulong estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, (ulong)errorMargin, cancellationToken);
++            // Allowance errors take precedence over any earlier revert: the revert was an artifact
++            // of the gas cap, so surfacing it instead of the affordability error would be misleading.
+             error = err switch
+             {
+                 // Probe failed only because gas hint was below standard intrinsic: if estimation succeeds, clear the probe error.
+@@ -568,14 +570,14 @@ namespace Nethermind.Facade
+ 
+         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, cancellationToken);
+ 
+-        public ReadOnlyBlockAccessList? GetBlockAccessList(long blockNumber, Hash256 blockHash)
++        public ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash)
+             => balStore.Get(blockNumber, blockHash);
+ 
+-        public MemoryManager<byte>? GetBlockAccessListRlp(long blockNumber, Hash256 blockHash)
++        public MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash)
+             => balStore.GetRlp(blockNumber, blockHash);
+ 
+         // for testing
+-        public void DeleteBlockAccessList(long blockNumber, Hash256 blockHash)
++        public void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash)
+             => balStore.Delete(blockNumber, blockHash);
+ 
+         public Witness GenerateExecutionWitness(BlockHeader parent, Block block)
+diff --git a/src/Nethermind/Nethermind.Facade/CallOutput.cs b/src/Nethermind/Nethermind.Facade/CallOutput.cs
+index 7f46c85128..3b1ab8ee22 100644
+--- a/src/Nethermind/Nethermind.Facade/CallOutput.cs
++++ b/src/Nethermind/Nethermind.Facade/CallOutput.cs
+@@ -11,8 +11,8 @@ public class CallOutput
+ 
+     public byte[] OutputData { get; set; } = [];
+ 
+-    public long GasSpent { get; set; }
+-    public long OperationGas { get; set; }
++    public ulong GasSpent { get; set; }
++    public ulong OperationGas { get; set; }
+ 
+     public bool InputError { get; set; }
+ 
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/BlockForRpc.cs b/src/Nethermind/Nethermind.Facade/Eth/BlockForRpc.cs
+index 690efb0b9c..fc6bdb0e06 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/BlockForRpc.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/BlockForRpc.cs
+@@ -104,8 +104,8 @@ public class BlockForRpc
+     public Address? Author { get; set; }
+     public UInt256 Difficulty { get; set; }
+     public byte[] ExtraData { get; set; }
+-    public long GasLimit { get; set; }
+-    public long GasUsed { get; set; }
++    public ulong GasLimit { get; set; }
++    public ulong GasUsed { get; set; }
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+     public Hash256? Hash { get; set; }
+@@ -121,15 +121,15 @@ public class BlockForRpc
+     public byte[]? Nonce { get; set; }
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+-    public long? Number { get; set; }
++    public ulong? Number { get; set; }
+     public Hash256 ParentHash { get; set; }
+     public Hash256 ReceiptsRoot { get; set; }
+     public Hash256 Sha3Uncles { get; set; }
+     public byte[]? Signature { get; set; }
+     public long Size { get; set; }
+     public Hash256 StateRoot { get; set; }
+-    [JsonConverter(typeof(NullableRawLongConverter))]
+-    public long? Step { get; set; }
++    [JsonConverter(typeof(NullableRawULongConverter))]
++    public ulong? Step { get; set; }
+     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+     public UInt256? TotalDifficulty { get; set; }
+     public UInt256 Timestamp { get; set; }
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/BlockHeaderForRpc.cs b/src/Nethermind/Nethermind.Facade/Eth/BlockHeaderForRpc.cs
+index 29bf7c52ce..ce644e582e 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/BlockHeaderForRpc.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/BlockHeaderForRpc.cs
+@@ -70,7 +70,7 @@ public class BlockHeaderForRpc
+     public Address? Author { get; set; }
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+-    public long? Number { get; set; }
++    public ulong? Number { get; set; }
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+     public Hash256? Hash { get; set; }
+@@ -85,8 +85,8 @@ public class BlockHeaderForRpc
+ 
+     public byte[]? Signature { get; set; }
+ 
+-    [JsonConverter(typeof(NullableRawLongConverter))]
+-    public long? Step { get; set; }
++    [JsonConverter(typeof(NullableRawULongConverter))]
++    public ulong? Step { get; set; }
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+     public Bloom? LogsBloom { get; set; }
+@@ -98,8 +98,8 @@ public class BlockHeaderForRpc
+ 
+     public UInt256 Difficulty { get; set; }
+     public byte[] ExtraData { get; set; } = [];
+-    public long GasLimit { get; set; }
+-    public long GasUsed { get; set; }
++    public ulong GasLimit { get; set; }
++    public ulong GasUsed { get; set; }
+     public UInt256 Timestamp { get; set; }
+     public Hash256? TransactionsRoot { get; set; }
+     public Hash256? ReceiptsRoot { get; set; }
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/EthSyncingInfo.cs b/src/Nethermind/Nethermind.Facade/Eth/EthSyncingInfo.cs
+index 8ca2185edd..c15ebdafdf 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/EthSyncingInfo.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/EthSyncingInfo.cs
+@@ -30,7 +30,7 @@ namespace Nethermind.Facade.Eth
+ 
+         public SyncingResult GetFullInfo()
+         {
+-            (bool isSyncing, long headNumberOrZero, long bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
++            (bool isSyncing, ulong headNumberOrZero, ulong bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
+             SyncMode syncMode = _syncModeSelector.Current;
+ 
+             if (_logger.IsTrace) _logger.Trace($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_syncPointers.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_syncPointers.LowestInsertedReceiptBlockNumber}");
+@@ -63,7 +63,7 @@ namespace Nethermind.Facade.Eth
+             return SyncingResult.NotSyncing;
+         }
+ 
+-        private static SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode) => new()
++        private static SyncingResult ReturnSyncing(ulong headNumberOrZero, ulong bestSuggestedNumber, SyncMode syncMode) => new()
+         {
+             CurrentBlock = headNumberOrZero,
+             HighestBlock = bestSuggestedNumber,
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/IFromTransaction.cs b/src/Nethermind/Nethermind.Facade/Eth/IFromTransaction.cs
+index 9a7736e16c..b249b57755 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/IFromTransaction.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/IFromTransaction.cs
+@@ -17,7 +17,7 @@ public readonly record struct TransactionForRpcContext
+ {
+     public ulong? ChainId { get; }
+     public Hash256? BlockHash { get; }
+-    public long? BlockNumber { get; }
++    public ulong? BlockNumber { get; }
+     public ulong? BlockTimestamp { get; }
+     public int? TxIndex { get; }
+     public UInt256? BaseFee { get; }
+@@ -37,7 +37,7 @@ public readonly record struct TransactionForRpcContext
+     public TransactionForRpcContext(
+         ulong chainId,
+         Hash256 blockHash,
+-        long blockNumber,
++        ulong blockNumber,
+         int txIndex,
+         ulong blockTimestamp,
+         UInt256 baseFee,
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/AccessListTransactionForRpc.cs b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/AccessListTransactionForRpc.cs
+index 31b3fcae6d..153796f469 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/AccessListTransactionForRpc.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/AccessListTransactionForRpc.cs
+@@ -36,7 +36,7 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
+         V = YParity ?? 0;
+     }
+ 
+-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
++    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+     {
+         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
+         if (baseResult.IsError) return baseResult;
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/BlobTransactionForRpc.cs b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/BlobTransactionForRpc.cs
+index 9cb4876724..c690ea41d7 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/BlobTransactionForRpc.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/BlobTransactionForRpc.cs
+@@ -49,7 +49,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
+         }
+     }
+ 
+-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
++    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+     {
+         if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
+             return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/EIP1559TransactionForRpc.cs b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/EIP1559TransactionForRpc.cs
+index 7f932219ae..bdc7eb6cfa 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/EIP1559TransactionForRpc.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/EIP1559TransactionForRpc.cs
+@@ -37,7 +37,7 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
+             : transaction.MaxFeePerGas;
+     }
+ 
+-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
++    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+     {
+         if (validateUserInput)
+         {
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/LegacyTransactionForRpc.cs b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/LegacyTransactionForRpc.cs
+index 3b58fa3951..0bf3715aa1 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/LegacyTransactionForRpc.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/LegacyTransactionForRpc.cs
+@@ -1,6 +1,7 @@
+ // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+ // SPDX-License-Identifier: LGPL-3.0-only
+ 
++using System;
+ using System.Text.Json.Serialization;
+ using Nethermind.Core;
+ using Nethermind.Core.Crypto;
+@@ -20,7 +21,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
+     public override TxType? Type => TxType;
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+-    public UInt256? Nonce { get; set; }
++    public ulong? Nonce { get; set; }
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+     public Address? To { get; set; }
+@@ -91,7 +92,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
+         }
+     }
+ 
+-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
++    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+     {
+         if (validateUserInput && To is null && Input is null or { Length: 0 })
+             return RpcTransactionErrors.ContractCreationWithoutData;
+@@ -100,7 +101,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
+         if (baseResult.IsError) return baseResult;
+ 
+         Transaction tx = baseResult.Data;
+-        tx.Nonce = Nonce ?? UInt256.Zero; // TODO: Should we pick the last nonce?
++        tx.Nonce = Nonce ?? 0UL; // TODO: Should we pick the last nonce?
+         tx.To = To;
+         tx.Value = Value ?? UInt256.Zero;
+         tx.Data = Input;
+@@ -111,10 +112,10 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
+         // null Gas → caller didn't specify, default to gasCap (uncapped if gasCap is unset).
+         // explicit Gas (including 0) → use as-is, capped at gasCap. This matches Geth: gas: 0x0
+         // is a literal request that fails the intrinsic gas check, not a "missing" signal.
+-        long effectiveCap = gasCap.EffectiveGasCap();
++        ulong effectiveCap = gasCap.EffectiveGasCap();
+         tx.GasLimit = Gas is null
+             ? effectiveCap
+-            : long.Min(Gas.Value, effectiveCap);
++            : Math.Min(Gas.Value, effectiveCap);
+ 
+         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
+         {
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/SetCodeTransactionForRpc.cs b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/SetCodeTransactionForRpc.cs
+index 74e094d751..16c618fb68 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/SetCodeTransactionForRpc.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/SetCodeTransactionForRpc.cs
+@@ -22,7 +22,7 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
+     public SetCodeTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
+         : base(transaction, extraData) => AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
+ 
+-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
++    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+     {
+         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
+         if (baseResult.IsError) return baseResult;
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/TransactionForRpc.cs b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/TransactionForRpc.cs
+index f43e0f1986..4cd053876f 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/TransactionForRpc.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/RpcTransaction/TransactionForRpc.cs
+@@ -41,13 +41,13 @@ public abstract class TransactionForRpc
+     public Hash256? BlockHash { get; set; }
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+-    public long? BlockNumber { get; set; }
++    public ulong? BlockNumber { get; set; }
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+     public ulong? BlockTimestamp { get; set; }
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+-    public long? Gas { get; set; }
++    public ulong? Gas { get; set; }
+ 
+     // True when type came from a fallback (gasPrice-only or absolute default), not from an
+     // explicit `type` field or a discriminator. Set only during JSON deserialization.
+@@ -66,7 +66,7 @@ public abstract class TransactionForRpc
+         BlockTimestamp = extraData.BlockTimestamp;
+     }
+ 
+-    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
++    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+         => new Transaction { Type = ResolveType(spec) };
+ 
+     private TxType ResolveType(IReleaseSpec? spec)
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/SyncingResult.cs b/src/Nethermind/Nethermind.Facade/Eth/SyncingResult.cs
+index 1349487fd0..a64b3f7af5 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/SyncingResult.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/SyncingResult.cs
+@@ -12,9 +12,9 @@ namespace Nethermind.Facade.Eth
+     {
+         public static SyncingResult NotSyncing = new();
+         public bool IsSyncing { get; set; }
+-        public long StartingBlock { get; set; }
+-        public long CurrentBlock { get; set; }
+-        public long HighestBlock { get; set; }
++        public ulong StartingBlock { get; set; }
++        public ulong CurrentBlock { get; set; }
++        public ulong HighestBlock { get; set; }
+         public SyncMode SyncMode { get; set; }
+ 
+         public override readonly string ToString() => $"IsSyncing: {IsSyncing}, StartingBlock: {StartingBlock}, CurrentBlock {CurrentBlock}, HighestBlock {HighestBlock}";
+diff --git a/src/Nethermind/Nethermind.Facade/Eth/SyncingResultJsonConverter.cs b/src/Nethermind/Nethermind.Facade/Eth/SyncingResultJsonConverter.cs
+index b65b7e9fd8..9ed7559c0e 100644
+--- a/src/Nethermind/Nethermind.Facade/Eth/SyncingResultJsonConverter.cs
++++ b/src/Nethermind/Nethermind.Facade/Eth/SyncingResultJsonConverter.cs
+@@ -35,8 +35,8 @@ public class SyncingResultJsonConverter : JsonConverter<SyncingResult>
+ 
+     private struct Result
+     {
+-        public long StartingBlock { get; set; }
+-        public long CurrentBlock { get; set; }
+-        public long HighestBlock { get; set; }
++        public ulong StartingBlock { get; set; }
++        public ulong CurrentBlock { get; set; }
++        public ulong HighestBlock { get; set; }
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.Facade/Filters/FilterLog.cs b/src/Nethermind/Nethermind.Facade/Filters/FilterLog.cs
+index ecf50b5c44..a7ffbbf0cb 100644
+--- a/src/Nethermind/Nethermind.Facade/Filters/FilterLog.cs
++++ b/src/Nethermind/Nethermind.Facade/Filters/FilterLog.cs
+@@ -6,11 +6,11 @@ using Nethermind.Core.Crypto;
+ 
+ namespace Nethermind.Facade.Filters
+ {
+-    public class FilterLog(long logIndex, long blockNumber, ulong blockTimestamp, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false) : ILogEntry
++    public class FilterLog(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false) : ILogEntry
+     {
+         public Address Address { get; } = address;
+         public Hash256 BlockHash { get; } = blockHash;
+-        public long BlockNumber { get; } = blockNumber;
++        public ulong BlockNumber { get; } = blockNumber;
+         public ulong BlockTimestamp { get; } = blockTimestamp;
+         public byte[] Data { get; } = data;
+         public long LogIndex { get; } = logIndex;
+diff --git a/src/Nethermind/Nethermind.Facade/Filters/LogIndexFilterVisitor.cs b/src/Nethermind/Nethermind.Facade/Filters/LogIndexFilterVisitor.cs
+index 1cbbcca5e3..a39e535dd1 100644
+--- a/src/Nethermind/Nethermind.Facade/Filters/LogIndexFilterVisitor.cs
++++ b/src/Nethermind/Nethermind.Facade/Filters/LogIndexFilterVisitor.cs
+@@ -181,6 +181,6 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
+ 
+ public static class LogIndexFilterVisitorExtensions
+ {
+-    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock) =>
++    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, ulong fromBlock, ulong toBlock) =>
+         new LogIndexFilterVisitor(storage, filter, (int)fromBlock, (int)toBlock).Select(static i => (long)i);
+ }
+diff --git a/src/Nethermind/Nethermind.Facade/Find/ILogIndexBuilder.cs b/src/Nethermind/Nethermind.Facade/Find/ILogIndexBuilder.cs
+index 3f898f3606..a43e08d26f 100644
+--- a/src/Nethermind/Nethermind.Facade/Find/ILogIndexBuilder.cs
++++ b/src/Nethermind/Nethermind.Facade/Find/ILogIndexBuilder.cs
+@@ -12,8 +12,8 @@ namespace Nethermind.Facade.Find
+         Task StartAsync();
+         bool IsRunning { get; }
+ 
+-        int MaxTargetBlockNumber { get; }
+-        int MinTargetBlockNumber { get; }
++        ulong MaxTargetBlockNumber { get; }
++        ulong MinTargetBlockNumber { get; }
+ 
+         DateTimeOffset? LastUpdate { get; }
+         Exception? LastError { get; }
+diff --git a/src/Nethermind/Nethermind.Facade/Find/IndexedLogFinder.cs b/src/Nethermind/Nethermind.Facade/Find/IndexedLogFinder.cs
+index fa3a2dc4a1..d15fe92fce 100644
+--- a/src/Nethermind/Nethermind.Facade/Find/IndexedLogFinder.cs
++++ b/src/Nethermind/Nethermind.Facade/Find/IndexedLogFinder.cs
+@@ -3,6 +3,7 @@
+ 
+ using System;
+ using System.Collections.Generic;
++using System.Linq;
+ using System.Threading;
+ using Nethermind.Facade.Filters;
+ using Nethermind.Blockchain.Find;
+@@ -38,7 +39,7 @@ public class IndexedLogFinder(
+ 
+     private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
+     {
+-        if (indexRange.from > fromBlock.Number && FindHeaderOrLogError(indexRange.from - 1, cancellationToken) is { } beforeIndex)
++        if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
+         {
+             foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
+                 yield return log;
+@@ -46,8 +47,9 @@ public class IndexedLogFinder(
+ 
+         cancellationToken.ThrowIfCancellationRequested();
+ 
+-        IEnumerable<long> indexBlockNumbers = _logIndexStorage
+-            .EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to);
++        IEnumerable<ulong> indexBlockNumbers = _logIndexStorage
++            .EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
++            .Select(static n => (ulong)n);
+ 
+         foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken: cancellationToken))
+         {
+@@ -56,7 +58,7 @@ public class IndexedLogFinder(
+ 
+         cancellationToken.ThrowIfCancellationRequested();
+ 
+-        if (indexRange.to < toBlock.Number && FindHeaderOrLogError(indexRange.to + 1, cancellationToken) is { } afterIndex)
++        if ((ulong)indexRange.to < toBlock.Number && FindHeaderOrLogError((ulong)(indexRange.to + 1), cancellationToken) is { } afterIndex)
+         {
+             foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
+                 yield return log;
+diff --git a/src/Nethermind/Nethermind.Facade/Find/LogFinder.cs b/src/Nethermind/Nethermind.Facade/Find/LogFinder.cs
+index 587e8b8b4a..750dc08d4b 100644
+--- a/src/Nethermind/Nethermind.Facade/Find/LogFinder.cs
++++ b/src/Nethermind/Nethermind.Facade/Find/LogFinder.cs
+@@ -75,7 +75,7 @@ namespace Nethermind.Facade.Find
+             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
+         }
+ 
+-        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
++        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
+             RunParallel(blockNumbers,
+                 number => FindLogsInBlock(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
+ 
+@@ -131,13 +131,18 @@ namespace Nethermind.Facade.Find
+ 
+         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+         {
+-            static IEnumerable<long> BlockNumbers(long from, long count)
++            if (toBlock.Number < fromBlock.Number)
+             {
+-                for (long i = 0; i < count; i++) yield return from + i;
++                return [];
+             }
+ 
+-            long rangeSize = Math.Min(maxBlockDepth, toBlock.Number - fromBlock.Number + 1);
+-            bool tryParallel = rangeSize >= _rpcConfigGetLogsThreads;
++            static IEnumerable<ulong> BlockNumbers(ulong from, ulong count)
++            {
++                for (ulong i = 0; i < count; i++) yield return from + i;
++            }
++
++            ulong rangeSize = Math.Min((ulong)maxBlockDepth, toBlock.Number - fromBlock.Number + 1);
++            bool tryParallel = rangeSize >= (ulong)_rpcConfigGetLogsThreads;
+             return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
+         }
+ 
+@@ -146,7 +151,7 @@ namespace Nethermind.Facade.Find
+                 ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
+                 : [];
+ 
+-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
++        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+         {
+             if (blockHash is not null)
+             {
+@@ -218,9 +223,9 @@ namespace Nethermind.Facade.Find
+             return logList ?? (IEnumerable<FilterLog>)[];
+         }
+ 
+-        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
++        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+         {
+-            TxReceipt[]? GetReceipts(Hash256 hash, long number)
++            TxReceipt[]? GetReceipts(Hash256 hash, ulong number)
+             {
+                 bool canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
+                 if (canUseHash)
+@@ -285,7 +290,7 @@ namespace Nethermind.Facade.Find
+             }
+         }
+ 
+-        protected BlockHeader? FindHeaderOrLogError(long blockNumber, CancellationToken token)
++        protected BlockHeader? FindHeaderOrLogError(ulong blockNumber, CancellationToken token)
+         {
+             token.ThrowIfCancellationRequested();
+ 
+diff --git a/src/Nethermind/Nethermind.Facade/Find/LogIndexBuilder.cs b/src/Nethermind/Nethermind.Facade/Find/LogIndexBuilder.cs
+index ca92b4f26e..9cd377274c 100644
+--- a/src/Nethermind/Nethermind.Facade/Find/LogIndexBuilder.cs
++++ b/src/Nethermind/Nethermind.Facade/Find/LogIndexBuilder.cs
+@@ -51,7 +51,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+     private readonly CancellationTokenSource _cancellationSource = new();
+     private CancellationToken CancellationToken => _cancellationSource.Token;
+ 
+-    private int MaxReorgDepth => _config.MaxReorgDepth!.Value;
++    private ulong MaxReorgDepth => _config.MaxReorgDepth!.Value;
+     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
+ 
+     private readonly ILogIndexStorage _logIndexStorage;
+@@ -60,8 +60,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+     private readonly ILogManager _logManager;
+     private Timer? _progressLoggerTimer;
+ 
+-    private readonly TaskCompletionSource<int> _pivotSource = new(RunContinuationsAsynchronously);
+-    private readonly Task<int> _pivotTask;
++    private readonly TaskCompletionSource<ulong> _pivotSource = new(RunContinuationsAsynchronously);
++    private readonly Task<ulong> _pivotTask;
+ 
+     private readonly List<Task> _tasks = [];
+ 
+@@ -101,8 +101,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+ 
+     private void StartProcessing(bool isForward)
+     {
+-        // Do not start backward sync if the target is already reached
+-        if (!isForward && _logIndexStorage.MinBlockNumber <= MinTargetBlockNumber)
++        // Skip backward sync if storage already reached the target. Null MinBlockNumber
++        // means nothing indexed yet — must not skip.
++        if (!isForward && _logIndexStorage.MinBlockNumber is { } minStored && (ulong)minStored <= MinTargetBlockNumber)
+         {
+             MarkCompleted(false);
+             return;
+@@ -127,8 +128,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+ 
+             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
+ 
+-            TrySetPivot(_logIndexStorage.MaxBlockNumber);
+-            TrySetPivot((int)_blockTree.SyncPivot.BlockNumber);
++            TrySetPivot(_logIndexStorage.MaxBlockNumber is { } storedMax ? (ulong)storedMax : null);
++            TrySetPivot(_blockTree.SyncPivot.BlockNumber);
+ 
+             if (!_pivotTask.IsCompleted && _logger.IsInfo)
+                 _logger.Info($"{GetLogPrefix()}: waiting for the first block...");
+@@ -216,7 +217,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+         Direction(isForward: true).Progress?.LogProgress();
+     }
+ 
+-    private bool TrySetPivot(int? blockNumber)
++    private bool TrySetPivot(ulong? blockNumber)
+     {
+         if (blockNumber is not { } number || number is 0)
+             return false;
+@@ -242,15 +243,18 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+ 
+     private void OnReceiptsInserted(object? sender, ReceiptsEventArgs args)
+     {
+-        int next = (int)args.BlockHeader.Number;
+-        if (TrySetPivot(next))
++        if (TrySetPivot(args.BlockHeader.Number))
+             _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
+     }
+ 
+-    public int MaxTargetBlockNumber => (int)Math.Max(_blockTree.BestKnownNumber - MaxReorgDepth, 0);
++    public ulong MaxTargetBlockNumber => _blockTree.BestKnownNumber >= MaxReorgDepth
++        ? _blockTree.BestKnownNumber - MaxReorgDepth
++        : 0UL;
+ 
+     // Block 0 should always be present
+-    public int MinTargetBlockNumber => (int)(_syncConfig.AncientReceiptsBarrierCalc <= 1 ? 0 : _syncConfig.AncientReceiptsBarrierCalc);
++    public ulong MinTargetBlockNumber => _syncConfig.AncientReceiptsBarrierCalc <= 1
++        ? 0UL
++        : _syncConfig.AncientReceiptsBarrierCalc;
+ 
+     public bool IsRunning { get; private set; }
+     public DateTimeOffset? LastUpdate { get; private set; }
+@@ -324,7 +328,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+ 
+         UpdateProgress();
+ 
+-        if (_logIndexStorage.MinBlockNumber <= MinTargetBlockNumber)
++        if (_logIndexStorage.MinBlockNumber <= (int)MinTargetBlockNumber)
+             MarkCompleted(false);
+     }
+ 
+@@ -332,27 +336,16 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+     {
+         try
+         {
+-            int pivotNumber = await _pivotTask;
++            ulong pivotNumber = await _pivotTask;
+ 
+             ProcessingQueue queue = Direction(isForward).Queue!;
+ 
+-            int? next = GetNextBlockNumber(isForward);
+-            if (next is not { } start)
+-            {
+-                if (isForward)
+-                {
+-                    start = pivotNumber;
+-                }
+-                else
+-                {
+-                    start = pivotNumber - 1;
+-                }
+-            }
++            int start = GetNextBlockNumber(isForward) ?? (isForward ? (int)pivotNumber : (int)pivotNumber - 1);
+ 
+             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
+             while (!CancellationToken.IsCancellationRequested)
+             {
+-                if (!isForward && start < MinTargetBlockNumber)
++                if (!isForward && start < (int)MinTargetBlockNumber)
+                 {
+                     if (_logger.IsTrace)
+                         _logger.Trace($"{GetLogPrefix(isForward)}: queued last block");
+@@ -362,8 +355,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+ 
+                 int batchSize = _config.MaxBatchSize;
+                 int end = isForward ? start + batchSize - 1 : start - batchSize + 1;
+-                end = Math.Max(end, MinTargetBlockNumber);
+-                end = Math.Min(end, MaxTargetBlockNumber);
++                end = Math.Max(end, (int)MinTargetBlockNumber);
++                end = Math.Min(end, (int)MaxTargetBlockNumber);
+ 
+                 // from - inclusive, to - exclusive
+                 (int from, int to) = isForward
+@@ -399,21 +392,30 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+     private void UpdateProgress()
+     {
+         if (!_pivotTask.IsCompletedSuccessfully) return;
+-        int pivotNumber = _pivotTask.Result;
++        ulong pivotNumber = _pivotTask.Result;
+ 
+         ref DirectionState forward = ref Direction(isForward: true);
+         if (forward.Progress is { HasEnded: false } forwardProgress)
+         {
+-            forwardProgress.TargetValue = Math.Max(0, _blockTree.BestKnownNumber - MaxReorgDepth - pivotNumber + 1);
+-            forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max ? max - pivotNumber + 1 : 0);
++            ulong bestKnown = _blockTree.BestKnownNumber;
++            forwardProgress.TargetValue = bestKnown >= MaxReorgDepth + pivotNumber
++                ? bestKnown - MaxReorgDepth - pivotNumber + 1UL
++                : 0UL;
++            forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max && (ulong)max >= pivotNumber
++                ? (ulong)max - pivotNumber + 1UL
++                : 0UL);
+             forwardProgress.CurrentQueued = forward.Queue!.QueueCount;
+         }
+ 
+         ref DirectionState backward = ref Direction(isForward: false);
+         if (backward.Progress is { HasEnded: false } backwardProgress)
+         {
+-            backwardProgress.TargetValue = pivotNumber - MinTargetBlockNumber;
+-            backwardProgress.Update(_logIndexStorage.MinBlockNumber is { } min ? pivotNumber - min : 0);
++            backwardProgress.TargetValue = pivotNumber >= MinTargetBlockNumber
++                ? pivotNumber - MinTargetBlockNumber
++                : 0UL;
++            backwardProgress.Update(_logIndexStorage.MinBlockNumber is { } min && pivotNumber >= (ulong)min
++                ? pivotNumber - (ulong)min
++                : 0UL);
+             backwardProgress.CurrentQueued = backward.Queue!.QueueCount;
+         }
+     }
+@@ -444,9 +446,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+         if (to - from > buffer.Length)
+             throw new InvalidOperationException($"{GetLogPrefix()}: buffer size is too small: {buffer.Length} / {to - from}");
+ 
+-        // Check the immediate next block first
+         int nextIndex = isForward ? from : to - 1;
+-        if (!TryGetBlockReceipts(nextIndex, out buffer[0]))
++        if (!TryGetBlockReceipts((ulong)nextIndex, out buffer[0]))
+             return ReadOnlySpan<BlockReceipts>.Empty;
+ 
+         Parallel.For(from, to, new()
+@@ -457,7 +458,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+         {
+             int bufferIndex = isForward ? i - from : to - 1 - i;
+             if (buffer[bufferIndex] == default)
+-                TryGetBlockReceipts(i, out buffer[bufferIndex]);
++                TryGetBlockReceipts((ulong)i, out buffer[bufferIndex]);
+         });
+ 
+         int endIndex = Array.IndexOf(buffer, default);
+@@ -465,18 +466,18 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+     }
+ 
+     // TODO: move to IReceiptStorage?
+-    private bool TryGetBlockReceipts(int i, out BlockReceipts blockReceipts)
++    private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts)
+     {
+         blockReceipts = default;
+ 
+-        if (_blockTree.FindBlock(i, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
++        if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
+         {
+             return false;
+         }
+ 
+         if (!block.Header.HasTransactions)
+         {
+-            blockReceipts = new(i, []);
++            blockReceipts = new((int)blockNumber, []);
+             return true;
+         }
+ 
+@@ -487,7 +488,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
+             return false; // block should have transactions but nothing in storage
+         }
+ 
+-        blockReceipts = new(i, receipts);
++        blockReceipts = new((int)blockNumber, receipts);
+         return true;
+     }
+ 
+diff --git a/src/Nethermind/Nethermind.Facade/Find/LogScanner.cs b/src/Nethermind/Nethermind.Facade/Find/LogScanner.cs
+index 81eb57f0d5..5b61c4954b 100644
+--- a/src/Nethermind/Nethermind.Facade/Find/LogScanner.cs
++++ b/src/Nethermind/Nethermind.Facade/Find/LogScanner.cs
+@@ -7,6 +7,7 @@ using Nethermind.Facade.Filters;
+ using Nethermind.Facade.Filters.Topics;
+ using Nethermind.Blockchain.Find;
+ using Nethermind.Core;
++using Nethermind.Core.Extensions;
+ using Nethermind.Logging;
+ 
+ namespace Nethermind.Facade.Find
+@@ -17,19 +18,14 @@ namespace Nethermind.Facade.Find
+         private const int LogScanCutoffChunks = 128;
+         private readonly ILogger _logger = logManager.GetClassLogger(typeof(LogScanner<>));
+ 
+-        public IEnumerable<T> ScanLogs(long headBlockNumber, Predicate<T> shouldStopScanning)
++        public IEnumerable<T> ScanLogs(ulong headBlockNumber, Predicate<T> shouldStopScanning)
+         {
+             BlockParameter end = new(headBlockNumber);
+ 
+             for (int i = 0; i < LogScanCutoffChunks; i++)
+             {
+-                bool atGenesis = false;
+-                long startBlockNumber = end.BlockNumber!.Value - LogScanChunkSize;
+-                if (startBlockNumber < 0)
+-                {
+-                    atGenesis = true;
+-                    startBlockNumber = 0;
+-                }
++                ulong startBlockNumber = end.BlockNumber!.Value.SaturatingSub((ulong)LogScanChunkSize);
++                bool atGenesis = end.BlockNumber!.Value <= LogScanChunkSize;
+ 
+                 BlockParameter start = new(startBlockNumber);
+                 LogFilter logFilter = new(0, start, end, addressFilter, topicsFilter);
+@@ -60,7 +56,7 @@ namespace Nethermind.Facade.Find
+             }
+         }
+ 
+-        public IEnumerable<T> ScanReceipts(long blockNumber, TxReceipt[] receipts)
++        public IEnumerable<T> ScanReceipts(ulong blockNumber, TxReceipt[] receipts)
+         {
+             int count = 0;
+ 
+diff --git a/src/Nethermind/Nethermind.Facade/IBlockchainBridge.cs b/src/Nethermind/Nethermind.Facade/IBlockchainBridge.cs
+index 643c89ab84..750ad83696 100644
+--- a/src/Nethermind/Nethermind.Facade/IBlockchainBridge.cs
++++ b/src/Nethermind/Nethermind.Facade/IBlockchainBridge.cs
+@@ -31,7 +31,7 @@ namespace Nethermind.Facade
+         (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash);
+         bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
+         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default);
+-        SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken);
++        SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken);
+         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default);
+ 
+         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, CancellationToken cancellationToken = default);
+@@ -59,8 +59,8 @@ namespace Nethermind.Facade
+         Witness GenerateExecutionWitness(BlockHeader parent, Block block);
+         SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default);
+ 
+-        ReadOnlyBlockAccessList? GetBlockAccessList(long blockNumber, Hash256 blockHash);
+-        MemoryManager<byte>? GetBlockAccessListRlp(long blockNumber, Hash256 blockHash);
+-        void DeleteBlockAccessList(long blockNumber, Hash256 blockHash);
++        ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash);
++        MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash);
++        void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash);
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.Facade/Proxy/Models/BlockModel.cs b/src/Nethermind/Nethermind.Facade/Proxy/Models/BlockModel.cs
+index 610a42a8bd..930fcf7f4a 100644
+--- a/src/Nethermind/Nethermind.Facade/Proxy/Models/BlockModel.cs
++++ b/src/Nethermind/Nethermind.Facade/Proxy/Models/BlockModel.cs
+@@ -12,13 +12,13 @@ namespace Nethermind.Facade.Proxy.Models
+     {
+         public UInt256 Difficulty { get; set; }
+         public byte[] ExtraData { get; set; }
+-        public UInt256 GasLimit { get; set; }
+-        public UInt256 GasUsed { get; set; }
++        public ulong GasLimit { get; set; }
++        public ulong GasUsed { get; set; }
+         public Hash256 Hash { get; set; }
+         public Address Miner { get; set; }
+         public Hash256 MixHash { get; set; }
+-        public UInt256 Nonce { get; set; }
+-        public UInt256 Number { get; set; }
++        public ulong Nonce { get; set; }
++        public ulong Number { get; set; }
+         public Hash256 ParentHash { get; set; }
+         public Hash256 ReceiptsRoot { get; set; }
+         public Hash256 Sha3Uncles { get; set; }
+@@ -34,14 +34,14 @@ namespace Nethermind.Facade.Proxy.Models
+ 
+         public Block ToBlock()
+         {
+-            Block block = new(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long)Number,
+-                (long)GasLimit, Timestamp, ExtraData));
++            Block block = new(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, Number,
++                GasLimit, Timestamp, ExtraData));
+ 
+             block.Header.StateRoot = StateRoot;
+-            block.Header.GasUsed = (long)GasUsed;
++            block.Header.GasUsed = GasUsed;
+             block.Header.Hash = Hash;
+             block.Header.MixHash = MixHash;
+-            block.Header.Nonce = (ulong)Nonce;
++            block.Header.Nonce = Nonce;
+             block.Header.ReceiptsRoot = ReceiptsRoot;
+             block.Header.TotalDifficulty = TotalDifficulty;
+             block.Header.TxRoot = TransactionsRoot;
+diff --git a/src/Nethermind/Nethermind.Facade/Proxy/Models/TransactionModel.cs b/src/Nethermind/Nethermind.Facade/Proxy/Models/TransactionModel.cs
+index 6b58d06682..6627f29087 100644
+--- a/src/Nethermind/Nethermind.Facade/Proxy/Models/TransactionModel.cs
++++ b/src/Nethermind/Nethermind.Facade/Proxy/Models/TransactionModel.cs
+@@ -10,12 +10,12 @@ namespace Nethermind.Facade.Proxy.Models
+     public class TransactionModel
+     {
+         public Hash256 Hash { get; set; }
+-        public UInt256 Nonce { get; set; }
++        public ulong Nonce { get; set; }
+         public Hash256 BlockHash { get; set; }
+         public UInt256 BlockNumber { get; set; }
+         public Address From { get; set; }
+         public Address To { get; set; }
+-        public UInt256 Gas { get; set; }
++        public ulong Gas { get; set; }
+         public UInt256 GasPrice { get; set; }
+         public byte[] Input { get; set; }
+         public UInt256 Value { get; set; }
+@@ -29,7 +29,7 @@ namespace Nethermind.Facade.Proxy.Models
+                 To = To,
+                 Data = Input,
+                 Value = Value,
+-                GasLimit = (long)Gas,
++                GasLimit = Gas,
+                 GasPrice = GasPrice
+             };
+     }
+diff --git a/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockTracer.cs b/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockTracer.cs
+index 8982f8a12c..2758cee064 100644
+--- a/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockTracer.cs
++++ b/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockTracer.cs
+@@ -45,7 +45,7 @@ public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : Block
+     {
+         _txIndex = 0;
+         _logIndex = 0;
+-        _blockNumber = (ulong)block.Number;
++        _blockNumber = block.Number;
+         _blockTimestamp = block.Timestamp;
+         _isTracingLogs &= !spec.GetSpec(block.Header).IsEip7708Enabled;
+         base.StartNewBlockTrace(block);
+diff --git a/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockValidationTransactionsExecutor.cs b/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockValidationTransactionsExecutor.cs
+index 90d39db5d8..5c4fea0d66 100644
+--- a/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockValidationTransactionsExecutor.cs
++++ b/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockValidationTransactionsExecutor.cs
+@@ -33,7 +33,7 @@ public class SimulateBlockValidationTransactionsExecutor(
+     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
+         CancellationToken token = default)
+     {
+-        long startingGasLeft = simulateState.TotalGasLeft;
++        ulong startingGasLeft = simulateState.TotalGasLeft;
+         if (!simulateState.Validate)
+         {
+             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
+@@ -42,7 +42,7 @@ public class SimulateBlockValidationTransactionsExecutor(
+         TxReceipt[] result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+ 
+         // Many gas calculation not done with skip validation, but needed for response
+-        long currentGasUsedTotal = 0;
++        ulong currentGasUsedTotal = 0;
+         foreach (TxReceipt txReceipt in result)
+         {
+             currentGasUsedTotal += txReceipt.GasUsed;
+diff --git a/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockhashProvider.cs b/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockhashProvider.cs
+index 00f3645aad..5f11d1d6be 100644
+--- a/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockhashProvider.cs
++++ b/src/Nethermind/Nethermind.Facade/Simulate/SimulateBlockhashProvider.cs
+@@ -14,9 +14,9 @@ namespace Nethermind.Facade.Simulate;
+ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvider, IBlockTree blockTree)
+     : IBlockhashProvider
+ {
+-    public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
++    public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
+     {
+-        long bestKnown = blockTree.BestKnownNumber;
++        ulong bestKnown = blockTree.BestKnownNumber;
+         return bestKnown < number && blockTree.BestSuggestedHeader is not null
+             ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, bestKnown, spec)
+             : blockhashProvider.GetBlockhash(currentBlock, number, spec);
+diff --git a/src/Nethermind/Nethermind.Facade/Simulate/SimulateBridgeHelper.cs b/src/Nethermind/Nethermind.Facade/Simulate/SimulateBridgeHelper.cs
+index 37563ac3c8..f9fbe3e6bd 100644
+--- a/src/Nethermind/Nethermind.Facade/Simulate/SimulateBridgeHelper.cs
++++ b/src/Nethermind/Nethermind.Facade/Simulate/SimulateBridgeHelper.cs
+@@ -34,7 +34,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
+         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
+         IWorldState stateProvider,
+         IOverridableCodeInfoRepository codeInfoRepository,
+-        long blockNumber,
++        ulong blockNumber,
+         IReleaseSpec releaseSpec)
+     {
+         // state-override commits must not trigger EIP-158 deletion on accounts whose
+@@ -90,7 +90,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
+         SimulatePayload<TransactionWithSourceDetails> payload,
+         IBlockTracer<TTrace> tracer,
+         SimulateReadOnlyBlocksProcessingScope env,
+-        long gasCapLimit,
++        ulong gasCapLimit,
+         CancellationToken cancellationToken)
+     {
+         int blockCount = payload.BlockStateCalls?.Count ?? 0;
+@@ -132,7 +132,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
+         IBlockTracer<TTrace> tracer,
+         SimulateReadOnlyBlocksProcessingScope env,
+         List<SimulateBlockResult<TTrace>> output,
+-        long gasCapLimit,
++        ulong gasCapLimit,
+         CancellationToken cancellationToken)
+     {
+         IBlockTree blockTree = env.BlockTree;
+@@ -222,7 +222,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
+     private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
+     {
+         Block? latestBlock = blockTree.FindLatestBlock();
+-        long latestBlockNumber = latestBlock?.Number ?? 0;
++        ulong latestBlockNumber = latestBlock?.Number ?? 0;
+ 
+         if (latestBlockNumber < parent.Number)
+         {
+@@ -234,10 +234,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
+                 ? blockStateCalls[0]
+                 : null;
+ 
+-        ulong lastKnown = (ulong)latestBlockNumber;
++        ulong lastKnown = latestBlockNumber;
+         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
+         {
+-            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number - 1);
++            Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
+             if (searchResult is not null)
+             {
+                 parent = searchResult.Header;
+@@ -262,7 +262,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
+             {
+                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
+                 {
+-                    cachedNonce = test.Nonce.ToUInt64(null);
++                    cachedNonce = test.Nonce; // AccountStruct.Nonce is ulong
+                 }
+                 // else // Todo think if we shall create account here
+             }
+diff --git a/src/Nethermind/Nethermind.Facade/Simulate/SimulateDictionaryBlockStore.cs b/src/Nethermind/Nethermind.Facade/Simulate/SimulateDictionaryBlockStore.cs
+index a4b0be4b9d..8b37a73410 100644
+--- a/src/Nethermind/Nethermind.Facade/Simulate/SimulateDictionaryBlockStore.cs
++++ b/src/Nethermind/Nethermind.Facade/Simulate/SimulateDictionaryBlockStore.cs
+@@ -12,7 +12,7 @@ namespace Nethermind.Facade.Simulate;
+ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : IBlockStore
+ {
+     private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
+-    private readonly Dictionary<long, Block> _blockNumDict = [];
++    private readonly Dictionary<ulong, Block> _blockNumDict = [];
+     private readonly BlockDecoder _blockDecoder = new();
+ 
+     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
+@@ -21,13 +21,13 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) :
+         _blockNumDict[block.Number] = block;
+     }
+ 
+-    public void Delete(long blockNumber, Hash256 blockHash)
++    public void Delete(ulong blockNumber, Hash256 blockHash)
+     {
+         _blockDict.Remove(blockHash);
+         _blockNumDict.Remove(blockNumber);
+     }
+ 
+-    public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true)
++    public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true)
+     {
+         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
+         {
+@@ -42,7 +42,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) :
+         return block;
+     }
+ 
+-    public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
++    public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
+     {
+         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
+         {
+@@ -52,7 +52,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) :
+         return readonlyBaseBlockStore.GetRlp(blockNumber, blockHash);
+     }
+ 
+-    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash) =>
++    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
+         _blockNumDict.TryGetValue(blockNumber, out Block block)
+             ? new ReceiptRecoveryBlock(block)
+             : readonlyBaseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
+@@ -60,6 +60,6 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) :
+     public void Cache(Block block)
+         => Insert(block);
+ 
+-    public bool HasBlock(long blockNumber, Hash256 blockHash)
++    public bool HasBlock(ulong blockNumber, Hash256 blockHash)
+         => _blockNumDict.ContainsKey(blockNumber);
+ }
+diff --git a/src/Nethermind/Nethermind.Facade/Simulate/SimulateDictionaryHeaderStore.cs b/src/Nethermind/Nethermind.Facade/Simulate/SimulateDictionaryHeaderStore.cs
+index d4c87903e0..e402c67b9c 100644
+--- a/src/Nethermind/Nethermind.Facade/Simulate/SimulateDictionaryHeaderStore.cs
++++ b/src/Nethermind/Nethermind.Facade/Simulate/SimulateDictionaryHeaderStore.cs
+@@ -19,7 +19,7 @@ namespace Nethermind.Facade.Simulate;
+ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore) : IHeaderStore
+ {
+     private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = [];
+-    private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = [];
++    private readonly Dictionary<Hash256AsKey, ulong> _blockNumberDict = [];
+ 
+     public void Insert(BlockHeader header)
+     {
+@@ -35,7 +35,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
+         }
+     }
+ 
+-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
++    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, ulong? blockNumber = null)
+     {
+         if (_headerDict.TryGetValue(blockHash, out BlockHeader? header))
+         {
+@@ -60,18 +60,18 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
+         _blockNumberDict.Remove(blockHash);
+     }
+ 
+-    public void InsertBlockNumber(Hash256 blockHash, long blockNumber) => _blockNumberDict[blockHash] = blockNumber;
++    public void InsertBlockNumber(Hash256 blockHash, ulong blockNumber) => _blockNumberDict[blockHash] = blockNumber;
+ 
+-    public long? GetBlockNumber(Hash256 blockHash) =>
+-        _blockNumberDict.TryGetValue(blockHash, out long blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
++    public ulong? GetBlockNumber(Hash256 blockHash) =>
++        _blockNumberDict.TryGetValue(blockHash, out ulong blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
+ 
+-    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count)
++    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(ulong endBlockNumber, Hash256 endBlockHash, int count)
+     {
+         BlockHeader? cursor = Get(endBlockHash, shouldCache: false, blockNumber: endBlockNumber);
+         if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
+ 
+         ArrayPoolList<BlockHeader> result = new(count) { cursor };
+-        while (result.Count < count && cursor.ParentHash is not null)
++        while (result.Count < count && cursor.ParentHash is not null && cursor.Number > 0)
+         {
+             cursor = Get(cursor.ParentHash, shouldCache: false, blockNumber: cursor.Number - 1);
+             if (cursor is null) break;
+@@ -82,5 +82,5 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
+         return result;
+     }
+ 
+-    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null) => Get(blockHash, true, blockNumber);
++    public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null) => Get(blockHash, true, blockNumber);
+ }
+diff --git a/src/Nethermind/Nethermind.Facade/Simulate/SimulateRequestState.cs b/src/Nethermind/Nethermind.Facade/Simulate/SimulateRequestState.cs
+index 287ce49341..633c3e747b 100644
+--- a/src/Nethermind/Nethermind.Facade/Simulate/SimulateRequestState.cs
++++ b/src/Nethermind/Nethermind.Facade/Simulate/SimulateRequestState.cs
+@@ -10,8 +10,8 @@ public class SimulateRequestState : IBlobBaseFeeOverrideProvider
+ {
+     public bool Validate { get; set; }
+     public UInt256? BlobBaseFeeOverride { get; set; }
+-    public long TotalGasLeft { get; set; }
+-    public long BlockGasLeft { get; set; }
++    public ulong TotalGasLeft { get; set; }
++    public ulong BlockGasLeft { get; set; }
+     public bool[] TxsWithExplicitGas { get; private set; } = [];
+ 
+     public void SetTxsWithExplicitGas(TransactionWithSourceDetails[] calls)
+diff --git a/src/Nethermind/Nethermind.Facade/Simulate/SimulateTransactionProcessorAdapter.cs b/src/Nethermind/Nethermind.Facade/Simulate/SimulateTransactionProcessorAdapter.cs
+index a140952879..5bdda6ce12 100644
+--- a/src/Nethermind/Nethermind.Facade/Simulate/SimulateTransactionProcessorAdapter.cs
++++ b/src/Nethermind/Nethermind.Facade/Simulate/SimulateTransactionProcessorAdapter.cs
+@@ -1,6 +1,7 @@
+ // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+ // SPDX-License-Identifier: LGPL-3.0-only
+ 
++using System;
+ using Nethermind.Core;
+ using Nethermind.Core.Specs;
+ using Nethermind.Crypto;
+@@ -18,7 +19,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
+         // The gas limit per tx go down as the block is processed.
+         if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
+         {
+-            transaction.GasLimit = long.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
++            transaction.GasLimit = Math.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
+         }
+ 
+         if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
+@@ -30,7 +31,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
+         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
+ 
+         // Keep track of gas left
+-        long blockGasUsed = transaction.BlockGasUsed;
++        ulong blockGasUsed = transaction.BlockGasUsed;
+         simulateRequestState.TotalGasLeft -= blockGasUsed;
+         simulateRequestState.BlockGasLeft -= blockGasUsed;
+ 
+diff --git a/src/Nethermind/Nethermind.Facade/Simulate/SimulateTxTracer.cs b/src/Nethermind/Nethermind.Facade/Simulate/SimulateTxTracer.cs
+index 0914256f87..9c13a9c24d 100644
+--- a/src/Nethermind/Nethermind.Facade/Simulate/SimulateTxTracer.cs
++++ b/src/Nethermind/Nethermind.Facade/Simulate/SimulateTxTracer.cs
+@@ -52,7 +52,7 @@ public sealed class SimulateTxTracer : TxTracer
+     public int LogCount => _logs.Count;
+     public SimulateCallResult? TraceResult { get; set; }
+ 
+-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
++    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+     {
+         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+         if (!_isTracingTransfers) return;
+@@ -81,8 +81,8 @@ public sealed class SimulateTxTracer : TxTracer
+ 
+     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
+     {
+-        GasUsed = (ulong)gasSpent.SpentGas,
+-        MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
++        GasUsed = gasSpent.SpentGas,
++        MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
+         ReturnData = output,
+         Status = StatusCode.Success,
+         Logs = _logs.Select((entry, i) => new Log
+@@ -101,8 +101,8 @@ public sealed class SimulateTxTracer : TxTracer
+ 
+     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
+     {
+-        GasUsed = (ulong)gasSpent.SpentGas,
+-        MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
++        GasUsed = gasSpent.SpentGas,
++        MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
+         Error = new Error
+         {
+             Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Data/LogEntryForRpc.cs b/src/Nethermind/Nethermind.JsonRpc/Data/LogEntryForRpc.cs
+index 38f9d37d8f..2840ff73b3 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Data/LogEntryForRpc.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Data/LogEntryForRpc.cs
+@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Data
+         public long? TransactionIndex { get; set; }
+         public Hash256 TransactionHash { get; set; }
+         public Hash256 BlockHash { get; set; }
+-        public long? BlockNumber { get; set; }
++        public ulong? BlockNumber { get; set; }
+         public ulong? BlockTimestamp { get; set; }
+         public Address Address { get; set; }
+         public byte[] Data { get; set; }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Data/ReceiptForRpc.cs b/src/Nethermind/Nethermind.JsonRpc/Data/ReceiptForRpc.cs
+index 570e5de44b..7797c817e5 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Data/ReceiptForRpc.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Data/ReceiptForRpc.cs
+@@ -40,9 +40,9 @@ namespace Nethermind.JsonRpc.Data
+         public Hash256 TransactionHash { get; set; }
+         public long TransactionIndex { get; set; }
+         public Hash256? BlockHash { get; set; }
+-        public long BlockNumber { get; set; }
+-        public long CumulativeGasUsed { get; set; }
+-        public long GasUsed { get; set; }
++        public ulong BlockNumber { get; set; }
++        public ulong CumulativeGasUsed { get; set; }
++        public ulong GasUsed { get; set; }
+ 
+         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+         public ulong? BlobGasUsed { get; set; }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/IJsonRpcConfig.cs b/src/Nethermind/Nethermind.JsonRpc/IJsonRpcConfig.cs
+index 99f00b8ab4..76458e0b41 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/IJsonRpcConfig.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/IJsonRpcConfig.cs
+@@ -98,7 +98,7 @@ public interface IJsonRpcConfig : IConfig
+     string[] AdditionalRpcUrls { get; set; }
+ 
+     [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
+-    long? GasCap { get; set; }
++    ulong? GasCap { get; set; }
+ 
+     [ConfigItem(
+         Description = "The interval, in seconds, between the JSON-RPC stats report log.",
+diff --git a/src/Nethermind/Nethermind.JsonRpc/JsonRpcConfig.cs b/src/Nethermind/Nethermind.JsonRpc/JsonRpcConfig.cs
+index 919ef5905c..e46d0a621b 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/JsonRpcConfig.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/JsonRpcConfig.cs
+@@ -44,7 +44,7 @@ public class JsonRpcConfig : IJsonRpcConfig
+     }
+ 
+     public string[] AdditionalRpcUrls { get; set; } = [];
+-    public long? GasCap { get; set; } = 100000000;
++    public ulong? GasCap { get; set; } = 100000000;
+     public int ReportIntervalSeconds { get; set; } = 300;
+     public bool BufferResponses { get; set; }
+     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/BlockFinderExtensions.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/BlockFinderExtensions.cs
+index 43197c5afd..759ffb930c 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/BlockFinderExtensions.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/BlockFinderExtensions.cs
+@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules
+ 
+         public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
+         {
+-            long? requestedBlock = blockParameter.BlockNumber;
++            ulong? requestedBlock = blockParameter.BlockNumber;
+             if (requestedBlock is null)
+             {
+                 SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);
+@@ -109,14 +109,14 @@ namespace Nethermind.JsonRpc.Modules
+                 else
+                 {
+                     yield return startingBlock;
+-                    long startingBlockNumber = startingBlock.Object.Number;
+-                    long finalBlockNumber = finalBlockHeader.Object.Number;
++                    ulong startingBlockNumber = startingBlock.Object.Number;
++                    ulong finalBlockNumber = finalBlockHeader.Object.Number;
+                     if (startingBlockNumber > finalBlockNumber)
+                     {
+                         yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
+                     }
+ 
+-                    for (long i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
++                    for (ulong i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
+                     {
+                         yield return SearchForBlock(blockFinder, new BlockParameter(i));
+                     }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/DebugBridge.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/DebugBridge.cs
+index b0a6b24ce1..58fdfcf3b0 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/DebugBridge.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/DebugBridge.cs
+@@ -89,13 +89,13 @@ public class DebugBridge : IDebugBridge
+ 
+     public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
+ 
+-    public ChainLevelInfo GetLevelInfo(long number) => _blockTree.FindLevel(number);
++    public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
+ 
+-    public int DeleteChainSlice(long startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
++    public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
+ 
+     public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
+ 
+-    public Task<bool> MigrateReceipts(long from, long to) => _receiptsMigration.Run(from, to);
++    public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);
+ 
+     public void InsertReceipts(BlockParameter blockParameter, TxReceipt[] txReceipts)
+     {
+@@ -144,7 +144,7 @@ public class DebugBridge : IDebugBridge
+         return block?.Transactions[txReceipt.Index];
+     }
+ 
+-    public GethLikeTxTrace? GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
++    public GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+         _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
+ 
+     public GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+@@ -173,7 +173,7 @@ public class DebugBridge : IDebugBridge
+ 
+     public byte[]? GetBlockRlp(BlockParameter parameter)
+     {
+-        if (parameter.BlockNumber is long number)
++        if (parameter.BlockNumber is ulong number)
+         {
+             Hash256? hash = _blockTree.FindHash(number);
+             if (hash is null) return null;
+@@ -213,7 +213,7 @@ public class DebugBridge : IDebugBridge
+ 
+     public Hash256? GetTransactionBlockHash(Hash256 transactionHash) => _receiptStorage.FindBlockHash(transactionHash);
+ 
+-    public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
++    public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
+     {
+         foreach (TransactionBundle bundle in bundles)
+         {
+@@ -221,7 +221,7 @@ public class DebugBridge : IDebugBridge
+         }
+     }
+ 
+-    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
++    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
+     {
+         foreach (TransactionForRpc txForRpc in bundle.Transactions)
+         {
+@@ -255,6 +255,6 @@ public class DebugBridge : IDebugBridge
+             }
+         }
+ 
+-        static GethLikeTxTrace? CreateFailTrace(long? gasLimit) => new() { Failed = true, Gas = gasLimit ?? 0, ReturnValue = [] };
++        static GethLikeTxTrace? CreateFailTrace(ulong? gasLimit) => new() { Failed = true, Gas = gasLimit ?? 0UL, ReturnValue = [] };
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/DebugRpcModule.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/DebugRpcModule.cs
+index 3e71f4f515..08bda64b6a 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/DebugRpcModule.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/DebugRpcModule.cs
+@@ -52,13 +52,13 @@ public class DebugRpcModule(
+ 
+     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
+     {
+-        ChainLevelInfo? levelInfo = debugBridge.GetLevelInfo(number);
++        ChainLevelInfo? levelInfo = debugBridge.GetLevelInfo(number >= 0 ? (ulong)number : 0UL);
+         return levelInfo is null
+             ? ResultWrapper<ChainLevelForRpc>.Fail($"Chain level {number} does not exist", ErrorCodes.ResourceNotFound)
+             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
+     }
+ 
+-    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) => ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber, force));
++    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) => ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber >= 0 ? (ulong)startNumber : 0UL, force));
+ 
+     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
+     {
+@@ -212,7 +212,7 @@ public class DebugRpcModule(
+             return headerError;
+         }
+ 
+-        long? blockNo = blockParameter.BlockNumber;
++        ulong? blockNo = blockParameter.BlockNumber;
+         if (!blockNo.HasValue)
+         {
+             throw new InvalidDataException("Block number value incorrect");
+@@ -221,7 +221,7 @@ public class DebugRpcModule(
+         if (CanStreamStructLogs(options))
+         {
+             GethTraceOptions effective = options ?? GethTraceOptions.Default;
+-            long resolvedBlockNo = blockNo.Value;
++            ulong resolvedBlockNo = blockNo.Value;
+             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
+                 (writer, pipeWriter, token) =>
+                     debugBridge.GetTransactionTrace(resolvedBlockNo, index, token, effective, writer, pipeWriter)));
+@@ -301,7 +301,7 @@ public class DebugRpcModule(
+         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+     }
+ 
+-    public async Task<ResultWrapper<bool>> debug_migrateReceipts(long from, long to) =>
++    public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>
+         ResultWrapper<bool>.Success(await debugBridge.MigrateReceipts(from, to));
+ 
+     public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
+@@ -475,7 +475,7 @@ public class DebugRpcModule(
+ 
+     public ResultWrapper<GcStats> debug_gcStats() => throw new NotImplementedException();
+ 
+-    public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber) =>
++    public ResultWrapper<byte[]> debug_getBlockRlp(ulong blockNumber) =>
+         GetBlockRlpOrFail(new BlockParameter(blockNumber));
+ 
+     public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash) =>
+@@ -745,7 +745,7 @@ public class DebugRpcModule(
+ 
+     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
+     {
+-        long? defaultGas = jsonRpcConfig.GasCap.IsGasCapped() ? jsonRpcConfig.GasCap : null;
++        ulong? defaultGas = jsonRpcConfig.GasCap.IsGasCapped() ? jsonRpcConfig.GasCap : null;
+         foreach (TransactionBundle bundle in bundles)
+         {
+             foreach (TransactionForRpc call in bundle.Transactions)
+@@ -770,11 +770,11 @@ public class DebugRpcModule(
+         // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
+         // Pre-compute the block number each bundle targets so we can drop fillers from the result and
+         // keep a 1:1 mapping to the input bundles.
+-        HashSet<long> bundleBlockNumbers = new(bundles.Length);
+-        long lastBlockNumber = header.Number;
++        HashSet<ulong> bundleBlockNumbers = new(bundles.Length);
++        ulong lastBlockNumber = header.Number;
+         foreach (TransactionBundle bundle in bundles)
+         {
+-            long number = (long)bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
++            ulong number = bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
+             bundleBlockNumbers.Add(number);
+             lastBlockNumber = number;
+         }
+@@ -801,7 +801,7 @@ public class DebugRpcModule(
+         }
+ 
+         IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data
+-            .Where(blockResult => blockResult.Number is long n && bundleBlockNumbers.Contains(n))
++            .Where(blockResult => blockResult.Number is ulong n && bundleBlockNumbers.Contains(n))
+             .Select(blockResult => blockResult.Traces);
+ 
+         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/GethLikeTxTraceStreamingBundleResult.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/GethLikeTxTraceStreamingBundleResult.cs
+index 4c63487fe0..e20eaae2fe 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/GethLikeTxTraceStreamingBundleResult.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/GethLikeTxTraceStreamingBundleResult.cs
+@@ -35,14 +35,14 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
+     private readonly IDebugBridge _bridge;
+     private readonly TransactionBundle[] _bundles;
+     private readonly BlockParameter _blockParameter;
+-    private readonly long? _gasCap;
++    private readonly ulong? _gasCap;
+     private readonly GethTraceOptions _options;
+ 
+     public GethLikeTxTraceStreamingBundleResult(
+         IDebugBridge bridge,
+         TransactionBundle[] bundles,
+         BlockParameter blockParameter,
+-        long? gasCap,
++        ulong? gasCap,
+         GethTraceOptions options,
+         CancellationTokenSource timeoutCts,
+         ILogger logger)
+@@ -103,7 +103,7 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
+         Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: _gasCap);
+         if (!txResult.Success(out Transaction? tx, out string? validationError))
+         {
+-            StructLogEnvelopeWriter.EmitFailedTrace(writer, txForRpc.Gas ?? 0L, validationError);
++            StructLogEnvelopeWriter.EmitFailedTrace(writer, txForRpc.Gas ?? 0UL, validationError);
+             return;
+         }
+ 
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/IDebugBridge.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/IDebugBridge.cs
+index d2da45ad2f..6c2b69c33e 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/IDebugBridge.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/IDebugBridge.cs
+@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
+ public interface IDebugBridge
+ {
+     GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+-    GethLikeTxTrace? GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
++    GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+     GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+     GethLikeTxTrace? GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+     GethLikeTxTrace? GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+@@ -31,10 +31,10 @@ public interface IDebugBridge
+     byte[] GetBlockRlp(BlockParameter param);
+     byte[] GetDbValue(string dbName, byte[] key);
+     object GetConfigValue(string category, string name);
+-    ChainLevelInfo GetLevelInfo(long number);
+-    int DeleteChainSlice(long startNumber, bool force = false);
++    ChainLevelInfo GetLevelInfo(ulong number);
++    int DeleteChainSlice(ulong startNumber, bool force = false);
+     void UpdateHeadBlock(Hash256 blockHash);
+-    Task<bool> MigrateReceipts(long from, long to);
++    Task<bool> MigrateReceipts(ulong from, ulong to);
+     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
+     SyncReportSummary GetCurrentSyncStage();
+     bool HaveNotSyncedHeadersYet();
+@@ -44,5 +44,5 @@ public interface IDebugBridge
+     TxReceipt[]? GetReceiptsForBlock(BlockParameter param);
+     Transaction? GetTransactionFromHash(Hash256 hash);
+     Hash256? GetTransactionBlockHash(Hash256 transactionHash);
+-    IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
++    IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+ }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/IDebugRpcModule.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/IDebugRpcModule.cs
+index b31017622e..88f5785089 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/IDebugRpcModule.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/IDebugRpcModule.cs
+@@ -85,7 +85,7 @@ public interface IDebugRpcModule : IRpcModule
+     ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null);
+ 
+     [JsonRpcMethod(Description = "Sets the block number up to which receipts will be migrated to (Nethermind specific).")]
+-    Task<ResultWrapper<bool>> debug_migrateReceipts(long from, long to);
++    Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to);
+ 
+     [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
+     Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/StructLogEnvelopeWriter.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/StructLogEnvelopeWriter.cs
+index 835f592b9b..623e39121d 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/StructLogEnvelopeWriter.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/StructLogEnvelopeWriter.cs
+@@ -29,7 +29,7 @@ internal static class StructLogEnvelopeWriter
+         CancellationToken cancellationToken,
+         Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace,
+         ILogger logger,
+-        long fallbackGas = 0L)
++        ulong fallbackGas = 0UL)
+     {
+         GethLikeTxTrace? trace = null;
+         Exception? failure = null;
+@@ -76,7 +76,7 @@ internal static class StructLogEnvelopeWriter
+     /// Writes a failure trace envelope for the case where the trace was never invoked
+     /// (e.g. tx couldn't even be constructed from RPC input). No structLogs are emitted.
+     /// </summary>
+-    public static void EmitFailedTrace(Utf8JsonWriter writer, long gasLimit, string? errorMessage = null)
++    public static void EmitFailedTrace(Utf8JsonWriter writer, ulong gasLimit, string? errorMessage = null)
+     {
+         writer.WriteStartObject();
+         writer.WritePropertyName("structLogs"u8);
+@@ -123,9 +123,9 @@ internal static class StructLogEnvelopeWriter
+     private static string ReplacePrefix(string s, string oldPrefix, string newPrefix)
+         => s.StartsWith(oldPrefix, StringComparison.Ordinal) ? newPrefix + s[oldPrefix.Length..] : s;
+ 
+-    private static void WriteFooter(Utf8JsonWriter writer, GethLikeTxTrace? trace, string? errorMessage, int errorCode, long fallbackGas)
++    private static void WriteFooter(Utf8JsonWriter writer, GethLikeTxTrace? trace, string? errorMessage, int errorCode, ulong fallbackGas)
+     {
+-        long gas = trace?.Gas ?? fallbackGas;
++        ulong gas = trace?.Gas ?? fallbackGas;
+         bool failed = errorMessage is not null || trace is null || trace.Failed;
+         byte[] returnValue = trace?.ReturnValue ?? [];
+ 
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/ErrorWrapper.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/ErrorWrapper.cs
+index f0d23a623c..48c4803a37 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/ErrorWrapper.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/ErrorWrapper.cs
+@@ -13,10 +13,10 @@ namespace Nethermind.JsonRpc.Modules.Eth;
+ /// </summary>
+ internal static class ErrorWrapper
+ {
+-    public static string EthCall(string inner, long gasLimit) =>
++    public static string EthCall(string inner, ulong gasLimit) =>
+         $"err: {inner} (supplied gas {gasLimit})";
+ 
+-    public static string EstimateGasBinarySearch(string inner, long gas) =>
++    public static string EstimateGasBinarySearch(string inner, ulong gas) =>
+         $"failed with {gas} gas: {inner}";
+ 
+     public static string CreateAccessList(string inner, Hash256 txHash) =>
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthCapabilities.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthCapabilities.cs
+index 0e6cc8656c..e22c76bd1e 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthCapabilities.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthCapabilities.cs
+@@ -40,7 +40,7 @@ public record EthCapabilities(
+ /// <summary>Head block number and hash.</summary>
+ /// <param name="Number">Block number.</param>
+ /// <param name="Hash">Block hash.</param>
+-public readonly record struct ChainHead(long Number, Hash256 Hash);
++public readonly record struct ChainHead(ulong Number, Hash256 Hash);
+ 
+ /// <summary>Availability descriptor for one historical data resource.</summary>
+ /// <param name="Disabled"><c>true</c> when the resource is completely unavailable on this node.</param>
+@@ -48,7 +48,7 @@ public readonly record struct ChainHead(long Number, Hash256 Hash);
+ /// <param name="DeleteStrategy">Retention / deletion strategy. Present only when data is pruned with a rolling window. Omitted for archive nodes or disabled resources.</param>
+ public readonly record struct ResourceAvailability(
+     bool Disabled,
+-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? OldestBlock = null,
++    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ulong? OldestBlock = null,
+     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DeleteStrategy? DeleteStrategy = null);
+ 
+ /// <summary>Rolling-window deletion strategy for a resource.</summary>
+@@ -56,4 +56,4 @@ public readonly record struct ResourceAvailability(
+ /// <param name="RetentionBlocks">Number of recent blocks retained. Per spec this is a JSON integer (not a hex quantity).</param>
+ public readonly record struct DeleteStrategy(
+     string Type,
+-    [property: JsonConverter(typeof(LongRawJsonConverter))] long RetentionBlocks);
++    [property: JsonConverter(typeof(ULongRawJsonConverter))] ulong RetentionBlocks);
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthCapabilitiesProvider.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthCapabilitiesProvider.cs
+index 68cb484719..f954cc5c90 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthCapabilitiesProvider.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthCapabilitiesProvider.cs
+@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
+ using Nethermind.Blockchain.Synchronization;
+ using Nethermind.Core;
+ using Nethermind.Core.Crypto;
++using Nethermind.Core.Extensions;
+ using Nethermind.History;
+ using Nethermind.State;
+ using Nethermind.Synchronization;
+@@ -31,21 +32,21 @@ public sealed class EthCapabilitiesProvider(
+         }
+ 
+         bool fastSyncing = syncConfig.FastSync;
+-        long pivot = syncConfig.PivotNumber;
+-        long bodiesBarrier = pivot == 0 ? 0 : Math.Min(pivot, syncConfig.AncientBodiesBarrier);
+-        long receiptsBarrier = pivot == 0 ? 0 : Math.Min(pivot, Math.Max(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier));
++        ulong pivot = syncConfig.PivotNumber;
++        ulong bodiesBarrier = pivot == 0ul ? 0ul : Math.Min(pivot, syncConfig.AncientBodiesBarrier);
++        ulong receiptsBarrier = pivot == 0ul ? 0ul : Math.Min(pivot, Math.Max(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier));
+ 
+         // Barriers are the eventual floor; before the descending pointer is set we have nothing.
+         bool bodiesDownloaded = IsDescendingResourceDownloaded(fastSyncing, pivot, syncConfig.DownloadBodiesInFastSync, syncPointers.LowestInsertedBodyNumber);
+         bool receiptsDownloaded = bodiesDownloaded && IsDescendingResourceDownloaded(fastSyncing, pivot, syncConfig.DownloadReceiptsInFastSync, syncPointers.LowestInsertedReceiptBlockNumber);
+ 
+-        long historyFloor = historyPruner.OldestBlockHeader?.Number ?? 0;
++        ulong historyFloor = historyPruner.OldestBlockHeader?.Number ?? 0ul;
+         DeleteStrategy? historyWindow = BuildWindow(
+-            historyConfig.Pruning == PruningModes.Rolling ? historyPruner.GetRetentionBlocks(historyConfig.RetentionEpochs) : 0);
++            historyConfig.Pruning == PruningModes.Rolling ? historyPruner.GetRetentionBlocks(historyConfig.RetentionEpochs) : 0UL);
+ 
+-        long lowestReceipt = Math.Max(syncPointers.LowestInsertedReceiptBlockNumber ?? 0L, receiptsBarrier);
+-        long lowestBody = Math.Max(syncPointers.LowestInsertedBodyNumber ?? 0L, bodiesBarrier);
+-        long lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0L, lowestBody);
++        ulong lowestReceipt = Math.Max(syncPointers.LowestInsertedReceiptBlockNumber ?? 0ul, receiptsBarrier);
++        ulong lowestBody = Math.Max(syncPointers.LowestInsertedBodyNumber ?? 0ul, bodiesBarrier);
++        ulong lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0ul, lowestBody);
+ 
+         ResourceAvailability state = BuildState(head, fastSyncing);
+ 
+@@ -59,28 +60,28 @@ public sealed class EthCapabilitiesProvider(
+ 
+     private ResourceAvailability BuildState(BlockHeader head, bool fastSyncing)
+     {
+-        long? oldestStateBlock = stateBoundary.OldestStateBlock;
++        ulong? oldestStateBlock = stateBoundary.OldestStateBlock;
+         // During fast sync, state isn't queryable until StateSyncRunner writes the pivot floor.
+         if (fastSyncing && oldestStateBlock is null) return Disabled;
+ 
+-        long stateFloor = oldestStateBlock ?? 0L;
++        ulong stateFloor = oldestStateBlock ?? 0UL;
+         if (stateBoundary.RetentionWindowBlocks is not { } retention)
+             return new ResourceAvailability(Disabled: false, OldestBlock: stateFloor, DeleteStrategy: null);
+ 
+-        long windowOldest = Math.Max(0L, head.Number - retention);
+-        long stateOldest = Math.Max(stateFloor, windowOldest);
++        ulong windowOldest = head.Number.SaturatingSub(retention);
++        ulong stateOldest = Math.Max(stateFloor, windowOldest);
+         // Emit the window only when it's the binding constraint, and report the configured
+         // retention so the value stays accurate before head reaches it.
+         DeleteStrategy? window = windowOldest >= stateFloor ? BuildWindow(retention) : null;
+         return new ResourceAvailability(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: window);
+     }
+ 
+-    private static bool IsDescendingResourceDownloaded(bool fastSyncing, long pivot, bool downloadInFastSync, long? pointer) =>
+-        !fastSyncing || (downloadInFastSync && (pivot == 0 || pointer is not null));
++    private static bool IsDescendingResourceDownloaded(bool fastSyncing, ulong pivot, bool downloadInFastSync, ulong? pointer) =>
++        !fastSyncing || (downloadInFastSync && (pivot == 0ul || pointer is not null));
+ 
+-    private static ResourceAvailability BuildResource(bool enabled, long oldestBlock, DeleteStrategy? deleteStrategy) =>
++    private static ResourceAvailability BuildResource(bool enabled, ulong oldestBlock, DeleteStrategy? deleteStrategy) =>
+         enabled ? new ResourceAvailability(false, oldestBlock, deleteStrategy) : Disabled;
+ 
+-    private static DeleteStrategy? BuildWindow(long retentionBlocks) =>
++    private static DeleteStrategy? BuildWindow(ulong retentionBlocks) =>
+         retentionBlocks > 0 ? new DeleteStrategy("window", retentionBlocks) : null;
+ }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthRpcModule.TransactionExecutor.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthRpcModule.TransactionExecutor.cs
+index 9ea4dc7893..cd3085b07e 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthRpcModule.TransactionExecutor.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthRpcModule.TransactionExecutor.cs
+@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
+ 
+             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+             {
+-                if (blockOverride?.GasLimit > (ulong)_rpcConfig.GasCap!.Value)
++                if (blockOverride?.GasLimit > _rpcConfig.GasCap!.Value)
+                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {_rpcConfig.GasCap.Value}", ErrorCodes.InvalidInput);
+                 _blockOverride = blockOverride;
+                 return Execute(transactionCall, blockParameter, stateOverride);
+@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
+                 {
+                     if (BlockOverride?.GasLimit is not null)
+                     {
+-                        transactionCall.Gas = (long)BlockOverride.GasLimit.Value;
++                        transactionCall.Gas = BlockOverride.GasLimit.Value;
+                     }
+                     else
+                     {
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthRpcModule.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthRpcModule.cs
+index 254b713888..afaa96c1a5 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthRpcModule.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthRpcModule.cs
+@@ -154,7 +154,7 @@ public partial class EthRpcModule(
+         return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
+     }
+ 
+-    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
++    public ResultWrapper<FeeHistoryResults> eth_feeHistory(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
+ 
+     public ResultWrapper<IEnumerable<Address>> eth_accounts()
+     {
+@@ -168,10 +168,10 @@ public partial class EthRpcModule(
+         }
+     }
+ 
+-    public Task<ResultWrapper<long?>> eth_blockNumber()
++    public Task<ResultWrapper<ulong?>> eth_blockNumber()
+     {
+-        long number = _blockchainBridge.HeadBlock?.Number ?? 0;
+-        return Task.FromResult(ResultWrapper<long?>.Success(number));
++        ulong number = _blockchainBridge.HeadBlock?.Number ?? 0;
++        return Task.FromResult(ResultWrapper<ulong?>.Success(number));
+     }
+ 
+     public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter? blockParameter = null)
+@@ -855,7 +855,7 @@ public partial class EthRpcModule(
+         {
+             CancellationToken cancellationToken = timeout.Token;
+ 
+-            long? headNumber = _blockFinder.Head?.Number;
++            ulong? headNumber = _blockFinder.Head?.Number;
+             if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
+             {
+                 return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
+@@ -1137,11 +1137,11 @@ public partial class EthRpcModule(
+     public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash)
+         => GetBlockAccessList(blockHash, null);
+ 
+-    public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(long blockNumber)
++    public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(ulong blockNumber)
+         => GetBlockAccessList(null, blockNumber);
+-    private ResultWrapper<ReadOnlyBlockAccessList?> GetBlockAccessList(Hash256? blockHash, long? blockNumber)
++    private ResultWrapper<ReadOnlyBlockAccessList?> GetBlockAccessList(Hash256? blockHash, ulong? blockNumber)
+     {
+-        Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber.Value) : _blockFinder.FindBlock(blockHash);
++        Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber!.Value) : _blockFinder.FindBlock(blockHash);
+         if (block is null)
+         {
+             return ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistory/FeeHistoryOracle.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistory/FeeHistoryOracle.cs
+index e9de242527..208ceddbbb 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistory/FeeHistoryOracle.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistory/FeeHistoryOracle.cs
+@@ -27,15 +27,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+         private static readonly ResultWrapper<FeeHistoryResults> _validationPassed = ResultWrapper<FeeHistoryResults>.Success(null);
+         private const int MaxBlockCount = 1024;
+         private const int RewardPercentilesLengthLimit = 100;
+-        private readonly int _oldestBlockDistanceFromHeadAllowedInCache;
+-        private long _lastCleanupHeadBlockNumber = 0;
++        private readonly ulong _oldestBlockDistanceFromHeadAllowedInCache;
++        private ulong _lastCleanupHeadBlockNumber = 0;
+         private Task? _cleanupTask = null;
+         private readonly ConcurrentDictionary<Hash256AsKey, BlockFeeHistorySearchInfo> _feeHistoryCache = new();
+         private readonly IBlockTree _blockTree;
+         private readonly IReceiptStorage _receiptStorage;
+         private readonly ISpecProvider _specProvider;
+ 
+-        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, int? maxDistanceFromHead = null)
++        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, ulong? maxDistanceFromHead = null)
+         {
+             _blockTree = blockTree;
+             _receiptStorage = receiptStorage;
+@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+             }
+         });
+ 
+-        private readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
++        private readonly record struct RewardInfo(ulong GasUsed, UInt256 PremiumPerGas);
+ 
+         private readonly struct RewardInfoByPremiumAscendingComparer : IComparer<RewardInfo>
+         {
+@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+         }
+ 
+         private readonly record struct BlockFeeHistorySearchInfo(
+-            long BlockNumber,
++            ulong BlockNumber,
+             UInt256 BlockBaseFeePerGas,
+             UInt256 BaseFeePerGasEst,
+             UInt256 BaseFeePerBlobGas,
+@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+             double GasUsedRatio,
+             double BlobGasUsedRatio,
+             Hash256? ParentHash,
+-            long GasUsed,
++            ulong GasUsed,
+             int BlockTransactionsLength,
+             List<RewardInfo> RewardsInBlocks);
+ 
+@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+                     : SaveHistorySearchInfo(block);
+         }
+ 
+-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, long blockNumber)
++        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber)
+         {
+             if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
+             {
+@@ -154,10 +154,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+         }
+ 
+         private bool ShouldCache(Block block) =>
+-            _blockTree.Head is null || block.Number >= _blockTree.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache;
++            _blockTree.Head is null || block.Number >= _blockTree.Head.Number.SaturatingSub(_oldestBlockDistanceFromHeadAllowedInCache);
+ 
+         public ResultWrapper<FeeHistoryResults> GetFeeHistory(
+-            int blockCount,
++            ulong blockCount,
+             BlockParameter newestBlock,
+             double[] rewardPercentiles)
+         {
+@@ -182,7 +182,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+             BlockFeeHistorySearchInfo info = historyInfo.Value;
+ 
+             // Assumes if blockCount is ever greater than the BlockNumber then BlockNumber must fall within integer size limits
+-            int effectiveBlockCount = info.BlockNumber < blockCount - 1 ? (int)info.BlockNumber + 1 : blockCount;
++            int effectiveBlockCount = info.BlockNumber < blockCount - 1 ? (int)info.BlockNumber + 1 : (int)blockCount;
+             int tempBlockCount = effectiveBlockCount + 1;
+             ArrayPoolList<UInt256> baseFeePerGas = new(tempBlockCount, tempBlockCount);
+             ArrayPoolList<UInt256> baseFeePerBlobGas = new(tempBlockCount, tempBlockCount);
+@@ -192,7 +192,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+                 ? new ArrayPoolList<ArrayPoolList<UInt256>>(effectiveBlockCount, effectiveBlockCount)
+                 : null;
+ 
+-            long oldestBlockNumber = info.BlockNumber;
++            ulong oldestBlockNumber = info.BlockNumber;
+             baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
+             baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGasEst;
+ 
+@@ -222,8 +222,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+ 
+         private void TryRunCleanup()
+         {
+-            long headNumber = _blockTree.Head?.Number ?? 0;
+-            long lastCleanupHeadBlockNumber = _lastCleanupHeadBlockNumber;
++            ulong headNumber = _blockTree.Head?.Number ?? 0;
++            ulong lastCleanupHeadBlockNumber = _lastCleanupHeadBlockNumber;
+             if (lastCleanupHeadBlockNumber != headNumber
+                 && _feeHistoryCache.Count > 2 * MaxBlockCount // let's let the cache grow a bit and do less cleanup
+                 && _cleanupTask is null
+@@ -254,12 +254,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+ 
+         private List<RewardInfo> GetRewardsInBlock(Block block)
+         {
+-            static IEnumerable<long> CalculateGasUsed(TxReceipt[] txReceipts)
++            static IEnumerable<ulong> CalculateGasUsed(TxReceipt[] txReceipts)
+             {
+-                long previousGasUsedTotal = 0;
++                ulong previousGasUsedTotal = 0;
+                 foreach (TxReceipt receipt in txReceipts)
+                 {
+-                    long gasUsedTotal = receipt.GasUsedTotal;
++                    ulong gasUsedTotal = receipt.GasUsedTotal;
+                     yield return gasUsedTotal - previousGasUsedTotal;
+                     previousGasUsedTotal = gasUsedTotal;
+                 }
+@@ -267,14 +267,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+ 
+             TxReceipt[] receipts = _receiptStorage.Get(block, false);
+             Transaction[] txs = block.Transactions;
+-            using ArrayPoolListRef<long> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
++            using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
+                 ? CalculateGasUsed(receipts)
+                 // If no receipts available, approximate on GasLimit
+                 // We could just go with null here too and just don't return percentiles
+                 : txs.Select(static tx => tx.GasLimit));
+ 
+             List<RewardInfo> rewardInfos = new(txs.Length);
+-            Span<long> gasUsedSpan = gasUsed.AsSpan();
++            Span<ulong> gasUsedSpan = gasUsed.AsSpan();
+             for (int i = 0; i < txs.Length; i++)
+             {
+                 txs[i].TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
+@@ -291,13 +291,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+             double[] rewardPercentiles,
+             List<RewardInfo> rewardsInBlock)
+         {
+-            long sumGasUsed = rewardsInBlock[0].GasUsed;
++            ulong sumGasUsed = rewardsInBlock[0].GasUsed;
+             int txIndex = 0;
+             ArrayPoolList<UInt256> percentileValues = new(rewardPercentiles.Length);
+ 
+             foreach (double percentile in rewardPercentiles)
+             {
+-                double thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
++                ulong thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
+                 while (txIndex + 1 < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
+                 {
+                     txIndex++;
+@@ -310,7 +310,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+             return percentileValues;
+         }
+ 
+-        private static ResultWrapper<FeeHistoryResults> Validate(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles)
++        private static ResultWrapper<FeeHistoryResults> Validate(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles)
+         {
+             if (newestBlock.Type == BlockParameterType.BlockHash)
+             {
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistory/IFeeHistoryOracle.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistory/IFeeHistoryOracle.cs
+index e032e66896..733e4e17b4 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistory/IFeeHistoryOracle.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistory/IFeeHistoryOracle.cs
+@@ -7,6 +7,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+ {
+     public interface IFeeHistoryOracle
+     {
+-        ResultWrapper<FeeHistoryResults> GetFeeHistory(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles);
++        ResultWrapper<FeeHistoryResults> GetFeeHistory(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles);
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistoryResults.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistoryResults.cs
+index 3f44d830d2..4b8d6d3c46 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistoryResults.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/FeeHistoryResults.cs
+@@ -9,7 +9,7 @@ using Nethermind.Core.Collections;
+ namespace Nethermind.JsonRpc.Modules.Eth;
+ 
+ public class FeeHistoryResults(
+-    long oldestBlock,
++    ulong oldestBlock,
+     ArrayPoolList<UInt256> baseFeePerGas,
+     ArrayPoolList<double> gasUsedRatio,
+     ArrayPoolList<UInt256> baseFeePerBlobGas,
+@@ -27,7 +27,7 @@ public class FeeHistoryResults(
+     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+     public ArrayPoolList<double> BlobGasUsedRatio { get; } = blobGasUsedRatio;
+ 
+-    public long OldestBlock { get; } = oldestBlock;
++    public ulong OldestBlock { get; } = oldestBlock;
+ 
+     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+     public ArrayPoolList<ArrayPoolList<UInt256>>? Reward { get; } = reward;
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/GasPrice/GasPriceOracle.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/GasPrice/GasPriceOracle.cs
+index f2455fc5ea..afd20d160e 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/GasPrice/GasPriceOracle.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/GasPrice/GasPriceOracle.cs
+@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
+             return ValueTask.FromResult(gasPriceEstimate!);
+         }
+ 
+-        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber) =>
++        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber) =>
+             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
+             static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
+ 
+@@ -86,16 +86,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
+ 
+         private delegate UInt256 CalculateGas(Transaction transaction, bool eip1559, UInt256 baseFee);
+ 
+-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
++        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
+         {
+-            IEnumerable<Block> GetBlocks(long currentBlockNumber)
++            IEnumerable<Block> GetBlocks(ulong currentBlockNumber)
+             {
+-                while (currentBlockNumber >= 0)
++                do
+                 {
+                     if (_logger.IsTrace) _logger.Trace($"GasPriceOracle - searching for block number {currentBlockNumber}");
+                     yield return _blockFinder.FindBlock(currentBlockNumber)!;
+-                    currentBlockNumber--;
+-                }
++                } while (currentBlockNumber-- != 0);
+             }
+ 
+             return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction);
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/IEthRpcModule.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/IEthRpcModule.cs
+index cfd0c7d183..85ace8b6d1 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/IEthRpcModule.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/IEthRpcModule.cs
+@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
+             Description = "Returns block fee history.",
+             IsSharable = true,
+             ExampleResponse = "{\"baseFeePerGas\": [\"0x116c1cbb03\", \"0x10c3714c06\"], \"gasUsedRatio\": [0.3487305666666667, 0.3], \"oldestBlock\": \"0xc7e5ff\", \"reward\": [[\"0x3b9aca00\",\"0x3b9aca00\"], [\"0x0\",\"0x3bb24dfa\"]]}")]
+-        ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles);
++        ResultWrapper<FeeHistoryResults> eth_feeHistory(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles);
+ 
+         [JsonRpcMethod(IsImplemented = false, Description = "Returns full state snapshot", IsSharable = true)]
+         ResultWrapper<byte[]> eth_snapshot();
+@@ -87,7 +87,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
+             Description = "Returns current block number",
+             IsSharable = true,
+             ExampleResponse = "0x885480")]
+-        Task<ResultWrapper<long?>> eth_blockNumber();
++        Task<ResultWrapper<ulong?>> eth_blockNumber();
+ 
+         [JsonRpcMethod(IsImplemented = true,
+             Description = "Returns account balance",
+@@ -363,6 +363,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
+         ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
+ 
+         [JsonRpcMethod(Description = "Retrieves block access list for a block by number.")]
+-        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(long number);
++        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(ulong number);
+     }
+ }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/SimulateTxExecutor.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/SimulateTxExecutor.cs
+index 74d3a7203b..348509d635 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/SimulateTxExecutor.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Eth/SimulateTxExecutor.cs
+@@ -120,7 +120,7 @@ public class SimulateTxExecutor<TTrace>(
+ 
+         if (call.BlockStateCalls is not null)
+         {
+-            long lastBlockNumber = header.Number;
++            ulong lastBlockNumber = header.Number;
+             ulong lastBlockTime = header.Timestamp;
+ 
+             using ArrayPoolListRef<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);
+@@ -133,14 +133,14 @@ public class SimulateTxExecutor<TTrace>(
+                 if (givenNumber > long.MaxValue)
+                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
+ 
+-                if (givenNumber <= (ulong)lastBlockNumber)
++                if (givenNumber <= lastBlockNumber)
+                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.BlockNumberNotIncreasing, ErrorCodes.InvalidInputBlocksOutOfOrder);
+ 
+                 // if the no. of filler blocks are greater than maximum simulate blocks cap
+-                if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
++                if (givenNumber - lastBlockNumber > (ulong)_blocksLimit)
+                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"too many blocks", ErrorCodes.ClientLimitExceededError);
+ 
+-                for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
++                for (ulong fillBlockNumber = lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
+                 {
+                     ulong fillBlockTime = lastBlockTime + _secondsPerSlot;
+                     completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
+@@ -154,24 +154,24 @@ public class SimulateTxExecutor<TTrace>(
+ 
+                 blockToSimulate.BlockOverrides.Number = givenNumber;
+ 
+-                if (blockToSimulate.BlockOverrides.Time is not null)
++                if (blockToSimulate.BlockOverrides.Time is { } blockTime)
+                 {
+-                    if (blockToSimulate.BlockOverrides.Time <= lastBlockTime)
++                    if (blockTime <= lastBlockTime)
+                     {
+                         return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block timestamp out of order {blockToSimulate.BlockOverrides.Time} is <= than given base timestamp of {lastBlockTime}!", ErrorCodes.BlockTimestampNotIncreased);
+                     }
+-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
++                    lastBlockTime = blockTime;
+                 }
+                 else
+                 {
+-                    blockToSimulate.BlockOverrides.Time = lastBlockTime + _secondsPerSlot;
+-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
++                    lastBlockTime += _secondsPerSlot;
++                    blockToSimulate.BlockOverrides.Time = lastBlockTime;
+                 }
+-                lastBlockNumber = (long)givenNumber;
++                lastBlockNumber = givenNumber;
+ 
+                 if (blockToSimulate.StateOverrides is not null)
+                 {
+-                    IReleaseSpec spec = specProvider.GetSpec((long)givenNumber, blockToSimulate.BlockOverrides.Time);
++                    IReleaseSpec spec = specProvider.GetSpec(givenNumber, blockToSimulate.BlockOverrides.Time);
+                     foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
+                     {
+                         if (accountOverride.MovePrecompileToAddress is null) continue;
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/LogIndex/LogIndexRpcModule.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/LogIndex/LogIndexRpcModule.cs
+index 91ae801f3f..a324fc04e3 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/LogIndex/LogIndexRpcModule.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/LogIndex/LogIndexRpcModule.cs
+@@ -24,15 +24,15 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
+         if (GetBlockNumber(logFilter.ToBlock) is not { } to)
+             return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
+ 
+-        return ResultWrapper<IEnumerable<long>>.Success(storage.EnumerateBlockNumbersFor(logFilter, from, to));
++        return ResultWrapper<IEnumerable<long>>.Success(storage.EnumerateBlockNumbersFor(logFilter, (ulong)from, (ulong)to));
+     }
+ 
+     public ResultWrapper<LogIndexStatus> logIndex_status() => ResultWrapper<LogIndexStatus>.Success(new()
+     {
+         Current = new()
+         {
+-            FromBlock = storage.MinBlockNumber,
+-            ToBlock = storage.MaxBlockNumber
++            FromBlock = (ulong?)storage.MinBlockNumber,
++            ToBlock = (ulong?)storage.MaxBlockNumber
+         },
+         Target = new()
+         {
+@@ -46,5 +46,5 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
+     });
+ 
+     private long? GetBlockNumber(BlockParameter parameter) =>
+-        parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number;
++        (long?)(parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number);
+ }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/LogIndex/LogIndexStatus.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/LogIndex/LogIndexStatus.cs
+index 47a7d1b101..387ddc371e 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/LogIndex/LogIndexStatus.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/LogIndex/LogIndexStatus.cs
+@@ -7,7 +7,7 @@ namespace Nethermind.JsonRpc.Modules.LogIndex;
+ 
+ public class LogIndexStatus
+ {
+-    public readonly record struct Range(int? FromBlock, int? ToBlock);
++    public readonly record struct Range(ulong? FromBlock, ulong? ToBlock);
+ 
+     public required Range Current { get; init; }
+     public required Range Target { get; init; }
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Parity/ParityTransaction.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Parity/ParityTransaction.cs
+index 5d31454d19..8d01aaec42 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Parity/ParityTransaction.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Parity/ParityTransaction.cs
+@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
+         public Address To { get; set; }
+         public UInt256? Value { get; set; }
+         public UInt256? GasPrice { get; set; }
+-        public long? Gas { get; set; }
++        public ulong? Gas { get; set; }
+         public byte[] Input { get; set; }
+         public byte[] Raw { get; set; }
+         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Proof/CallResultWithProof.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Proof/CallResultWithProof.cs
+index c4db7349ad..99d3ce8b2f 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Proof/CallResultWithProof.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Proof/CallResultWithProof.cs
+@@ -58,7 +58,7 @@ public class CallResultWithProof : IDisposable
+     /// In-VM failures (revert, out-of-gas, etc.) succeed at the JSON-RPC layer and carry an in-payload
+     /// error object plus the witness — exactly the state the verifier needs to re-prove the failure.
+     /// </remarks>
+-    public static ResultWrapper<CallResultWithProof> FromWitnessResult(SingleCallWitnessResult result, long txGasLimit = 0)
++    public static ResultWrapper<CallResultWithProof> FromWitnessResult(SingleCallWitnessResult result, ulong txGasLimit = 0)
+     {
+         if (result.InputError)
+         {
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Subscribe/SyncingSubscription.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Subscribe/SyncingSubscription.cs
+index fb3ceb4d8a..96b5ca3571 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Subscribe/SyncingSubscription.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Subscribe/SyncingSubscription.cs
+@@ -38,9 +38,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
+ 
+         internal sealed class SubscriptionSyncingResult
+         {
+-            public long? StartingBlock { get; set; }
+-            public long? CurrentBlock { get; set; }
+-            public long? HighestBlock { get; set; }
++            public ulong? StartingBlock { get; set; }
++            public ulong? CurrentBlock { get; set; }
++            public ulong? HighestBlock { get; set; }
+         }
+ 
+         private void OnConditionsChange(object? sender, BlockEventArgs e) => ScheduleAction(async () =>
+diff --git a/src/Nethermind/Nethermind.JsonRpc/Modules/Trace/ParityTxTraceFromStore.cs b/src/Nethermind/Nethermind.JsonRpc/Modules/Trace/ParityTxTraceFromStore.cs
+index ca86ee5322..01aa88b80a 100644
+--- a/src/Nethermind/Nethermind.JsonRpc/Modules/Trace/ParityTxTraceFromStore.cs
++++ b/src/Nethermind/Nethermind.JsonRpc/Modules/Trace/ParityTxTraceFromStore.cs
+@@ -65,8 +65,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
+ 
+         public Hash256 BlockHash { get; set; }
+ 
+-        [JsonConverter(typeof(LongRawJsonConverter))]
+-        public long BlockNumber { get; set; }
++        [JsonConverter(typeof(ULongRawJsonConverter))]
++        public ulong BlockNumber { get; set; }
+ 
+         public ParityTraceResult Result { get; set; }
+ 

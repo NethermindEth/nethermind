@@ -50,7 +50,7 @@ public partial class TransactionProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(testCase.ExpectedVmCalls));
-            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)1));
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
             Assert.That(tx.SpentGas, Is.EqualTo(testCase.ExpectedSpentGas));
             Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore - testCase.ExpectedSenderDebit));
             if (recipient != TestItem.AddressA)
@@ -107,7 +107,7 @@ public partial class TransactionProcessorTests
         Transaction tx = BuildSimpleTransfer(recipient, 7.Wei, withAuthorizationList: false);
         Block block = BuildPragueBlock(tx);
         UInt256 senderBalanceBefore = _stateProvider.GetBalance(TestItem.AddressA);
-        UInt256 senderNonceBefore = _stateProvider.GetNonce(TestItem.AddressA);
+        ulong senderNonceBefore = _stateProvider.GetNonce(TestItem.AddressA);
 
         TransactionResult result = transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
 
@@ -254,7 +254,7 @@ public partial class TransactionProcessorTests
         UInt256 Value,
         bool WithAuthorizationList,
         int ExpectedVmCalls,
-        long ExpectedSpentGas,
+        ulong ExpectedSpentGas,
         UInt256 ExpectedSenderDebit);
 
     private static LogEntry ExpectedTransferLog(Address sender, Address recipient, UInt256 value) =>
@@ -289,8 +289,8 @@ public partial class TransactionProcessorTests
         public override bool IsTracingActions { get; protected set; } = true;
         public int ActionCalls { get; private set; }
         public int ActionEndCalls { get; private set; }
-        public long ActionGas { get; private set; }
-        public long ActionEndGas { get; private set; }
+        public ulong ActionGas { get; private set; }
+        public ulong ActionEndGas { get; private set; }
         public UInt256 ActionValue { get; private set; }
         public Address ActionFrom { get; private set; } = Address.Zero;
         public Address ActionTo { get; private set; } = Address.Zero;
@@ -299,7 +299,7 @@ public partial class TransactionProcessorTests
         public bool IsPrecompileCall { get; private set; }
         public byte[] ActionOutput { get; private set; } = [];
 
-        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ActionCalls++;
             ActionGas = gas;
@@ -311,7 +311,7 @@ public partial class TransactionProcessorTests
             IsPrecompileCall = isPrecompileCall;
         }
 
-        public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+        public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
         {
             ActionEndCalls++;
             ActionEndGas = gas;

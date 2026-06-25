@@ -18,8 +18,8 @@ public sealed class AuRaBlockHeader(
     Hash256? unclesHash,
     Address? beneficiary,
     in UInt256 difficulty,
-    long number,
-    long gasLimit,
+    ulong number,
+    ulong gasLimit,
     ulong timestamp,
     byte[] extraData)
     : BlockHeader(parentHash!, unclesHash!, beneficiary!, in difficulty, number, gasLimit, timestamp, extraData),
@@ -29,7 +29,7 @@ public sealed class AuRaBlockHeader(
     private static readonly AuRaHeaderDecoder _headerDecoder = new();
 
     /// <inheritdoc/>
-    public long AuRaStep { get; set; }
+    public ulong AuRaStep { get; set; }
 
     /// <inheritdoc/>
     public byte[]? AuRaSignature { get; set; }

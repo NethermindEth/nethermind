@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -18,7 +19,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         // The gas limit per tx go down as the block is processed.
         if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
         {
-            transaction.GasLimit = long.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
+            transaction.GasLimit = Math.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
         }
 
         if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
@@ -30,7 +31,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
 
         // Keep track of gas left
-        long blockGasUsed = transaction.BlockGasUsed;
+        ulong blockGasUsed = transaction.BlockGasUsed;
         simulateRequestState.TotalGasLeft -= blockGasUsed;
         simulateRequestState.BlockGasLeft -= blockGasUsed;
 
