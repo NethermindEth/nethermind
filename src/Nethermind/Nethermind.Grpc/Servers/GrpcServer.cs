@@ -85,7 +85,7 @@ namespace Nethermind.Grpc.Servers
                     }
                     catch (ObjectDisposedException)
                     {
-                        // The subscription stream was torn down and its queue disposed concurrently.
+                        // Queue disposed by a concurrent stream teardown; skip this client and continue.
                     }
                     catch (Exception ex)
                     {
@@ -107,7 +107,7 @@ namespace Nethermind.Grpc.Servers
             }
             catch (ObjectDisposedException)
             {
-                // The subscription stream was torn down and its queue disposed concurrently.
+                // Queue disposed by a concurrent stream teardown; drop this publish.
             }
 
             return Task.CompletedTask;
