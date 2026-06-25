@@ -14,8 +14,6 @@ namespace Nethermind.Facade.Simulate;
 public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvider, IBlockTree blockTree)
     : IBlockhashProvider
 {
-    // eth_simulateV1 is best-effort: when the ancestor hash cannot be resolved the inner provider returns
-    // null, which the EVM turns into a 0 push per BLOCKHASH semantics rather than failing the whole request.
     public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
     {
         long bestKnown = blockTree.BestKnownNumber;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -48,8 +49,20 @@ namespace Nethermind.Blockchain
                 _ => hashes is not null
                     ? hashes[depth - 1]
                     : blockhashCache.GetHash(currentBlock, (int)depth)
+                      ?? OnUnresolvedBlockhash(currentBlock, number)
             };
         }
+
+        /// <summary>
+        /// Invoked for an in-window block whose hash cannot be resolved from the cache.
+        /// </summary>
+        /// <remarks>
+        /// During canonical processing the ancestors are always available, so this is a genuine invariant
+        /// violation and throwing is the correct, fail-loud behavior. eth_simulateV1 overrides this to return
+        /// null (the EVM then pushes 0 per BLOCKHASH semantics) because it is best-effort over an overlay chain.
+        /// </remarks>
+        protected virtual Hash256? OnUnresolvedBlockhash(BlockHeader currentBlock, long number) =>
+            throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
 
         private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, long number)
         {

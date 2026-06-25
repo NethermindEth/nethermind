@@ -54,6 +54,9 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddModule(validationModules)
+            // Resolve unresolvable BLOCKHASH ancestors as 0 (best-effort) before the simulate clamp wraps it,
+            // instead of throwing as canonical processing does.
+            .AddScoped<IBlockhashProvider, SimulateLenientBlockhashProvider>()
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()

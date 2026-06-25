@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -402,13 +403,14 @@ public class BlockhashProviderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Returns_null_when_in_window_hash_cannot_be_resolved()
+    public void Throws_when_in_window_hash_cannot_be_resolved()
     {
+        // Canonical processing treats an unresolvable in-window hash as an invariant violation: fail loud, not push 0.
         IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
         BlockhashProvider provider = CreateBlockHashProvider(headerFinder, Frontier.Instance);
         BlockHeader current = Build.A.BlockHeader.WithNumber(300).WithParentHash(TestItem.KeccakA).TestObject;
 
-        Assert.That(provider.GetBlockhash(current, 100, Frontier.Instance), Is.Null);
+        Assert.Throws<InvalidDataException>(() => provider.GetBlockhash(current, 100, Frontier.Instance));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
