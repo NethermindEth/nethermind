@@ -1471,7 +1471,8 @@ namespace Nethermind.Evm.TransactionProcessing
             in UInt256 gasPrice,
             in TGasPolicy intrinsicGasStandard,
             long floorGas,
-            long postIntrinsicStateReservoir)
+            long postIntrinsicStateReservoir,
+            long codeInsertRegularRefund = 0)
         {
             long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
             long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
@@ -1481,7 +1482,7 @@ namespace Nethermind.Evm.TransactionProcessing
             RefundRevertedExecutionStateGas(spec, postHaltIntrinsicStateGas, ref gas);
             long postHaltStateReservoir = Math.Max(postIntrinsicStateReservoir, TGasPolicy.GetStateReservoir(in gas));
             TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, postHaltIntrinsicStateGas);
-            return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas);
+            return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, codeInsertRegularRefund);
         }
 
         protected virtual GasConsumed RefundOnFail(
@@ -1539,20 +1540,30 @@ namespace Nethermind.Evm.TransactionProcessing
             in TGasPolicy gas,
             in UInt256 gasPrice,
             in TGasPolicy intrinsicGasStandard,
-            long floorGas)
+            long floorGas,
+            long codeInsertRegularRefund = 0)
         {
             if (!spec.IsEip8037Enabled)
                 return tx.GasLimit;
 
             long stateReservoir = TGasPolicy.GetStateReservoir(in gas);
-            long spentGas = Math.Max(tx.GasLimit - stateReservoir, floorGas);
+            // EELS: tx_gas_used_before_refund = tx.gas - gas_left - state_gas_left; on a halt gas_left is
+            // zeroed so the regular dimension is fully spent and only the state reservoir remains unused.
+            long preRefundGas = tx.GasLimit - stateReservoir;
+            // The regular gas refund (e.g. EIP-7702 ACCOUNT_WRITE for an existing authority) survives a halt:
+            // EELS adds it to refund_counter before execution and applies min(before_refund / 5, counter) to
+            // tx_gas_used. The state-dimension refund is already reflected in stateReservoir above.
+            long regularRefund = CalculateClaimableRefund(preRefundGas, codeInsertRegularRefund, spec);
+            long spentGas = Math.Max(preRefundGas - regularRefund, floorGas);
             long intrinsicStateGas = TGasPolicy.GetStateGasUsed(in gas);
             long spillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
             // On an exceptional halt the spec refills the frame's execution state gas (LIFO) and zeros
             // gas_left; spilled state gas thus ends up in gas_left and is burned as regular, not as
             // state. Only the intrinsic state gas remaining after the reset stays in the state dimension.
             long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned);
-            long blockGas = Math.Max(tx.GasLimit - stateReservoir - effectiveStateGas, floorGas);
+            // Block regular gas is the pre-refund figure (EELS tx_regular_gas = before_refund - tx_state_gas);
+            // the gas refund reduces only the sender charge, never the block's regular-gas dimension.
+            long blockGas = Math.Max(preRefundGas - effectiveStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
         }
@@ -1685,8 +1696,9 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // Use postIntrinsicStateReservoir captured before EVM execution so any
                 // EIP-7702 auth refund applied via Apply8037DelegationRefunds is preserved
-                // through the halt-reset.
-                return CompleteEip8037Halt(tx, spec, opts, ref gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
+                // through the halt-reset. codeInsertRegularRefund carries the regular-dimension
+                // ACCOUNT_WRITE refund for existing authorities, which survives the halt too.
+                return CompleteEip8037Halt(tx, spec, opts, ref gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir, codeInsertRegularRefund);
             }
 
             (long spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertRegularRefund);
