@@ -51,7 +51,9 @@ namespace Nethermind.Grpc.Servers
             }
             finally
             {
-                _clientResults.TryRemove(client, out _);
+                // Dispose the queue only if this stream owns the dictionary entry, so a same-named
+                // reconnect that replaced it isn't disposed and there is no double-dispose.
+                if (_clientResults.TryRemove(client, out BlockingCollection<string> removed)) removed.Dispose();
                 if (_logger.IsInfo) _logger.Info($"Finished the data stream for client: '{client}'.");
             }
         }
@@ -77,6 +79,10 @@ namespace Nethermind.Grpc.Servers
                     {
                         results.TryAdd(payload);
                     }
+                    catch (ObjectDisposedException)
+                    {
+                        // The subscription stream was torn down and its queue disposed concurrently.
+                    }
                     catch (Exception ex)
                     {
                         if (_logger.IsError) _logger.Error(ex.Message, ex);
@@ -91,7 +97,14 @@ namespace Nethermind.Grpc.Servers
                 return Task.CompletedTask;
             }
 
-            clientResult.Add(payload);
+            try
+            {
+                clientResult.Add(payload);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The subscription stream was torn down and its queue disposed concurrently.
+            }
 
             return Task.CompletedTask;
         }
