@@ -486,16 +486,18 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // Charge gas based on whether this is a cold or warm storage access.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
-            goto OutOfGas;
-
-        // Retrieve the current value from persistent storage.
+        // EIP-8037/EELS: the implicit SLOAD is performed before any gas is charged, so the slot is
+        // recorded as a block-access-list storage read even when the access or write charge below
+        // runs out of gas. This matches the spec ordering, where get_storage precedes charge_gas.
         ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
         bool currentIsZero = currentValue.IsZero();
 
         // Determine whether the new value is identical to the current stored value.
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
+
+        // Charge gas based on whether this is a cold or warm storage access.
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+            goto OutOfGas;
 
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = gasCosts.SClearRefund;
