@@ -1175,6 +1175,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
         else
         {
+            // The precompile succeeded, so its state is committed even when `push` was just set to
+            // OutOfGas by the output-copy memory expansion above. Per EIP-2929 the warm/cold access
+            // set is not reverted on call failure, and any account-state changes are still guarded by
+            // the enclosing transaction snapshot, which unwinds them if the parent frame later halts.
             child.CommitToParent(parent);
         }
         child.Dispose();
