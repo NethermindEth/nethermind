@@ -58,7 +58,7 @@ public class EnrTreeCrawler(ILogger logger)
                 {
                     treeNode = EnrTreeParser.ParseNode(node);
                 }
-                catch (Exception e) when (e is FormatException or NotSupportedException or ArgumentException)
+                catch (Exception e) when (e is FormatException or NotSupportedException)
                 {
                     // A single malformed record from an untrusted DNS server must not abort the whole crawl.
                     if (_logger.IsDebug) _logger.Debug($"Skipping malformed ENR tree record from DNS query '{query}': {e.Message}");

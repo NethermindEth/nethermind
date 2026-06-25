@@ -49,6 +49,8 @@ public class EnrTreeParserTests
     [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "seq field missing")]
     [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=2779 sig=SHORT", TestName = "truncated sig field")]
     [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=notanumber sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "non-numeric seq value")]
+    [TestCase("enrtree-root:v1 l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=2779 sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "e field missing")]
+    [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM seq=2779 sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "l field missing")]
     public void Malformed_enrtree_root_throws_FormatException(string malformedRoot)
         => Assert.That(() => EnrTreeParser.ParseEnrRoot(malformedRoot), Throws.TypeOf<FormatException>());
 
