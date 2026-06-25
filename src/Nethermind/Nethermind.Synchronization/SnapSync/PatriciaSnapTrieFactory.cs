@@ -46,7 +46,7 @@ public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logMa
 
     private sealed class PatriciaSnapStorageBatch(INodeStorage nodeStorage) : ISnapStorageBatch, INodeStorage.IWriteBatch
     {
-        private const int MaxReplayBatchSize = 8 * 1024;
+        private const int MaxReplayBatchSize = 2 * 1024;
 
         private readonly List<NodeWrite> _writes = [];
         private bool _disposed;

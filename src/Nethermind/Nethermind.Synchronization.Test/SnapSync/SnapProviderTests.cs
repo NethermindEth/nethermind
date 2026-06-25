@@ -342,7 +342,7 @@ public class SnapProviderTests
     [Test]
     public void PatriciaStorageBatch_ReplaysBufferedWritesInBoundedBatches()
     {
-        const int slotCount = 9_000;
+        const int slotCount = 5_000;
         CountingNodeStorage nodeStorage = new();
         PatriciaSnapTrieFactory factory = new(nodeStorage, LimboLogs.Instance);
         PathWithStorageSlot[] slots = new PathWithStorageSlot[slotCount];
@@ -364,7 +364,7 @@ public class SnapProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(nodeStorage.DisposedBatchSizes, Has.Count.GreaterThan(1));
-            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(8 * 1024));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(2 * 1024));
         }
     }
 
