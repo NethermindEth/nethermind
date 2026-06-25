@@ -34,6 +34,27 @@ public class RawTrieStoreTests
     }
 
     [Test]
+    public void Raw_scoped_committer_does_not_dispose_external_batch()
+    {
+        CountingNodeStorage nodeStorage = new();
+        INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
+        using (ICommitter committer = new RawScopedTrieStore.Committer(nodeStorage, null, WriteFlags.DisableWAL, writeBatch))
+        {
+            TreePath path = TreePath.Empty;
+            for (int i = 0; i < 3; i++)
+            {
+                committer.CommitNode(ref path, CreateNode(i));
+            }
+        }
+
+        Assert.That(nodeStorage.DisposedBatchSizes, Is.Empty);
+
+        writeBatch.Dispose();
+
+        Assert.That(nodeStorage.DisposedBatchSizes, Is.EqualTo(new[] { 3 }));
+    }
+
+    [Test]
     public void SmokeTest()
     {
         MemDb db = new();

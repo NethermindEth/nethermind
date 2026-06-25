@@ -242,7 +242,21 @@ namespace Nethermind.Synchronization.SnapSync
 
                     int requestLength = request.Accounts.Count;
 
-                    if (responseCount > 1 && _storageRangeParallelism > 1)
+                    using ISnapStorageBatch? storageBatch = responseCount > 1 ? _trieFactory.StartStorageBatch() : null;
+                    if (storageBatch is not null)
+                    {
+                        StorageRangeAccountResult[] results = AddStorageRangeInBatch(request, responses, response.Proofs, responseCount, storageBatch);
+                        for (int i = 0; i < results.Length; i++)
+                        {
+                            StorageRangeAccountResult accountResult = results[i];
+                            ApplyStorageRangeResult(request, i, accountResult);
+                            Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: accountResult.Result));
+                            slotCount += accountResult.SlotCount;
+                        }
+
+                        result = results[^1].Result;
+                    }
+                    else if (responseCount > 1 && _storageRangeParallelism > 1)
                     {
                         StorageRangeAccountResult[] results = AddStorageRangeInParallel(request, responses, response.Proofs, responseCount);
                         for (int i = 0; i < results.Length; i++)
@@ -330,14 +344,31 @@ namespace Nethermind.Synchronization.SnapSync
             return results;
         }
 
-        private StorageRangeAccountResult ProcessStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IByteArrayList? proofs)
+        private StorageRangeAccountResult[] AddStorageRangeInBatch(
+            StorageRange request,
+            IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> responses,
+            IByteArrayList proofs,
+            int responseCount,
+            ISnapStorageBatch storageBatch)
+        {
+            StorageRangeAccountResult[] results = new StorageRangeAccountResult[responseCount];
+            for (int i = 0; i < responseCount; i++)
+            {
+                results[i] = ProcessStorageRangeForAccount(request, i, responses[i], i == responseCount - 1 ? proofs : null, storageBatch);
+            }
+
+            storageBatch.Commit();
+            return results;
+        }
+
+        private StorageRangeAccountResult ProcessStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IByteArrayList? proofs, ISnapStorageBatch? storageBatch = null)
         {
             ReadOnlySpan<PathWithAccount> accounts = request.Accounts.AsSpan();
             PathWithAccount pathWithAccount = accounts[accountIndex];
 
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, pathWithAccount, slots, request.StartingHash, request.LimitHash, proofs, _rangeProfiler);
+                (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, pathWithAccount, slots, request.StartingHash, request.LimitHash, proofs, _rangeProfiler, storageBatch);
                 return new StorageRangeAccountResult(result, moreChildrenToRight, actualRootHash, isRootPersisted, slots.Count, slots.Count == 0 ? ValueKeccak.Zero : slots[^1].Path);
             }
             catch (Exception e)

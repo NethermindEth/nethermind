@@ -242,6 +242,104 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddStorageRange_BatchedStorageFactory_CommitsMultiAccountResponseOnce()
+    {
+        Hash256 firstRoot = TestItem.KeccakA;
+        Hash256 secondRoot = TestItem.KeccakB;
+        BatchingSnapTrieFactory factory = new(
+            new PathRoot(TestItem.KeccakA, firstRoot),
+            new PathRoot(TestItem.KeccakB, secondRoot));
+        using IContainer container = CreateContainer(
+            new TestSyncConfig()
+            {
+                SnapSyncStorageRangeParallelism = 2
+            },
+            (_, _) => factory);
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        using StorageRange storage = CreateStorageRange(firstRoot, secondRoot);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = CreateStorageResponse(
+                CreateSlots(ValueKeccak.Zero),
+                CreateSlots(ValueKeccak.Zero)),
+            Proofs = EmptyByteArrayList.Instance
+        };
+
+        Assert.That(snapProvider.AddStorageRange(storage, response), Is.EqualTo(AddRangeResult.OK));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.StartedBatches, Is.EqualTo(1));
+            Assert.That(factory.CommittedBatches, Is.EqualTo(1));
+            Assert.That(factory.AbortedBatches, Is.EqualTo(0));
+            Assert.That(factory.StorageTreesWithBatch, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void AddStorageRange_BatchedStorageFactory_AbortsBatchOnException()
+    {
+        BatchingDisposedSnapTrieFactory factory = new();
+        using IContainer container = CreateContainer(
+            new TestSyncConfig()
+            {
+                SnapSyncStorageRangeParallelism = 2
+            },
+            (_, _) => factory);
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        using StorageRange storage = CreateStorageRange(TestItem.KeccakA, TestItem.KeccakB);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = CreateStorageResponse(
+                CreateSlots(ValueKeccak.Zero),
+                CreateSlots(ValueKeccak.Zero)),
+            Proofs = EmptyByteArrayList.Instance
+        };
+
+        Assert.That(() => snapProvider.AddStorageRange(storage, response), Throws.TypeOf<ObjectDisposedException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.StartedBatches, Is.EqualTo(1));
+            Assert.That(factory.CommittedBatches, Is.EqualTo(0));
+            Assert.That(factory.AbortedBatches, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void PatriciaStorageBatch_BuffersWritesUntilCommitted()
+    {
+        MemDb abortedDb = new();
+        NodeStorage abortedNodeStorage = new(abortedDb, INodeStorage.KeyScheme.Hash, requirePath: false);
+        PatriciaSnapTrieFactory abortedFactory = new(abortedNodeStorage, LimboLogs.Instance);
+        using (ISnapStorageBatch abortedBatch = abortedFactory.StartStorageBatch()!)
+        {
+            using ISnapTree<PathWithStorageSlot> tree = abortedFactory.CreateStorageTree(TestItem.KeccakA, abortedBatch);
+            tree.BulkSetAndUpdateRootHash(new[] { new PathWithStorageSlot(ValueKeccak.Zero, [1]) });
+            tree.Commit(ValueKeccak.MaxValue);
+        }
+
+        MemDb committedDb = new();
+        NodeStorage committedNodeStorage = new(committedDb, INodeStorage.KeyScheme.Hash, requirePath: false);
+        PatriciaSnapTrieFactory committedFactory = new(committedNodeStorage, LimboLogs.Instance);
+        using (ISnapStorageBatch committedBatch = committedFactory.StartStorageBatch()!)
+        {
+            using ISnapTree<PathWithStorageSlot> tree = committedFactory.CreateStorageTree(TestItem.KeccakA, committedBatch);
+            tree.BulkSetAndUpdateRootHash(new[] { new PathWithStorageSlot(ValueKeccak.Zero, [1]) });
+            tree.Commit(ValueKeccak.MaxValue);
+            committedBatch.Commit();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(abortedDb.Count, Is.EqualTo(0));
+            Assert.That(committedDb.Count, Is.GreaterThan(0));
+        }
+    }
+
+    [Test]
     public void AddStorageRange_ParallelPath_UnwrapsObjectDisposedException()
     {
         using IContainer container = CreateContainer(
@@ -627,6 +725,120 @@ public class SnapProviderTests
             }
 
             throw new InvalidOperationException($"Unexpected storage account path {accountPath}");
+        }
+    }
+
+    private sealed class BatchingSnapTrieFactory(params PathRoot[] storageRoots) : ISnapTrieFactory
+    {
+        public int StartedBatches { get; private set; }
+        public int CommittedBatches { get; private set; }
+        public int AbortedBatches { get; private set; }
+        public int StorageTreesWithBatch { get; private set; }
+
+        public ISnapTree<PathWithAccount> CreateStateTree() =>
+            throw new NotSupportedException();
+
+        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath) =>
+            CreateStorageTree(accountPath, storageBatch: null);
+
+        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath, ISnapStorageBatch? storageBatch)
+        {
+            if (storageBatch is not null)
+            {
+                StorageTreesWithBatch++;
+            }
+
+            for (int i = 0; i < storageRoots.Length; i++)
+            {
+                if (storageRoots[i].Path == accountPath)
+                {
+                    return new FixedRootSnapStorageTree(storageRoots[i].RootHash);
+                }
+            }
+
+            throw new InvalidOperationException($"Unexpected storage account path {accountPath}");
+        }
+
+        public ISnapStorageBatch StartStorageBatch()
+        {
+            StartedBatches++;
+            return new RecordingStorageBatch(this);
+        }
+
+        private sealed class RecordingStorageBatch(BatchingSnapTrieFactory factory) : ISnapStorageBatch
+        {
+            private bool _committed;
+            private bool _disposed;
+
+            public void Commit()
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _committed = true;
+                factory.CommittedBatches++;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                if (!_committed)
+                {
+                    factory.AbortedBatches++;
+                }
+            }
+        }
+    }
+
+    private sealed class BatchingDisposedSnapTrieFactory : ISnapTrieFactory
+    {
+        public int StartedBatches { get; private set; }
+        public int CommittedBatches { get; private set; }
+        public int AbortedBatches { get; private set; }
+
+        public ISnapTree<PathWithAccount> CreateStateTree() =>
+            throw new NotSupportedException();
+
+        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath) =>
+            new DisposedSnapStorageTree();
+
+        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath, ISnapStorageBatch? storageBatch) =>
+            new DisposedSnapStorageTree();
+
+        public ISnapStorageBatch StartStorageBatch()
+        {
+            StartedBatches++;
+            return new RecordingStorageBatch(this);
+        }
+
+        private sealed class RecordingStorageBatch(BatchingDisposedSnapTrieFactory factory) : ISnapStorageBatch
+        {
+            private bool _committed;
+            private bool _disposed;
+
+            public void Commit()
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _committed = true;
+                factory.CommittedBatches++;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                if (!_committed)
+                {
+                    factory.AbortedBatches++;
+                }
+            }
         }
     }
 

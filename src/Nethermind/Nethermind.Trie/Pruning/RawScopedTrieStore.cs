@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
-public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null) : IScopedTrieStore
+public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null, INodeStorage.IWriteBatch? writeBatch = null) : IScopedTrieStore
 {
     public RawScopedTrieStore(IKeyValueStoreWithBatching kv, Hash256? address = null) : this(new NodeStorage(kv), address)
     {
@@ -27,16 +27,23 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public INodeStorage.KeyScheme Scheme => nodeStorage.Scheme;
 
-    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags);
+    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags, writeBatch);
 
-    public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags) : ICommitter
+    public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags, INodeStorage.IWriteBatch? writeBatch = null) : ICommitter
     {
         private const int DisableWalBatchSize = 8 * 1024;
 
-        private INodeStorage.IWriteBatch? _writeBatch;
+        private readonly bool _ownsWriteBatch = writeBatch is null;
+        private INodeStorage.IWriteBatch? _writeBatch = writeBatch;
         private int _pendingWrites;
 
-        public void Dispose() => _writeBatch?.Dispose();
+        public void Dispose()
+        {
+            if (_ownsWriteBatch)
+            {
+                _writeBatch?.Dispose();
+            }
+        }
 
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
@@ -59,7 +66,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
         private void FlushDisableWalBatchIfFull()
         {
-            if ((writeFlags & WriteFlags.DisableWAL) == 0 || ++_pendingWrites < DisableWalBatchSize)
+            if (!_ownsWriteBatch || (writeFlags & WriteFlags.DisableWAL) == 0 || ++_pendingWrites < DisableWalBatchSize)
             {
                 return;
             }

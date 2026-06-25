@@ -79,10 +79,11 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256? startingHash,
             in ValueHash256? limitHash,
             IByteArrayList? proofs,
-            SnapRangeProfiler? profiler = null
+            SnapRangeProfiler? profiler = null,
+            ISnapStorageBatch? storageBatch = null
         )
         {
-            using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(account.Path);
+            using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(account.Path, storageBatch);
 
             ValueHash256 effectiveLimitHash = limitHash ?? Keccak.MaxValue;
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;

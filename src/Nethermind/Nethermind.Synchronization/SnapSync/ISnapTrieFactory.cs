@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 
@@ -14,4 +15,13 @@ public interface ISnapTrieFactory
 
     ISnapTree<PathWithAccount> CreateStateTree();
     ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath);
+    ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath, ISnapStorageBatch? storageBatch) =>
+        CreateStorageTree(accountPath);
+
+    ISnapStorageBatch? StartStorageBatch() => null;
+}
+
+public interface ISnapStorageBatch : IDisposable
+{
+    void Commit();
 }
