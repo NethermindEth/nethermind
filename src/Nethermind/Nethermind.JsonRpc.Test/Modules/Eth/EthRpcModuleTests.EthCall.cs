@@ -1175,11 +1175,11 @@ public partial class EthRpcModuleTests
     }
 
     [NonParallelizable]
-    [TestCase("""{"number":"0x0b"}""",        TestName = "lenient: leading zero in number")]
-    [TestCase("""{"time":"0x0b"}""",          TestName = "lenient: leading zero in time")]
-    [TestCase("""{"gasLimit":"0x0b"}""",      TestName = "lenient: leading zero in gasLimit")]
+    [TestCase("""{"number":"0x0b"}""", TestName = "lenient: leading zero in number")]
+    [TestCase("""{"time":"0x0b"}""", TestName = "lenient: leading zero in time")]
+    [TestCase("""{"gasLimit":"0x0b"}""", TestName = "lenient: leading zero in gasLimit")]
     [TestCase("""{"baseFeePerGas":"0x0b"}""", TestName = "lenient: leading zero in baseFeePerGas")]
-    [TestCase("""{"blobBaseFee":"0x0b"}""",   TestName = "lenient: leading zero in blobBaseFee")]
+    [TestCase("""{"blobBaseFee":"0x0b"}""", TestName = "lenient: leading zero in blobBaseFee")]
     public async Task Eth_call_block_override_leading_zero_accepted_in_lenient_mode(string blockOverrideJson)
     {
         using Context ctx = await Context.Create();
