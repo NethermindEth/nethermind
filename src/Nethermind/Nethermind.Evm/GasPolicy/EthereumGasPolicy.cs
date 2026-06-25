@@ -160,7 +160,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed;
+        // EELS refill_frame_state_gas (run by the reverting child) refills its net spill into
+        // gas_left and returns only (used - spill) to the reservoir; the parent then absorbs the
+        // child's gas_left. Crediting the spill back to the reservoir instead would leave it inflated,
+        // so a subsequent top-level halt would return spilled gas the spec burns.
+        long childNetSpill = childGas.StateGasSpill - childGas.StateGasSpillRefunded;
+        parentGas.Value += childNetSpill;
+        parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasSpill += childGas.StateGasSpill;
         parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned;
         parentGas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;

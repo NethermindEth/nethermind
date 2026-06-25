@@ -617,11 +617,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            // EELS credit_state_gas_refund is always LIFO: spilled state gas returns to gas_left
+            // first (up to the spill), then the reservoir. Refunding straight to the reservoir would
+            // leave it inflated, so a later top-level halt returns gas the spec burns.
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
         }
         else if (childNewAccountCharged)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost(in _currentState.Gas), trackSpillRefund: false);
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost(in _currentState.Gas));
         }
 
         shouldExit = false;
@@ -806,11 +809,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            // EELS credit_state_gas_refund is always LIFO: spilled state gas returns to gas_left
+            // first (up to the spill), then the reservoir. Refunding straight to the reservoir would
+            // leave it inflated, so a later top-level halt returns gas the spec burns.
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
         }
         else if (childNewAccountCharged)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost(in _currentState.Gas), trackSpillRefund: false);
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost(in _currentState.Gas));
         }
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
