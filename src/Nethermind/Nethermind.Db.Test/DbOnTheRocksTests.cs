@@ -531,7 +531,7 @@ namespace Nethermind.Db.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(options.PageSize, Is.EqualTo(MdbxTuningOptions.DefaultStatePageSize));
-                Assert.That(options.RpAugmentLimit, Is.EqualTo(MdbxTuningOptions.DefaultStateRpAugmentLimit));
+                Assert.That(options.RpAugmentLimit, Is.EqualTo((ulong)(256 * 1024)));
                 Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(65_536));
                 Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(65_536));
                 Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(8_192));

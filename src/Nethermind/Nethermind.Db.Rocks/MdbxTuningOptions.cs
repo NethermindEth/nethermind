@@ -48,7 +48,7 @@ internal readonly record struct MdbxTuningOptions(
     public const ulong DefaultMaxDbs = 512;
     public const ulong DefaultMaxReaders = 8192;
     public const ulong DefaultRpAugmentLimit = 256 * 1024;
-    public const ulong DefaultStateRpAugmentLimit = 1_000_000_000;
+    public const ulong DefaultStateRpAugmentLimit = DefaultRpAugmentLimit;
     public const int DefaultMaxBatchGroupOperations = 128 * 1024;
     public const int DefaultStateMaxBatchGroupOperations = 8 * 1024;
     public const long DefaultMaxBatchGroupBytes = 64L << 20;
