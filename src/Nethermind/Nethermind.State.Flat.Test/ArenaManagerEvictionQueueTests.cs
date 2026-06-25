@@ -80,7 +80,7 @@ public class ArenaManagerEvictionQueueTests
         // Fill the single 8-way set, then one more touch forces a clock eviction. The arenaId is not in
         // _arenas, so the dispatch's madvise no-ops on the dictionary miss — we're testing the drain
         // mechanics, not the syscall.
-        for (int p = 0; p <= 8; p++)
+        for (uint p = 0; p <= 8; p++)
             manager.Touch(arenaId: 42, pageIdx: p, inline: false);
 
         WaitFor(() => manager.EvictionsDispatched == 1);
@@ -97,7 +97,7 @@ public class ArenaManagerEvictionQueueTests
         // key evicts — all synchronously on the calling thread.
         Assert.That(manager.Touch(1, 0, inline: true), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(manager.Touch(1, 0, inline: true), Is.EqualTo(PageResidencyTracker.TouchOutcome.Hit));
-        for (int p = 1; p < 8; p++)
+        for (uint p = 1; p < 8; p++)
             Assert.That(manager.Touch(1, p, inline: true), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(manager.Touch(1, 8, inline: true), Is.EqualTo(PageResidencyTracker.TouchOutcome.Evicted));
 
@@ -116,7 +116,7 @@ public class ArenaManagerEvictionQueueTests
         manager.PageTracker.TryTouch(arenaId: 777, pageIdx: 0, out _, out _);
         manager.PageTracker.TryTouch(arenaId: 778, pageIdx: 1, out _, out _);
 
-        for (int p = 0; p < 8; p++)
+        for (uint p = 0; p < 8; p++)
             manager.Touch(arenaId: 42, pageIdx: p, inline: true);
 
         // Filling the rest of the set and beyond forces at least one eviction, all against stale arenas.
@@ -162,7 +162,7 @@ public class ArenaManagerEvictionQueueTests
         }
 
         // Seed both of the reservation's pages as resident.
-        int firstPage = (int)(location.Offset / pageSize);
+        uint firstPage = (uint)(location.Offset / pageSize);
         manager.PageTracker.TryTouch(location.ArenaId, firstPage, out _, out _);
         manager.PageTracker.TryTouch(location.ArenaId, firstPage + 1, out _, out _);
         Assert.That(manager.PagesRefreshed, Is.EqualTo(0));
@@ -188,7 +188,7 @@ public class ArenaManagerEvictionQueueTests
             writer.GetWriter().Advance(data.Length);
             (location, _) = writer.Complete();
         }
-        manager.PageTracker.TryTouch(location.ArenaId, (int)(location.Offset / Environment.SystemPageSize), out _, out _);
+        manager.PageTracker.TryTouch(location.ArenaId, (uint)(location.Offset / Environment.SystemPageSize), out _, out _);
 
         // Forget a large, fully-untracked range: nothing is actually dropped, so the warm count must scale
         // to actual drops (0) — not over-warm proportional to the cold range size.
@@ -204,7 +204,7 @@ public class ArenaManagerEvictionQueueTests
         // 16 touches into the single set: 8 fill it, the next 8 each evict. Some are drained by the
         // background worker, the rest by Dispose's synchronous flush.
         const int batch = 16;
-        for (int i = 0; i < batch; i++)
+        for (uint i = 0; i < batch; i++)
             manager.Touch(arenaId: 42, pageIdx: i, inline: false);
 
         manager.Dispose();

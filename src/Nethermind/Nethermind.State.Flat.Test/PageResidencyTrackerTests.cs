@@ -69,12 +69,12 @@ public class PageResidencyTrackerTests
         private readonly Dictionary<int, ArenaFile> _files = [];
 
         public PageResidencyTracker PageTracker => tracker;
-        public PageResidencyTracker.TouchOutcome Touch(int arenaId, int pageIdx, bool inline)
+        public PageResidencyTracker.TouchOutcome Touch(int arenaId, uint pageIdx, bool inline)
         {
             PageResidencyTracker.TouchOutcome outcome =
-                tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx);
+                tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out uint evictedPageIdx);
             if (outcome == PageResidencyTracker.TouchOutcome.Evicted)
-                handler.OnPageEvicted(evictedArenaId, evictedPageIdx);
+                handler.OnPageEvicted(evictedArenaId, (int)evictedPageIdx);
             return outcome;
         }
         public ArenaWriter CreateWriter(long estimatedSize, bool small = false) => throw new NotSupportedException();
@@ -109,8 +109,8 @@ public class PageResidencyTrackerTests
     /// </summary>
     private static void Touch(PageResidencyTracker tracker, int arenaId, int pageIdx, IPageEvictionHandler? handler = null)
     {
-        if (tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx) == PageResidencyTracker.TouchOutcome.Evicted)
-            handler?.OnPageEvicted(evictedArenaId, evictedPageIdx);
+        if (tracker.TryTouch(arenaId, (uint)pageIdx, out int evictedArenaId, out uint evictedPageIdx) == PageResidencyTracker.TouchOutcome.Evicted)
+            handler?.OnPageEvicted(evictedArenaId, (int)evictedPageIdx);
     }
 
     [Test]
@@ -157,11 +157,11 @@ public class PageResidencyTrackerTests
         Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Hit));
 
         for (int i = 1; i < Ways; i++)
-            Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
+            Assert.That(tracker.TryTouch(0, (uint)i, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
 
         // Set is full and every way has REF=1. The 9th touch's clock pass clears all 8 REF
         // bits, then wraps back to way 0 and evicts (0, 0) — the first inserted key.
-        Assert.That(tracker.TryTouch(0, Ways, out int evictedArenaId, out int evictedPageIdx), Is.EqualTo(PageResidencyTracker.TouchOutcome.Evicted));
+        Assert.That(tracker.TryTouch(0, Ways, out int evictedArenaId, out uint evictedPageIdx), Is.EqualTo(PageResidencyTracker.TouchOutcome.Evicted));
         Assert.That(evictedArenaId, Is.EqualTo(0));
         Assert.That(evictedPageIdx, Is.EqualTo(0));
     }
@@ -289,14 +289,14 @@ public class PageResidencyTrackerTests
         HashSet<(int, int)> inserted = [];
         for (int i = 0; i < Ways; i++)
         {
-            tracker.TryTouch(7, i, out _, out _);
+            tracker.TryTouch(7, (uint)i, out _, out _);
             inserted.Add((7, i));
         }
 
         for (int i = 0; i < 100; i++)
         {
-            Assert.That(tracker.TryPickResidentPage(out int aid, out int pid), Is.True);
-            Assert.That(inserted, Does.Contain((aid, pid)));
+            Assert.That(tracker.TryPickResidentPage(out int aid, out uint pid), Is.True);
+            Assert.That(inserted, Does.Contain((aid, (int)pid)));
         }
     }
 
@@ -324,7 +324,7 @@ public class PageResidencyTrackerTests
         Assert.That(tracker.ResidentBytes, Is.EqualTo(pageSize));
 
         for (int i = 1; i < Ways; i++)
-            Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
+            Assert.That(tracker.TryTouch(0, (uint)i, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(tracker.ResidentBytes, Is.EqualTo((long)Ways * pageSize));
 
         // Eviction: net zero (one in, one out).
@@ -333,20 +333,20 @@ public class PageResidencyTrackerTests
 
         // Bounds invariant: continued streaming inserts never exceed the capacity ceiling.
         for (int i = Ways + 1; i < 4 * Ways; i++)
-            tracker.TryTouch(0, i, out _, out _);
+            tracker.TryTouch(0, (uint)i, out _, out _);
         Assert.That(tracker.ResidentBytes, Is.LessThanOrEqualTo((long)tracker.MaxCapacity * pageSize));
 
         int presentKey = -1;
         for (int i = 4 * Ways - 1; i >= 0 && presentKey < 0; i--)
-            if (tracker.ContainsPage(0, i)) presentKey = i;
+            if (tracker.ContainsPage(0, (uint)i)) presentKey = i;
         Assert.That(presentKey, Is.GreaterThanOrEqualTo(0), "the set should still hold at least one streamed key");
         long beforeForget = tracker.ResidentBytes;
-        tracker.Forget(0, presentKey);
+        tracker.Forget(0, (uint)presentKey);
         Assert.That(tracker.ResidentBytes, Is.EqualTo(beforeForget - pageSize));
 
         // Re-inserting into the freed slot restores occupancy without raising GC pressure —
         // the high-water mark already covers this level, so only the counter changes.
-        Assert.That(tracker.TryTouch(0, presentKey, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
+        Assert.That(tracker.TryTouch(0, (uint)presentKey, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(tracker.ResidentBytes, Is.EqualTo(beforeForget));
 
         // Dispose releases the reported pressure (cannot observe GC pressure directly, but
@@ -378,8 +378,8 @@ public class PageResidencyTrackerTests
             int firstPage = (int)(baseOffset / pageSize);
             int lastPage = (int)((baseOffset + 15) / pageSize);
             Assert.That(firstPage, Is.Not.EqualTo(lastPage), "test setup must straddle a page boundary");
-            Assert.That(tracker.ContainsPage(9, firstPage), Is.True);
-            Assert.That(tracker.ContainsPage(9, lastPage), Is.True);
+            Assert.That(tracker.ContainsPage(9, (uint)firstPage), Is.True);
+            Assert.That(tracker.ContainsPage(9, (uint)lastPage), Is.True);
         }
     }
 

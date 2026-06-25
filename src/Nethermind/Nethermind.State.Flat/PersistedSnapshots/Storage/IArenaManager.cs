@@ -71,7 +71,7 @@ public unsafe interface IArenaManager : IDisposable
     /// with no per-page mapping (the in-memory test arena) may record both forms synchronously.
     /// <paramref name="pageIdx"/> is the arena-absolute page index (<c>offset / Environment.SystemPageSize</c>).
     /// </remarks>
-    PageResidencyTracker.TouchOutcome Touch(int arenaId, int pageIdx, bool inline);
+    PageResidencyTracker.TouchOutcome Touch(int arenaId, uint pageIdx, bool inline);
 
     /// <summary>
     /// Per-arena page residency tracker. Reservations record per-page accesses through

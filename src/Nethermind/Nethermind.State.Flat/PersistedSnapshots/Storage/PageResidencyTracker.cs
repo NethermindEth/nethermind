@@ -158,7 +158,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     /// occupant (out parameters carry the displaced key). Disabled trackers
     /// (<see cref="MaxCapacity"/> == 0) always return <see cref="TouchOutcome.Hit"/>.
     /// </summary>
-    public TouchOutcome TryTouch(int arenaId, int pageIdx, out int evictedArenaId, out int evictedPageIdx)
+    public TouchOutcome TryTouch(int arenaId, uint pageIdx, out int evictedArenaId, out uint evictedPageIdx)
     {
         evictedArenaId = 0;
         evictedPageIdx = 0;
@@ -184,7 +184,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         return MissPath(setIdx, setBase, key, out evictedArenaId, out evictedPageIdx);
     }
 
-    private TouchOutcome MissPath(int setIdx, long* setBase, long key, out int evictedArenaId, out int evictedPageIdx)
+    private TouchOutcome MissPath(int setIdx, long* setBase, long key, out int evictedArenaId, out uint evictedPageIdx)
     {
         evictedArenaId = 0;
         evictedPageIdx = 0;
@@ -247,7 +247,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
                 }
 
                 evictedArenaId = (int)((s >> 32) & ArenaIdMask);
-                evictedPageIdx = (int)s;
+                evictedPageIdx = (uint)s;
                 Volatile.Write(ref setBase[hand], key | RefBit);
                 hand = (hand + 1) & WayMask;
                 meta = (meta & ~MetaHandMask) | hand;
@@ -296,7 +296,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     /// occupant and stop).
     /// </summary>
     /// <returns><c>true</c> if a tracked entry was removed; <c>false</c> if the page was not tracked.</returns>
-    public bool Forget(int arenaId, int pageIdx)
+    public bool Forget(int arenaId, uint pageIdx)
     {
         if (_setCount == 0) return false;
         long key = PackKey(arenaId, pageIdx);
@@ -328,7 +328,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         return false;
     }
 
-    public bool ContainsPage(int arenaId, int pageIdx)
+    public bool ContainsPage(int arenaId, uint pageIdx)
     {
         if (_setCount == 0) return false;
         long key = PackKey(arenaId, pageIdx);
@@ -353,7 +353,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     /// disjoint slot indices on each call. Racing with a miss-path replacement may surface a key
     /// whose arena has just been disposed; the caller's dict + lease checks handle that cleanly.
     /// </remarks>
-    public bool TryPickResidentPage(out int arenaId, out int pageIdx)
+    public bool TryPickResidentPage(out int arenaId, out uint pageIdx)
     {
         arenaId = 0;
         pageIdx = 0;
@@ -367,7 +367,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
             long slot = Volatile.Read(ref _slots[(int)((ulong)hand & (uint)mask)]);
             if ((slot & ValidBit) == 0) continue;
             arenaId = (int)((slot >> 32) & ArenaIdMask);
-            pageIdx = (int)slot;
+            pageIdx = (uint)slot;
             return true;
         }
         return false;
@@ -397,10 +397,10 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     ~PageResidencyTracker() => Dispose();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static long PackKey(int arenaId, int pageIdx)
+    private static long PackKey(int arenaId, uint pageIdx)
     {
         Debug.Assert(((uint)arenaId & ~(uint)ArenaIdMask) == 0, "arenaId exceeds 30-bit range");
-        return ValidBit | (((long)arenaId & ArenaIdMask) << 32) | (uint)pageIdx;
+        return ValidBit | (((long)arenaId & ArenaIdMask) << 32) | pageIdx;
     }
 
     // Multiplicative (Fibonacci) mix; uses the high bits, which give a better

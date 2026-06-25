@@ -69,8 +69,8 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
     internal void TouchRange(long localOffset, long length)
     {
         if (length <= 0) return;
-        (int firstPage, int lastPage, _, _) = PageRange(localOffset, length);
-        for (int p = firstPage; p <= lastPage; p++)
+        (uint firstPage, uint lastPage, _, _) = PageRange(localOffset, length);
+        for (uint p = firstPage; p <= lastPage; p++)
             _arenaManager.Touch(ArenaId, p, inline: false);
     }
 
@@ -92,9 +92,9 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
     internal void TouchRangePopulate(long localOffset, long length)
     {
         if (length <= 0) return;
-        (int firstPage, int lastPage, long firstPageBase, long lastPageBaseExclusive) = PageRange(localOffset, length);
+        (uint firstPage, uint lastPage, long firstPageBase, long lastPageBaseExclusive) = PageRange(localOffset, length);
         int missedCount = 0;
-        for (int p = firstPage; p <= lastPage; p++)
+        for (uint p = firstPage; p <= lastPage; p++)
             if (_arenaManager.Touch(ArenaId, p, inline: true) != PageResidencyTracker.TouchOutcome.Hit)
                 missedCount++;
         if (missedCount > 1)
@@ -105,15 +105,15 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
     /// Compute the inclusive arena-absolute page-index range and the page-aligned byte envelope covering the
     /// reader-relative range <c>[localOffset, localOffset + length)</c>.
     /// </summary>
-    private (int firstPage, int lastPage, long firstPageBase, long lastPageBaseExclusive) PageRange(long localOffset, long length)
+    private (uint firstPage, uint lastPage, long firstPageBase, long lastPageBaseExclusive) PageRange(long localOffset, long length)
     {
         int pageSize = Environment.SystemPageSize;
         long absStart = Offset + localOffset;
         long absEnd = absStart + length;
         long firstPageBase = absStart & ~(long)(pageSize - 1);
         long lastPageBaseExclusive = (absEnd + pageSize - 1) & ~(long)(pageSize - 1);
-        int firstPage = (int)(firstPageBase / pageSize);
-        int lastPage = (int)((lastPageBaseExclusive - 1) / pageSize);
+        uint firstPage = (uint)(firstPageBase / pageSize);
+        uint lastPage = (uint)((lastPageBaseExclusive - 1) / pageSize);
         return (firstPage, lastPage, firstPageBase, lastPageBaseExclusive);
     }
 

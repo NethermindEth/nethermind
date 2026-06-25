@@ -295,7 +295,7 @@ public sealed class ArenaManager : IArenaManager
         if (pageCount <= 0) return;
         long forgotten = 0;
         for (long p = startPage; p < endPageExclusive; p++)
-            if (_pageTracker.Forget(arenaId, (int)p)) forgotten++;
+            if (_pageTracker.Forget(arenaId, (uint)p)) forgotten++;
         // The kernel just dropped the resident pages in this range (whole-range MADV_DONTNEED at the call
         // sites) — refresh proportionally so its LRU doesn't bleed into our working set. Scale to the pages
         // we actually un-tracked, not the full range (which may be largely cold), so this matches the
@@ -304,7 +304,7 @@ public sealed class ArenaManager : IArenaManager
             _pageAdvisor?.TouchWarmPages((int)Math.Min(int.MaxValue, forgotten * 2));
     }
 
-    public PageResidencyTracker.TouchOutcome Touch(int arenaId, int pageIdx, bool inline)
+    public PageResidencyTracker.TouchOutcome Touch(int arenaId, uint pageIdx, bool inline)
     {
         if (_pageAdvisor is not { } advisor) return PageResidencyTracker.TouchOutcome.Hit;
         if (inline) return advisor.ProcessTouchInline(arenaId, pageIdx);
@@ -466,7 +466,7 @@ public sealed class ArenaManager : IArenaManager
         {
             for (int i = 0; i < targetTouches; i++)
             {
-                if (!_manager._pageTracker.TryPickResidentPage(out int warmArenaId, out int warmPageIdx)) return;
+                if (!_manager._pageTracker.TryPickResidentPage(out int warmArenaId, out uint warmPageIdx)) return;
                 if (!_manager._arenas.TryGetValue(warmArenaId, out ArenaFile? warmArena)) continue;
                 long warmOffset = (long)warmPageIdx * Environment.SystemPageSize;
                 if (warmOffset >= warmArena.MappedSize) continue;
@@ -498,9 +498,9 @@ public sealed class ArenaManager : IArenaManager
         public long Refreshed => Volatile.Read(ref _refreshed);
         public long PendingTouches => _ring.EstimatedJobCount;
 
-        public void EnqueueTouch(int arenaId, int pageIdx)
+        public void EnqueueTouch(int arenaId, uint pageIdx)
         {
-            long packed = ((long)(uint)arenaId << 32) | (uint)pageIdx;
+            long packed = ((long)(uint)arenaId << 32) | pageIdx;
             if (_ring.TryEnqueue(packed))
             {
                 // Gated, edge-guarded watermark wake (see class remarks). The hot path pays only a
@@ -527,10 +527,10 @@ public sealed class ArenaManager : IArenaManager
         /// pre-fault path; returns the <see cref="PageResidencyTracker.TouchOutcome"/> for callers that need
         /// the non-Hit count.
         /// </summary>
-        public PageResidencyTracker.TouchOutcome ProcessTouchInline(int arenaId, int pageIdx)
+        public PageResidencyTracker.TouchOutcome ProcessTouchInline(int arenaId, uint pageIdx)
         {
             PageResidencyTracker.TouchOutcome outcome =
-                _manager._pageTracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx);
+                _manager._pageTracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out uint evictedPageIdx);
             if (outcome == PageResidencyTracker.TouchOutcome.Evicted)
             {
                 Interlocked.Increment(ref _dispatched);
@@ -550,7 +550,7 @@ public sealed class ArenaManager : IArenaManager
                     // flip the flag back to 1 and the post-drain check picks it up.
                     Volatile.Write(ref _signal, 0);
                     while (_ring.TryDequeue(out long packed))
-                        ProcessTouchInline((int)(packed >> 32), (int)packed);
+                        ProcessTouchInline((int)(packed >> 32), (uint)packed);
 
                     // Re-check the ring directly too: a producer that enqueued without tripping the gated
                     // watermark wake leaves _signal at 0, so HasReadyItem is what catches it before we sleep.
@@ -567,7 +567,7 @@ public sealed class ArenaManager : IArenaManager
             }
         }
 
-        private void DispatchInline(int arenaId, int pageIdx)
+        private void DispatchInline(int arenaId, uint pageIdx)
         {
             if (!_manager._arenas.TryGetValue(arenaId, out ArenaFile? arena)) return;
             int pageSize = Environment.SystemPageSize;
@@ -594,7 +594,7 @@ public sealed class ArenaManager : IArenaManager
             // Drain any leftovers synchronously; the syscalls are cheap enough that we'd rather
             // pay the cost than leave kernel pages cached for a process about to exit.
             while (_ring.TryDequeue(out long packed))
-                ProcessTouchInline((int)(packed >> 32), (int)packed);
+                ProcessTouchInline((int)(packed >> 32), (uint)packed);
 
             // Timers are stopped, so publish the final cumulative counters they would have on their next tick.
             Metrics.PageTrackerPagesRefreshed = Refreshed;

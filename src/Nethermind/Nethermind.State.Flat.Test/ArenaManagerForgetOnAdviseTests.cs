@@ -56,9 +56,9 @@ public class ArenaManagerForgetOnAdviseTests
         const int arenaId = 7;
         int pageSize = Environment.SystemPageSize;
 
-        for (int p = 0; p < 10; p++)
+        for (uint p = 0; p < 10; p++)
             manager.PageTracker.TryTouch(arenaId, p, out _, out _);
-        for (int p = 0; p < 10; p++)
+        for (uint p = 0; p < 10; p++)
             Assert.That(manager.PageTracker.ContainsPage(arenaId, p), Is.True);
 
         // Reservation covering [0, 10*pageSize) — 10 fully-covered pages.
@@ -68,7 +68,7 @@ public class ArenaManagerForgetOnAdviseTests
 
         reservation.AdviseDontNeed();
 
-        for (int p = 0; p < 10; p++)
+        for (uint p = 0; p < 10; p++)
             Assert.That(manager.PageTracker.ContainsPage(arenaId, p), Is.False, $"page {p} should have been Forgotten");
     }
 
@@ -79,7 +79,7 @@ public class ArenaManagerForgetOnAdviseTests
         const int arenaId = 7;
         int pageSize = Environment.SystemPageSize;
 
-        for (int p = 0; p < 5; p++)
+        for (uint p = 0; p < 5; p++)
             manager.PageTracker.TryTouch(arenaId, p, out _, out _);
 
         // Reservation [pageSize/2, pageSize/2 + 3*pageSize). Page-aligned start = page 1,
@@ -114,14 +114,14 @@ public class ArenaManagerForgetOnAdviseTests
         buf.Advance(pages * pageSize);
         (SnapshotLocation location, ArenaReservation reservation) = writer.Complete();
 
-        int firstPage = (int)(location.Offset / pageSize);
-        for (int i = 0; i < pages; i++)
+        uint firstPage = (uint)(location.Offset / pageSize);
+        for (uint i = 0; i < pages; i++)
             manager.PageTracker.TryTouch(location.ArenaId, firstPage + i, out _, out _);
 
         // CleanUp calls ForgetTrackerRange over the reservation's footprint after MarkDead.
         reservation.Dispose();
 
-        for (int i = 0; i < pages; i++)
+        for (uint i = 0; i < pages; i++)
             Assert.That(manager.PageTracker.ContainsPage(location.ArenaId, firstPage + i),
                 Is.False, $"page {firstPage + i} should have been Forgotten on reservation dispose");
     }
