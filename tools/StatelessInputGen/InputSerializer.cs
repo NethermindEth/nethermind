@@ -156,7 +156,9 @@ public static class InputSerializer
     {
         int sectionLen = ReadInt32(source, ref offset);
 
-        if (sectionLen == 0)
+        // A malformed .bin can carry a negative length; treat it like an empty section so it fails
+        // cleanly here instead of reading `count`/items from an unexpected offset.
+        if (sectionLen <= 0)
             return ArrayPoolList<byte[]>.Empty();
 
         int count = ReadInt32(source, ref offset);

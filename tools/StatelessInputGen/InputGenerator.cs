@@ -49,6 +49,9 @@ internal static class InputGenerator
                     ChainId = chainId,
                     ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId))
                 },
+                // The guest sets each tx's SenderAddress from these and skips execution entirely
+                // when their count doesn't match the tx count, so they must be recovered here.
+                PublicKeys = RecoverPublicKeys(block.Transactions, chainId),
             };
         }
 
@@ -198,6 +201,9 @@ internal static class InputGenerator
                     ChainId = chainId.Value,
                     ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId.Value))
                 },
+                // The guest sets each tx's SenderAddress from these and skips execution entirely
+                // when their count doesn't match the tx count, so they must be recovered here.
+                PublicKeys = RecoverPublicKeys(block.Transactions, chainId.Value),
             };
 
             byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
