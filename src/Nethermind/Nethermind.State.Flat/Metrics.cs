@@ -215,22 +215,22 @@ public static class Metrics
 
     [DetailedMetric]
     [CounterMetric]
-    [Description("Page-tracker evictions dispatched off the drain ring (madvise issued)")]
+    [Description("Page-tracker evictions dispatched by the residency clock (madvise issued)")]
     public static long PageTrackerEvictionsDispatched
     {
         get => Volatile.Read(ref _pageTrackerEvictionsDispatched);
         set => Volatile.Write(ref _pageTrackerEvictionsDispatched, value);
     }
 
-    internal static long _pageTrackerEvictionsInlineFallback;
+    internal static long _pageTrackerTouchesProcessedInline;
 
     [DetailedMetric]
     [CounterMetric]
-    [Description("Page-tracker evictions dispatched inline because the drain ring was full")]
-    public static long PageTrackerEvictionsInlineFallback
+    [Description("Page-tracker touches whose clock ran inline on the producer because the touch ring was full")]
+    public static long PageTrackerTouchesProcessedInline
     {
-        get => Volatile.Read(ref _pageTrackerEvictionsInlineFallback);
-        set => Volatile.Write(ref _pageTrackerEvictionsInlineFallback, value);
+        get => Volatile.Read(ref _pageTrackerTouchesProcessedInline);
+        set => Volatile.Write(ref _pageTrackerTouchesProcessedInline, value);
     }
 
     internal static long _pageTrackerPagesRefreshed;

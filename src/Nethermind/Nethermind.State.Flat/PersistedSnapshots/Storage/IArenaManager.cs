@@ -54,24 +54,31 @@ public unsafe interface IArenaManager : IDisposable
     void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize);
 
     /// <summary>
-    /// Enqueue a page eviction for asynchronous dispatch. The implementation pushes
-    /// <c>(arenaId, pageIdx)</c> onto a bounded MPSC ring drained by a background worker that
-    /// performs the <c>madvise(MADV_DONTNEED)</c> syscall
-    /// off the producer thread. The drain re-checks <see cref="PageResidencyTracker.ContainsPage"/>
-    /// and skips the syscall if the page returned to the working set in the meantime. On
-    /// ring-full the producer falls back to inline dispatch so no eviction is lost.
-    /// Implementations with no per-page mapping (the in-memory test arena) treat this as a
-    /// no-op. <paramref name="pageIdx"/> is the arena-absolute page index
-    /// (<c>offset / Environment.SystemPageSize</c>).
+    /// Record a per-page access against the residency clock. With <paramref name="inline"/> <c>false</c>
+    /// (the generic read path) the access is packed onto a bounded ring that a single background worker
+    /// drains, running the clock (<see cref="PageResidencyTracker.TryTouch"/>) off the reader thread and
+    /// issuing <c>madvise(MADV_DONTNEED)</c> for any page it displaces; the return value is unspecified
+    /// (the outcome is computed later). With <paramref name="inline"/> <c>true</c> the clock runs
+    /// synchronously on the calling thread, dispatching any displaced page inline, and the real
+    /// <see cref="PageResidencyTracker.TouchOutcome"/> is returned.
     /// </summary>
-    void QueueEviction(int arenaId, int pageIdx);
+    /// <remarks>
+    /// The inline form is used by the deliberate pre-fault path
+    /// (<see cref="ArenaReservation.TouchRangePopulate"/>), which needs the synchronous
+    /// non-<see cref="PageResidencyTracker.TouchOutcome.Hit"/> count to decide a single batched
+    /// <c>MADV_POPULATE_READ</c>, and as the ring-full fallback of the background form. Returns
+    /// <see cref="PageResidencyTracker.TouchOutcome.Hit"/> when the tracker is disabled. Implementations
+    /// with no per-page mapping (the in-memory test arena) may record both forms synchronously.
+    /// <paramref name="pageIdx"/> is the arena-absolute page index (<c>offset / Environment.SystemPageSize</c>).
+    /// </remarks>
+    PageResidencyTracker.TouchOutcome Touch(int arenaId, int pageIdx, bool inline);
 
     /// <summary>
-    /// Per-arena page residency tracker. Reservations call
-    /// <see cref="PageResidencyTracker.TryTouch"/> directly to record per-page accesses; the
-    /// manager owns the tracker and disposes it. Instances configured with zero cache bytes
-    /// (<c>PersistedSnapshotArenaPageCacheBytes = 0</c>, as in tests) return a 0-capacity tracker
-    /// whose <c>TryTouch</c> is a no-op.
+    /// Per-arena page residency tracker. Reservations record per-page accesses through
+    /// <see cref="Touch"/> rather than touching the tracker directly; the manager owns the tracker and
+    /// disposes it. Instances configured with zero cache bytes
+    /// (<c>PersistedSnapshotArenaPageCacheBytes = 0</c>, as in tests) return a 0-capacity tracker whose
+    /// <c>TryTouch</c> is a no-op.
     /// </summary>
     PageResidencyTracker PageTracker { get; }
 }

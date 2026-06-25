@@ -43,11 +43,11 @@ public sealed class ArenaManager : IArenaManager
     // first time the kernel reports it permanently unsupported.
     private int _punchHoleSupported = 1;
 
-    internal long EvictionsQueued => _pageAdvisor?.Queued ?? 0;
-    internal long EvictionsInlineFallback => _pageAdvisor?.InlineFallback ?? 0;
-    internal long EvictionsSkippedRetouched => _pageAdvisor?.SkippedRetouched ?? 0;
     internal long EvictionsDispatched => _pageAdvisor?.Dispatched ?? 0;
+    internal long TouchesProcessedInline => _pageAdvisor?.InlineProcessed ?? 0;
     internal long PagesRefreshed => _pageAdvisor?.Refreshed ?? 0;
+    // Stale-tolerant count of touches still sitting in the ring; used by tests to observe drain.
+    internal long PendingTouches => _pageAdvisor?.PendingTouches ?? 0;
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
@@ -64,10 +64,12 @@ public sealed class ArenaManager : IArenaManager
 
         if (_pageTracker.MaxCapacity > 0)
         {
-            // Eviction queue sized at ~1% of the tracker's slot capacity, floored at 128 cache lines
-            // (1024 8-byte entries) and rounded up to the next power of two.
-            const int minRingEntries = 128 * (CacheLineBytes / sizeof(long));
-            int ringCapacity = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(minRingEntries, _pageTracker.MaxCapacity / 100));
+            // Touch ring sized at ~5% of the tracker's slot capacity, floored at 512 cache lines
+            // (4096 8-byte entries) and rounded up to the next power of two. Ring-full is non-fatal
+            // (the producer runs the clock inline as backpressure), so this is a throughput knob,
+            // not a correctness one.
+            const int minRingEntries = 512 * (CacheLineBytes / sizeof(long));
+            int ringCapacity = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(minRingEntries, _pageTracker.MaxCapacity / 20));
             _pageAdvisor = new PageResidencyAdvisor(this, ringCapacity);
         }
     }
@@ -302,7 +304,13 @@ public sealed class ArenaManager : IArenaManager
             _pageAdvisor?.TouchWarmPages((int)Math.Min(int.MaxValue, forgotten * 2));
     }
 
-    public void QueueEviction(int arenaId, int pageIdx) => _pageAdvisor?.Queue(arenaId, pageIdx);
+    public PageResidencyTracker.TouchOutcome Touch(int arenaId, int pageIdx, bool inline)
+    {
+        if (_pageAdvisor is not { } advisor) return PageResidencyTracker.TouchOutcome.Hit;
+        if (inline) return advisor.ProcessTouchInline(arenaId, pageIdx);
+        advisor.EnqueueTouch(arenaId, pageIdx);
+        return PageResidencyTracker.TouchOutcome.Hit;
+    }
 
     private ArenaFile GetOrCreateArena(long requiredSize, bool small)
     {
@@ -384,28 +392,53 @@ public sealed class ArenaManager : IArenaManager
     }
 
     /// <summary>
-    /// Advises the kernel about arena page residency. Producers call <see cref="Queue"/> to enqueue
-    /// <c>(arenaId, pageIdx)</c> evictions onto a bounded MPSC ring; a background worker drains it and runs
-    /// the <c>madvise(MADV_DONTNEED)</c> syscall off the producer
-    /// thread, re-checking residency and warming siblings (<see cref="TouchWarmPages"/>) so the kernel LRU
-    /// doesn't bleed into our working set. Also owns the 1s timer that publishes the resident-bytes gauge.
+    /// Keeps the page-residency clock off the reader hot path. Producers call <see cref="EnqueueTouch"/> to
+    /// push <c>(arenaId, pageIdx)</c> touches onto a bounded ring; a single background worker drains it,
+    /// runs the clock (<see cref="PageResidencyTracker.TryTouch"/>) and issues the
+    /// <c>madvise(MADV_DONTNEED)</c> syscall for any page the clock displaces — warming siblings
+    /// (<see cref="TouchWarmPages"/>) so the kernel LRU doesn't bleed into our working set. Also owns the 1s
+    /// timer that publishes the resident-bytes gauge.
     /// </summary>
+    /// <remarks>
+    /// Wake protocol: the hot path normally only enqueues. It attempts to wake the drain at most once per
+    /// <see cref="WakeCheckStride"/> enqueues (gated by a per-thread sampler) and only once the ring is past
+    /// <see cref="_wakeWatermark"/>; a modest floor timer drains the sub-watermark tail. Both wake paths and
+    /// the drain coordinate through <see cref="_signal"/> with a reset-before-drain / re-check-after protocol
+    /// that closes the lost-wakeup race, and the semaphore is Released at most once per drain sleep.
+    /// Ring-full runs the clock inline (<see cref="ProcessTouchInline"/>) as backpressure — a dropped enqueue
+    /// would only ever lose a touch, never an eviction (evictions are computed by whoever runs the clock).
+    /// </remarks>
     private sealed class PageResidencyAdvisor : IDisposable
     {
+        // Attempt a watermark wake once per this many enqueues (power of two; mask below). Chosen so the
+        // gap between checks is small relative to (capacity − watermark) — a missed check merely falls
+        // through to the inline-on-full path, which is acceptable.
+        private const int WakeCheckStride = 256;
+        private const int WakeCheckMask = WakeCheckStride - 1;
+        // Floor cadence that drains the sub-watermark tail (the watermark never trips for a low/steady
+        // trickle). Draining is advisory, so a coarse period is fine.
+        private static readonly TimeSpan DrainFloorPeriod = TimeSpan.FromMilliseconds(50);
+
+        // Per-thread enqueue counter for the gated watermark check — unsynchronised on purpose: with many
+        // producers the aggregate check rate only rises, so the gate never under-fires.
+        [ThreadStatic] private static int t_wakeSampler;
+
         private readonly ArenaManager _manager;
         private readonly MpmcRingBuffer<long> _ring;
         private readonly SemaphoreSlim _wake = new(0, int.MaxValue);
         private readonly CancellationTokenSource _drainCts = new();
         private readonly Task _drainTask;
         private readonly Timer _metricsTimer;
+        private readonly Timer _drainFloorTimer;
+        // Ring fill at which a producer's gated check wakes the drain early, before the ring fills enough to
+        // force inline processing. Half the ring capacity.
+        private readonly long _wakeWatermark;
         private volatile bool _disposed;
-        // 0 = drain may sleep, 1 = at least one item is queued. Producers flip 0→1 and Release; the
-        // drain resets it to 0 before draining and re-checks after to close the lost-wakeup race.
+        // 0 = drain may sleep, 1 = a wake has been signalled. Producers flip 0→1 and Release; the drain
+        // resets it to 0 before draining and re-checks after to close the lost-wakeup race.
         private int _signal;
         // Lightweight observability — also used by tests. Never decremented.
-        private long _queued;
-        private long _inlineFallback;
-        private long _skippedRetouched;
+        private long _inlineProcessed;
         private long _dispatched;
         private long _refreshed;
 
@@ -413,6 +446,7 @@ public sealed class ArenaManager : IArenaManager
         {
             _manager = manager;
             _ring = new MpmcRingBuffer<long>(ringCapacity);
+            _wakeWatermark = ringCapacity / 2;
             _drainTask = Task.Run(() => DrainAsync(_drainCts.Token));
             // Publish the resident-bytes gauge and the pages-refreshed counter once a second rather than
             // writing them inline on every touch — keeps the hot/warm paths lighter; the values lag by at
@@ -420,6 +454,8 @@ public sealed class ArenaManager : IArenaManager
             Metrics.PageTrackerResidentBytes = 0L;
             _metricsTimer = new Timer(PublishTrackerMetrics, null,
                 dueTime: TimeSpan.FromSeconds(1), period: TimeSpan.FromSeconds(1));
+            // Floor wake: drains touches the gated watermark check left behind under a low/steady trickle.
+            _drainFloorTimer = new Timer(DrainFloorTick, null, dueTime: DrainFloorPeriod, period: DrainFloorPeriod);
         }
 
         // Refresh up to <paramref name="targetTouches"/> resident pages' kernel-side LRU position so
@@ -448,38 +484,68 @@ public sealed class ArenaManager : IArenaManager
         }
 
         // Publishes the page-tracker gauges off the hot/warm paths: the resident-bytes gauge and the
-        // cumulative pages-refreshed counter (mirrored from the per-advisor _refreshed). Lags by ≤ 1s.
+        // cumulative pages-refreshed / touches-processed-inline counters (mirrored from the per-advisor
+        // fields). Lags by ≤ 1s.
         private void PublishTrackerMetrics(object? _)
         {
             if (_disposed) return;
             Metrics.PageTrackerResidentBytes = _manager._pageTracker.ResidentBytes;
             Metrics.PageTrackerPagesRefreshed = Refreshed;
+            Metrics.PageTrackerTouchesProcessedInline = InlineProcessed;
         }
 
-        public long Queued => Volatile.Read(ref _queued);
-        public long InlineFallback => Volatile.Read(ref _inlineFallback);
-        public long SkippedRetouched => Volatile.Read(ref _skippedRetouched);
+        public long InlineProcessed => Volatile.Read(ref _inlineProcessed);
         public long Dispatched => Volatile.Read(ref _dispatched);
         public long Refreshed => Volatile.Read(ref _refreshed);
+        public long PendingTouches => _ring.EstimatedJobCount;
 
-        public void Queue(int arenaId, int pageIdx)
+        public void EnqueueTouch(int arenaId, int pageIdx)
         {
             long packed = ((long)(uint)arenaId << 32) | (uint)pageIdx;
             if (_ring.TryEnqueue(packed))
             {
-                Interlocked.Increment(ref _queued);
-                // Wake the drain only on the empty→non-empty edge.
-                if (Interlocked.Exchange(ref _signal, 1) == 0)
+                // Gated, edge-guarded watermark wake (see class remarks). The hot path pays only a
+                // per-thread increment + mask test; the cross-core EstimatedJobCount read and the
+                // semaphore Release happen at most once per WakeCheckStride enqueues, and only on the
+                // _signal 0→1 edge so the semaphore is never inflated.
+                if (((++t_wakeSampler) & WakeCheckMask) == 0
+                    && _ring.EstimatedJobCount >= _wakeWatermark
+                    && Interlocked.Exchange(ref _signal, 1) == 0)
                     _wake.Release();
                 return;
             }
 
-            // Ring full — fall back to inline dispatch so the eviction is not lost. Bursts large
-            // enough to fill 10% of the residency cap should be rare; if seen in practice, raise
-            // the ring fraction or the per-arena budget.
-            Interlocked.Increment(ref _inlineFallback);
-            Interlocked.Increment(ref Metrics._pageTrackerEvictionsInlineFallback);
-            DispatchInline(arenaId, pageIdx);
+            // Ring full — run the clock inline as backpressure. The displaced page, if any, is dispatched
+            // synchronously; a dropped enqueue would only ever lose a touch, never an eviction. The global
+            // metric is mirrored from _inlineProcessed by the 1s timer (PublishTrackerMetrics).
+            Interlocked.Increment(ref _inlineProcessed);
+            ProcessTouchInline(arenaId, pageIdx);
+        }
+
+        /// <summary>
+        /// Run the residency clock for <c>(arenaId, pageIdx)</c> on the calling thread and dispatch any
+        /// displaced page inline. Used by the drain consumer, the ring-full fallback, and the deliberate
+        /// pre-fault path; returns the <see cref="PageResidencyTracker.TouchOutcome"/> for callers that need
+        /// the non-Hit count.
+        /// </summary>
+        public PageResidencyTracker.TouchOutcome ProcessTouchInline(int arenaId, int pageIdx)
+        {
+            PageResidencyTracker.TouchOutcome outcome =
+                _manager._pageTracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx);
+            if (outcome == PageResidencyTracker.TouchOutcome.Evicted)
+            {
+                Interlocked.Increment(ref _dispatched);
+                Interlocked.Increment(ref Metrics._pageTrackerEvictionsDispatched);
+                DispatchInline(evictedArenaId, evictedPageIdx);
+            }
+            return outcome;
+        }
+
+        // Floor-timer tick: edge-guarded wake when the ring holds work the gated check left behind.
+        private void DrainFloorTick(object? _)
+        {
+            if (!_disposed && _ring.EstimatedJobCount > 0 && Interlocked.Exchange(ref _signal, 1) == 0)
+                _wake.Release();
         }
 
         private async Task DrainAsync(CancellationToken ct)
@@ -492,9 +558,11 @@ public sealed class ArenaManager : IArenaManager
                     // flip the flag back to 1 and the post-drain check picks it up.
                     Volatile.Write(ref _signal, 0);
                     while (_ring.TryDequeue(out long packed))
-                        DispatchOne(packed);
+                        ProcessTouchInline((int)(packed >> 32), (int)packed);
 
-                    if (Volatile.Read(ref _signal) != 0) continue;
+                    // Re-check the ring directly too: a producer that enqueued without tripping the gated
+                    // watermark wake leaves _signal at 0, so HasReadyItem is what catches it before we sleep.
+                    if (Volatile.Read(ref _signal) != 0 || _ring.HasReadyItem) continue;
                     await _wake.WaitAsync(ct).ConfigureAwait(false);
                 }
             }
@@ -502,22 +570,6 @@ public sealed class ArenaManager : IArenaManager
             {
                 // Shutdown — drain leftovers happens in Dispose.
             }
-        }
-
-        private void DispatchOne(long packed)
-        {
-            int arenaId = (int)(packed >> 32);
-            int pageIdx = (int)packed;
-            // Re-check residency: if the page returned to the working set between enqueue and
-            // drain, skip the syscall — punishing it would just force a re-fault on the next read.
-            if (_manager._pageTracker.ContainsPage(arenaId, pageIdx))
-            {
-                Interlocked.Increment(ref _skippedRetouched);
-                return;
-            }
-            Interlocked.Increment(ref _dispatched);
-            Interlocked.Increment(ref Metrics._pageTrackerEvictionsDispatched);
-            DispatchInline(arenaId, pageIdx);
         }
 
         private void DispatchInline(int arenaId, int pageIdx)
@@ -533,9 +585,10 @@ public sealed class ArenaManager : IArenaManager
 
         public void Dispose()
         {
-            // Stop the residency-metric timer first; the flag makes any in-flight tick a no-op.
+            // Stop the timers first; the flag makes any in-flight tick a no-op.
             _disposed = true;
             _metricsTimer.Dispose();
+            _drainFloorTimer.Dispose();
 
             // Stop the drain task next so it doesn't race with the manager's arena disposal.
             _drainCts.Cancel();
@@ -547,10 +600,11 @@ public sealed class ArenaManager : IArenaManager
             // Drain any leftovers synchronously; the syscalls are cheap enough that we'd rather
             // pay the cost than leave kernel pages cached for a process about to exit.
             while (_ring.TryDequeue(out long packed))
-                DispatchOne(packed);
+                ProcessTouchInline((int)(packed >> 32), (int)packed);
 
-            // Timer is stopped, so publish the final cumulative refresh count it would have on its next tick.
+            // Timers are stopped, so publish the final cumulative counters they would have on their next tick.
             Metrics.PageTrackerPagesRefreshed = Refreshed;
+            Metrics.PageTrackerTouchesProcessedInline = InlineProcessed;
 
             _wake.Dispose();
             _drainCts.Dispose();

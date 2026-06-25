@@ -12,14 +12,18 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.Test;
 
 /// <summary>
-/// Tests for the per-<see cref="ArenaManager"/> MPSC eviction queue: the producer hot path
-/// enqueues displaced pages, a background drain task does the dictionary lookup +
-/// <c>madvise</c>, and the drain re-checks the tracker so re-touched pages are not punished.
-/// Uses the manager's internal counters for observability (see InternalsVisibleTo on the
-/// production assembly).
+/// Tests for the per-<see cref="ArenaManager"/> touch ring: the producer hot path enqueues
+/// <c>(arenaId, pageIdx)</c> touches, a single background worker drains them and runs the residency
+/// clock, dispatching any displaced page's <c>madvise</c> off the producer thread. On ring-full the
+/// producer runs the clock inline. Uses the manager's internal counters for observability (see
+/// InternalsVisibleTo on the production assembly).
 /// </summary>
 public class ArenaManagerEvictionQueueTests
 {
+    // A page-cache budget of N OS pages yields an N-slot tracker; 8 slots is exactly one 8-way set,
+    // so every key collides and the clock outcome is fully determined.
+    private static long OneSetBudget => 8L * Environment.SystemPageSize;
+
     private string _testDir = null!;
 
     [SetUp]
@@ -55,73 +59,74 @@ public class ArenaManagerEvictionQueueTests
         }, LimboLogs.Instance);
 
     [Test]
-    public void DisabledTracker_NoQueueOrDrain_QueueEvictionIsNoOp()
+    public void DisabledTracker_TouchIsNoOp()
     {
         using ArenaManager manager = NewManager(pageCacheBytes: 0);
         Assert.That(manager.PageTracker.MaxCapacity, Is.EqualTo(0));
-        manager.QueueEviction(0, 0);
-        Assert.That(manager.EvictionsQueued, Is.EqualTo(0));
-        Assert.That(manager.EvictionsInlineFallback, Is.EqualTo(0));
+
+        manager.Touch(0, 0, inline: false);
+        Assert.That(manager.Touch(0, 0, inline: true), Is.EqualTo(PageResidencyTracker.TouchOutcome.Hit));
+
         Assert.That(manager.EvictionsDispatched, Is.EqualTo(0));
+        Assert.That(manager.TouchesProcessedInline, Is.EqualTo(0));
+        Assert.That(manager.PendingTouches, Is.EqualTo(0));
     }
 
     [Test]
-    public void QueueEviction_EnqueuesAndDrainsEventually()
+    public void Touch_Background_DrainsAndDispatchesEviction()
     {
-        long budget = 1024L * Environment.SystemPageSize;
-        using ArenaManager manager = NewManager(budget);
+        using ArenaManager manager = NewManager(OneSetBudget);
 
-        // Use an arenaId that won't exist in _arenas — DispatchEvictionInline silently no-ops
-        // on the dictionary miss. We're testing the queue mechanics, not the syscall.
-        manager.QueueEviction(arenaId: 42, pageIdx: 3);
-        WaitFor(() => manager.EvictionsDispatched + manager.EvictionsSkippedRetouched == 1);
-        Assert.That(manager.EvictionsQueued, Is.EqualTo(1));
-        Assert.That(manager.EvictionsInlineFallback, Is.EqualTo(0));
+        // Fill the single 8-way set, then one more touch forces a clock eviction. The arenaId is not in
+        // _arenas, so the dispatch's madvise no-ops on the dictionary miss — we're testing the drain
+        // mechanics, not the syscall.
+        for (int p = 0; p <= 8; p++)
+            manager.Touch(arenaId: 42, pageIdx: p, inline: false);
+
+        WaitFor(() => manager.EvictionsDispatched == 1);
+        Assert.That(manager.TouchesProcessedInline, Is.EqualTo(0));
+        Assert.That(manager.PendingTouches, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Touch_Inline_RunsClockSynchronously()
+    {
+        using ArenaManager manager = NewManager(OneSetBudget);
+
+        // First touch inserts, repeat hits (no eviction), distinct keys fill the set, and the 9th distinct
+        // key evicts — all synchronously on the calling thread.
+        Assert.That(manager.Touch(1, 0, inline: true), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
+        Assert.That(manager.Touch(1, 0, inline: true), Is.EqualTo(PageResidencyTracker.TouchOutcome.Hit));
+        for (int p = 1; p < 8; p++)
+            Assert.That(manager.Touch(1, p, inline: true), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
+        Assert.That(manager.Touch(1, 8, inline: true), Is.EqualTo(PageResidencyTracker.TouchOutcome.Evicted));
+
         Assert.That(manager.EvictionsDispatched, Is.EqualTo(1));
-        Assert.That(manager.EvictionsSkippedRetouched, Is.EqualTo(0));
+        // The inline touch did not go through the ring.
+        Assert.That(manager.PendingTouches, Is.EqualTo(0));
     }
 
     [Test]
-    public void QueueEviction_SkipsDispatchWhenPageBackInTracker()
+    public void Dispatch_WithStaleArenaIds_DoesNotThrow()
     {
-        long budget = 1024L * Environment.SystemPageSize;
-        using ArenaManager manager = NewManager(budget);
+        using ArenaManager manager = NewManager(OneSetBudget);
 
-        // Pre-touch (42, 7) so ContainsPage returns true. The drain must skip the dispatch
-        // and bump EvictionsSkippedRetouched instead of EvictionsDispatched.
-        manager.PageTracker.TryTouch(42, 7, out _, out _);
-        Assert.That(manager.PageTracker.ContainsPage(42, 7), Is.True);
-
-        manager.QueueEviction(arenaId: 42, pageIdx: 7);
-        WaitFor(() => manager.EvictionsSkippedRetouched == 1);
-        Assert.That(manager.EvictionsDispatched, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void WarmTouch_FiresOnDispatch_WithStaleArenaIdsDoesNotThrow()
-    {
-        // Touch a couple of pages so the tracker has VALID slots for the warm-hand to pick;
-        // their arenaIds (777, 778) are NOT in _arenas — TouchWarmPages must skip them via
-        // TryGetValue and not crash. Pair with a queue eviction whose arenaId is also stale,
-        // exercising the full DispatchEvictionInline → TouchWarmPages path.
-        long budget = 1024L * Environment.SystemPageSize;
-        using ArenaManager manager = NewManager(budget);
+        // Seed a couple of resident slots whose arenaIds are NOT in _arenas; forcing evictions against
+        // them must not crash (the dispatch's dictionary lookup skips the missing arena).
         manager.PageTracker.TryTouch(arenaId: 777, pageIdx: 0, out _, out _);
         manager.PageTracker.TryTouch(arenaId: 778, pageIdx: 1, out _, out _);
 
-        for (int i = 0; i < 8; i++)
-            manager.QueueEviction(arenaId: 42, pageIdx: i);
+        for (int p = 0; p < 8; p++)
+            manager.Touch(arenaId: 42, pageIdx: p, inline: true);
 
-        WaitFor(() => manager.EvictionsDispatched + manager.EvictionsSkippedRetouched == 8);
-        // The point is that no crash occurred — warm-touch tolerated the missing arenas.
-        Assert.That(manager.EvictionsDispatched, Is.EqualTo(8));
+        // Filling the rest of the set and beyond forces at least one eviction, all against stale arenas.
+        Assert.That(manager.EvictionsDispatched, Is.GreaterThan(0));
     }
 
     [Test]
     public void WarmTouch_FiresOnForgetTrackerRange_WithEmptyTrackerDoesNotThrow()
     {
-        long budget = 1024L * Environment.SystemPageSize;
-        using ArenaManager manager = NewManager(budget);
+        using ArenaManager manager = NewManager(OneSetBudget);
 
         // Empty tracker → warm-hand probe budget runs out → TouchWarmPages early-returns.
         // ForgetTrackerRange's per-page Forget is a no-op on an empty tracker.
@@ -141,7 +146,7 @@ public class ArenaManagerEvictionQueueTests
     public void WarmTouch_RefreshesRegisteredArenaPage_BumpsPagesRefreshed()
     {
         // One 8-way set (capacity 8) so the bounded keep-warm probe is guaranteed to find a resident slot.
-        using ArenaManager manager = NewManager(8L * Environment.SystemPageSize);
+        using ArenaManager manager = NewManager(OneSetBudget);
         manager.Initialize([]);
 
         // A two-page reservation so we can drop one tracked page and still leave one resident for the
@@ -171,7 +176,7 @@ public class ArenaManagerEvictionQueueTests
     [Test]
     public void ForgetUntrackedRange_DoesNotWarm()
     {
-        using ArenaManager manager = NewManager(8L * Environment.SystemPageSize);
+        using ArenaManager manager = NewManager(OneSetBudget);
         manager.Initialize([]);
 
         // Seed a resident page so the keep-warm hand WOULD have a target if it fired.
@@ -192,21 +197,20 @@ public class ArenaManagerEvictionQueueTests
     }
 
     [Test]
-    public void Dispose_DrainsRemainingEntries()
+    public void Dispose_DrainsRemainingTouches()
     {
-        long budget = 1024L * Environment.SystemPageSize;
-        ArenaManager manager = NewManager(budget);
+        ArenaManager manager = NewManager(OneSetBudget);
 
+        // 16 touches into the single set: 8 fill it, the next 8 each evict. Some are drained by the
+        // background worker, the rest by Dispose's synchronous flush.
         const int batch = 16;
         for (int i = 0; i < batch; i++)
-            manager.QueueEviction(arenaId: 42, pageIdx: i);
+            manager.Touch(arenaId: 42, pageIdx: i, inline: false);
 
         manager.Dispose();
-        // Every queued (or inline-fallback) eviction must have been resolved — either dispatched
-        // or skipped — by the time Dispose returns.
-        Assert.That(manager.EvictionsQueued, Is.EqualTo(batch));
-        Assert.That(
-            manager.EvictionsDispatched + manager.EvictionsSkippedRetouched,
-            Is.EqualTo(manager.EvictionsQueued + manager.EvictionsInlineFallback));
+
+        // The ring is fully drained and every eviction the clock produced was dispatched.
+        Assert.That(manager.PendingTouches, Is.EqualTo(0));
+        Assert.That(manager.EvictionsDispatched, Is.EqualTo(8));
     }
 }
