@@ -185,7 +185,7 @@ public class SnapProtocolHandlerTests
             using AccountsAndProofs response = await ctx.SnapProtocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         }
 
-        Assert.That(ctx.LastRecordedMessageSize, Is.EqualTo(250_000L));
+        Assert.That(ctx.LastRecordedMessageSize, Is.EqualTo(125_000L));
     }
 
     [Test]
