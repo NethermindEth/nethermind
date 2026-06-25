@@ -112,7 +112,7 @@ internal class MonitorRunner(
     {
         try
         {
-            test = test with {Recent = await blockProvider.GetAsync(test.RecentNumber, ct)};
+            test = test with { Recent = await blockProvider.GetAsync(test.RecentNumber, ct) };
 
             if (await _executor.ExecuteAsync(test, ct) is not { } testFailure)
                 return null;
