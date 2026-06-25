@@ -53,10 +53,7 @@ public partial class BlockAccessListManager
                 Transaction tx = block.Transactions[j];
 
                 GasValidationResult gasResult = gasResults[j].GetResult();
-                // The worker precomputes intrinsic gas once and carries it here to avoid
-                // recalculating dynamic state-byte costs on the validation thread.
-                IntrinsicGas<EthereumGasPolicy> intrinsicGas = gasResult.IntrinsicGas;
-                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in intrinsicGas);
+                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas);
 
                 // Surface the worker's original tx-rejection reason before running any
                 // downstream gas accounting. Otherwise CheckGasUsed can mask the true cause,
@@ -98,20 +95,15 @@ public partial class BlockAccessListManager
 
     // EIP-8037 worst-case 2D inclusion check. Only fires when EIP-8037 is active; legacy and
     // pre-EIP-8037 blocks rely solely on the post-execution running max(R,S) check.
-    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState, in IntrinsicGas<EthereumGasPolicy> intrinsic)
+    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
     {
         if (!spec.IsEip8037Enabled) return;
-
-        long intrinsicRegular = intrinsic.Standard.Value;
-        long intrinsicState = intrinsic.Standard.StateReservoir;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
             block.Header.GasLimit,
             cumulativeRegular,
             cumulativeState,
-            tx.GasLimit,
-            intrinsicRegular,
-            intrinsicState);
+            tx.GasLimit);
 
         if (outcome != Eip8037BlockGasInclusionCheck.Outcome.Ok)
         {
@@ -119,7 +111,7 @@ public partial class BlockAccessListManager
                 $"Block gas limit exceeded: tx {index} fails EIP-8037 inclusion check ({outcome}); " +
                 $"regular_available={block.Header.GasLimit - cumulativeRegular}, " +
                 $"state_available={block.Header.GasLimit - cumulativeState}, " +
-                $"tx.gas={tx.GasLimit}, intrinsic.regular={intrinsicRegular}, intrinsic.state={intrinsicState}.");
+                $"tx.gas={tx.GasLimit}.");
         }
     }
 
