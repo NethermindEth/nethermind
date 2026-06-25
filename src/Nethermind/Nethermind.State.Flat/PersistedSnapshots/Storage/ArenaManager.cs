@@ -411,10 +411,11 @@ public sealed class ArenaManager : IArenaManager
             _manager = manager;
             _ring = new MpmcRingBuffer<long>(ringCapacity);
             _drainTask = Task.Run(() => DrainAsync(_drainCts.Token));
-            // Poll resident pages once a second rather than pushing on every Inserted — keeps the hot
-            // path untouched; the gauge lags by at most ~1s. Seed to 0 so it appears immediately.
+            // Publish the resident-bytes gauge and the pages-refreshed counter once a second rather than
+            // writing them inline on every touch — keeps the hot/warm paths lighter; the values lag by at
+            // most ~1s. Seed resident bytes to 0 so it appears immediately.
             Metrics.PageTrackerResidentBytes = 0L;
-            _metricsTimer = new Timer(RefreshResidencyMetric, null,
+            _metricsTimer = new Timer(PublishTrackerMetrics, null,
                 dueTime: TimeSpan.FromSeconds(1), period: TimeSpan.FromSeconds(1));
         }
 
@@ -438,16 +439,18 @@ public sealed class ArenaManager : IArenaManager
                 {
                     warmArena.TouchByte(warmOffset);
                     Interlocked.Increment(ref _refreshed);
-                    Interlocked.Increment(ref Metrics._pageTrackerPagesRefreshed);
                 }
                 finally { warmArena.Dispose(); }
             }
         }
 
-        private void RefreshResidencyMetric(object? _)
+        // Publishes the page-tracker gauges off the hot/warm paths: the resident-bytes gauge and the
+        // cumulative pages-refreshed counter (mirrored from the per-advisor _refreshed). Lags by ≤ 1s.
+        private void PublishTrackerMetrics(object? _)
         {
             if (_disposed) return;
             Metrics.PageTrackerResidentBytes = _manager._pageTracker.ResidentBytes;
+            Metrics.PageTrackerPagesRefreshed = Refreshed;
         }
 
         public long Queued => Volatile.Read(ref _queued);
@@ -542,6 +545,9 @@ public sealed class ArenaManager : IArenaManager
             // pay the cost than leave kernel pages cached for a process about to exit.
             while (_ring.TryDequeue(out long packed))
                 DispatchOne(packed);
+
+            // Timer is stopped, so publish the final cumulative refresh count it would have on its next tick.
+            Metrics.PageTrackerPagesRefreshed = Refreshed;
 
             _wake.Dispose();
             _drainCts.Dispose();
