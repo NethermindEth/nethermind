@@ -54,10 +54,13 @@ namespace Nethermind.Xdc
         private CancellationTokenSource? _roundCts;
         private Task? _roundTask;
 
+        // Sentinel meaning "no round recorded yet"; TryAdvance treats it specially so the first advance always succeeds.
+        private const ulong NoRound = ulong.MaxValue;
+
         private DateTime _lastActivityTime = DateTime.UtcNow;
-        private long _highestSelfMinedRound;
-        private long _highestVotedRound;
-        private long _lastStartedRound = -1;
+        private ulong _highestSelfMinedRound;
+        private ulong _highestVotedRound;
+        private ulong _lastStartedRound = NoRound;
         private ulong _pendingPrevRound;
         private TimeSpan? _pendingLastRoundDuration;
 
@@ -222,11 +225,11 @@ namespace Nethermind.Xdc
 
             if (!await EnsureStateForProposalParent(proposalParent, round, ct)) return;
 
-            if (!TryAdvance(ref _highestSelfMinedRound, (long)round)) return;
+            if (!TryAdvance(ref _highestSelfMinedRound, round)) return;
 
             // Gate 1: enforce minimum mine period since parent block was produced
-            long now = _timestamper.UnixTime.SecondsLong;
-            long mineReadyAt = (long)proposalParent.Timestamp + proposalSpec.MinePeriod;
+            ulong now = _timestamper.UnixTime.Seconds;
+            ulong mineReadyAt = proposalParent.Timestamp + proposalSpec.MinePeriod;
             if (mineReadyAt > now)
                 await Task.Delay(TimeSpan.FromSeconds(mineReadyAt - now), ct);
 
@@ -323,7 +326,7 @@ namespace Nethermind.Xdc
             if (head.ExtraConsensusData?.QuorumCert is null)
                 throw new InvalidOperationException("Head block missing consensus data.");
 
-            long votingRound = (long)head.ExtraConsensusData.BlockRound;
+            ulong votingRound = head.ExtraConsensusData.BlockRound;
 
             if (!IsMasternode(epochInfo, _signer.Address))
             {
@@ -360,7 +363,7 @@ namespace Nethermind.Xdc
 
         private void LogRoundAdvance(ulong round, XdcBlockHeader head)
         {
-            if (!TryAdvance(ref _lastStartedRound, (long)round)) return;
+            if (!TryAdvance(ref _lastStartedRound, round)) return;
 
             Address? leader = null;
             bool isMyTurn = false;
@@ -383,13 +386,13 @@ namespace Nethermind.Xdc
             _logger.Info($"Round {round}{roundDuration}: head={headInfo} | Leader={leader?.ToShortString()}, MyTurn={myTurn}, Committee={committee} nodes");
         }
 
-        private static bool TryAdvance(ref long field, long value)
+        private static bool TryAdvance(ref ulong field, ulong value)
         {
-            long current;
+            ulong current;
             do
             {
                 current = Interlocked.Read(ref field);
-                if (current >= value) return false;
+                if (current != NoRound && current >= value) return false;
             } while (Interlocked.CompareExchange(ref field, value, current) != current);
             return true;
         }
@@ -419,7 +422,7 @@ namespace Nethermind.Xdc
                 currentMasternodes = epochSwitchInfo.Masternodes;
             }
 
-            int currentLeaderIndex = (int)round % spec.EpochLength % currentMasternodes.Length;
+            int currentLeaderIndex = (int)(round % spec.EpochLength % (ulong)currentMasternodes.Length);
             return currentMasternodes[currentLeaderIndex];
         }
 

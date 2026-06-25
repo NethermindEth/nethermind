@@ -36,7 +36,7 @@ public interface IBlockAccessListManager
     void WaitForBalWarmup();
 
     void Setup(Block block);
-    void SpendGas(long gas);
+    void SpendGas(ulong gas);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
     ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null);
     void NextTransaction();

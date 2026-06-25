@@ -81,7 +81,7 @@ public class MerkleTests
     [Test]
     public void Can_merkleize_ulong()
     {
-        UInt256 root = MerkleizeWithConverter((ulong)34 + byte.MaxValue + ushort.MaxValue + uint.MaxValue, UInt64SszBasicTypeConverter.Feed);
+        UInt256 root = MerkleizeWithConverter(34UL + byte.MaxValue + ushort.MaxValue + uint.MaxValue, UInt64SszBasicTypeConverter.Feed);
         Assert.That(root.ToHexString(true), Is.EqualTo("0x1f01010001000000000000000000000000000000000000000000000000000000"));
     }
 

@@ -13,7 +13,7 @@ namespace Nethermind.StateComposition.Data;
 /// </summary>
 public readonly record struct ScanMetadata
 {
-    public long BlockNumber { get; init; }
+    public ulong BlockNumber { get; init; }
     public Hash256 StateRoot { get; init; }
     public DateTimeOffset CompletedAt { get; init; }
     public TimeSpan Duration { get; init; }

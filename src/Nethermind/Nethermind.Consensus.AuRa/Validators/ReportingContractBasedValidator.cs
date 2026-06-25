@@ -24,10 +24,10 @@ namespace Nethermind.Consensus.AuRa.Validators
 #pragma warning disable IDE0290 // Constructor has unused DI parameters (txPool, blocksConfig)
     public partial class ReportingContractBasedValidator : IAuRaValidator, IReportingValidator
     {
-        private delegate Transaction CreateReportTransactionDelegate(Address validator, long block, byte[] proof);
+        private delegate Transaction CreateReportTransactionDelegate(Address validator, ulong block, byte[] proof);
 
         private readonly ContractBasedValidator _contractValidator;
-        private readonly long _posdaoTransition;
+        private readonly ulong _posdaoTransition;
         private readonly ITxSender _posdaoTxSender;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly Cache _cache;
@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public ReportingContractBasedValidator(
             ContractBasedValidator contractValidator,
             IReportingValidatorContract reportingValidatorContract,
-            long posdaoTransition,
+            ulong posdaoTransition,
             ITxSender txSender,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
@@ -62,9 +62,9 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private IReportingValidatorContract ValidatorContract { get; }
 
-        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause) => Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
+        public void ReportMalicious(Address validator, ulong blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause) => Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
 
-        private Transaction CreateReportMaliciousTransaction(Address validator, long blockNumber, byte[] proof)
+        private Transaction CreateReportMaliciousTransaction(Address validator, ulong blockNumber, byte[] proof)
         {
             if (!Validators.Contains(validator))
             {
@@ -90,11 +90,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             return transaction;
         }
 
-        public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause) => Report(ReportType.Benign, validator, blockNumber, [], cause.ToString(), CreateReportBenignTransaction);
+        public void ReportBenign(Address validator, ulong blockNumber, IReportingValidator.BenignCause cause) => Report(ReportType.Benign, validator, blockNumber, [], cause.ToString(), CreateReportBenignTransaction);
 
-        private Transaction CreateReportBenignTransaction(Address validator, long blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256)blockNumber);
+        private Transaction CreateReportBenignTransaction(Address validator, ulong blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256)blockNumber);
 
-        private void Report(ReportType reportType, Address validator, long blockNumber, byte[] proof, object cause, CreateReportTransactionDelegate createReportTransactionDelegate)
+        private void Report(ReportType reportType, Address validator, ulong blockNumber, byte[] proof, object cause, CreateReportTransactionDelegate createReportTransactionDelegate)
         {
             try
             {
@@ -149,13 +149,13 @@ namespace Nethermind.Consensus.AuRa.Validators
             txSender.SendTransaction(transaction, handlingOptions);
         }
 
-        private ITxSender SetSender(long blockNumber)
+        private ITxSender SetSender(ulong blockNumber)
         {
             bool posdao = IsPosdao(blockNumber);
             return posdao ? _posdaoTxSender : _nonPosdaoTxSender;
         }
 
-        private bool IsPosdao(long blockNumber) => _posdaoTransition <= blockNumber;
+        private bool IsPosdao(ulong blockNumber) => _posdaoTransition <= blockNumber;
 
         public void TryReportSkipped(BlockHeader header, BlockHeader parent)
         {
@@ -175,7 +175,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                                                    $"CurrentValidators [{(string.Join(", ", validators.AsEnumerable()))}");
 
                 ISet<Address> reported = new HashSet<Address>();
-                for (long step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
+                for (ulong step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
                 {
                     Address? skippedValidator = validators.GetItemRoundRobin(step);
                     if (skippedValidator is not null)

@@ -12,7 +12,7 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : IBlockStore
 {
     private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
-    private readonly Dictionary<long, Block> _blockNumDict = [];
+    private readonly Dictionary<ulong, Block> _blockNumDict = [];
     private readonly BlockDecoder _blockDecoder = new();
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -21,13 +21,13 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         _blockNumDict[block.Number] = block;
     }
 
-    public void Delete(long blockNumber, Hash256 blockHash)
+    public void Delete(ulong blockNumber, Hash256 blockHash)
     {
         _blockDict.Remove(blockHash);
         _blockNumDict.Remove(blockNumber);
     }
 
-    public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true)
+    public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true)
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
@@ -42,7 +42,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         return block;
     }
 
-    public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
+    public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
@@ -51,7 +51,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         return readonlyBaseBlockStore.GetRlp(blockNumber, blockHash);
     }
 
-    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash) =>
+    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
         _blockNumDict.TryGetValue(blockNumber, out Block block)
             ? new ReceiptRecoveryBlock(block)
             : readonlyBaseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
@@ -59,6 +59,6 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     public void Cache(Block block)
         => Insert(block);
 
-    public bool HasBlock(long blockNumber, Hash256 blockHash)
+    public bool HasBlock(ulong blockNumber, Hash256 blockHash)
         => _blockNumDict.ContainsKey(blockNumber);
 }

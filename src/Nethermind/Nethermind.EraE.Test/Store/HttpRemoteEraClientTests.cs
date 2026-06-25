@@ -17,11 +17,11 @@ public class HttpRemoteEraClientTests
     [Test]
     public async Task FetchManifestAsync_WithValidEntry_ParsesEpoch()
     {
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest =
+        IReadOnlyDictionary<uint, RemoteEraEntry> manifest =
             await FetchManifest($"{ValidHash}  sepolia-00000-deadbeef.erae");
 
-        Assert.That(manifest.ContainsKey(0), Is.True);
-        Assert.That(manifest[0].Filename, Is.EqualTo("sepolia-00000-deadbeef.erae"));
+        Assert.That(manifest.ContainsKey(0u), Is.True);
+        Assert.That(manifest[0u].Filename, Is.EqualTo("sepolia-00000-deadbeef.erae"));
     }
 
     [TestCase("../sepolia-00000-deadbeef.erae", TestName = "RelativeParentTraversal")]
@@ -29,13 +29,13 @@ public class HttpRemoteEraClientTests
     [TestCase("/etc/sepolia-00000-deadbeef.erae", TestName = "RootedPath")]
     public async Task FetchManifestAsync_WhenFilenameContainsPath_SkipsEntry(string hostileFilename)
     {
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest =
+        IReadOnlyDictionary<uint, RemoteEraEntry> manifest =
             await FetchManifest($"{ValidHash}  {hostileFilename}");
 
         Assert.That(manifest, Is.Empty);
     }
 
-    private static async Task<IReadOnlyDictionary<int, RemoteEraEntry>> FetchManifest(string manifestBody)
+    private static async Task<IReadOnlyDictionary<uint, RemoteEraEntry>> FetchManifest(string manifestBody)
     {
         StubHttpMessageHandler handler = new(manifestBody);
         using HttpClient httpClient = new(handler);

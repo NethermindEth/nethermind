@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -34,9 +35,10 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (syncConfig.FixReceipts)
             {
+                ulong endLevelExclusive = (blockTree.Head?.Number ?? 0UL).SaturatingSub(2UL);
                 using MissingReceiptsFixVisitor visitor = new(
                     syncConfig.AncientReceiptsBarrierCalc,
-                    blockTree.Head?.Number - 2 ?? 0,
+                    endLevelExclusive,
                     receiptStorage,
                     logManager,
                     syncPeerPool,
@@ -60,8 +62,8 @@ namespace Nethermind.Init.Steps.Migrations
         }
 
         private class MissingReceiptsFixVisitor(
-            long startLevel,
-            long endLevel,
+            ulong startLevel,
+            ulong endLevel,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             ISyncPeerPool syncPeerPool,

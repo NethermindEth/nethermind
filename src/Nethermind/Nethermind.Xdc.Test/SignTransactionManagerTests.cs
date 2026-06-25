@@ -28,8 +28,8 @@ internal class SignTransactionManagerTests
     public void OnBlockAddedToMain_SignsOnlyRecentHeadBlocks(long secondsBehind, bool shouldSign)
     {
         IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
-        spec.MergeSignRange.Returns(15);
-        spec.MinePeriod.Returns(2);
+        spec.MergeSignRange.Returns(15UL);
+        spec.MinePeriod.Returns(2UL);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
@@ -56,7 +56,7 @@ internal class SignTransactionManagerTests
         blockTree.Head.Returns(block);
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByBlockNumber(Arg.Any<long>(), Arg.Any<IXdcReleaseSpec>())
+        snapshotManager.GetSnapshotByBlockNumber(Arg.Any<ulong>(), Arg.Any<IXdcReleaseSpec>())
             .Returns(new Snapshot(block.Number, TestItem.KeccakA, [TestItem.AddressA]));
 
         SignTransactionManager manager = new(

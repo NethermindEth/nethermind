@@ -173,10 +173,10 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
             throw new RlpException($"StateComposition snapshot schema version {schemaVersion} does not match expected {SchemaVersion}");
 
         CumulativeTrieStats stats = DecodeStats(ref ctx);
-        long blockNumber = ctx.DecodeLong();
+        ulong blockNumber = ctx.DecodeULong();
         Hash256 stateRoot = ctx.DecodeKeccak()!;
         int diffsSinceBaseline = ctx.DecodeInt();
-        long scanBlockNumber = ctx.DecodeLong();
+        ulong scanBlockNumber = ctx.DecodeULong();
 
         CumulativeDepthStats depthStats = DecodeDepthStats(ref ctx);
         long codeBytesTotal = ctx.DecodeLong();

@@ -164,7 +164,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.DeleteAccount(address);
         }
-        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+        public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
         {
             DebugGuardInScope();
             _stateProvider.CreateAccount(address, balance, nonce);
@@ -194,18 +194,18 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
-        public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+        public void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
         {
             DebugGuardInScope();
             _stateProvider.IncrementNonce(address, delta, out oldNonce);
         }
-        public void DecrementNonce(Address address, UInt256 delta)
+        public void DecrementNonce(Address address, ulong delta)
         {
             DebugGuardInScope();
             _stateProvider.DecrementNonce(address, delta);
         }
 
-        public void CommitTree(long blockNumber)
+        public void CommitTree(ulong blockNumber)
         {
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
@@ -213,7 +213,7 @@ namespace Nethermind.State
             _persistentStorageProvider.ClearStorageMap();
         }
 
-        public UInt256 GetNonce(Address address)
+        public ulong GetNonce(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.GetNonce(address);
@@ -322,7 +322,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             Account? account = _stateProvider.GetThroughCache(address);
             accountExists = account is not null;
-            return accountExists && (account!.IsContract || !account.Nonce.IsZero || !_persistentStorageProvider.IsStorageEmpty(address));
+            return accountExists && (account!.IsContract || account.Nonce != 0 || !_persistentStorageProvider.IsStorageEmpty(address));
         }
 
         public bool IsDeadAccount(Address address)
@@ -377,13 +377,13 @@ namespace Nethermind.State
             Restore(new Snapshot(new Snapshot.Storage(persistentStorage, transientStorage), state, -1));
         }
 
-        public void SetNonce(Address address, in UInt256 nonce)
+        public void SetNonce(Address address, in ulong nonce)
         {
             DebugGuardInScope();
             _stateProvider.SetNonce(address, nonce);
         }
 
-        public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+        public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
         {
             DebugGuardInScope();
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);

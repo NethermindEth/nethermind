@@ -13,7 +13,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public abstract class VersionedContract<T>(IDictionary<UInt256, T> versions, LruCache<ValueHash256, UInt256> cache, long activation, ILogManager logManager) : IActivatedAtBlock where T : IVersionedContract
+    public abstract class VersionedContract<T>(IDictionary<UInt256, T> versions, LruCache<ValueHash256, UInt256> cache, ulong activation, ILogManager logManager) : IActivatedAtBlock where T : IVersionedContract
     {
         private readonly IDictionary<UInt256, T> _versions = versions ?? throw new ArgumentNullException(nameof(versions));
 
@@ -45,6 +45,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         private T? ResolveVersion(in UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out T contract) ? contract : default;
 
-        public long Activation { get; } = activation;
+        public ulong Activation { get; } = activation;
     }
 }

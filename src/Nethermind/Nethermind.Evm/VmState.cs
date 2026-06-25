@@ -26,11 +26,11 @@ public class VmState<TGasPolicy> : IDisposable
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
-    public long InitialStateGasUsed;
-    public long StateGasRefundPending;
+    public ulong InitialStateGasUsed;
+    public ulong StateGasRefundPending;
     // State-gas refund already made spendable in this frame while its accounting correction
     // still has to reach the ancestor frame that originally paid the state gas.
-    public long StateGasRefundAdvanced;
+    public ulong StateGasRefundAdvanced;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -288,7 +288,8 @@ public class VmState<TGasPolicy> : IDisposable
     public void CommitToParent(VmState<TGasPolicy> parentState)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        parentState.Refund += Refund;
+        // `checked` traps a buggy refund propagation that would otherwise wrap silently.
+        parentState.Refund = checked(parentState.Refund + Refund);
         _canRestore = false; // we can't restore if we committed
     }
 }

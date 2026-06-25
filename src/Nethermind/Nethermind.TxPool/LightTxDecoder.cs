@@ -14,7 +14,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
-               + Rlp.LengthOf(in tx.ValueRef)
+               + Rlp.LengthOf(tx.Value)
                + Rlp.LengthOf(tx.GasLimit)
                + Rlp.LengthOf(tx.GasPrice)
                + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
@@ -52,10 +52,10 @@ public class LightTxDecoder : TxDecoder<Transaction>
         return new LightTransaction(
             timestamp: ctx.DecodeUInt256(),
             sender: ctx.DecodeAddress()!,
-            nonce: ctx.DecodeUInt256(),
+            nonce: ctx.DecodeULong(),
             hash: ctx.DecodeKeccak()!,
             value: ctx.DecodeUInt256(),
-            gasLimit: ctx.DecodeLong(),
+            gasLimit: ctx.DecodeULong(),
             gasPrice: ctx.DecodeUInt256(),
             maxFeePerGas: ctx.DecodeUInt256(),
             maxFeePerBlobGas: ctx.DecodeUInt256(),
