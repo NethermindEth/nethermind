@@ -4,7 +4,6 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.VirtualMachineStatics;
