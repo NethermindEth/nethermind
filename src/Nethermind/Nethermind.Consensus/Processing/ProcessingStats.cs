@@ -24,8 +24,8 @@ namespace Nethermind.Consensus.Processing
     public class BlockStatistics
     {
         public long BlockCount { get; set; }
-        public long BlockFrom { get; set; }
-        public long BlockTo { get; set; }
+        public ulong BlockFrom { get; set; }
+        public ulong BlockTo { get; set; }
         public double ProcessingMs { get; set; }
         public double SlotMs { get; set; }
         [JsonPropertyName("mgasPerSecond")]
@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Processing
         public float MedianGas { get; set; }
         public float AveGas { get; set; }
         public float MaxGas { get; set; }
-        public long GasLimit { get; set; }
+        public ulong GasLimit { get; set; }
     }
     //TODO Consult on disabling of such metrics from configuration
     public class ProcessingStats : IProcessingStats
@@ -103,9 +103,9 @@ namespace Nethermind.Consensus.Processing
         private double _chunkMGas;
         private long _chunkProcessingMicroseconds;
         private long _chunkTx;
-        private long _chunkBlobs;
+        private ulong _chunkBlobs;
         private long _chunkBlocks;
-        private long _chunkFirstBlockNumber = -1;
+        private ulong _chunkFirstBlockNumber = ulong.MaxValue;
         private long _opCodes;
         private long _callOps;
         private long _emptyCalls;
@@ -214,9 +214,9 @@ namespace Nethermind.Consensus.Processing
             if (blocks.Count == 0) return;
 
             Block lastBlock = blocks[^1];
-            long gasUsed = 0;
+            ulong gasUsed = 0;
             long transactionCount = 0;
-            long blobCount = 0;
+            ulong blobCount = 0;
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
@@ -225,7 +225,7 @@ namespace Nethermind.Consensus.Processing
                 transactionCount += transactions.Length;
                 for (int j = 0; j < transactions.Length; j++)
                 {
-                    blobCount += transactions[j].GetBlobCount();
+                    blobCount += (ulong)transactions[j].GetBlobCount();
                 }
             }
 
@@ -336,7 +336,7 @@ namespace Nethermind.Consensus.Processing
             Block? block = data.Block;
             if (block is null) return;
 
-            long blockNumber = data.Block.Number;
+            ulong blockNumber = data.Block.Number;
             double chunkMGas = (_chunkMGas += data.GasUsed / 1_000_000.0);
 
             // We want the rate here
@@ -362,8 +362,8 @@ namespace Nethermind.Consensus.Processing
             double chunkMicroseconds = (_chunkProcessingMicroseconds += data.ProcessingMicroseconds);
             double chunkTx = (_chunkTx += data.TransactionCount);
 
-            long chunkFirstBlockNumber = _chunkFirstBlockNumber;
-            if (chunkFirstBlockNumber == -1)
+            ulong chunkFirstBlockNumber = _chunkFirstBlockNumber;
+            if (chunkFirstBlockNumber == ulong.MaxValue)
             {
                 chunkFirstBlockNumber = data.FirstBlockNumber;
                 _chunkFirstBlockNumber = chunkFirstBlockNumber;
@@ -401,7 +401,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             _chunkBlobs += data.BlobCount;
-            long blobs = _chunkBlobs;
+            ulong blobs = _chunkBlobs;
             if (blobs > 0)
             {
                 _showBlobs = true;
@@ -445,7 +445,7 @@ namespace Nethermind.Consensus.Processing
 
             _chunkBlobs = 0;
             _chunkBlocks = 0;
-            _chunkFirstBlockNumber = -1;
+            _chunkFirstBlockNumber = ulong.MaxValue;
             _chunkMGas = 0;
             _chunkTx = 0;
             _chunkProcessingMicroseconds = 0;
@@ -871,10 +871,10 @@ namespace Nethermind.Consensus.Processing
             public Block Block;
             public BlockHeader? BaseBlock;
             public long BlockCount;
-            public long FirstBlockNumber;
-            public long GasUsed;
+            public ulong FirstBlockNumber;
+            public ulong GasUsed;
             public long TransactionCount;
-            public long BlobCount;
+            public ulong BlobCount;
             public long CurrentOpCodes;
             public long CurrentSLoadOps;
             public long CurrentSStoreOps;

@@ -51,7 +51,7 @@ public class BalRecorderE2ETests
         string dir = Path.Combine(Path.GetTempPath(), $"bal-e2e-{Guid.NewGuid():N}");
         try
         {
-            List<(long Number, byte[] EncodedBal)> recorded;
+            List<(ulong Number, byte[] EncodedBal)> recorded;
             await using (IContainer recorder = CreateNode(dir, recording: true, replay: false))
             {
                 BlockBuilder builder = recorder.Resolve<BlockBuilder>();
@@ -63,7 +63,7 @@ public class BalRecorderE2ETests
 
             await using IContainer replayContainer = CreateNode(dir, recording: false, replay: true);
             IRecordedBalStore store = replayContainer.Resolve<IRecordedBalStore>();
-            foreach ((long number, byte[] expected) in recorded)
+            foreach ((ulong number, byte[] expected) in recorded)
             {
                 ReadOnlyBlockAccessList? reread = store.Get(number);
                 Assert.That(reread, Is.Not.Null);
@@ -77,12 +77,12 @@ public class BalRecorderE2ETests
         }
     }
 
-    private static List<(long, byte[])> CaptureRecordedBals(IContainer container, int count)
+    private static List<(ulong, byte[])> CaptureRecordedBals(IContainer container, int count)
     {
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IRecordedBalStore store = container.Resolve<IRecordedBalStore>();
-        List<(long, byte[])> result = [];
-        for (long i = 1; i <= count; i++)
+        List<(ulong, byte[])> result = [];
+        for (ulong i = 1; i <= (ulong)count; i++)
         {
             Block? block = blockTree.FindBlock(i);
             Assert.That(block, Is.Not.Null);
@@ -150,7 +150,7 @@ public class BalRecorderE2ETests
         IPayloadPreparationService payloadPreparationService,
         PseudoNethermindRunner runner)
     {
-        private UInt256 _nonce;
+        private ulong _nonce;
 
         public async Task StartAndBuildBlocks(int count, CancellationToken token)
         {
@@ -192,15 +192,19 @@ public class BalRecorderE2ETests
         }
     }
 
-    private static void RekeyDictionaryToGenesis(IDictionary<long, long>? dict)
+    private static void RekeyDictionaryToGenesis(IDictionary<ulong, ulong>? dict)
     {
         if (dict is null or { Count: 0 }) return;
-        long total = dict.Values.Sum();
+        ulong total = 0;
+        foreach (ulong v in dict.Values)
+        {
+            total += v;
+        }
         dict.Clear();
         dict[0] = total;
     }
 
-    private static void RekeyBlockRewardToGenesis(SortedDictionary<long, UInt256>? dict)
+    private static void RekeyBlockRewardToGenesis(SortedDictionary<ulong, UInt256>? dict)
     {
         if (dict is null or { Count: 0 }) return;
         UInt256 lastReward = dict.Values.Last();

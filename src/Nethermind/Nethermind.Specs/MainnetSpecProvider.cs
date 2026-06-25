@@ -9,19 +9,19 @@ namespace Nethermind.Specs;
 
 public class MainnetSpecProvider : ForkScheduleSpecProvider
 {
-    public const long HomesteadBlockNumber = 1_150_000;
-    public const long DaoForkBlockNumber = 1_920_000;
-    public const long TangerineWhistleBlockNumber = 2_463_000;
-    public const long SpuriousDragonBlockNumber = 2_675_000;
-    public const long ByzantiumBlockNumber = 4_370_000;
-    public const long ConstantinopleFixBlockNumber = 7_280_000;
-    public const long IstanbulBlockNumber = 9_069_000;
-    public const long MuirGlacierBlockNumber = 9_200_000;
-    public const long BerlinBlockNumber = 12_244_000;
-    public const long LondonBlockNumber = 12_965_000;
-    public const long ArrowGlacierBlockNumber = 13_773_000;
-    public const long GrayGlacierBlockNumber = 15_050_000;
-    public const long ParisBlockNumber = 15_537_393;
+    public const ulong HomesteadBlockNumber = 1_150_000;
+    public const ulong DaoForkBlockNumber = 1_920_000;
+    public const ulong TangerineWhistleBlockNumber = 2_463_000;
+    public const ulong SpuriousDragonBlockNumber = 2_675_000;
+    public const ulong ByzantiumBlockNumber = 4_370_000;
+    public const ulong ConstantinopleFixBlockNumber = 7_280_000;
+    public const ulong IstanbulBlockNumber = 9_069_000;
+    public const ulong MuirGlacierBlockNumber = 9_200_000;
+    public const ulong BerlinBlockNumber = 12_244_000;
+    public const ulong LondonBlockNumber = 12_965_000;
+    public const ulong ArrowGlacierBlockNumber = 13_773_000;
+    public const ulong GrayGlacierBlockNumber = 15_050_000;
+    public const ulong ParisBlockNumber = 15_537_393;
     public const ulong GenesisBlockTimestamp = 0x55ba4215;
     public const ulong BeaconChainGenesisTimestampConst = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
@@ -76,7 +76,7 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
             excludeBlocks: [ParisBlockNumber]);
 
     public override ulong NetworkId => Core.BlockchainIds.Mainnet;
-    public override long? DaoBlockNumber => DaoForkBlockNumber;
+    public override ulong? DaoBlockNumber => DaoForkBlockNumber;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public override ulong TimestampFork => ShanghaiBlockTimestamp;
 

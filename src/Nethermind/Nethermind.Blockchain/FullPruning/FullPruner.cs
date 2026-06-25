@@ -145,7 +145,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         private async Task RunFullPruning(IPruningContext pruningContext, CancellationToken cancellationToken)
         {
-            long blockToWaitFor = 0;
+            ulong blockToWaitFor = 0;
             await WaitForMainChainChange((e) =>
             {
                 if (e.Headers.Count == 0) return false;
@@ -163,8 +163,8 @@ namespace Nethermind.Blockchain.FullPruning
                 return false;
             }, cancellationToken);
 
-            long stateToCopy = _blockTree.BestPersistedState.Value;
-            long blockToPruneAfter = stateToCopy + _pruningConfig.PruningBoundary;
+            ulong stateToCopy = _blockTree.BestPersistedState.Value;
+            ulong blockToPruneAfter = stateToCopy + _pruningConfig.PruningBoundary;
 
             await WaitForMainChainChange((e) =>
             {
@@ -221,7 +221,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private void TryCopyTrie(IPruningContext pruning, BlockHeader? baseBlock, long stateToCopy, CancellationToken cancellationToken)
+        private void TryCopyTrie(IPruningContext pruning, BlockHeader? baseBlock, ulong stateToCopy, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
             ICopyTreeVisitor visitor = null;

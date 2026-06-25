@@ -62,5 +62,5 @@ internal static class XdcConstants
     public const int SignTransactionDataLength = 68;
 
     // Only sign recent head blocks.
-    public const int MaxSignableBlockPeriods = 2;
+    public const ulong MaxSignableBlockPeriods = 2;
 }

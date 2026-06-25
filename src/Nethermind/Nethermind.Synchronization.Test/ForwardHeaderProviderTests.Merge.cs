@@ -23,19 +23,19 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class ForwardHeaderProviderTests
 {
-    [TestCase(16L, 32L, 32, 32, 3, 32)]
-    [TestCase(16L, 32L, 32, 29, 3, 29)]
-    [TestCase(16L, 32L, 0, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSizeMax * 8, 32, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSizeMax * 8, 32, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSizeMax * 8, 32, SyncBatchSizeMax * 8 - 16L, 3, 130)]
-    public async Task Merge_Happy_path(long beaconPivot, long headNumber, int threshold, long insertedBeaconBlocks, long expectedFirstBlock, long expectedLastBlock)
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 29UL, 3UL, 29UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 0, 32UL, 3UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, SyncBatchSizeMax * 8UL - 16UL, 3UL, 130UL)]
+    public async Task Merge_Happy_path(ulong beaconPivot, ulong headNumber, int threshold, ulong insertedBeaconBlocks, ulong expectedFirstBlock, ulong expectedLastBlock)
     {
-        int notSyncedTreeStartingBlockNumber = 3;
+        ulong notSyncedTreeStartingBlockNumber = 3;
 
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, (int)headNumber + 1)
+            .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, headNumber + 1)
             .InsertBeaconPivot(beaconPivot)
             .InsertBeaconHeaders(notSyncedTreeStartingBlockNumber + 1, beaconPivot - 1)
             .InsertBeaconBlocks(beaconPivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
@@ -58,9 +58,9 @@ public partial class ForwardHeaderProviderTests
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedLastBlock));
     }
 
-    [TestCase(32L, DownloaderOptions.Insert, 16, false, 16L)]
-    [TestCase(32L, DownloaderOptions.Insert, 16, true, null)] // No beacon header, so it does not sync
-    public async Task IfNoBeaconPivot_thenStopAtPoS(long headNumber, int options, int ttdBlock, bool withBeaconPivot, long? expectedBestKnownNumber)
+    [TestCase(32UL, DownloaderOptions.Insert, 16, false, 16L)]
+    [TestCase(32UL, DownloaderOptions.Insert, 16, true, null)] // No beacon header, so it does not sync
+    public async Task IfNoBeaconPivot_thenStopAtPoS(ulong headNumber, int options, int ttdBlock, bool withBeaconPivot, long? expectedBestKnownNumber)
     {
         UInt256 ttd = 10_000_000;
         int negativeTd = BlockHeaderBuilder.DefaultDifficulty.ToInt32(null);
@@ -68,7 +68,7 @@ public partial class ForwardHeaderProviderTests
             .GoesLikeThis()
             .WithBlockTrees(
                 4,
-                (int)headNumber + 1,
+                headNumber + 1,
                 true,
                 ttd,
                 syncedSplitFrom: ttdBlock,
@@ -83,7 +83,7 @@ public partial class ForwardHeaderProviderTests
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16UL, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
 
@@ -95,13 +95,13 @@ public partial class ForwardHeaderProviderTests
 
     }
 
-    [TestCase(32L, 32L, 0, 32)]
-    [TestCase(32L, 32L, 10, 22)]
-    public async Task WillSkipBlocksToIgnore(long pivot, long headNumber, int blocksToIgnore, long expectedBestKnownNumber)
+    [TestCase(32UL, 32UL, 0UL, 32UL)]
+    [TestCase(32UL, 32UL, 10UL, 22UL)]
+    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, ulong blocksToIgnore, ulong expectedBestKnownNumber)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(4, (int)headNumber + 1)
+            .WithBlockTrees(4, headNumber + 1)
             .InsertBeaconPivot(pivot)
             .InsertBeaconHeaders(4, pivot - 1);
 

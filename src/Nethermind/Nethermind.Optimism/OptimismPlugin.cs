@@ -197,6 +197,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<OptimismBlockProducerFactory>()
             .Bind<IBlockProducerFactory, OptimismBlockProducerFactory>()
             .Bind<IBlockProducerRunnerFactory, OptimismBlockProducerFactory>()
+            .AddSingleton<IBlockProductionPolicy>(AlwaysStartBlockProductionPolicy.Instance)
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()

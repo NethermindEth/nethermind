@@ -488,9 +488,9 @@ public partial class EngineModuleTests
         BlockDecoder blockDecoder = new();
 
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
-        blockTree.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
+        blockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(i => GetHeader(input.Impl(i)));
-        blockStore.GetRlp(Arg.Any<long>(), Arg.Any<Hash256>())
+        blockStore.GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>())
             .Returns(i =>
             {
                 Block? block = input.Impl(i);
@@ -528,6 +528,7 @@ public partial class EngineModuleTests
     public async Task getPayloadBodiesByRangeV1_should_return_up_to_best_body_number()
     {
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
+
 
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
@@ -921,11 +922,11 @@ public partial class EngineModuleTests
             new TestCaseData(((Func<CallInfo, Block?> BlockFinder, IReadOnlyList<ExecutionPayloadBodyV1Result?> ExpectedBodies))(blockFinder, expectedBodies))
                 .SetName(name);
 
-        static Block BuildBlock(CallInfo i) => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject;
+        static Block BuildBlock(CallInfo i) => Build.A.Block.WithNumber(i.ArgAt<ulong>(0)).TestObject;
         ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
         yield return Case("AllMissing", _ => null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
-        yield return Case("EveryOtherBlockMissing", i => i.ArgAt<long>(0) % 2 == 0 ? BuildBlock(i) : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
+        yield return Case("EveryOtherBlockMissing", i => i.ArgAt<ulong>(0) % 2 == 0 ? BuildBlock(i) : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
         yield return Case("AllPresent", BuildBlock, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
     }
 

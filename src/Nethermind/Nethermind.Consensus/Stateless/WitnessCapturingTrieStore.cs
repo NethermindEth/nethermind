@@ -60,7 +60,7 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
 
     public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
+    public IBlockCommitter BeginBlockCommit(ulong blockNumber) => NullCommitter.Instance;
 
     // WitnessCapturingTrieStore is read-only, so we return a no-op committer that doesn't persist any trie nodes
     public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;

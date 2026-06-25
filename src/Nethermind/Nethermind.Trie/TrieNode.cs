@@ -84,7 +84,7 @@ namespace Nethermind.Trie
             while (true)
             {
                 ulong current = Volatile.Read(ref _rlpSeqAndLength);
-                uint seq = (uint)(current >> 32);
+                ulong seq = current >> 32;
                 if ((seq & 1) != 0)
                 {
                     // Another writer is active — spin until it completes
@@ -92,13 +92,13 @@ namespace Nethermind.Trie
                     continue;
                 }
                 // Set lock bit (odd) — seq | 1 is always odd regardless of overflow
-                ulong writing = (ulong)(seq | 1) << 32;
+                ulong writing = (seq | 1) << 32;
                 if (Interlocked.CompareExchange(ref _rlpSeqAndLength, writing, current) == current)
                 {
                     Volatile.Write(ref _rlpArray, value.UnderlyingArray);
                     // Advance sequence by 2 and clear lock bit (even), store final length
-                    uint doneSeq = (seq + 2) & 0xFFFFFFFE;
-                    Volatile.Write(ref _rlpSeqAndLength, (ulong)doneSeq << 32 | (uint)value.Length);
+                    ulong doneSeq = (seq + 2) & 0xFFFFFFFE;
+                    Volatile.Write(ref _rlpSeqAndLength, doneSeq << 32 | (uint)value.Length);
                     return;
                 }
                 spin.SpinOnce(); // CAS failed — another writer raced; back off before retry
@@ -592,41 +592,6 @@ namespace Nethermind.Trie
             SeekChild(ref rlpReader, i);
             (int _, int length) = rlpReader.PeekPrefixAndContentLength();
             return length == 32 ? rlpReader.DecodeKeccak() : null;
-        }
-
-        /// Gets child hash or the Value of the node in case it's an inline.
-        public byte[]? GetChildHashOrInlineValue(int i)
-        {
-            CappedArray<byte> rlp = ReadRlp();
-            if (rlp.IsNull)
-            {
-                return null;
-            }
-
-            RlpReader rlpReader = new(rlp);
-            SeekChild(ref rlpReader, i);
-
-            int prefix = rlpReader.PeekByte();
-
-            // If it's a hash (32 bytes), decode and return it
-            if (prefix == 160)
-            {
-                return rlpReader.DecodeKeccak().Bytes.ToArray();
-            }
-
-            int prefixValue = rlpReader.PeekByte();
-            if (prefixValue < 192)
-            {
-                return null;
-            }
-            else
-            {
-                // If it's an RLP list (inline node), return the full item as a byte array
-                rlpReader.PeekNextItem();
-                rlpReader.SkipLength();
-                rlpReader.SkipItem();
-                return rlpReader.DecodeByteArraySpan().ToArray();
-            }
         }
 
         public byte[]? GetInlineNodeRlp(int i)
