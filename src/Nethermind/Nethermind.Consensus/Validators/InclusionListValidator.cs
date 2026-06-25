@@ -60,7 +60,7 @@ public static class InclusionListValidator
         if (tx.SupportsBlobs) return false;
         if (block.GasUsed + tx.GasLimit > block.GasLimit) return false;
         // A tx whose GasLimit is below the intrinsic cost cannot execute, so it isn't appendable.
-        if (tx.GasLimit < (long)IntrinsicGasCalculator.Calculate(tx, spec, block.GasLimit)) return false;
+        if (tx.GasLimit < (ulong)IntrinsicGasCalculator.Calculate(tx, spec, block.GasLimit)) return false;
 
         // EIP-1559: compare baseFee against the cap (MaxFeePerGas), not the priority tip
         // (which is what tx.GasPrice exposes for type-2). Matches TransactionProcessor.

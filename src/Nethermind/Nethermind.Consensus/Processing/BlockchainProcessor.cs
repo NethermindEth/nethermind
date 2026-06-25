@@ -429,7 +429,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         [MethodImpl(MethodImplOptions.NoInlining)]
         void NotifyInclusionListUnsatisfied(BlockRef blockRef, Block block)
         {
-            if (_logger.IsTrace) _logger.Trace($"Invalid inclusion list for block {block.ToString(Block.Format.Full)}");
+            if (_logger.IsTrace) _logger.Trace($"Inclusion list unsatisfied for block {block.ToString(Block.Format.Full)}");
             BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied));
         }
 

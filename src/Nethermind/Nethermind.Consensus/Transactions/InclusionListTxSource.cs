@@ -22,7 +22,7 @@ public class InclusionListTxSource(
     private IEnumerable<Transaction> _inclusionListTransactions = [];
 
     // gasLimit is ignored — the downstream producer-side tx selection pipeline enforces it.
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         => Volatile.Read(ref _inclusionListTransactions);
 
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)

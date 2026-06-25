@@ -22,7 +22,7 @@ public class InclusionListBuilderTests
     {
         byte[] data = new byte[payloadBytes];
         return Build.A.Transaction
-            .WithNonce((UInt256)nonce)
+            .WithNonce((ulong)nonce)
             .WithTo(TestItem.AddressA)
             .WithData(data)
             .SignedAndResolved(TestItem.PrivateKeyA)

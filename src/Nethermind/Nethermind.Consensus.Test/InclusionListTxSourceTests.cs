@@ -29,7 +29,7 @@ public class InclusionListTxSourceTests
         InclusionListTxSource source = CreateSource();
         BlockHeader parent = Build.A.BlockHeader.TestObject;
 
-        Assert.That(source.GetTransactions(parent, 30_000_000), Is.Empty);
+        Assert.That(source.GetTransactions(parent, 30_000_000UL), Is.Empty);
     }
 
     [Test]
@@ -41,12 +41,12 @@ public class InclusionListTxSourceTests
 
         source.Set([Encode(tx1)], Bogota.Instance);
         Assert.That(
-            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Select(t => t.Nonce.u0),
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL).Select(t => t.Nonce),
             Is.EqualTo([1ul]));
 
         source.Set([Encode(tx2)], Bogota.Instance);
         Assert.That(
-            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Select(t => t.Nonce.u0),
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL).Select(t => t.Nonce),
             Is.EqualTo([2ul]));
     }
 
@@ -57,10 +57,10 @@ public class InclusionListTxSourceTests
         Transaction tx = Build.A.Transaction.WithNonce(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
         source.Set([Encode(tx)], Bogota.Instance);
-        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000).Count(), Is.EqualTo(1));
+        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL).Count(), Is.EqualTo(1));
 
         source.Set([], Bogota.Instance);
-        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000), Is.Empty);
+        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL), Is.Empty);
     }
 
     // Per spec, blob (EIP-4844) transactions are excluded from the inclusion list.

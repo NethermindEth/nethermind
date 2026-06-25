@@ -26,7 +26,7 @@ public class InclusionListValidatorTests
     public void Setup()
     {
         _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
-        _state = StateWith(TestItem.AddressA, 10.Ether, (UInt256)0);
+        _state = StateWith(TestItem.AddressA, 10.Ether, 0UL);
 
         _validTx = Build.A.Transaction
             .WithGasLimit(100_000)
@@ -248,7 +248,7 @@ public class InclusionListValidatorTests
             .TestObject;
 
         // Post-execution: AddressA's nonce moved to 1, so _validTx (nonce 0) is no longer appendable.
-        IReadOnlyStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, (UInt256)1);
+        IReadOnlyStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, 1UL);
         Assert.That(InclusionListValidator.IsSatisfied(block, postExec, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
@@ -314,14 +314,14 @@ public class InclusionListValidatorTests
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
         state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
         {
-            call[1] = new AccountStruct((UInt256)0, 10.Ether, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString.ValueHash256);
+            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString.ValueHash256);
             return true;
         });
         // Non-default codehash here would also work; just ensure HasCode is true.
         state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
         {
             // Any non-empty codehash → HasCode = true.
-            call[1] = new AccountStruct((UInt256)0, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
+            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
             return true;
         });
         state.IsDelegatedCode(TestItem.AddressA).Returns(false);
@@ -342,7 +342,7 @@ public class InclusionListValidatorTests
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
         state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
         {
-            call[1] = new AccountStruct((UInt256)0, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
+            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
             return true;
         });
         state.IsDelegatedCode(TestItem.AddressA).Returns(true);
@@ -393,11 +393,11 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx, _validTx])
             .TestObject;
 
-        IReadOnlyStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, (UInt256)1);
+        IReadOnlyStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, 1UL);
         Assert.That(InclusionListValidator.IsSatisfied(block, postExec, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
-    private static IReadOnlyStateProvider StateWith(Address sender, UInt256 balance, UInt256 nonce)
+    private static IReadOnlyStateProvider StateWith(Address sender, UInt256 balance, ulong nonce)
     {
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
         state.TryGetAccount(sender, out Arg.Any<AccountStruct>()).Returns(call =>

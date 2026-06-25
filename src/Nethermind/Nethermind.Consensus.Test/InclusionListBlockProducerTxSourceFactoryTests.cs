@@ -35,7 +35,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             .TestObject;
 
         ITxSource mempoolSource = Substitute.For<ITxSource>();
-        mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+        mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns([mempoolTx]);
 
         IBlockProducerTxSourceFactory baseFactory = Substitute.For<IBlockProducerTxSourceFactory>();
@@ -50,13 +50,13 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000)];
+        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000UL)];
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(selectedTxs, Has.Count.GreaterThanOrEqualTo(2));
-            Assert.That(selectedTxs[0].Nonce, Is.EqualTo((UInt256)3), "the IL transaction must be selected before the mempool source");
-            Assert.That(selectedTxs.Any(t => t.Nonce == (UInt256)7), Is.True, "the mempool transaction must still appear after the IL");
+            Assert.That(selectedTxs[0].Nonce, Is.EqualTo(3UL), "the IL transaction must be selected before the mempool source");
+            Assert.That(selectedTxs.Any(t => t.Nonce == 7UL), Is.True, "the mempool transaction must still appear after the IL");
         }
 
     }
@@ -70,7 +70,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             .TestObject;
 
         ITxSource mempoolSource = Substitute.For<ITxSource>();
-        mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+        mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns([mempoolTx]);
 
         IBlockProducerTxSourceFactory baseFactory = Substitute.For<IBlockProducerTxSourceFactory>();
@@ -85,12 +85,12 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000)];
+        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000UL)];
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(selectedTxs, Has.Count.EqualTo(1));
-            Assert.That(selectedTxs[0].Nonce, Is.EqualTo((UInt256)7));
+            Assert.That(selectedTxs[0].Nonce, Is.EqualTo(7UL));
         }
     }
 }
