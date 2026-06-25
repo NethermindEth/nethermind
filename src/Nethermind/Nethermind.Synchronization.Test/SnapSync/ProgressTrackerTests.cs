@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -25,7 +26,7 @@ public class ProgressTrackerTests
     [Repeat(3)]
     public async Task Did_not_have_race_issue()
     {
-        using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 1);
+        using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 1, maxActiveStorageRangeBatches: 0);
         progressTracker.EnqueueNextSlot(new StorageRange()
         {
             Accounts = ArrayPoolList<PathWithAccount>.Empty(),
@@ -230,6 +231,80 @@ public class ProgressTrackerTests
         Assert.That(finalBatch, Is.Null);
     }
 
+    [Test]
+    public void Storage_queue_waits_when_active_storage_batch_limit_is_reached()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker(maxActiveStorageRangeBatches: 1);
+        FinishAccountRangePhase(progressTracker);
+
+        progressTracker.EnqueueAccountStorage(TestItem.Tree.AccountsWithPaths[0]);
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? activeBatch), Is.False);
+        Assert.That(activeBatch!.StorageRangeRequest, Is.Not.Null);
+
+        progressTracker.EnqueueAccountStorage(TestItem.Tree.AccountsWithPaths[1]);
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? throttledBatch), Is.False);
+        Assert.That(throttledBatch, Is.Null);
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.False);
+
+        progressTracker.ReportFullStorageRequestFinished(activeBatch.StorageRangeRequest!.Accounts.Count);
+        activeBatch.Dispose();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? resumedBatch), Is.False);
+        Assert.That(resumedBatch!.StorageRangeRequest, Is.Not.Null);
+
+        progressTracker.ReportFullStorageRequestFinished(resumedBatch.StorageRangeRequest!.Accounts.Count);
+        resumedBatch.Dispose();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? finalBatch), Is.True);
+        Assert.That(finalBatch, Is.Null);
+    }
+
+    [Test]
+    public void Code_queue_can_progress_when_storage_batch_limit_is_reached()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker(maxActiveStorageRangeBatches: 1);
+        FinishAccountRangePhase(progressTracker);
+
+        progressTracker.EnqueueAccountStorage(TestItem.Tree.AccountsWithPaths[0]);
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? activeBatch), Is.False);
+        Assert.That(activeBatch!.StorageRangeRequest, Is.Not.Null);
+
+        progressTracker.EnqueueAccountStorage(TestItem.Tree.AccountsWithPaths[1]);
+        progressTracker.EnqueueCodeHashes([TestItem.ValueKeccaks[0]]);
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? codeBatch), Is.False);
+        Assert.That(codeBatch!.CodesRequest, Is.Not.Null);
+        Assert.That(codeBatch.StorageRangeRequest, Is.Null);
+
+        progressTracker.ReportCodeRequestFinished(ReadOnlySpan<ValueHash256>.Empty);
+        codeBatch.Dispose();
+        progressTracker.ReportFullStorageRequestFinished(activeBatch.StorageRangeRequest!.Accounts.Count);
+        activeBatch.Dispose();
+    }
+
+    [Test]
+    public void Slot_range_queue_waits_when_active_storage_batch_limit_is_reached()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker(maxActiveStorageRangeBatches: 1);
+        FinishAccountRangePhase(progressTracker);
+
+        progressTracker.EnqueueNextSlot(CreateStorageRange(TestItem.Tree.AccountsWithPaths[0]));
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? activeBatch), Is.False);
+        Assert.That(activeBatch!.StorageRangeRequest, Is.Not.Null);
+
+        progressTracker.EnqueueNextSlot(CreateStorageRange(TestItem.Tree.AccountsWithPaths[1]));
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? throttledBatch), Is.False);
+        Assert.That(throttledBatch, Is.Null);
+
+        progressTracker.ReportFullStorageRequestFinished(activeBatch.StorageRangeRequest!.Accounts.Count);
+        activeBatch.Dispose();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? resumedBatch), Is.False);
+        Assert.That(resumedBatch!.StorageRangeRequest, Is.Not.Null);
+        progressTracker.ReportFullStorageRequestFinished(resumedBatch.StorageRangeRequest!.Accounts.Count);
+        resumedBatch.Dispose();
+    }
+
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x2000000000000000000000000000000000000000000000000000000000000000", null, "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     [TestCase("0x2000000000000000000000000000000000000000000000000000000000000000", "0x4000000000000000000000000000000000000000000000000000000000000000", "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0x67ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null, "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
@@ -297,12 +372,23 @@ public class ProgressTrackerTests
         Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
     }
 
-    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false)
+    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, int maxActiveStorageRangeBatches = 4)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
-        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
+        SyncConfig syncConfig = new TestSyncConfig()
+        {
+            SnapSyncAccountRangePartitionCount = accountRangePartition,
+            EnableSnapSyncStorageRangeSplit = enableStorageSplits,
+            SnapSyncMaxActiveStorageRangeBatches = maxActiveStorageRangeBatches
+        };
         return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
+
+    private static StorageRange CreateStorageRange(PathWithAccount account) =>
+        new()
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+        };
 
     private static void FinishAccountRangePhase(ProgressTracker progressTracker)
     {

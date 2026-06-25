@@ -71,6 +71,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly FastSync.IStateSyncPivot _pivot;
         private readonly bool _enableStorageRangeSplit;
+        private readonly int _maxActiveStorageRangeBatches;
 
         public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
         {
@@ -85,6 +86,9 @@ namespace Nethermind.Synchronization.SnapSync
 
             _accountRangePartitionCount = accountRangePartitionCount;
             _enableStorageRangeSplit = syncConfig.EnableSnapSyncStorageRangeSplit;
+            _maxActiveStorageRangeBatches = syncConfig.SnapSyncMaxActiveStorageRangeBatches <= 0
+                ? int.MaxValue
+                : syncConfig.SnapSyncMaxActiveStorageRangeBatches;
 
             SetupAccountRangePartition();
 
@@ -172,17 +176,15 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 nextBatch = CreateNextSlowRangeRequest(slotRange, rootHash, blockNumber);
             }
-            else if (StorageQueueCount >= HIGH_STORAGE_QUEUE_SIZE)
+            else if (StorageQueueCount >= HIGH_STORAGE_QUEUE_SIZE && TryDequeStorageToRetrieveRequest(rootHash, blockNumber, out nextBatch))
             {
-                nextBatch = DequeStorageToRetrieveRequest(rootHash, blockNumber);
             }
             else if (CodeQueueCount >= HIGH_CODES_QUEUE_SIZE)
             {
                 nextBatch = DequeCodeRequest();
             }
-            else if (StorageQueueCount != 0)
+            else if (StorageQueueCount != 0 && TryDequeStorageToRetrieveRequest(rootHash, blockNumber, out nextBatch))
             {
-                nextBatch = DequeStorageToRetrieveRequest(rootHash, blockNumber);
             }
             else if (CodeQueueCount != 0)
             {
@@ -224,8 +226,12 @@ namespace Nethermind.Synchronization.SnapSync
             return new SnapSyncBatch { CodesRequest = codesToQuery };
         }
 
-        private SnapSyncBatch DequeStorageToRetrieveRequest(Hash256 rootHash, long blockNumber)
+        private bool TryDequeStorageToRetrieveRequest(Hash256 rootHash, long blockNumber, out SnapSyncBatch? nextBatch)
         {
+            nextBatch = null;
+            if (!TryReserveStorageBatch())
+                return false;
+
             Interlocked.Increment(ref _activeStorageRequests); // for race condition so that snap does not exit prematurely
 
             ArrayPoolList<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
@@ -235,8 +241,15 @@ namespace Nethermind.Synchronization.SnapSync
                 storagesToQuery.Add(storage);
             }
 
+            if (storagesToQuery.Count == 0)
+            {
+                storagesToQuery.Dispose();
+                Interlocked.Decrement(ref _activeStorageRequests);
+                ReleaseStorageBatch();
+                return false;
+            }
+
             Interlocked.Add(ref _activeStorageRequests, storagesToQuery.Count);
-            Interlocked.Increment(ref _activeStorageBatchRequests);
             Interlocked.Decrement(ref _activeStorageRequests);
 
             StorageRange storageRange = new()
@@ -249,7 +262,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             LogRequest($"StoragesToRetrieve:{storagesToQuery.Count}");
 
-            return new SnapSyncBatch { StorageRangeRequest = storageRange };
+            nextBatch = new SnapSyncBatch { StorageRangeRequest = storageRange };
+            return true;
         }
 
         private SnapSyncBatch CreateNextSlowRangeRequest(StorageRange slotRange, Hash256 rootHash, long blockNumber)
@@ -627,15 +641,19 @@ namespace Nethermind.Synchronization.SnapSync
 
         private bool TryDequeNextSlotRange(out StorageRange item)
         {
+            item = null!;
+            if (!TryReserveStorageBatch())
+                return false;
+
             Interlocked.Increment(ref _activeStorageRequests);
             if (!NextSlotRange.TryDequeue(out item))
             {
                 Interlocked.Decrement(ref _activeStorageRequests);
+                ReleaseStorageBatch();
                 return false;
             }
 
             Interlocked.Decrement(ref _slotRangeQueueCount);
-            Interlocked.Increment(ref _activeStorageBatchRequests);
             if (item.Accounts.Count == 1)
             {
                 _largeStorageProgress.AddOrUpdate(item.Accounts.AsSpan()[0].Path,
@@ -647,6 +665,22 @@ namespace Nethermind.Synchronization.SnapSync
 
             return true;
         }
+
+        private bool TryReserveStorageBatch()
+        {
+            while (true)
+            {
+                int activeStorageBatchRequests = Volatile.Read(ref _activeStorageBatchRequests);
+                if (activeStorageBatchRequests >= _maxActiveStorageRangeBatches)
+                    return false;
+
+                int reservedStorageBatchRequests = activeStorageBatchRequests + 1;
+                if (Interlocked.CompareExchange(ref _activeStorageBatchRequests, reservedStorageBatchRequests, activeStorageBatchRequests) == activeStorageBatchRequests)
+                    return true;
+            }
+        }
+
+        private void ReleaseStorageBatch() => Interlocked.Decrement(ref _activeStorageBatchRequests);
 
         public void OnCompletedLargeStorage(PathWithAccount pathWithAccount)
         {
