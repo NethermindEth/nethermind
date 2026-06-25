@@ -13,5 +13,5 @@ public static class JsonRpcQuantityFormat
     /// When <see langword="true"/>, hex QUANTITY strings with leading zero digits are rejected.
     /// Mirrors <c>EthereumJsonSerializer.StrictHexFormat</c>.
     /// </summary>
-    public static volatile bool StrictMode = true;
+    public static volatile bool StrictMode = false;
 }
