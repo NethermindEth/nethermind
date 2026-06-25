@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Dns.Test;
@@ -40,6 +41,16 @@ public class EnrTreeParserTests
         Assert.That(leaf.Records[0], Is.EqualTo(enr));
         Assert.That(leaf.NodeRecord, Is.EqualTo(enr.Substring(4)));
     }
+
+    // A malformed enrtree-root from an untrusted DNS record must surface as a FormatException
+    // (caught and skipped by the crawler), never an unhandled ArgumentOutOfRangeException that aborts the crawl.
+    [TestCase("enrtree-root:v1", TestName = "all fields missing")]
+    [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=2779sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "no space after seq value")]
+    [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "seq field missing")]
+    [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=2779 sig=SHORT", TestName = "truncated sig field")]
+    [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=notanumber sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "non-numeric seq value")]
+    public void Malformed_enrtree_root_throws_FormatException(string malformedRoot)
+        => Assert.That(() => EnrTreeParser.ParseEnrRoot(malformedRoot), Throws.TypeOf<FormatException>());
 
     [TestCase("enrtree://all.mainnet.ethdisco.net")]
     [TestCase("enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@all.mainnet.ethdisco.net")]

@@ -53,7 +53,18 @@ public class EnrTreeCrawler(ILogger logger)
             IEnumerable<string> lookupResult = await client.Lookup(query, cancellationToken);
             foreach (string node in lookupResult)
             {
-                EnrTreeNode treeNode = EnrTreeParser.ParseNode(node);
+                EnrTreeNode treeNode;
+                try
+                {
+                    treeNode = EnrTreeParser.ParseNode(node);
+                }
+                catch (Exception e) when (e is FormatException or NotSupportedException or ArgumentException)
+                {
+                    // A single malformed record from an untrusted DNS server must not abort the whole crawl.
+                    if (_logger.IsDebug) _logger.Debug($"Skipping malformed ENR tree record from DNS query '{query}': {e.Message}");
+                    continue;
+                }
+
                 foreach (string link in treeNode.Links)
                 {
                     DnsClient linkedTreeLookup = new(link);
