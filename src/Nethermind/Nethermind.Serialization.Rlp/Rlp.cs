@@ -1880,11 +1880,17 @@ namespace Nethermind.Serialization.Rlp
         [StackTraceHidden]
         private static void ThrowCountOverLimit(uint count, int bytesLeft, RlpLimit limit)
         {
-            string message = string.IsNullOrEmpty(limit.CollectionExpression)
-                ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
-                : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
-            _logger.DebugError($"{message}; {new StackTrace()}");
-            throw new RlpLimitException(message);
+            if (_logger.IsTrace)
+            {
+                string message = string.IsNullOrEmpty(limit.CollectionExpression)
+                    ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
+                    : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
+                _logger.Error($"{message}; {new StackTrace()}");
+
+                throw new RlpLimitException(message);
+            }
+
+            throw new RlpLimitException("An RLP limit exceeded");
         }
 
         [DoesNotReturn]
