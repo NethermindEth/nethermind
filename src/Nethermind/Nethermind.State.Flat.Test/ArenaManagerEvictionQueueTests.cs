@@ -140,13 +140,14 @@ public class ArenaManagerEvictionQueueTests
     [Test]
     public void WarmTouch_RefreshesRegisteredArenaPage_BumpsPagesRefreshed()
     {
-        // One 8-way set (capacity 8) so the bounded keep-warm probe is guaranteed to find the
-        // lone resident slot rather than missing it probabilistically.
+        // One 8-way set (capacity 8) so the bounded keep-warm probe is guaranteed to find a resident slot.
         using ArenaManager manager = NewManager(8L * Environment.SystemPageSize);
         manager.Initialize([]);
 
-        // Register a real arena so the keep-warm hand's TouchByte has a live mapping to read.
-        byte[] data = [1, 2, 3, 4];
+        // A two-page reservation so we can drop one tracked page and still leave one resident for the
+        // keep-warm hand to pick and TouchByte-refresh.
+        int pageSize = Environment.SystemPageSize;
+        byte[] data = new byte[2 * pageSize];
         SnapshotLocation location;
         using (ArenaWriter writer = manager.CreateWriter(data.Length))
         {
@@ -155,15 +156,39 @@ public class ArenaManagerEvictionQueueTests
             (location, _) = writer.Complete();
         }
 
-        // Seed the tracker with that arena's resident page, then forget an unrelated (stale)
-        // range: its per-page Forget is a no-op, but it still fires the keep-warm hand, which
-        // picks the resident page and TouchByte-refreshes it.
-        int page = (int)(location.Offset / Environment.SystemPageSize);
-        manager.PageTracker.TryTouch(location.ArenaId, page, out _, out _);
+        // Seed both of the reservation's pages as resident.
+        int firstPage = (int)(location.Offset / pageSize);
+        manager.PageTracker.TryTouch(location.ArenaId, firstPage, out _, out _);
+        manager.PageTracker.TryTouch(location.ArenaId, firstPage + 1, out _, out _);
         Assert.That(manager.PagesRefreshed, Is.EqualTo(0));
 
-        manager.ForgetTrackerRange(location.ArenaId + 1000, byteOffset: 0, byteSize: 4L * Environment.SystemPageSize);
+        // Forget just the first page's range: it is actually dropped (forgotten == 1), which fires the
+        // keep-warm hand; it picks the still-resident second page and TouchByte-refreshes it.
+        manager.ForgetTrackerRange(location.ArenaId, location.Offset, byteSize: pageSize);
         Assert.That(manager.PagesRefreshed, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void ForgetUntrackedRange_DoesNotWarm()
+    {
+        using ArenaManager manager = NewManager(8L * Environment.SystemPageSize);
+        manager.Initialize([]);
+
+        // Seed a resident page so the keep-warm hand WOULD have a target if it fired.
+        byte[] data = new byte[Environment.SystemPageSize];
+        SnapshotLocation location;
+        using (ArenaWriter writer = manager.CreateWriter(data.Length))
+        {
+            data.CopyTo(writer.GetWriter().GetSpan(data.Length));
+            writer.GetWriter().Advance(data.Length);
+            (location, _) = writer.Complete();
+        }
+        manager.PageTracker.TryTouch(location.ArenaId, (int)(location.Offset / Environment.SystemPageSize), out _, out _);
+
+        // Forget a large, fully-untracked range: nothing is actually dropped, so the warm count must scale
+        // to actual drops (0) — not over-warm proportional to the cold range size.
+        manager.ForgetTrackerRange(location.ArenaId + 1000, byteOffset: 0, byteSize: 1000L * Environment.SystemPageSize);
+        Assert.That(manager.PagesRefreshed, Is.EqualTo(0));
     }
 
     [Test]

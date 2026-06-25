@@ -295,9 +295,10 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     /// replacement races cleanly (we either clear the matching slot or observe the new
     /// occupant and stop).
     /// </summary>
-    public void Forget(int arenaId, int pageIdx)
+    /// <returns><c>true</c> if a tracked entry was removed; <c>false</c> if the page was not tracked.</returns>
+    public bool Forget(int arenaId, int pageIdx)
     {
-        if (_setCount == 0) return;
+        if (_setCount == 0) return false;
         long key = PackKey(arenaId, pageIdx);
         int setIdx = (int)(Mix(key) & (uint)_setMask);
         long* setBase = _slots + ((nint)setIdx << WayShift);
@@ -317,13 +318,14 @@ public sealed unsafe class PageResidencyTracker : IDisposable
                     // current value: Forget never shrinks it, so a Forget+Insert cycle on the
                     // same slot won't add more pressure (the high-water already covers it).
                     Interlocked.Decrement(ref _residentPages);
-                    return;
+                    return true;
                 }
                 // Lost the race against a REF flip — re-read and retry; CAS will succeed once
                 // we observe the new (key | newRef) state.
                 spinner.SpinOnce();
             }
         }
+        return false;
     }
 
     public bool ContainsPage(int arenaId, int pageIdx)

@@ -291,12 +291,15 @@ public sealed class ArenaManager : IArenaManager
         long endPageExclusive = (byteOffset + byteSize) / pageSize;
         long pageCount = endPageExclusive - startPage;
         if (pageCount <= 0) return;
+        long forgotten = 0;
         for (long p = startPage; p < endPageExclusive; p++)
-            _pageTracker.Forget(arenaId, (int)p);
-        // The kernel has just dropped many pages at once (whole-range MADV_DONTNEED at the call
-        // sites) — refresh resident pages proportionally so its LRU doesn't bleed into our
-        // working set. Same 1:2 drop-to-warm ratio as the single-page dispatch path.
-        _pageAdvisor?.TouchWarmPages((int)Math.Min(int.MaxValue, pageCount * 2));
+            if (_pageTracker.Forget(arenaId, (int)p)) forgotten++;
+        // The kernel just dropped the resident pages in this range (whole-range MADV_DONTNEED at the call
+        // sites) — refresh proportionally so its LRU doesn't bleed into our working set. Scale to the pages
+        // we actually un-tracked, not the full range (which may be largely cold), so this matches the
+        // single-page dispatch path's 1:2 drop-to-warm ratio rather than over-warming on big sparse ranges.
+        if (forgotten > 0)
+            _pageAdvisor?.TouchWarmPages((int)Math.Min(int.MaxValue, forgotten * 2));
     }
 
     public void QueueEviction(int arenaId, int pageIdx) => _pageAdvisor?.Queue(arenaId, pageIdx);
