@@ -148,6 +148,14 @@ public class ShutterKeyValidator(
 
             Address keyperAddress = eonInfo.Addresses[signerIndex];
 
+            // signature is attacker-controlled; CheckSlotDecryptionIdentitiesSignature indexes signatureBytes[64],
+            // so reject a wrong-sized signature here to avoid an IndexOutOfRangeException (an ECDSA signature is 65 bytes).
+            if (signature.Length != 65)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: signature length {signature.Length} (expected 65).");
+                return false;
+            }
+
             if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(_instanceId, eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: bad signature.");
