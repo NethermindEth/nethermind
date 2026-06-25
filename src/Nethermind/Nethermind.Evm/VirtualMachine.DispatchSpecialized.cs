@@ -203,7 +203,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
                 programCounter = pc;
 
-                if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                if (TGasPolicy.IsOutOfGas(in gas))
                 {
                     OpCodeCount += opCodeCount;
                     goto OutOfGas;
