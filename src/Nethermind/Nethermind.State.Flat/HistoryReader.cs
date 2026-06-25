@@ -52,7 +52,7 @@ public sealed class HistoryReader
     /// that block — either it never changed at/before it, or its latest change at/before it was a deletion.
     /// </summary>
     [SkipLocalsInit]
-    public bool TryGetAccount(long block, Address address, out AccountStruct account)
+    public bool TryGetAccount(ulong block, Address address, out AccountStruct account)
     {
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
@@ -74,7 +74,7 @@ public sealed class HistoryReader
     /// that block — either it never changed at/before it, or its latest change at/before it cleared it.
     /// </summary>
     [SkipLocalsInit]
-    public bool TryGetStorage(long block, Address address, in UInt256 index, out SlotValue value)
+    public bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(index, ref slotHash);

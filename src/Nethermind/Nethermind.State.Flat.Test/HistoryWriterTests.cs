@@ -55,12 +55,12 @@ public class HistoryWriterTests
 
     // AddrA: (nonce 1, balance 100) @ b1, overwritten to (nonce 2, balance 200) @ b2, deleted @ b3.
     // Nonce == block number for the committed values, so the expected account is reconstructible from readBlock.
-    [TestCase(0, 0ul, ExpectedKind.Absent)]   // before the first change -> caller falls back to the tip
-    [TestCase(1, 100ul, ExpectedKind.Value)]
-    [TestCase(2, 200ul, ExpectedKind.Value)]
-    [TestCase(3, 0ul, ExpectedKind.Tombstone)] // deleted
-    [TestCase(4, 0ul, ExpectedKind.Tombstone)]
-    public void Captures_account_value_as_of_block(long readBlock, ulong balance, ExpectedKind kind)
+    [TestCase(0ul, 0ul, ExpectedKind.Absent)]   // before the first change -> caller falls back to the tip
+    [TestCase(1ul, 100ul, ExpectedKind.Value)]
+    [TestCase(2ul, 200ul, ExpectedKind.Value)]
+    [TestCase(3ul, 0ul, ExpectedKind.Tombstone)] // deleted
+    [TestCase(4ul, 0ul, ExpectedKind.Tombstone)]
+    public void Captures_account_value_as_of_block(ulong readBlock, ulong balance, ExpectedKind kind)
     {
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200))]);
@@ -83,19 +83,19 @@ public class HistoryWriterTests
                     Assert.That(written, Is.EqualTo(0));
                     break;
                 default:
-                    Assert.That(buffer[..written].ToArray(), Is.EqualTo(EncodedAccount(new Account((UInt256)readBlock, balance))));
+                    Assert.That(buffer[..written].ToArray(), Is.EqualTo(EncodedAccount(new Account(readBlock, balance))));
                     break;
             }
         }
     }
 
     // AddrA/Slot1: 0x0a @ b1, overwritten to 0x0bbb @ b2, zeroed (removed) @ b3.
-    [TestCase(0, null)]
-    [TestCase(1, "0a")]
-    [TestCase(2, "0bbb")]
-    [TestCase(3, "", true)]
-    [TestCase(4, "", true)]
-    public void Captures_storage_value_as_of_block(long readBlock, string? expectedHex, bool expectTombstone = false)
+    [TestCase(0ul, null)]
+    [TestCase(1ul, "0a")]
+    [TestCase(2ul, "0bbb")]
+    [TestCase(3ul, "", true)]
+    [TestCase(4ul, "", true)]
+    public void Captures_storage_value_as_of_block(ulong readBlock, string? expectedHex, bool expectTombstone = false)
     {
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, Slot(0x0a))]);
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, Slot(0x0b, 0xbb))]);
@@ -173,12 +173,12 @@ public class HistoryWriterTests
     }
 
     // (a) created @1, (a) self-destructed @2 (null tombstone), (c) re-created @3 with a new value.
-    [TestCase(0, 0ul)]   // before any change -> absent
-    [TestCase(1, 100ul)] // created
-    [TestCase(2, 0ul)]   // self-destructed -> absent
-    [TestCase(3, 300ul)] // re-created
-    [TestCase(4, 300ul)] // still present afterwards
-    public void Account_selfdestruct_then_recreate_reads_per_height(long readBlock, ulong expectedBalance)
+    [TestCase(0ul, 0ul)]   // before any change -> absent
+    [TestCase(1ul, 100ul)] // created
+    [TestCase(2ul, 0ul)]   // self-destructed -> absent
+    [TestCase(3ul, 300ul)] // re-created
+    [TestCase(4ul, 300ul)] // still present afterwards
+    public void Account_selfdestruct_then_recreate_reads_per_height(ulong readBlock, ulong expectedBalance)
     {
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, null)]);
@@ -203,12 +203,12 @@ public class HistoryWriterTests
     }
 
     // slot written @1, cleared @2 (null tombstone), re-written @3.
-    [TestCase(0, null)]
-    [TestCase(1, "0a")]
-    [TestCase(2, null)] // cleared -> tombstone -> absent
-    [TestCase(3, "0c")]
-    [TestCase(4, "0c")]
-    public void Storage_cleared_then_rewritten_reads_per_height(long readBlock, string? expectedHex)
+    [TestCase(0ul, null)]
+    [TestCase(1ul, "0a")]
+    [TestCase(2ul, null)] // cleared -> tombstone -> absent
+    [TestCase(3ul, "0c")]
+    [TestCase(4ul, "0c")]
+    public void Storage_cleared_then_rewritten_reads_per_height(ulong readBlock, string? expectedHex)
     {
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, SlotValue.FromSpanWithoutLeadingZero([0x0a]))]);
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, null)]);
@@ -237,7 +237,7 @@ public class HistoryWriterTests
     [Test]
     public void Empty_account_round_trips_as_present_not_tombstone()
     {
-        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(UInt256.Zero, UInt256.Zero))]);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(0UL, UInt256.Zero))]);
 
         _writer.CaptureUpTo(StateAt(1), _repository);
 
@@ -246,7 +246,7 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(found, Is.True);
-            Assert.That(account.Nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(account.Nonce, Is.EqualTo(0UL));
             Assert.That(account.Balance, Is.EqualTo(UInt256.Zero));
         }
     }
@@ -257,11 +257,11 @@ public class HistoryWriterTests
     public void Flag_on_keeps_tip_reads_correct_and_populates_history()
     {
         const int blockCount = 6;
-        for (long block = 1; block <= blockCount; block++)
+        for (ulong block = 1; block <= blockCount; block++)
         {
             CommitBlock(
                 block - 1, block,
-                accountChanges: [(AddrA, new Account((UInt256)block, (UInt256)(block * 10)))],
+                accountChanges: [(AddrA, new Account(block, (UInt256)(block * 10)))],
                 storageChanges: [(AddrA, Slot1, RegressionSlotFor(block))]);
         }
 
@@ -280,13 +280,13 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tipAccount, Is.Not.Null);
-            Assert.That(tipAccount!.Nonce, Is.EqualTo((UInt256)blockCount));
+            Assert.That(tipAccount!.Nonce, Is.EqualTo((ulong)blockCount));
             Assert.That(tipAccount.Balance, Is.EqualTo((UInt256)(blockCount * 10)));
             Assert.That(tipSlot, Is.EqualTo(RegressionSlotBytes(blockCount)));
 
             Assert.That(_writer.LastCapturedBlock, Is.EqualTo(blockCount));
             Assert.That(historyHasMidpoint, Is.True);
-            Assert.That(midpoint.Nonce, Is.EqualTo((UInt256)(blockCount / 2)));
+            Assert.That(midpoint.Nonce, Is.EqualTo((ulong)(blockCount / 2)));
         }
     }
 
@@ -305,11 +305,11 @@ public class HistoryWriterTests
 
         // Each block gives the account a unique end-of-block value (nonce == balance == block) and a unique slot
         // value, so a gap that resolves to an earlier compaction boundary is detectable.
-        for (long block = 1; block <= blockCount; block++)
+        for (ulong block = 1; block <= blockCount; block++)
         {
             CommitBlock(
                 block - 1, block,
-                accountChanges: [(AddrA, new Account((UInt256)block, (UInt256)block))],
+                accountChanges: [(AddrA, new Account(block, (UInt256)block))],
                 storageChanges: [(AddrA, Slot1, CompactionSlotFor(block))]);
 
             compactor.DoCompactSnapshot(StateAt(block));
@@ -321,11 +321,11 @@ public class HistoryWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            for (long block = 1; block <= blockCount; block++)
+            for (ulong block = 1; block <= blockCount; block++)
             {
                 bool foundAccount = _reader.TryGetAccount(block, AddrA, out AccountStruct account);
                 Assert.That(foundAccount, Is.True, $"Account missing at block {block} (capture gap).");
-                Assert.That(account.Nonce, Is.EqualTo((UInt256)block), $"Account at block {block} resolved to the wrong (earlier-boundary) value.");
+                Assert.That(account.Nonce, Is.EqualTo((ulong)block), $"Account at block {block} resolved to the wrong (earlier-boundary) value.");
                 Assert.That(account.Balance, Is.EqualTo((UInt256)block), $"Account balance at block {block} resolved to the wrong value.");
 
                 bool foundSlot = _reader.TryGetStorage(block, AddrA, Slot1, out SlotValue slot);
@@ -337,24 +337,24 @@ public class HistoryWriterTests
 
     // Mirrors the tip path of FlatDbManager.GatherReadOnlySnapshotBundle: assemble the live per-block snapshots from
     // the read block down to the persisted floor (block 0), then read through them.
-    private ReadOnlySnapshotBundle TipBundle(long tip, int estimatedSize)
+    private ReadOnlySnapshotBundle TipBundle(ulong tip, int estimatedSize)
     {
         SnapshotPooledList snapshots = _repository.AssembleSnapshots(StateAt(tip), StateAt(0), estimatedSize);
         return new ReadOnlySnapshotBundle(snapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
     }
 
-    private static byte[] RegressionSlotBytes(long block) => [0xAB, (byte)block];
+    private static byte[] RegressionSlotBytes(ulong block) => [0xAB, (byte)block];
 
-    private static SlotValue RegressionSlotFor(long block) => SlotValue.FromSpanWithoutLeadingZero(RegressionSlotBytes(block));
+    private static SlotValue RegressionSlotFor(ulong block) => SlotValue.FromSpanWithoutLeadingZero(RegressionSlotBytes(block));
 
     // First byte is always non-zero so the value survives the without-leading-zeros slot roundtrip unchanged.
-    private static byte[] CompactionSlotBytes(long block) => [0xAB, (byte)(block >> 8), (byte)block];
+    private static byte[] CompactionSlotBytes(ulong block) => [0xAB, (byte)(block >> 8), (byte)block];
 
-    private static SlotValue CompactionSlotFor(long block) => SlotValue.FromSpanWithoutLeadingZero(CompactionSlotBytes(block));
+    private static SlotValue CompactionSlotFor(ulong block) => SlotValue.FromSpanWithoutLeadingZero(CompactionSlotBytes(block));
 
     private void CommitBlock(
-        long fromBlock,
-        long toBlock,
+        ulong fromBlock,
+        ulong toBlock,
         (Address Address, Account? Account)[]? accountChanges = null,
         (Address Address, UInt256 Slot, SlotValue? Value)[]? storageChanges = null)
     {
@@ -372,7 +372,7 @@ public class HistoryWriterTests
         _repository.AddStateId(StateAt(toBlock));
     }
 
-    private static StateId StateAt(long blockNumber)
+    private static StateId StateAt(ulong blockNumber)
     {
         Span<byte> root = stackalloc byte[32];
         root[0] = (byte)blockNumber;

@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class HistoryStore
 {
-    private const int BlockBytes = sizeof(long);
+    private const int BlockBytes = sizeof(ulong);
 
     private readonly ISortedKeyValueStore _history;
     private readonly IDb _changeMarkers;
@@ -35,7 +35,7 @@ public sealed class HistoryStore
 
     /// <summary>Records the post-change value at <paramref name="block"/>; an empty value is a deletion tombstone.</summary>
     [SkipLocalsInit]
-    public void RecordChange(long block, scoped ReadOnlySpan<byte> flatKey, scoped ReadOnlySpan<byte> value, IWriteBatch historyBatch, IWriteBatch changeMarkerBatch)
+    public void RecordChange(ulong block, scoped ReadOnlySpan<byte> flatKey, scoped ReadOnlySpan<byte> value, IWriteBatch historyBatch, IWriteBatch changeMarkerBatch)
     {
         Span<byte> historyKey = stackalloc byte[flatKey.Length + BlockBytes];
         WriteHistoryKey(historyKey, flatKey, block);
@@ -55,7 +55,7 @@ public sealed class HistoryStore
     /// otherwise the number of value bytes written.
     /// </summary>
     [SkipLocalsInit]
-    public int TryGetAt(long block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer)
+    public int TryGetAt(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer)
     {
         // A change at exactly `block` is the floor; KeyExists disambiguates a present-but-empty tombstone (length 0)
         // from a missing key, which Get's length alone cannot. Otherwise floor-seek strictly below `block`, where the
@@ -82,16 +82,16 @@ public sealed class HistoryStore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteHistoryKey(Span<byte> destination, scoped ReadOnlySpan<byte> flatKey, long block)
+    private static void WriteHistoryKey(Span<byte> destination, scoped ReadOnlySpan<byte> flatKey, ulong block)
     {
         flatKey.CopyTo(destination[..flatKey.Length]);
-        BinaryPrimitives.WriteInt64BigEndian(destination[flatKey.Length..], block);
+        BinaryPrimitives.WriteUInt64BigEndian(destination[flatKey.Length..], block);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteMarkerKey(Span<byte> destination, long block, scoped ReadOnlySpan<byte> flatKey)
+    private static void WriteMarkerKey(Span<byte> destination, ulong block, scoped ReadOnlySpan<byte> flatKey)
     {
-        BinaryPrimitives.WriteInt64BigEndian(destination[..BlockBytes], block);
+        BinaryPrimitives.WriteUInt64BigEndian(destination[..BlockBytes], block);
         flatKey.CopyTo(destination[BlockBytes..]);
     }
 }

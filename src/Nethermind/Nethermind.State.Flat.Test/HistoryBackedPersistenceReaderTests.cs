@@ -50,7 +50,7 @@ public class HistoryBackedPersistenceReaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(present, Is.Not.Null);
-            Assert.That(present!.Nonce, Is.EqualTo((UInt256)5));
+            Assert.That(present!.Nonce, Is.EqualTo((ulong)5));
             Assert.That(present.Balance, Is.EqualTo((UInt256)500));
             Assert.That(absent, Is.Null);
         }
@@ -94,10 +94,10 @@ public class HistoryBackedPersistenceReaderTests
         }
     }
 
-    private HistoryBackedPersistenceReader Reader(long block) =>
+    private HistoryBackedPersistenceReader Reader(ulong block) =>
         new(new HistoryReader(_db, rlpWrapSlots: true), new StateId(block, Keccak.EmptyTreeHash));
 
-    private void RecordAccount(long block, Account account)
+    private void RecordAccount(ulong block, Account account)
     {
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], Address.ToAccountPath);
@@ -111,7 +111,7 @@ public class HistoryBackedPersistenceReaderTests
             batch.GetColumnBatch(FlatDbColumns.AccountChangeSets));
     }
 
-    private void RecordStorage(long block, ReadOnlySpan<byte> rawValue)
+    private void RecordStorage(ulong block, ReadOnlySpan<byte> rawValue)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(Slot, ref slotHash);

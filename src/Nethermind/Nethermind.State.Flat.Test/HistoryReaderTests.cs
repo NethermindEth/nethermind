@@ -41,14 +41,14 @@ public class HistoryReaderTests
     public void TearDown() => _db.Dispose();
 
     // Account: nonce/balance set at block 5, overwritten at 20, deleted at 30. -1 == absent.
-    [TestCase(3, -1)]
-    [TestCase(5, 5)]
-    [TestCase(19, 5)]
-    [TestCase(20, 20)]
-    [TestCase(29, 20)]
-    [TestCase(30, -1)]
-    [TestCase(35, -1)]
-    public void Resolves_account_as_of_block(long block, long expectedNonce)
+    [TestCase(3ul, -1)]
+    [TestCase(5ul, 5)]
+    [TestCase(19ul, 5)]
+    [TestCase(20ul, 20)]
+    [TestCase(29ul, 20)]
+    [TestCase(30ul, -1)]
+    [TestCase(35ul, -1)]
+    public void Resolves_account_as_of_block(ulong block, long expectedNonce)
     {
         RecordAccount(5, new Account(5, 500));
         RecordAccount(20, new Account(20, 2000));
@@ -65,20 +65,20 @@ public class HistoryReaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(found, Is.True);
-            Assert.That(account.Nonce, Is.EqualTo((UInt256)expectedNonce));
+            Assert.That(account.Nonce, Is.EqualTo((ulong)expectedNonce));
             Assert.That(account.Balance, Is.EqualTo((UInt256)(expectedNonce * 100)));
         }
     }
 
     // Storage: 0xAA at block 5, 0xBBCC at block 20, cleared at block 30. null == unset.
-    [TestCase(3, null)]
-    [TestCase(5, "aa")]
-    [TestCase(19, "aa")]
-    [TestCase(20, "bbcc")]
-    [TestCase(29, "bbcc")]
-    [TestCase(30, null)]
-    [TestCase(35, null)]
-    public void Resolves_storage_as_of_block(long block, string? expectedHex)
+    [TestCase(3ul, null)]
+    [TestCase(5ul, "aa")]
+    [TestCase(19ul, "aa")]
+    [TestCase(20ul, "bbcc")]
+    [TestCase(29ul, "bbcc")]
+    [TestCase(30ul, null)]
+    [TestCase(35ul, null)]
+    public void Resolves_storage_as_of_block(ulong block, string? expectedHex)
     {
         RecordStorage(5, [0xAA]);
         RecordStorage(20, [0xBB, 0xCC]);
@@ -99,7 +99,7 @@ public class HistoryReaderTests
         }
     }
 
-    private void RecordAccount(long block, Account? account)
+    private void RecordAccount(ulong block, Account? account)
     {
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], Address.ToAccountPath);
@@ -118,7 +118,7 @@ public class HistoryReaderTests
         _accountStore.RecordChange(block, flatKey, rlp, history, changeMarkers);
     }
 
-    private void RecordStorage(long block, ReadOnlySpan<byte> rawValue)
+    private void RecordStorage(ulong block, ReadOnlySpan<byte> rawValue)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(Slot, ref slotHash);

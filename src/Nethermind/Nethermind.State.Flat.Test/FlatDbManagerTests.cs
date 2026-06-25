@@ -223,14 +223,14 @@ public class FlatDbManagerTests
     }
 
     // Account: set @5, overwritten @20, deleted @30. Slot: 0xAA @5, 0xBBCC @20, cleared @30.
-    [TestCase(3, 0L, null)]
-    [TestCase(10, 5L, "aa")]
-    [TestCase(19, 5L, "aa")]
-    [TestCase(20, 20L, "bbcc")]
-    [TestCase(29, 20L, "bbcc")]
-    [TestCase(30, 0L, null)]
-    [TestCase(35, 0L, null)]
-    public async Task GatherReadOnlySnapshotBundle_below_barrier_reads_history(long block, long expectedNonce, string? expectedSlotHex)
+    [TestCase(3ul, 0L, null)]
+    [TestCase(10ul, 5L, "aa")]
+    [TestCase(19ul, 5L, "aa")]
+    [TestCase(20ul, 20L, "bbcc")]
+    [TestCase(29ul, 20L, "bbcc")]
+    [TestCase(30ul, 0L, null)]
+    [TestCase(35ul, 0L, null)]
+    public async Task GatherReadOnlySnapshotBundle_below_barrier_reads_history(ulong block, long expectedNonce, string? expectedSlotHex)
     {
         _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
         RecordHistoryWindow();
@@ -253,7 +253,7 @@ public class FlatDbManagerTests
             else
             {
                 Assert.That(account, Is.Not.Null);
-                Assert.That(account!.Nonce, Is.EqualTo((UInt256)expectedNonce));
+                Assert.That(account!.Nonce, Is.EqualTo((ulong)expectedNonce));
                 Assert.That(account.Balance, Is.EqualTo((UInt256)(expectedNonce * 100)));
             }
 
@@ -305,7 +305,7 @@ public class FlatDbManagerTests
         RecordStorage(30, ReadOnlySpan<byte>.Empty);
     }
 
-    private void RecordAccount(long block, Account? account)
+    private void RecordAccount(ulong block, Account? account)
     {
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], HistoryAddr.ToAccountPath);
@@ -324,7 +324,7 @@ public class FlatDbManagerTests
         _accountStore.RecordChange(block, flatKey, rlp, history, changeMarkers);
     }
 
-    private void RecordStorage(long block, ReadOnlySpan<byte> rawValue)
+    private void RecordStorage(ulong block, ReadOnlySpan<byte> rawValue)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(HistorySlot, ref slotHash);

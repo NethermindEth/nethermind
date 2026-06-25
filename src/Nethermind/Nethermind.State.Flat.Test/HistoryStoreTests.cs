@@ -28,15 +28,15 @@ public class HistoryStoreTests
     public void TearDown() => _columnsDb.Dispose();
 
     // KeyA: 0xAA at block 5, 0xBBCC at block 20, deleted at block 30.
-    [TestCase(3, null)]   // before the first change -> caller falls back to the tip
-    [TestCase(5, "aa")]
-    [TestCase(10, "aa")]
-    [TestCase(19, "aa")]
-    [TestCase(20, "bbcc")]
-    [TestCase(25, "bbcc")]
-    [TestCase(30, "")]    // deleted -> tombstone
-    [TestCase(35, "")]
-    public void Resolves_value_as_of_block(long block, string? expectedHex)
+    [TestCase(3ul, null)]   // before the first change -> caller falls back to the tip
+    [TestCase(5ul, "aa")]
+    [TestCase(10ul, "aa")]
+    [TestCase(19ul, "aa")]
+    [TestCase(20ul, "bbcc")]
+    [TestCase(25ul, "bbcc")]
+    [TestCase(30ul, "")]    // deleted -> tombstone
+    [TestCase(35ul, "")]
+    public void Resolves_value_as_of_block(ulong block, string? expectedHex)
     {
         Record(5, KeyA, [0xAA]);
         Record(20, KeyA, [0xBB, 0xCC]);
@@ -70,7 +70,7 @@ public class HistoryStoreTests
         }
     }
 
-    private void Record(long block, ReadOnlySpan<byte> flatKey, ReadOnlySpan<byte> value)
+    private void Record(ulong block, ReadOnlySpan<byte> flatKey, ReadOnlySpan<byte> value)
     {
         using IColumnsWriteBatch<FlatDbColumns> batch = _columnsDb.StartWriteBatch();
         _store.RecordChange(

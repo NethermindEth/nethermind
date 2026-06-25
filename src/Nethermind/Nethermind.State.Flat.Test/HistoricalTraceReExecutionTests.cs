@@ -120,7 +120,7 @@ public class HistoricalTraceReExecutionTests
             using IDisposable scope = worldState.BeginScope(historicalHeader);
 
             // Reading the historical state from flat history must work — this is what the re-executing tx sees.
-            Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((UInt256)3));
+            Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)3));
             Assert.That(worldState.GetBalance(ExistingAddr), Is.EqualTo((UInt256)300));
 
             // Re-execute the kind of mutations a traced transaction performs: touch an existing account, write a brand
@@ -145,11 +145,11 @@ public class HistoricalTraceReExecutionTests
             {
                 // The re-executed changes must be visible through the flat overlay — the state a non-empty trace reports.
                 Assert.That(existingBalanceAfter, Is.EqualTo((UInt256)350));
-                Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((UInt256)4));
+                Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)4));
                 Assert.That(worldState.Get(new StorageCell(ExistingAddr, ExistingSlot)).ToArray(), Is.EqualTo(updatedExistingSlotValue));
 
                 Assert.That(freshReadBack.Balance, Is.EqualTo((UInt256)7));
-                Assert.That(freshReadBack.Nonce, Is.EqualTo((UInt256)1));
+                Assert.That(freshReadBack.Nonce, Is.EqualTo((ulong)1));
                 Assert.That(worldState.Get(new StorageCell(freshAddr, freshSlot)).ToArray(), Is.EqualTo(freshSlotValue));
 
                 // The historical root is known up-front and must be retained (no trie traversal recomputed it).
@@ -181,7 +181,7 @@ public class HistoricalTraceReExecutionTests
         LimboLogs.Instance,
         isReadOnly: false);
 
-    private void RecordAccount(long block, Account? account)
+    private void RecordAccount(ulong block, Account? account)
     {
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], ExistingAddr.ToAccountPath);
@@ -200,7 +200,7 @@ public class HistoricalTraceReExecutionTests
         _accountStore.RecordChange(block, flatKey, rlp, history, changeMarkers);
     }
 
-    private void RecordStorage(long block, ReadOnlySpan<byte> rawValue)
+    private void RecordStorage(ulong block, ReadOnlySpan<byte> rawValue)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(ExistingSlot, ref slotHash);

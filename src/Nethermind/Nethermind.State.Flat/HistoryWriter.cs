@@ -28,8 +28,8 @@ public sealed class HistoryWriter
     private readonly bool _rlpWrapSlots;
     private readonly bool _enabled;
 
-    // The highest block whose changeset has been captured; capture resumes strictly after it.
-    private long _lastCapturedBlock = -1;
+    private ulong _lastCapturedBlock;
+    private bool _anyCaptured;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
         : this(db, BasePersistence.ResolveSlotEncoding(
@@ -58,7 +58,7 @@ public sealed class HistoryWriter
             db.GetColumnDb(FlatDbColumns.StorageChangeSets));
     }
 
-    public long LastCapturedBlock => _lastCapturedBlock;
+    public ulong LastCapturedBlock => _lastCapturedBlock;
 
     /// <summary>
     /// Captures the changeset of every block on <paramref name="persistedHead"/>'s chain that has not yet been
@@ -69,21 +69,21 @@ public sealed class HistoryWriter
     {
         if (!_enabled) return;
 
-        long target = persistedHead.BlockNumber;
-        if (target <= _lastCapturedBlock) return;
+        ulong target = persistedHead.BlockNumber;
+        if (_anyCaptured && target <= _lastCapturedBlock) return;
 
-        for (long block = _lastCapturedBlock + 1; block <= target; block++)
+        for (ulong block = _anyCaptured ? _lastCapturedBlock + 1 : 0; block <= target; block++)
         {
             if (!snapshotRepository.TryFindAncestorStateAtBlock(persistedHead, block, out StateId stateAtBlock))
             {
-                _lastCapturedBlock = block;
+                MarkCaptured(block);
                 continue;
             }
 
             if (!snapshotRepository.TryLeaseState(stateAtBlock, out Snapshot? snapshot))
             {
                 // Genesis / already-pruned blocks have no per-block snapshot; nothing to record.
-                _lastCapturedBlock = block;
+                MarkCaptured(block);
                 continue;
             }
 
@@ -92,12 +92,18 @@ public sealed class HistoryWriter
                 CaptureBlock(block, snapshot);
             }
 
-            _lastCapturedBlock = block;
+            MarkCaptured(block);
         }
     }
 
+    private void MarkCaptured(ulong block)
+    {
+        _lastCapturedBlock = block;
+        _anyCaptured = true;
+    }
+
     [SkipLocalsInit]
-    private void CaptureBlock(long block, Snapshot snapshot)
+    private void CaptureBlock(ulong block, Snapshot snapshot)
     {
         using IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
 
