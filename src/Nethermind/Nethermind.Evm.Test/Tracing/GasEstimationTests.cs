@@ -280,9 +280,8 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Estimate_uses_next_block_spec_for_execution_across_fork_boundary()
         {
-            // The header is the parent; the tx would execute in the next block. With the header timestamped one
-            // slot before Cancun activates, execution must use the Cancun spec (the block the tx lands in), not
-            // the parent's pre-Cancun spec, so estimation stays consistent across the fork boundary.
+            // Estimate treats the header as the parent: the tx executes in the next block. The header sits one
+            // slot before Cancun, so execution must use the next block's spec (Cancun), not the parent's.
             BlocksConfig blocksConfig = new();
             BlockHeader header = Build.A.BlockHeader
                 .WithNumber(MainnetSpecProvider.ParisBlockNumber + 100)
@@ -305,8 +304,6 @@ namespace Nethermind.Evm.Test.Tracing
 
             sut.Estimate(tx, header, tracer, out string? _);
 
-            // Before the fix this used GetSpec(header) (pre-Cancun, EIP-4844 disabled); the fix uses the
-            // header.Number + 1 spec (Cancun, EIP-4844 enabled).
             Assert.That(captured, Is.Not.Null);
             Assert.That(captured!.Value.Spec.IsEip4844Enabled, Is.True);
         }
