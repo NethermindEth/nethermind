@@ -117,10 +117,10 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = $"Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. The range to verify is `{nameof(FixReceiptsStartingBlock)}`..`{nameof(FixReceiptsLastBlock)}`.", DefaultValue = "false")]
     public bool FixReceipts { get; set; }
 
-    [ConfigItem(Description = "The first block (inclusive) to verify/fix receipts for.", DefaultValue = nameof(AncientReceiptsBarrier))]
+    [ConfigItem(Description = "The first block (inclusive) to verify/fix receipts for. When not set, defaults to the ancient receipts barrier, which depends on the pivot number; in that case the pivot number must be the same one used originally as it's the cut-off point.", DefaultValue = "null")]
     public long? FixReceiptsStartingBlock { get; set; }
 
-    [ConfigItem(Description = "The last block (inclusive) to verify/fix receipts for. Clamped to the chain head minus 2.", DefaultValue = "Head - 2")]
+    [ConfigItem(Description = "The last block (inclusive) to verify/fix receipts for. When not set, defaults to the chain head minus 2, to which it's always clamped.", DefaultValue = "null")]
     public long? FixReceiptsLastBlock { get; set; }
 
     [ConfigItem(Description = $"Whether to recalculate the total difficulty from `{nameof(FixTotalDifficultyStartingBlock)}` to `{nameof(FixTotalDifficultyLastBlock)}`.", DefaultValue = "false")]
