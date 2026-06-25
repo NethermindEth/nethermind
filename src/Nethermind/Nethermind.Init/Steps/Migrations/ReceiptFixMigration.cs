@@ -34,9 +34,19 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (syncConfig.FixReceipts)
             {
+                long startIncl = syncConfig.FixReceiptsStartingBlock ?? syncConfig.AncientReceiptsBarrierCalc;
+                long endExcl = syncConfig.FixReceiptsLastBlock is { } lastBlock ? lastBlock + 1 : long.MaxValue;
+                endExcl = Math.Clamp(endExcl, 0, Math.Max(0, (blockTree.Head?.Number ?? 0) - 2));
+
+                if (endExcl <= startIncl)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"{nameof(ReceiptFixMigration)} skipped: computed range [{startIncl}, {endExcl}) is empty");
+                    return;
+                }
+
                 using MissingReceiptsFixVisitor visitor = new(
-                    syncConfig.AncientReceiptsBarrierCalc,
-                    blockTree.Head?.Number - 2 ?? 0,
+                    startIncl,
+                    endExcl,
                     receiptStorage,
                     logManager,
                     syncPeerPool,
@@ -70,16 +80,13 @@ namespace Nethermind.Init.Steps.Migrations
             ) : ReceiptsVerificationVisitor(startLevel, endLevel, receiptStorage, logManager)
         {
             private readonly IReceiptStorage _receiptStorage = receiptStorage;
-            private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
-            private readonly CancellationToken _cancellationToken = cancellationToken;
             private readonly TimeSpan _delay = TimeSpan.FromSeconds(5);
-            private readonly IBlockTree _blockTree = blockTree;
 
-            public override async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
+            public override async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken ct)
             {
-                BlockVisitOutcome outcome = await base.VisitBlock(block, cancellationToken);
+                BlockVisitOutcome outcome = await base.VisitBlock(block, ct);
 
-                if (_blockTree.IsMainChain(block.Header))
+                if (blockTree.IsMainChain(block.Header))
                 {
                     _receiptStorage.EnsureCanonical(block);
                 }
@@ -105,13 +112,13 @@ namespace Nethermind.Init.Steps.Migrations
                 }
 
                 FastBlocksAllocationStrategy strategy = new(TransferSpeedType.Receipts, block.Number, true);
-                SyncPeerAllocation peer = await _syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
+                SyncPeerAllocation peer = await syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
                 ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
                 if (currentSyncPeer is not null)
                 {
                     try
                     {
-                        using IOwnedReadOnlyList<TxReceipt[]?> receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, _cancellationToken);
+                        using IOwnedReadOnlyList<TxReceipt[]?> receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, cancellationToken);
                         TxReceipt[]? txReceipts = receipts.FirstOrDefault();
                         if (txReceipts is not null)
                         {
@@ -130,7 +137,7 @@ namespace Nethermind.Init.Steps.Migrations
                     }
                     finally
                     {
-                        _syncPeerPool.Free(peer);
+                        syncPeerPool.Free(peer);
                     }
                 }
                 else
