@@ -17,5 +17,5 @@ internal class TestBlockTree : BlockTreeTestDouble
 {
     public override BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader!;
 
-    public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth) { }
+    public void HealCanonicalChain(Hash256 startHash, ulong maxBlockDepth) { }
 }

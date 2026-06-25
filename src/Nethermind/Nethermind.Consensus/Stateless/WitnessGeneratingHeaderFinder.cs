@@ -15,12 +15,12 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
     private static readonly HeaderDecoder _decoder = new();
     // Not thread-safe: a pooled rent is reset then used on a single thread, so no synchronization is
     // needed. Concurrent use of one instance would require it.
-    private long _lowestRequestedHeader = long.MaxValue;
+    private ulong _lowestRequestedHeader = ulong.MaxValue;
 
     /// <summary>Resets BLOCKHASH bookkeeping so this instance can be reused across pooled rents.</summary>
-    public void Reset() => _lowestRequestedHeader = long.MaxValue;
+    public void Reset() => _lowestRequestedHeader = ulong.MaxValue;
 
-    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null)
     {
         BlockHeader? header = inner.Get(blockHash, blockNumber);
         if (header is not null && header.Number < _lowestRequestedHeader)
@@ -37,14 +37,14 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
 
         // BLOCKHASH can only reach below the executed block, so a recorded header above the parent
         // means the bookkeeping is broken — fail loudly instead of computing a non-positive count.
-        if (_lowestRequestedHeader < long.MaxValue && _lowestRequestedHeader > parentHeader.Number)
+        if (_lowestRequestedHeader < ulong.MaxValue && _lowestRequestedHeader > parentHeader.Number)
             throw new InvalidOperationException(
                 $"Recorded header {_lowestRequestedHeader} is above the executed-against parent {parentHeader.Number}");
 
         // Headers in ascending block-number order — any BLOCKHASH-touched ancestor first, recorded
-        // block last — so the chain is contiguous and replayable. _lowestRequestedHeader stays at
-        // long.MaxValue unless BLOCKHASH reached further back during processing.
-        int count = _lowestRequestedHeader < long.MaxValue
+        // block last — so the chain is contiguous and replayable. ulong.MaxValue sentinel means
+        // BLOCKHASH never reached further back during processing.
+        int count = _lowestRequestedHeader < ulong.MaxValue
             ? (int)(parentHeader.Number - _lowestRequestedHeader + 1)
             : 1;
         int index = count - 1;
@@ -53,15 +53,13 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
         {
             headers[index--] = _decoder.Encode(parentHeader).Bytes;
 
-            if (index >= 0)
+            for (ulong i = parentHeader.Number - 1; index >= 0; i--)
             {
-                for (long i = parentHeader.Number - 1; i >= _lowestRequestedHeader; i--)
-                {
-                    currentHash = parentHeader.ParentHash!;
-                    parentHeader = inner.Get(currentHash, i)
-                        ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
-                    headers[index--] = _decoder.Encode(parentHeader).Bytes;
-                }
+                currentHash = parentHeader.ParentHash!;
+                parentHeader = inner.Get(currentHash, i)
+                    ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
+                headers[index--] = _decoder.Encode(parentHeader).Bytes;
+                if (i == 0) break;
             }
 
             return headers;

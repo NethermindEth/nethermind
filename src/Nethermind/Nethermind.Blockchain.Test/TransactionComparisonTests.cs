@@ -41,16 +41,16 @@ public class TransactionComparisonTests
 
     [MaxTime(Timeout.MaxTestTime)]
     // head block number before eip 1559 transition
-    [TestCase(10, 10, 0, 0, 0)]
-    [TestCase(15, 10, 10, 1, -1)]
-    [TestCase(2, 3, 20, 0, 1)]
+    [TestCase(10, 10, 0, 0ul, 0)]
+    [TestCase(15, 10, 10, 1ul, -1)]
+    [TestCase(2, 3, 20, 0ul, 1)]
     // head block number after eip 1559 transition
-    [TestCase(10, 10, 16, 5, 0)]
-    [TestCase(15, 10, 11, 6, -1)]
-    [TestCase(2, 3, 33, 7, 1)]
-    public void GasPriceComparer_for_legacy_transactions_1559(int gasPriceX, int gasPriceY, int headBaseFee, long headBlockNumber, int expectedResult)
+    [TestCase(10, 10, 16, 5ul, 0)]
+    [TestCase(15, 10, 11, 6ul, -1)]
+    [TestCase(2, 3, 33, 7ul, 1)]
+    public void GasPriceComparer_for_legacy_transactions_1559(int gasPriceX, int gasPriceY, int headBaseFee, ulong headBlockNumber, int expectedResult)
     {
-        long eip1559Transition = 5;
+        ulong eip1559Transition = 5;
         TestingContext context = new TestingContext(true, eip1559Transition)
             .WithHeadBaseFeeNumber((UInt256)headBaseFee)
             .WithHeadBlockNumber(headBlockNumber);
@@ -60,16 +60,16 @@ public class TransactionComparisonTests
 
     [MaxTime(Timeout.MaxTestTime)]
     // head block number before eip 1559 transition
-    [TestCase(10, 10, 0, 0, 0)]
-    [TestCase(15, 10, 10, 1, -1)]
-    [TestCase(2, 3, 20, 0, 1)]
+    [TestCase(10, 10, 0, 0ul, 0)]
+    [TestCase(15, 10, 10, 1ul, -1)]
+    [TestCase(2, 3, 20, 0ul, 1)]
     // head block number after eip 1559 transition
-    [TestCase(10, 10, 16, 5, 0)]
-    [TestCase(15, 10, 11, 6, -1)]
-    [TestCase(2, 3, 33, 7, 1)]
-    public void ProducerGasPriceComparer_for_legacy_transactions_1559(int gasPriceX, int gasPriceY, int headBaseFee, long headBlockNumber, int expectedResult)
+    [TestCase(10, 10, 16, 5ul, 0)]
+    [TestCase(15, 10, 11, 6ul, -1)]
+    [TestCase(2, 3, 33, 7ul, 1)]
+    public void ProducerGasPriceComparer_for_legacy_transactions_1559(int gasPriceX, int gasPriceY, int headBaseFee, ulong headBlockNumber, int expectedResult)
     {
-        long eip1559Transition = 5;
+        ulong eip1559Transition = 5;
         TestingContext context = new(true, eip1559Transition);
         IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0, 0));
         AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
@@ -86,15 +86,15 @@ public class TransactionComparisonTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(10, 5, 12, 4, 4, 6, -1)]
-    [TestCase(10, 5, 12, 4, 10, 6, 1)]
-    [TestCase(10, 4, 12, 4, 4, 6, 1)]
-    [TestCase(12, 4, 12, 4, 4, 6, 0)]
-    [TestCase(10, 5, 12, 4, 4, 3, -1)]
-    [TestCase(10, 5, 12, 4, 10, 3, -1)]
-    public void GasPriceComparer_for_eip1559_transactions(int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int headBaseFee, long headBlockNumber, int expectedResult)
+    [TestCase(10, 5, 12, 4, 4, 6ul, -1)]
+    [TestCase(10, 5, 12, 4, 10, 6ul, 1)]
+    [TestCase(10, 4, 12, 4, 4, 6ul, 1)]
+    [TestCase(12, 4, 12, 4, 4, 6ul, 0)]
+    [TestCase(10, 5, 12, 4, 4, 3ul, -1)]
+    [TestCase(10, 5, 12, 4, 10, 3ul, -1)]
+    public void GasPriceComparer_for_eip1559_transactions(int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int headBaseFee, ulong headBlockNumber, int expectedResult)
     {
-        long eip1559Transition = 5;
+        ulong eip1559Transition = 5;
         TestingContext context = new TestingContext(true, eip1559Transition)
             .WithHeadBaseFeeNumber((UInt256)headBaseFee)
             .WithHeadBlockNumber(headBlockNumber);
@@ -108,10 +108,10 @@ public class TransactionComparisonTests
     [TestCase(4, 3, 0, 0, 0)]
     public void GasPriceComparer_use_gas_bottleneck_when_it_is_not_null(int gasPriceX, int gasPriceY, int gasBottleneckX, int gasBottleneckY, int expectedResult)
     {
-        long eip1559Transition = long.MaxValue;
+        ulong eip1559Transition = ulong.MaxValue;
         TestingContext context = new TestingContext(false, eip1559Transition)
             .WithHeadBaseFeeNumber((UInt256)0)
-            .WithHeadBlockNumber(1);
+            .WithHeadBlockNumber(1ul);
         IComparer<Transaction> comparer = context.DefaultComparer;
         Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
             .WithGasPrice((UInt256)gasPriceX).WithGasBottleneck((UInt256)gasBottleneckX).TestObject;
@@ -122,15 +122,15 @@ public class TransactionComparisonTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(10, 5, 12, 4, 4, 6, -1)]
-    [TestCase(10, 5, 12, 4, 10, 6, 1)]
-    [TestCase(10, 4, 12, 4, 4, 6, 1)]
-    [TestCase(12, 4, 12, 4, 4, 6, 0)]
-    [TestCase(10, 5, 12, 4, 4, 3, -1)]
-    [TestCase(10, 5, 12, 4, 10, 3, -1)]
-    public void ProducerGasPriceComparer_for_eip1559_transactions_1559(int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int headBaseFee, long headBlockNumber, int expectedResult)
+    [TestCase(10, 5, 12, 4, 4, 6ul, -1)]
+    [TestCase(10, 5, 12, 4, 10, 6ul, 1)]
+    [TestCase(10, 4, 12, 4, 4, 6ul, 1)]
+    [TestCase(12, 4, 12, 4, 4, 6ul, 0)]
+    [TestCase(10, 5, 12, 4, 4, 3ul, -1)]
+    [TestCase(10, 5, 12, 4, 10, 3ul, -1)]
+    public void ProducerGasPriceComparer_for_eip1559_transactions_1559(int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int headBaseFee, ulong headBlockNumber, int expectedResult)
     {
-        long eip1559Transition = 5;
+        ulong eip1559Transition = 5;
         TestingContext context = new(true, eip1559Transition);
         IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext((UInt256)headBaseFee, headBlockNumber));
         Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
@@ -152,10 +152,10 @@ public class TransactionComparisonTests
     {
         private readonly IBlockTree _blockTree;
         private readonly ITransactionComparerProvider _transactionComparerProvider;
-        private long _blockNumber;
+        private ulong _blockNumber;
         private UInt256 _baseFee;
 
-        public TestingContext(bool isEip1559Enabled = false, long eip1559TransitionBlock = 0)
+        public TestingContext(bool isEip1559Enabled = false, ulong eip1559TransitionBlock = 0)
         {
             ReleaseSpec releaseSpec = new();
             ReleaseSpec eip1559ReleaseSpec = new() { IsEip1559Enabled = isEip1559Enabled, Eip1559TransitionBlock = eip1559TransitionBlock };
@@ -173,7 +173,7 @@ public class TransactionComparisonTests
         public IComparer<Transaction> GetProducerComparer(BlockPreparationContext blockPreparationContext) =>
             _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        public TestingContext WithHeadBlockNumber(long headBlockNumber)
+        public TestingContext WithHeadBlockNumber(ulong headBlockNumber)
         {
             _blockNumber = headBlockNumber;
             UpdateBlockTreeHead();

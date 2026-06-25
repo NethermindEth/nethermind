@@ -47,7 +47,7 @@ namespace Nethermind.Xdc.Test
             );
 
             // Decode
-            Rlp.ValueDecoderContext context = encodedBytes.AsRlpValueContext();
+            RlpReader context = new(encodedBytes);
             BlockHeader? decodedBase = codec.Decode(ref context);
             Assert.That(decodedBase, Is.Not.Null, "The decoded header should not be null.");
             Assert.That(decodedBase, Is.InstanceOf<XdcBlockHeader>(), "The decoded header should be an instance of XdcBlockHeader.");
@@ -64,7 +64,7 @@ namespace Nethermind.Xdc.Test
             (XdcBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec, includeBaseFee: false);
 
             // Decode back
-            Rlp.ValueDecoderContext context = encodedBytes.AsRlpValueContext();
+            RlpReader context = new(encodedBytes);
             XdcBlockHeader decoded = (XdcBlockHeader)codec.Decode(ref context)!;
 
             Assert.That(decoded.BaseFeePerGas.IsZero, "BaseFeePerGas should be zero when omitted.");
@@ -90,7 +90,7 @@ namespace Nethermind.Xdc.Test
 
             // ForSealing encoding
             Rlp encoded = decoder.Encode(header, RlpBehaviors.ForSealing);
-            Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
+            RlpReader context = new(encoded.Bytes);
             XdcBlockHeader unencoded = (XdcBlockHeader)decoder.Decode(ref context, RlpBehaviors.ForSealing)!;
 
             Assert.That(unencoded.Validator, Is.Null,
@@ -103,7 +103,7 @@ namespace Nethermind.Xdc.Test
         {
             XdcHeaderDecoder decoder = new();
 
-            Rlp.ValueDecoderContext context = Bytes.FromHexString(hexRlp).AsRlpValueContext();
+            RlpReader context = new(Bytes.FromHexString(hexRlp));
             XdcBlockHeader? unencoded = (XdcBlockHeader?)decoder.Decode(ref context);
 
             string encoded = decoder.Encode(unencoded).ToString();

@@ -26,11 +26,13 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncConfig _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         private readonly IFullStateFinder _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
 
-        public long FindBestFullState() => _fullStateFinder.FindBestFullState();
-        public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
-        public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
+        public ulong FindBestFullState() => _fullStateFinder.FindBestFullState();
+        public ulong FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0UL;
+        public ulong FindBestFullBlock() => Math.Min(
+            _blockTree.BestSuggestedHeader?.Number ?? 0UL,
+            _blockTree.BestSuggestedBody?.Number ?? 0UL); // avoiding any potential concurrency issue
         public bool IsLoadingBlocksFromDb() => !_blockTree.CanAcceptNewBlocks;
-        public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
+        public ulong FindBestProcessedBlock() => _blockTree.Head?.Number ?? ulong.MaxValue;
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
 
         public UInt256? GetTotalDifficulty(Hash256 blockHash)
@@ -59,7 +61,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || receiptsSyncFeed.IsFinished;
         public bool IsFastBlockAccessListsFinished() => !IsFastBlocks() || !_syncConfig.DownloadBlockAccessListsInFastSync || blockAccessListsSyncFeed.IsFinished;
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
-        public (long BlockNumber, Hash256 BlockHash) SyncPivot => _blockTree.SyncPivot;
-        private bool IsFastBlocks() => _syncConfig.FastSync && _blockTree.SyncPivot.BlockNumber != 0L; // if pivot number is 0 then it is equivalent to fast blocks disabled
+        public (ulong BlockNumber, Hash256 BlockHash) SyncPivot => _blockTree.SyncPivot;
+        private bool IsFastBlocks() => _syncConfig.FastSync && _blockTree.SyncPivot.BlockNumber != 0UL; // if pivot number is 0 then it is equivalent to fast blocks disabled
     }
 }

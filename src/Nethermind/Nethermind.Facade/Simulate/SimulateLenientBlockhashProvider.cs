@@ -21,5 +21,5 @@ namespace Nethermind.Facade.Simulate;
 public sealed class SimulateLenientBlockhashProvider(IBlockhashCache blockhashCache, IWorldState worldState, ILogManager logManager)
     : BlockhashProvider(blockhashCache, worldState, logManager)
 {
-    protected override Hash256? OnUnresolvedBlockhash(BlockHeader currentBlock, long number) => null;
+    protected override Hash256? OnUnresolvedBlockhash(BlockHeader currentBlock, ulong number) => null;
 }

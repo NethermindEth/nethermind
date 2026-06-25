@@ -173,8 +173,9 @@ public class DebugTraceStreamingBenchmarks
     {
         for (int op = 0; op < opcodeCount; op++)
         {
-            tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - op, _env);
-            tracer.ReportOperationRemainingGas(900_000 - op);
+            ulong opU = (ulong)op;
+            tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - opU, _env);
+            tracer.ReportOperationRemainingGas(900_000 - opU);
         }
         tracer.MarkAsSuccess(Address.Zero, default, [], []);
     }
@@ -224,7 +225,7 @@ public class DebugTraceStreamingBenchmarks
         ProgramCounter = pc,
         Opcode = "ADD",
         Depth = 1,
-        Gas = 1_000_000 - pc,
+        Gas = (ulong)(1_000_000 - pc),
         GasCost = 3,
         Memory = ["0x0000000000000000000000000000000000000000000000000000000000000000"],
         Stack = ["0x1", "0x2"],

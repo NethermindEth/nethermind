@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private bool? _previousStrictHexFormat;
 
-        public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
+        public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig() { Timeout = -1 };
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
         public IDebugRpcModule DebugRpcModule => Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         public ITraceRpcModule TraceRpcModule => Container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
@@ -213,6 +213,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+                builder.AddSingleton<IJsonRpcConfig>(RpcConfig);
                 configurer?.Invoke(builder);
             });
 
@@ -233,6 +234,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IProtocolValidator>(),
                 Substitute.For<INetworkStorage>(),
                 Array.Empty<IProtocolHandlerFactory>(),
+                [new DefaultP2PCapabilityResolver()],
                 LimboLogs.Instance
             );
 

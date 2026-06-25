@@ -21,7 +21,7 @@ public class SimulateLenientBlockhashProviderTests
     public void Returns_null_instead_of_throwing_when_in_window_hash_cannot_be_resolved()
     {
         IBlockhashCache cache = Substitute.For<IBlockhashCache>();
-        cache.GetHash(Arg.Any<BlockHeader>(), Arg.Any<int>()).Returns((Hash256?)null);
+        cache.GetHash(Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns((Hash256?)null);
         IWorldState worldState = Substitute.For<IWorldState>();
         SimulateLenientBlockhashProvider sut = new(cache, worldState, LimboLogs.Instance);
         BlockHeader current = Build.A.BlockHeader.WithNumber(300).WithParentHash(TestItem.KeccakA).TestObject;

@@ -21,8 +21,8 @@ public class SimulateBlockhashProviderTests
     {
         IBlockhashProvider inner = Substitute.For<IBlockhashProvider>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.BestKnownNumber.Returns(100);
-        inner.GetBlockhash(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<IReleaseSpec>()).Returns((Hash256?)null);
+        blockTree.BestKnownNumber.Returns(100ul);
+        inner.GetBlockhash(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<IReleaseSpec>()).Returns((Hash256?)null);
 
         SimulateBlockhashProvider sut = new(inner, blockTree);
 
@@ -35,7 +35,7 @@ public class SimulateBlockhashProviderTests
     {
         IBlockhashProvider inner = Substitute.For<IBlockhashProvider>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.BestKnownNumber.Returns(100);
+        blockTree.BestKnownNumber.Returns(100ul);
         BlockHeader current = Build.A.BlockHeader.WithNumber(50).TestObject;
         inner.GetBlockhash(current, 40, Arg.Any<IReleaseSpec>()).Returns(TestItem.KeccakA);
 
@@ -49,7 +49,7 @@ public class SimulateBlockhashProviderTests
     {
         IBlockhashProvider inner = Substitute.For<IBlockhashProvider>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.BestKnownNumber.Returns(100);
+        blockTree.BestKnownNumber.Returns(100ul);
         BlockHeader bestSuggested = Build.A.BlockHeader.WithNumber(100).TestObject;
         blockTree.BestSuggestedHeader.Returns(bestSuggested);
         inner.GetBlockhash(bestSuggested, 100, Arg.Any<IReleaseSpec>()).Returns(TestItem.KeccakB);
