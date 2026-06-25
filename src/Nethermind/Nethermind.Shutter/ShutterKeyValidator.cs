@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
 using Nethermind.Logging;
@@ -149,10 +150,10 @@ public class ShutterKeyValidator(
             Address keyperAddress = eonInfo.Addresses[signerIndex];
 
             // signature is attacker-controlled; CheckSlotDecryptionIdentitiesSignature indexes signatureBytes[64],
-            // so reject a wrong-sized signature here to avoid an IndexOutOfRangeException (an ECDSA signature is 65 bytes).
-            if (signature.Length != 65)
+            // so reject a wrong-sized signature here to avoid an IndexOutOfRangeException.
+            if (signature.Length != Signature.Size)
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: signature length {signature.Length} (expected 65).");
+                if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: signature length {signature.Length} (expected {Signature.Size}).");
                 return false;
             }
 
