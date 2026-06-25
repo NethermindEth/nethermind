@@ -26,6 +26,7 @@ using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
 using Nethermind.Core.Messages;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -1171,5 +1172,32 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
 
         Assert.That(JToken.Parse(serialized)["error"], Is.Null);
+    }
+
+    [NonParallelizable]
+    [TestCase("""{"number":"0x0b"}""",        TestName = "lenient: leading zero in number")]
+    [TestCase("""{"time":"0x0b"}""",          TestName = "lenient: leading zero in time")]
+    [TestCase("""{"gasLimit":"0x0b"}""",      TestName = "lenient: leading zero in gasLimit")]
+    [TestCase("""{"baseFeePerGas":"0x0b"}""", TestName = "lenient: leading zero in baseFeePerGas")]
+    [TestCase("""{"blobBaseFee":"0x0b"}""",   TestName = "lenient: leading zero in blobBaseFee")]
+    public async Task Eth_call_block_override_leading_zero_accepted_in_lenient_mode(string blockOverrideJson)
+    {
+        using Context ctx = await Context.Create();
+        // ctx.Test is lazily initialised: first access triggers Build() which sets
+        // StrictHexFormat from RpcConfig (true). Force that now, before we flip the global.
+        TestRpcBlockchain test = ctx.Test;
+        bool previous = EthereumJsonSerializer.StrictHexFormat;
+        EthereumJsonSerializer.StrictHexFormat = false;
+        try
+        {
+            object transaction = JsonSerializer.Deserialize<object>("""{"to":"0xc200000000000000000000000000000000000000"}""")!;
+            object blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson)!;
+            string serialized = await test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+            Assert.That(JToken.Parse(serialized)["error"], Is.Null);
+        }
+        finally
+        {
+            EthereumJsonSerializer.StrictHexFormat = previous;
+        }
     }
 }
