@@ -1499,9 +1499,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long remainingRegularGas = TGasPolicy.GetRemainingGas(in gas);
             long stateReservoir = TGasPolicy.GetStateReservoir(in gas);
-            long spentGas = Math.Max(tx.GasLimit - remainingRegularGas - stateReservoir, floorGas);
-            long blockGas = Calculate8037BlockRegularGas(in gas, in intrinsicGasStandard, tx.GasLimit, floorGas, remainingRegularGas);
+            long preRefundGas = tx.GasLimit - remainingRegularGas - stateReservoir;
+            long spentGas = Math.Max(preRefundGas, floorGas);
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gas);
+            long blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, blockStateGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
@@ -1561,9 +1562,10 @@ namespace Nethermind.Evm.TransactionProcessing
             // gas_left; spilled state gas thus ends up in gas_left and is burned as regular, not as
             // state. Only the intrinsic state gas remaining after the reset stays in the state dimension.
             long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned);
-            // Block regular gas is the pre-refund figure (EELS tx_regular_gas = before_refund - tx_state_gas);
-            // the gas refund reduces only the sender charge, never the block's regular-gas dimension.
-            long blockGas = Math.Max(preRefundGas - effectiveStateGas, floorGas);
+            // Block regular gas = before_refund - state (EELS tx_regular_gas). Neither the gas refund nor the
+            // EIP-7623/7976 calldata floor touches it: both adjust only the sender charge (tx_gas_used /
+            // receipts). The floor in particular must NOT inflate the block's regular-gas dimension.
+            long blockGas = Math.Max(0, preRefundGas - effectiveStateGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
         }
@@ -1702,7 +1704,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             (long spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertRegularRefund);
-            (long blockGas, long blockStateGas) = CalculateBlockGas(spec, in substate, in gasAfterExecution, in intrinsicGasStandard, spentGas, floorGasLong, tx.GasLimit);
+            (long blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, spentGas, floorGasLong);
 
             long operationGas = spentGas - refund;
             long spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
@@ -1757,52 +1759,17 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static (long blockGas, long blockStateGas) CalculateBlockGas(
             IReleaseSpec spec,
-            in TransactionSubstate substate,
             in TGasPolicy gasAfterExecution,
-            in TGasPolicy intrinsicGasStandard,
             long preRefundGas,
-            long floorGas,
-            long txGasLimit)
+            long floorGas)
         {
             if (!spec.IsEip8037Enabled)
                 return (spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGas) : 0, 0);
 
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
-            long blockGas = Calculate8037BlockRegularGas(
-                in gasAfterExecution,
-                in intrinsicGasStandard,
-                txGasLimit,
-                floorGas,
-                TGasPolicy.GetRemainingGas(in gasAfterExecution));
+            long blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, blockStateGas);
 
             return (blockGas, blockStateGas);
-        }
-
-        private static long Calculate8037BlockRegularGas(
-            in TGasPolicy gasAfterExecution,
-            in TGasPolicy intrinsicGasStandard,
-            long txGasLimit,
-            long floorGas,
-            long remainingRegularGas)
-        {
-            long intrinsicRegularGas = TGasPolicy.GetRemainingGas(in intrinsicGasStandard);
-            long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-            long initialReservoir = Math.Max(0, txGasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
-            long initialRegularGas = txGasLimit - intrinsicRegularGas - intrinsicStateGas - initialReservoir;
-            // Net spill reclassified from regular to state = gross spill, minus the portion refunded back to
-            // regular gas (gas_left) via the source-based LIFO refill, minus the portion burned on an inner
-            // halt. Only this remainder leaves the block's regular-gas dimension: refunded spill is already
-            // reflected in remainingRegularGas, and burned spill stays permanently attributed to regular gas.
-            long stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution)
-                - TGasPolicy.GetStateGasSpillRefunded(in gasAfterExecution)
-                - TGasPolicy.GetStateGasSpillBurned(in gasAfterExecution);
-            long stateGasSpillReclassified = TGasPolicy.GetStateGasSpillReclassified(in gasAfterExecution);
-            return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-                intrinsicRegularGas,
-                initialRegularGas,
-                remainingRegularGas,
-                stateGasSpill,
-                stateGasSpillReclassified);
         }
 
         protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
