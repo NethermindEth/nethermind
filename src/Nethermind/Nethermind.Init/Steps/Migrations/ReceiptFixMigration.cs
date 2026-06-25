@@ -34,9 +34,14 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (syncConfig.FixReceipts)
             {
+                long endExclusive = blockTree.Head?.Number - 2 ?? 0;
+                long endLevel = syncConfig.FixReceiptsLastBlock is { } last ? Math.Min(last + 1, endExclusive) : endExclusive;
+                long startLevel = syncConfig.FixReceiptsStartingBlock ?? syncConfig.AncientReceiptsBarrierCalc;
+                if (endLevel <= startLevel) return;
+
                 using MissingReceiptsFixVisitor visitor = new(
-                    syncConfig.AncientReceiptsBarrierCalc,
-                    blockTree.Head?.Number - 2 ?? 0,
+                    startLevel,
+                    endLevel,
                     receiptStorage,
                     logManager,
                     syncPeerPool,

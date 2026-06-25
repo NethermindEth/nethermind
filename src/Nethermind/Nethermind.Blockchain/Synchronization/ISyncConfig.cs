@@ -114,8 +114,14 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "8")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
-    [ConfigItem(Description = "Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. If `true`, the pivot number must be same one used originally as it's used as a cut-off point.", DefaultValue = "false")]
+    [ConfigItem(Description = $"Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. The range to verify is `{nameof(FixReceiptsStartingBlock)}`..`{nameof(FixReceiptsLastBlock)}`.", DefaultValue = "false")]
     public bool FixReceipts { get; set; }
+
+    [ConfigItem(Description = "The first block (inclusive) to verify/fix receipts for.", DefaultValue = nameof(AncientReceiptsBarrier))]
+    public long? FixReceiptsStartingBlock { get; set; }
+
+    [ConfigItem(Description = "The last block (inclusive) to verify/fix receipts for. Clamped to the chain head minus 2.", DefaultValue = "Head - 2")]
+    public long? FixReceiptsLastBlock { get; set; }
 
     [ConfigItem(Description = $"Whether to recalculate the total difficulty from `{nameof(FixTotalDifficultyStartingBlock)}` to `{nameof(FixTotalDifficultyLastBlock)}`.", DefaultValue = "false")]
     public bool FixTotalDifficulty { get; set; }
