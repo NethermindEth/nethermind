@@ -121,9 +121,9 @@ public class CmSketchTests
     [Test]
     public void test_buckets()
     {
-        int buckets = 1000;
+        ulong buckets = 1000UL;
         CmSketch sketch = _highAccuracyHighConfidence;
-        for (ulong i = 0; i < (ulong)buckets; i++)
+        for (ulong i = 0; i < buckets; i++)
         {
             Assert.That(sketch.Query(i), Is.EqualTo(0UL));
             sketch.Update(i);

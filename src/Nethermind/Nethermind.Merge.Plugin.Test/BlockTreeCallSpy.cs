@@ -23,13 +23,13 @@ internal sealed class BlockTreeCallSpy(IBlockTree inner) : BlockTreeTestDouble(i
         return (spy, spy);
     }
 
-    public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
+    public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
     {
         FindHeaderCalls++;
         return base.FindHeader(blockHash, options, blockNumber);
     }
 
-    public override BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options)
+    public override BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options)
     {
         FindHeaderCalls++;
         return base.FindHeader(blockNumber, options);

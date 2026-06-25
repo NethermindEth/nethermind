@@ -27,7 +27,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options) { }
     public void WaitForBalWarmup() { }
     public void Setup(Block block) { }
-    public void SpendGas(long gas) { }
+    public void SpendGas(ulong gas) { }
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
     public ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null) => throw new InvalidOperationException("NullBlockAccessListManager does not provide transaction processors.");
     public void NextTransaction() { }

@@ -65,7 +65,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
@@ -82,9 +82,9 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         // Deposit txs require an explicit Gas; the original EnsureDefaults granted a graceful fallback to
         // gasCap when the request omitted it, which we preserve. gasCap is null/0 mean "no cap" (matching
         // LegacyTransactionForRpc), so neither substitutes for a missing Gas — that case still throws.
-        long effectiveCap = gasCap is null or 0 ? long.MaxValue : gasCap.Value;
-        long? gasOrDefault = Gas ?? (effectiveCap == long.MaxValue ? null : effectiveCap);
-        tx.GasLimit = long.Min(gasOrDefault ?? throw new ArgumentNullException(nameof(Gas)), effectiveCap);
+        ulong effectiveCap = gasCap is null or 0 ? ulong.MaxValue : gasCap.Value;
+        ulong? gasOrDefault = Gas ?? (effectiveCap == ulong.MaxValue ? null : effectiveCap);
+        tx.GasLimit = ulong.Min(gasOrDefault ?? throw new ArgumentNullException(nameof(Gas)), effectiveCap);
 
         return tx;
     }

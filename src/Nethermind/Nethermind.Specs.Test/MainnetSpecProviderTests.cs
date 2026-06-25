@@ -12,9 +12,9 @@ namespace Nethermind.Specs.Test
     {
         private readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
 
-        [TestCase(12_243_999, false)]
-        [TestCase(12_244_000, true)]
-        public void Berlin_eips(long blockNumber, bool isEnabled)
+        [TestCase(12_243_999ul, false)]
+        [TestCase(12_244_000ul, true)]
+        public void Berlin_eips(ulong blockNumber, bool isEnabled)
         {
             using (Assert.EnterMultipleScope())
             {
@@ -25,9 +25,9 @@ namespace Nethermind.Specs.Test
             }
         }
 
-        [TestCase(12_964_999, false)]
-        [TestCase(12_965_000, true)]
-        public void London_eips(long blockNumber, bool isEnabled)
+        [TestCase(12_964_999ul, false)]
+        [TestCase(12_965_000ul, true)]
+        public void London_eips(ulong blockNumber, bool isEnabled)
         {
             if (isEnabled)
                 Assert.That(_specProvider.GetSpec((ForkActivation)blockNumber).DifficultyBombDelay, Is.EqualTo(London.Instance.DifficultyBombDelay));
@@ -45,7 +45,7 @@ namespace Nethermind.Specs.Test
 
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, false)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
-        public void Cancun_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        public void Cancun_eips(ulong blockNumber, ulong timestamp, bool isEnabled)
         {
             using (Assert.EnterMultipleScope())
             {
@@ -66,7 +66,7 @@ namespace Nethermind.Specs.Test
 
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, false)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, true)]
-        public void Prague_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        public void Prague_eips(ulong blockNumber, ulong timestamp, bool isEnabled)
         {
             Assert.That(_specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip2935Enabled, Is.EqualTo(isEnabled));
             if (isEnabled)
@@ -81,7 +81,7 @@ namespace Nethermind.Specs.Test
 
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, false)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.OsakaBlockTimestamp, true)]
-        public void Osaka_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        public void Osaka_eips(ulong blockNumber, ulong timestamp, bool isEnabled)
         {
             using (Assert.EnterMultipleScope())
             {
@@ -97,6 +97,6 @@ namespace Nethermind.Specs.Test
         }
 
         [Test]
-        public void Dao_block_number_is_correct() => Assert.That(_specProvider.DaoBlockNumber, Is.EqualTo(1920000L));
+        public void Dao_block_number_is_correct() => Assert.That(_specProvider.DaoBlockNumber, Is.EqualTo(1920000UL));
     }
 }

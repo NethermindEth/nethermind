@@ -13,11 +13,11 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class ExitOnBlocknumberHandlerTests
 {
-    [TestCase(10, false)]
-    [TestCase(99, false)]
-    [TestCase(100, true)]
-    [TestCase(101, true)]
-    public void Will_Exit_When_BlockReached(long blockNumber, bool exitReceived)
+    [TestCase(10ul, false)]
+    [TestCase(99ul, false)]
+    [TestCase(100ul, true)]
+    [TestCase(101ul, true)]
+    public void Will_Exit_When_BlockReached(ulong blockNumber, bool exitReceived)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();

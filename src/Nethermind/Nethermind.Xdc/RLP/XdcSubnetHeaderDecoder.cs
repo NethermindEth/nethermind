@@ -15,13 +15,13 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
         Hash256? unclesHash,
         Address? beneficiary,
         UInt256 difficulty,
-        long number,
-        long gasLimit,
+        ulong number,
+        ulong gasLimit,
         ulong timestamp,
         byte[]? extraData)
         => new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
 
-    protected override void DecodeHeaderSpecificFields(ref Rlp.ValueDecoderContext decoderContext, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
+    protected override void DecodeHeaderSpecificFields(ref RlpReader decoderContext, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
     {
         if (!IsForSealing(rlpBehaviors))
         {
@@ -38,21 +38,21 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
         header.Penalties = decoderContext.DecodeByteArray();
     }
 
-    protected override void EncodeHeaderSpecificFields(RlpStream rlpStream, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
+    protected override void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         if (!IsForSealing(rlpBehaviors))
         {
-            rlpStream.Encode(header.Validator);
+            writer.Encode(header.Validator);
         }
 
-        rlpStream.Encode(header.Validators);
+        writer.Encode(header.Validators);
 
         if (!IsForSealing(rlpBehaviors))
         {
-            rlpStream.Encode(header.NextValidators);
+            writer.Encode(header.NextValidators);
         }
 
-        rlpStream.Encode(header.Penalties);
+        writer.Encode(header.Penalties);
     }
 
     protected override int GetHeaderSpecificContentLength(XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)

@@ -25,7 +25,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        virtual static ulong GasCost => GasCostOf.VeryLow;
 
         /// <summary>
         /// Executes the operation on the provided 256‐bit operand.
@@ -109,7 +109,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpCLZ : IOpMath1Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static ulong GasCost => GasCostOf.Low;
 
         public static EvmWord Operation(EvmWord value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
