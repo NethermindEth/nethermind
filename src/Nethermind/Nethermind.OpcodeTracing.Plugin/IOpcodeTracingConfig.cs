@@ -33,20 +33,20 @@ public interface IOpcodeTracingConfig : IConfig
     /// Gets or sets the start block number for tracing (inclusive). Used with EndBlock to define an explicit range.
     /// </summary>
     [ConfigItem(Description = "Start block number for tracing (inclusive). Used with EndBlock to define explicit range.", DefaultValue = "null")]
-    long? StartBlock { get; set; }
+    ulong? StartBlock { get; set; }
 
     /// <summary>
     /// Gets or sets the end block number for tracing (inclusive). Used with StartBlock to define an explicit range.
     /// </summary>
     [ConfigItem(Description = "End block number for tracing (inclusive). Used with StartBlock to define explicit range.", DefaultValue = "null")]
-    long? EndBlock { get; set; }
+    ulong? EndBlock { get; set; }
 
     /// <summary>
     /// Gets or sets the number of recent blocks to trace from the chain tip.
     /// Alternative to StartBlock/EndBlock for convenience. If both are specified, explicit range takes precedence.
     /// </summary>
     [ConfigItem(Description = "Number of recent blocks to trace from chain tip. Alternative to StartBlock/EndBlock.", DefaultValue = "null")]
-    long? RecentBlocks { get; set; }
+    ulong? RecentBlocks { get; set; }
 
     /// <summary>
     /// Gets or sets the tracing mode: "RealTime" traces blocks as they are processed during sync/new blocks,

@@ -86,7 +86,7 @@ public class FlatDbManagerTests
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 
-    private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;

@@ -39,4 +39,14 @@ public static class SizeExtensions
         public long MiB => ((long)@this).MiB;
         public long KiB => ((long)@this).KiB;
     }
+
+    extension(ulong @this)
+    {
+        public ulong GB => @this * 1_000_000_000UL;
+        public ulong MB => @this * 1_000_000UL;
+        public ulong KB => @this * 1_000UL;
+        public ulong GiB => @this * 1024UL * 1024UL * 1024UL;
+        public ulong MiB => @this * 1024UL * 1024UL;
+        public ulong KiB => @this * 1024UL;
+    }
 }

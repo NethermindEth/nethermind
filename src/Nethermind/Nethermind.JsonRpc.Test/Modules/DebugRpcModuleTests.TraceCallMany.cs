@@ -29,7 +29,7 @@ public partial class DebugRpcModuleTests
 {
     private static TransactionBundle CreateBundle(params TransactionForRpc[] transactions) => new() { Transactions = transactions };
 
-    private static TransactionBundle CreateGasProbeBundle(long? gas = null) => new()
+    private static TransactionBundle CreateGasProbeBundle(ulong? gas = null) => new()
     {
         Transactions = [new LegacyTransactionForRpc { To = EthRpcSimulateTestsBase.GasProbeContractAddress, Gas = gas }],
         StateOverrides = new Dictionary<Address, AccountOverride>
@@ -43,17 +43,17 @@ public partial class DebugRpcModuleTests
 
     private static IEnumerable<TestCaseData> DebugTraceCallManyMissingGasCases()
     {
-        yield return new TestCaseData((long?)null, (long?)null, false).SetName("omitted_gas_defaults_to_gas_cap_not_block_gas_limit");
-        yield return new TestCaseData((long?)0L, (long?)null, false).SetName("zero_gas_defaults_to_gas_cap_not_block_gas_limit");
-        yield return new TestCaseData((long?)null, (long?)0L, true).SetName("omitted_gas_with_zero_gas_cap_uncapped");
-        yield return new TestCaseData((long?)0L, (long?)0L, true).SetName("zero_gas_with_zero_gas_cap_uncapped");
+        yield return new TestCaseData((ulong?)null, (ulong?)null, false).SetName("omitted_gas_defaults_to_gas_cap_not_block_gas_limit");
+        yield return new TestCaseData((ulong?)0UL, (ulong?)null, false).SetName("zero_gas_defaults_to_gas_cap_not_block_gas_limit");
+        yield return new TestCaseData((ulong?)null, (ulong?)0UL, true).SetName("omitted_gas_with_zero_gas_cap_uncapped");
+        yield return new TestCaseData((ulong?)0UL, (ulong?)0UL, true).SetName("zero_gas_with_zero_gas_cap_uncapped");
     }
 
     private static LegacyTransactionForRpc CreateTransaction(
         Address? from = null,
         Address? to = null,
         UInt256? value = null,
-        long gas = GasCostOf.Transaction) =>
+        ulong gas = GasCostOf.Transaction) =>
         new()
         {
             From = from ?? TestItem.AddressD,
@@ -241,13 +241,13 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle(int secondBundleOffset)
     {
         using Context ctx = await CreateContext();
-        long headNumber = ctx.Blockchain.BlockTree.Head!.Number;
+        ulong headNumber = ctx.Blockchain.BlockTree.Head!.Number;
 
         TransactionBundle first = CreateBundle(CreateTransaction());
-        first.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + 1) };
+        first.BlockOverride = new BlockOverride { Number = headNumber + 1 };
 
         TransactionBundle second = CreateBundle(CreateTransaction(to: TestItem.AddressD));
-        second.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + secondBundleOffset) };
+        second.BlockOverride = new BlockOverride { Number = headNumber + (ulong)secondBundleOffset };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
             ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
@@ -260,7 +260,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceCallMany_caps_gas_to_gas_cap()
     {
         using Context ctx = await CreateContext();
-        long gasCap = 50_000;
+        ulong gasCap = 50_000;
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
@@ -269,7 +269,7 @@ public partial class DebugRpcModuleTests
         byte[] runtimeCode = Bytes.FromHexString("5a60005260206000f3");
         byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
 
-        UInt256 nonce = ctx.Blockchain.StateReader.GetNonce(ctx.Blockchain.BlockTree.Head!.Header, TestItem.AddressD);
+        ulong nonce = ctx.Blockchain.StateReader.GetNonce(ctx.Blockchain.BlockTree.Head!.Header, TestItem.AddressD);
         Address contractAddress = ContractAddress.From(TestItem.AddressD, nonce);
 
         Transaction deployTx = Build.A.Transaction
@@ -285,18 +285,18 @@ public partial class DebugRpcModuleTests
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
         byte[] returnValue = Bytes.FromHexString((string)result[0][0]!["returnValue"]!);
-        long gasAvailable = (long)returnValue.ToUInt256();
+        ulong gasAvailable = (ulong)returnValue.ToUInt256();
         Assert.That(gasAvailable, Is.LessThan(gasCap));
-        Assert.That(gasAvailable, Is.GreaterThan(0));
+        Assert.That(gasAvailable, Is.GreaterThan(0UL));
     }
 
     [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]
-    public async Task Debug_traceCallMany_missing_or_zero_gas_respects_gas_cap(long? requestGas, long? configuredGasCap, bool uncapped)
+    public async Task Debug_traceCallMany_missing_or_zero_gas_respects_gas_cap(ulong? requestGas, ulong? configuredGasCap, bool uncapped)
     {
         using Context ctx = await CreateContext();
 
-        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
-        long gasCap = configuredGasCap ?? blockGasLimit * 10;
+        ulong blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        ulong gasCap = configuredGasCap ?? blockGasLimit * 10;
         ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany(

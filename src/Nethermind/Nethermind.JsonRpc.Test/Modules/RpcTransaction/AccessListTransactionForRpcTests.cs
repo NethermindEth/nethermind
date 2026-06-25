@@ -17,9 +17,9 @@ public static class AccessListTransactionForRpcTests
     [
         Build.TestObject,
 
-        Build.WithNonce(UInt256.Zero).TestObject,
-        Build.WithNonce((UInt256)123).TestObject,
-        Build.WithNonce(UInt256.MaxValue).TestObject,
+        Build.WithNonce(0UL).TestObject,
+        Build.WithNonce(123UL).TestObject,
+        Build.WithNonce(ulong.MaxValue).TestObject,
 
         Build.WithTo(null).TestObject,
         Build.WithTo(TestItem.AddressA).TestObject,

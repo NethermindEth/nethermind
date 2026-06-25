@@ -89,7 +89,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _historyReader = historyReader;
         _historyEnabled = config.HistoryEnabled && historyReader is not null;
 
-        _compactSize = config.CompactSize;
+        config.ValidateCompactSize();
+        _compactSize = (int)config.CompactSize;
 
         // We assume that the state must be able to be persisted in half the slot time at the very
         // least. If block processing is stalled for longer than this, persistence is simply too slow
@@ -354,7 +355,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.BlockNumber} to {endBlock.BlockNumber}");
         StateId persistedStateId = _persistenceManager.GetCurrentPersistedStateId();
-        if (endBlock.BlockNumber <= persistedStateId.BlockNumber)
+        if (persistedStateId != StateId.PreGenesis && endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
             _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
@@ -446,7 +447,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId persistedState = _persistenceManager.FlushToPersistence();
 
         if (cancellationToken.IsCancellationRequested) return;
-        if (persistedState.BlockNumber < 0) return;
+        if (persistedState == StateId.PreGenesis) return;
 
         _snapshotRepository.RemoveStatesUntil(persistedState);
 

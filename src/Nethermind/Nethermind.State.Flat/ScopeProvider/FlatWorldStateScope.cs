@@ -377,7 +377,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
-    public void Commit(long blockNumber)
+    public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
 

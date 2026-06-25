@@ -34,7 +34,7 @@ public class DbBlocksLoaderTests
             MemDb headersDb = new();
 
             BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-            for (int i = 0; i < testTree.Head!.Number + 1; i++)
+            for (ulong i = 0ul; i < testTree.Head!.Number + 1ul; i++)
             {
                 Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None)!;
                 blockStore.Insert(ithBlock);
@@ -80,7 +80,7 @@ public class DbBlocksLoaderTests
             MemDb headersDb = new();
 
             BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-            for (int i = 0; i < testTree.Head!.Number + 1; i++)
+            for (ulong i = 0ul; i < testTree.Head!.Number + 1ul; i++)
             {
                 Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None)!;
                 blockStore.Insert(ithBlock);
@@ -172,7 +172,7 @@ public class DbBlocksLoaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(3ul), "best known");
             Assert.That(tree2.Head!.Header, Is.EqualTo(block3B.Header).UsingBlockHeaderComparer());
             Assert.That(tree2.BestSuggestedHeader, Is.EqualTo(block3B.Header).UsingBlockHeaderComparer());
 
@@ -237,7 +237,7 @@ public class DbBlocksLoaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(0ul), "best known");
             Assert.That(tree2.Head!.Hash, Is.EqualTo(block0.Hash), "head");
             Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block0.Hash), "suggested");
 

@@ -12,7 +12,7 @@ public class AsyncFileWriteQueueTests
     private string _tempDir = null!;
     private AsyncFileWriteQueue _queue = null!;
 
-    private static PerBlockTraceOutput CreateTrace(long blockNumber) => new()
+    private static PerBlockTraceOutput CreateTrace(ulong blockNumber) => new()
     {
         Metadata = new PerBlockMetadata { BlockNumber = blockNumber },
         OpcodeCounts = new Dictionary<byte, long> { [0x00] = 1 }

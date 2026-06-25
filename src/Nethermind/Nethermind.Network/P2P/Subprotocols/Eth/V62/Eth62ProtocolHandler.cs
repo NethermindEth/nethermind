@@ -217,7 +217,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
             {
-                NetworkId = (ulong)status.NetworkId,
+                NetworkId = status.NetworkId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
@@ -226,7 +226,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
 
-            Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
+            Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
             NotifyProtocolInitialized(eventArgs);
@@ -302,10 +302,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            (Hash256, long)[] blockHashes = newBlockHashes.BlockHashes;
+            (Hash256, ulong)[] blockHashes = newBlockHashes.BlockHashes;
             for (int i = 0; i < blockHashes.Length; i++)
             {
-                (Hash256 hash, long number) = blockHashes[i];
+                (Hash256 hash, ulong number) = blockHashes[i];
                 SyncServer.HintBlock(hash, number, this);
             }
         }
@@ -381,7 +381,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        private void HintNewBlock(Hash256 blockHash, long number)
+        private void HintNewBlock(Hash256 blockHash, ulong number)
         {
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
 

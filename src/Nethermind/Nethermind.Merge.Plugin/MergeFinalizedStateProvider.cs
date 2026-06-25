@@ -12,7 +12,7 @@ namespace Nethermind.Merge.Plugin;
 
 public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IFinalizedStateProvider baseFinalizedStateProvider) : IFinalizedStateProvider
 {
-    public long FinalizedBlockNumber
+    public ulong FinalizedBlockNumber
     {
         get
         {
@@ -45,7 +45,7 @@ public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheSe
         }
     }
 
-    public Hash256? GetFinalizedStateRootAt(long blockNumber)
+    public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
     {
         if (FinalizedBlockNumber < blockNumber) return null;
         return baseFinalizedStateProvider.GetFinalizedStateRootAt(blockNumber);

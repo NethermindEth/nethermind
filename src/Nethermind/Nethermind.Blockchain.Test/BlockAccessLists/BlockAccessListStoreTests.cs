@@ -22,7 +22,7 @@ public class BlockAccessListStoreTests
         TestMemDb db = new();
         BlockAccessListStore store = new(db);
 
-        const long blockNumber = 42;
+        const ulong blockNumber = 42;
         Hash256 blockHash = TestItem.KeccakA;
         byte[] encoded = [0xc1, 0x80];
 
@@ -39,7 +39,7 @@ public class BlockAccessListStoreTests
         TestMemDb db = new();
         BlockAccessListStore store = new(db);
 
-        const long blockNumber = 1_000_000;
+        const ulong blockNumber = 1_000_000;
         Hash256 blockHash = TestItem.KeccakB;
         ReadOnlyBlockAccessList bal = new();
 
@@ -58,7 +58,7 @@ public class BlockAccessListStoreTests
         TestMemDb db = new();
         BlockAccessListStore store = new(db);
 
-        const long blockNumber = 5;
+        const ulong blockNumber = 5;
         Hash256 blockHash = TestItem.KeccakC;
         byte[] encoded = [0xc1, 0x80];
         store.Insert(blockNumber, blockHash, encoded);
@@ -100,7 +100,7 @@ public class BlockAccessListStoreTests
         TestMemDb db = new();
         BlockAccessListStore store = new(db);
 
-        const long blockNumber = 7;
+        const ulong blockNumber = 7;
         Hash256 blockHash = TestItem.KeccakA;
         byte[] encoded = [0xc1, 0x80];
 

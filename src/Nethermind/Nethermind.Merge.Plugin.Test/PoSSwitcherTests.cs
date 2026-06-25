@@ -197,7 +197,7 @@ namespace Nethermind.Merge.Plugin.Test
         public void Can_load_parameters_after_the_restart()
         {
             using MemDb metadataDb = new();
-            int terminalBlock = 4;
+            ulong terminalBlock = 4;
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = 5000000;
             Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;

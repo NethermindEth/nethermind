@@ -42,7 +42,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "null",
         Description = "The max transaction gas allowed.")]
 
-    long? GasLimit { get; set; }
+    ulong? GasLimit { get; set; }
 
     [ConfigItem(DefaultValue = "131072",
         Description = "The max transaction size allowed, in bytes.")]
