@@ -306,6 +306,13 @@ namespace Nethermind.Evm.TransactionProcessing
             bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
                 && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
 
+            // When either charge cannot be covered the top frame is out of gas before any code runs.
+            // The flag defers the halt to ExecuteEvmCall so the value transfer is rolled back and the
+            // sender forfeits all gas — matching the EVM-level OutOfGasError EELS raises in
+            // process_message. Merely consuming the remaining gas and proceeding would let a zero-cost
+            // frame (e.g. a delegated STOP, or an empty recipient) wrongly succeed.
+            bool topFrameOutOfGas = false;
+
             // A value transfer materialising a new (dead, non-precompile) recipient pays NEW_ACCOUNT
             // state gas, evaluated against pre-transfer state. This mirrors the ExecuteSimpleTransfer
             // charge for the EVM path (transactions carrying code, calldata, or an authorization list,
@@ -314,8 +321,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 && tx.To is not null && tx.SenderAddress != tx.To
                 && !spec.IsPrecompile(tx.To) && WorldState.IsDeadAccount(tx.To))
             {
-                if (!TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost(in gasAvailable)))
-                    TGasPolicy.Consume(ref gasAvailable, TGasPolicy.GetRemainingGas(in gasAvailable));
+                topFrameOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost(in gasAvailable));
             }
             // A top-level call whose recipient is an EIP-7702 delegation also touches the delegation
             // target with a (flat) cold account access. The target is already pre-warmed for the frame,
@@ -327,13 +333,12 @@ namespace Nethermind.Evm.TransactionProcessing
             else if (spec.IsEip8037Enabled && !tx.IsContractCreation && recipientIsDelegated)
             {
                 long delegationCold = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
-                if (!TGasPolicy.UpdateGas(ref gasAvailable, delegationCold))
-                    TGasPolicy.Consume(ref gasAvailable, TGasPolicy.GetRemainingGas(in gasAvailable));
+                topFrameOutOfGas = !TGasPolicy.UpdateGas(ref gasAvailable, delegationCold);
             }
 
             int statusCode = !tracer.IsTracingInstructions ?
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out spentGas);
 
             UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, blobBaseFee, statusCode);
 
@@ -1273,6 +1278,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in StackAccessTracker accessedItems,
             TGasPolicy gasAvailable,
             ExecutionEnvironment env,
+            bool topFrameOutOfGas,
             out TransactionSubstate substate,
             out GasConsumed gasConsumed)
             where TTracingInst : struct, IFlag
@@ -1292,6 +1298,17 @@ namespace Nethermind.Evm.TransactionProcessing
             // On a successful create to a pre-existing account, the up-front NEW_ACCOUNT state gas charged
             // in the intrinsic cost is refunded since no new account leaf is materialised.
             bool createdTargetAlive = tx.IsContractCreation && !WorldState.IsDeadAccount(env.ExecutingAccount);
+
+            // EIP-8037: a top-frame charge (NEW_ACCOUNT state gas or the delegation-target cold access)
+            // exhausted the frame's gas before any code ran. No value moves, the recipient keeps its
+            // pre-tx state, and the sender forfeits all gas (statusCode stays Failure).
+            if (topFrameOutOfGas)
+            {
+                TGasPolicy.SetOutOfGas(ref gasAvailable);
+                TGasPolicy oogIntrinsicGasStandard = gas.Standard;
+                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
+                goto Complete;
+            }
 
             PayValue(tx, spec, opts);
 
