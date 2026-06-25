@@ -12,7 +12,7 @@ namespace Nethermind.RpcTests.Monitor;
 /// Backed by a ring buffer indexed by <c>number % capacity</c>, so a block seen for an existing
 /// number replaces it (reorgs) and a block <c>capacity</c> ahead evicts the slot.
 /// </remarks>
-internal class BlockProvider(RpcClient client, int capacity = 64)
+internal class BlockProvider(RpcClient client, int capacity = 128)
 {
     private readonly BlockInfo?[] _blocks = new BlockInfo?[capacity];
     private readonly Lock _lock = new();
