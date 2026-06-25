@@ -34,14 +34,18 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (syncConfig.FixReceipts)
             {
-                long endExclusive = blockTree.Head?.Number - 2 ?? 0;
-                long endLevel = syncConfig.FixReceiptsLastBlock is { } last ? Math.Min(last + 1, endExclusive) : endExclusive;
-                long startLevel = syncConfig.FixReceiptsStartingBlock ?? syncConfig.AncientReceiptsBarrierCalc;
-                if (endLevel <= startLevel) return;
+                long endExcl = blockTree.Head?.Number - 2 ?? 0;
+                endExcl = syncConfig.FixReceiptsLastBlock is { } last ? Math.Min(last + 1, endExcl) : endExcl;
+                long startIncl = syncConfig.FixReceiptsStartingBlock ?? syncConfig.AncientReceiptsBarrierCalc;
+                if (endExcl <= startIncl)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"{nameof(ReceiptFixMigration)} skipped: computed range [{startIncl}, {endExcl}) is empty");
+                    return;
+                }
 
                 using MissingReceiptsFixVisitor visitor = new(
-                    startLevel,
-                    endLevel,
+                    startIncl,
+                    endExcl,
                     receiptStorage,
                     logManager,
                     syncPeerPool,
