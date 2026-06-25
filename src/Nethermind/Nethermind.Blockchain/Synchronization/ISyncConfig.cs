@@ -111,7 +111,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
 
-    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "4")]
+    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "2")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
     [ConfigItem(Description = "_Technical._ Maximum requested Snap account-range response size, in bytes. Caps local account trie commit bursts while preserving the adaptive Snap range request sizer. Values less than or equal to 0 use the protocol maximum.", DefaultValue = "250000", HiddenFromDocs = true)]
