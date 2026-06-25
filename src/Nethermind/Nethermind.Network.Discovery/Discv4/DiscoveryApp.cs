@@ -22,6 +22,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
     private readonly IKademliaAdapter _discv4Adapter;
     private readonly Func<IChannel, NettyDiscoveryHandler> _discoveryHandlerFactory;
     private readonly ILifetimeScope _discv4Services;
+    private readonly IEnrForkIdFilter? _enrForkIdFilter;
 
     private NettyDiscoveryHandler? _discoveryHandler;
 
@@ -36,6 +37,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         Action<ContainerBuilder>? configureDiscv4Services = null)
         : base("discv4", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
     {
+        _enrForkIdFilter = rootScope.ResolveOptional<IEnrForkIdFilter>();
         List<Node> bootNodes = CreateBootNodes(networkConfig.Bootnodes, Logger);
 
         _discv4Services = rootScope.BeginLifetimeScope(
@@ -116,6 +118,27 @@ public class DiscoveryApp : KademliaDiscoveryApp
         NettyDiscoveryHandler discoveryHandler = _discoveryHandlerFactory(channel);
         _discv4Adapter.MsgSender = discoveryHandler;
         return discoveryHandler;
+    }
+
+    public override void AddNodeToDiscovery(Node node)
+    {
+        if (node.Enr is not { } record || _enrForkIdFilter is null)
+        {
+            base.AddNodeToDiscovery(node);
+            return;
+        }
+
+        try
+        {
+            if (_enrForkIdFilter.IsAcceptable(record))
+            {
+                base.AddNodeToDiscovery(node);
+            }
+        }
+        catch (Exception e)
+        {
+            if (Logger.IsTrace) Logger.Trace($"Unable to parse discv4 discovery ENR for {node}: {e}");
+        }
     }
 
     public override void InitializeChannel(IChannel channel)

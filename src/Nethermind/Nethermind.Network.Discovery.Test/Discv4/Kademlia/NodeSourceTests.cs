@@ -66,6 +66,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 _discv4Adapter,
                 _discoveryConfig,
                 _kademliaConfig,
+                new TestEnrForkIdFilter(),
                 LimboLogs.Instance);
         }
 

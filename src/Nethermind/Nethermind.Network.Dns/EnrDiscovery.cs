@@ -91,7 +91,7 @@ public class EnrDiscovery : INodeSource
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
         int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
         return compressedPublicKey is not null && ipAddress is not null && port is not null
-            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value)
+            ? new Node(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value) { Enr = nodeRecord }
             : null;
     }
 

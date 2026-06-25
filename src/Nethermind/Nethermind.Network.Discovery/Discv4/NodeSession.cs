@@ -19,12 +19,19 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     private long _lastPongReceivedTicks;
     private long _lastPingReceivedTicks;
     private long _lastPingSentTicks;
+    private Node? _enrNode;
     private IPEndPoint? _lastPongEndpoint;
 
     public bool HasReceivedPing => Volatile.Read(ref _lastPingReceivedTicks) + BondTimeout.Ticks > Timestamper.UtcNow.Ticks;
     public bool NotTooManyFailure => Volatile.Read(ref _authenticatedRequestFailureCount) <= AuthenticatedRequestFailureLimit;
     public bool HasReceivedPong => Volatile.Read(ref _lastPongReceivedTicks) + BondTimeout.Ticks > Timestamper.UtcNow.Ticks;
     public bool HasTriedPingRecently => Volatile.Read(ref _lastPingSentTicks) + PingRetryTimeout.Ticks > Timestamper.UtcNow.Ticks;
+    internal Node? EnrNode
+    {
+        get => Volatile.Read(ref _enrNode);
+        set => Volatile.Write(ref _enrNode, value);
+    }
+
     public bool HasEndpointProof(IPEndPoint endpoint) =>
         HasReceivedPong && Volatile.Read(ref _lastPongEndpoint) is { } lastPongEndpoint && lastPongEndpoint.Equals(endpoint);
 

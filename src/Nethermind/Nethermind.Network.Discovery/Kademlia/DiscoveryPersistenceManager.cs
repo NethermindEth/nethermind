@@ -30,6 +30,7 @@ public sealed class DiscoveryPersistenceManager(
     IKademliaMessageSender<PublicKey, Node> messageSender,
     IKademlia<PublicKey, Node> kademlia,
     IDiscoveryConfig discoveryConfig,
+    IEnrForkIdFilter enrForkIdFilter,
     ILogManager logManager)
 {
     private readonly INetworkStorage _discoveryStorage = discoveryStorage;
@@ -55,6 +56,10 @@ public sealed class DiscoveryPersistenceManager(
             try
             {
                 node = new Node(networkNode);
+                if (!IsForkIdAcceptable(node))
+                {
+                    continue;
+                }
             }
             catch (Exception e)
             {
@@ -131,5 +136,15 @@ public sealed class DiscoveryPersistenceManager(
         }
 
         return new NetworkNode(node.Id, node.Host, node.Port, reputation);
+    }
+
+    private bool IsForkIdAcceptable(Node node)
+    {
+        if (node.Enr is not { } record)
+        {
+            return true;
+        }
+
+        return enrForkIdFilter.IsAcceptable(record);
     }
 }

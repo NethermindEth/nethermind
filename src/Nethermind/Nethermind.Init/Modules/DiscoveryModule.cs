@@ -44,10 +44,13 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 EnrRecordParser enrRecordParser = new(nodeRecordSigner);
                 return new EnrDiscovery(enrRecordParser, networkConfig, logManager); // initialize with a proper network
             })
+            .AddSingleton<EnrForkIdFilteringNodeSource, EnrDiscovery, IEnrForkIdFilter, ILogManager>((enrDiscovery, enrForkIdFilter, logManager) =>
+                new EnrForkIdFilteringNodeSource(enrDiscovery, enrForkIdFilter, logManager))
+            .AddSingleton<IEnrForkIdFilter, EnrForkIdFilter>()
 
             // Allow feeding discovery app bootnodes from enr. Need `Run` to be called.
             .AddSingleton<NodeSourceToDiscV4Feeder>()
-            .AddKeyedSingleton<INodeSource>(NodeSourceToDiscV4Feeder.SourceKey, ctx => ctx.Resolve<EnrDiscovery>())
+            .AddKeyedSingleton<INodeSource>(NodeSourceToDiscV4Feeder.SourceKey, ctx => ctx.Resolve<EnrForkIdFilteringNodeSource>())
 
             // Uses by RPC also.
             .AddSingleton<IStaticNodesManager, ILogManager>(logManager =>
@@ -128,7 +131,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
         {
             // These are INodeSource only if `OnlyStaticPeers` is false.
             builder.Bind<INodeSource, IDiscoveryApp>();
-            if (networkConfig.EnableEnrDiscovery) builder.Bind<INodeSource, EnrDiscovery>();
+            if (networkConfig.EnableEnrDiscovery) builder.Bind<INodeSource, EnrForkIdFilteringNodeSource>();
         }
     }
 }

@@ -18,6 +18,7 @@ public sealed class NodeSource(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     IDiscv5RecordFilter recordFilter,
+    IEnrForkIdFilter enrForkIdFilter,
     ILogManager logManager)
     : IKademliaNodeSource
 {
@@ -151,7 +152,7 @@ public sealed class NodeSource(
 
         try
         {
-            if (recordFilter.Excludes(record))
+            if (recordFilter.Excludes(record) || !enrForkIdFilter.IsAcceptable(record))
             {
                 return false;
             }
