@@ -402,9 +402,10 @@ public sealed class ArenaManager : IArenaManager
     /// <remarks>
     /// Wake protocol: the hot path normally only enqueues. It attempts to wake the drain at most once per
     /// <see cref="WakeCheckStride"/> enqueues (gated by a per-thread sampler) and only once the ring is past
-    /// <see cref="_wakeWatermark"/>; a modest floor timer drains the sub-watermark tail. Both wake paths and
-    /// the drain coordinate through <see cref="_signal"/> with a reset-before-drain / re-check-after protocol
-    /// that closes the lost-wakeup race, and the semaphore is Released at most once per drain sleep.
+    /// <see cref="_wakeWatermark"/>; the drain itself sleeps on a bounded wait (<see cref="DrainPollPeriod"/>)
+    /// so it re-checks the ring and drains the sub-watermark tail even when no producer wakes it. The wake
+    /// path and the drain coordinate through <see cref="_signal"/> with a reset-before-drain / re-check-after
+    /// protocol that closes the lost-wakeup race, and the semaphore is Released at most once per drain sleep.
     /// Ring-full runs the clock inline (<see cref="ProcessTouchInline"/>) as backpressure — a dropped enqueue
     /// would only ever lose a touch, never an eviction (evictions are computed by whoever runs the clock).
     /// </remarks>
@@ -415,9 +416,10 @@ public sealed class ArenaManager : IArenaManager
         // through to the inline-on-full path, which is acceptable.
         private const int WakeCheckStride = 256;
         private const int WakeCheckMask = WakeCheckStride - 1;
-        // Floor cadence that drains the sub-watermark tail (the watermark never trips for a low/steady
-        // trickle). Draining is advisory, so a coarse period is fine.
-        private static readonly TimeSpan DrainFloorPeriod = TimeSpan.FromMilliseconds(50);
+        // Longest the drain sleeps before re-checking the ring itself. Bounds the latency of the
+        // sub-watermark tail (the watermark never trips for a low/steady trickle) without a separate timer.
+        // Draining is advisory, so a coarse period is fine.
+        private static readonly TimeSpan DrainPollPeriod = TimeSpan.FromMilliseconds(50);
 
         // Per-thread enqueue counter for the gated watermark check — unsynchronised on purpose: with many
         // producers the aggregate check rate only rises, so the gate never under-fires.
@@ -429,7 +431,6 @@ public sealed class ArenaManager : IArenaManager
         private readonly CancellationTokenSource _drainCts = new();
         private readonly Task _drainTask;
         private readonly Timer _metricsTimer;
-        private readonly Timer _drainFloorTimer;
         // Ring fill at which a producer's gated check wakes the drain early, before the ring fills enough to
         // force inline processing. Half the ring capacity.
         private readonly long _wakeWatermark;
@@ -454,8 +455,6 @@ public sealed class ArenaManager : IArenaManager
             Metrics.PageTrackerResidentBytes = 0L;
             _metricsTimer = new Timer(PublishTrackerMetrics, null,
                 dueTime: TimeSpan.FromSeconds(1), period: TimeSpan.FromSeconds(1));
-            // Floor wake: drains touches the gated watermark check left behind under a low/steady trickle.
-            _drainFloorTimer = new Timer(DrainFloorTick, null, dueTime: DrainFloorPeriod, period: DrainFloorPeriod);
         }
 
         // Refresh up to <paramref name="targetTouches"/> resident pages' kernel-side LRU position so
@@ -541,13 +540,6 @@ public sealed class ArenaManager : IArenaManager
             return outcome;
         }
 
-        // Floor-timer tick: edge-guarded wake when the ring holds work the gated check left behind.
-        private void DrainFloorTick(object? _)
-        {
-            if (!_disposed && _ring.EstimatedJobCount > 0 && Interlocked.Exchange(ref _signal, 1) == 0)
-                _wake.Release();
-        }
-
         private async Task DrainAsync(CancellationToken ct)
         {
             try
@@ -563,7 +555,10 @@ public sealed class ArenaManager : IArenaManager
                     // Re-check the ring directly too: a producer that enqueued without tripping the gated
                     // watermark wake leaves _signal at 0, so HasReadyItem is what catches it before we sleep.
                     if (Volatile.Read(ref _signal) != 0 || _ring.HasReadyItem) continue;
-                    await _wake.WaitAsync(ct).ConfigureAwait(false);
+                    // Bounded wait so the drain re-checks at least every DrainPollPeriod even when no producer
+                    // wakes it — that drains the sub-watermark tail the gated watermark wake won't signal. The
+                    // bool (signalled vs timed out) is irrelevant: either way we loop and re-drain.
+                    await _wake.WaitAsync(DrainPollPeriod, ct).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -585,10 +580,9 @@ public sealed class ArenaManager : IArenaManager
 
         public void Dispose()
         {
-            // Stop the timers first; the flag makes any in-flight tick a no-op.
+            // Stop the metrics timer first; the flag makes any in-flight tick a no-op.
             _disposed = true;
             _metricsTimer.Dispose();
-            _drainFloorTimer.Dispose();
 
             // Stop the drain task next so it doesn't race with the manager's arena disposal.
             _drainCts.Cancel();
