@@ -35,6 +35,12 @@ public sealed class ArenaWriter : IDisposable
         _completed = true;
         long actualSize = _writer.Written;
         long dataEnd = _startOffset + actualSize;
+        // Fail loud if the write ran past the arena's mapped extent: the Math.Min cap below would
+        // otherwise silently clamp the frontier and corrupt the per-arena accounting (bytes beyond
+        // MappedSize are not covered by the mmap). Indicates the up-front size estimate was too low.
+        if (dataEnd > _file.MappedSize)
+            throw new InvalidOperationException(
+                $"Arena write overflowed its mapped size: wrote up to {dataEnd} but arena {_file.Id} is mapped to {_file.MappedSize}.");
         // Shared arenas pack many reservations per file. Pad the frontier up to an OS-page
         // boundary so the next reservation starts page-aligned and reclamation syscalls
         // (fadvise / fallocate punch-hole) over a reservation cover whole pages exactly.

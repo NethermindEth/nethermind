@@ -32,21 +32,23 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     // it save a decent amount of CPU.
     private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
 
+    // Default to CompletedTask so DisposeAsync's awaits are safe even if the ctor throws before the
+    // real workers are started (a partially-constructed instance never leaves null tasks behind).
     // First it go to here
-    private readonly Task _compactorTask;
+    private readonly Task _compactorTask = Task.CompletedTask;
     private readonly Channel<StateId> _compactorJobs;
 
     // And here in parallel.
     // The node cache is kinda important for performance, so we want it populated as quickly as possible.
-    private readonly Task _populateTrieNodeCacheTask;
+    private readonly Task _populateTrieNodeCacheTask = Task.CompletedTask;
     private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
 
     // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
-    private readonly Task _persistenceTask;
+    private readonly Task _persistenceTask = Task.CompletedTask;
     private readonly Channel<StateId> _persistenceJobs;
 
     // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
-    private readonly Task _clearBundleCacheTask;
+    private readonly Task _clearBundleCacheTask = Task.CompletedTask;
 
     private readonly int _compactSize;
     private readonly TimeSpan _compactorStallTimeout;
@@ -80,6 +82,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
+        // Create the disposable / awaitable infrastructure up front — before anything that can throw
+        // (Load / ValidateCompactSize) — so DisposeAsync is null-safe on a partially-built instance.
+        _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
+        _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
+        _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
+        _persistenceJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
+
         // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
 
@@ -92,12 +101,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // compactSize blocks at a time.
         _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
-
-        _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
-
-        _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
-        _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
-        _persistenceJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
 
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
         _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);

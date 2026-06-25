@@ -238,26 +238,34 @@ public sealed class PersistedSnapshotLoader(
         // lease, so we drop this construction lease once indexing (and optional validation) is done.
         PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, blobs, SnapshotTier.PersistedBase, new RefCountedBloomFilter(bloom));
         reservation.Dispose();
-        _catalog.Add(new CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
-        repository.AddPersistedSnapshot(persisted, SnapshotTier.PersistedBase);
-
-        if (_validatePersistedSnapshot)
+        try
         {
-            try
+            _catalog.Add(new CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
+            repository.AddPersistedSnapshot(persisted, SnapshotTier.PersistedBase);
+
+            if (_validatePersistedSnapshot)
             {
-                PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
-            }
-            catch (InvalidOperationException ex)
-            {
-                // Validation runs on a background persistence thread; an unhandled throw here would either
-                // be swallowed (looking like a good run) or crash the process with a 128+ code that git
-                // bisect treats as "abort". Exit explicitly with a bisect-compatible "bad" code instead.
-                if (_logger.IsError) _logger.Error($"Persisted snapshot validation failed for range {snapshot.From.BlockNumber}..{snapshot.To.BlockNumber}. Exiting with code {ExitCodes.GeneralError} for git bisect compatibility.", ex);
-                Environment.Exit(ExitCodes.GeneralError);
+                try
+                {
+                    PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // Validation runs on a background persistence thread; an unhandled throw here would either
+                    // be swallowed (looking like a good run) or crash the process with a 128+ code that git
+                    // bisect treats as "abort". Exit explicitly with a bisect-compatible "bad" code instead.
+                    if (_logger.IsError) _logger.Error($"Persisted snapshot validation failed for range {snapshot.From.BlockNumber}..{snapshot.To.BlockNumber}. Exiting with code {ExitCodes.GeneralError} for git bisect compatibility.", ex);
+                    Environment.Exit(ExitCodes.GeneralError);
+                }
             }
         }
-
-        persisted.Dispose();
+        finally
+        {
+            // Drop the construction lease. On success the bucket holds its own lease so the snapshot
+            // survives; if catalog/repository indexing threw first, this is the last lease and the
+            // snapshot (with its reservation + blob leases) is cleaned up instead of leaked.
+            persisted.Dispose();
+        }
     }
 
     /// <summary>

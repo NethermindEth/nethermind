@@ -221,8 +221,13 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// Linux for shared mappings, but useful for benchmarking to ensure arena pages
     /// don't pollute the file cache.
     /// </summary>
-    public void FadviseDontNeed(long offset, long size) =>
-        PosixReclaim.FadviseDontNeed((int)_handle.DangerousGetHandle(), offset, size);
+    public void FadviseDontNeed(long offset, long size)
+    {
+        bool refAdded = false;
+        _handle.DangerousAddRef(ref refAdded);
+        try { PosixReclaim.FadviseDontNeed((int)_handle.DangerousGetHandle(), offset, size); }
+        finally { if (refAdded) _handle.DangerousRelease(); }
+    }
 
     /// <summary>
     /// <c>fallocate(PUNCH_HOLE | KEEP_SIZE)</c> over the page-aligned subrange of
@@ -230,8 +235,13 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// changing the file length. Punched pages read back as zero through the mmap.
     /// </summary>
     /// <returns>The <see cref="PosixReclaim.PunchHoleOutcome"/> reported by the kernel.</returns>
-    internal PosixReclaim.PunchHoleOutcome PunchHole(long offset, long size) =>
-        PosixReclaim.TryPunchHole((int)_handle.DangerousGetHandle(), offset, size);
+    internal PosixReclaim.PunchHoleOutcome PunchHole(long offset, long size)
+    {
+        bool refAdded = false;
+        _handle.DangerousAddRef(ref refAdded);
+        try { return PosixReclaim.TryPunchHole((int)_handle.DangerousGetHandle(), offset, size); }
+        finally { if (refAdded) _handle.DangerousRelease(); }
+    }
 
     /// <summary>
     /// <c>fsync(2)</c> the underlying file — block until all previously written bytes are
@@ -239,7 +249,13 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// catalog records the new entry so a crash cannot leave the catalog pointing at
     /// unsynced pages.
     /// </summary>
-    internal void Fsync() => PosixReclaim.Fsync((int)_handle.DangerousGetHandle());
+    internal void Fsync()
+    {
+        bool refAdded = false;
+        _handle.DangerousAddRef(ref refAdded);
+        try { PosixReclaim.Fsync((int)_handle.DangerousGetHandle()); }
+        finally { if (refAdded) _handle.DangerousRelease(); }
+    }
 
     /// <summary>
     /// Open a fresh per-reservation mmap view over <c>[offset, offset+size)</c> with

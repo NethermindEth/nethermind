@@ -75,14 +75,21 @@ public abstract class SmallRefCountingDisposable(int initialCount = 1) : IDispos
     {
         // Volatile read for starting value
         long current = Volatile.Read(ref _leases);
-        if (current <= NoAccessors)
-        {
-            // Mismatched Acquire/Release
-            ThrowOverDisposed();
-        }
 
         while (true)
         {
+            // Re-validate on every iteration (the initial read and each failed-CAS retry). A failed CAS
+            // hands back the observed value, which a concurrent release can have already driven to
+            // NoAccessors — or to Disposing — inside the teardown window. Decrementing from there would
+            // write Disposing(-1) via the subtract below, spuriously and bypassing the dedicated
+            // NoAccessors -> Disposing CAS, leaving the genuine last-releaser's CleanUp unrun. Mirrors
+            // the guard in TryAcquireLease.
+            if (current <= NoAccessors)
+            {
+                // Mismatched Acquire/Release
+                ThrowOverDisposed();
+            }
+
             long prev = Interlocked.CompareExchange(ref _leases, current - Single, current);
             if (prev != current)
             {
@@ -96,13 +103,8 @@ public abstract class SmallRefCountingDisposable(int initialCount = 1) : IDispos
                 // Last use, try to dispose underlying
                 break;
             }
-            if (prev <= NoAccessors)
-            {
-                // Mismatched Acquire/Release
-                ThrowOverDisposed();
-            }
 
-            // Successfully released
+            // Successfully released (prev > Single here, guaranteed > NoAccessors by the check above)
             return;
         }
 

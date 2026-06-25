@@ -65,13 +65,7 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     public void Set(in StateId to, PersistedSnapshot snapshot)
     {
         using Lock.Scope scope = _lock.EnterScope();
-        _byTo[to] = snapshot;
-        _ordered.Add(to);
-        Interlocked.Add(ref _memoryBytes, snapshot.Size);
-        Interlocked.Increment(ref _count);
-        PersistedSnapshotLabel label = LabelFor(snapshot);
-        Metrics.PersistedSnapshotMemory.AddBy(label, snapshot.Size);
-        Metrics.PersistedSnapshotCount.AddBy(label, 1);
+        SetCore(to, snapshot);
     }
 
     /// <summary>
@@ -81,9 +75,34 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     /// </summary>
     public void Add(in StateId to, PersistedSnapshot snapshot)
     {
+        // Must NOT delegate to Set(): System.Threading.Lock is not reentrant, so re-entering the
+        // bucket lock would deadlock. Both go through the lock-free SetCore under one scope.
         using Lock.Scope scope = _lock.EnterScope();
-        Set(to, snapshot);
+        SetCore(to, snapshot);
         snapshot.AcquireLease();
+    }
+
+    /// <summary>Lock-free insert/overwrite body; the caller must hold <see cref="_lock"/>. On overwrite
+    /// the displaced snapshot's accounting is rolled back and its bucket lease released, so the running
+    /// totals and global metrics stay consistent and the old entry is not leaked.</summary>
+    private void SetCore(in StateId to, PersistedSnapshot snapshot)
+    {
+        if (_byTo.TryGetValue(to, out PersistedSnapshot? old))
+        {
+            Interlocked.Add(ref _memoryBytes, -old.Size);
+            Interlocked.Decrement(ref _count);
+            PersistedSnapshotLabel oldLabel = LabelFor(old);
+            Metrics.PersistedSnapshotMemory.AddBy(oldLabel, -old.Size);
+            Metrics.PersistedSnapshotCount.AddBy(oldLabel, -1);
+            old.Dispose();
+        }
+        _byTo[to] = snapshot;
+        _ordered.Add(to);
+        Interlocked.Add(ref _memoryBytes, snapshot.Size);
+        Interlocked.Increment(ref _count);
+        PersistedSnapshotLabel label = LabelFor(snapshot);
+        Metrics.PersistedSnapshotMemory.AddBy(label, snapshot.Size);
+        Metrics.PersistedSnapshotCount.AddBy(label, 1);
     }
 
     public bool Replace(in StateId to, PersistedSnapshot replacement)

@@ -69,95 +69,107 @@ public static class PersistedSnapshotMerger
         int n = views.Length;
         SortedTableEnumerator<TReader, TPin>[] enums = new SortedTableEnumerator<TReader, TPin>[n];
         bool[] hasMore = new bool[n];
-        for (int i = 0; i < n; i++)
+        // Tracks how many enumerators were actually constructed so the finally disposes exactly those,
+        // even if the init loop or the merge loop throws partway through.
+        int initialized = 0;
+        try
         {
-            TReader r = views[i].CreateReader();
-            enums[i] = new SortedTableEnumerator<TReader, TPin>(in r, new Bound(0, r.Length));
-            hasMore[i] = enums[i].MoveNext(in r);
-        }
-
-        // Cached for the current per-address group: its address (for change detection + bloom keys) and
-        // the self-destruct truncation barrier, resolved when the group's self-destruct record is seen
-        // (it now sorts before the slots) and -1 when the group has none.
-        Address? curAddr = null;
-        ulong addrBloomKey = 0;
-        int barrier = -1;
-
-        Span<byte> minKey = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
-        // n is the number of merged inputs (small in practice); cap the stackalloc and fall back to
-        // the heap for an unusually large compaction batch to avoid a stack overflow.
-        Span<int> matching = n <= 64 ? stackalloc int[64] : new int[n];
-
-        while (true)
-        {
-            int minIdx = -1;
             for (int i = 0; i < n; i++)
             {
-                if (!hasMore[i]) continue;
-                if (minIdx < 0 || enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey) < 0)
-                    minIdx = i;
-            }
-            if (minIdx < 0) break;
-
-            ReadOnlySpan<byte> minKeySrc = enums[minIdx].CurrentKey;
-            int keyLen = minKeySrc.Length;
-            minKeySrc.CopyTo(minKey);
-            ReadOnlySpan<byte> key = minKey[..keyLen];
-
-            // Metadata (column 0xFF) sorts last and is produced separately by MergeMetadata.
-            if (key[0] == PersistedSnapshotKey.MetadataColumn) break;
-
-            bool isPerAddr = key[0] == PersistedSnapshotKey.AccountColumn;
-            // On entering a new per-address group, cache its address + bloom key and reset the barrier;
-            // the group's self-destruct record (if any) sorts first and sets it before the slots.
-            if (isPerAddr && (curAddr is null || !PersistedSnapshotKey.PerAddressAddress(key).SequenceEqual(curAddr.Bytes)))
-            {
-                curAddr = new Address(PersistedSnapshotKey.PerAddressAddress(key));
-                addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(curAddr);
-                barrier = -1;
+                TReader r = views[i].CreateReader();
+                enums[i] = new SortedTableEnumerator<TReader, TPin>(in r, new Bound(0, r.Length));
+                initialized = i + 1;
+                hasMore[i] = enums[i].MoveNext(in r);
             }
 
-            int matchCount = 0;
-            for (int i = 0; i < n; i++)
-                if (hasMore[i] && enums[i].CurrentKey.SequenceEqual(key))
-                    matching[matchCount++] = i;
-            int newest = matching[matchCount - 1];
+            // Cached for the current per-address group: its address (for change detection + bloom keys) and
+            // the self-destruct truncation barrier, resolved when the group's self-destruct record is seen
+            // (it now sorts before the slots) and -1 when the group has none.
+            Address? curAddr = null;
+            ulong addrBloomKey = 0;
+            int barrier = -1;
 
-            if (isPerAddr)
+            Span<byte> minKey = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
+            // n is the number of merged inputs (small in practice); cap the stackalloc and fall back to
+            // the heap for an unusually large compaction batch to avoid a stack overflow.
+            Span<int> matching = n <= 64 ? stackalloc int[64] : new int[n];
+
+            while (true)
             {
-                byte sub = PersistedSnapshotKey.PerAddressSubColumn(key);
-                if (sub == PersistedSnapshotKey.SelfDestructSub)
+                int minIdx = -1;
+                for (int i = 0; i < n; i++)
                 {
-                    // Self-destruct sorts before this address's slots: resolve the truncation barrier
-                    // here so the slots that follow can be filtered and streamed without buffering.
-                    barrier = ComputeSelfDestructBarrier<TView, TReader, TPin>(views, enums, matching[..matchCount]);
-                    EmitSelfDestruct(ref table, bloom, key, barrier);
+                    if (!hasMore[i]) continue;
+                    if (minIdx < 0 || enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey) < 0)
+                        minIdx = i;
                 }
-                else if (sub == PersistedSnapshotKey.SlotSub)
+                if (minIdx < 0) break;
+
+                ReadOnlySpan<byte> minKeySrc = enums[minIdx].CurrentKey;
+                int keyLen = minKeySrc.Length;
+                minKeySrc.CopyTo(minKey);
+                ReadOnlySpan<byte> key = minKey[..keyLen];
+
+                // Metadata (column 0xFF) sorts last and is produced separately by MergeMetadata.
+                if (key[0] == PersistedSnapshotKey.MetadataColumn) break;
+
+                bool isPerAddr = key[0] == PersistedSnapshotKey.AccountColumn;
+                // On entering a new per-address group, cache its address + bloom key and reset the barrier;
+                // the group's self-destruct record (if any) sorts first and sets it before the slots.
+                if (isPerAddr && (curAddr is null || !PersistedSnapshotKey.PerAddressAddress(key).SequenceEqual(curAddr.Bytes)))
                 {
-                    // Stream the slot, dropping it when its newest source predates the self-destruct.
-                    if (barrier < 0 || newest >= barrier)
-                        EmitSlot<TWriter, TView, TReader, TPin>(views, enums, ref table, bloom, key, newest, addrBloomKey);
+                    curAddr = new Address(PersistedSnapshotKey.PerAddressAddress(key));
+                    addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(curAddr);
+                    barrier = -1;
                 }
-                else // account
+
+                int matchCount = 0;
+                for (int i = 0; i < n; i++)
+                    if (hasMore[i] && enums[i].CurrentKey.SequenceEqual(key))
+                        matching[matchCount++] = i;
+                int newest = matching[matchCount - 1];
+
+                if (isPerAddr)
+                {
+                    byte sub = PersistedSnapshotKey.PerAddressSubColumn(key);
+                    if (sub == PersistedSnapshotKey.SelfDestructSub)
+                    {
+                        // Self-destruct sorts before this address's slots: resolve the truncation barrier
+                        // here so the slots that follow can be filtered and streamed without buffering.
+                        barrier = ComputeSelfDestructBarrier<TView, TReader, TPin>(views, enums, matching[..matchCount]);
+                        EmitSelfDestruct(ref table, bloom, key, barrier);
+                    }
+                    else if (sub == PersistedSnapshotKey.SlotSub)
+                    {
+                        // Stream the slot, dropping it when its newest source predates the self-destruct.
+                        if (barrier < 0 || newest >= barrier)
+                            EmitSlot<TWriter, TView, TReader, TPin>(views, enums, ref table, bloom, key, newest, addrBloomKey);
+                    }
+                    else // account
+                    {
+                        EmitNewest<TWriter, TView, TReader, TPin>(views, enums, ref table, bloom, key, newest);
+                    }
+                }
+                else // state / storage trie node
                 {
                     EmitNewest<TWriter, TView, TReader, TPin>(views, enums, ref table, bloom, key, newest);
                 }
-            }
-            else // state / storage trie node
-            {
-                EmitNewest<TWriter, TView, TReader, TPin>(views, enums, ref table, bloom, key, newest);
+
+                for (int k = 0; k < matchCount; k++)
+                {
+                    int i = matching[k];
+                    TReader r = views[i].CreateReader();
+                    hasMore[i] = enums[i].MoveNext(in r);
+                }
             }
 
-            for (int k = 0; k < matchCount; k++)
-            {
-                int i = matching[k];
-                TReader r = views[i].CreateReader();
-                hasMore[i] = enums[i].MoveNext(in r);
-            }
         }
-
-        for (int i = 0; i < n; i++) enums[i].Dispose();
+        finally
+        {
+            // Dispose every constructed enumerator, even if the init loop or the merge loop threw
+            // partway — otherwise the readers/pins they hold leak.
+            for (int i = 0; i < initialized; i++) enums[i].Dispose();
+        }
     }
 
     /// <summary>Emit the newest source's value for a slot <paramref name="key"/> and its bloom keys.</summary>

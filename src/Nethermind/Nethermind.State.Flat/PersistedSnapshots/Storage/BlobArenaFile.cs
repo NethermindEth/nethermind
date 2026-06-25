@@ -138,23 +138,39 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// dropping the range from the OS file cache. Used when an orphaned file's frontier
     /// is reset so the stale, soon-to-be-overwritten bytes don't linger in cache.
     /// </summary>
-    internal void FadviseDontNeed(long offset, long size) =>
-        PosixReclaim.FadviseDontNeed((int)Handle.DangerousGetHandle(), offset, size);
+    internal void FadviseDontNeed(long offset, long size)
+    {
+        bool refAdded = false;
+        Handle.DangerousAddRef(ref refAdded);
+        try { PosixReclaim.FadviseDontNeed((int)Handle.DangerousGetHandle(), offset, size); }
+        finally { if (refAdded) Handle.DangerousRelease(); }
+    }
 
     /// <summary>
     /// <c>posix_fadvise(POSIX_FADV_WILLNEED)</c> over <c>[offset, offset + size)</c>, asking
     /// the kernel to begin asynchronous read-ahead. Used to bulk-prefetch a base snapshot's
     /// contiguous trie-RLP region before a linked CompactSized that references it is scanned.
     /// </summary>
-    internal void FadviseWillNeed(long offset, long size) =>
-        PosixReclaim.FadviseWillNeed((int)Handle.DangerousGetHandle(), offset, size);
+    internal void FadviseWillNeed(long offset, long size)
+    {
+        bool refAdded = false;
+        Handle.DangerousAddRef(ref refAdded);
+        try { PosixReclaim.FadviseWillNeed((int)Handle.DangerousGetHandle(), offset, size); }
+        finally { if (refAdded) Handle.DangerousRelease(); }
+    }
 
     /// <summary>
     /// <c>fsync(2)</c> the underlying file — block until all previously written bytes are
     /// durable on disk. Called by the persisted-snapshot convert path before the catalog
     /// records the new entry so a crash cannot leave the catalog pointing at unsynced pages.
     /// </summary>
-    internal void Fsync() => PosixReclaim.Fsync((int)Handle.DangerousGetHandle());
+    internal void Fsync()
+    {
+        bool refAdded = false;
+        Handle.DangerousAddRef(ref refAdded);
+        try { PosixReclaim.Fsync((int)Handle.DangerousGetHandle()); }
+        finally { if (refAdded) Handle.DangerousRelease(); }
+    }
 
     /// <summary>
     /// <c>ftruncate</c> the underlying file to <paramref name="newSize"/>. Used by

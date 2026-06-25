@@ -85,15 +85,15 @@ bytes are stored as `255 − tag`**; entity bytes are natural. Ascending order t
 | Ref-id | `00` + blobArenaId(2 BE) | `[01]` presence |
 | Storage node | `FA` + addrHash(20) + `{FF top, FE compact, FD fallback}` + path | `NodeRef` (6) |
 | State node | `{FD top, FC compact, FB fallback}` + path | `NodeRef` (6) |
-| Slot | `FE` + addr(20) + `FD` + slot(32 BE) | RLP-wrapped value / empty (deleted) |
-| Self-destruct | `FE` + addr(20) + `FE` | `[00]` destructed / `[01]` new |
+| Self-destruct | `FE` + addr(20) + `FD` | `[00]` destructed / `[01]` new |
+| Slot | `FE` + addr(20) + `FE` + slot(32 BE) | RLP-wrapped value / empty (deleted) |
 | Account | `FE` + addr(20) + `FF` | slim account RLP / `[00]` deleted |
 | Metadata | `FF` + name(10, NUL-padded) | metadata value |
 
 Each referenced blob-arena id is its own record under column `00`, which sorts before every real
 column — so the ref-ids are the first records and iterate cheaply from the table start
 (`PersistedSnapshot`'s ref-id enumerator stops at the first non-`00` record). Within an address:
-slots → self-destruct → account. Within an addressHash: fallback → compact → top. Across columns:
+self-destruct → slots → account. Within an addressHash: fallback → compact → top. Across columns:
 ref-ids → storage → state → per-address → metadata. The path encodings (4/8/33-byte) and the
 per-bucket ordering are unchanged from the columnar builder/compacter so a future proper columnar serializer
 can reuse them.

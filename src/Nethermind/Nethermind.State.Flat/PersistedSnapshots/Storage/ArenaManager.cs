@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using Nethermind.Db;
@@ -291,6 +292,9 @@ public sealed class ArenaManager : IArenaManager
         long endPageExclusive = (byteOffset + byteSize) / pageSize;
         long pageCount = endPageExclusive - startPage;
         if (pageCount <= 0) return;
+        // The tracker keys pages by uint, capping a single arena at uint.MaxValue pages (~16 TiB at a
+        // 4 KiB page). ArenaFileSizeBytes is far below that, so the (uint)p narrowing below is safe.
+        Debug.Assert(endPageExclusive <= uint.MaxValue, "Arena page index exceeded the uint page-key range (~16 TiB per arena).");
         long forgotten = 0;
         for (long p = startPage; p < endPageExclusive; p++)
             if (_pageTracker.Forget(arenaId, (uint)p)) forgotten++;

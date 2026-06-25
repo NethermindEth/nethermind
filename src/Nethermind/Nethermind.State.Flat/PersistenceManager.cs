@@ -175,6 +175,9 @@ public class PersistenceManager(
     /// </remarks>
     private ConversionCandidate? TryFindSnapshotToConvert(StateId currentPersistedState)
     {
+        // long.MaxValue, not ulong.MaxValue: the latter is the PreGenesis sentinel that
+        // GetStatesUpToBlock treats as "before any state" (returns empty). long.MaxValue is above every
+        // real block height, so this returns every in-memory state, ascending.
         using ArrayPoolList<StateId> ordered = snapshotRepository.GetStatesUpToBlock(long.MaxValue);
 
         // Pass 1 (global): boundary-CompactSize in-memory compacted → Branch A.
