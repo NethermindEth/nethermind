@@ -26,28 +26,19 @@ public class NullableQuantityULongConverter : JsonConverter<ulong?>
     [SkipLocalsInit]
     public override ulong? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Null)
-        {
-            return null;
-        }
+        if (reader.TokenType == JsonTokenType.Null) return null;
 
-        if (reader.TokenType != JsonTokenType.String)
-        {
-            ThrowJsonException();
-        }
+        if (reader.TokenType != JsonTokenType.String) ThrowJsonException();
 
         int length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
         // "0xffffffffffffffff" (18 bytes) is the longest valid ulong QUANTITY string.
-        if (length is 0 or > 18)
-        {
-            ThrowJsonException();
-        }
+        if (length is 0 or > 18) ThrowJsonException();
 
         if (reader.HasValueSequence)
         {
             Span<byte> span = stackalloc byte[length];
             reader.ValueSequence.CopyTo(span);
-            return ReadHex((ReadOnlySpan<byte>)span);
+            return ReadHex(span);
         }
 
         return ReadHex(reader.ValueSpan);
@@ -55,23 +46,14 @@ public class NullableQuantityULongConverter : JsonConverter<ulong?>
 
     internal static ulong ReadHex(ReadOnlySpan<byte> s)
     {
-        if (s.SequenceEqual("0x0"u8))
-        {
-            return 0;
-        }
+        if (s.SequenceEqual("0x0"u8)) return 0;
 
         if (s.StartsWith("0x"u8))
         {
             s = s[2..];
-            if (JsonRpcQuantityFormat.StrictMode && s.Length > 1 && s[0] == (byte)'0')
-            {
-                ThrowLeadingZero();
-            }
+            if (JsonRpcQuantityFormat.StrictMode && s.Length > 1 && s[0] == (byte)'0') ThrowLeadingZero();
 
-            if (ulong.TryParse(s, NumberStyles.AllowHexSpecifier, null, out ulong value))
-            {
-                return value;
-            }
+            if (ulong.TryParse(s, NumberStyles.AllowHexSpecifier, null, out ulong value)) return value;
         }
 
         ThrowJsonException();

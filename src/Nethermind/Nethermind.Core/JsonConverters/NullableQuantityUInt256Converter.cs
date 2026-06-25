@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Exceptions;
@@ -28,28 +27,19 @@ public class NullableQuantityUInt256Converter : JsonConverter<UInt256?>
     [SkipLocalsInit]
     public override UInt256? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Null)
-        {
-            return null;
-        }
+        if (reader.TokenType == JsonTokenType.Null) return null;
 
-        if (reader.TokenType != JsonTokenType.String)
-        {
-            ThrowJsonException();
-        }
+        if (reader.TokenType != JsonTokenType.String) ThrowJsonException();
 
         int length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
         // 78 covers the longest decimal UInt256 (78 digits); hex is further bounded to 64 digits inside ReadHex.
-        if (length is 0 or > 78)
-        {
-            ThrowJsonException();
-        }
+        if (length is 0 or > 78) ThrowJsonException();
 
         if (reader.HasValueSequence)
         {
             Span<byte> span = stackalloc byte[length];
             reader.ValueSequence.CopyTo(span);
-            return ReadHex((ReadOnlySpan<byte>)span);
+            return ReadHex(span);
         }
 
         return ReadHex(reader.ValueSpan);
@@ -57,31 +47,21 @@ public class NullableQuantityUInt256Converter : JsonConverter<UInt256?>
 
     internal static UInt256 ReadHex(ReadOnlySpan<byte> hex)
     {
-        if (hex.SequenceEqual("0x0"u8))
-        {
-            return default;
-        }
+        if (hex.SequenceEqual("0x0"u8)) return default;
 
-        if (hex.StartsWith("0x"u8))
-        {
-            hex = hex[2..];
-            if (hex.Length > 64) // UInt256 is 32 bytes = 64 hex digits max
-            {
-                ThrowJsonException();
-            }
-            // EIP-1474: QUANTITY hex strings must not have leading zero digits.
-            if (JsonRpcQuantityFormat.StrictMode && hex.Length > 1 && hex[0] == (byte)'0')
-            {
-                ThrowLeadingZero();
-            }
-        }
-        else if (hex[0] != (byte)'0')
-        {
-            if (UInt256.TryParse(Encoding.UTF8.GetString(hex), out UInt256 result))
-            {
-                return result;
-            }
-        }
+        // QUANTITY must be 0x-prefixed per EIP-1474
+        if (!hex.StartsWith("0x"u8)) ThrowJsonException();
+
+        hex = hex[2..];
+
+        // "0x" bare prefix — EIP-1474 requires at least one digit
+        if (hex.IsEmpty) ThrowJsonException();
+
+        // UInt256 is 32 bytes = 64 hex digits max
+        if (hex.Length > 64) ThrowJsonException();
+
+        // EIP-1474: QUANTITY hex strings must not have leading zero digits.
+        if (JsonRpcQuantityFormat.StrictMode && hex.Length > 1 && hex[0] == (byte)'0') ThrowLeadingZero();
 
         Span<byte> bytes = stackalloc byte[32];
         int length = (hex.Length >> 1) + hex.Length % 2;
