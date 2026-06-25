@@ -475,7 +475,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas);
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            // EELS generic_create refunds the parent's up-front NEW_ACCOUNT via credit_state_gas_refund
+            // (LIFO): the charge is returned to gas_left first, up to the still-spilled amount, then to the
+            // reservoir. When the parent reservoir was empty the NEW_ACCOUNT was spilled into regular gas, so
+            // the refund belongs in gas_left — where a subsequent top-level halt burns it — not the reservoir
+            // (which would survive the halt and under-charge the sender). trackSpillRefund:true mirrors this.
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
             RemoveAdvancedStateGasRefund(previousState, ref _currentState.Gas);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)

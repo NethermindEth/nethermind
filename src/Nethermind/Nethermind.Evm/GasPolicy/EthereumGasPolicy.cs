@@ -193,10 +193,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // Code deposit failure is an exceptional halt after the child frame was merged into
-        // the parent. Move the child's state usage back into the reservoir and remove it from
-        // parent state usage because no child state growth persisted.
-        parentGas.StateReservoir += childGas.StateGasUsed;
+        // Code deposit failure is an exceptional halt of the child create frame, after the child was
+        // merged into the parent. EELS refills the child's spilled state gas into gas_left and then
+        // zeros gas_left (the halt burns it), so the spilled portion stays consumed. Only the
+        // reservoir-funded state gas returns to the parent reservoir; crediting the spilled portion
+        // too would over-refund — e.g. a failed CREATE deposit whose init wrote storage slots would
+        // get its (spilled) storage state gas back instead of burning it.
+        long childNetSpill = childGas.StateGasSpill - childGas.StateGasSpillRefunded;
+        parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
     }
 
