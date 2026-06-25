@@ -46,6 +46,8 @@ public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logMa
 
     private sealed class PatriciaSnapStorageBatch(INodeStorage nodeStorage) : ISnapStorageBatch, INodeStorage.IWriteBatch
     {
+        private const int MaxReplayBatchSize = 8 * 1024;
+
         private readonly List<NodeWrite> _writes = [];
         private bool _disposed;
 
@@ -59,10 +61,15 @@ public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logMa
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _disposed = true;
-            using INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
-            foreach (NodeWrite write in _writes)
+            for (int writeIndex = 0; writeIndex < _writes.Count;)
             {
-                writeBatch.Set(write.Address, write.Path, write.Hash, write.Data, write.WriteFlags);
+                int endIndex = Math.Min(writeIndex + MaxReplayBatchSize, _writes.Count);
+                using INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
+                for (; writeIndex < endIndex; writeIndex++)
+                {
+                    NodeWrite write = _writes[writeIndex];
+                    writeBatch.Set(write.Address, write.Path, write.Hash, write.Data, write.WriteFlags);
+                }
             }
         }
 

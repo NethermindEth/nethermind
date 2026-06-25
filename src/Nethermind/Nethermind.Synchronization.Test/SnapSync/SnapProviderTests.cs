@@ -340,6 +340,35 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void PatriciaStorageBatch_ReplaysBufferedWritesInBoundedBatches()
+    {
+        const int slotCount = 9_000;
+        CountingNodeStorage nodeStorage = new();
+        PatriciaSnapTrieFactory factory = new(nodeStorage, LimboLogs.Instance);
+        PathWithStorageSlot[] slots = new PathWithStorageSlot[slotCount];
+        for (int i = 0; i < slotCount; i++)
+        {
+            slots[i] = new PathWithStorageSlot(Keccak.Compute(i.ToBigEndianByteArray()), [1]);
+        }
+
+        Array.Sort(slots, static (left, right) => left.Path.CompareTo(right.Path));
+
+        using (ISnapStorageBatch batch = factory.StartStorageBatch()!)
+        {
+            using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(TestItem.KeccakA, batch);
+            tree.BulkSetAndUpdateRootHash(slots);
+            tree.Commit(ValueKeccak.MaxValue);
+            batch.Commit();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.Count.GreaterThan(1));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(8 * 1024));
+        }
+    }
+
+    [Test]
     public void AddStorageRange_ParallelPath_UnwrapsObjectDisposedException()
     {
         using IContainer container = CreateContainer(
@@ -968,6 +997,59 @@ public class SnapProviderTests
 
         public void Dispose() =>
             DisposeCount++;
+    }
+
+    private sealed class CountingNodeStorage : INodeStorage
+    {
+        public List<int> DisposedBatchSizes { get; } = [];
+
+        public INodeStorage.KeyScheme Scheme { get; set; } = INodeStorage.KeyScheme.Hash;
+
+        public bool RequirePath => false;
+
+        public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None) =>
+            null;
+
+        public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash) =>
+            false;
+
+        public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
+        {
+        }
+
+        public INodeStorage.IWriteBatch StartWriteBatch() =>
+            new CountingWriteBatch(this);
+
+        public void Flush(bool onlyWal)
+        {
+        }
+
+        public void Compact()
+        {
+        }
+
+        private sealed class CountingWriteBatch(CountingNodeStorage nodeStorage) : INodeStorage.IWriteBatch
+        {
+            private int _count;
+            private bool _disposed;
+
+            public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _count++;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                nodeStorage.DisposedBatchSizes.Add(_count);
+            }
+        }
     }
 
     private sealed class RecordingCodeDb : TestMemDb
