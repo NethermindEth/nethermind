@@ -20,7 +20,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71;
@@ -176,7 +176,6 @@ public class NetworkModuleTest
         await initializeNetwork.RunInitPeer();
 
         Assert.That(callOrder, Is.EqualTo(new[] { "plugin", "rlpx" }));
-        protocolsManager.DidNotReceive().RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
     }
 
     private IEnumerable<(Type MessageType, Type SerializerType)> FindSerializersInAssembly(Assembly assembly)
@@ -250,7 +249,6 @@ public class NetworkModuleTest
                 Substitute.For<IEnode>(),
                 plugins,
                 new Lazy<IProtocolsManager>(() => protocolsManager),
-                new Lazy<SnapCapabilitySwitcher>(() => null!),
                 networkConfig,
                 syncConfig,
                 Substitute.For<IInitConfig>(),

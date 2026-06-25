@@ -3,16 +3,16 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Trie.Pruning;
-using System;
 
 namespace Nethermind.Blockchain;
 
 public class ReorgDepthFinalizedStateProvider(IBlockTree blockTree) : IFinalizedStateProvider
 {
-    public long FinalizedBlockNumber => Math.Max(0, blockTree.BestKnownNumber - Reorganization.MaxDepth);
+    public ulong FinalizedBlockNumber => blockTree.BestKnownNumber.SaturatingSub(Reorganization.MaxDepth);
 
-    public Hash256? GetFinalizedStateRootAt(long blockNumber)
+    public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
     {
         if (FinalizedBlockNumber < blockNumber) return null;
         return blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical)?.StateRoot;

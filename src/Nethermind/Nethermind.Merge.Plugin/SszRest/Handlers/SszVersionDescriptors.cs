@@ -225,14 +225,14 @@ public readonly struct PayloadBodiesByHashDescriptorV2 : IPayloadBodiesByHashVer
 public interface IPayloadBodiesByRangeVersion<TResult> where TResult : class
 {
     static abstract int VersionNumber { get; }
-    static abstract Task<ResultWrapper<IReadOnlyList<TResult?>>> Call(IEngineRpcModule engine, long start, long count);
+    static abstract Task<ResultWrapper<IReadOnlyList<TResult?>>> Call(IEngineRpcModule engine, ulong start, ulong count);
     static abstract int Encode(IReadOnlyList<TResult?> bodies, IBufferWriter<byte> writer);
 }
 
 public readonly struct PayloadBodiesByRangeDescriptorV1 : IPayloadBodiesByRangeVersion<ExecutionPayloadBodyV1Result>
 {
     public static int VersionNumber => EngineApiVersions.PayloadBodiesByRange.V1;
-    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Call(IEngineRpcModule engine, long start, long count)
+    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Call(IEngineRpcModule engine, ulong start, ulong count)
         => engine.engine_getPayloadBodiesByRangeV1(start, count);
     public static int Encode(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies, IBufferWriter<byte> writer)
         => SszCodec.EncodePayloadBodiesV1Response(bodies, writer);
@@ -241,7 +241,7 @@ public readonly struct PayloadBodiesByRangeDescriptorV1 : IPayloadBodiesByRangeV
 public readonly struct PayloadBodiesByRangeDescriptorV2 : IPayloadBodiesByRangeVersion<ExecutionPayloadBodyV2Result>
 {
     public static int VersionNumber => EngineApiVersions.PayloadBodiesByRange.V2;
-    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Call(IEngineRpcModule engine, long start, long count)
+    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Call(IEngineRpcModule engine, ulong start, ulong count)
         => engine.engine_getPayloadBodiesByRangeV2(start, count);
     public static int Encode(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies, IBufferWriter<byte> writer)
         => SszCodec.EncodePayloadBodiesV2Response(bodies, writer);

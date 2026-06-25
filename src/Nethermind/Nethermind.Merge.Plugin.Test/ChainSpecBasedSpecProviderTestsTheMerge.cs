@@ -17,7 +17,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     [Test]
     public void Correctly_read_merge_block_number()
     {
-        long terminalBlockNumber = 100;
+        ulong terminalBlockNumber = 100;
         ChainSpec chainSpec = new()
         {
             Parameters = new ChainParameters
@@ -67,7 +67,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     public void Changing_spec_provider_in_dynamic_merge_transition()
     {
         long expectedTerminalPoWBlock = 100;
-        long newMergeBlock = 50;
+        ulong newMergeBlock = 50;
 
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");

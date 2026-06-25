@@ -33,9 +33,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void BuildTransitions()
         {
-            SortedSet<long> transitionBlockNumbers = [];
+            SortedSet<ulong> transitionBlockNumbers = [];
             SortedSet<ulong> transitionTimestamps = [];
-            transitionBlockNumbers.Add(0L);
+            transitionBlockNumbers.Add(0);
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
@@ -49,6 +49,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             AddBlobScheduleTransitions(transitionTimestamps, _chainSpec);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
+            // Scans properties of type T / T? on value whose names pass the filter.
             static void AddTransitions<T>(
                 SortedSet<T> transitions,
                 object value,
@@ -130,7 +131,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
-                MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPoWBlockNumber + 1);
+                MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPoWBlockNumber.Value + 1);
             }
 
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
@@ -170,14 +171,14 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
-            SortedSet<long> transitionBlockNumbers,
+            SortedSet<ulong> transitionBlockNumbers,
             SortedSet<ulong> transitionTimestamps)
         {
             (ForkActivation Activation, IReleaseSpec Spec)[] transitions = new (ForkActivation, IReleaseSpec Spec)[transitionBlockNumbers.Count + transitionTimestamps.Count];
-            long biggestBlockTransition = transitionBlockNumbers.Max;
+            ulong biggestBlockTransition = transitionBlockNumbers.Max;
 
             int index = 0;
-            foreach (long releaseStartBlock in transitionBlockNumbers)
+            foreach (ulong releaseStartBlock in transitionBlockNumbers)
             {
                 IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, releaseStartBlock, chainSpec.Genesis?.Timestamp ?? 0);
                 transitions[index++] = ((ForkActivation)releaseStartBlock, releaseSpec);
@@ -185,23 +186,22 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             foreach (ulong releaseStartTimestamp in transitionTimestamps)
             {
-                long activationBlockNumber = biggestBlockTransition;
-                ForkActivation forkActivation = (activationBlockNumber, releaseStartTimestamp);
-                IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, activationBlockNumber, releaseStartTimestamp);
+                ForkActivation forkActivation = (biggestBlockTransition, releaseStartTimestamp);
+                IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, biggestBlockTransition, releaseStartTimestamp);
                 transitions[index++] = (forkActivation, releaseSpec);
             }
 
             return transitions;
         }
 
-        private static ForkActivation[] CreateTransitionActivations(SortedSet<long> transitionBlockNumbers, SortedSet<ulong> transitionTimestamps)
+        private static ForkActivation[] CreateTransitionActivations(SortedSet<ulong> transitionBlockNumbers, SortedSet<ulong> transitionTimestamps)
         {
-            long biggestBlockTransition = transitionBlockNumbers.Max;
+            ulong biggestBlockTransition = transitionBlockNumbers.Max;
 
             ForkActivation[] transitionActivations = new ForkActivation[transitionBlockNumbers.Count - 1 + transitionTimestamps.Count];
 
             int index = 0;
-            foreach (long blockNumber in transitionBlockNumbers.Skip(1))
+            foreach (ulong blockNumber in transitionBlockNumbers.Skip(1))
             {
                 transitionActivations[index++] = new ForkActivation(blockNumber);
             }
@@ -214,10 +214,13 @@ namespace Nethermind.Specs.ChainSpecStyle
             return transitionActivations;
         }
 
-        protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
+        private static ulong BlockOf(ulong? transition, ulong nullSentinel = ulong.MaxValue) =>
+            transition ?? nullSentinel;
+
+        protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, ulong releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
+            ulong block = releaseStartBlock;
             ReleaseSpec releaseSpec = CreateEmptyReleaseSpec();
-            // EIP-3675: zero uncles post-merge. Runtime fallback is MergeHeaderValidator.
             releaseSpec.MaximumUncleCount = IsPostMergeRelease(chainSpec, releaseStartBlock, releaseStartTimestamp) ? 0 : 2;
             releaseSpec.DifficultyBoundDivisor = 1;
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
@@ -226,72 +229,81 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.MinHistoryRetentionEpochs = chainSpec.Parameters.MinHistoryRetentionEpochs;
             releaseSpec.MinBalRetentionEpochs = chainSpec.Parameters.MinBalRetentionEpochs;
             releaseSpec.GasLimitBoundDivisor = chainSpec.Parameters.GasLimitBoundDivisor;
-            releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
+            releaseSpec.IsEip170Enabled = BlockOf(chainSpec.Parameters.MaxCodeSizeTransition) <= block ||
                                           (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.MaxCodeSize = releaseSpec.IsEip170Enabled ? (chainSpec.Parameters.MaxCodeSize ?? long.MaxValue) : long.MaxValue;
             releaseSpec.IsEip2Enabled = true;
             releaseSpec.IsEip100Enabled = true;
-            releaseSpec.IsEip7Enabled = (chainSpec.Parameters.Eip7Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip140Enabled = (chainSpec.Parameters.Eip140Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip145Enabled = (chainSpec.Parameters.Eip145Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip150Enabled = (chainSpec.Parameters.Eip150Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip152Enabled = (chainSpec.Parameters.Eip152Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip155Enabled = (chainSpec.Parameters.Eip155Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip160Enabled = (chainSpec.Parameters.Eip160Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip158Enabled = (chainSpec.Parameters.Eip161abcTransition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip196Enabled = (chainSpec.ByzantiumBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip197Enabled = (chainSpec.ByzantiumBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip198Enabled = (chainSpec.ByzantiumBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip211Enabled = (chainSpec.Parameters.Eip211Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip214Enabled = (chainSpec.Parameters.Eip214Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip658Enabled = (chainSpec.Parameters.Eip658Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip649Enabled = (chainSpec.ByzantiumBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip1014Enabled = (chainSpec.Parameters.Eip1014Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip1052Enabled = (chainSpec.Parameters.Eip1052Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip1108Enabled = (chainSpec.Parameters.Eip1108Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip1234Enabled = (chainSpec.ConstantinopleBlockNumber ?? chainSpec.ConstantinopleFixBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip1283Enabled = (chainSpec.Parameters.Eip1283Transition ?? long.MaxValue) <= releaseStartBlock && ((chainSpec.Parameters.Eip1283DisableTransition ?? long.MaxValue) > releaseStartBlock || (chainSpec.Parameters.Eip1283ReenableTransition ?? long.MaxValue) <= releaseStartBlock);
-            releaseSpec.IsEip1344Enabled = (chainSpec.Parameters.Eip1344Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip1884Enabled = (chainSpec.Parameters.Eip1884Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2028Enabled = (chainSpec.Parameters.Eip2028Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2200Enabled = (chainSpec.Parameters.Eip2200Transition ?? long.MaxValue) <= releaseStartBlock || (chainSpec.Parameters.Eip1706Transition ?? long.MaxValue) <= releaseStartBlock && releaseSpec.IsEip1283Enabled;
-            releaseSpec.IsEip1559Enabled = (chainSpec.Parameters.Eip1559Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.Eip1559TransitionBlock = chainSpec.Parameters.Eip1559Transition ?? long.MaxValue;
-            releaseSpec.IsEip2537Enabled = (chainSpec.Parameters.Eip2537Transition ?? long.MaxValue) <= releaseStartBlock ||
+            releaseSpec.IsEip7Enabled = BlockOf(chainSpec.Parameters.Eip7Transition, 0) <= block;
+            releaseSpec.IsEip140Enabled = BlockOf(chainSpec.Parameters.Eip140Transition, 0) <= block;
+            releaseSpec.IsEip145Enabled = BlockOf(chainSpec.Parameters.Eip145Transition, 0) <= block;
+            releaseSpec.IsEip150Enabled = BlockOf(chainSpec.Parameters.Eip150Transition, 0) <= block;
+            releaseSpec.IsEip152Enabled = BlockOf(chainSpec.Parameters.Eip152Transition) <= block;
+            releaseSpec.IsEip155Enabled = BlockOf(chainSpec.Parameters.Eip155Transition, 0) <= block;
+            releaseSpec.IsEip160Enabled = BlockOf(chainSpec.Parameters.Eip160Transition, 0) <= block;
+            releaseSpec.IsEip158Enabled = BlockOf(chainSpec.Parameters.Eip161abcTransition, 0) <= block;
+            releaseSpec.IsEip196Enabled = (chainSpec.ByzantiumBlockNumber ?? 0UL) <= block;
+            releaseSpec.IsEip197Enabled = (chainSpec.ByzantiumBlockNumber ?? 0UL) <= block;
+            releaseSpec.IsEip198Enabled = (chainSpec.ByzantiumBlockNumber ?? 0UL) <= block;
+            releaseSpec.IsEip211Enabled = BlockOf(chainSpec.Parameters.Eip211Transition, 0) <= block;
+            releaseSpec.IsEip214Enabled = BlockOf(chainSpec.Parameters.Eip214Transition, 0) <= block;
+            releaseSpec.IsEip658Enabled = BlockOf(chainSpec.Parameters.Eip658Transition, 0) <= block;
+            releaseSpec.IsEip649Enabled = (chainSpec.ByzantiumBlockNumber ?? 0UL) <= block;
+            releaseSpec.IsEip1014Enabled = BlockOf(chainSpec.Parameters.Eip1014Transition, 0) <= block;
+            releaseSpec.IsEip1052Enabled = BlockOf(chainSpec.Parameters.Eip1052Transition, 0) <= block;
+            releaseSpec.IsEip1108Enabled = BlockOf(chainSpec.Parameters.Eip1108Transition) <= block;
+            releaseSpec.IsEip1234Enabled = (chainSpec.ConstantinopleBlockNumber ?? chainSpec.ConstantinopleFixBlockNumber ?? 0UL) <= block;
+            releaseSpec.IsEip1283Enabled = BlockOf(chainSpec.Parameters.Eip1283Transition) <= block
+                && (BlockOf(chainSpec.Parameters.Eip1283DisableTransition) > block
+                    || BlockOf(chainSpec.Parameters.Eip1283ReenableTransition) <= block);
+            releaseSpec.IsEip1344Enabled = BlockOf(chainSpec.Parameters.Eip1344Transition) <= block;
+            releaseSpec.IsEip1884Enabled = BlockOf(chainSpec.Parameters.Eip1884Transition) <= block;
+            releaseSpec.IsEip2028Enabled = BlockOf(chainSpec.Parameters.Eip2028Transition) <= block;
+            releaseSpec.IsEip2200Enabled = BlockOf(chainSpec.Parameters.Eip2200Transition) <= block
+                || BlockOf(chainSpec.Parameters.Eip1706Transition) <= block && releaseSpec.IsEip1283Enabled;
+            releaseSpec.IsEip1559Enabled = BlockOf(chainSpec.Parameters.Eip1559Transition) <= block;
+            releaseSpec.Eip1559TransitionBlock = BlockOf(chainSpec.Parameters.Eip1559Transition);
+            releaseSpec.IsEip2537Enabled = BlockOf(chainSpec.Parameters.Eip2537Transition) <= block ||
                                            (chainSpec.Parameters.Eip2537TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.IsEip2565Enabled = (chainSpec.Parameters.Eip2565Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2929Enabled = (chainSpec.Parameters.Eip2929Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2930Enabled = (chainSpec.Parameters.Eip2930Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip3198Enabled = (chainSpec.Parameters.Eip3198Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip3541Enabled = (chainSpec.Parameters.Eip3541Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip3529Enabled = (chainSpec.Parameters.Eip3529Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip3607Enabled = (chainSpec.Parameters.Eip3607Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.ValidateChainId = (chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock;
-            releaseSpec.ValidateReceipts = ((chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(chainSpec.Parameters.ValidateReceiptsTransition ?? 0, chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
-            releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
+            releaseSpec.IsEip2565Enabled = BlockOf(chainSpec.Parameters.Eip2565Transition) <= block;
+            releaseSpec.IsEip2929Enabled = BlockOf(chainSpec.Parameters.Eip2929Transition) <= block;
+            releaseSpec.IsEip2930Enabled = BlockOf(chainSpec.Parameters.Eip2930Transition) <= block;
+            releaseSpec.IsEip3198Enabled = BlockOf(chainSpec.Parameters.Eip3198Transition) <= block;
+            releaseSpec.IsEip3541Enabled = BlockOf(chainSpec.Parameters.Eip3541Transition) <= block;
+            releaseSpec.IsEip3529Enabled = BlockOf(chainSpec.Parameters.Eip3529Transition) <= block;
+            releaseSpec.IsEip3607Enabled = BlockOf(chainSpec.Parameters.Eip3607Transition) <= block;
+            releaseSpec.ValidateChainId = BlockOf(chainSpec.Parameters.ValidateChainIdTransition, 0) <= block;
+            releaseSpec.ValidateReceipts = ((chainSpec.Parameters.ValidateReceiptsTransition > 0)
+                ? Math.Max(BlockOf(chainSpec.Parameters.ValidateReceiptsTransition, 0),
+                           BlockOf(chainSpec.Parameters.Eip658Transition, 0))
+                : 0UL) <= block;
+            releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled
+                && BlockOf(chainSpec.Parameters.Eip1559BaseFeeMinValueTransition) <= block
+                    ? chainSpec.Parameters.Eip1559BaseFeeMinValue
+                    : null;
             releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
             releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator ?? Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
 
-            releaseSpec.IsEip1153Enabled = (chainSpec.Parameters.Eip1153Transition ?? long.MaxValue) <= releaseStartBlock ||
+            releaseSpec.IsEip1153Enabled = BlockOf(chainSpec.Parameters.Eip1153Transition) <= block ||
                                           (chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.IsEip3651Enabled = (chainSpec.Parameters.Eip3651Transition ?? long.MaxValue) <= releaseStartBlock ||
+            releaseSpec.IsEip3651Enabled = BlockOf(chainSpec.Parameters.Eip3651Transition) <= block ||
                                           (chainSpec.Parameters.Eip3651TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.IsEip3855Enabled = (chainSpec.Parameters.Eip3855Transition ?? long.MaxValue) <= releaseStartBlock ||
+            releaseSpec.IsEip3855Enabled = BlockOf(chainSpec.Parameters.Eip3855Transition) <= block ||
                                            (chainSpec.Parameters.Eip3855TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.IsEip3860Enabled = (chainSpec.Parameters.Eip3860Transition ?? long.MaxValue) <= releaseStartBlock ||
+            releaseSpec.IsEip3860Enabled = BlockOf(chainSpec.Parameters.Eip3860Transition) <= block ||
                                            (chainSpec.Parameters.Eip3860TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip4895Enabled = (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.WithdrawalTimestamp = chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue;
 
-            releaseSpec.IsEip4844Enabled = (chainSpec.Parameters.Eip4844Transition ?? long.MaxValue) <= releaseStartBlock ||
+            releaseSpec.IsEip4844Enabled = BlockOf(chainSpec.Parameters.Eip4844Transition) <= block ||
                 (chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7951Enabled = (chainSpec.Parameters.Eip7951TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsRip7212Enabled = (chainSpec.Parameters.Rip7212TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip4844TransitionTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue;
-            releaseSpec.IsEip5656Enabled = (chainSpec.Parameters.Eip5656Transition ?? long.MaxValue) <= releaseStartBlock ||
+            releaseSpec.IsEip5656Enabled = BlockOf(chainSpec.Parameters.Eip5656Transition) <= block ||
                                            (chainSpec.Parameters.Eip5656TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.IsEip6780Enabled = (chainSpec.Parameters.Eip6780Transition ?? long.MaxValue) <= releaseStartBlock ||
+            releaseSpec.IsEip6780Enabled = BlockOf(chainSpec.Parameters.Eip6780Transition) <= block ||
                                            (chainSpec.Parameters.Eip6780TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip4788Enabled = (chainSpec.Parameters.Eip4788TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip4788ContractAddress = chainSpec.Parameters.Eip4788ContractAddress;
@@ -311,10 +323,6 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7251Enabled = (chainSpec.Parameters.Eip7251TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip7251ContractAddress = chainSpec.Parameters.Eip7251ContractAddress;
             releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            // EIP-7976 and EIP-7981 are the "Amsterdam floor pricing" bundle: they activate
-            // automatically when the Amsterdam timestamp fires, even if the chainspec omits
-            // their individual transition fields. Other Amsterdam-fork EIPs require explicit
-            // per-EIP transitions in the chainspec.
             releaseSpec.IsEip7976Enabled = (chainSpec.Parameters.Eip7976TransitionTimestamp ?? chainSpec.AmsterdamTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7981Enabled = (chainSpec.Parameters.Eip7981TransitionTimestamp ?? chainSpec.AmsterdamTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7883Enabled = (chainSpec.Parameters.Eip7883TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -324,8 +332,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7918Enabled = (chainSpec.Parameters.Eip7918TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8024Enabled = (chainSpec.Parameters.Eip8024TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
-            bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
-            bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;
+            bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && BlockOf(chainSpec.Parameters.Eip1559FeeCollectorTransition) <= block;
+            bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
             releaseSpec.IsEip4844FeeCollectorEnabled = eip4844FeeCollector;
 
@@ -351,7 +359,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
             {
-                item.ApplyToReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
+                item.ApplyToReleaseSpec(releaseSpec, block, releaseStartTimestamp);
             }
 
             SetBlobScheduleParameters();
@@ -382,20 +390,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
         }
 
-        // Shanghai (EIP-4895) is the first post-Paris timestamp-activated fork, so TTD-driven
-        // chains like mainnet cross into post-merge once they reach it - that's the only
-        // non-obvious branch below. TTD=0 covers PoS-from-genesis. TerminalPoWBlockNumber
-        // fires only when releaseStartBlock advances past it, which requires the chainspec to
-        // carry post-merge block-number transitions (TerminalPoWBlockNumber is excluded from
-        // AddTransitions above, so it creates no spec boundary of its own). Paris-era blocks
-        // on TTD-driven chains with no such later transitions are not detected here - runtime
-        // MergeHeaderValidator (UnclesHash == empty via PoSSwitcher) is the safety net.
-        private static bool IsPostMergeRelease(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp) =>
+        private static bool IsPostMergeRelease(ChainSpec chainSpec, ulong releaseStartBlock, ulong? releaseStartTimestamp) =>
             chainSpec.Parameters.TerminalTotalDifficulty?.IsZero == true
-            || releaseStartBlock > (chainSpec.Parameters.TerminalPoWBlockNumber ?? long.MaxValue)
+            || releaseStartBlock > (chainSpec.Parameters.TerminalPoWBlockNumber ?? ulong.MaxValue)
             || (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= (releaseStartTimestamp ?? 0);
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
             {
@@ -413,7 +413,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public UInt256? TerminalTotalDifficulty { get; private set; }
 
-        public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
+        public ulong? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
         public ulong? BeaconChainGenesisTimestamp => _chainSpec.Parameters.BeaconChainGenesisTimestamp;
 
         public ulong NetworkId => _chainSpec.NetworkId;

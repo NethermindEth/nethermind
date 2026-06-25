@@ -28,7 +28,7 @@ public class ChainLevelHelper(
     private readonly ILogger _logger = logManager.GetClassLogger<ChainLevelHelper>();
     private readonly IBeaconPivot _beaconPivot = beaconPivot;
 
-    private void OnMissingBeaconHeader(long blockNumber)
+    private void OnMissingBeaconHeader(ulong blockNumber)
     {
         if (_beaconPivot.ProcessDestination?.Number > blockNumber)
         {
@@ -37,8 +37,8 @@ public class ChainLevelHelper(
             // A gap is expected when forward sync hasn't reached `blockNumber` yet (best beacon header
             // still below it) or when backward beacon sync hasn't reached it yet (lowest beacon header
             // still above it). Trigger a new beacon sync to close the gap.
-            bool aboveBeaconCoverage = (_blockTree.BestSuggestedBeaconHeader?.Number ?? -1) < blockNumber;
-            bool belowBeaconCoverage = (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) > blockNumber;
+            bool aboveBeaconCoverage = (_blockTree.BestSuggestedBeaconHeader?.Number ?? 0UL) < blockNumber;
+            bool belowBeaconCoverage = (_blockTree.LowestInsertedBeaconHeader?.Number ?? ulong.MaxValue) > blockNumber;
             bool expectedDuringSync = aboveBeaconCoverage || belowBeaconCoverage;
 
             if (!expectedDuringSync)
@@ -56,7 +56,7 @@ public class ChainLevelHelper(
 
     public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0)
     {
-        (long? startingPoint, Hash256? startingPointBlockHash) = GetStartingPoint();
+        (ulong? startingPoint, Hash256? startingPointBlockHash) = GetStartingPoint();
         if (startingPoint is null)
         {
             if (_logger.IsTrace)
@@ -162,9 +162,9 @@ public class ChainLevelHelper(
     /// block that was processed where we should continue processing.
     /// </summary>
     /// <returns></returns>
-    private (long?, Hash256?) GetStartingPoint()
+    private (ulong?, Hash256?) GetStartingPoint()
     {
-        long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
+        ulong startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? ulong.MaxValue);
         bool shouldContinue;
 
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}. Best known number: {_blockTree.BestKnownNumber}, Process destination: {_beaconPivot.ProcessDestination?.Number}");
@@ -218,7 +218,7 @@ public class ChainLevelHelper(
         return (startingPoint, parentBlockInfo.BlockHash);
     }
 
-    private BlockInfo? GetBeaconMainChainBlockInfo(long startingPoint)
+    private BlockInfo? GetBeaconMainChainBlockInfo(ulong startingPoint)
     {
         ChainLevelInfo? startingLevel = _blockTree.FindLevel(startingPoint);
         BlockInfo? beaconMainChainBlock = startingLevel?.BeaconMainChainBlock;

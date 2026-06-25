@@ -23,10 +23,10 @@ public class CompactionScheduleTests
 
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
-        Assert.That(schedule.Offset, Is.InRange(0L, (long)int.MaxValue - 1));
+        Assert.That(schedule.Offset, Is.InRange(0UL, (ulong)int.MaxValue - 1));
         byte[]? stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset);
         Assert.That(stored, Is.Not.Null);
-        Assert.That(stored.AsRlpValueContext().DecodeLong(), Is.EqualTo(schedule.Offset));
+        Assert.That(new RlpReader(stored).DecodeLong(), Is.EqualTo(schedule.Offset));
     }
 
     [Test]
@@ -67,7 +67,7 @@ public class CompactionScheduleTests
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
         Assert.That(schedule.Offset, Is.EqualTo(7));
-        long stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!.AsRlpValueContext().DecodeLong();
+        long stored = new RlpReader(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
         Assert.That(stored, Is.EqualTo(5), "configured offset should not modify the stored offset");
     }
 
@@ -93,8 +93,8 @@ public class CompactionScheduleTests
 
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
-        Assert.That(schedule.Offset, Is.InRange(0L, (long)int.MaxValue - 1));
-        long stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!.AsRlpValueContext().DecodeLong();
+        Assert.That(schedule.Offset, Is.InRange(0UL, (ulong)int.MaxValue - 1));
+        long stored = new RlpReader(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
         Assert.That(stored, Is.EqualTo(schedule.Offset));
     }
 
@@ -108,8 +108,8 @@ public class CompactionScheduleTests
 
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
-        Assert.That(schedule.Offset, Is.InRange(0L, (long)int.MaxValue - 1));
-        long stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!.AsRlpValueContext().DecodeLong();
+        Assert.That(schedule.Offset, Is.InRange(0UL, (ulong)int.MaxValue - 1));
+        long stored = new RlpReader(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
         Assert.That(stored, Is.EqualTo(schedule.Offset));
     }
 
@@ -125,17 +125,17 @@ public class CompactionScheduleTests
         Assert.That(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset), Is.Null);
     }
 
-    [TestCase(1, 1)]    // odd block: 1 & -1 = 1
-    [TestCase(2, 2)]
-    [TestCase(4, 4)]
-    [TestCase(6, 2)]
-    [TestCase(8, 8)]
-    [TestCase(10, 2)]
-    [TestCase(12, 4)]
-    [TestCase(14, 2)]
-    [TestCase(16, 16)]
-    [TestCase(32, 16)]   // capped at CompactSize=16
-    public void GetCompactSize_OffsetZero_MatchesBitTrick(long blockNumber, int expected)
+    [TestCase(1UL, 1)]    // odd block: 1 & -1 = 1
+    [TestCase(2UL, 2)]
+    [TestCase(4UL, 4)]
+    [TestCase(6UL, 2)]
+    [TestCase(8UL, 8)]
+    [TestCase(10UL, 2)]
+    [TestCase(12UL, 4)]
+    [TestCase(14UL, 2)]
+    [TestCase(16UL, 16)]
+    [TestCase(32UL, 16)]   // capped at CompactSize=16
+    public void GetCompactSize_OffsetZero_MatchesBitTrick(ulong blockNumber, int expected)
     {
         FlatDbConfig config = new() { CompactSize = 16 };
         CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, 0);
@@ -143,12 +143,12 @@ public class CompactionScheduleTests
         Assert.That(schedule.GetCompactSize(blockNumber), Is.EqualTo(expected));
     }
 
-    [TestCase(0, 1)]    // block 0 always 1
-    [TestCase(13, 16)]  // 13+3 = 16 -> full
-    [TestCase(16, 1)]   // 16+3 = 19 -> 19 & -19 = 1 (caller treats as no compaction)
-    [TestCase(5, 8)]    // 5+3 = 8
-    [TestCase(29, 16)]  // 29+3 = 32 -> 32 & -32 = 32, capped at 16
-    public void GetCompactSize_WithOffset3_ShiftsBoundaries(long blockNumber, int expected)
+    [TestCase(0UL, 1)]    // block 0 always 1
+    [TestCase(13UL, 16)]  // 13+3 = 16 -> full
+    [TestCase(16UL, 1)]   // 16+3 = 19 -> 19 & -19 = 1 (caller treats as no compaction)
+    [TestCase(5UL, 8)]    // 5+3 = 8
+    [TestCase(29UL, 16)]  // 29+3 = 32 -> 32 & -32 = 32, capped at 16
+    public void GetCompactSize_WithOffset3_ShiftsBoundaries(ulong blockNumber, int expected)
     {
         FlatDbConfig config = new() { CompactSize = 16 };
         CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, 3);
@@ -165,7 +165,7 @@ public class CompactionScheduleTests
         CompactionSchedule small = ScheduleHelper.CreateWithOffset(config, smallOffset);
         CompactionSchedule large = ScheduleHelper.CreateWithOffset(config, largeOffset);
 
-        for (long block = 1; block <= 64; block++)
+        for (ulong block = 1UL; block <= 64UL; block++)
         {
             Assert.That(large.GetCompactSize(block), Is.EqualTo(small.GetCompactSize(block)),
                 $"Tier mismatch at block {block} between offset {smallOffset} and {largeOffset}");
@@ -174,13 +174,13 @@ public class CompactionScheduleTests
         }
     }
 
-    [TestCase(0, 0, 16)]    // from 0, offset 0 -> next full at 16
-    [TestCase(16, 0, 32)]   // from boundary, advance by CompactSize
-    [TestCase(15, 0, 16)]
-    [TestCase(0, 3, 13)]    // from 0, offset 3 -> 0+(16-3) = 13
-    [TestCase(13, 3, 29)]   // from boundary 13, advance by 16
-    [TestCase(7, 5, 11)]    // from 7, offset 5 -> (7+5)%16=12, next at 7+(16-12)=11
-    public void NextFullCompactionAfter_VariousOffsets(long from, int offset, long expected)
+    [TestCase(0UL, 0, 16UL)]    // from 0, offset 0 -> next full at 16
+    [TestCase(16UL, 0, 32UL)]   // from boundary, advance by CompactSize
+    [TestCase(15UL, 0, 16UL)]
+    [TestCase(0UL, 3, 13UL)]    // from 0, offset 3 -> 0+(16-3) = 13
+    [TestCase(13UL, 3, 29UL)]   // from boundary 13, advance by 16
+    [TestCase(7UL, 5, 11UL)]    // from 7, offset 5 -> (7+5)%16=12, next at 7+(16-12)=11
+    public void NextFullCompactionAfter_VariousOffsets(ulong from, int offset, ulong expected)
     {
         FlatDbConfig config = new() { CompactSize = 16 };
         CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
@@ -194,7 +194,7 @@ public class CompactionScheduleTests
         FlatDbConfig config = new() { CompactSize = 1 };
         CompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
 
-        Assert.That(schedule.NextFullCompactionAfter(0), Is.EqualTo(long.MaxValue));
+        Assert.That(schedule.NextFullCompactionAfter(0), Is.EqualTo(ulong.MaxValue));
     }
 
     [Test]

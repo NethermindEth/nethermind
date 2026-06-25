@@ -821,7 +821,7 @@ public class StorageProviderTests(bool useFlat)
 
             public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatchDecorator(baseScope.StartWriteBatch(estimatedAccountNum), writtenData);
 
-            public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
+            public void Commit(ulong blockNumber) => baseScope.Commit(blockNumber);
         }
 
         private class WriteBatchDecorator(

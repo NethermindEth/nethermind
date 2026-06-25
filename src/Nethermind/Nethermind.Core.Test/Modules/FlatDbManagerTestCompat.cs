@@ -28,7 +28,7 @@ internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbMa
 
     private StateId NormalizeState(StateId stateId)
     {
-        if (stateId.StateRoot == Keccak.EmptyTreeHash && stateId.BlockNumber != -1 &&
+        if (stateId.StateRoot == Keccak.EmptyTreeHash && stateId.BlockNumber != StateId.PreGenesis.BlockNumber &&
             !flatDbManager.HasStateForBlock(stateId))
             return StateId.PreGenesis;
         return stateId;

@@ -54,7 +54,7 @@ public class SyncServerTests
         ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
         Hash256 result = ctx.SyncServer.FindHash(123)!;
 
-        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
+        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>());
         ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         Assert.That(result, Is.EqualTo(TestItem.KeccakA));
@@ -568,21 +568,24 @@ public class SyncServerTests
 
         const int blocksCount = 100;
         int startBlock = (int)localBlockTree.Head!.Number;
-        int frequencyAlignedBlocks = Enumerable.Range(startBlock + 1, blocksCount).Count(x => x % frequency == 0);
 
-        CountdownEvent[] perPeerSignals = peers.Select(_ => new CountdownEvent(frequencyAlignedBlocks)).ToArray();
-        int[] perPeerCalls = new int[peers.Length];
+        // Older in-flight range broadcasts are cancelled as the head advances, so intermediate updates
+        // may be coalesced away; only the latest range is guaranteed to reach every peer.
+        ulong genesisNumber = localBlockTree.Genesis!.Number;
+        // AddBranch adds blocks up to branchLength - 1, so the highest head is blocksCount - 1, not blocksCount.
+        ulong finalLatest = (ulong)Enumerable.Range(startBlock + 1, blocksCount - 1).Last(x => x % frequency == 0);
+
+        ManualResetEventSlim[] perPeerFinalRange = peers.Select(_ => new ManualResetEventSlim(false)).ToArray();
         for (int i = 0; i < peers.Length; i++)
         {
             int idx = i;
             peers[i].SyncPeer
                 .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
-                .Do(_ =>
+                .Do(call =>
                 {
-                    // Saturate at frequencyAlignedBlocks: Signal() throws once CurrentCount hits 0,
-                    // and the production code may emit more notifications than the countdown was sized for.
-                    if (Interlocked.Increment(ref perPeerCalls[idx]) <= frequencyAlignedBlocks)
-                        perPeerSignals[idx].Signal();
+                    if (call.ArgAt<BlockHeader>(0).Number == genesisNumber &&
+                        call.ArgAt<BlockHeader>(1).Number == finalLatest)
+                        perPeerFinalRange[idx].Set();
                 });
         }
 
@@ -592,19 +595,10 @@ public class SyncServerTests
         localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
-        (long earliest, int latest)[] expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
-            .Where(x => x % frequency == 0)
-            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
-            .ToArray()[^2..];
-
         for (int i = 0; i < peers.Length; i++)
         {
-            Assert.That(perPeerSignals[i].Wait(TimeSpan.FromSeconds(30)), Is.True, $"Peer {i} did not receive all expected NotifyOfNewRange calls");
-            (long earliest, long latest)[] arr = peers[i].SyncPeer.ReceivedCalls()
-                .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
-                .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
-                .Select(a => (earliest: a[0], latest: a[1])).ToArray();
-            Assert.That(arr[^2..], Is.EqualTo(expectedUpdates));
+            Assert.That(perPeerFinalRange[i].Wait(TimeSpan.FromSeconds(30)), Is.True,
+                $"Peer {i} was not notified of the latest block range (genesis -> {finalLatest})");
         }
     }
 
@@ -655,7 +649,7 @@ public class SyncServerTests
     public void Correctly_clips_lowestBlock()
     {
         Context ctx = new();
-        ctx.BlockTree.GetLowestBlock().Returns(5);
+        ctx.BlockTree.GetLowestBlock().Returns(5UL);
         Assert.That(ctx.SyncServer.LowestBlock, Is.EqualTo(0));
     }
 
@@ -727,7 +721,7 @@ public class SyncServerTests
         }
         else
         {
-            blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<long>(), Arg.Any<Hash256>());
+            blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>());
         }
     }
 

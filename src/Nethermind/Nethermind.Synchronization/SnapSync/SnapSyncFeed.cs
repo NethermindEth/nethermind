@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (batch.AccountsToRefreshResponse is not null)
                 {
-                    _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
+                    result = _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
                 }
                 else
                 {

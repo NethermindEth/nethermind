@@ -31,7 +31,7 @@ public class AuRaTerminalBlockDisposerTests
 
     private void SetHead(bool postMerge)
     {
-        Block head = Build.A.Block.WithNumber(postMerge ? 30_000_000 : 1_000).TestObject;
+        Block head = Build.A.Block.WithNumber(postMerge ? 30_000_000UL : 1_000UL).TestObject;
         _blockTree.Head.Returns(head);
         _poSSwitcher.IsPostMerge(head.Header).Returns(postMerge);
     }

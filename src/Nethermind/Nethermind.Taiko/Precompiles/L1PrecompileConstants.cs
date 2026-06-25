@@ -31,21 +31,21 @@ public static class L1PrecompileConstants
 
     public const int L1SloadStorageKeyBytes = 32;
     public const int L1SloadExpectedInputLength = Address.Size + L1SloadStorageKeyBytes + BlockNumberBytes;
-    public const long L1SloadFixedGasCost = 2000L;
-    public const long L1SloadPerLoadGasCost = 2000L;
+    public const ulong L1SloadFixedGasCost = 2000UL;
+    public const ulong L1SloadPerLoadGasCost = 2000UL;
 
     // --- L1STATICCALL constants (Surge precompile spec) ---
 
     public const int L1StaticCallMinInputLength = Address.Size + BlockNumberBytes;
-    public const long L1StaticCallFixedGasCost = 2000L;
+    public const ulong L1StaticCallFixedGasCost = 2000UL;
     /// <summary>
     /// Per-call overhead covering L1 RPC round-trip and call execution.
     /// </summary>
-    public const long L1StaticCallPerCallOverhead = 10000L;
+    public const ulong L1StaticCallPerCallOverhead = 10000UL;
     /// <summary>
     /// Per-byte calldata cost matching EVM CALLDATACOPY (16 gas/byte, EIP-2028).
     /// </summary>
-    public const long L1StaticCallPerByteCalldataCost = 16L;
+    public const ulong L1StaticCallPerByteCalldataCost = 16UL;
     /// <summary>
     /// Maximum return data size (24 KB, matches MAX_CODE_SIZE per EIP-170).
     /// </summary>

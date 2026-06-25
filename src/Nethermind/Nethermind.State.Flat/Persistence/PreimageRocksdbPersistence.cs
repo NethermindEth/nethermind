@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -155,8 +156,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 return;
             }
 
-            using NettyRlpStream stream = SlimAccountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
+            using ArrayPoolSpan<byte> rlp = SlimAccountDecoder.EncodeToArrayPoolSpan(account);
+            _flatWriteBatch.SetAccount(fakeAddrHash, rlp);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
@@ -203,7 +204,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 return null;
             }
 
-            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
+            RlpReader ctx = new(valueBuffer[..responseSize]);
             return AccountDecoder.Slim.Decode(ref ctx);
         }
 

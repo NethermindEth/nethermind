@@ -45,9 +45,9 @@ public sealed class EraWriter : IDisposable
     private readonly SlotTime? _slotTime;
 
     // Buffered per-block RLP payloads. These are written in section order during Finalize().
-    private readonly ArrayPoolList<byte[]> _headers = new(MaxEraSize);
-    private readonly ArrayPoolList<byte[]> _bodies = new(MaxEraSize);
-    private readonly ArrayPoolList<byte[]> _receipts = new(MaxEraSize);
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _headers = new(MaxEraSize);
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _bodies = new(MaxEraSize);
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _receipts = new(MaxEraSize);
 
     // Per-block byte offsets recorded during Finalize() and written into the ComponentIndex.
     // Each stores the absolute file position of the entry's TLV header.
@@ -57,9 +57,10 @@ public sealed class EraWriter : IDisposable
 
     private readonly ArrayPoolList<UInt256> _totalDifficulties = new(MaxEraSize);
 
-    private long _startNumber;
+    private ulong _startNumber;
     private bool _firstBlock = true;
     private bool _finalized;
+    private bool _payloadsDisposed;
     private int _preMergeBlockCount;
     private bool _hasPostMergeBlocks;
     private UInt256 _lastPreMergeTD;
@@ -110,10 +111,10 @@ public sealed class EraWriter : IDisposable
             _firstBlock = false;
             await _e2StoreWriter.WriteEntry(EntryTypes.Version, Memory<byte>.Empty, cancellation);
         }
-        else if (block.Number != _startNumber + _headers.Count)
+        else if (block.Number != _startNumber + (ulong)_headers.Count)
         {
             throw new ArgumentException(
-                $"Blocks must be added in sequential order. Expected block {_startNumber + _headers.Count}, got {block.Number}.",
+                $"Blocks must be added in sequential order. Expected block {_startNumber + (ulong)_headers.Count}, got {block.Number}.",
                 nameof(block));
         }
 
@@ -130,24 +131,14 @@ public sealed class EraWriter : IDisposable
 
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
-        using (NettyRlpStream headerRlp = _headerDecoder.EncodeToNewNettyStream(block.Header, rlpBehaviors))
-        {
-            _headers.Add(headerRlp.AsMemory().ToArray());
-        }
-
-        using (NettyRlpStream bodyRlp = _blockBodyDecoder.EncodeToNewNettyStream(block.Body, rlpBehaviors))
-        {
-            _bodies.Add(bodyRlp.AsMemory().ToArray());
-        }
-
-        _receipts.Add(EncodeSlimReceipts(receipts, spec.IsEip658Enabled));
+        AddEncodedPayloads(block, receipts, rlpBehaviors, spec.IsEip658Enabled);
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
             long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * MillisecondsPerSecond);
-            (ValueHash256 beaconBlockRoot, ValueHash256 stateRoot)? roots =
+            (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots =
                 await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
-            _blocksRootContext!.ProcessBlock(block, roots?.beaconBlockRoot, roots?.stateRoot);
+            _blocksRootContext!.ProcessBlock(block, roots?.BeaconBlockRoot, roots?.StateRoot);
         }
         else
         {
@@ -196,19 +187,19 @@ public sealed class EraWriter : IDisposable
             for (int i = 0; i < blockCount; i++)
             {
                 _headerOffsets.Add(_e2StoreWriter.Position);
-                await WriteCompressed(EntryTypes.CompressedHeader, _headers[i], cancellation);
+                await WriteCompressed(EntryTypes.CompressedHeader, _headers[i].AsReadOnlyMemory(), cancellation);
             }
 
             for (int i = 0; i < blockCount; i++)
             {
                 _bodyOffsets.Add(_e2StoreWriter.Position);
-                await WriteCompressed(EntryTypes.CompressedBody, _bodies[i], cancellation);
+                await WriteCompressed(EntryTypes.CompressedBody, _bodies[i].AsReadOnlyMemory(), cancellation);
             }
 
             for (int i = 0; i < blockCount; i++)
             {
                 _receiptsOffsets.Add(_e2StoreWriter.Position);
-                await WriteCompressed(EntryTypes.CompressedSlimReceipts, _receipts[i], cancellation);
+                await WriteCompressed(EntryTypes.CompressedSlimReceipts, _receipts[i].AsReadOnlyMemory(), cancellation);
             }
 
             if (needsTd)
@@ -239,7 +230,7 @@ public sealed class EraWriter : IDisposable
             using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
             Span<byte> span = indexBytes.AsSpan();
 
-            WriteInt64(span, 0, _startNumber);
+            WriteUInt64(span, 0, _startNumber);
 
             for (int i = 0; i < blockCount; i++)
             {
@@ -259,6 +250,7 @@ public sealed class EraWriter : IDisposable
             await _e2StoreWriter.Flush(cancellation);
 
             _finalized = true;
+            DisposePayloads();
             return (accumulatorRoot, _e2StoreWriter.FinalizeChecksum());
         }
         finally
@@ -270,6 +262,7 @@ public sealed class EraWriter : IDisposable
 
     public void Dispose()
     {
+        DisposePayloads();
         _blocksRootContext?.Dispose();
         _e2StoreWriter?.Dispose();
         _headers.Dispose();
@@ -287,17 +280,26 @@ public sealed class EraWriter : IDisposable
     /// txType is empty-bytes for legacy (type 0), single byte otherwise.
     /// postStateOrStatus is the 32-byte state root pre-EIP-658, or 0x01/empty for success/failure post-EIP-658.
     /// </summary>
-    private static byte[] EncodeSlimReceipts(TxReceipt[] receipts, bool isEip658)
+    private static ArrayPoolSpan<byte> EncodeSlimReceipts(TxReceipt[] receipts, bool isEip658)
     {
         int totalLength = 0;
         foreach (TxReceipt receipt in receipts)
             totalLength += Rlp.LengthOfSequence(GetReceiptContentLength(receipt, isEip658));
 
-        RlpStream stream = new(Rlp.LengthOfSequence(totalLength));
-        stream.StartSequence(totalLength);
-        foreach (TxReceipt receipt in receipts)
-            WriteReceipt(stream, receipt, isEip658);
-        return stream.Data.ToArray() ?? [];
+        ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(totalLength));
+        try
+        {
+            RlpWriter writer = new(bytes);
+            writer.StartSequence(totalLength);
+            foreach (TxReceipt receipt in receipts)
+                WriteReceipt(ref writer, receipt, isEip658);
+            return bytes;
+        }
+        catch
+        {
+            bytes.Dispose();
+            throw;
+        }
     }
 
     private static int GetReceiptContentLength(TxReceipt receipt, bool isEip658)
@@ -313,7 +315,8 @@ public sealed class EraWriter : IDisposable
         return 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
     }
 
-    private static void WriteReceipt(RlpStream stream, TxReceipt receipt, bool isEip658)
+    private static void WriteReceipt<TWriter>(ref TWriter writer, TxReceipt receipt, bool isEip658)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int logsLength = 0;
         if (receipt.Logs is not null)
@@ -325,29 +328,29 @@ public sealed class EraWriter : IDisposable
         int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
         int contentLength = 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
 
-        stream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
 
         // TxType: empty byte array for legacy, single byte for typed (EIP-2718)
         if (receipt.TxType == TxType.Legacy)
-            stream.Encode(Array.Empty<byte>());
+            writer.Encode(Array.Empty<byte>());
         else
-            stream.WriteByte((byte)receipt.TxType);
+            writer.WriteByte((byte)receipt.TxType);
 
         // postStateOrStatus: 32-byte hash (pre-EIP-658), 0x01 (success), or empty (failure)
         if (!isEip658)
-            stream.Encode(receipt.PostTransactionState);
+            writer.Encode(receipt.PostTransactionState);
         else if (receipt.StatusCode == 0)
-            stream.Encode(Array.Empty<byte>());
+            writer.Encode(Array.Empty<byte>());
         else
-            stream.WriteByte(receipt.StatusCode);
+            writer.WriteByte(receipt.StatusCode);
 
-        stream.Encode(receipt.GasUsedTotal);
+        writer.Encode(receipt.GasUsedTotal);
 
-        stream.StartSequence(logsLength);
+        writer.StartSequence(logsLength);
         if (receipt.Logs is not null)
         {
             foreach (LogEntry log in receipt.Logs)
-                LogEntryDecoder.Instance.Encode(stream, log);
+                LogEntryDecoder.Instance.Encode(ref writer, log);
         }
     }
 
@@ -367,4 +370,66 @@ public sealed class EraWriter : IDisposable
 
     private static void WriteInt64(Span<byte> destination, int off, long value) =>
         BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, IndexFieldSize), value);
+
+    private static void WriteUInt64(Span<byte> destination, int off, ulong value) =>
+        BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(off, IndexFieldSize), value);
+
+    private void DisposePayloads()
+    {
+        if (_payloadsDisposed)
+        {
+            return;
+        }
+
+        _payloadsDisposed = true;
+        DisposePayloads(_headers);
+        DisposePayloads(_bodies);
+        DisposePayloads(_receipts);
+    }
+
+    private static void DisposePayloads(ArrayPoolList<ArrayPoolSpan<byte>> payloads)
+    {
+        for (int i = 0; i < payloads.Count; i++)
+        {
+            payloads[i].Dispose();
+        }
+
+        payloads.Clear();
+    }
+
+    private void AddEncodedPayloads(Block block, TxReceipt[] receipts, RlpBehaviors rlpBehaviors, bool isEip658)
+    {
+        ArrayPoolSpan<byte> headerRlp = _headerDecoder.EncodeToArrayPoolSpan(block.Header, rlpBehaviors);
+        try
+        {
+            _headers.Add(headerRlp);
+        }
+        catch
+        {
+            headerRlp.Dispose();
+            throw;
+        }
+
+        ArrayPoolSpan<byte> bodyRlp = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
+        try
+        {
+            _bodies.Add(bodyRlp);
+        }
+        catch
+        {
+            bodyRlp.Dispose();
+            throw;
+        }
+
+        ArrayPoolSpan<byte> receiptRlp = EncodeSlimReceipts(receipts, isEip658);
+        try
+        {
+            _receipts.Add(receiptRlp);
+        }
+        catch
+        {
+            receiptRlp.Dispose();
+            throw;
+        }
+    }
 }
