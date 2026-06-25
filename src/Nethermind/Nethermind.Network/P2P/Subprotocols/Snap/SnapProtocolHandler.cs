@@ -46,6 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private readonly MessageDictionary<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
         private static readonly byte[] _emptyBytes = [0];
         private readonly long _accountRangeMaxResponseBytes;
+        private readonly long _storageRangeMaxResponseBytes;
 
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
@@ -66,6 +67,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _accountRangeMaxResponseBytes = syncConfig.SnapSyncAccountRangeMaxResponseBytes <= 0
                 ? SnapMessageLimits.MaxResponseBytes
                 : SnapMessageLimits.ClampResponseBytes(syncConfig.SnapSyncAccountRangeMaxResponseBytes);
+            _storageRangeMaxResponseBytes = syncConfig.SnapSyncStorageRangeMaxResponseBytes <= 0
+                ? SnapMessageLimits.MaxResponseBytes
+                : SnapMessageLimits.ClampResponseBytes(syncConfig.SnapSyncStorageRangeMaxResponseBytes);
         }
 
         public override void Init() => NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
@@ -220,7 +224,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 SendRequest(new GetStorageRangeMessage()
                 {
                     StorageRange = range,
-                    ResponseBytes = bytesLimit
+                    ResponseBytes = Math.Min(bytesLimit, _storageRangeMaxResponseBytes)
                 }, _getStorageRangeRequests, token));
 
             return new SlotsAndProofs { PathsAndSlots = response.Slots, Proofs = response.Proofs };

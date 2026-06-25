@@ -39,7 +39,8 @@ public class SnapProtocolHandlerTests
             get
             {
                 _messageSerializationService ??= new MessageSerializationService(
-                    SerializerInfo.Create(new AccountRangeMessageSerializer())
+                    SerializerInfo.Create(new AccountRangeMessageSerializer()),
+                    SerializerInfo.Create(new StorageRangesMessageSerializer())
                 );
 
                 return _messageSerializationService;
@@ -118,6 +119,37 @@ public class SnapProtocolHandlerTests
             }
         }
 
+        public Context WithStorageResponseBytesRecorder
+        {
+            get
+            {
+                Session
+                    .When((ses) => ses.DeliverMessage(Arg.Any<P2PMessage>()))
+                    .Do((callInfo) =>
+                    {
+                        GetStorageRangeMessage storageRangeMessage = (GetStorageRangeMessage)callInfo[0];
+                        _recordedResponseBytesLength.Add(storageRangeMessage.ResponseBytes);
+
+                        IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new StorageRangeMessage()
+                        {
+                            Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
+                            Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()),
+                            RequestId = storageRangeMessage.RequestId,
+                        });
+                        buffer.ReadByte(); // Need to skip adaptive type
+
+                        ZeroPacket packet = new(buffer)
+                        {
+                            PacketType = SnapMessageCode.StorageRanges,
+                        };
+
+                        SnapProtocolHandler.HandleMessage(packet);
+                        ReferenceCountUtil.Release(packet); // releases buffer
+                    });
+                return this;
+            }
+        }
+
         public void RecordedMessageSizesShouldIncrease() => Assert.That(_recordedResponseBytesLength[^1], Is.GreaterThan(_recordedResponseBytesLength[^2]));
 
         public void RecordedMessageSizesShouldDecrease() => Assert.That(_recordedResponseBytesLength[^1], Is.LessThan(_recordedResponseBytesLength[^2]));
@@ -187,6 +219,44 @@ public class SnapProtocolHandlerTests
 
         Assert.That(ctx.LastRecordedMessageSize, Is.EqualTo(125_000L));
     }
+
+    [TestCase(1234, 1234L)]
+    [TestCase(0, 50_000L)]
+    [TestCase(-1, 50_000L)]
+    public async Task Storage_range_response_bytes_are_capped_by_sync_config(int configuredResponseBytes, long expectedResponseBytes)
+    {
+        Context ctx = new Context
+        {
+            SyncConfig = new SyncConfig { SnapSyncStorageRangeMaxResponseBytes = configuredResponseBytes }
+        }.WithStorageResponseBytesRecorder;
+
+        using StorageRange range = CreateStorageRange();
+        using SlotsAndProofs response = await ctx.SnapProtocolHandler.GetStorageRange(range, CancellationToken.None);
+
+        Assert.That(ctx.LastRecordedMessageSize, Is.EqualTo(expectedResponseBytes));
+    }
+
+    [Test]
+    public async Task Storage_range_response_bytes_are_capped_by_default_sync_config()
+    {
+        Context ctx = new Context().WithStorageResponseBytesRecorder;
+
+        for (int i = 0; i < 6; i++)
+        {
+            using StorageRange range = CreateStorageRange();
+            using SlotsAndProofs response = await ctx.SnapProtocolHandler.GetStorageRange(range, CancellationToken.None);
+        }
+
+        Assert.That(ctx.LastRecordedMessageSize, Is.EqualTo(125_000L));
+    }
+
+    private static StorageRange CreateStorageRange() => new()
+    {
+        RootHash = Keccak.Zero,
+        Accounts = new ArrayPoolList<PathWithAccount>(1) { new() { Path = Keccak.Zero } },
+        StartingHash = Keccak.Zero,
+        LimitHash = Keccak.Zero,
+    };
 
     [Test]
     [Explicit]
