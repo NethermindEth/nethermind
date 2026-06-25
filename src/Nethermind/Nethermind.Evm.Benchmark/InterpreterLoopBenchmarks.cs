@@ -64,13 +64,13 @@ namespace Nethermind.Evm.Benchmark
 
         /// <summary>Arithmetic/jump loop: measures pure dispatch and per-op bookkeeping.</summary>
         [Benchmark]
-        public void ComputeLoop() => Execute(_computeLoopCode, gasLimit: 10_000_000L);
+        public void ComputeLoop() => Execute(_computeLoopCode, gasLimit: 10_000_000);
 
         /// <summary>Straight-line STATICCALLs to a returning callee: measures the frame cycle.</summary>
         [Benchmark]
-        public void NestedCalls() => Execute(_nestedCallsCode, gasLimit: 10_000_000L);
+        public void NestedCalls() => Execute(_nestedCallsCode, gasLimit: 10_000_000);
 
-        private void Execute(CodeInfo codeInfo, long gasLimit)
+        private void Execute(CodeInfo codeInfo, ulong gasLimit)
         {
             using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
                 executingAccount: Address.Zero,
@@ -82,7 +82,7 @@ namespace Nethermind.Evm.Benchmark
                 inputData: default);
 
             using (VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromLong(gasLimit),
+                EthereumGasPolicy.FromULong(gasLimit),
                 ExecutionType.TRANSACTION,
                 environment,
                 new StackAccessTracker(),

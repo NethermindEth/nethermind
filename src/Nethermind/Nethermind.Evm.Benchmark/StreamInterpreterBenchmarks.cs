@@ -192,7 +192,7 @@ namespace Nethermind.Evm.Benchmark
         public void ExecuteStraightLine()
         {
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromLong(100_000_000), ExecutionType.TRANSACTION, _straightLineEnvironment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+                EthereumGasPolicy.FromULong(100_000_000), ExecutionType.TRANSACTION, _straightLineEnvironment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
@@ -202,7 +202,7 @@ namespace Nethermind.Evm.Benchmark
         {
             // Fresh frame per invocation: a reused VmState resumes at end-of-code and measures nothing.
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromLong(100_000_000), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+                EthereumGasPolicy.FromULong(100_000_000), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
@@ -211,7 +211,7 @@ namespace Nethermind.Evm.Benchmark
         public void ExecuteMemoryHeavy()
         {
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromLong(100_000_000), ExecutionType.TRANSACTION, _memoryHeavyEnvironment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+                EthereumGasPolicy.FromULong(100_000_000), ExecutionType.TRANSACTION, _memoryHeavyEnvironment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
