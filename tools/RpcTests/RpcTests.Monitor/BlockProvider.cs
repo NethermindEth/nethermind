@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 
 namespace Nethermind.RpcTests.Monitor;
@@ -13,7 +12,7 @@ namespace Nethermind.RpcTests.Monitor;
 /// Backed by a ring buffer indexed by <c>number % capacity</c>, so a block seen for an existing
 /// number replaces it (reorgs) and a block <c>capacity</c> ahead evicts the slot.
 /// </remarks>
-internal class BlockProvider(HttpClient client, Uri nodeUrl, int capacity = 64)
+internal class BlockProvider(RpcClient client, int capacity = 64)
 {
     private readonly BlockInfo?[] _blocks = new BlockInfo?[capacity];
     private readonly Lock _lock = new();
@@ -24,13 +23,12 @@ internal class BlockProvider(HttpClient client, Uri nodeUrl, int capacity = 64)
             _blocks[Index(block.Number)] = block;
     }
 
-    public async Task<BlockInfo?> GetAsync(long number, CancellationToken ct = default)
+    public async Task<BlockInfo> GetAsync(long number, CancellationToken ct = default)
     {
         if (TryGet(number) is { } cached)
             return cached;
 
-        if (await FetchAsync(number, ct) is not {} fetched)
-            return null;
+        BlockInfo fetched = await FetchAsync(number, ct);
 
         lock (_lock)
         {
@@ -52,7 +50,7 @@ internal class BlockProvider(HttpClient client, Uri nodeUrl, int capacity = 64)
         }
     }
 
-    private async Task<BlockInfo?> FetchAsync(long number, CancellationToken ct)
+    private async Task<BlockInfo> FetchAsync(long number, CancellationToken ct)
     {
         JsonObject request = new()
         {
@@ -62,12 +60,14 @@ internal class BlockProvider(HttpClient client, Uri nodeUrl, int capacity = 64)
             ["params"] = new JsonArray($"0x{number:x}", false)
         };
 
-        using HttpRequestMessage message = new(HttpMethod.Post, nodeUrl) { Content = JsonContent.Create(request) };
-        using HttpResponseMessage response = await client.SendAsync(message, ct);
-        response.EnsureSuccessStatusCode();
+        JsonNode response = await client.RetrySendAsync(request, ct);
 
-        JsonNode? body = await response.Content.ReadFromJsonAsync<JsonNode>(ct);
-        return body?["result"] is { } result ? new BlockInfo(result) : null;
+        if (response["error"] is { } error)
+            throw new Exception($"Failed to fetch block #{number}: {error.ToCompactString()}");
+
+        return response["result"] is { } result
+            ? new BlockInfo(result)
+            : throw new Exception($"Block #{number} not found");
     }
 
     private int Index(long number) => (int)(number % _blocks.Length);

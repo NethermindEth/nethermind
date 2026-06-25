@@ -31,7 +31,7 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt, ReorgTracker
 
     public void RecordHeadUpdate() => Interlocked.Increment(ref _headUpdates);
     public void RecordTestRun() => Interlocked.Increment(ref _testRuns);
-    public void RecordRequestRun() => Interlocked.Increment(ref _requestRuns);
+    public void RecordRequestRun(int count) => Interlocked.Add(ref _requestRuns, count);
     public void RecordTestFailure() => Interlocked.Increment(ref _testFailures);
     public void RecordError() => Interlocked.Increment(ref _errors);
     public void RecordReorg() => Interlocked.Increment(ref _reorgs);

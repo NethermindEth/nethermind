@@ -21,7 +21,7 @@ internal interface IStatsReporter
     void RecordHeadUpdate();
     void RecordReorg();
     void RecordTestRun();
-    void RecordRequestRun();
+    void RecordRequestRun(int count);
     void RecordTestFailure();
     void RecordError();
 
@@ -34,7 +34,7 @@ internal sealed class NullStatsReporter : IStatsReporter
 
     public void RecordHeadUpdate() { }
     public void RecordTestRun() { }
-    public void RecordRequestRun() { }
+    public void RecordRequestRun(int count) { }
     public void RecordTestFailure() { }
     public void RecordError() { }
     public void RecordReorg() { }
