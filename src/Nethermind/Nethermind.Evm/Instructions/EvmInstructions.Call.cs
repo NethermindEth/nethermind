@@ -146,9 +146,21 @@ public static partial class EvmInstructions
         // charge keyed on self-call and recipient existence, subsuming the new-account surcharge.
         if (hasValueTransfer)
         {
-            bool valueOutOfGas = spec.IsEip2780Enabled
-                ? !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas, caller == target, state.IsDeadAccount(target), spec)
-                : !TGasPolicy.ConsumeCallValueTransfer(ref gas);
+            bool valueOutOfGas;
+            if (spec.IsEip2780Enabled)
+            {
+                // EIP-8038 prices the value transfer as a flat charge independent of the recipient's
+                // liveness, so do not read the target here: the spec performs the static gas check
+                // before any state access, and a CALL that runs out of gas before the target access
+                // must not record the target in the block access list. The recipient-empty surcharge
+                // only applies to the older EIP-2780 tiered model (no BAL), so read lazily for it.
+                bool recipientEmpty = !spec.IsEip8038Enabled && state.IsDeadAccount(target);
+                valueOutOfGas = !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas, caller == target, recipientEmpty, spec);
+            }
+            else
+            {
+                valueOutOfGas = !TGasPolicy.ConsumeCallValueTransfer(ref gas);
+            }
             if (valueOutOfGas) goto OutOfGas;
         }
 
