@@ -501,7 +501,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
+        ulong nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)
@@ -513,7 +513,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
+        ulong nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)

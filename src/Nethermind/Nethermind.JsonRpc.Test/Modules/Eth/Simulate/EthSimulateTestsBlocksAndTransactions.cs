@@ -30,9 +30,9 @@ public class EthSimulateTestsBlocksAndTransactions
 {
     public static SimulatePayload<TransactionForRpc> CreateSerializationPayload(TestRpcBlockchain chain)
     {
-        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction txToFail = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 10_000_000);
-        UInt256 nextNonceA = ++nonceA;
+        ulong nextNonceA = ++nonceA;
         Transaction tx = GetTransferTxData(nextNonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 4_000_000);
 
         return new()
@@ -54,7 +54,7 @@ public class EthSimulateTestsBlocksAndTransactions
         };
     }
 
-    public static SimulatePayload<TransactionForRpc> CreateEthMovedPayload(TestRpcBlockchain chain, UInt256 nonceA)
+    public static SimulatePayload<TransactionForRpc> CreateEthMovedPayload(TestRpcBlockchain chain, ulong nonceA)
     {
         Transaction txAtoB1 = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB2 = GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
@@ -70,7 +70,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = (ulong)chain.BlockFinder.Head!.Number+2,
+                            Number = chain.BlockFinder.Head!.Number + 2,
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -82,7 +82,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = (ulong)checked(chain.Bridge.HeadBlock.Number + 10),
+                            Number = checked(chain.Bridge.HeadBlock.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -103,7 +103,7 @@ public class EthSimulateTestsBlocksAndTransactions
         return rpc;
     }
 
-    public static SimulatePayload<TransactionForRpc> CreateTransactionsForcedFail(TestRpcBlockchain chain, UInt256 nonceA)
+    public static SimulatePayload<TransactionForRpc> CreateTransactionsForcedFail(TestRpcBlockchain chain, ulong nonceA)
     {
         //shall be Ok
         Transaction txAtoB1 =
@@ -127,7 +127,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = (ulong)checked(chain.Bridge.HeadBlock.Number + 10),
+                            Number = checked(chain.Bridge.HeadBlock.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -152,7 +152,7 @@ public class EthSimulateTestsBlocksAndTransactions
         };
     }
 
-    public static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount, TxType type = TxType.EIP1559)
+    public static Transaction GetTransferTxData(ulong nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount, TxType type = TxType.EIP1559)
     {
         Transaction tx = new()
         {
@@ -163,7 +163,7 @@ public class EthSimulateTestsBlocksAndTransactions
             SenderAddress = from.Address,
             To = to,
             GasPrice = 20.GWei,
-            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20.GWei : 0
+            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20_000_000_000UL : 0UL
         };
 
         ethereumEcdsa.Sign(from, tx);
@@ -220,7 +220,7 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = CreateEthMovedPayload(chain, nonceA);
@@ -259,7 +259,7 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction txMainnetAtoB =
             GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
@@ -326,7 +326,7 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
-    public async Task Test_eth_simulate_respects_gas_cap(long gasCap, long? requestGas, bool expectCapped)
+    public async Task Test_eth_simulate_respects_gas_cap(ulong gasCap, ulong? requestGas, bool expectCapped)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         chain.RpcConfig.GasCap = gasCap;
@@ -654,7 +654,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Validation = true
     };
 
-    private static SimulatePayload<TransactionForRpc> NoncePayload(UInt256 accountNonce, UInt256 txNonce) => new()
+    private static SimulatePayload<TransactionForRpc> NoncePayload(ulong accountNonce, ulong txNonce) => new()
     {
         BlockStateCalls =
         [

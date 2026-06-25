@@ -71,7 +71,7 @@ public class VotesManagerTests
         XdcConsensusContext context = new();
         context.SetNewRound(currentRound);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>()).Returns(header);
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong?>()).Returns(header);
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         EpochSwitchInfo epochSwitchInfo = new(masternodes, [], [], info);
@@ -137,7 +137,7 @@ public class VotesManagerTests
         quorumCertificateManager.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
 
         // Now insert header and send one more
-        blockTree.FindHeader(header.Hash!, Arg.Any<long>()).Returns(header);
+        blockTree.FindHeader(header.Hash!, Arg.Any<ulong?>()).Returns(header);
         await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, 450, keys.Last()));
 
         quorumCertificateManager.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
@@ -528,11 +528,11 @@ public class VotesManagerTests
         }
     }
 
-    private static XdcBlockHeader[] GenerateBlockHeaders(int n, long blockNumber)
+    private static XdcBlockHeader[] GenerateBlockHeaders(int n, ulong blockNumber)
     {
         XdcBlockHeader[] headers = new XdcBlockHeader[n];
         Hash256 parentHash = Hash256.Zero;
-        long number = blockNumber;
+        ulong number = blockNumber;
         for (int i = 0; i < n; i++, number++)
         {
             headers[i] = Build.A.XdcBlockHeader()

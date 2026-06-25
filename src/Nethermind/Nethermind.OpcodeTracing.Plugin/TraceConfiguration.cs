@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.OpcodeTracing.Plugin;
 
 /// <summary>
@@ -21,9 +23,9 @@ public sealed record TraceConfiguration
     public TraceConfiguration(
         bool enabled,
         string outputDirectory,
-        long? startBlock,
-        long? endBlock,
-        long? recentBlocks,
+        ulong? startBlock,
+        ulong? endBlock,
+        ulong? recentBlocks,
         TracingMode mode,
         int maxDegreeOfParallelism)
     {
@@ -49,17 +51,17 @@ public sealed record TraceConfiguration
     /// <summary>
     /// Gets the start block number (nullable).
     /// </summary>
-    public long? StartBlock { get; }
+    public ulong? StartBlock { get; }
 
     /// <summary>
     /// Gets the end block number (nullable).
     /// </summary>
-    public long? EndBlock { get; }
+    public ulong? EndBlock { get; }
 
     /// <summary>
     /// Gets the number of recent blocks to trace (nullable).
     /// </summary>
-    public long? RecentBlocks { get; }
+    public ulong? RecentBlocks { get; }
 
     /// <summary>
     /// Gets the tracing mode.
@@ -74,12 +76,12 @@ public sealed record TraceConfiguration
     /// <summary>
     /// Gets the effective start block after resolving configuration.
     /// </summary>
-    public long EffectiveStartBlock { get; init; }
+    public ulong EffectiveStartBlock { get; init; }
 
     /// <summary>
     /// Gets the effective end block after resolving configuration.
     /// </summary>
-    public long EffectiveEndBlock { get; init; }
+    public ulong EffectiveEndBlock { get; init; }
 
     /// <summary>
     /// Gets the list of warnings generated during configuration resolution.
@@ -93,7 +95,7 @@ public sealed record TraceConfiguration
     /// <param name="currentChainTip">The current chain tip block number.</param>
     /// <returns>A validated trace configuration.</returns>
     /// <exception cref="InvalidOperationException">Thrown when configuration is invalid.</exception>
-    public static TraceConfiguration FromConfig(IOpcodeTracingConfig config, long currentChainTip)
+    public static TraceConfiguration FromConfig(IOpcodeTracingConfig config, ulong currentChainTip)
     {
         ArgumentNullException.ThrowIfNull(config);
 
@@ -111,8 +113,8 @@ public sealed record TraceConfiguration
             config.MaxDegreeOfParallelism);
 
         // Resolve effective block range
-        long effectiveStart;
-        long effectiveEnd;
+        ulong effectiveStart;
+        ulong effectiveEnd;
         List<string> warnings = [];
 
         // Check for conflicting parameters
@@ -142,7 +144,7 @@ public sealed record TraceConfiguration
             {
                 // Retrospective and RetrospectiveExecution: recent N blocks from chain tip
                 effectiveEnd = currentChainTip;
-                effectiveStart = Math.Max(0, currentChainTip - config.RecentBlocks.Value + 1);
+                effectiveStart = currentChainTip.SaturatingSub(config.RecentBlocks.Value - 1);
 
                 if (effectiveStart == 0 && config.RecentBlocks.Value > currentChainTip + 1)
                 {

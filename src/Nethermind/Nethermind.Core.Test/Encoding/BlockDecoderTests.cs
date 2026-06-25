@@ -23,11 +23,11 @@ public class BlockDecoderTests
     private static Block[] BuildScenarios()
     {
         Transaction[] transactions = new Transaction[100];
-        for (int i = 0; i < transactions.Length; i++)
+        for (uint i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
                 .WithData([(byte)i])
-                .WithNonce((UInt256)i)
+                .WithNonce(i)
                 .WithValue((UInt256)i)
                 .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA, true)
                 .TestObject;

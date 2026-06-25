@@ -100,7 +100,7 @@ public class StartingSyncPivotUpdater(
 
     private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
     {
-        (Hash256 Hash, long Number)? potentialPivotData = await TryGetPivotData(cancellationToken);
+        (Hash256 Hash, ulong Number)? potentialPivotData = await TryGetPivotData(cancellationToken);
 
         if (potentialPivotData is null)
         {
@@ -111,7 +111,7 @@ public class StartingSyncPivotUpdater(
         return TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
     }
 
-    protected virtual async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
+    protected virtual async Task<(Hash256 Hash, ulong Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting finalized block hash as it is safe, because can't be reorganized
         Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
@@ -120,17 +120,17 @@ public class StartingSyncPivotUpdater(
         {
             UpdateAndPrintPotentialNewPivot(finalizedBlockHash);
 
-            long? finalizedBlockNumber = TryGetBlockNumberFromBlockCache(finalizedBlockHash)
+            ulong? finalizedBlockNumber = TryGetBlockNumberFromBlockCache(finalizedBlockHash)
                                          ?? TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash)
                                          ?? await TryGetFromPeers(finalizedBlockHash, cancellationToken);
 
-            return finalizedBlockNumber is null ? null : (finalizedBlockHash, (long)finalizedBlockNumber);
+            return finalizedBlockNumber is null ? null : (finalizedBlockHash, finalizedBlockNumber.Value);
         }
 
         return null;
     }
 
-    protected long? TryGetBlockNumberFromBlockCache(Hash256 finalizedBlockHash, string type = Pivot)
+    protected ulong? TryGetBlockNumberFromBlockCache(Hash256 finalizedBlockHash, string type = Pivot)
     {
         if (_logger.IsDebug) _logger.Debug($"Looking for {type} block in block cache");
         if (_blockCacheService.BlockCache.TryGetValue(finalizedBlockHash, out Block? finalizedBlock))
@@ -146,7 +146,7 @@ public class StartingSyncPivotUpdater(
         return null;
     }
 
-    private long? TryGetFinalizedBlockNumberFromBlockTree(Hash256 finalizedBlockHash)
+    private ulong? TryGetFinalizedBlockNumberFromBlockTree(Hash256 finalizedBlockHash)
     {
         if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in blockTree");
         BlockHeader? finalizedHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
@@ -163,7 +163,7 @@ public class StartingSyncPivotUpdater(
         return null;
     }
 
-    protected async Task<long?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
+    protected async Task<ulong?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
         (await TryGetFromPeers(hash, cancellationToken, static async (peer, hash256, token) =>
         {
             BlockHeader? header = await peer.GetHeadBlockHeader(hash256, token);
@@ -209,9 +209,9 @@ public class StartingSyncPivotUpdater(
         return null;
     }
 
-    private bool TryOverwritePivot(Hash256 potentialPivotBlockHash, long potentialPivotBlockNumber)
+    private bool TryOverwritePivot(Hash256 potentialPivotBlockHash, ulong potentialPivotBlockNumber)
     {
-        long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
+        ulong targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0UL;
         bool isCloseToHead = targetBlock <= potentialPivotBlockNumber || (targetBlock - potentialPivotBlockNumber) < Constants.MaxDistanceFromHead;
         bool newPivotHigherThanOld = potentialPivotBlockNumber > _blockTree.SyncPivot.BlockNumber;
 
@@ -228,7 +228,7 @@ public class StartingSyncPivotUpdater(
         return false;
     }
 
-    private void UpdateConfigValues(Hash256 finalizedBlockHash, long finalizedBlockNumber)
+    private void UpdateConfigValues(Hash256 finalizedBlockHash, ulong finalizedBlockNumber)
     {
         _blockTree.SyncPivot = (finalizedBlockNumber, finalizedBlockHash);
         _syncConfig.MaxAttemptsToUpdatePivot = 0;

@@ -166,7 +166,7 @@ public class SszCodecTests
         BitConverter.TryWriteBytes(request.AsSpan(0, 8), 10UL);
         BitConverter.TryWriteBytes(request.AsSpan(8, 8), 5UL);
 
-        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Seq(request));
+        (ulong start, ulong count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Seq(request));
 
         using (Assert.EnterMultipleScope())
         {
@@ -398,9 +398,9 @@ public class SszCodecTests
             ReceiptsRoot = TestItem.KeccakC,
             LogsBloom = Bloom.Empty,
             PrevRandao = TestItem.KeccakD,
-            BlockNumber = (long)0x0102030405060708UL,
-            GasLimit = (long)0x1112131415161718UL,
-            GasUsed = (long)0x2122232425262728UL,
+            BlockNumber = 0x0102030405060708UL,
+            GasLimit = 0x1112131415161718UL,
+            GasUsed = 0x2122232425262728UL,
             Timestamp = 0x3132333435363738UL,
             ExtraData = [0xEE, 0xEF],
             BaseFeePerGas = new UInt256(0xDEADBEEF),
@@ -433,11 +433,11 @@ public class SszCodecTests
 
             Assert.That(buf.Slice(372, 32).ToArray(), Is.EqualTo(ep.PrevRandao!.Bytes.ToArray()), "prev_randao @ offset 372");
 
-            Assert.That(BitConverter.ToUInt64(buf.Slice(404, 8)), Is.EqualTo((ulong)ep.BlockNumber), "block_number @ offset 404");
+            Assert.That(BitConverter.ToUInt64(buf.Slice(404, 8)), Is.EqualTo(ep.BlockNumber), "block_number @ offset 404");
 
-            Assert.That(BitConverter.ToUInt64(buf.Slice(412, 8)), Is.EqualTo((ulong)ep.GasLimit), "gas_limit @ offset 412");
+            Assert.That(BitConverter.ToUInt64(buf.Slice(412, 8)), Is.EqualTo(ep.GasLimit), "gas_limit @ offset 412");
 
-            Assert.That(BitConverter.ToUInt64(buf.Slice(420, 8)), Is.EqualTo((ulong)ep.GasUsed), "gas_used @ offset 420");
+            Assert.That(BitConverter.ToUInt64(buf.Slice(420, 8)), Is.EqualTo(ep.GasUsed), "gas_used @ offset 420");
 
             Assert.That(BitConverter.ToUInt64(buf.Slice(428, 8)), Is.EqualTo(ep.Timestamp), "timestamp @ offset 428");
 

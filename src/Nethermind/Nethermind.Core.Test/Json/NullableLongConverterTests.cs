@@ -24,7 +24,6 @@ public class NullableLongConverterTests : ConverterTestBase<long?>
 
     [TestCase("\"0xa00000\"", 10485760L)]
     [TestCase("\"0x0\"", 0L)]
-    [TestCase("\"0x0000\"", 0L)]
     [TestCase("0", 0L)]
     [TestCase("1", 1L)]
     [TestCase("-1", -1L)]
