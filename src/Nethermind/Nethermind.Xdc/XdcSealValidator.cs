@@ -72,7 +72,7 @@ internal class XdcSealValidator(
                 throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader}");
         }
 
-        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.BlockRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);
+        ulong currentLeaderIndex = xdcHeader.ExtraConsensusData.BlockRound % xdcSpec.EpochLength % (ulong)masternodes.Length;
         if (masternodes[(int)currentLeaderIndex] != header.Author)
         {
             error = $"Block proposer {header.Author} is not the current leader.";

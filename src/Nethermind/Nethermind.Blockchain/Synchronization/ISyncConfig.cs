@@ -51,7 +51,7 @@ public interface ISyncConfig : IConfig
     string PivotTotalDifficulty { get; }
 
     [ConfigItem(Description = "The number of the pivot block for the Fast sync mode.", DefaultValue = "0")]
-    long PivotNumber { get; set; }
+    ulong PivotNumber { get; set; }
 
     [ConfigItem(Description = "The hash of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string? PivotHash { get; set; }
@@ -74,10 +74,10 @@ public interface ISyncConfig : IConfig
 
         """,
         DefaultValue = "0")]
-    public long AncientBodiesBarrier { get; set; }
+    public ulong AncientBodiesBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier));
+    public ulong AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier));
 
     [ConfigItem(Description = $$"""
         The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as follows:
@@ -88,10 +88,10 @@ public interface ISyncConfig : IConfig
 
         """,
         DefaultValue = "0")]
-    public long AncientReceiptsBarrier { get; set; }
+    public ulong AncientReceiptsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+    public ulong AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
 
     [ConfigItem(Description = $$"""
         The earliest block access list downloaded with fast sync when `{{nameof(DownloadBlockAccessListsInFastSync)}}` is set to `true`.
@@ -103,10 +103,10 @@ public interface ISyncConfig : IConfig
 
         """,
         DefaultValue = "0")]
-    public long AncientBlockAccessListsBarrier { get; set; }
+    public ulong AncientBlockAccessListsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBlockAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBlockAccessListsBarrier));
+    public ulong AncientBlockAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBlockAccessListsBarrier));
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
@@ -127,10 +127,10 @@ public interface ISyncConfig : IConfig
     public bool FixTotalDifficulty { get; set; }
 
     [ConfigItem(Description = "The first block to recalculate the total difficulty for.", DefaultValue = "1")]
-    public long FixTotalDifficultyStartingBlock { get; set; }
+    public ulong FixTotalDifficultyStartingBlock { get; set; }
 
     [ConfigItem(Description = "The last block to recalculate the total difficulty for. If not specified, the best known block is used.\n", DefaultValue = "null")]
-    public long? FixTotalDifficultyLastBlock { get; set; }
+    public ulong? FixTotalDifficultyLastBlock { get; set; }
 
     [ConfigItem(Description = "Whether to disable some optimizations and do a more extensive sync. Useful when sync state is corrupted.", DefaultValue = "false")]
     public bool StrictMode { get; set; }
@@ -164,7 +164,7 @@ public interface ISyncConfig : IConfig
     bool? SnapServingEnabled { get; set; }
 
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]
-    int SnapServingMaxDepth { get; set; }
+    ulong SnapServingMaxDepth { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max trie paths per group accepted in snap GetTrieNodes messages. Raise if peers send slightly larger groups (e.g. Geth trienodeHealThrottle sends 1025).", DefaultValue = "1024", HiddenFromDocs = true)]
     int SnapServingMaxPathsPerGroup { get; set; }
@@ -188,16 +188,16 @@ public interface ISyncConfig : IConfig
     bool VerifyTrieOnStateSyncFinished { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
-    int StateMaxDistanceFromHead { get; set; }
+    ulong StateMaxDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
-    int StateMinDistanceFromHead { get; set; }
+    ulong StateMinDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]
     bool GCOnFeedFinished { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
-    int HeaderStateDistance { get; set; }
+    ulong HeaderStateDistance { get; set; }
 
     [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }

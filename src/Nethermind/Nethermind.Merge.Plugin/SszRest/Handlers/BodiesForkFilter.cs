@@ -40,7 +40,7 @@ internal static class BodiesForkFilter
 
     public static TResult?[] FilterByRange<TResult>(
         IReadOnlyList<TResult?> bodies,
-        long start,
+        ulong start,
         string urlFork,
         IBlockFinder blockFinder,
         ISpecProvider specProvider)
@@ -51,7 +51,7 @@ internal static class BodiesForkFilter
         {
             TResult? body = bodies[i];
             if (body is null) continue;
-            BlockHeader? header = blockFinder.FindHeader(start + i);
+            BlockHeader? header = blockFinder.FindHeader(start + (ulong)i);
             if (header is not null && Matches(header, urlFork, specProvider))
                 result[i] = body;
         }

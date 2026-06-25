@@ -439,7 +439,7 @@ public class TxBroadcasterTests
         Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
@@ -652,7 +652,7 @@ public class TxBroadcasterTests
         Parallel.For(0, _txPoolConfig.Size, i =>
         {
             Transaction tx = Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             _broadcaster.Broadcast(tx, true);
         });
@@ -662,7 +662,7 @@ public class TxBroadcasterTests
 
         for (int i = 0; i < pickedTxs.Length; i++)
         {
-            Assert.That(pickedTxs[i].Nonce, Is.EqualTo((UInt256)i));
+            Assert.That(pickedTxs[i].Nonce, Is.EqualTo((ulong)i));
         }
     }
 

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Visitors
@@ -15,7 +16,7 @@ namespace Nethermind.Blockchain.Visitors
     {
         public const int DefaultBatchSize = 4000;
 
-        private readonly long _blocksToLoad;
+        private readonly ulong _blocksToLoad;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly ProgressReporter _progress;
@@ -24,16 +25,17 @@ namespace Nethermind.Blockchain.Visitors
 
         public DbBlocksLoader(IBlockTree blockTree,
             ILogManager logManager,
-            long? startBlockNumber = null,
-            long batchSize = DefaultBatchSize,
-            long maxBlocksToLoad = long.MaxValue)
+            ulong? startBlockNumber = null,
+            ulong batchSize = DefaultBatchSize,
+            ulong maxBlocksToLoad = ulong.MaxValue)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, batchSize, batchSize / 2);
             _logger = logManager.GetClassLogger<DbBlocksLoader>();
 
-            StartLevelInclusive = Math.Max(0L, startBlockNumber ?? (_blockTree.Head?.Number + 1) ?? 0L);
-            _blocksToLoad = Math.Min(maxBlocksToLoad, _blockTree.BestKnownNumber - StartLevelInclusive);
+            StartLevelInclusive = startBlockNumber ?? (_blockTree.Head?.Number + 1) ?? 0UL;
+            ulong bestKnown = _blockTree.BestKnownNumber;
+            _blocksToLoad = Math.Min(maxBlocksToLoad, bestKnown.SaturatingSub(StartLevelInclusive));
             EndLevelExclusive = StartLevelInclusive + _blocksToLoad + 1;
 
             _progress = new ProgressReporter("DB blocks load", logManager, _blocksToLoad);
@@ -43,11 +45,11 @@ namespace Nethermind.Blockchain.Visitors
 
         public bool PreventsAcceptingNewBlocks => true;
         public bool CalculateTotalDifficultyIfMissing => true;
-        public long StartLevelInclusive { get; }
+        public ulong StartLevelInclusive { get; }
 
-        public long EndLevelExclusive { get; }
+        public ulong EndLevelExclusive { get; }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo? chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             if (chainLevelInfo is null)
             {
@@ -76,7 +78,7 @@ namespace Nethermind.Blockchain.Visitors
             // this will hang
             Task waitTask = _blockTreeSuggestPacer.WaitForQueue(block.Number, cancellationToken);
 
-            long i = block.Number - StartLevelInclusive;
+            ulong i = block.Number - StartLevelInclusive;
             if (!waitTask.IsCompleted)
             {
                 if (_logger.IsInfo)
@@ -90,7 +92,7 @@ namespace Nethermind.Blockchain.Visitors
             return BlockVisitOutcome.Suggest;
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken) => Task.FromResult(LevelVisitOutcome.None);
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) => Task.FromResult(LevelVisitOutcome.None);
 
         private void LogPlannedOperation()
         {

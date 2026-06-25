@@ -228,7 +228,7 @@ namespace Nethermind.Db.LogIndex
             {
                 Enabled = config.Enabled;
 
-                _maxReorgDepth = config.MaxReorgDepth!.Value;
+                _maxReorgDepth = (int)config.MaxReorgDepth!.Value;
 
                 _logger = logManager.GetClassLogger<LogIndexStorage>();
 

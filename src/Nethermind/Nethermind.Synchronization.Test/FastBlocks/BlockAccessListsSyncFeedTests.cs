@@ -48,7 +48,7 @@ public class BlockAccessListsSyncFeedTests
         _metadataDb = new TestMemDb();
         _syncPointers = new MemorySyncPointers();
 
-        _blockTree.SyncPivot.Returns((1, TestItem.KeccakA));
+        _blockTree.SyncPivot.Returns((1UL, TestItem.KeccakA));
 
         _feed = CreateFeed(SpecProviderWithBlockAccessLists());
         _feed.InitializeFeed();
@@ -101,7 +101,7 @@ public class BlockAccessListsSyncFeedTests
         SyncResponseHandlingResult result = _feed.HandleResponse(batch);
 
         Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
-        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
         _syncPeerPool.Received(1).ReportBreachOfProtocol(
             peerInfo,
             DisconnectReason.InvalidTxOrUncle,
@@ -111,20 +111,20 @@ public class BlockAccessListsSyncFeedTests
     [Test]
     public async Task Treats_pivot_without_block_access_list_hash_as_temporarily_finished()
     {
-        const long previousBarrier = 123;
+        const ulong previousBarrier = 123;
         _metadataDb.Set(MetadataDbKeys.BlockAccessListsBarrierWhenStarted, previousBarrier.ToBigEndianByteArrayWithoutLeadingZeros());
 
         BlockHeader pivotHeader = Build.A.BlockHeader
             .WithBlockAccessListHash(null)
             .TestObject;
-        _blockTree.SyncPivot.Returns((2, TestItem.KeccakB));
+        _blockTree.SyncPivot.Returns((2UL, TestItem.KeccakB));
         _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2).Returns(pivotHeader);
 
         _feed.InitializeFeed();
 
-        long barrier = _metadataDb.Get(MetadataDbKeys.BlockAccessListsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+        ulong barrier = _metadataDb.Get(MetadataDbKeys.BlockAccessListsBarrierWhenStarted).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
         Assert.That(barrier, Is.EqualTo(previousBarrier));
-        _blockAccessListStore.DidNotReceive().Exists(Arg.Any<long>(), TestItem.KeccakB);
+        _blockAccessListStore.DidNotReceive().Exists(Arg.Any<ulong>(), TestItem.KeccakB);
         Assert.That(_feed.IsFinished, Is.True);
         _feed.Activate();
         Assert.That(await _feed.PrepareRequest(), Is.Null);
@@ -134,8 +134,8 @@ public class BlockAccessListsSyncFeedTests
         BlockHeader balPivotHeader = Build.A.BlockHeader
             .WithBlockAccessListHash(TestItem.KeccakA)
             .TestObject;
-        _blockTree.SyncPivot.Returns((3, TestItem.KeccakC));
-        _blockTree.FindHeader(TestItem.KeccakC, blockNumber: 3).Returns(balPivotHeader);
+        _blockTree.SyncPivot.Returns((3UL, TestItem.KeccakC));
+        _blockTree.FindHeader(TestItem.KeccakC, blockNumber: 3UL).Returns(balPivotHeader);
 
         Assert.That(_feed.IsFinished, Is.False);
         _feed.SyncModeSelectorOnChanged(SyncMode.FastBlockAccessLists);
@@ -151,8 +151,8 @@ public class BlockAccessListsSyncFeedTests
         BlockHeader balPivotHeader = Build.A.BlockHeader
             .WithBlockAccessListHash(TestItem.KeccakA)
             .TestObject;
-        _blockTree.SyncPivot.Returns((2, TestItem.KeccakB));
-        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2).Returns(balPivotHeader);
+        _blockTree.SyncPivot.Returns((2UL, TestItem.KeccakB));
+        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2UL).Returns(balPivotHeader);
 
         _feed.InitializeFeed();
         _feed.Activate();
@@ -169,12 +169,12 @@ public class BlockAccessListsSyncFeedTests
     [Test]
     public async Task Wakes_and_requests_block_access_lists_when_pivot_changes_to_bal_enabled_before_full_sync_runs()
     {
-        (long BlockNumber, Hash256 BlockHash) syncPivot = (2, TestItem.KeccakB);
+        (ulong BlockNumber, Hash256 BlockHash) syncPivot = (2UL, TestItem.KeccakB);
         BlockHeader preBalPivotHeader = Build.A.BlockHeader
             .WithBlockAccessListHash(null)
             .TestObject;
         _blockTree.SyncPivot.Returns(_ => syncPivot);
-        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2).Returns(preBalPivotHeader);
+        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2UL).Returns(preBalPivotHeader);
         _feed.InitializeFeed();
 
         TestSyncConfig syncConfig = new()
@@ -183,7 +183,7 @@ public class BlockAccessListsSyncFeedTests
             PivotNumber = 2,
         };
         ISyncProgressResolver syncProgressResolver = CreateProgressResolver(syncConfig, () => syncPivot);
-        ISyncPeerPool syncPeerPool = CreatePeerPool(10);
+        ISyncPeerPool syncPeerPool = CreatePeerPool(10UL);
         using MultiSyncModeSelector selector = new(
             syncProgressResolver,
             syncPeerPool,
@@ -213,13 +213,13 @@ public class BlockAccessListsSyncFeedTests
             .TestObject;
 
         syncConfig.PivotNumber = 3;
-        syncPivot = (3, TestItem.KeccakC);
-        _blockTree.FindHeader(TestItem.KeccakC, blockNumber: 3).Returns(balPivotHeader);
-        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2).Returns(previousBalHeader);
-        _blockTree.FindHeader(TestItem.KeccakA, blockNumber: 1).Returns(preBalHeader);
-        _blockTree.FindCanonicalBlockInfo(3).Returns(block3Info);
-        _blockTree.FindCanonicalBlockInfo(2).Returns(block2Info);
-        _blockTree.FindCanonicalBlockInfo(1).Returns(block1Info);
+        syncPivot = (3UL, TestItem.KeccakC);
+        _blockTree.FindHeader(TestItem.KeccakC, blockNumber: 3UL).Returns(balPivotHeader);
+        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2UL).Returns(previousBalHeader);
+        _blockTree.FindHeader(TestItem.KeccakA, blockNumber: 1UL).Returns(preBalHeader);
+        _blockTree.FindCanonicalBlockInfo(3UL).Returns(block3Info);
+        _blockTree.FindCanonicalBlockInfo(2UL).Returns(block2Info);
+        _blockTree.FindCanonicalBlockInfo(1UL).Returns(block1Info);
 
         selector.Update();
 
@@ -253,7 +253,7 @@ public class BlockAccessListsSyncFeedTests
         SyncResponseHandlingResult result = _feed.HandleResponse(batch);
 
         Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
-        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
         _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),
@@ -262,13 +262,13 @@ public class BlockAccessListsSyncFeedTests
 
     private ISyncProgressResolver CreateProgressResolver(
         ISyncConfig syncConfig,
-        Func<(long BlockNumber, Hash256 BlockHash)> getSyncPivot)
+        Func<(ulong BlockNumber, Hash256 BlockHash)> getSyncPivot)
     {
         ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
         syncProgressResolver.FindBestHeader().Returns(_ => syncConfig.PivotNumber);
-        syncProgressResolver.FindBestFullBlock().Returns(0);
+        syncProgressResolver.FindBestFullBlock().Returns(0UL);
         syncProgressResolver.FindBestFullState().Returns(_ => syncConfig.PivotNumber);
-        syncProgressResolver.FindBestProcessedBlock().Returns(0);
+        syncProgressResolver.FindBestProcessedBlock().Returns(0UL);
         syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
         syncProgressResolver.GetTotalDifficulty(Arg.Any<Hash256>()).Returns((UInt256?)null);
         syncProgressResolver.SyncPivot.Returns(_ => getSyncPivot());
@@ -283,7 +283,7 @@ public class BlockAccessListsSyncFeedTests
         return syncProgressResolver;
     }
 
-    private static ISyncPeerPool CreatePeerPool(long peerHeadNumber)
+    private static ISyncPeerPool CreatePeerPool(ulong peerHeadNumber)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.HeadHash.Returns(TestItem.KeccakE);

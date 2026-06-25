@@ -31,8 +31,8 @@ public class BlockRangeUpdateMessageSerializer :
 
         return new BlockRangeUpdateMessage
         {
-            EarliestBlock = ctx.DecodeLong(),
-            LatestBlock = ctx.DecodeLong(),
+            EarliestBlock = ctx.DecodeULong(),
+            LatestBlock = ctx.DecodeULong(),
             LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
         };
     }

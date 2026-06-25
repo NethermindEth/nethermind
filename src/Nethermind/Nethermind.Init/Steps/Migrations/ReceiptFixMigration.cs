@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -34,9 +35,16 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (syncConfig.FixReceipts)
             {
-                long endExcl = blockTree.Head?.Number - 2 ?? 0;
-                endExcl = syncConfig.FixReceiptsLastBlock is { } last ? Math.Min(last + 1, endExcl) : endExcl;
-                long startIncl = syncConfig.FixReceiptsStartingBlock ?? syncConfig.AncientReceiptsBarrierCalc;
+                ulong endExcl = (blockTree.Head?.Number ?? 0UL).SaturatingSub(2UL);
+                if (syncConfig.FixReceiptsLastBlock is { } last)
+                {
+                    endExcl = Math.Min((ulong)last + 1, endExcl);
+                }
+
+                ulong startIncl = syncConfig.FixReceiptsStartingBlock is { } start
+                    ? (ulong)start
+                    : syncConfig.AncientReceiptsBarrierCalc;
+
                 if (endExcl <= startIncl)
                 {
                     if (_logger.IsWarn) _logger.Warn($"{nameof(ReceiptFixMigration)} skipped: computed range [{startIncl}, {endExcl}) is empty");
@@ -69,8 +77,8 @@ namespace Nethermind.Init.Steps.Migrations
         }
 
         private class MissingReceiptsFixVisitor(
-            long startLevel,
-            long endLevel,
+            ulong startLevel,
+            ulong endLevel,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             ISyncPeerPool syncPeerPool,

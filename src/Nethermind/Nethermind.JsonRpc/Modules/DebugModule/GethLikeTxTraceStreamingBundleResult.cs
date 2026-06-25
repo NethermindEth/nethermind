@@ -35,14 +35,14 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
     private readonly IDebugBridge _bridge;
     private readonly TransactionBundle[] _bundles;
     private readonly BlockParameter _blockParameter;
-    private readonly long? _gasCap;
+    private readonly ulong? _gasCap;
     private readonly GethTraceOptions _options;
 
     public GethLikeTxTraceStreamingBundleResult(
         IDebugBridge bridge,
         TransactionBundle[] bundles,
         BlockParameter blockParameter,
-        long? gasCap,
+        ulong? gasCap,
         GethTraceOptions options,
         CancellationTokenSource timeoutCts,
         ILogger logger)
@@ -103,7 +103,7 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
         Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: _gasCap);
         if (!txResult.Success(out Transaction? tx, out string? validationError))
         {
-            StructLogEnvelopeWriter.EmitFailedTrace(writer, txForRpc.Gas ?? 0L, validationError);
+            StructLogEnvelopeWriter.EmitFailedTrace(writer, txForRpc.Gas ?? 0UL, validationError);
             return;
         }
 

@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         public AddRangeResult AddAccountRange(
-            long blockNumber,
+            ulong blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             IReadOnlyList<PathWithAccount> accounts,

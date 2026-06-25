@@ -13,7 +13,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip()
         {
-            using NewBlockHashesMessage message = new((Keccak.Compute("1"), 1), (Keccak.Compute("2"), 2));
+            using NewBlockHashesMessage message = new((Keccak.Compute("1"), 1UL), (Keccak.Compute("2"), 2UL));
             NewBlockHashesMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, message);
         }

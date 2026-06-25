@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
-        private long _blockNumber;
+        private ulong _blockNumber;
 
         public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, ITreeSyncStore store, IBlockTree blockTree, IStateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
         {
@@ -405,7 +405,7 @@ namespace Nethermind.Synchronization.FastSync
             return headerForState;
         }
 
-        private void ResetStateRoot(long blockNumber, Hash256 stateRoot)
+        private void ResetStateRoot(ulong blockNumber, Hash256 stateRoot)
         {
             _lastResetRoot = DateTime.UtcNow;
             Interlocked.Exchange(ref _hintsToResetRoot, 0);
