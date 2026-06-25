@@ -352,7 +352,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.BlockNumber} to {endBlock.BlockNumber}");
         StateId persistedStateId = _persistenceManager.GetCurrentPersistedStateId();
-        if (endBlock.BlockNumber <= persistedStateId.BlockNumber)
+        // PreGenesis (nothing persisted) carries the ulong.MaxValue sentinel, so a raw `<=` would reject
+        // every snapshot; only reject when there genuinely is a persisted state at or above this block.
+        if (persistedStateId != StateId.PreGenesis && endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
             _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
@@ -444,7 +446,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId persistedState = _persistenceManager.FlushToPersistence();
 
         if (cancellationToken.IsCancellationRequested) return;
-        if (persistedState.BlockNumber < 0) return;
+        if (persistedState == StateId.PreGenesis) return;
 
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();

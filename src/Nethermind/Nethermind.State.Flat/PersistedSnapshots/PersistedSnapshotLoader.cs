@@ -166,7 +166,9 @@ public sealed class PersistedSnapshotLoader(
         // The persisted tier sits on the committed base — the oldest loaded snapshot's From.
         StateId committed = entries[0].From;
         foreach (CatalogEntry e in entries)
-            if (e.From.BlockNumber < committed.BlockNumber) committed = e.From;
+            // Signed compare: a genesis-spanning From is PreGenesis (ulong.MaxValue) yet sorts BELOW
+            // genesis, so the raw ulong `<` would never pick it as the oldest base.
+            if ((long)e.From.BlockNumber < (long)committed.BlockNumber) committed = e.From;
         if (head == committed) return;
 
         // Widest-first chain from head down to the committed base; .InMemory is empty at reload.
