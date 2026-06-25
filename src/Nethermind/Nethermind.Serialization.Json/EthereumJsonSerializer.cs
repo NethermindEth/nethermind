@@ -47,7 +47,11 @@ namespace Nethermind.Serialization.Json
 
         private static readonly List<JsonConverter> _additionalConverters = [];
         private static readonly List<JsonTypeInfoResolverRegistration> _additionalResolvers = [];
-        private static bool _strictHexFormat;
+        private static bool _strictHexFormat
+        {
+            get => Core.JsonConverters.JsonRpcQuantityFormat.StrictMode;
+            set => Core.JsonConverters.JsonRpcQuantityFormat.StrictMode = value;
+        }
         private static int _optionsVersion;
 
         private readonly int _maxDepth;
@@ -203,7 +207,6 @@ namespace Nethermind.Serialization.Json
                         return;
 
                     _strictHexFormat = value;
-                    Core.JsonConverters.JsonRpcQuantityFormat.StrictMode = value;
                     RefreshGlobalOptionsNoLock();
                 }
             }
