@@ -265,7 +265,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 }
             case ValidationResult.InclusionListUnsatisfied:
                 {
-                    if (_logger.IsInfo) _logger.Info($"Invalid inclusion list. Result of {requestStr}.");
+                    if (_logger.IsInfo) _logger.Info($"Inclusion list unsatisfied. Result of {requestStr}.");
                     return NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
                 }
             case ValidationResult.Valid:
