@@ -154,13 +154,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     {
         ReadOnlySpan<byte> data = transaction.Data.Span;
         int totalZeros = data.CountZeros();
-        return (ulong)totalZeros + (ulong)(data.Length - totalZeros) * spec.GasCostsFast.TxDataNonZeroMultiplier;
+        return (ulong)totalZeros + (ulong)(data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
     // 0 when floor pricing is not active.
     public static ulong CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec) =>
         spec.IsEip7981Enabled && transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) }
-            ? (ulong)(addressesCount * Address.Size + storageKeysCount * AccessList.StorageKeySize) * spec.GasCostsFast.TxDataNonZeroMultiplier
+            ? (ulong)(addressesCount * Address.Size + storageKeysCount * AccessList.StorageKeySize) * spec.GasCosts.TxDataNonZeroMultiplier
             : 0;
 
     public static ulong AccessListCost(Transaction transaction, IReleaseSpec spec, ulong floorTokensInAccessList)
@@ -176,7 +176,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         (int addressesCount, int storageKeysCount) = accessList.Count;
         return (ulong)addressesCount * GasCostOf.AccessAccountListEntry
             + (ulong)storageKeysCount * GasCostOf.AccessStorageListEntry
-            + spec.GasCostsFast.TotalCostFloorPerToken * floorTokensInAccessList;
+            + spec.GasCosts.TotalCostFloorPerToken * floorTokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec spec) =>
@@ -210,12 +210,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     }
 
     private static ulong CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
-        (ulong)transaction.Data.Length * spec.GasCostsFast.TxDataNonZeroMultiplier;
+        (ulong)transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
 
     protected static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList) => spec switch
     {
-        { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCostsFast.TotalCostFloorPerToken,
-        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCostsFast.TotalCostFloorPerToken,
+        { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
+        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
         _ => 0
     };
 }

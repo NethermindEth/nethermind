@@ -54,6 +54,16 @@ public static class IReleaseSpecExtensions
     // static slots (single entry: the ZisK guest validates one block = one spec) and let
     // the getters read a cached bool (reference-compare + field load, no dispatch). Same
     // values as the dispatching versions; fork-agnostic (rebuilds if the spec changes).
+    //
+    // Only the flags found hot in the zkVM step profile are cached, listed here so the
+    // "what gets cached" threshold is explicit:
+    //   ClearEmptyAccountWhenTouched, UseHotAndColdStorage, ChargeForTopLevelCreate,
+    //   FailOnOutOfGasCodeDeposit, UseShanghaiDDosProtection, UseConstantinopleNetGasMetering,
+    //   UseIstanbulNetGasMetering (plus UseNetGasMetering/…/Use63Over64Rule derived from these).
+    // Every other extension flag (AddCoinbaseToTxAccessList, ModExpEnabled, BlakeEnabled,
+    // Bls12381Enabled, UseLargeStateDDosProtection, ReturnDataOpcodesEnabled, CLZEnabled, …)
+    // still dispatches through IReleaseSpec on each call. If a new hot path starts reading one of
+    // those, re-check the profile and add it to this cache rather than leaving the dispatch in.
     private static IReleaseSpec? _flagsSpec;
     private static bool _f_clearEmptyAccountWhenTouched;
     private static bool _f_useHotAndColdStorage;
@@ -83,12 +93,6 @@ public static class IReleaseSpecExtensions
 
     extension(IReleaseSpec spec)
     {
-        // GasCostsFast is an ALIAS for spec.GasCosts (NOT a cache, despite the name). A cached value-static
-        // variant (GasCostsView over per-field statics) was tried but bflat's riscv64 codegen
-        // miscompiles it (crash PC=0x80034cd4), and a GC-static SpecGasCosts cache crashes too
-        // (PC=0xBEC8xxxx). The trivial getter inlines, so `spec.GasCostsFast.X` == `spec.GasCosts.X`.
-        public SpecGasCosts GasCostsFast => spec.GasCosts;
-
         //EIP-3860: Limit and meter initcode
         public long MaxInitCodeSize => 2 * spec.MaxCodeSize;
         public bool DepositsEnabled => spec.IsEip6110Enabled;

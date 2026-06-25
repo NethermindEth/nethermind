@@ -146,7 +146,7 @@ public static partial class EvmInstructions
         IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCostsFast.CallCost) ||
+        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;

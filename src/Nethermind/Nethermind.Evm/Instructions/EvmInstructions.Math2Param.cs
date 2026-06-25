@@ -284,7 +284,7 @@ public static partial class EvmInstructions
 
         ulong expSize = (ulong)(32 - leadingZeros);
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-        TGasPolicy.Consume(ref gas, vm.Spec.GasCostsFast.ExpByteCost * expSize);
+        TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
 
         if (a.IsZero)
         {
