@@ -34,10 +34,11 @@ public class BlockOverride
             {
                 throw new OverflowException($"GasLimit value is too large, max value {long.MaxValue}");
             }
-            result.GasLimit = (long)GasLimit.Value;
+            result.GasLimit = GasLimit.Value;
         }
 
-        if (Number is not null) result.Number = (long)Number.Value;
+        if (Number is not null)
+            result.Number = Number.Value;
         if (FeeRecipient is not null)
         {
             // Set Author as well because GasBeneficiary = Author ?? Beneficiary.

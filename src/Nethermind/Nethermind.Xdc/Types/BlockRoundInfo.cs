@@ -7,13 +7,13 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 
-public class BlockRoundInfo(Hash256 hash256, ulong round, long number)
+public class BlockRoundInfo(Hash256 hash256, ulong round, ulong number)
 {
     private static readonly XdcBlockInfoDecoder _decoder = new();
 
     public Hash256 Hash { get; set; } = hash256;
     public ulong Round { get; set; } = round;
-    public long BlockNumber { get; set; } = number;
+    public ulong BlockNumber { get; set; } = number;
 
     public Hash256 SigHash()
     {

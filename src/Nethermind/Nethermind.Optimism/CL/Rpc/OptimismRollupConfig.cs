@@ -86,7 +86,7 @@ public sealed record OptimismRollupConfig
             Genesis = new OptimismGenesis
             {
                 L1 = new BlockId { Number = clParameters.L1ChainId!.Value, Hash = clParameters.L1GenesisHash! },
-                L2 = new BlockId { Number = (ulong)chainSpec.Genesis.Number, Hash = chainSpec.Genesis.GetOrCalculateHash() },
+                L2 = new BlockId { Number = chainSpec.Genesis.Number, Hash = chainSpec.Genesis.GetOrCalculateHash() },
                 L2Time = chainSpec.Genesis.Timestamp,
                 SystemConfig = clParameters.GenesisSystemConfig!
             },

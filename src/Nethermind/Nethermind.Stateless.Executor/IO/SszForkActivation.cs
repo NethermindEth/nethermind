@@ -28,7 +28,7 @@ public partial struct SszForkActivation
 
         return new()
         {
-            BlockNumber = [(ulong)forkActivation.BlockNumber],
+            BlockNumber = [forkActivation.BlockNumber],
             Timestamp = []
         };
     }
@@ -45,8 +45,8 @@ public partial struct SszForkActivation
         {
             (0, 0) => throw new InvalidDataException($"{nameof(BlockNumber)} or {nameof(Timestamp)} must have one element."),
             (0, 1) => ForkActivation.TimestampOnly(Timestamp[0]),
-            (1, 0) => new(checked((long)BlockNumber[0])),
-            _ => new(checked((long)BlockNumber[0]), Timestamp[0])
+            (1, 0) => new(BlockNumber[0]),
+            _ => new(BlockNumber[0], Timestamp[0])
         };
     }
 }

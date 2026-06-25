@@ -81,10 +81,10 @@ public static class TxErrorMessages
     public const string InvalidBlobCommitmentHash =
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
 
-    public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
+    public static string TxGasLimitCapExceeded(ulong gasLimit, ulong gasLimitCap)
         => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeded cap of {gasLimitCap}.";
 
-    public static string TxIntrinsicGasExceedsCap(long intrinsicRegularGas, long intrinsicFloorGas, long gasLimitCap)
+    public static string TxIntrinsicGasExceedsCap(ulong intrinsicRegularGas, ulong intrinsicFloorGas, ulong gasLimitCap)
         => $"{IntrinsicGasTooLow}: Intrinsic gas (regular {intrinsicRegularGas}, floor {intrinsicFloorGas}) exceeded cap of {gasLimitCap}.";
 
     public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";

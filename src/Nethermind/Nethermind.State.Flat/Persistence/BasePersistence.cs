@@ -49,14 +49,14 @@ public static class BasePersistence
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
         return bytes is null || bytes.Length == 0
-            ? new StateId(-1, ValueKeccak.EmptyTreeHash)
-            : new StateId(BinaryPrimitives.ReadInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
+            ? new StateId(ulong.MaxValue, ValueKeccak.EmptyTreeHash)
+            : new StateId(BinaryPrimitives.ReadUInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
     }
 
     internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
     {
         Span<byte> bytes = stackalloc byte[8 + 32];
-        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
     }

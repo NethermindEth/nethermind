@@ -21,7 +21,7 @@ public class SnapshotCompactor(
     ISnapshotRepository snapshotRepository,
     ILogManager logManager) : ISnapshotCompactor
 {
-    private readonly int _compactSize = config.CompactSize;
+    private readonly ulong _compactSize = config.CompactSize;
     private readonly ICompactionSchedule _schedule = schedule;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotCompactor>();
     private readonly IResourcePool _resourcePool = resourcePool;
@@ -60,14 +60,14 @@ public class SnapshotCompactor(
 
     public SnapshotPooledList GetSnapshotsToCompact(Snapshot snapshot)
     {
-        long blockNumber = snapshot.To.BlockNumber;
-        int compactSize = _schedule.GetCompactSize(blockNumber);
+        ulong blockNumber = snapshot.To.BlockNumber;
+        ulong compactSize = _schedule.GetCompactSize(blockNumber);
         if (compactSize <= 1) return SnapshotPooledList.Empty();
         bool isFullCompaction = compactSize == _compactSize;
 
         if (!isFullCompaction)
         {
-            // Save memory by removing the compacted state from previous compaction
+            // Save memory by removing the compacted state from previous compaction.
             foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _compactSize))
             {
                 if (_snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
@@ -76,8 +76,8 @@ public class SnapshotCompactor(
             }
         }
 
-        long startingBlockNumber = blockNumber - compactSize;
-        SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
+        ulong startingBlockNumber = blockNumber - compactSize;
+        SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, (int)compactSize);
 
         bool snapshotsOk = false;
         try
@@ -117,7 +117,7 @@ public class SnapshotCompactor(
         StateId to = snapshots[^1].To;
         StateId from = snapshots[0].From;
 
-        int compactSize = _schedule.GetCompactSize(to.BlockNumber);
+        ulong compactSize = _schedule.GetCompactSize(to.BlockNumber);
         ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);

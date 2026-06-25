@@ -18,7 +18,7 @@ public readonly record struct StateCompositionReport
     public TrieDepthDistribution TrieDistribution { get; init; }
 
     /// <summary>Block number these stats correspond to. 0 until the first scan completes.</summary>
-    public long BlockNumber { get; init; }
+    public ulong BlockNumber { get; init; }
 
     public int DiffsSinceBaseline { get; init; }
 

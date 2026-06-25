@@ -201,7 +201,7 @@ internal sealed class StateCompositionVisitor(
     // _codeHashSizes is a ConcurrentDictionary during the parallel scan — it is
     // converted to a plain Dictionary exactly once here so downstream consumers
     // do not pay the concurrent-dict overhead on every diff.
-    public StateCompositionStats GetStats(long blockNumber, Hash256? stateRoot)
+    public StateCompositionStats GetStats(ulong blockNumber, Hash256? stateRoot)
     {
         VisitorCounters agg = GetAggregated();
 

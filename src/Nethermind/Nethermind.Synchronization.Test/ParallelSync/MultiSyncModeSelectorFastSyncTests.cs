@@ -175,7 +175,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
         [Test]
         public void Finished_fast_sync_but_not_snap_ranges_IsFarFromHead() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeJustFinishedFastBlocksAndFastSync(bestHeader: Scenario.ChainHead.Number - 1000)
+                .IfThisNodeJustFinishedFastBlocksAndFastSync(bestHeader: Scenario.ChainHead.Number - 1000UL)
                 .AndGoodPeersAreKnown()
                 .WhenSnapSyncIsConfigured()
                 .WhenHeaderIsFarFromHead()
