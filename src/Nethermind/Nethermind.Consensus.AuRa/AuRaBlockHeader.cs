@@ -37,9 +37,9 @@ public sealed class AuRaBlockHeader(
     /// <inheritdoc/>
     public ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
-        KeccakRlpStream rlpStream = new();
-        _headerDecoder.Encode(rlpStream, this, behaviors);
-        return rlpStream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        _headerDecoder.Encode(ref writer, this, behaviors);
+        return writer.GetValueHash();
     }
 
     public override BlockHeader CloneForProcessing()

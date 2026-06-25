@@ -101,7 +101,8 @@ public static partial class EvmInstructions
         // For CREATE2, an extra salt value is required. Use type check to differentiate.
         if (typeof(TOpCreate) == typeof(OpCreate2))
         {
-            salt = stack.PopWord256();
+            if (!stack.PopWord256(out salt))
+                goto StackUnderflow;
         }
 
         // EIP-3860: Limit the maximum size of the initialization code.
@@ -181,7 +182,7 @@ public static partial class EvmInstructions
         // - For CREATE: based on the executing account and its current nonce.
         // - For CREATE2: based on the executing account, the provided salt, and the init code.
         Address contractAddress = typeof(TOpCreate) == typeof(OpCreate)
-            ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount))
+            ? ContractAddress.From(env.ExecutingAccount, in accountNonce)
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.

@@ -115,7 +115,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .TestObject;
 
             _blockTree.SuggestBlock(genesis);
-            _blockTree.UpdateMainChain(new[] { genesis }, true);
+            _blockTree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis });
 
             Block previousBlock = genesis;
             Block block = Build.A.Block.WithNumber(blockNumber).WithParent(previousBlock)
@@ -124,7 +124,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .TestObject;
 
             _blockTree.SuggestBlock(block);
-            _blockTree.UpdateMainChain(new[] { block }, true);
+            _blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
 
             LogEntry[] logEntries = new[] { Build.A.LogEntry.TestObject };
 

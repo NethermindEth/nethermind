@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
     {
         public const int NonceLength = 8;
 
-        protected override BlockHeader? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
+        protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
@@ -81,7 +81,7 @@ namespace Nethermind.Serialization.Rlp
         /// <see cref="GetSealLength"/>) and register their decoder for <see cref="BlockHeader"/>.
         /// </remarks>
         protected virtual BlockHeader DecodeSealAndCreateHeader(
-            ref Rlp.ValueDecoderContext decoderContext,
+            ref RlpReader decoderContext,
             Hash256? parentHash,
             Hash256? unclesHash,
             Address? beneficiary,
@@ -101,43 +101,44 @@ namespace Nethermind.Serialization.Rlp
         }
 
         /// <summary>Encodes the seal section. The base implementation writes <c>mixHash</c> + <c>nonce</c>.</summary>
-        protected virtual void EncodeSeal(RlpStream rlpStream, BlockHeader header)
+        protected virtual void EncodeSeal<TWriter>(ref TWriter writer, BlockHeader header)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            rlpStream.Encode(header.MixHash);
-            rlpStream.Encode(header.Nonce, NonceLength);
+            writer.Encode(header.MixHash);
+            writer.Encode(header.Nonce, NonceLength);
         }
 
         /// <summary>RLP length of the seal section written by <see cref="EncodeSeal"/>.</summary>
         protected virtual int GetSealLength(BlockHeader header) =>
             Rlp.LengthOf(header.MixHash) + Rlp.LengthOfNonce(header.Nonce);
 
-        public override void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (header is null)
             {
-                rlpStream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
-            rlpStream.StartSequence(GetContentLength(header, rlpBehaviors));
-            rlpStream.Encode(header.ParentHash);
-            rlpStream.Encode(header.UnclesHash);
-            rlpStream.Encode(header.Beneficiary);
-            rlpStream.Encode(header.StateRoot);
-            rlpStream.Encode(header.TxRoot);
-            rlpStream.Encode(header.ReceiptsRoot);
-            rlpStream.Encode(header.Bloom);
-            rlpStream.Encode(header.Difficulty);
-            rlpStream.Encode(header.Number);
-            rlpStream.Encode(header.GasLimit);
-            rlpStream.Encode(header.GasUsed);
-            rlpStream.Encode(header.Timestamp);
-            rlpStream.Encode(header.ExtraData);
+            writer.StartSequence(GetContentLength(header, rlpBehaviors));
+            writer.Encode(header.ParentHash);
+            writer.Encode(header.UnclesHash);
+            writer.Encode(header.Beneficiary);
+            writer.Encode(header.StateRoot);
+            writer.Encode(header.TxRoot);
+            writer.Encode(header.ReceiptsRoot);
+            writer.Encode(header.Bloom);
+            writer.Encode(header.Difficulty);
+            writer.Encode(header.Number);
+            writer.Encode(header.GasLimit);
+            writer.Encode(header.GasUsed);
+            writer.Encode(header.Timestamp);
+            writer.Encode(header.ExtraData);
 
             if (notForSealing)
             {
-                EncodeSeal(rlpStream, header);
+                EncodeSeal(ref writer, header);
             }
 
             Span<bool> requiredItems = stackalloc bool[8];
@@ -155,14 +156,14 @@ namespace Nethermind.Serialization.Rlp
                 requiredItems[i] |= requiredItems[i + 1];
             }
 
-            if (requiredItems[0]) rlpStream.Encode(header.BaseFeePerGas);
-            if (requiredItems[1]) rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
-            if (requiredItems[2]) rlpStream.Encode(header.BlobGasUsed.GetValueOrDefault());
-            if (requiredItems[3]) rlpStream.Encode(header.ExcessBlobGas.GetValueOrDefault());
-            if (requiredItems[4]) rlpStream.Encode(header.ParentBeaconBlockRoot);
-            if (requiredItems[5]) rlpStream.Encode(header.RequestsHash);
-            if (requiredItems[6]) rlpStream.Encode(header.BlockAccessListHash);
-            if (requiredItems[7]) rlpStream.Encode(header.SlotNumber.GetValueOrDefault());
+            if (requiredItems[0]) writer.Encode(header.BaseFeePerGas);
+            if (requiredItems[1]) writer.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
+            if (requiredItems[2]) writer.Encode(header.BlobGasUsed.GetValueOrDefault());
+            if (requiredItems[3]) writer.Encode(header.ExcessBlobGas.GetValueOrDefault());
+            if (requiredItems[4]) writer.Encode(header.ParentBeaconBlockRoot);
+            if (requiredItems[5]) writer.Encode(header.RequestsHash);
+            if (requiredItems[6]) writer.Encode(header.BlockAccessListHash);
+            if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
         }
 
         public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -172,10 +173,11 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptyList;
             }
 
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
+            byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+            RlpWriter writer = new(bytes);
+            Encode(ref writer, item, rlpBehaviors);
 
-            return new Rlp(rlpStream.Data.ToArray());
+            return new Rlp(bytes);
         }
 
         private int GetContentLength(BlockHeader? item, RlpBehaviors rlpBehaviors)

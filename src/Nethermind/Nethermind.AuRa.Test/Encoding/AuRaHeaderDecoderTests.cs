@@ -30,7 +30,7 @@ public class AuRaHeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithAura(100000000, DeterministicSignature(0xA5A5)).TestObject;
 
         Rlp rlp = _decoder.Encode(header);
-        Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
+        RlpReader decoderContext = new(rlp.Bytes);
         BlockHeader? decoded = _decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
@@ -44,7 +44,7 @@ public class AuRaHeaderDecoderTests
         BlockHeader original = Build.A.BlockHeader.WithAura(42, DeterministicSignature(1)).TestObject;
 
         byte[] firstPass = _decoder.Encode(original).Bytes;
-        Rlp.ValueDecoderContext ctx = new(firstPass);
+        RlpReader ctx = new(firstPass);
         BlockHeader? decoded = _decoder.Decode(ref ctx);
         byte[] secondPass = _decoder.Encode(decoded).Bytes;
 
@@ -63,7 +63,7 @@ public class AuRaHeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithAura(42, signature).TestObject;
 
         byte[] encoded = _decoder.Encode(header).Bytes;
-        Rlp.ValueDecoderContext ctx = new(encoded);
+        RlpReader ctx = new(encoded);
         ctx.ReadSequenceLength();
         for (int i = 0; i < 13; i++) ctx.SkipItem();
 
@@ -83,7 +83,7 @@ public class AuRaHeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithMixHash(TestItem.KeccakA).TestObject;
 
         byte[] encoded = _decoder.Encode(header).Bytes;
-        Rlp.ValueDecoderContext ctx = new(encoded);
+        RlpReader ctx = new(encoded);
         BlockHeader? decoded = _decoder.Decode(ref ctx);
 
         Assert.That(decoded, Is.Not.InstanceOf<AuRaBlockHeader>());

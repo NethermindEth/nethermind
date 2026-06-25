@@ -96,7 +96,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         if (value.IsEmpty)
             return null;
 
-        Rlp.ValueDecoderContext context = value.AsRlpValueContext();
+        RlpReader context = new(value);
         TSnapshot decoded = _snapshotDecoder.Decode(ref context);
         snapshot = decoded;
         _snapshotCache.Set(headerHash, snapshot);
@@ -126,8 +126,8 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     {
         if (!e.WereProcessed)
             return;
-        foreach (Block block in e.Blocks)
-            UpdateMasterNodes((XdcBlockHeader)block.Header);
+        foreach (BlockHeader header in e.Headers)
+            UpdateMasterNodes((XdcBlockHeader)header);
     }
 
     private void UpdateMasterNodes(XdcBlockHeader header)

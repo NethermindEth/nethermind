@@ -39,6 +39,6 @@ public class AdjustedRocksdbConfig(
 
     public double CompressibilityHint => baseConfig.CompressibilityHint;
 
-    public bool FlushOnExit => baseConfig.FlushOnExit;
+    public FlushOnExitMode FlushOnExit => baseConfig.FlushOnExit;
     public IntPtr? BlockCache => blockCache ?? baseConfig.BlockCache;
 }

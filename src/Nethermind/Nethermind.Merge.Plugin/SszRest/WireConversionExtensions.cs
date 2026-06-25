@@ -129,9 +129,7 @@ internal static class WireConversionExtensions
         {
             Transactions = body.Transactions.ToTxsWire(),
             Withdrawals = body.Withdrawals.ToWire(),
-            BlockAccessList = body.BlockAccessList is not null
-                ? [new SszTransaction { Bytes = body.BlockAccessList }]
-                : []
+            BlockAccessList = body.BlockAccessList ?? []
         };
 
     private static SszBlob[] ToBlobsWire(byte[][] blobs)

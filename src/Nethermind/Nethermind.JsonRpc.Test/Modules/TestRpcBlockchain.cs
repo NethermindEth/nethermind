@@ -235,6 +235,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IProtocolValidator>(),
                 Substitute.For<INetworkStorage>(),
                 Array.Empty<IProtocolHandlerFactory>(),
+                [new DefaultP2PCapabilityResolver()],
                 LimboLogs.Instance
             );
 

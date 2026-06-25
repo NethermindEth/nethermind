@@ -148,9 +148,9 @@ namespace Nethermind.Blockchain.FullPruning
             long blockToWaitFor = 0;
             await WaitForMainChainChange((e) =>
             {
-                if (e.Blocks.Count == 0) return false;
+                if (e.Headers.Count == 0) return false;
 
-                blockToWaitFor = e.Blocks[^1].Number;
+                blockToWaitFor = e.Headers[^1].Number;
                 if (_logger.IsInfo)
                     _logger.Info($"Full Pruning Ready to start: waiting for state {blockToWaitFor} to be ready.");
                 return true;

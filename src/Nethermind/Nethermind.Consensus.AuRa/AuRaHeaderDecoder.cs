@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.AuRa;
 public sealed class AuRaHeaderDecoder : HeaderDecoder
 {
     protected override BlockHeader DecodeSealAndCreateHeader(
-        ref Rlp.ValueDecoderContext decoderContext,
+        ref RlpReader decoderContext,
         Hash256? parentHash,
         Hash256? unclesHash,
         Address? beneficiary,
@@ -45,16 +45,16 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
         };
     }
 
-    protected override void EncodeSeal(RlpStream rlpStream, BlockHeader header)
+    protected override void EncodeSeal<TWriter>(ref TWriter writer, BlockHeader header)
     {
         if (header is AuRaBlockHeader aura)
         {
-            rlpStream.Encode(aura.AuRaStep);
-            rlpStream.Encode(aura.AuRaSignature);
+            writer.Encode(aura.AuRaStep);
+            writer.Encode(aura.AuRaSignature);
         }
         else
         {
-            base.EncodeSeal(rlpStream, header);
+            base.EncodeSeal(ref writer, header);
         }
     }
 

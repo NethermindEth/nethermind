@@ -11,6 +11,7 @@ using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -45,13 +46,21 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private long _pendingGasCost;
     private int _pendingDepth;
     private string? _pendingError;
+    private long _pendingRefund;
     private bool _gasCostAlreadySet;
+
+    private long _refund;
+    private readonly Stack<long> _refundCheckpoints = new();
 
     private byte[]? _stackBuffer;
     private int _stackByteCount;
 
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
+
+    private byte[]? _returnDataBuffer;
+    private int _returnDataByteCount;
+    private byte[]? _returnDataHexBuffer;
 
     private ArrayPoolList<PooledDictionary<UInt256, UInt256>>? _storageByDepth;
     private int _activeStorageDepth;
@@ -77,6 +86,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _cancellationToken = cancellationToken;
         _flushIntervalEntries = flushIntervalEntries;
         IsTracingMemory = IsTracingFullMemory;
+        IsTracingRefunds = true;
+        IsTracingActions = true;
     }
 
     internal void ResetForNextTx(Transaction? transaction)
@@ -90,9 +101,13 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingGasCost = 0;
         _pendingDepth = 0;
         _pendingError = null;
+        _pendingRefund = 0;
         _gasCostAlreadySet = false;
+        _refund = 0;
+        _refundCheckpoints.Clear();
         _stackByteCount = 0;
         _memoryByteCount = 0;
+        _returnDataByteCount = 0;
         if (_storageByDepth is not null)
         {
             for (int i = 0; i < _activeStorageDepth; i++) _storageByDepth[i].Clear();
@@ -122,9 +137,12 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingGasCost = 0;
         _pendingDepth = newDepth;
         _pendingError = null;
+        // Snapshot the cumulative refund counter before the opcode executes (geth pre-op GetRefund()).
+        _pendingRefund = _refund;
         _gasCostAlreadySet = false;
         _stackByteCount = 0;
         _memoryByteCount = 0;
+        _returnDataByteCount = 0;
     }
 
     public override void ReportOperationRemainingGas(long gas)
@@ -184,6 +202,18 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         top[storageIndex] = new UInt256(newValue, isBigEndian: true);
     }
 
+    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
+        if (!_hasPendingOpcode) return;
+        int needed = returnData.Length;
+        if (needed == 0) { _returnDataByteCount = 0; return; }
+
+        // The source buffer is reused across opcodes, so copy the bytes into our own scratch.
+        EnsureBuffer(ref _returnDataBuffer, needed);
+        returnData.Span.CopyTo(_returnDataBuffer.AsSpan(0, needed));
+        _returnDataByteCount = needed;
+    }
+
     public override GethLikeTxTrace BuildResult()
     {
         FinalizePendingOpcode();
@@ -234,6 +264,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     {
         if (_stackBuffer is not null) { ArrayPool<byte>.Shared.Return(_stackBuffer); _stackBuffer = null; }
         if (_memoryBuffer is not null) { ArrayPool<byte>.Shared.Return(_memoryBuffer); _memoryBuffer = null; }
+        if (_returnDataBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataBuffer); _returnDataBuffer = null; }
+        if (_returnDataHexBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataHexBuffer); _returnDataHexBuffer = null; }
         if (_storageByDepth is not null)
         {
             for (int i = 0; i < _storageByDepth.Count; i++) _storageByDepth[i].Dispose();
@@ -259,14 +291,36 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _writer.WriteNumber("gasCost"u8, _pendingGasCost);
         _writer.WriteNumber("depth"u8, _pendingDepth);
 
+        if (_pendingRefund != 0) _writer.WriteNumber("refund"u8, _pendingRefund);
+
         if (_pendingError is null) _writer.WriteNull("error"u8);
         else _writer.WriteString("error"u8, _pendingError);
 
         if (IsTracingStack) WriteStackArrayIfPresent();
         if (IsTracingFullMemory) WriteMemoryArrayIfPresent();
         if (IsTracingOpLevelStorage) WriteStorageObjectIfPresent();
+        if (IsTracingReturnData && _returnDataByteCount > 0) WriteReturnDataValue();
 
         _writer.WriteEndObject();
+    }
+
+    private void WriteReturnDataValue()
+    {
+        // Encode "0x"-prefixed hex straight into a pooled scratch buffer and emit it as a raw JSON
+        // string, avoiding the intermediate string allocation on every traced opcode after a call.
+        int hexLength = _returnDataByteCount * 2;
+        int tokenLength = hexLength + 4; // quotes + "0x"
+        EnsureBuffer(ref _returnDataHexBuffer, tokenLength);
+
+        Span<byte> token = _returnDataHexBuffer.AsSpan(0, tokenLength);
+        token[0] = (byte)'"';
+        token[1] = (byte)'0';
+        token[2] = (byte)'x';
+        _returnDataBuffer.AsSpan(0, _returnDataByteCount).OutputBytesToByteHex(token.Slice(3, hexLength), extraNibble: false);
+        token[tokenLength - 1] = (byte)'"';
+
+        _writer.WritePropertyName("returnData"u8);
+        _writer.WriteRawValue(token, skipInputValidation: true);
     }
 
     private void WriteStackArrayIfPresent()
@@ -317,8 +371,47 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (_pipeWriter is null) return;
         if (++_entriesSinceLastFlush < _flushIntervalEntries) return;
         _writer.Flush();
-        _pipeWriter.FlushAsync(_cancellationToken).GetAwaiter().GetResult();
+        _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
         _entriesSinceLastFlush = 0;
     }
 
+    public override void ReportRefund(long refund) => _refund += refund;
+
+    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    {
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        _refundCheckpoints.Push(_refund);
+    }
+
+    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionEnd(gas, output);
+        _refundCheckpoints.TryPop(out _);
+    }
+
+    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        _refundCheckpoints.TryPop(out _);
+    }
+
+    public override void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionRevert(gasLeft, output);
+        RestoreRefundCheckpoint();
+    }
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    {
+        base.ReportActionError(evmExceptionType);
+        RestoreRefundCheckpoint();
+    }
+
+    // A reverted or aborted frame rolls back every refund accrued within it (and its successful
+    // children), mirroring go-ethereum's journaled refund counter.
+    private void RestoreRefundCheckpoint()
+    {
+        if (_refundCheckpoints.TryPop(out long checkpoint))
+            _refund = checkpoint;
+    }
 }

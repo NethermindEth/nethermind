@@ -1274,6 +1274,10 @@ public class BlockProcessorTests
         {
         }
 
+        public void WaitForBalWarmup()
+        {
+        }
+
         public void Setup(Block block)
         {
         }

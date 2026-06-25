@@ -230,7 +230,7 @@ namespace Nethermind.Core.Test.Builders
                         AddBlockResult result = BlockTree.SuggestBlock(current);
                         Assert.That(result, Is.EqualTo(AddBlockResult.Added), $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
 
-                        BlockTree.UpdateMainChain(current);
+                        BlockTree.TryUpdateMainChain(current.Header, true, preloadedBlocks: new[] { current });
                     }
 
                     Block parent = current;
@@ -262,7 +262,7 @@ namespace Nethermind.Core.Test.Builders
                     {
                         AddBlockResult result = BlockTree.SuggestBlock(current);
                         Assert.That(result, Is.EqualTo(AddBlockResult.Added), $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
-                        BlockTree.UpdateMainChain(current);
+                        BlockTree.TryUpdateMainChain(current.Header, true, preloadedBlocks: new[] { current });
                     }
                 }
 
@@ -375,7 +375,7 @@ namespace Nethermind.Core.Test.Builders
                 BlockTree.SuggestBlock(current);
                 if (current.Number < processedChainLength)
                 {
-                    BlockTree.UpdateMainChain(current);
+                    BlockTree.TryUpdateMainChain(current.Header, true, preloadedBlocks: new[] { current });
                 }
 
                 current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -387,7 +387,7 @@ namespace Nethermind.Core.Test.Builders
         public static void AddBlock(IBlockTree blockTree, Block block)
         {
             blockTree.SuggestBlock(block);
-            blockTree.UpdateMainChain(new[] { block }, true);
+            blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
         }
 
         public BlockTreeBuilder WithBlocks(params Block[] blocks)
@@ -411,7 +411,7 @@ namespace Nethermind.Core.Test.Builders
                 }
 
                 BlockTree.SuggestBlock(block);
-                BlockTree.UpdateMainChain(new[] { block }, true);
+                BlockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             }
 
             return this;
@@ -425,7 +425,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 previous = Build.A.Block.WithNumber(i).WithParent(previous).TestObject;
                 blockTree.SuggestBlock(previous);
-                blockTree.UpdateMainChain(new[] { previous }, true);
+                blockTree.TryUpdateMainChain(previous.Header, true, preloadedBlocks: new[] { previous });
             }
         }
 
