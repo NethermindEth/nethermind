@@ -18,7 +18,7 @@ public class GethLikeTxTrace : IDisposable
 
     public GethLikeTxTrace() { }
 
-    public long Gas { get; set; }
+    public ulong Gas { get; set; }
 
     public bool Failed { get; set; }
 

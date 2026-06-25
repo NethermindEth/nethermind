@@ -102,7 +102,7 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.Reset();
     }
 
-    private static void WriteHexLong(Utf8JsonWriter writer, long v)
+    private static void WriteHexLong(Utf8JsonWriter writer, ulong v)
     {
         Span<char> buf = stackalloc char[18]; // "0x" + up to 16 hex digits
         buf[0] = '0';

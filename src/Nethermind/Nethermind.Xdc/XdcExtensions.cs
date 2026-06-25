@@ -19,6 +19,7 @@ internal static partial class XdcExtensions
     //TODO can we wire up this so we can use Rlp.Encode()?
     private static readonly XdcHeaderDecoder _headerDecoder = new();
     private static readonly VoteDecoder _voteDecoder = new();
+
     public static Signature Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, XdcBlockHeader header)
     {
         KeccakRlpWriter writer = new();
@@ -26,6 +27,7 @@ internal static partial class XdcExtensions
         ValueHash256 hash = writer.GetValueHash();
         return ecdsa.Sign(privateKey, in hash);
     }
+
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
         KeccakRlpWriter writer = new();
@@ -43,7 +45,7 @@ internal static partial class XdcExtensions
         return specProvider.GetXdcSpec(xdcBlockHeader.Number, round);
     }
 
-    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
+    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, ulong blockNumber, ulong round = 0)
     {
         if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
             return xdcProvider.GetXdcSpec(blockNumber, round);
@@ -98,6 +100,10 @@ internal static partial class XdcExtensions
     {
         if (header.Number == 1)
             return true;
+        // Guard against underflow: Gap should always be < EpochLength by configuration,
+        // but we check explicitly rather than relying on that invariant holding at runtime.
+        if (spec.Gap == 0 || spec.EpochLength <= spec.Gap)
+            return false;
         return (header.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
     }
 

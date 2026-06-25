@@ -154,7 +154,7 @@ public partial class EthRpcModule(
         return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
     }
 
-    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
+    public ResultWrapper<FeeHistoryResults> eth_feeHistory(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
 
     public ResultWrapper<IEnumerable<Address>> eth_accounts()
     {
@@ -168,10 +168,10 @@ public partial class EthRpcModule(
         }
     }
 
-    public Task<ResultWrapper<long?>> eth_blockNumber()
+    public Task<ResultWrapper<ulong?>> eth_blockNumber()
     {
-        long number = _blockchainBridge.HeadBlock?.Number ?? 0;
-        return Task.FromResult(ResultWrapper<long?>.Success(number));
+        ulong number = _blockchainBridge.HeadBlock?.Number ?? 0;
+        return Task.FromResult(ResultWrapper<ulong?>.Success(number));
     }
 
     public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter? blockParameter = null)
@@ -855,7 +855,7 @@ public partial class EthRpcModule(
         {
             CancellationToken cancellationToken = timeout.Token;
 
-            long? headNumber = _blockFinder.Head?.Number;
+            ulong? headNumber = _blockFinder.Head?.Number;
             if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
             {
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
@@ -1134,11 +1134,11 @@ public partial class EthRpcModule(
     public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash)
         => GetBlockAccessList(blockHash, null);
 
-    public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(long blockNumber)
+    public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(ulong blockNumber)
         => GetBlockAccessList(null, blockNumber);
-    private ResultWrapper<ReadOnlyBlockAccessList?> GetBlockAccessList(Hash256? blockHash, long? blockNumber)
+    private ResultWrapper<ReadOnlyBlockAccessList?> GetBlockAccessList(Hash256? blockHash, ulong? blockNumber)
     {
-        Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber.Value) : _blockFinder.FindBlock(blockHash);
+        Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber!.Value) : _blockFinder.FindBlock(blockHash);
         if (block is null)
         {
             return ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);

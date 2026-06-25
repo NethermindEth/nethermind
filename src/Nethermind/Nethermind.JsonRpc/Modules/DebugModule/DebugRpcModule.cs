@@ -52,13 +52,20 @@ public class DebugRpcModule(
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
     {
-        ChainLevelInfo? levelInfo = debugBridge.GetLevelInfo(number);
+        if (number < 0)
+        {
+            return ResultWrapper<ChainLevelForRpc>.Fail($"Chain level must be non-negative (got {number})", ErrorCodes.InvalidParams);
+        }
+        ChainLevelInfo? levelInfo = debugBridge.GetLevelInfo((ulong)number);
         return levelInfo is null
             ? ResultWrapper<ChainLevelForRpc>.Fail($"Chain level {number} does not exist", ErrorCodes.ResourceNotFound)
             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
     }
 
-    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) => ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber, force));
+    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) =>
+        startNumber < 0
+            ? ResultWrapper<int>.Fail($"startNumber must be non-negative (got {startNumber})", ErrorCodes.InvalidParams)
+            : ResultWrapper<int>.Success(debugBridge.DeleteChainSlice((ulong)startNumber, force));
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
@@ -212,7 +219,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        long? blockNo = blockParameter.BlockNumber;
+        ulong? blockNo = blockParameter.BlockNumber;
         if (!blockNo.HasValue)
         {
             throw new InvalidDataException("Block number value incorrect");
@@ -221,7 +228,7 @@ public class DebugRpcModule(
         if (CanStreamStructLogs(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            long resolvedBlockNo = blockNo.Value;
+            ulong resolvedBlockNo = blockNo.Value;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(resolvedBlockNo, index, token, effective, writer, pipeWriter)));
@@ -301,7 +308,7 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public async Task<ResultWrapper<bool>> debug_migrateReceipts(long from, long to) =>
+    public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>
         ResultWrapper<bool>.Success(await debugBridge.MigrateReceipts(from, to));
 
     public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
@@ -475,7 +482,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GcStats> debug_gcStats() => throw new NotImplementedException();
 
-    public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber) =>
+    public ResultWrapper<byte[]> debug_getBlockRlp(ulong blockNumber) =>
         GetBlockRlpOrFail(new BlockParameter(blockNumber));
 
     public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash) =>
@@ -745,7 +752,7 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
-        long? defaultGas = jsonRpcConfig.GasCap.IsGasCapped() ? jsonRpcConfig.GasCap : null;
+        ulong? defaultGas = jsonRpcConfig.GasCap.IsGasCapped() ? jsonRpcConfig.GasCap : null;
         foreach (TransactionBundle bundle in bundles)
         {
             foreach (TransactionForRpc call in bundle.Transactions)
@@ -770,11 +777,11 @@ public class DebugRpcModule(
         // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
         // Pre-compute the block number each bundle targets so we can drop fillers from the result and
         // keep a 1:1 mapping to the input bundles.
-        HashSet<long> bundleBlockNumbers = new(bundles.Length);
-        long lastBlockNumber = header.Number;
+        HashSet<ulong> bundleBlockNumbers = new(bundles.Length);
+        ulong lastBlockNumber = header.Number;
         foreach (TransactionBundle bundle in bundles)
         {
-            long number = (long)bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
+            ulong number = bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
             bundleBlockNumbers.Add(number);
             lastBlockNumber = number;
         }
@@ -801,7 +808,7 @@ public class DebugRpcModule(
         }
 
         IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data
-            .Where(blockResult => blockResult.Number is long n && bundleBlockNumbers.Contains(n))
+            .Where(blockResult => blockResult.Number is ulong n && bundleBlockNumbers.Contains(n))
             .Select(blockResult => blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);

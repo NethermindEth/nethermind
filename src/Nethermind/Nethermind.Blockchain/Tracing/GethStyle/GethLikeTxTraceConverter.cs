@@ -40,7 +40,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
                 ForcedNumberConversion.Value = NumberConversion.Raw;
                 try
                 {
-                    trace.Gas = JsonSerializer.Deserialize<long>(ref reader, options);
+                    trace.Gas = JsonSerializer.Deserialize<ulong>(ref reader, options);
                 }
                 finally
                 {

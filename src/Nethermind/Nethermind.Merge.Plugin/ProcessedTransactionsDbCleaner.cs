@@ -16,7 +16,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     private readonly IBlockTree _blockTree;
     private readonly IDb _processedTxsDb;
     private readonly ILogger _logger;
-    private long _lastFinalizedBlock = 0;
+    private ulong _lastFinalizedBlock = 0;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
     public ProcessedTransactionsDbCleaner(IBlockTree blockTree, IDb processedTxsDb, ILogManager logManager)
@@ -36,7 +36,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
         }
     }
 
-    private void CleanProcessedTransactionsDb(long newlyFinalizedBlockNumber)
+    private void CleanProcessedTransactionsDb(ulong newlyFinalizedBlockNumber)
     {
         try
         {
@@ -44,7 +44,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
             {
                 foreach (byte[] key in _processedTxsDb.GetAllKeys())
                 {
-                    long blockNumber = key.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                    ulong blockNumber = key.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
                     if (newlyFinalizedBlockNumber >= blockNumber)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Cleaning processed blob txs from block {blockNumber}");

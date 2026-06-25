@@ -10,11 +10,11 @@ public static class Metrics
 {
     [GaugeMetric]
     [Description("The number of the oldest block stored.")]
-    public static long OldestStoredBlockNumber { get; set; }
+    public static ulong OldestStoredBlockNumber { get; set; }
 
     [GaugeMetric]
     [Description("The number of the oldest block access list stored.")]
-    public static long OldestStoredBlockAccessListBlockNumber { get; set; }
+    public static ulong? OldestStoredBlockAccessListBlockNumber { get; set; }
 
     [CounterMetric]
     [Description("The number of the historical blocks that have been pruned (since restart).")]
@@ -26,9 +26,9 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("The cutoff block number from which historical blocks will be pruned.")]
-    public static long? PruningCutoffBlocknumber { get; set; }
+    public static ulong? PruningCutoffBlocknumber { get; set; }
 
     [GaugeMetric]
     [Description("The cutoff block number from which historical block access lists will be pruned.")]
-    public static long? BlockAccessListPruningCutoffBlocknumber { get; set; }
+    public static ulong? BlockAccessListPruningCutoffBlocknumber { get; set; }
 }
