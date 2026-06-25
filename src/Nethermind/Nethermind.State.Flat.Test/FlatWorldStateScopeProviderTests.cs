@@ -617,6 +617,54 @@ public class FlatWorldStateScopeProviderTests
 
     #endregion
 
+    #region Read-back Persistence Isolation Tests
+
+    [Test]
+    public void PureRead_DoesNotEnterPersistedAccountSet()
+    {
+        // Regression for the flat != trie divergence (#11993): PersistSnapshot writes a snapshot's
+        // Accounts verbatim to disk. A read-only account access must NOT contribute an account to that
+        // set - otherwise a stale read can clobber a fresher on-disk flat leaf while the trie (driven
+        // only by real writes) stays correct, surfacing as a wrong state root / "nonce too high" on
+        // restart. The flat persist-set must mirror the trie write-set (real writes only).
+
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address writtenAddress = TestItem.AddressB;
+        Address readOnlyAddress = TestItem.AddressA;
+
+        Account written = TestItem.GenerateRandomAccount();
+        Account readOnly = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(readOnlyAddress).Returns(readOnly);
+
+        // A real write of one account - guarantees a snapshot is produced.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(writtenAddress, written);
+        }
+
+        // A pure read of a different account, with no accompanying write.
+        Assert.That(scope.Get(readOnlyAddress), Is.EqualTo(readOnly), "Read must resolve correctly");
+
+        scope.Commit(1);
+
+        Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
+
+        // The real write must be persisted.
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(writtenAddress, out _), Is.True,
+            "A real account write must enter the persisted account set");
+
+        // The pure read must NOT be persisted.
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(readOnlyAddress, out _), Is.False,
+            "A pure account read must not enter the persisted account set (flat persist-set must mirror the trie write-set)");
+
+        // The read cache must still serve the value within the scope.
+        Assert.That(scope.Get(readOnlyAddress), Is.EqualTo(readOnly), "Read cache must still resolve correctly after commit");
+    }
+
+    #endregion
+
     #region Comprehensive Selfdestruct Blocking Tests
 
     [Test]

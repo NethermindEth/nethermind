@@ -28,6 +28,12 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
+    // Per-block cache of account READ results, served back on subsequent reads within the same block.
+    // Reset on every CollectAndApplySnapshot. Deliberately NOT part of _currentPooledContent so read-backs
+    // never enter the persisted/compacted account set: the flat persist-set must mirror the trie write-set,
+    // otherwise a stale read-back can clobber a fresher on-disk flat leaf and diverge from the trie (#11993).
+    private readonly ConcurrentDictionary<HashedKey<Address>, Account?> _readCache = new();
+
     private bool _trieChanged = false;
 
     // The cached resource holds some items that are pooled.
@@ -79,7 +85,13 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<Address> key = new(address);
 
-        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc)) return acc;
+        Account? acc;
+        if (!excludeChanged)
+        {
+            // Local writes take precedence over cached reads of the same account.
+            if (_changedAccounts.TryGetValue(key, out acc)) return acc;
+            if (_readCache.TryGetValue(key, out acc)) return acc;
+        }
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -321,6 +333,17 @@ public sealed class SnapshotBundle : IDisposable
     public void SetAccount(Address address, Account? account) =>
         _changedAccounts[address] = account;
 
+    /// <summary>
+    /// Records the result of an account read so later reads in the same block are served locally.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="SetAccount"/>, a cached read is never added to the snapshot's persisted/compacted
+    /// account set. Only real writes are persisted, mirroring the trie write-set; persisting a (possibly
+    /// stale) read-back would let the flat account column diverge from the trie (#11993).
+    /// </remarks>
+    public void CacheRead(Address address, Account? account) =>
+        _readCache[address] = account;
+
     public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
@@ -400,6 +423,9 @@ public sealed class SnapshotBundle : IDisposable
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct
+
+        // The read cache is per-block; clear it so the next block cannot serve a now-stale cached read.
+        _readCache.NoResizeClear();
 
         // Invalidate cached resources
         if (returnSnapshot)
