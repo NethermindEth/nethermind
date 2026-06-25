@@ -19,7 +19,7 @@ public interface ISnapshotRepository
     bool RemoveAndReleaseCompactedKnownState(in StateId stateId);
     bool HasState(in StateId stateId);
     SnapshotPooledList AssembleSnapshots(in StateId stateId, in StateId targetStateId, int estimatedSize);
-    SnapshotPooledList AssembleSnapshotsUntil(in StateId stateId, long minBlockNumber, int estimatedSize);
+    SnapshotPooledList AssembleSnapshotsUntil(in StateId stateId, ulong minBlockNumber, int estimatedSize);
     StateId? GetLastSnapshotId();
 
     /// <summary>
@@ -37,8 +37,8 @@ public interface ISnapshotRepository
     /// <summary>Returns the most recently committed state, or <c>null</c> if nothing was committed this session.</summary>
     StateId? GetLastCommittedStateId();
 
-    bool TryFindAncestorStateAtBlock(in StateId head, long blockNumber, out StateId ancestor);
-    ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
+    bool TryFindAncestorStateAtBlock(in StateId head, ulong blockNumber, out StateId ancestor);
+    ArrayPoolList<StateId> GetStatesAtBlockNumber(ulong blockNumber);
     void RemoveStatesUntil(in StateId currentPersistedStateId);
 
     /// <summary>

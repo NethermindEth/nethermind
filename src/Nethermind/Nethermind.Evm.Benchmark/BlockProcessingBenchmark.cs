@@ -171,7 +171,7 @@ public class BlockProcessingBenchmark
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
-        int nonce = 0;
+        ulong nonce = 0;
         BuildLegacyTransfers(100, nonce).CopyTo(mixedTxs, 0);
         nonce += 100;
         BuildEip1559Transfers(60, nonce).CopyTo(mixedTxs, 100);
@@ -341,13 +341,13 @@ public class BlockProcessingBenchmark
 
     // ── Transaction builders ──────────────────────────────────────────────
 
-    private Transaction[] BuildLegacyTransfers(int count, int startNonce)
+    private Transaction[] BuildLegacyTransfers(int count, ulong startNonce)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
                 .WithGasLimit(21_000)
@@ -358,14 +358,14 @@ public class BlockProcessingBenchmark
         return txs;
     }
 
-    private Transaction[] BuildEip1559Transfers(int count, int startNonce)
+    private Transaction[] BuildEip1559Transfers(int count, ulong startNonce)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
                 .WithGasLimit(21_000)
@@ -377,14 +377,14 @@ public class BlockProcessingBenchmark
         return txs;
     }
 
-    private Transaction[] BuildAccessListTxs(int count, int startNonce)
+    private Transaction[] BuildAccessListTxs(int count, ulong startNonce)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
                 .WithType(TxType.AccessList)
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
                 .WithGasLimit(50_000)
@@ -396,13 +396,13 @@ public class BlockProcessingBenchmark
         return txs;
     }
 
-    private Transaction[] BuildContractDeploys(int count, int startNonce)
+    private Transaction[] BuildContractDeploys(int count, ulong startNonce)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce(startNonce + (ulong)i)
                 .WithTo(null)
                 .WithData(ContractCode)
                 .WithGasLimit(100_000)
@@ -413,13 +413,13 @@ public class BlockProcessingBenchmark
         return txs;
     }
 
-    private Transaction[] BuildContractCalls(int count, int startNonce)
+    private Transaction[] BuildContractCalls(int count, ulong startNonce)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressB)
                 .WithGasLimit(50_000)
                 .WithGasPrice(2.GWei)

@@ -54,7 +54,7 @@ public class SyncServerTests
         ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
         Hash256 result = ctx.SyncServer.FindHash(123)!;
 
-        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
+        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>());
         ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         Assert.That(result, Is.EqualTo(TestItem.KeccakA));
@@ -592,15 +592,15 @@ public class SyncServerTests
         localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
-        (long earliest, int latest)[] expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
+        (ulong earliest, ulong latest)[] expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
             .Where(x => x % frequency == 0)
-            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
+            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: (ulong)x))
             .ToArray()[^2..];
 
         for (int i = 0; i < peers.Length; i++)
         {
             Assert.That(perPeerSignals[i].Wait(TimeSpan.FromSeconds(30)), Is.True, $"Peer {i} did not receive all expected NotifyOfNewRange calls");
-            (long earliest, long latest)[] arr = peers[i].SyncPeer.ReceivedCalls()
+            (ulong earliest, ulong latest)[] arr = peers[i].SyncPeer.ReceivedCalls()
                 .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
                 .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
                 .Select(a => (earliest: a[0], latest: a[1])).ToArray();
@@ -655,7 +655,7 @@ public class SyncServerTests
     public void Correctly_clips_lowestBlock()
     {
         Context ctx = new();
-        ctx.BlockTree.GetLowestBlock().Returns(5);
+        ctx.BlockTree.GetLowestBlock().Returns(5UL);
         Assert.That(ctx.SyncServer.LowestBlock, Is.EqualTo(0));
     }
 
@@ -727,7 +727,7 @@ public class SyncServerTests
         }
         else
         {
-            blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<long>(), Arg.Any<Hash256>());
+            blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>());
         }
     }
 

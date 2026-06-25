@@ -6,6 +6,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
@@ -39,7 +40,7 @@ public sealed class OpcodeTraceRecorder(
     private Stopwatch? _stopwatch;
     private CancellationTokenSource? _cts;
     private Task? _tracingTask;
-    private long _lastProcessedBlock;
+    private ulong _lastProcessedBlock;
     private bool _isComplete;
     private ISyncModeSelector? _syncModeSelector;
     private bool _syncModeWarningLogged;
@@ -59,7 +60,7 @@ public sealed class OpcodeTraceRecorder(
         try
         {
             // Get current chain tip
-            long currentChainTip = api.BlockTree?.Head?.Number ?? 0;
+            ulong currentChainTip = api.BlockTree?.Head?.Number ?? 0UL;
 
             // Parse mode for validation
             TracingMode mode = TracingMode.RealTime;
@@ -105,7 +106,7 @@ public sealed class OpcodeTraceRecorder(
 
             // Initialize progress tracker
             _progress = new TracingProgress(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
-            _lastProcessedBlock = _traceConfig.EffectiveStartBlock - 1;
+            _lastProcessedBlock = _traceConfig.EffectiveStartBlock.SaturatingSub(1);
 
             if (_logger.IsInfo)
             {
@@ -172,12 +173,12 @@ public sealed class OpcodeTraceRecorder(
 
             // For RealTime mode with Blocks parameter, recalculate range based on current chain tip
             // This ensures we trace the NEXT N blocks from when the tracer attaches, not from init time
-            long effectiveStart = _traceConfig.EffectiveStartBlock;
-            long effectiveEnd = _traceConfig.EffectiveEndBlock;
+            ulong effectiveStart = _traceConfig.EffectiveStartBlock;
+            ulong effectiveEnd = _traceConfig.EffectiveEndBlock;
 
             if (_config.RecentBlocks.HasValue && !_config.StartBlock.HasValue && !_config.EndBlock.HasValue)
             {
-                long currentTip = api.BlockTree?.Head?.Number ?? 0;
+                ulong currentTip = api.BlockTree?.Head?.Number ?? 0UL;
                 effectiveStart = currentTip + 1;
                 effectiveEnd = currentTip + _config.RecentBlocks.Value;
 
@@ -315,7 +316,7 @@ public sealed class OpcodeTraceRecorder(
 
         _tracingTask = Task.Run(async () =>
         {
-            long[]? skippedBlocks = null;
+            ulong[]? skippedBlocks = null;
 
             try
             {
@@ -349,7 +350,7 @@ public sealed class OpcodeTraceRecorder(
 
                     await executionTracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
 
-                    long[] skippedSnapshot = [.. executionTracer.SkippedBlocks];
+                    ulong[] skippedSnapshot = [.. executionTracer.SkippedBlocks];
                     if (skippedSnapshot.Length > 0)
                     {
                         Array.Sort(skippedSnapshot);
@@ -406,7 +407,7 @@ public sealed class OpcodeTraceRecorder(
         return _tracingTask;
     }
 
-    private void OnBlockCompletedRealTime(long blockNumber)
+    private void OnBlockCompletedRealTime(ulong blockNumber)
     {
         _lastProcessedBlock = blockNumber;
         _progress?.UpdateProgress(blockNumber);
@@ -424,7 +425,7 @@ public sealed class OpcodeTraceRecorder(
         }
     }
 
-    private async Task WriteOutputAsync(long[]? skippedBlocks = null)
+    private async Task WriteOutputAsync(ulong[]? skippedBlocks = null)
     {
         if (_traceConfig is null)
         {

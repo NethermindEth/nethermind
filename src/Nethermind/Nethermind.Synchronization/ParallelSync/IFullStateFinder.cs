@@ -5,5 +5,5 @@ namespace Nethermind.Synchronization.ParallelSync;
 
 public interface IFullStateFinder
 {
-    long FindBestFullState();
+    ulong FindBestFullState();
 }

@@ -17,7 +17,7 @@ public class CompositePersistenceStrategy : IPersistenceStrategy
         return this;
     }
 
-    public bool ShouldPersist(long blockNumber)
+    public bool ShouldPersist(ulong blockNumber)
     {
         for (int i = 0; i < _strategies.Count; i++)
         {

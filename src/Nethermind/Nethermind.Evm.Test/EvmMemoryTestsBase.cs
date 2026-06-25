@@ -74,9 +74,9 @@ public abstract class EvmMemoryTestsBase
         UInt256 dest = UInt256.One;
         memory.CalculateMemoryCost(in dest, UInt256.One, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
-        long cost = memory.CalculateMemoryCost(in dest, UInt256.One, out outOfGas);
+        ulong cost = memory.CalculateMemoryCost(in dest, UInt256.One, out outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
-        Assert.That(cost, Is.EqualTo(0L));
+        Assert.That(cost, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -84,8 +84,8 @@ public abstract class EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 dest = long.MaxValue;
-        long cost = memory.CalculateMemoryCost(in dest, UInt256.Zero, out bool outOfGas);
+        ulong cost = memory.CalculateMemoryCost(in dest, UInt256.Zero, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
-        Assert.That(cost, Is.EqualTo(0L));
+        Assert.That(cost, Is.EqualTo(0UL));
     }
 }

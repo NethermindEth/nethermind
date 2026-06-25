@@ -26,7 +26,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as address.
         /// </summary>
@@ -45,7 +45,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as ref to big endian word.
         /// </summary>
@@ -64,7 +64,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as address.
         /// </summary>
@@ -79,7 +79,7 @@ public static partial class EvmInstructions
     public interface IOpEnvUInt256<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt256.
         /// </summary>
@@ -95,7 +95,7 @@ public static partial class EvmInstructions
     public interface IOpBlkUInt256<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt256.
         /// </summary>
@@ -111,7 +111,7 @@ public static partial class EvmInstructions
     public interface IOpEnvUInt32<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt32.
         /// </summary>
@@ -126,7 +126,7 @@ public static partial class EvmInstructions
     public interface IOpEnvUInt64<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
@@ -141,7 +141,7 @@ public static partial class EvmInstructions
     public interface IOpBlkUInt64<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
@@ -670,10 +670,10 @@ public static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
 
         // If gas falls below zero after cost deduction, signal out-of-gas error.
-        if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
+        if (TGasPolicy.IsOutOfGas(in gas)) goto OutOfGas;
 
         // Push the remaining gas (as unsigned 64-bit) onto the stack.
-        return stack.PushUInt64<TTracingInst>((ulong)TGasPolicy.GetRemainingGas(in gas));
+        return stack.PushUInt64<TTracingInst>(TGasPolicy.GetRemainingGas(in gas));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -743,14 +743,11 @@ public static partial class EvmInstructions
         // Pop the block number from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
 
-        // Convert the block number to a long. Clamp the value to long.MaxValue if it exceeds it.
-        long number = a > long.MaxValue ? long.MaxValue : (long)a.u0;
-
         // Retrieve the block hash for the given block number.
         BlockHeader header = vm.BlockExecutionContext.Header;
-        Hash256? blockHash = number >= header.Number ?
-            null : // Current block or higher is null, don't bother looking up
-            vm.BlockHashProvider.GetBlockhash(header, number, vm.Spec);
+        Hash256? blockHash = !a.IsUint64 || a.u0 >= header.Number
+            ? null // Current block, future block, or unrepresentable block number
+            : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);

@@ -40,7 +40,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             ? SnapshotPooledList.Empty()
             : AssembleSnapshotsBfs(baseBlock, targetState.BlockNumber, targetState, estimatedSize);
 
-    public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, long minBlockNumber, int estimatedSize)
+    public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, ulong minBlockNumber, int estimatedSize)
         => AssembleSnapshotsBfs(baseBlock, minBlockNumber, exactTarget: null, estimatedSize);
 
     /// <summary>
@@ -59,7 +59,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     /// for compaction). `visited` owns a lease on every leased snapshot; the winning path is re-leased
     /// before the finally releases all of them.
     /// </remarks>
-    private SnapshotPooledList AssembleSnapshotsBfs(in StateId baseBlock, long minBlockNumber, StateId? exactTarget, int estimatedSize)
+    private SnapshotPooledList AssembleSnapshotsBfs(in StateId baseBlock, ulong minBlockNumber, StateId? exactTarget, int estimatedSize)
     {
         using ArrayPoolListRef<(Snapshot Snapshot, int ParentIndex)> visited = new(estimatedSize);
         using PooledQueue<(StateId Current, int ParentIndex)> queue = new();
@@ -88,7 +88,8 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
                     StateId from = snapshot.From;
 
-                    if (from.BlockNumber < minBlockNumber || !seen.Add(from))
+                    ulong targetBlock = minBlockNumber == ulong.MaxValue ? 0 : minBlockNumber;
+                    if ((from != StateId.PreGenesis && from.BlockNumber < targetBlock) || !seen.Add(from))
                     {
                         snapshot.Dispose();
                         continue;
@@ -187,7 +188,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return false;
     }
 
-    public ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber)
+    public ArrayPoolList<StateId> GetStatesAtBlockNumber(ulong blockNumber)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
@@ -197,7 +198,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return sortedSnapshots.GetViewBetween(min, max).ToPooledList(0);
     }
 
-    private bool HasForkAt(long blockNumber)
+    private bool HasForkAt(ulong blockNumber)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
@@ -226,7 +227,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return _hasLastCommitted ? _lastCommittedStateId : null;
     }
 
-    public bool TryFindAncestorStateAtBlock(in StateId head, long blockNumber, out StateId ancestor)
+    public bool TryFindAncestorStateAtBlock(in StateId head, ulong blockNumber, out StateId ancestor)
     {
         if (head.BlockNumber < blockNumber)
         {
@@ -293,7 +294,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public ArrayPoolList<StateId> GetSnapshotBeforeStateId(StateId stateId)
     {
-        if (stateId.BlockNumber < 0)
+        if (stateId == StateId.PreGenesis)
             return ArrayPoolList<StateId>.Empty();
 
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
@@ -323,8 +324,8 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         StateId? lastStateId = GetLastSnapshotId();
         if (lastStateId is null || lastStateId.Value.BlockNumber <= canonicalStateId.BlockNumber) return;
 
-        long maxBlock = lastStateId.Value.BlockNumber;
-        long batchStart = canonicalStateId.BlockNumber + 1;
+        ulong maxBlock = lastStateId.Value.BlockNumber;
+        ulong batchStart = canonicalStateId.BlockNumber + 1;
         int totalPruned = 0;
 
         using PooledStack<StateId> stack = new();
@@ -332,7 +333,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
         while (batchStart <= maxBlock)
         {
-            long batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
+            ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
             using ArrayPoolListRef<StateId> batch = GetStatesInRange(batchStart, batchEnd);
             foreach (StateId stateId in batch)
             {
@@ -391,7 +392,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return false;
     }
 
-    private ArrayPoolListRef<StateId> GetStatesInRange(long blockStartInclusive, long blockEndInclusive)
+    private ArrayPoolListRef<StateId> GetStatesInRange(ulong blockStartInclusive, ulong blockEndInclusive)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 

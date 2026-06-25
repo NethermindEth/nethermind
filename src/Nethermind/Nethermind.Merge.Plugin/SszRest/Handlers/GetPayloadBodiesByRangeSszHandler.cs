@@ -33,14 +33,14 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         // body is empty for GET; parameters come from the query string.
-        if (!QueryParams.TryReadLong(ctx, "from", static n => n >= 0,
-                "must be a non-negative integer block number", out long start, out Task? error))
+        if (!QueryParams.TryReadUlong(ctx, "from", static n => true,
+                "must be a non-negative integer block number", out ulong start, out Task? error))
         {
             await error;
             return;
         }
-        if (!QueryParams.TryReadLong(ctx, "count", static n => n > 0,
-                "must be a positive integer", out long count, out error))
+        if (!QueryParams.TryReadUlong(ctx, "count", static n => n > 0,
+                "must be a positive integer", out ulong count, out error))
         {
             await error;
             return;
