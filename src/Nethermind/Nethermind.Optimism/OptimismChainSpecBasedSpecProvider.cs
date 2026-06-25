@@ -15,7 +15,7 @@ public class OptimismChainSpecBasedSpecProvider(
 {
     protected override ReleaseSpec CreateEmptyReleaseSpec() => new OptimismReleaseSpec();
 
-    protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
+    protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, ulong releaseStartBlock, ulong? releaseStartTimestamp = null)
     {
         OptimismReleaseSpec releaseSpec = (OptimismReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
 

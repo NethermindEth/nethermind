@@ -49,12 +49,12 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
             ? NoopSnapServer.Instance
             : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
 
-        RetentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null;
+        RetentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : (ulong?)null;
     }
 
-    public long? RetentionWindowBlocks { get; }
+    public ulong? RetentionWindowBlocks { get; }
 
-    public long? OldestStateBlock
+    public ulong? OldestStateBlock
     {
         get => _boundaryStore.OldestStateBlock;
         set => _boundaryStore.OldestStateBlock = value;

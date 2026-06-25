@@ -171,8 +171,8 @@ internal static class FixtureReader
         Hash256 unclesHash = ReadHash(h, "sha3Uncles");
         Address beneficiary = ReadAddress(h, "miner");
         UInt256 difficulty = ReadUInt256Hex(h, "difficulty");
-        long number = ReadInt64Hex(h, "number");
-        long gasLimit = ReadInt64Hex(h, "gasLimit");
+        ulong number = ReadUInt64Hex(h, "number");
+        ulong gasLimit = ReadUInt64Hex(h, "gasLimit");
         ulong timestamp = ReadUInt64Hex(h, "timestamp");
         byte[] extraData = ReadBytes(h, "extraData");
 
@@ -186,7 +186,7 @@ internal static class FixtureReader
             timestamp,
             extraData);
 
-        header.GasUsed = ReadInt64Hex(h, "gasUsed");
+        header.GasUsed = ReadUInt64Hex(h, "gasUsed");
         header.StateRoot = ReadHash(h, "stateRoot");
         header.TxRoot = ReadHash(h, "transactionsRoot");
         header.ReceiptsRoot = ReadHash(h, "receiptsRoot");

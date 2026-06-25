@@ -42,7 +42,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns an array of execution payload bodies for the provided number range",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count);
+    Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(ulong start, ulong count);
 
     [JsonRpcMethod(
         Description = "Returns requested blob cells and proofs.",

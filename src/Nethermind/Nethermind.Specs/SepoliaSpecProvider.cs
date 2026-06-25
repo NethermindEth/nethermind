@@ -10,7 +10,7 @@ namespace Nethermind.Specs;
 
 public class SepoliaSpecProvider : ForkScheduleSpecProvider
 {
-    public const long MergeForkIdBlockNumber = 1735371;
+    public const ulong MergeForkIdBlockNumber = 1735371;
     public const ulong BeaconChainGenesisTimestampConst = 0x62b07d60;
     public const ulong ShanghaiTimestamp = 0x63fd7d60;
     public const ulong CancunTimestamp = 0x65B97D60;

@@ -5,6 +5,6 @@ namespace Nethermind.Evm;
 
 public static class BlockOverrideExtensions
 {
-    public static ulong GetBlockNumber(this BlockOverride? blockOverride, long lastBlockNumber)
-        => blockOverride?.Number ?? (ulong)lastBlockNumber + 1;
+    public static ulong GetBlockNumber(this BlockOverride? blockOverride, ulong lastBlockNumber)
+        => blockOverride?.Number ?? lastBlockNumber + 1;
 }

@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Ethash
         private readonly ILogger _logger = logManager?.GetClassLogger<HintBasedCache>() ?? throw new ArgumentNullException(nameof(logManager));
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Hint(Guid guid, long start, long end)
+        public void Hint(Guid guid, ulong start, ulong end)
         {
             uint startEpoch = (uint)(start / Ethash.EpochLength);
             uint endEpoch = (uint)(end / Ethash.EpochLength);
@@ -86,7 +86,7 @@ namespace Nethermind.Consensus.Ethash
 
             if (currentMin > startEpoch || currentMax < endEpoch)
             {
-                for (long i = startEpoch; i <= endEpoch; i++)
+                for (uint i = startEpoch; i <= endEpoch; i++)
                 {
                     uint epoch = (uint)i;
                     if (epochForGuid.Add(epoch))

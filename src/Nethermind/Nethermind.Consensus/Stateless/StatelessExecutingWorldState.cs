@@ -37,7 +37,7 @@ public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorat
     public override bool TryGetAccount(Address address, out AccountStruct account)
         => base.TryGetAccount(address, out account);
 
-    public override UInt256 GetNonce(Address address)
+    public override ulong GetNonce(Address address)
         => base.GetNonce(address);
 
     public override bool IsStorageEmpty(Address address)
@@ -105,10 +105,10 @@ public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorat
     public override void DeleteAccount(Address address)
         => base.DeleteAccount(address);
 
-    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
         => base.CreateAccount(address, in balance, in nonce);
 
-    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
         => base.CreateAccountIfNotExists(address, in balance, in nonce);
 
     public override void CreateEmptyAccountIfDeleted(Address address)
@@ -126,19 +126,19 @@ public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorat
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         => base.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
 
-    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
         => base.IncrementNonce(address, delta, out oldNonce);
 
-    public override void DecrementNonce(Address address, UInt256 delta)
+    public override void DecrementNonce(Address address, ulong delta)
         => base.DecrementNonce(address, delta);
 
-    public override void SetNonce(Address address, in UInt256 nonce)
+    public override void SetNonce(Address address, in ulong nonce)
         => base.SetNonce(address, in nonce);
 
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => base.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
-    public override void CommitTree(long blockNumber)
+    public override void CommitTree(ulong blockNumber)
         => base.CommitTree(blockNumber);
 
     public override ArrayPoolList<AddressAsKey>? GetAccountChanges()

@@ -75,7 +75,7 @@ public readonly ref struct TransactionSubstate
         JournalSet<Address>? destroyList,
         JournalCollection<LogEntry>? logs,
         bool shouldRevert,
-        bool isTracerConnected,
+        bool isTracerConnected = default,
         EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {

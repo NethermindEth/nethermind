@@ -101,7 +101,7 @@ public class PrewarmerScopeProvider(
                 isPrewarmer);
         }
 
-        public void Commit(long blockNumber)
+        public void Commit(ulong blockNumber)
         {
             if (!_measureMetric)
             {

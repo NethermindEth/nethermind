@@ -17,7 +17,7 @@ public class StatelessExecutorSpecResolutionTests
 {
     // Real mainnet blocks live far above this height; EEST synthetic fixtures (chain id 1) top out at
     // tiny block numbers. This is the gate StatelessExecutor uses to tell them apart.
-    private const long MainnetRealBlockThreshold = 1_000_000;
+    private const ulong MainnetRealBlockThreshold = 1_000_000;
 
     // The original gate keyed on the block timestamp, which misrouted synthetic chain-id-1 fixtures with
     // realistic timestamps to the real MainnetSpecProvider (resolving the wrong fork). These cases pin the
@@ -27,7 +27,7 @@ public class StatelessExecutorSpecResolutionTests
     [TestCase(12UL, TestName = "TinyTimestamp")]
     public void Synthetic_mainnet_block_below_threshold_keeps_pinned_active_fork(ulong timestamp)
     {
-        const long blockNumber = 1;
+        const ulong blockNumber = 1;
         BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber).WithTimestamp(timestamp).TestObject;
         ChainConfig config = new() { ChainId = BlockchainIds.Mainnet, ActiveFork = CancunForkPinnedAt(blockNumber, timestamp) };
 
@@ -42,7 +42,7 @@ public class StatelessExecutorSpecResolutionTests
     [Test]
     public void Real_mainnet_block_above_threshold_uses_mainnet_spec_provider()
     {
-        const long blockNumber = 21_000_000;
+        const ulong blockNumber = 21_000_000;
         BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber).WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp).TestObject;
         ChainConfig config = new() { ChainId = BlockchainIds.Mainnet, ActiveFork = CancunForkPinnedAt(blockNumber, MainnetSpecProvider.CancunBlockTimestamp) };
 
@@ -53,7 +53,7 @@ public class StatelessExecutorSpecResolutionTests
 
     [TestCase(MainnetRealBlockThreshold, true, TestName = "AtThreshold_UsesMainnet")]
     [TestCase(MainnetRealBlockThreshold - 1, false, TestName = "BelowThreshold_UsesActiveFork")]
-    public void Mainnet_threshold_is_inclusive_on_block_number(long blockNumber, bool expectsMainnetSpecProvider)
+    public void Mainnet_threshold_is_inclusive_on_block_number(ulong blockNumber, bool expectsMainnetSpecProvider)
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber).WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp).TestObject;
         ChainConfig config = new() { ChainId = BlockchainIds.Mainnet, ActiveFork = CancunForkPinnedAt(blockNumber, MainnetSpecProvider.CancunBlockTimestamp) };
@@ -66,7 +66,7 @@ public class StatelessExecutorSpecResolutionTests
     [Test]
     public void Non_mainnet_chain_ignores_block_number_threshold()
     {
-        const long blockNumber = 21_000_000;
+        const ulong blockNumber = 21_000_000;
         BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber).WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp).TestObject;
         ChainConfig config = new() { ChainId = BlockchainIds.Sepolia, ActiveFork = CancunForkPinnedAt(blockNumber, MainnetSpecProvider.CancunBlockTimestamp) };
 
@@ -79,10 +79,10 @@ public class StatelessExecutorSpecResolutionTests
 
     // Builds an ActiveFork pinned to Cancun (a fork present on every mainnet-compatible schedule), then
     // re-stamps its activation onto the block's own point — mirroring how StatelessInputGen bakes the fork.
-    private static ForkConfig CancunForkPinnedAt(long blockNumber, ulong timestamp)
+    private static ForkConfig CancunForkPinnedAt(ulong blockNumber, ulong timestamp)
     {
         BlockHeader cancunHeader = Build.A.BlockHeader
-            .WithNumber(MainnetSpecProvider.ParisBlockNumber + 2)
+            .WithNumber((ulong)MainnetSpecProvider.ParisBlockNumber + 2)
             .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp)
             .TestObject;
 

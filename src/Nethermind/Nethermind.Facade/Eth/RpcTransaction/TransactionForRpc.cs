@@ -41,13 +41,13 @@ public abstract class TransactionForRpc
     public Hash256? BlockHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? BlockNumber { get; set; }
+    public ulong? BlockNumber { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public ulong? BlockTimestamp { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? Gas { get; set; }
+    public ulong? Gas { get; set; }
 
     // True when type came from a fallback (gasPrice-only or absolute default), not from an
     // explicit `type` field or a discriminator. Set only during JSON deserialization.
@@ -66,7 +66,7 @@ public abstract class TransactionForRpc
         BlockTimestamp = extraData.BlockTimestamp;
     }
 
-    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
+    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
         => new Transaction { Type = ResolveType(spec) };
 
     private TxType ResolveType(IReleaseSpec? spec)
