@@ -8,30 +8,20 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Logging;
 
 namespace Nethermind.Facade.Simulate;
 
-public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvider, IBlockTree blockTree, ILogManager logManager)
+public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvider, IBlockTree blockTree)
     : IBlockhashProvider
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<SimulateBlockhashProvider>();
-
+    // eth_simulateV1 is best-effort: when the ancestor hash cannot be resolved the inner provider returns
+    // null, which the EVM turns into a 0 push per BLOCKHASH semantics rather than failing the whole request.
     public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
     {
         long bestKnown = blockTree.BestKnownNumber;
-        (BlockHeader header, long target) = bestKnown < number && blockTree.BestSuggestedHeader is not null
-            ? (blockTree.BestSuggestedHeader!, bestKnown)
-            : (currentBlock, number);
-
-        // eth_simulateV1 is best-effort: an unresolvable ancestor hash must push 0 (null) per EVM semantics
-        // rather than fail the whole request, so we rely on the non-throwing resolution path.
-        if (!blockhashProvider.TryGetBlockhash(header, target, spec, out Hash256? hash) && _logger.IsTrace)
-        {
-            _logger.Trace($"BLOCKHASH for {header.Number} -> {target} unresolvable in simulate context; returning 0");
-        }
-
-        return hash;
+        return bestKnown < number && blockTree.BestSuggestedHeader is not null
+            ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, bestKnown, spec)
+            : blockhashProvider.GetBlockhash(currentBlock, number, spec);
     }
 
     public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => blockhashProvider.Prefetch(currentBlock, token);
