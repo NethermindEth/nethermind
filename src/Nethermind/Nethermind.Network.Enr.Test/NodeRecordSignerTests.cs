@@ -50,7 +50,7 @@ public class NodeRecordSignerTests
         nodeRecord.EnrSequence = 1; // override
 
         signer.Sign(nodeRecord);
-        string enrString = nodeRecord.EnrString;
+        string enrString = nodeRecord.ToString();
         Assert.That(enrString, Is.EqualTo(expectedEnrString));
     }
 

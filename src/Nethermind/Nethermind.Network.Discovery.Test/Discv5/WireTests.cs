@@ -41,7 +41,7 @@ public class WireTests
         await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
-            Enr = peerB.NodeRecordProvider.Current.EnrString
+            Enr = peerB.NodeRecordProvider.Current
         };
 
         using CancellationTokenSource cancellationSource = new(10_000);
@@ -55,8 +55,8 @@ public class WireTests
         await cancellationSource.CancelAsync();
         await Task.WhenAll(runA, runB);
 
-        peerA.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyB.PublicKey) && !string.IsNullOrEmpty(node.Enr)));
-        peerB.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyA.PublicKey) && !string.IsNullOrEmpty(node.Enr)));
+        peerA.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyB.PublicKey) && node.Enr != null));
+        peerB.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyA.PublicKey) && node.Enr != null));
     }
 
     [Test]
@@ -68,7 +68,7 @@ public class WireTests
         await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
-            Enr = peerB.NodeRecordProvider.Current.EnrString
+            Enr = peerB.NodeRecordProvider.Current
         };
 
         using CancellationTokenSource cancellationSourceA = new(10_000);
@@ -111,7 +111,7 @@ public class WireTests
             enrSequence: 1);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
-            Enr = staleRecord.EnrString
+            Enr = staleRecord
         };
 
         using CancellationTokenSource cancellationSource = new(10_000);
@@ -144,7 +144,7 @@ public class WireTests
         await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
-            Enr = peerB.NodeRecordProvider.Current.EnrString
+            Enr = peerB.NodeRecordProvider.Current
         };
 
         using CancellationTokenSource cancellationSource = new(10_000);
@@ -158,7 +158,7 @@ public class WireTests
         await cancellationSource.CancelAsync();
         await Task.WhenAll(runA, runB);
 
-        peerB.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyA.PublicKey) && string.IsNullOrEmpty(node.Enr)));
+        peerB.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyA.PublicKey) && node.Enr == null));
     }
 
     [Test]
@@ -170,7 +170,7 @@ public class WireTests
         await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
-            Enr = peerB.NodeRecordProvider.Current.EnrString
+            Enr = peerB.NodeRecordProvider.Current
         };
 
         using CancellationTokenSource cancellationSource = new(10_000);
@@ -205,11 +205,11 @@ public class WireTests
         await using TestPeer peerC = CreatePeer(TestItem.PrivateKeyC, endpointC);
         Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
         {
-            Enr = peerB.NodeRecordProvider.Current.EnrString
+            Enr = peerB.NodeRecordProvider.Current
         };
         Node nodeC = new(TestItem.PrivateKeyC.PublicKey, endpointC)
         {
-            Enr = peerC.NodeRecordProvider.Current.EnrString
+            Enr = peerC.NodeRecordProvider.Current
         };
         using Distances requestedDistances = peerA.Adapter.GetLookupDistances(nodeB, TestItem.PrivateKeyC.PublicKey);
         for (int i = 0; i < requestedDistances.Count; i++)
@@ -290,14 +290,14 @@ public class WireTests
 
     private static bool HasEnrSequence(Node node, ulong sequence)
     {
-        if (string.IsNullOrEmpty(node.Enr))
+        if (node.Enr is null)
         {
             return false;
         }
 
         try
         {
-            return NodeRecord.FromEnrString(node.Enr).EnrSequence == sequence;
+            return node.Enr.EnrSequence == sequence;
         }
         catch
         {

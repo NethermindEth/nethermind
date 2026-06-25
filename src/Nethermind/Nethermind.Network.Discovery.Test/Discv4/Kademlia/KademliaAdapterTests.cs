@@ -312,7 +312,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
             _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
                 n.Id.Equals(_receiver.Id) &&
-                n.Enr == remoteRecord.EnrString));
+                n.Enr != null &&
+                n.Enr.ToString() == remoteRecord.ToString()));
         }
 
         [Test]

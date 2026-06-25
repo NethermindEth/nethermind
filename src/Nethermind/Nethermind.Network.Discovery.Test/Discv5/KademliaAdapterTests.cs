@@ -103,7 +103,7 @@ public class KademliaAdapterTests
 
         Assert.That(
             KademliaAdapter.IsAcceptableNodeRecord(
-                NodeRecord.FromEnrString(record.EnrString),
+                NodeRecord.FromEnrString(record.ToString()),
                 testCase.ExpectedNodeId,
                 testCase.AllowNonRoutable,
                 ExecutionLayerDiscv5RecordFilter.Instance),

@@ -54,7 +54,7 @@ namespace Nethermind.Network.Test.Stats
                 Assert.That(node, Is.Not.Null);
                 Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
                 Assert.That(node.Port, Is.EqualTo(expectedPort));
-                Assert.That(node.Enr, Is.EqualTo(enr.EnrString));
+                Assert.That(node.Enr, Is.SameAs(enr));
             }
         }
 
@@ -67,6 +67,39 @@ namespace Nethermind.Network.Test.Stats
 
             Assert.That(result, Is.False);
             Assert.That(node, Is.Null);
+        }
+
+        [Test]
+        public void Enr_request_sequence_tracks_single_active_request()
+        {
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+
+            Assert.That(node.TryRequestEnrSequence(5), Is.True);
+            Assert.That(node.TryRequestEnrSequence(4), Is.False);
+            Assert.That(node.TryRequestEnrSequence(7), Is.False);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.RequestingEnrSequence, Is.EqualTo(7));
+                Assert.That(node.TryClearEnrRequest(5), Is.False);
+                Assert.That(node.RequestingEnrSequence, Is.EqualTo(7));
+                Assert.That(node.TryClearEnrRequest(7), Is.True);
+                Assert.That(node.RequestingEnrSequence, Is.Zero);
+            }
+        }
+
+        [Test]
+        public void Enr_request_sequence_clears_when_enr_is_updated()
+        {
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
+            enr.EnrSequence = 5;
+
+            Assert.That(node.TryRequestEnrSequence(5), Is.True);
+
+            node.Enr = enr;
+
+            Assert.That(node.RequestingEnrSequence, Is.Zero);
         }
 
         [TestCase("s", "127.0.0.1:303")]

@@ -26,15 +26,13 @@ public class NodeRecord
 
     private Signature? _signature;
 
-    private long _requestingEnrSequence;
-
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new(StringComparer.Ordinal);
 
     internal byte[]? OriginalRlp { get; set; }
 
     /// <summary>
     /// Represents the version / id / sequence of the node record data. It should be increased by one with each
-    /// update to the node data. Setting sequence on this class wipes out <see cref="EnrString"/> and
+    /// update to the node data. Setting sequence on this class wipes out <see cref="ToString"/> and
     /// <see cref="ContentHash"/>.
     /// </summary>
     public ulong EnrSequence
@@ -53,16 +51,9 @@ public class NodeRecord
     }
 
     /// <summary>
-    /// A base64 string representing a node record with the 'enr:' prefix
-    /// enr:-IS4QHCYrYZbAK(...)WM0xOIN1ZHCCdl8
+    /// Returns a base64 string representing a signed node record with the <c>enr:</c> prefix.
     /// </summary>
-    public string EnrString
-    {
-        get
-        {
-            return _enrString ??= CreateEnrString();
-        }
-    }
+    public override string ToString() => _enrString ??= CreateEnrString();
 
     /// <summary>
     /// Hash of the content, i.e. Keccak([seq, k, v, ...]) as defined in https://eips.ethereum.org/EIPS/eip-778
@@ -94,62 +85,6 @@ public class NodeRecord
             OriginalRlp = null;
             _enrString = null;
             _contentHash = null;
-        }
-    }
-
-    /// <summary>
-    /// Highest advertised ENR sequence currently being requested for this record; <c>0</c> means no request is active.
-    /// </summary>
-    public ulong RequestingEnrSequence => ToEnrSequence(Volatile.Read(ref _requestingEnrSequence));
-
-    /// <summary>
-    /// Stores the highest advertised ENR sequence that should be fetched.
-    /// </summary>
-    /// <param name="sequence">Advertised ENR sequence to fetch.</param>
-    /// <returns><see langword="true"/> when the caller should start the refresh request.</returns>
-    public bool TryRequestEnrSequence(ulong sequence)
-    {
-        if (sequence == 0)
-        {
-            return false;
-        }
-
-        while (true)
-        {
-            long currentRaw = Volatile.Read(ref _requestingEnrSequence);
-            ulong current = ToEnrSequence(currentRaw);
-            if (current >= sequence)
-            {
-                return false;
-            }
-
-            if (Interlocked.CompareExchange(ref _requestingEnrSequence, ToRequestingEnrSequence(sequence), currentRaw) == currentRaw)
-            {
-                return current == 0;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Clears the in-flight ENR request when no higher sequence was advertised meanwhile.
-    /// </summary>
-    /// <param name="sequence">Sequence that the completed request tried to satisfy.</param>
-    /// <returns><see langword="true"/> when the request state was cleared.</returns>
-    public bool TryClearEnrRequest(ulong sequence)
-    {
-        while (true)
-        {
-            long currentRaw = Volatile.Read(ref _requestingEnrSequence);
-            ulong current = ToEnrSequence(currentRaw);
-            if (current == 0 || current > sequence)
-            {
-                return false;
-            }
-
-            if (Interlocked.CompareExchange(ref _requestingEnrSequence, 0, currentRaw) == currentRaw)
-            {
-                return true;
-            }
         }
     }
 
@@ -453,7 +388,4 @@ public class NodeRecord
         }
     }
 
-    private static long ToRequestingEnrSequence(ulong sequence) => unchecked((long)sequence);
-
-    private static ulong ToEnrSequence(long sequence) => unchecked((ulong)sequence);
 }

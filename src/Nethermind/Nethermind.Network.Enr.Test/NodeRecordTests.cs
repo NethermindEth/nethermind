@@ -37,29 +37,10 @@ public class NodeRecordTests
     }
 
     [Test]
-    public void Cannot_get_enr_string_when_signature_missing()
+    public void Cannot_encode_to_string_when_signature_missing()
     {
         NodeRecord nodeRecord = new();
-        Assert.Throws<Exception>(() => _ = nodeRecord.EnrString);
-    }
-
-    [Test]
-    public void Enr_request_sequence_tracks_single_active_request()
-    {
-        NodeRecord nodeRecord = new();
-
-        Assert.That(nodeRecord.TryRequestEnrSequence(5), Is.True);
-        Assert.That(nodeRecord.TryRequestEnrSequence(4), Is.False);
-        Assert.That(nodeRecord.TryRequestEnrSequence(7), Is.False);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(nodeRecord.RequestingEnrSequence, Is.EqualTo(7));
-            Assert.That(nodeRecord.TryClearEnrRequest(5), Is.False);
-            Assert.That(nodeRecord.RequestingEnrSequence, Is.EqualTo(7));
-            Assert.That(nodeRecord.TryClearEnrRequest(7), Is.True);
-            Assert.That(nodeRecord.RequestingEnrSequence, Is.Zero);
-        }
+        Assert.Throws<Exception>(() => _ = nodeRecord.ToString());
     }
 
     [TestCase("192.0.2.1", "", -1, 30304, "", -1)]

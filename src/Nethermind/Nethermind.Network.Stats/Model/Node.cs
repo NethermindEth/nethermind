@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Threading;
 using FastEnumUtility;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,8 @@ namespace Nethermind.Stats.Model
         private string _clientId;
         private string _paddedHost;
         private string _paddedPort;
+        private ulong _requestingEnrSequence;
+        private NodeRecord _enr;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -78,15 +81,79 @@ namespace Nethermind.Stats.Model
 
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
-        public string Enr { get; set; }
-        public NodeRecord EnrRecord { get; set; }
+        public NodeRecord Enr
+        {
+            get => _enr;
+            set
+            {
+                _enr = value;
+                if (value is not null)
+                {
+                    TryClearEnrRequest(value.EnrSequence);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Highest advertised ENR sequence currently being requested for this node; <c>0</c> means no request is active.
+        /// </summary>
+        public ulong RequestingEnrSequence => Volatile.Read(ref _requestingEnrSequence);
+
+        /// <summary>
+        /// Stores the highest advertised ENR sequence that should be fetched.
+        /// </summary>
+        /// <param name="sequence">Advertised ENR sequence to fetch.</param>
+        /// <returns><see langword="true"/> when the caller should start the refresh request.</returns>
+        public bool TryRequestEnrSequence(ulong sequence)
+        {
+            if (sequence == 0)
+            {
+                return false;
+            }
+
+            while (true)
+            {
+                ulong current = Volatile.Read(ref _requestingEnrSequence);
+                if (current >= sequence)
+                {
+                    return false;
+                }
+
+                if (Interlocked.CompareExchange(ref _requestingEnrSequence, sequence, current) == current)
+                {
+                    return current == 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Clears the in-flight ENR request when no higher sequence was advertised meanwhile.
+        /// </summary>
+        /// <param name="sequence">Sequence that the completed request tried to satisfy.</param>
+        /// <returns><see langword="true"/> when the request state was cleared.</returns>
+        public bool TryClearEnrRequest(ulong sequence)
+        {
+            while (true)
+            {
+                ulong current = Volatile.Read(ref _requestingEnrSequence);
+                if (current == 0 || current > sequence)
+                {
+                    return false;
+                }
+
+                if (Interlocked.CompareExchange(ref _requestingEnrSequence, 0, current) == current)
+                {
+                    return true;
+                }
+            }
+        }
 
         public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
         {
             if (networkNode.IsEnr)
             {
-                SetEnrRecord(networkNode.Enr);
+                Enr = networkNode.Enr;
             }
         }
 
@@ -120,16 +187,9 @@ namespace Nethermind.Stats.Model
 
             node = new Node(key, new IPEndPoint(ip, port.Value))
             {
-                Enr = enr.EnrString,
-                EnrRecord = enr
+                Enr = enr
             };
             return true;
-        }
-
-        public void SetEnrRecord(NodeRecord record)
-        {
-            Enr = record.EnrString;
-            EnrRecord = record;
         }
 
         public Node(PublicKey id, string host, int port, bool isStatic = false)

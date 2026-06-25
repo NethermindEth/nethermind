@@ -100,7 +100,6 @@ public sealed class KademliaAdapter(
     /// <inheritdoc/>
     public async Task<bool> Ping(Node receiver, CancellationToken token)
     {
-        TryGetRecord(receiver, out _);
         ReserveEndpointCheck(receiver);
         using PingMsg ping = new(CreateRequestId(), (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
         PongResponseHandler responseHandler = new(receiver);
@@ -121,7 +120,6 @@ public sealed class KademliaAdapter(
     /// <inheritdoc/>
     public async Task<Node[]?> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
     {
-        TryGetRecord(receiver, out _);
         Distances distances = GetLookupDistances(receiver, target);
         using FindNodeMsg findNode = new(CreateRequestId(), distances);
         using NodesResponseHandler responseHandler = new(receiver, distances, _distance, recordFilter);
@@ -555,11 +553,11 @@ public sealed class KademliaAdapter(
         Node remoteNode = new(remotePublicKey, endpoint);
         if (nodeRecord?.Signature is not null)
         {
-            remoteNode.SetEnrRecord(nodeRecord);
+            remoteNode.Enr = nodeRecord;
         }
         else if (TryGetKnownSignedRecord(remoteNodeId, out NodeRecord? knownRecord))
         {
-            remoteNode.SetEnrRecord(knownRecord);
+            remoteNode.Enr = knownRecord;
         }
 
         if (HandleResponse(remoteNodeId, message))
@@ -580,7 +578,7 @@ public sealed class KademliaAdapter(
 
                 kademlia.Value.AddOrRefresh(remoteNode);
                 StartRemoteRecordRefresh(remoteNode, ping.EnrSequence, token);
-                if (!string.IsNullOrEmpty(remoteNode.Enr))
+                if (remoteNode.Enr is not null)
                 {
                     StartEndpointCheck(remoteNode, token);
                 }
@@ -620,13 +618,12 @@ public sealed class KademliaAdapter(
             return;
         }
 
-        NodeRecord recordState = GetOrSetRecordState(node);
-        if (recordState.Signature is not null && recordState.EnrSequence >= advertisedSequence)
+        if (node.Enr is { Signature: not null } currentRecord && currentRecord.EnrSequence >= advertisedSequence)
         {
             return;
         }
 
-        if (!recordState.TryRequestEnrSequence(advertisedSequence))
+        if (!node.TryRequestEnrSequence(advertisedSequence))
         {
             return;
         }
@@ -635,15 +632,15 @@ public sealed class KademliaAdapter(
         {
             while (true)
             {
-                ulong requestedSequence = recordState.RequestingEnrSequence;
+                ulong requestedSequence = node.RequestingEnrSequence;
                 if (requestedSequence == 0)
                 {
                     return;
                 }
 
-                if (recordState.Signature is not null && recordState.EnrSequence >= requestedSequence)
+                if (node.Enr is { Signature: not null } signedRecord && signedRecord.EnrSequence >= requestedSequence)
                 {
-                    recordState.TryClearEnrRequest(recordState.EnrSequence);
+                    node.TryClearEnrRequest(signedRecord.EnrSequence);
                     return;
                 }
 
@@ -652,7 +649,7 @@ public sealed class KademliaAdapter(
                 if (!await SendRequest(node, findNode, responseHandler, _findNodeTimeout, token))
                 {
                     if (_logger.IsTrace) _logger.Trace($"No discv5 self-record response received from {node} after advertised sequence {requestedSequence}.");
-                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
                     }
@@ -664,7 +661,7 @@ public sealed class KademliaAdapter(
                 if (record is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 self-record response from {node}; no usable record at advertised sequence {requestedSequence}.");
-                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
                     }
@@ -672,10 +669,10 @@ public sealed class KademliaAdapter(
                     continue;
                 }
 
-                if (record.EnrSequence < recordState.RequestingEnrSequence)
+                if (record.EnrSequence < node.RequestingEnrSequence)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Ignoring stale discv5 self-record response from {node}; requested sequence {recordState.RequestingEnrSequence}, received {record.EnrSequence}.");
-                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring stale discv5 self-record response from {node}; requested sequence {node.RequestingEnrSequence}, received {record.EnrSequence}.");
+                    if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
                     }
@@ -686,7 +683,7 @@ public sealed class KademliaAdapter(
                 if (!Node.TryFromDiscoveryEnr(record, out Node? refreshedNode))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Ignoring discv5 self-record response from {node}; record has no usable discovery endpoint.");
-                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
                     }
@@ -694,10 +691,16 @@ public sealed class KademliaAdapter(
                     continue;
                 }
 
-                DiscoveryNodeRecord.TransferRequest(recordState, record);
-                recordState = record;
+                node.Enr = record;
+                ulong requestingSequence = node.RequestingEnrSequence;
+                if (requestingSequence > record.EnrSequence)
+                {
+                    refreshedNode.TryRequestEnrSequence(requestingSequence);
+                }
+
+                node = refreshedNode;
                 kademlia.Value.AddOrRefresh(refreshedNode);
-                if (recordState.TryClearEnrRequest(recordState.EnrSequence))
+                if (requestingSequence == 0)
                 {
                     return;
                 }
@@ -709,7 +712,7 @@ public sealed class KademliaAdapter(
         }
         catch (Exception e)
         {
-            recordState.TryClearEnrRequest(recordState.RequestingEnrSequence);
+            node.TryClearEnrRequest(node.RequestingEnrSequence);
             if (_logger.IsTrace) _logger.Trace($"Failed to refresh discv5 ENR for {node}: {e}");
         }
     }
@@ -792,7 +795,7 @@ public sealed class KademliaAdapter(
         {
             Node node = nodes[i];
 
-            if (node.IdHash.Equals(requesterHash) || string.IsNullOrEmpty(node.Enr) || !seen.Add(node.Id.Hash))
+            if (node.IdHash.Equals(requesterHash) || node.Enr is not { Signature: not null } || !seen.Add(node.Id.Hash))
             {
                 continue;
             }
@@ -807,21 +810,10 @@ public sealed class KademliaAdapter(
 
     private NodeRecord? GetFindNodeRecord(Node node, bool allowNonRoutableRelays)
     {
-        if (TryGetRecord(node, out NodeRecord? knownRecord))
-        {
-            return IsAcceptableNodeRecord(knownRecord, node.Id.Hash, allowNonRoutableRelays, recordFilter) ? knownRecord : null;
-        }
-
-        try
-        {
-            NodeRecord record = NodeRecord.FromEnrString(node.Enr);
-            return IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays, recordFilter) ? record : null;
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Unable to parse discv5 FINDNODE ENR for {node}: {e}");
-            return null;
-        }
+        NodeRecord? record = node.Enr;
+        return record is not null && IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays, recordFilter)
+            ? record
+            : null;
     }
 
     [SkipLocalsInit]
@@ -896,8 +888,9 @@ public sealed class KademliaAdapter(
                 continue;
             }
 
-            if (TryGetRecord(node, out record) && record.Signature is not null)
+            if (node.Enr is { Signature: not null } signedRecord)
             {
+                record = signedRecord;
                 return true;
             }
 
@@ -908,13 +901,6 @@ public sealed class KademliaAdapter(
         record = null;
         return false;
     }
-
-    private NodeRecord GetOrSetRecordState(Node node) => DiscoveryNodeRecord.GetOrSetState(node, _logger, "discv5", IsAcceptableKnownRecord);
-
-    private bool TryGetRecord(Node node, [NotNullWhen(true)] out NodeRecord? record) => DiscoveryNodeRecord.TryGet(node, _logger, "discv5", IsAcceptableKnownRecord, out record);
-
-    private bool IsAcceptableKnownRecord(Node node, NodeRecord record)
-        => IsAcceptableNodeRecord(record, node.Id.Hash, node.Address.Address.IsLoopbackOrPrivateOrLinkLocal, recordFilter);
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, ValueHash256 expectedNodeId, bool allowNonRoutable, IDiscv5RecordFilter recordFilter)
         => !recordFilter.Excludes(record) &&

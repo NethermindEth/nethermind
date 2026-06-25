@@ -13,7 +13,6 @@ using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NonBlocking;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
@@ -226,13 +225,12 @@ public sealed class KademliaAdapter(
             return;
         }
 
-        NodeRecord recordState = GetOrSetRecordState(node);
-        if (recordState.Signature is not null && recordState.EnrSequence >= sequence)
+        if (node.Enr is { Signature: not null } currentRecord && currentRecord.EnrSequence >= sequence)
         {
             return;
         }
 
-        if (!recordState.TryRequestEnrSequence(sequence))
+        if (!node.TryRequestEnrSequence(sequence))
         {
             return;
         }
@@ -241,15 +239,15 @@ public sealed class KademliaAdapter(
         {
             while (true)
             {
-                ulong requestedSequence = recordState.RequestingEnrSequence;
+                ulong requestedSequence = node.RequestingEnrSequence;
                 if (requestedSequence == 0)
                 {
                     return;
                 }
 
-                if (recordState.Signature is not null && recordState.EnrSequence >= requestedSequence)
+                if (node.Enr is { Signature: not null } signedRecord && signedRecord.EnrSequence >= requestedSequence)
                 {
-                    recordState.TryClearEnrRequest(recordState.EnrSequence);
+                    node.TryClearEnrRequest(signedRecord.EnrSequence);
                     return;
                 }
 
@@ -257,7 +255,7 @@ public sealed class KademliaAdapter(
                 if (response is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"No discv4 ENR response received from {node} after advertised sequence {requestedSequence}.");
-                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
                     }
@@ -266,10 +264,10 @@ public sealed class KademliaAdapter(
                 }
 
                 NodeRecord record = response.NodeRecord;
-                if (record.EnrSequence < recordState.RequestingEnrSequence)
+                if (record.EnrSequence < node.RequestingEnrSequence)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Ignoring stale discv4 ENR response from {node}; requested sequence {recordState.RequestingEnrSequence}, received {record.EnrSequence}.");
-                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring stale discv4 ENR response from {node}; requested sequence {node.RequestingEnrSequence}, received {record.EnrSequence}.");
+                    if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
                     }
@@ -280,7 +278,7 @@ public sealed class KademliaAdapter(
                 if (!HasExpectedNodeId(record, node.Id))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Ignoring discv4 ENR response from {node}; record belongs to a different node.");
-                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
                     }
@@ -291,7 +289,7 @@ public sealed class KademliaAdapter(
                 if (!Node.TryFromDiscoveryEnr(record, out Node? refreshedNode))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Ignoring discv4 ENR response from {node}; record has no usable discovery endpoint.");
-                    if (recordState.TryClearEnrRequest(requestedSequence))
+                    if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
                     }
@@ -299,10 +297,16 @@ public sealed class KademliaAdapter(
                     continue;
                 }
 
-                DiscoveryNodeRecord.TransferRequest(recordState, record);
-                recordState = record;
+                node.Enr = record;
+                ulong requestingSequence = node.RequestingEnrSequence;
+                if (requestingSequence > record.EnrSequence)
+                {
+                    refreshedNode.TryRequestEnrSequence(requestingSequence);
+                }
+
+                node = refreshedNode;
                 kademlia.Value.AddOrRefresh(refreshedNode);
-                if (recordState.TryClearEnrRequest(recordState.EnrSequence))
+                if (requestingSequence == 0)
                 {
                     return;
                 }
@@ -314,14 +318,10 @@ public sealed class KademliaAdapter(
         }
         catch (Exception e)
         {
-            recordState.TryClearEnrRequest(recordState.RequestingEnrSequence);
+            node.TryClearEnrRequest(node.RequestingEnrSequence);
             if (_logger.IsDebug) _logger.Debug($"Failed to refresh discv4 ENR for {node}: {e}");
         }
     }
-
-    private NodeRecord GetOrSetRecordState(Node node) => DiscoveryNodeRecord.GetOrSetState(node, _logger, "discv4", IsExpectedRecord);
-
-    private bool TryGetRecord(Node node, [NotNullWhen(true)] out NodeRecord? record) => DiscoveryNodeRecord.TryGet(node, _logger, "discv4", IsExpectedRecord, out record);
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
     {
@@ -489,8 +489,6 @@ public sealed class KademliaAdapter(
 
     private static bool HasExpectedNodeId(NodeRecord record, PublicKey expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Equals(expectedNodeId) == true;
-
-    private static bool IsExpectedRecord(Node node, NodeRecord record) => HasExpectedNodeId(record, node.Id);
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
