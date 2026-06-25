@@ -176,6 +176,19 @@ public class SnapProtocolHandlerTests
     }
 
     [Test]
+    public async Task Account_range_response_bytes_are_capped_by_default_sync_config()
+    {
+        Context ctx = new Context().WithResponseBytesRecorder;
+
+        for (int i = 0; i < 6; i++)
+        {
+            using AccountsAndProofs response = await ctx.SnapProtocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
+        }
+
+        Assert.That(ctx.LastRecordedMessageSize, Is.EqualTo(250_000L));
+    }
+
+    [Test]
     [Explicit]
     public async Task Test_response_bytes_reset_on_error()
     {
