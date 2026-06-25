@@ -42,8 +42,7 @@ public class EnrTreeParserTests
         Assert.That(leaf.NodeRecord, Is.EqualTo(enr.Substring(4)));
     }
 
-    // A malformed enrtree-root from an untrusted DNS record must surface as a FormatException
-    // (caught and skipped by the crawler), never an unhandled ArgumentOutOfRangeException that aborts the crawl.
+    // Malformed input must surface as a FormatException the crawler can catch, not an unhandled exception that aborts the crawl.
     [TestCase("enrtree-root:v1", TestName = "all fields missing")]
     [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=2779sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "no space after seq value")]
     [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "seq field missing")]
