@@ -138,6 +138,14 @@ public class ShutterKeyValidator(
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
+            // signerIndex is attacker-controlled (gossiped over P2P); the checks above bound the
+            // count but not the values, so guard the array access to avoid an IndexOutOfRangeException.
+            if (signerIndex >= (ulong)eonInfo.Addresses.Length)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: signer index {signerIndex} out of range ({eonInfo.Addresses.Length} keyper addresses).");
+                return false;
+            }
+
             Address keyperAddress = eonInfo.Addresses[signerIndex];
 
             if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(_instanceId, eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))

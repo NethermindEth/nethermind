@@ -39,4 +39,25 @@ class ShutterKeyValidatorTests
 
         Assert.That(api.KeysValidated, Is.EqualTo(1));
     }
+
+    [Test]
+    public void Rejects_decryption_keys_with_out_of_range_signer_index()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd);
+
+        (List<ShutterEventSimulator.Event> _, Dto.DecryptionKeys keys) = api.AdvanceSlot(5);
+        Assert.That(api.KeysValidated, Is.EqualTo(1));
+
+        // Re-target a fresh slot so the message is not skipped, then point the first signer index
+        // past the keyper address list. Previously this hit an unchecked array access in
+        // CheckDecryptionKeys and threw IndexOutOfRangeException; it must now be rejected gracefully.
+        keys.Gnosis.Slot += 1;
+        keys.Gnosis.SignerIndices[0] = ulong.MaxValue;
+
+        IShutterKeyValidator.ValidatedKeys? result = null;
+        Assert.DoesNotThrow(() => result = api.KeyValidator.ValidateKeys(keys));
+        Assert.That(result, Is.Null);
+        Assert.That(api.KeysValidated, Is.EqualTo(1));
+    }
 }
