@@ -110,7 +110,7 @@ public sealed class InstructionStream
     public const ushort InvalidEntry = ushort.MaxValue;
 
     public readonly StreamOp[] Ops;
-    public readonly long[] BlockGas;
+    public readonly ulong[] BlockGas;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
     public readonly UInt256[] Constants;
     /// <summary>The same pool in stack representation (32 big-endian bytes per constant), so
@@ -119,7 +119,7 @@ public sealed class InstructionStream
     /// <summary>Entry index for every entry-start pc; <see cref="InvalidEntry"/> for immediate
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
-    private InstructionStream(StreamOp[] ops, long[] blockGas, UInt256[] constants, ushort[] pcToEntry)
+    private InstructionStream(StreamOp[] ops, ulong[] blockGas, UInt256[] constants, ushort[] pcToEntry)
     {
         Ops = ops;
         BlockGas = blockGas;
@@ -139,7 +139,7 @@ public sealed class InstructionStream
             return null;
 
         List<StreamOp> ops = new(code.Length / 2);
-        List<long> blockGas = new(code.Length / 16);
+        List<ulong> blockGas = new(code.Length / 16);
         List<UInt256> constants = new(code.Length / 32);
         ushort[] pcToEntry = new ushort[code.Length + 1];
         pcToEntry.AsSpan().Fill(InvalidEntry);
@@ -161,7 +161,7 @@ public sealed class InstructionStream
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
             }
-            else if (TryGetInBlockCost(instruction, out long cost) && pc + immediates < code.Length)
+            else if (TryGetInBlockCost(instruction, out ulong cost) && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
@@ -268,7 +268,7 @@ public sealed class InstructionStream
     /// PUSH2 excluded (keeps fused PUSH2+JUMP); PUSH9+/DUP9+/SWAP9+ excluded to keep the switch
     /// within the size the JIT inlines.
     /// </summary>
-    public static bool TryGetInBlockCost(Instruction instruction, out long cost)
+    public static bool TryGetInBlockCost(Instruction instruction, out ulong cost)
     {
         switch (instruction)
         {

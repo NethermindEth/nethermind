@@ -161,11 +161,11 @@ public class InstructionStreamTests
     [TestCase(Instruction.DUP8, GasCostOf.VeryLow, TestName = "Dup8")]
     [TestCase(Instruction.SWAP8, GasCostOf.VeryLow, TestName = "Swap8")]
     [TestCase(Instruction.PUSH32, GasCostOf.VeryLow, TestName = "Push32_ViaConstantPool")]
-    public void TryGetInBlockCost_ForStaticCostOp_MatchesGasCostOf(Instruction instruction, long expectedCost)
+    public void TryGetInBlockCost_ForStaticCostOp_MatchesGasCostOf(Instruction instruction, ulong expectedCost)
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(InstructionStream.TryGetInBlockCost(instruction, out long cost), Is.True);
+            Assert.That(InstructionStream.TryGetInBlockCost(instruction, out ulong cost), Is.True);
             Assert.That(cost, Is.EqualTo(expectedCost), "block sums diverging from GasCostOf is a consensus bug");
         }
     }
@@ -417,7 +417,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private sealed class ReceiptCaptureTracer : Evm.Tracing.TxTracer
     {
         public byte StatusCode { get; private set; }
-        public long GasSpent { get; private set; }
+        public ulong GasSpent { get; private set; }
         public byte[] Output { get; private set; } = [];
 
         public override bool IsTracingReceipt => true;
