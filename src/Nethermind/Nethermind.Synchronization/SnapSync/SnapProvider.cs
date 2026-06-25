@@ -352,9 +352,31 @@ namespace Nethermind.Synchronization.SnapSync
             ISnapStorageBatch storageBatch)
         {
             StorageRangeAccountResult[] results = new StorageRangeAccountResult[responseCount];
-            for (int i = 0; i < responseCount; i++)
+            if (storageBatch is IParallelSnapStorageBatch && _storageRangeParallelism > 1)
             {
-                results[i] = ProcessStorageRangeForAccount(request, i, responses[i], i == responseCount - 1 ? proofs : null, storageBatch);
+                try
+                {
+                    Parallel.For(
+                        0,
+                        responseCount,
+                        new ParallelOptions { MaxDegreeOfParallelism = Math.Min(responseCount, _storageRangeParallelism) },
+                        i =>
+                        {
+                            results[i] = ProcessStorageRangeForAccount(request, i, responses[i], i == responseCount - 1 ? proofs : null, storageBatch);
+                        });
+                }
+                catch (AggregateException ae) when (ae.Flatten().InnerExceptions is { Count: > 0 } inners
+                    && inners.All(e => e is ObjectDisposedException))
+                {
+                    ExceptionDispatchInfo.Capture(inners[0]).Throw();
+                }
+            }
+            else
+            {
+                for (int i = 0; i < responseCount; i++)
+                {
+                    results[i] = ProcessStorageRangeForAccount(request, i, responses[i], i == responseCount - 1 ? proofs : null, storageBatch);
+                }
             }
 
             storageBatch.Commit();

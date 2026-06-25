@@ -25,3 +25,5 @@ public interface ISnapStorageBatch : IDisposable
 {
     void Commit();
 }
+
+internal interface IParallelSnapStorageBatch : ISnapStorageBatch;

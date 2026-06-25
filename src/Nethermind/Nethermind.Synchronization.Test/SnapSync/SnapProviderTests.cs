@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -274,6 +275,42 @@ public class SnapProviderTests
             Assert.That(factory.CommittedBatches, Is.EqualTo(1));
             Assert.That(factory.AbortedBatches, Is.EqualTo(0));
             Assert.That(factory.StorageTreesWithBatch, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void AddStorageRange_ParallelBatch_ProcessesStorageAccountsConcurrently()
+    {
+        Hash256 firstRoot = TestItem.KeccakA;
+        Hash256 secondRoot = TestItem.KeccakB;
+        using ParallelBatchingSnapTrieFactory factory = new(
+            new PathRoot(TestItem.KeccakA, firstRoot),
+            new PathRoot(TestItem.KeccakB, secondRoot));
+        using IContainer container = CreateContainer(
+            new TestSyncConfig()
+            {
+                SnapSyncStorageRangeParallelism = 2
+            },
+            (_, _) => factory);
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        using StorageRange storage = CreateStorageRange(firstRoot, secondRoot);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = CreateStorageResponse(
+                CreateSlots(ValueKeccak.Zero),
+                CreateSlots(ValueKeccak.Zero)),
+            Proofs = EmptyByteArrayList.Instance
+        };
+
+        Assert.That(snapProvider.AddStorageRange(storage, response), Is.EqualTo(AddRangeResult.OK));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.CommittedBatches, Is.EqualTo(1));
+            Assert.That(factory.AbortedBatches, Is.EqualTo(0));
+            Assert.That(factory.StorageTreesWithBatch, Is.EqualTo(2));
+            Assert.That(factory.MaxConcurrentStorageTrees, Is.EqualTo(2));
         }
     }
 
@@ -822,6 +859,112 @@ public class SnapProviderTests
         }
     }
 
+    private sealed class ParallelBatchingSnapTrieFactory(params PathRoot[] storageRoots) : ISnapTrieFactory, IDisposable
+    {
+        private readonly ManualResetEventSlim _secondStorageTreeEntered = new();
+        private int _activeStorageTrees;
+        private int _enteredStorageTrees;
+        private int _maxConcurrentStorageTrees;
+        private int _storageTreesWithBatch;
+
+        public int CommittedBatches { get; private set; }
+        public int AbortedBatches { get; private set; }
+        public int StorageTreesWithBatch => Volatile.Read(ref _storageTreesWithBatch);
+        public int MaxConcurrentStorageTrees => Volatile.Read(ref _maxConcurrentStorageTrees);
+
+        public ISnapTree<PathWithAccount> CreateStateTree() =>
+            throw new NotSupportedException();
+
+        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath) =>
+            CreateStorageTree(accountPath, storageBatch: null);
+
+        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath, ISnapStorageBatch? storageBatch)
+        {
+            if (storageBatch is not null)
+            {
+                Interlocked.Increment(ref _storageTreesWithBatch);
+            }
+
+            for (int i = 0; i < storageRoots.Length; i++)
+            {
+                if (storageRoots[i].Path == accountPath)
+                {
+                    return new ConcurrentFixedRootSnapStorageTree(storageRoots[i].RootHash, this);
+                }
+            }
+
+            throw new InvalidOperationException($"Unexpected storage account path {accountPath}");
+        }
+
+        public ISnapStorageBatch StartStorageBatch() =>
+            new RecordingParallelStorageBatch(this);
+
+        public void EnterStorageTree()
+        {
+            int active = Interlocked.Increment(ref _activeStorageTrees);
+            UpdateMaxConcurrentStorageTrees(active);
+
+            int entered = Interlocked.Increment(ref _enteredStorageTrees);
+            if (entered == 1)
+            {
+                if (!_secondStorageTreeEntered.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    throw new TimeoutException("The second storage tree was not processed concurrently.");
+                }
+            }
+            else if (entered == 2)
+            {
+                _secondStorageTreeEntered.Set();
+            }
+        }
+
+        public void ExitStorageTree() =>
+            Interlocked.Decrement(ref _activeStorageTrees);
+
+        public void Dispose() =>
+            _secondStorageTreeEntered.Dispose();
+
+        private void UpdateMaxConcurrentStorageTrees(int value)
+        {
+            int current;
+            do
+            {
+                current = Volatile.Read(ref _maxConcurrentStorageTrees);
+                if (value <= current)
+                {
+                    return;
+                }
+            } while (Interlocked.CompareExchange(ref _maxConcurrentStorageTrees, value, current) != current);
+        }
+
+        private sealed class RecordingParallelStorageBatch(ParallelBatchingSnapTrieFactory factory) : IParallelSnapStorageBatch
+        {
+            private bool _committed;
+            private bool _disposed;
+
+            public void Commit()
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _committed = true;
+                factory.CommittedBatches++;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                if (!_committed)
+                {
+                    factory.AbortedBatches++;
+                }
+            }
+        }
+    }
+
     private sealed class BatchingDisposedSnapTrieFactory : ISnapTrieFactory
     {
         public int StartedBatches { get; private set; }
@@ -884,6 +1027,39 @@ public class SnapProviderTests
 
         public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries) =>
             RootHash = rootHash;
+
+        public void Commit(ValueHash256 upperBound)
+        {
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class ConcurrentFixedRootSnapStorageTree(Hash256 rootHash, ParallelBatchingSnapTrieFactory factory) : ISnapTree<PathWithStorageSlot>
+    {
+        public Hash256 RootHash { get; private set; } = Keccak.Zero;
+
+        public void SetRootFromProof(TrieNode root)
+        {
+        }
+
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
+            false;
+
+        public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
+        {
+            factory.EnterStorageTree();
+            try
+            {
+                RootHash = rootHash;
+            }
+            finally
+            {
+                factory.ExitStorageTree();
+            }
+        }
 
         public void Commit(ValueHash256 upperBound)
         {

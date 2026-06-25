@@ -44,23 +44,32 @@ public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logMa
     public ISnapStorageBatch StartStorageBatch() =>
         new PatriciaSnapStorageBatch(nodeStorage);
 
-    private sealed class PatriciaSnapStorageBatch(INodeStorage nodeStorage) : ISnapStorageBatch, INodeStorage.IWriteBatch
+    private sealed class PatriciaSnapStorageBatch(INodeStorage nodeStorage) : IParallelSnapStorageBatch, INodeStorage.IWriteBatch
     {
         private const int MaxReplayBatchSize = 2 * 1024;
 
+        private readonly object _lock = new();
         private readonly List<NodeWrite> _writes = [];
         private bool _disposed;
 
         public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            _writes.Add(new NodeWrite(address, path, currentNodeKeccak, data.ToArray(), writeFlags));
+            byte[] dataCopy = data.ToArray();
+            lock (_lock)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _writes.Add(new NodeWrite(address, path, currentNodeKeccak, dataCopy, writeFlags));
+            }
         }
 
         public void Commit()
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            _disposed = true;
+            lock (_lock)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _disposed = true;
+            }
+
             for (int writeIndex = 0; writeIndex < _writes.Count;)
             {
                 int endIndex = Math.Min(writeIndex + MaxReplayBatchSize, _writes.Count);
@@ -73,7 +82,13 @@ public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logMa
             }
         }
 
-        public void Dispose() => _disposed = true;
+        public void Dispose()
+        {
+            lock (_lock)
+            {
+                _disposed = true;
+            }
+        }
 
         private readonly record struct NodeWrite(Hash256? Address, TreePath Path, ValueHash256 Hash, byte[] Data, WriteFlags WriteFlags);
     }
