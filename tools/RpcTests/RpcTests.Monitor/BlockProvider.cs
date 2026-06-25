@@ -1,0 +1,74 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Net.Http.Json;
+using System.Text.Json.Nodes;
+
+namespace Nethermind.RpcTests.Monitor;
+
+/// <summary>
+/// Caches recent blocks by number, populated from the head subscription, falling back to a node request for a missing block.
+/// </summary>
+/// <remarks>
+/// Backed by a ring buffer indexed by <c>number % capacity</c>, so a block seen for an existing
+/// number replaces it (reorgs) and a block <c>capacity</c> ahead evicts the slot.
+/// </remarks>
+internal class BlockProvider(HttpClient client, Uri nodeUrl, int capacity = 64)
+{
+    private readonly BlockInfo?[] _blocks = new BlockInfo?[capacity];
+    private readonly Lock _lock = new();
+
+    public void OnNewHead(BlockInfo block)
+    {
+        lock (_lock)
+            _blocks[Index(block.Number)] = block;
+    }
+
+    public async Task<BlockInfo?> GetAsync(long number, CancellationToken ct = default)
+    {
+        if (TryGet(number) is { } cached)
+            return cached;
+
+        if (await FetchAsync(number, ct) is not {} fetched)
+            return null;
+
+        lock (_lock)
+        {
+            // don't clobber a fresher block the subscription may have stored meanwhile
+            ref BlockInfo? slot = ref _blocks[Index(number)];
+            if (slot is null || slot.Number <= number)
+                slot = fetched;
+        }
+
+        return fetched;
+    }
+
+    private BlockInfo? TryGet(long number)
+    {
+        lock (_lock)
+        {
+            BlockInfo? block = _blocks[Index(number)];
+            return block?.Number == number ? block : null;
+        }
+    }
+
+    private async Task<BlockInfo?> FetchAsync(long number, CancellationToken ct)
+    {
+        JsonObject request = new()
+        {
+            ["jsonrpc"] = "2.0",
+            ["id"] = 1,
+            ["method"] = "eth_getBlockByNumber",
+            ["params"] = new JsonArray($"0x{number:x}", false)
+        };
+
+        using HttpRequestMessage message = new(HttpMethod.Post, nodeUrl) { Content = JsonContent.Create(request) };
+        using HttpResponseMessage response = await client.SendAsync(message, ct);
+        response.EnsureSuccessStatusCode();
+
+        JsonNode? body = await response.Content.ReadFromJsonAsync<JsonNode>(ct);
+        return body?["result"] is { } result ? new BlockInfo(result) : null;
+    }
+
+    private int Index(long number) => (int)(number % _blocks.Length);
+}

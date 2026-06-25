@@ -6,7 +6,14 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsReporter stats, HttpClient client, ReorgTracker reorgTracker)
+internal class MonitorRunner(
+    ExecutionArgs args,
+    INotifier notifier,
+    IStatsReporter stats,
+    HttpClient client,
+    ReorgTracker reorgTracker,
+    BlockProvider blockProvider
+)
 {
     private static readonly TimeSpan ReorgsPeriodOnFail = TimeSpan.FromMinutes(15);
 
@@ -31,6 +38,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
                 stats.RecordHeadUpdate();
                 Console.WriteLine($"New head: {head}");
 
+                blockProvider.OnNewHead(head);
                 if (reorgTracker.OnNewHead(head) is { } reorg)
                 {
                     stats.RecordReorg();
