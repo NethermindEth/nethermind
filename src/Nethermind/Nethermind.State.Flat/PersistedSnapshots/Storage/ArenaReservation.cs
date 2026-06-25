@@ -60,27 +60,51 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
     }
 
     /// <summary>
-    /// Probe every OS page that overlaps the
-    /// reader-relative byte range <c>[localOffset, localOffset + length)</c> against the
-    /// <see cref="PageResidencyTracker"/>, queue any displaced occupants, and — if more
-    /// than one probed page was a non-<see cref="PageResidencyTracker.TouchOutcome.Hit"/> — issue a <em>single</em>
-    /// <c>madvise(MADV_POPULATE_READ)</c> over the page-aligned envelope of the range.
+    /// Reader pin/getspan hook: probe every OS page overlapping the reader-relative byte range
+    /// <c>[localOffset, localOffset + length)</c> against the <see cref="PageResidencyTracker"/> and queue
+    /// any displaced occupant for the background <c>madvise(MADV_DONTNEED)</c> advisor. Records residency
+    /// only — it does <em>not</em> pre-fault; the reader takes the inline minor fault on first access.
+    /// </summary>
+    internal void TouchRange(long localOffset, long length)
+    {
+        if (length <= 0) return;
+        TrackPages(localOffset, length, out _, out _);
+    }
+
+    /// <summary>
+    /// Deliberate pre-fault: track residency as <see cref="TouchRange"/> does, then — when more than one
+    /// probed page was a non-<see cref="PageResidencyTracker.TouchOutcome.Hit"/> — issue a <em>single</em>
+    /// <c>madvise(MADV_POPULATE_READ)</c> over the page-aligned envelope of the range. Used to warm a known
+    /// hot region up front (e.g. a freshly-written index block on compaction), not from the generic read path.
     /// </summary>
     /// <remarks>
-    /// Coalesces the per-page pre-fault syscalls into one for a contiguous read.
-    /// <c>MADV_POPULATE_READ</c> is a no-op on already-resident pages, so over-faulting the few
-    /// hot pages inside the range is harmless. When only a single probed page is cold the batched
-    /// <c>madvise</c> is skipped — a one-page syscall is not amortized vs. the inline minor fault
-    /// the reader would otherwise take.
+    /// Coalesces the per-page pre-fault syscalls into one for a contiguous read. <c>MADV_POPULATE_READ</c> is
+    /// a no-op on already-resident pages, so over-faulting the few hot pages inside the range is harmless.
+    /// When only a single probed page is cold the batched <c>madvise</c> is skipped — a one-page syscall is
+    /// not amortized vs. the inline minor fault the reader would otherwise take.
     /// </remarks>
     internal void TouchRangePopulate(long localOffset, long length)
     {
         if (length <= 0) return;
+        int missedCount = TrackPages(localOffset, length, out long firstPageBase, out long lastPageBaseExclusive);
+        if (missedCount > 1)
+            _arenaFile.PopulateRead(firstPageBase, lastPageBaseExclusive - firstPageBase);
+    }
+
+    /// <summary>
+    /// Probe every OS page overlapping <c>[localOffset, localOffset + length)</c> against the
+    /// <see cref="PageResidencyTracker"/>, queuing any displaced occupant for the background
+    /// <c>madvise(MADV_DONTNEED)</c> advisor. Returns the count of probed pages that were not a
+    /// <see cref="PageResidencyTracker.TouchOutcome.Hit"/> and, via the out parameters, the page-aligned
+    /// envelope of the range (for a caller that then pre-faults it).
+    /// </summary>
+    private int TrackPages(long localOffset, long length, out long firstPageBase, out long lastPageBaseExclusive)
+    {
         int pageSize = Environment.SystemPageSize;
         long absStart = Offset + localOffset;
         long absEnd = absStart + length;
-        long firstPageBase = absStart & ~(long)(pageSize - 1);
-        long lastPageBaseExclusive = (absEnd + pageSize - 1) & ~(long)(pageSize - 1);
+        firstPageBase = absStart & ~(long)(pageSize - 1);
+        lastPageBaseExclusive = (absEnd + pageSize - 1) & ~(long)(pageSize - 1);
         int firstPage = (int)(firstPageBase / pageSize);
         int lastPage = (int)((lastPageBaseExclusive - 1) / pageSize);
 
@@ -95,9 +119,7 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
             if (outcome == PageResidencyTracker.TouchOutcome.Evicted)
                 _arenaManager.QueueEviction(evictedArenaId, evictedPageIdx);
         }
-
-        if (missedCount > 1)
-            _arenaFile.PopulateRead(firstPageBase, lastPageBaseExclusive - firstPageBase);
+        return missedCount;
     }
 
     /// <summary>

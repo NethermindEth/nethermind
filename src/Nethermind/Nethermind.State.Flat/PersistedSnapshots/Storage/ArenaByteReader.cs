@@ -10,8 +10,9 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// Pointer-backed <see cref="IByteReader{TPin}"/> over an arena-mmap region.
 /// Holds a raw <c>byte*</c> + <see cref="long"/> length so the addressed region can exceed
 /// 2 GiB (each individual pin still materialises an int-sized <see cref="ReadOnlySpan{T}"/>).
-/// Each read or pin reports touched OS pages to <see cref="ArenaReservation.TouchRangePopulate"/>
-/// for residency tracking and pre-fault coalescing.
+/// Each read or pin reports touched OS pages to <see cref="ArenaReservation.TouchRange"/> for residency
+/// tracking only — the generic read path does not pre-fault; deliberate prefaults use
+/// <see cref="ArenaReservation.TouchRangePopulate"/>.
 /// </summary>
 public unsafe ref struct ArenaByteReader : IByteReader<NoOpPin>
 {
@@ -79,6 +80,6 @@ public unsafe ref struct ArenaByteReader : IByteReader<NoOpPin>
         if (startPageBase == endPageBase && startPageBase == _lastPageBase) return;
         _lastPageBase = endPageBase;
 
-        _reservation.TouchRangePopulate(localOffset, length);
+        _reservation.TouchRange(localOffset, length);
     }
 }
