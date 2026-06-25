@@ -54,6 +54,27 @@ public class RawTrieStoreTests
         Assert.That(nodeStorage.DisposedBatchSizes, Is.EqualTo(new[] { 3 }));
     }
 
+    [TestCase(WriteFlags.None, false)]
+    [TestCase(WriteFlags.DisableWAL, true)]
+    public void Raw_scoped_committer_grants_concurrency_only_for_owned_disable_wal_batches(WriteFlags writeFlags, bool expected)
+    {
+        CountingNodeStorage nodeStorage = new();
+        using ICommitter committer = new RawScopedTrieStore.Committer(nodeStorage, null, writeFlags);
+
+        Assert.That(committer.TryRequestConcurrentQuota(), Is.EqualTo(expected));
+        committer.ReturnConcurrencyQuota();
+    }
+
+    [Test]
+    public void Raw_scoped_committer_does_not_grant_concurrency_for_external_batch()
+    {
+        CountingNodeStorage nodeStorage = new();
+        using INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
+        using ICommitter committer = new RawScopedTrieStore.Committer(nodeStorage, null, WriteFlags.DisableWAL, writeBatch);
+
+        Assert.That(committer.TryRequestConcurrentQuota(), Is.False);
+    }
+
     [Test]
     public void SmokeTest()
     {

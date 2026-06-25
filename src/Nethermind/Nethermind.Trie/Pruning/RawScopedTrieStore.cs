@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Utils;
 
 namespace Nethermind.Trie.Pruning;
 
@@ -34,8 +37,13 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
         private const int DisableWalBatchSize = 8 * 1024;
 
         private readonly bool _ownsWriteBatch = writeBatch is null;
-        private INodeStorage.IWriteBatch? _writeBatch = writeBatch;
+        private readonly bool _canCommitConcurrently = writeBatch is null && (writeFlags & WriteFlags.DisableWAL) != 0;
+        private INodeStorage.IWriteBatch? _writeBatch =
+            writeBatch is null && (writeFlags & WriteFlags.DisableWAL) != 0
+                ? new ConcurrentNodeWriteBatcher(nodeStorage, DisableWalBatchSize)
+                : writeBatch;
         private int _pendingWrites;
+        private int _concurrency = Environment.ProcessorCount;
 
         public void Dispose()
         {
@@ -62,11 +70,35 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
             return node;
         }
 
+        public bool TryRequestConcurrentQuota()
+        {
+            if (!_canCommitConcurrently)
+            {
+                return false;
+            }
+
+            if (Interlocked.Decrement(ref _concurrency) >= 0)
+            {
+                return true;
+            }
+
+            ReturnConcurrencyQuota();
+            return false;
+        }
+
+        public void ReturnConcurrencyQuota()
+        {
+            if (_canCommitConcurrently)
+            {
+                Interlocked.Increment(ref _concurrency);
+            }
+        }
+
         private INodeStorage.IWriteBatch CurrentBatch => _writeBatch ??= nodeStorage.StartWriteBatch();
 
         private void FlushDisableWalBatchIfFull()
         {
-            if (!_ownsWriteBatch || (writeFlags & WriteFlags.DisableWAL) == 0 || ++_pendingWrites < DisableWalBatchSize)
+            if (_canCommitConcurrently || !_ownsWriteBatch || (writeFlags & WriteFlags.DisableWAL) == 0 || ++_pendingWrites < DisableWalBatchSize)
             {
                 return;
             }
