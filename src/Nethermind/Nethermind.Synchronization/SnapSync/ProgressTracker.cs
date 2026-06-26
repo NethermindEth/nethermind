@@ -176,12 +176,12 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 nextBatch = CreateAccountRangeRequest(rootHash, partition, blockNumber);
             }
+            else if (ShouldRequestQueuedStorageBeforeSlotRanges() && TryDequeStorageToRetrieveRequest(rootHash, blockNumber, out nextBatch))
+            {
+            }
             else if (TryDequeNextSlotRange(out StorageRange slotRange))
             {
                 nextBatch = CreateNextSlowRangeRequest(slotRange, rootHash, blockNumber);
-            }
-            else if (StorageQueueCount >= HIGH_STORAGE_QUEUE_SIZE && TryDequeStorageToRetrieveRequest(rootHash, blockNumber, out nextBatch))
-            {
             }
             else if (CodeQueueCount >= HIGH_CODES_QUEUE_SIZE)
             {
@@ -325,6 +325,14 @@ namespace Nethermind.Synchronization.SnapSync
                    && SlotRangeQueueCount < 10
                    && StorageQueueCount < _maxQueuedStorageAccountsForAccountRequests
                    && CodeQueueCount < HIGH_CODES_QUEUE_SIZE;
+
+        private bool ShouldRequestQueuedStorageBeforeSlotRanges()
+        {
+            int storageQueueCount = StorageQueueCount;
+            return storageQueueCount >= HIGH_STORAGE_QUEUE_SIZE ||
+                   (storageQueueCount >= _maxQueuedStorageAccountsForAccountRequests &&
+                    CodeQueueCount < HIGH_CODES_QUEUE_SIZE);
+        }
 
         public void EnqueueCodeHashes(ReadOnlySpan<ValueHash256> codeHashes)
         {

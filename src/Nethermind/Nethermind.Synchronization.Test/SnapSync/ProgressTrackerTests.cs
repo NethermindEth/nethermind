@@ -309,6 +309,26 @@ public class ProgressTrackerTests
     }
 
     [Test]
+    public void Storage_queue_at_pause_limit_is_requested_before_slot_ranges()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker(maxQueuedStorageAccountsForAccountRequests: 1);
+        FinishAccountRangePhase(progressTracker);
+
+        StorageRange slotRange = CreateStorageRange(TestItem.Tree.AccountsWithPaths[0]);
+        slotRange.StartingHash = TestItem.ValueKeccaks[0];
+        progressTracker.EnqueueNextSlot(slotRange);
+        progressTracker.EnqueueAccountStorage(TestItem.Tree.AccountsWithPaths[1]);
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? storageBatch), Is.False);
+        Assert.That(storageBatch!.StorageRangeRequest, Is.Not.Null);
+        Assert.That(storageBatch.StorageRangeRequest!.StartingHash, Is.EqualTo(ValueKeccak.Zero));
+        Assert.That(storageBatch.StorageRangeRequest.Accounts.AsSpan()[0], Is.EqualTo(TestItem.Tree.AccountsWithPaths[1]));
+
+        progressTracker.ReportFullStorageRequestFinished(storageBatch.StorageRangeRequest.Accounts.Count);
+        storageBatch.Dispose();
+    }
+
+    [Test]
     public void Slot_range_queue_waits_when_active_storage_batch_limit_is_reached()
     {
         using ProgressTracker progressTracker = CreateProgressTracker(maxActiveStorageRangeBatches: 1);
