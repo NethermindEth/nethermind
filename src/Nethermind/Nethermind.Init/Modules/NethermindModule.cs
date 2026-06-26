@@ -63,6 +63,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
+            .AddModule(new HeadStateCacheModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 

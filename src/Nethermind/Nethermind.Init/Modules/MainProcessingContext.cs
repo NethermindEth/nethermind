@@ -41,6 +41,14 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
 
         worldState = new WorldStateMetricsScopeProvider(worldState, static time => Blockchain.Metrics.StateMerkleizationTime = time);
 
+        // When the head state cache is enabled, observe processing writes to capture each block's
+        // changed storage cells (keyed by post-state root) so the cache stays coherent on any node.
+        HeadStateDeltaBuffer? headStateDeltaBuffer = rootLifetimeScope.ResolveOptional<HeadStateDeltaBuffer>();
+        if (headStateDeltaBuffer is not null)
+        {
+            worldState = new HeadStateDeltaCaptureScopeProvider(worldState, headStateDeltaBuffer);
+        }
+
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
