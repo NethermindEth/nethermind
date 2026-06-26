@@ -61,7 +61,7 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         long expirationTime = ctx.DecodeLong();
 
         ulong? enrSequence = null;
-        if (ctx.Position < messageEnd)
+        if (ctx.Position < messageEnd && IsNextEnrSequence(ctx))
         {
             enrSequence = ctx.DecodeULong();
         }
@@ -102,5 +102,22 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         }
 
         return (Rlp.LengthOfSequence(contentLength), contentLength, farAddressLength);
+    }
+
+    private static bool IsNextEnrSequence(RlpReader ctx)
+    {
+        byte prefix = ctx.PeekByte();
+        return prefix switch
+        {
+            >= 1 and < 128 or 128 => true,
+            > 128 and <= 136 => IsCanonicalMultiByteInteger(ctx, prefix - 128),
+            _ => false
+        };
+    }
+
+    private static bool IsCanonicalMultiByteInteger(RlpReader ctx, int length)
+    {
+        byte firstByte = ctx.Peek(1, 1)[0];
+        return length == 1 ? firstByte >= 128 : firstByte != 0;
     }
 }
