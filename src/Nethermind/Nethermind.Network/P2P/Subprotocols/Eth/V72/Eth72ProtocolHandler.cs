@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -49,7 +50,7 @@ public class Eth72ProtocolHandler(
     ITxPoolConfig txPoolConfig,
     ISpecProvider specProvider,
     IBlobCustodyTracker blobCustodyTracker,
-    PublicKey localNodeId,
+    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth71ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), IStaticProtocolInfo
@@ -85,7 +86,7 @@ public class Eth72ProtocolHandler(
     private readonly int _maxCellsResponseBytes = GetMaxCellsResponseBytes(GetMaxCellsPerTransaction(specProvider));
     private static readonly byte[] EmptyCellMaskBytes = BlobCellMask.Empty.ToBytes();
     private readonly IBlobCustodyTracker _blobCustodyTracker = blobCustodyTracker;
-    private readonly PublicKey _localNodeId = localNodeId;
+    private readonly PublicKey _localNodeId = nodeKey.PublicKey;
     private readonly ISparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = sparseBlobPoolPeerRegistry ?? throw new ArgumentNullException(nameof(sparseBlobPoolPeerRegistry));
     private DateTimeOffset _requestRatioWarmupEndsAt;
     private long _cellStateRevision;

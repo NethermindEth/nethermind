@@ -63,6 +63,7 @@ public class Eth72ProtocolHandlerTests
     private BlobCustodyTracker _blobCustodyTracker = null!;
     private SparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = null!;
     private List<P2PMessage> _deliveredMessages = null!;
+    private IProtectedPrivateKey _nodeKey = null!;
 
     [SetUp]
     public void Setup()
@@ -101,6 +102,8 @@ public class Eth72ProtocolHandlerTests
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
         _blobCustodyTracker = new BlobCustodyTracker();
         _sparseBlobPoolPeerRegistry = new SparseBlobPoolPeerRegistry(_transactionPool, _blobCustodyTracker, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        _nodeKey = Substitute.For<IProtectedPrivateKey>();
+        _nodeKey.PublicKey.Returns(TestItem.PublicKeyB);
 
         _handler = new Eth72ProtocolHandler(
             _session,
@@ -115,7 +118,7 @@ public class Eth72ProtocolHandlerTests
             _txPoolConfig,
             _specProvider,
             _blobCustodyTracker,
-            TestItem.PublicKeyB,
+            _nodeKey,
             _sparseBlobPoolPeerRegistry,
             _txGossipPolicy);
         _handler.Init();
@@ -2080,7 +2083,7 @@ public class Eth72ProtocolHandlerTests
             _txPoolConfig,
             _specProvider,
             _blobCustodyTracker,
-            TestItem.PublicKeyB,
+            _nodeKey,
             _sparseBlobPoolPeerRegistry,
             _txGossipPolicy);
         _handler.Init();
