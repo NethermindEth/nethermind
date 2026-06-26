@@ -20,7 +20,6 @@ namespace Nethermind.Facade.Filters
         public BlockParameter FromBlock { get; } = fromBlock;
         public BlockParameter ToBlock { get; } = toBlock;
         public bool UseIndex { get; set; } = true;
-        public bool EnforceMaxBlockDepth { get; set; }
 
         public bool AcceptsAnyBlock =>
             AddressFilter.Addresses.Count == 0 &&

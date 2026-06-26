@@ -38,7 +38,7 @@ public class IndexedLogFinder(
             : FindIndexedLogs(filter, fromBlock, toBlock, indexRange, cancellationToken);
 
     // no limits if log index is enabled
-    protected override void EnsureBlockRangeWithinLimit(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock) { }
+    protected override void EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock) { }
 
     private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
     {
