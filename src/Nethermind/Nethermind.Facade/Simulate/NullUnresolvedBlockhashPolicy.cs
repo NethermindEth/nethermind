@@ -8,9 +8,9 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Facade.Simulate;
 
 /// <summary>
-/// eth_simulateV1 best-effort policy: an unresolvable ancestor hash yields 0 (returns <c>null</c>) instead of failing the request.
+/// eth_simulateV1 best-effort policy: an unresolvable ancestor hash returns <c>null</c> (the EVM pushes 0) instead of failing the request.
 /// </summary>
-public sealed class ZeroUnresolvedBlockhashPolicy : IUnresolvedBlockhashPolicy
+public sealed class NullUnresolvedBlockhashPolicy : IUnresolvedBlockhashPolicy
 {
     public Hash256? Resolve(BlockHeader currentBlock, ulong number) => null;
 }

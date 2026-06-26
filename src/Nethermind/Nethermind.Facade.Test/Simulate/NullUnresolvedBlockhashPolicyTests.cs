@@ -15,14 +15,14 @@ using NUnit.Framework;
 namespace Nethermind.Facade.Test.Simulate;
 
 [TestFixture]
-public class ZeroUnresolvedBlockhashPolicyTests
+public class NullUnresolvedBlockhashPolicyTests
 {
     [Test]
-    public void BlockhashProvider_returns_null_instead_of_throwing_under_zero_policy()
+    public void BlockhashProvider_returns_null_instead_of_throwing_under_null_policy()
     {
         IBlockhashCache cache = Substitute.For<IBlockhashCache>();
         cache.GetHash(Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns((Hash256?)null);
-        BlockhashProvider sut = new(cache, Substitute.For<IWorldState>(), LimboLogs.Instance, new ZeroUnresolvedBlockhashPolicy());
+        BlockhashProvider sut = new(cache, Substitute.For<IWorldState>(), LimboLogs.Instance, new NullUnresolvedBlockhashPolicy());
         BlockHeader current = Build.A.BlockHeader.WithNumber(300).WithParentHash(TestItem.KeccakA).TestObject;
 
         Assert.That(sut.GetBlockhash(current, 100, Frontier.Instance), Is.Null);
