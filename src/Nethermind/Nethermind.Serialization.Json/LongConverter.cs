@@ -61,8 +61,8 @@ public class LongConverter : JsonConverter<long>
         if (reader.TokenType == JsonTokenType.String)
         {
             return !reader.HasValueSequence
-                ? NumericConverterHelper.Parse<long>(reader.ValueSpan)
-                : NumericConverterHelper.Parse<long>(reader.ValueSequence.ToArray());
+                ? FromString(reader.ValueSpan)
+                : FromString(reader.ValueSequence.ToArray());
         }
 
         ThrowJsonException();

@@ -18,7 +18,7 @@ namespace Nethermind.TxPool
 
         public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
 
-        public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => tx.MaxFeePerGas >= currentBaseFee;
+        public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 
         public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) => !tx.SupportsBlobs || tx.MaxFeePerBlobGas >= currentPricePerBlobGas;
 
@@ -43,17 +43,17 @@ namespace Nethermind.TxPool
         {
             if (eip1559Enabled && tx.Supports1559)
             {
-                if (balance > tx.ValueRef && tx.GasLimit > 0)
+                if (balance > tx.Value && tx.GasLimit > 0)
                 {
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
                     effectiveGasPrice.Multiply((UInt256)tx.GasLimit, out UInt256 gasCost);
 
-                    if (balance >= tx.ValueRef + gasCost)
+                    if (balance >= tx.Value + gasCost)
                     {
                         return effectiveGasPrice;
                     }
 
-                    UInt256 balanceAvailableForFeePayment = balance - tx.ValueRef;
+                    UInt256 balanceAvailableForFeePayment = balance - tx.Value;
                     balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 payablePricePerGasUnit);
                     return payablePricePerGasUnit;
                 }
@@ -61,7 +61,7 @@ namespace Nethermind.TxPool
                 return 0;
             }
 
-            return balance <= tx.ValueRef ? default : tx.GasPrice;
+            return balance <= tx.Value ? default : tx.GasPrice;
         }
 
         internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
@@ -71,9 +71,9 @@ namespace Nethermind.TxPool
         {
             bool overflow = false;
 
-            overflow |= UInt256.MultiplyOverflow(tx.MaxFeePerGas, (UInt256)tx.GasLimit, out UInt256 maxTxCost);
+            overflow |= UInt256.MultiplyOverflow((UInt256)tx.MaxFeePerGas, tx.GasLimit, out UInt256 maxTxCost);
             overflow |= UInt256.AddOverflow(currentCost, maxTxCost, out cumulativeCost);
-            overflow |= UInt256.AddOverflow(in cumulativeCost, in tx.ValueRef, out cumulativeCost);
+            overflow |= UInt256.AddOverflow(cumulativeCost, (UInt256)tx.Value, out cumulativeCost);
 
             if (tx.SupportsBlobs)
             {

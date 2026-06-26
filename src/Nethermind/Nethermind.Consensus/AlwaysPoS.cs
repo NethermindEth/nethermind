@@ -21,7 +21,7 @@ public class AlwaysPoS : IPoSSwitcher
 
     public Hash256? ConfiguredTerminalBlockHash => null;
 
-    public long? ConfiguredTerminalBlockNumber => 0;
+    public ulong? ConfiguredTerminalBlockNumber => 0;
 
 #pragma warning disable CS0067
     public event EventHandler TerminalBlockReached;

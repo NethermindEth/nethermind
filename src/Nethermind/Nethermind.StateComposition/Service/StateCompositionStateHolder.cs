@@ -34,7 +34,7 @@ internal sealed class StateCompositionStateHolder
     private CumulativeTrieStats _incrementalStats = new() { SlotCountHistogram = ImmutableArray<long>.Empty };
     private bool _hasIncrementalBaseline;
     private readonly CumulativeDepthStats _currentDepthStats = new();
-    private long _incrementalBlock;
+    private ulong _incrementalBlock;
     private int _diffsSinceBaseline;
     // Sentinel: Hash256.Zero means "no baseline" (cold start or post-invalidation).
     // OnNewHeadBlock and RunIncrementalDiff gate on this directly instead of nullables.
@@ -73,7 +73,7 @@ internal sealed class StateCompositionStateHolder
     /// </summary>
     internal CumulativeDepthStats CurrentDepthStats => _currentDepthStats;
 
-    public long IncrementalBlock { get { lock (_lock) return _incrementalBlock; } }
+    public ulong IncrementalBlock { get { lock (_lock) return _incrementalBlock; } }
 
     public int DiffsSinceBaseline { get { lock (_lock) return _diffsSinceBaseline; } }
 
@@ -106,7 +106,7 @@ internal sealed class StateCompositionStateHolder
     /// </summary>
     public StateCompositionSnapshot BuildSnapshot(
         CumulativeTrieStats stats,
-        long blockNumber,
+        ulong blockNumber,
         Hash256 stateRoot)
     {
         lock (_lock)
@@ -134,7 +134,7 @@ internal sealed class StateCompositionStateHolder
         }
     }
 
-    public void MarkScanCompleted(long blockNumber, Hash256 stateRoot, TimeSpan duration, bool isComplete)
+    public void MarkScanCompleted(ulong blockNumber, Hash256 stateRoot, TimeSpan duration, bool isComplete)
     {
         lock (_lock)
         {
@@ -160,7 +160,7 @@ internal sealed class StateCompositionStateHolder
     public void PublishScanBaseline(
         StateCompositionStats stats,
         TrieDepthDistribution dist,
-        long blockNumber,
+        ulong blockNumber,
         Hash256 stateRoot,
         TimeSpan duration,
         bool isComplete,
@@ -203,7 +203,7 @@ internal sealed class StateCompositionStateHolder
     /// when no incremental baseline is present or the state root has been
     /// invalidated (<see cref="Hash256.Zero"/> sentinel).
     /// </summary>
-    public bool TryGetShutdownSnapshot(out Hash256 stateRoot, out long blockNumber, out CumulativeTrieStats stats)
+    public bool TryGetShutdownSnapshot(out Hash256 stateRoot, out ulong blockNumber, out CumulativeTrieStats stats)
     {
         lock (_lock)
         {
@@ -222,7 +222,7 @@ internal sealed class StateCompositionStateHolder
         }
     }
 
-    public void InitializeIncremental(CumulativeTrieStats baseline, long blockNumber, Hash256 stateRoot,
+    public void InitializeIncremental(CumulativeTrieStats baseline, ulong blockNumber, Hash256 stateRoot,
         TrieDepthDistribution? depthDistribution = null,
         Dictionary<ValueHash256, long>? slotCountByAddress = null,
         Dictionary<ValueHash256, int>? codeHashRefcounts = null,
@@ -272,7 +272,7 @@ internal sealed class StateCompositionStateHolder
     /// </para>
     /// </summary>
     public CumulativeTrieStats ApplyIncrementalDiffAndUpdate(
-        TrieDiff diff, long blockNumber, Hash256 stateRoot,
+        TrieDiff diff, ulong blockNumber, Hash256 stateRoot,
         Func<ValueHash256, int> codeSizeLookup)
     {
         lock (_lock)

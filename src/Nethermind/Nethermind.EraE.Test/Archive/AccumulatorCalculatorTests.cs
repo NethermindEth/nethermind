@@ -77,18 +77,18 @@ public class AccumulatorCalculatorTests
         Assert.That(sut.GetProof(0), Has.Length.EqualTo(15));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(7)]
-    public void GetProof_WhenCalled_ProofZeroIsTotalDifficultyLE(int blockIndex)
+    [TestCase(0U)]
+    [TestCase(1U)]
+    [TestCase(7U)]
+    public void GetProof_WhenCalled_ProofZeroIsTotalDifficultyLE(uint blockIndex)
     {
         using AccumulatorCalculator sut = new();
-        for (int i = 0; i <= blockIndex; i++)
-            sut.Add(Keccak.Zero, (ulong)(i + 1));
+        for (uint i = 0; i <= blockIndex; i++)
+            sut.Add(Keccak.Zero, i + 1);
 
         byte[] expected = new byte[32];
         expected[0] = (byte)(blockIndex + 1);
-        Assert.That(sut.GetProof(blockIndex)[0].ToByteArray(), Is.EqualTo(expected));
+        Assert.That(sut.GetProof((int)blockIndex)[0].ToByteArray(), Is.EqualTo(expected));
     }
 
     [Test]

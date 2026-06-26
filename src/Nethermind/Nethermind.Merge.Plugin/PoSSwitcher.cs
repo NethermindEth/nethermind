@@ -45,8 +45,8 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
         private Hash256? _terminalBlockHash;
 
-        private long? _terminalBlockNumber;
-        private long? _firstPoSBlockNumber;
+        private ulong? _terminalBlockNumber;
+        private ulong? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
         private Hash256 _finalizedBlockHash = Keccak.Zero;
         private bool _terminalBlockExplicitSpecified;
@@ -222,7 +222,7 @@ namespace Nethermind.Merge.Plugin
 
         public Hash256 ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
 
-        public long? ConfiguredTerminalBlockNumber => _mergeConfig.TerminalBlockNumber;
+        public ulong? ConfiguredTerminalBlockNumber => _mergeConfig.TerminalBlockNumber;
 
         private void LoadTerminalBlock()
         {
@@ -240,7 +240,7 @@ namespace Nethermind.Merge.Plugin
                 _firstPoSBlockNumber = _terminalBlockNumber + 1;
         }
 
-        private long? LoadTerminalBlockNumberFromDb()
+        private ulong? LoadTerminalBlockNumberFromDb()
         {
             try
             {
@@ -248,7 +248,7 @@ namespace Nethermind.Merge.Plugin
                 {
                     byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.TerminalPoWNumber);
                     RlpReader ctx = new(hashFromDb);
-                    return ctx.DecodeLong();
+                    return ctx.DecodeULong();
                 }
             }
             catch (RlpException)

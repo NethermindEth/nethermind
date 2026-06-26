@@ -1,28 +1,30 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.OpcodeTracing.Plugin;
 
 /// <summary>
 /// Tracks progress during long-running tracing operations.
 /// </summary>
-public sealed class TracingProgress(long startBlock, long endBlock)
+public sealed class TracingProgress(ulong startBlock, ulong endBlock)
 {
-    private long _currentBlock = startBlock - 1;
-    private readonly long _startBlock = startBlock;
-    private readonly long _totalBlocks = endBlock - startBlock + 1;
+    private ulong _currentBlock = startBlock.SaturatingSub(1);
+    private readonly ulong _startBlock = startBlock;
+    private readonly ulong _totalBlocks = endBlock - startBlock + 1;
     private readonly DateTime _startTime = DateTime.UtcNow;
-    private long _lastLoggedBlock = startBlock - 1;
+    private ulong _lastLoggedBlock = startBlock.SaturatingSub(1);
 
     /// <summary>
     /// Gets the last fully processed block number.
     /// </summary>
-    public long CurrentBlock => Interlocked.Read(ref _currentBlock);
+    public ulong CurrentBlock => Interlocked.Read(ref _currentBlock);
 
     /// <summary>
     /// Gets the total number of blocks to process.
     /// </summary>
-    public long TotalBlocks => _totalBlocks;
+    public ulong TotalBlocks => _totalBlocks;
 
     /// <summary>
     /// Gets the tracing start timestamp (UTC).
@@ -43,7 +45,7 @@ public sealed class TracingProgress(long startBlock, long endBlock)
     /// Updates the current block progress.
     /// </summary>
     /// <param name="blockNumber">The block number that was just completed.</param>
-    public void UpdateProgress(long blockNumber) =>
+    public void UpdateProgress(ulong blockNumber) =>
         Interlocked.Exchange(ref _currentBlock, blockNumber);
 
     /// <summary>
@@ -52,8 +54,8 @@ public sealed class TracingProgress(long startBlock, long endBlock)
     /// <returns>True if progress should be logged; otherwise, false.</returns>
     public bool ShouldLogProgress()
     {
-        long current = CurrentBlock;
-        long lastLogged = Interlocked.Read(ref _lastLoggedBlock);
+        ulong current = CurrentBlock;
+        ulong lastLogged = Interlocked.Read(ref _lastLoggedBlock);
 
         if (current - lastLogged >= 1000)
         {

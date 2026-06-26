@@ -63,12 +63,12 @@ internal class XdcBlockProducer(
         byte[] extra = [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];
 
         Address blockAuthor = sealer.Address;
-        long gasLimit = GasLimitCalculator.GetGasLimit(parent);
+        ulong gasLimit = GasLimitCalculator.GetGasLimit(parent);
         XdcBlockHeader xdcBlockHeader = CreateHeader(parent, extra, blockAuthor, gasLimit);
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 
-        xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + (ulong)spec.MinePeriod;
+        xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + spec.MinePeriod;
 
         xdcBlockHeader.Difficulty = 1;
 
@@ -109,7 +109,7 @@ internal class XdcBlockProducer(
         return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
     }
 
-    protected virtual XdcBlockHeader CreateHeader(BlockHeader parent, byte[] extra, Address blockAuthor, long gasLimit) => new(
+    protected virtual XdcBlockHeader CreateHeader(BlockHeader parent, byte[] extra, Address blockAuthor, ulong gasLimit) => new(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
                 blockAuthor,
