@@ -29,6 +29,7 @@ public sealed class KademliaAdapter(
     PacketCodec packetCodec,
     INodeRecordProvider nodeRecordProvider,
     IDiscoveryConfig discoveryConfig,
+    KademliaConfig<Node> kademliaConfig,
     ICryptoRandom cryptoRandom,
     IKademliaDistance<Hash256> distance,
     IDiscv5RecordFilter recordFilter,
@@ -51,6 +52,7 @@ public sealed class KademliaAdapter(
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
     private readonly IKademliaDistance<Hash256> _distance = distance;
+    private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.Id.Hash;
     private readonly DisposingLruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions");
     private readonly LruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges");
     private readonly Queue<SentChallengeExpiry> _sentChallengeExpiries = new();
@@ -788,10 +790,13 @@ public sealed class KademliaAdapter(
     private void SetSession(SessionKey sessionKey, Session session)
         => _sessions.Set(sessionKey, session);
 
-    private bool TryGetKnownSignedRecord(ValueHash256 nodeId, [NotNullWhen(true)] out NodeRecord? record)
+    internal bool TryGetKnownSignedRecord(ValueHash256 nodeId, [NotNullWhen(true)] out NodeRecord? record)
     {
-        foreach (Node node in kademlia.Value.IterateNodes())
+        int distance = _distance.CalculateLogDistance(_currentNodeHash, nodeId.ToHash256());
+        Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
+        for (int i = 0; i < nodes.Length; i++)
         {
+            Node node = nodes[i];
             if (node.Id.Hash != nodeId)
             {
                 continue;

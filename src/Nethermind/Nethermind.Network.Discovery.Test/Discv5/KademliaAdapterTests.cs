@@ -96,6 +96,37 @@ public class KademliaAdapterTests
         Assert.That(adapter.TryAcceptChallenge(endpoint), Is.False);
     }
 
+    [Test]
+    public void TryGetKnownSignedRecord_ShouldScanOnlyMatchingBucket()
+    {
+        Node current = CreateNode(TestItem.PublicKeyA, 1);
+        Node target = CreateNode(TestItem.PublicKeyB, 2);
+        Node sameBucketNode = CreateNode(TestItem.PublicKeyC, 3);
+        Node otherBucketNode = CreateNode(TestItem.PublicKeyD, 4);
+        target.Enr = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"));
+        int targetDistance = Hash256KademliaDistance.Instance.CalculateLogDistance(current.Id.Hash, target.Id.Hash);
+        int otherDistance = targetDistance == Hash256KademliaDistance.Instance.MaxDistance
+            ? targetDistance - 1
+            : targetDistance + 1;
+        _kademlia.GetAllAtDistance(targetDistance).Returns([sameBucketNode, target]);
+        _kademlia.GetAllAtDistance(otherDistance).Returns([otherBucketNode]);
+        _kademlia.ClearReceivedCalls();
+
+        KademliaAdapter adapter = CreateAdapter(current);
+
+        bool result = adapter.TryGetKnownSignedRecord(target.Id.Hash.ValueHash256, out NodeRecord? record);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(record, Is.SameAs(target.Enr));
+        }
+
+        _kademlia.Received(1).GetAllAtDistance(targetDistance);
+        _kademlia.DidNotReceive().GetAllAtDistance(otherDistance);
+        _kademlia.DidNotReceive().IterateNodes();
+    }
+
     [TestCaseSource(nameof(AcceptableNodeRecordCases))]
     public void IsAcceptableNodeRecord_ShouldValidateRecord(AcceptableNodeRecordCase testCase)
     {
@@ -110,8 +141,9 @@ public class KademliaAdapterTests
             Is.EqualTo(testCase.ExpectedResult));
     }
 
-    private KademliaAdapter CreateAdapter()
+    private KademliaAdapter CreateAdapter(Node? currentNode = null)
     {
+        currentNode ??= CreateNode(TestItem.PublicKeyA, 1);
         INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
         nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback)));
         _packetCodec?.Dispose();
@@ -126,6 +158,7 @@ public class KademliaAdapterTests
             _packetCodec,
             nodeRecordProvider,
             new DiscoveryConfig(),
+            new KademliaConfig<Node> { CurrentNodeId = currentNode },
             new CryptoRandom(),
             Hash256KademliaDistance.Instance,
             ExecutionLayerDiscv5RecordFilter.Instance,

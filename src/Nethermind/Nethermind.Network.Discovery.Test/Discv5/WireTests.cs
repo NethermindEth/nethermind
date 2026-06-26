@@ -248,12 +248,14 @@ public class WireTests
             new InsecureProtectedPrivateKey(privateKey),
             new CryptoRandom(),
             new EthereumEcdsa(0));
+        Node currentNode = new(privateKey.PublicKey, endpoint, true);
         KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(kademlia),
             handler,
             packetCodec,
             nodeRecordProvider,
             new DiscoveryConfig(),
+            new KademliaConfig<Node> { CurrentNodeId = currentNode },
             new CryptoRandom(),
             Hash256KademliaDistance.Instance,
             ExecutionLayerDiscv5RecordFilter.Instance,
