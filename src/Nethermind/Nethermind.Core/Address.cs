@@ -167,7 +167,7 @@ namespace Nethermind.Core
             ref byte bytes0 = ref Unsafe.AsRef(in FirstByte);
             ref byte bytes1 = ref Unsafe.AsRef(in other.FirstByte);
 #if ZK_EVM
-            // RISC-V has no SIMD; a Vector128 compare lowers to a slow software
+            // RISC-V has no SIMD, so a Vector128 compare lowers to a slow software
             // helper. Compare the 20 bytes as two ulongs plus a uint instead.
             return Unsafe.ReadUnaligned<ulong>(ref bytes0)
                        == Unsafe.ReadUnaligned<ulong>(ref bytes1)
@@ -227,13 +227,13 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address)obj);
         }
 
+        public override int GetHashCode() =>
 #if ZK_EVM
-        // Address is always 20 bytes — skip the generic length-dispatching
-        // FastHash path and use the dedicated 20-byte hasher. This is the
-        // dominant Dictionary/FrozenSet probe cost on the ZisK target.
-        public override int GetHashCode() => unchecked((int)GetHashCode64());
+                // Always 20 bytes, so skip the length-dispatching FastHash and use the
+                // dedicated 20-byte hasher — the dominant Dictionary/FrozenSet probe on zkVM.
+                unchecked((int)GetHashCode64());
 #else
-        public override int GetHashCode() => Bytes.FastHash();
+                Bytes.FastHash();
 #endif
 
         public static bool operator ==(Address? a, Address? b)
@@ -294,15 +294,13 @@ namespace Nethermind.Core
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
 
 #if ZK_EVM
-        // Precompiles are defined by their address *number*: a precompile lives
-        // at 0x00..00XX, so the address number IS the membership key. Returns
-        // that number when the top 16 bytes are zero, or -1 otherwise. Lets
-        // IReleaseSpec.IsPrecompile replace a FrozenSet hash+probe with a bitmask.
+        // A precompile lives at a low address (top 16 bytes zero), so its trailing number
+        // IS the membership key. Returns that number when the top 16 bytes are zero, or -1
+        // otherwise — lets IReleaseSpec.IsPrecompile swap a FrozenSet hash+probe for a bitmask.
         public int PrecompileIndexOrNegative()
         {
             ref byte b = ref Unsafe.AsRef(in FirstByte);
-            if ((Unsafe.ReadUnaligned<ulong>(ref b)
-                 | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) != 0)
+            if ((Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) != 0)
             {
                 return -1;
             }
