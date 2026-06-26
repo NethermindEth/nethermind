@@ -18,7 +18,7 @@ namespace Nethermind.Trie.Test;
 public class RawTrieStoreTests
 {
     [TestCase(WriteFlags.None, 1, 16_385, 16_385)]
-    [TestCase(WriteFlags.DisableWAL, 17, TrieWriteBatchSettings.DefaultDisableWalBatchSize, 1)]
+    [TestCase(WriteFlags.DisableWAL, 9, TrieWriteBatchSettings.DefaultDisableWalBatchSize, 1)]
     public void Raw_scoped_committer_splits_only_disable_wal_batches(WriteFlags writeFlags, int expectedBatchCount, int expectedMaxBatchSize, int expectedLastBatchSize)
     {
         CountingNodeStorage nodeStorage = new();

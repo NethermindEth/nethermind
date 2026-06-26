@@ -19,7 +19,7 @@ public static class TrieWriteBatchSettings
     /// <summary>
     /// Default number of trie-node writes per DisableWAL batch.
     /// </summary>
-    public const int DefaultDisableWalBatchSize = 1024;
+    public const int DefaultDisableWalBatchSize = 2048;
 
     /// <summary>
     /// Maximum accepted number of trie-node writes per DisableWAL batch.
