@@ -1182,8 +1182,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 goto OutOfGas;
             }
 
-            // Save the previous call's output into the VM state's memory.
-            if (!vmState.Memory.TrySave(in localPreviousDest, previousCallOutput)) goto OutOfGas;
+            vmState.Memory.SaveAfterGas(in localPreviousDest, in previousCallOutput);
         }
 
         // Dispatch the bytecode interpreter.
