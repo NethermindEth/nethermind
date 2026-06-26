@@ -283,6 +283,32 @@ public class ProgressTrackerTests
     }
 
     [Test]
+    public void Storage_queue_pauses_new_account_requests_until_storage_catches_up()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 2, maxQueuedStorageAccountsForAccountRequests: 1);
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? activeAccountBatch), Is.False);
+        Assert.That(activeAccountBatch!.AccountRangeRequest, Is.Not.Null);
+
+        progressTracker.EnqueueAccountStorage(TestItem.Tree.AccountsWithPaths[0]);
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? storageBatch), Is.False);
+        Assert.That(storageBatch!.AccountRangeRequest, Is.Null);
+        Assert.That(storageBatch.StorageRangeRequest, Is.Not.Null);
+
+        progressTracker.ReportFullStorageRequestFinished(storageBatch.StorageRangeRequest!.Accounts.Count);
+        storageBatch.Dispose();
+
+        ValueHash256 hashLimit = activeAccountBatch.AccountRangeRequest!.LimitHash!.Value;
+        progressTracker.ReportAccountRangePartitionFinished(hashLimit);
+        activeAccountBatch.Dispose();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? nextAccountBatch), Is.False);
+        Assert.That(nextAccountBatch!.AccountRangeRequest, Is.Not.Null);
+        nextAccountBatch.Dispose();
+    }
+
+    [Test]
     public void Slot_range_queue_waits_when_active_storage_batch_limit_is_reached()
     {
         using ProgressTracker progressTracker = CreateProgressTracker(maxActiveStorageRangeBatches: 1);
@@ -372,14 +398,19 @@ public class ProgressTrackerTests
         Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
     }
 
-    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, int maxActiveStorageRangeBatches = 8)
+    private ProgressTracker CreateProgressTracker(
+        int accountRangePartition = 1,
+        bool enableStorageSplits = false,
+        int maxActiveStorageRangeBatches = 8,
+        int maxQueuedStorageAccountsForAccountRequests = 9_600)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
         SyncConfig syncConfig = new TestSyncConfig()
         {
             SnapSyncAccountRangePartitionCount = accountRangePartition,
             EnableSnapSyncStorageRangeSplit = enableStorageSplits,
-            SnapSyncMaxActiveStorageRangeBatches = maxActiveStorageRangeBatches
+            SnapSyncMaxActiveStorageRangeBatches = maxActiveStorageRangeBatches,
+            SnapSyncMaxQueuedStorageAccountsForAccountRequests = maxQueuedStorageAccountsForAccountRequests
         };
         return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }

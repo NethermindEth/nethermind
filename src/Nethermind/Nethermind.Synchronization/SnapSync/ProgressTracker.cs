@@ -72,6 +72,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly FastSync.IStateSyncPivot _pivot;
         private readonly bool _enableStorageRangeSplit;
         private readonly int _maxActiveStorageRangeBatches;
+        private readonly int _maxQueuedStorageAccountsForAccountRequests;
 
         public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
         {
@@ -89,6 +90,9 @@ namespace Nethermind.Synchronization.SnapSync
             _maxActiveStorageRangeBatches = syncConfig.SnapSyncMaxActiveStorageRangeBatches <= 0
                 ? int.MaxValue
                 : syncConfig.SnapSyncMaxActiveStorageRangeBatches;
+            _maxQueuedStorageAccountsForAccountRequests = syncConfig.SnapSyncMaxQueuedStorageAccountsForAccountRequests <= 0
+                ? int.MaxValue
+                : syncConfig.SnapSyncMaxQueuedStorageAccountsForAccountRequests;
 
             SetupAccountRangePartition();
 
@@ -319,7 +323,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private bool ShouldRequestAccountRequests() => _activeAccountRequests < _accountRangePartitionCount
                    && SlotRangeQueueCount < 10
-                   && StorageQueueCount < HIGH_STORAGE_QUEUE_SIZE
+                   && StorageQueueCount < _maxQueuedStorageAccountsForAccountRequests
                    && CodeQueueCount < HIGH_CODES_QUEUE_SIZE;
 
         public void EnqueueCodeHashes(ReadOnlySpan<ValueHash256> codeHashes)
