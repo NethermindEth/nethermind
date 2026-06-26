@@ -373,7 +373,41 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
                 yield return (Instruction)op;
     }
 
-    private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream)
+    // The stream's gas guards must use IsOutOfGas (gas is ulong, so "< 0" is always false). With a dead
+    // guard the stream runs past exhaustion and reports success, diverging from the bytecode loop here.
+    private static IEnumerable<TestCaseData> OutOfGasCases()
+    {
+        // Boundary op: PUSH1 0; SLOAD; STOP — the ~100-gas budget can't pay the cold SLOAD (2100).
+        yield return new TestCaseData(
+            new byte[] { (byte)Instruction.PUSH1, 0x00, (byte)Instruction.SLOAD, (byte)Instruction.STOP },
+            21_100UL) { TestName = "OutOfGasOnBoundarySLoad" };
+
+        // Metered fallback: a 500-PUSH0 block (cost 1000) behind a ~500-gas budget can't be precharged,
+        // so it dispatches per-op metered and exhausts mid-block.
+        byte[] meteredBlock = new byte[501];
+        for (int i = 0; i < 500; i++) meteredBlock[i] = (byte)Instruction.PUSH0;
+        meteredBlock[500] = (byte)Instruction.STOP;
+        yield return new TestCaseData(meteredBlock, 21_500UL) { TestName = "OutOfGasInMeteredFallback" };
+    }
+
+    [TestCaseSource(nameof(OutOfGasCases))]
+    public void StreamInterpreter_OutOfGas_MatchesByteCodeLoop(byte[] code, ulong gasLimit)
+    {
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false, gasLimit: gasLimit);
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true, gasLimit: gasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), "the stream did not engage");
+            Assert.That(baseline.StatusCode, Is.EqualTo((byte)Evm.StatusCode.Failure), "precondition: the bytecode loop must run out of gas");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "out-of-gas status must match the bytecode loop");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas spent on out-of-gas must match the bytecode loop");
+        }
+    }
+
+    private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream, ulong gasLimit = 8_000_000)
     {
         TestState.CreateAccount(CalleeAddress, 1000000);
         TestState.InsertCode(CalleeAddress, CalleeCode, Spec);
@@ -390,7 +424,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         try
         {
             // Base Execute helper caps gas at 100k; the CREATE-heavy cases need more.
-            (Block block, Transaction transaction) = PrepareTx(Activation, 8_000_000, code);
+            (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
 
             if (useStream)
             {

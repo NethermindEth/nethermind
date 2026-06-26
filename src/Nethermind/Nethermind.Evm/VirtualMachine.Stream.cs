@@ -250,18 +250,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.StaticJump:
                             // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
                             TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump);
-                            if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                            if (TGasPolicy.IsOutOfGas(in gas))
                             {
                                 OpCodeCount += opCodeCount;
                                 goto OutOfGas;
                             }
 
                             opCodeCount++;
+                            // Set entryIndex to dest-1; the shared loop-tail entryIndex++ lands it on dest.
+                            // programCounter is transiently stale until the next entry sets it — fine, nothing reads it here.
                             entryIndex = (int)entry.Operand - 1;
                             break;
                         case (Instruction)FusedOpcode.StaticJumpI:
                             TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.JumpI);
-                            if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                            if (TGasPolicy.IsOutOfGas(in gas))
                             {
                                 OpCodeCount += opCodeCount;
                                 goto OutOfGas;
@@ -312,7 +314,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         _ => EvmInstructions.InstructionMCopy<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
                     };
 
-                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                    if (TGasPolicy.IsOutOfGas(in gas))
                     {
                         OpCodeCount += opCodeCount;
                         goto OutOfGas;
@@ -342,7 +344,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
                 programCounter = pc;
 
-                if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                if (TGasPolicy.IsOutOfGas(in gas))
                 {
                     OpCodeCount += opCodeCount;
                     goto OutOfGas;
@@ -480,7 +482,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
 
-            if (TGasPolicy.GetRemainingGas(in gas) < 0)
+            if (TGasPolicy.IsOutOfGas(in gas))
                 return new MeteredResult(MeteredOutcome.OutOfGas, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             TGasPolicy.OnAfterInstructionTrace(in gas);

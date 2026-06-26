@@ -100,10 +100,13 @@ public readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushor
 /// every execution of that code.
 /// </summary>
 /// <remarks>
-/// Consensus invariants: only static-gas (Shanghai+) ops are precharged (callers gate on a tip-fork
-/// fingerprint); a JUMPDEST is a solo block; a truncated trailing PUSH stays a boundary op; nothing
-/// lands inside a fused pair; the executor recomputes the entry from the landing pc and re-meters any
-/// block entered past its charging entry (metered dispatch reads raw code, so gas stays exact).
+/// Consensus invariants: only static-gas ops are precharged. The actual gate is
+/// <c>spec.IncludePush0Instruction</c> — i.e. ANY fork &gt;= Shanghai runs the stream; there is no
+/// upper-bound fork check. The precharged gas costs are assumed fork-stable and MUST be revalidated
+/// whenever a new fork changes any of them. A JUMPDEST is a solo block; a truncated trailing PUSH stays
+/// a boundary op; nothing lands inside a fused pair; the executor recomputes the entry from the landing
+/// pc and re-meters any block entered past its charging entry (metered dispatch reads raw code, so gas
+/// stays exact).
 /// </remarks>
 public sealed class InstructionStream
 {
@@ -265,8 +268,8 @@ public sealed class InstructionStream
 
     /// <summary>
     /// The static-cost op set run unmetered; must match the executor's in-block switch exactly.
-    /// PUSH2 excluded (keeps fused PUSH2+JUMP); PUSH9+/DUP9+/SWAP9+ excluded to keep the switch
-    /// within the size the JIT inlines.
+    /// PUSH2 excluded (keeps fused PUSH2+JUMP); PUSH1 and PUSH3..PUSH32 are included. DUP9+/SWAP9+
+    /// excluded to keep the switch within the size the JIT inlines.
     /// </summary>
     public static bool TryGetInBlockCost(Instruction instruction, out ulong cost)
     {
