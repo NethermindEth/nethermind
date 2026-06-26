@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int MaxAttemptsToUpdatePivot { get; set; } = ISyncConfig.InfiniteAttempts;
         public bool SnapSync { get; set; } = false;
         public bool StaticSnapPivot { get; set; } = false;
-        public int SnapSyncAccountRangePartitionCount { get; set; } = 2;
+        public int SnapSyncAccountRangePartitionCount { get; set; } = 1;
         public int SnapSyncAccountRangeMaxResponseBytes { get; set; } = 125_000;
         public int SnapSyncStorageRangeMaxResponseBytes { get; set; } = 125_000;
         public int SnapSyncStorageRangeParallelism { get; set; } = 1;
