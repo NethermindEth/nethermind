@@ -34,7 +34,7 @@ public struct EvmPooledMemory
 
         int offset = TruncateToInt32(location.u0);
         EvmWord word1 = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
-        UpdateSize(newLength, location.u0);
+        UpdateSize(newLength);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
         return true;
@@ -46,7 +46,7 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         int offset = TruncateToInt32(location.u0);
-        UpdateSize(newLength, location.u0);
+        UpdateSize(newLength);
         _memory![offset] = value;
         return true;
     }
@@ -61,7 +61,7 @@ public struct EvmPooledMemory
         CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength, out bool isViolation);
         if (isViolation) return false;
 
-        UpdateSize(newLength, location.u0);
+        UpdateSize(newLength);
         value.CopyTo(_memory.AsSpan(TruncateToInt32(location.u0), value.Length));
         return true;
     }
@@ -119,7 +119,7 @@ public struct EvmPooledMemory
         CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
         if (isViolation) return false;
 
-        UpdateSize(newLength, location.u0);
+        UpdateSize(newLength);
 
         Array.Copy(value, 0, _memory!, TruncateToInt32(location.u0), value.Length);
         return true;
@@ -137,7 +137,7 @@ public struct EvmPooledMemory
         CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
         if (isViolation) return false;
 
-        UpdateSize(newLength, location.u0);
+        UpdateSize(newLength);
 
         int intLocation = TruncateToInt32(location.u0);
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
@@ -233,14 +233,11 @@ public struct EvmPooledMemory
             return default;
         }
 
-        ZeroGapUpTo((ulong)largeSize);
+        ClearForTracing((ulong)largeSize);
         return _memory.AsMemory((int)location, (int)length);
     }
 
-    // Zeroes the still-undefined gap [_lastZeroedSize, size) so reads there return valid (zero) EVM
-    // memory, and advances the defined frontier. Buffers are pooled dirty, so every read/grow that
-    // exposes new bytes funnels through here; contiguous writes skip it by passing their own start.
-    private void ZeroGapUpTo(ulong size)
+    private void ClearForTracing(ulong size)
     {
         if (_memory is not null && size > _lastZeroedSize)
         {
@@ -284,7 +281,7 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
-        PrepareAccessAfterGas(location.u0 + WordSize, location.u0);
+        PrepareAccessAfterGas(location.u0 + WordSize);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
     }
@@ -294,7 +291,7 @@ public struct EvmPooledMemory
     {
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
-        PrepareAccessAfterGas(location.u0 + 1, location.u0);
+        PrepareAccessAfterGas(location.u0 + 1);
         _memory![offset] = value;
     }
 
@@ -338,10 +335,7 @@ public struct EvmPooledMemory
         int sourceOffset = TruncateToInt32(source.u0);
         int intLength = TruncateToInt32(length);
 
-        // MCOPY reads [source, source+length) and writes [destination, destination+length). The source
-        // read must see valid memory, so zero the whole span up to whichever region ends later (default
-        // writeStart == read-style); the copy then overwrites the destination part.
-        PrepareAccessAfterGas(Math.Max(source.u0 + length, destination.u0 + length));
+        PrepareAccessAfterGas(destination.u0 + length);
         _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
     }
 
@@ -372,7 +366,7 @@ public struct EvmPooledMemory
     public TraceMemory GetTrace()
     {
         ulong size = Size;
-        ZeroGapUpTo(size);
+        ClearForTracing(size);
         return new(size, _memory);
     }
 
@@ -383,11 +377,11 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            ReturnDirty(memory);
+            ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
         }
     }
 
-    private void UpdateSize(ulong length, ulong writeStart = ulong.MaxValue, bool rentIfNeeded = true)
+    private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
         // CheckMemoryAccessViolation has already proven length <= MaxMemorySize, so
         // (length + 31) cannot overflow. Branchless align-up replaces the original
@@ -400,11 +394,6 @@ public struct EvmPooledMemory
         if (rentIfNeeded)
         {
             EnsureRented();
-            // Zero the still-undefined gap the caller is about to touch. A write fills [writeStart, length)
-            // itself, so only [_lastZeroedSize, writeStart) needs zeroing; a read (writeStart == MaxValue)
-            // zeroes the whole newly-active region. The buffer is pooled dirty, so this is the only zeroing.
-            ZeroGapUpTo(Math.Min(length, writeStart));
-            if (length > _lastZeroedSize) _lastZeroedSize = length;
         }
     }
 
@@ -416,19 +405,17 @@ public struct EvmPooledMemory
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void PrepareAccessAfterGas(ulong newLength, ulong writeStart = ulong.MaxValue)
+    private void PrepareAccessAfterGas(ulong newLength)
     {
         Debug.Assert(newLength <= Size);
         EnsureRented();
-        ZeroGapUpTo(Math.Min(newLength, writeStart));
-        if (newLength > _lastZeroedSize) _lastZeroedSize = newLength;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EnsureRented()
     {
         byte[]? memory = _memory;
-        if (memory is null || Size > (ulong)memory.Length)
+        if (memory is null || Size > (ulong)memory.Length || Size > _lastZeroedSize)
         {
             RentSlow();
         }
@@ -441,9 +428,7 @@ public struct EvmPooledMemory
     [ThreadStatic] private static byte[]?[]? _cleanArrays;
     [ThreadStatic] private static int _cleanArrayCount;
 
-    // Rents a buffer of at least minLength. The returned bytes are NOT guaranteed zero (pooled buffers
-    // come back dirty); callers rely on the defined-frontier zeroing in ZeroGapUpTo for correctness.
-    private static byte[] RentBuffer(int minLength)
+    private static byte[] RentClean(int minLength)
     {
         byte[]?[]? cache = _cleanArrays;
         int cleanArrayCount = _cleanArrayCount - 1;
@@ -461,16 +446,15 @@ public struct EvmPooledMemory
 
         if (minLength > MaxCachedArrayLength)
         {
-            return RentLarge(minLength);
+            byte[] pooled = RentLarge(minLength);
+            Array.Clear(pooled);
+            return pooled;
         }
 
         return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
     }
 
-    // Returns the buffer to the pool WITHOUT zeroing it (the win): the next renter treats it as dirty
-    // and zeroes only what it actually exposes via the defined frontier, instead of paying to wipe the
-    // whole high-water mark here on every frame teardown.
-    private static void ReturnDirty(byte[] array)
+    private static void ReturnClean(byte[] array, int dirtyLength)
     {
         if (array.Length > MaxCachedArrayLength)
         {
@@ -481,6 +465,7 @@ public struct EvmPooledMemory
         byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
         if (_cleanArrayCount < CleanCacheSlots)
         {
+            Array.Clear(array, 0, dirtyLength);
             cache[_cleanArrayCount++] = array;
         }
     }
@@ -515,21 +500,17 @@ public struct EvmPooledMemory
     {
         if (_memory is null)
         {
-            // Fresh buffer is pooled dirty: nothing is defined yet, so the frontier starts at 0 and
-            // each access zeroes the gap it exposes. (A struct reused after Dispose may carry a stale
-            // frontier here, so resetting it is mandatory, not just an optimisation.)
-            _memory = RentBuffer((int)Math.Max((uint)Size, MinRentSize));
-            _lastZeroedSize = 0;
+            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
         }
         else if (Size > (ulong)_memory.LongLength)
         {
-            // Grow: the copy preserves the defined prefix [0, _lastZeroedSize), so the frontier is
-            // unchanged; the freshly exposed tail stays dirty and is zeroed on first access.
             byte[] beforeResize = _memory;
-            _memory = RentBuffer(TruncateToInt32(Size));
+            _memory = RentClean(TruncateToInt32(Size));
             Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            ReturnDirty(beforeResize);
+            ReturnClean(beforeResize, beforeResize.Length);
         }
+
+        _lastZeroedSize = (ulong)_memory.Length;
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
