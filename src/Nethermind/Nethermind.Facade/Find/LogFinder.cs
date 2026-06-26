@@ -158,7 +158,7 @@ namespace Nethermind.Facade.Find
             {
                 throw new ArgumentException(
                     $"Block range {rangeSize} exceeds the maximum of {_maxBlockDepth} blocks per eth_getLogs request. " +
-                    $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(ReceiptConfig.MaxBlockDepth)}.");
+                    $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.");
             }
         }
 

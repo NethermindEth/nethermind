@@ -176,7 +176,7 @@ public class LogFinderTests
         Assert.That(
             () => _logFinder.FindLogs(logFilter).ToArray(),
             shouldThrow
-                ? Throws.TypeOf<ArgumentException>().With.Message.Contain(nameof(ReceiptConfig.MaxBlockDepth)) // should mention config option
+                ? Throws.TypeOf<ArgumentException>().With.Message.Contain(nameof(IReceiptConfig.MaxBlockDepth)) // should mention config option
                 : Throws.Nothing
         );
     }
