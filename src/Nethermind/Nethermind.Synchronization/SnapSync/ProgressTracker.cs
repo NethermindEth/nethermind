@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -24,8 +24,9 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private const string NO_REQUEST = "Skipped Request";
 
-        private const int STORAGE_BATCH_SIZE = 1_200;
-        public const int HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
+        private const int DefaultStorageRequestAccountBatchSize = 1_200;
+        private const int MaxStorageRequestAccountBatchSize = 1_200;
+        public const int HIGH_STORAGE_QUEUE_SIZE = DefaultStorageRequestAccountBatchSize * 100;
         private const int CODES_BATCH_SIZE = 1_000;
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private const uint StorageRangeSplitFactor = 2;
@@ -73,6 +74,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly bool _enableStorageRangeSplit;
         private readonly int _maxActiveStorageRangeBatches;
         private readonly int _maxQueuedStorageAccountsForAccountRequests;
+        private readonly int _storageRequestAccountBatchSize;
 
         public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
         {
@@ -93,6 +95,11 @@ namespace Nethermind.Synchronization.SnapSync
             _maxQueuedStorageAccountsForAccountRequests = syncConfig.SnapSyncMaxQueuedStorageAccountsForAccountRequests <= 0
                 ? int.MaxValue
                 : syncConfig.SnapSyncMaxQueuedStorageAccountsForAccountRequests;
+            int storageRequestAccountBatchSize = syncConfig.SnapSyncStorageRequestAccountBatchSize;
+            if (storageRequestAccountBatchSize < 1 || storageRequestAccountBatchSize > MaxStorageRequestAccountBatchSize)
+                throw new ArgumentException($"Storage request account batch size must be between 1 and {MaxStorageRequestAccountBatchSize}.");
+
+            _storageRequestAccountBatchSize = storageRequestAccountBatchSize;
 
             SetupAccountRangePartition();
 
@@ -238,8 +245,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             Interlocked.Increment(ref _activeStorageRequests); // for race condition so that snap does not exit prematurely
 
-            ArrayPoolList<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
-            for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
+            ArrayPoolList<PathWithAccount> storagesToQuery = new(_storageRequestAccountBatchSize);
+            for (int i = 0; i < _storageRequestAccountBatchSize && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
             {
                 Interlocked.Decrement(ref _storageQueueCount);
                 storagesToQuery.Add(storage);

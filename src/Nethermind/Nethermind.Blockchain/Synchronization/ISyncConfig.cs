@@ -129,6 +129,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Maximum queued Snap storage accounts before account-range requests pause and let storage import catch up. Higher values keep account ranges ahead longer but increase queued account memory. Values less than or equal to 0 disable this pause.", DefaultValue = "19200", HiddenFromDocs = true)]
     int SnapSyncMaxQueuedStorageAccountsForAccountRequests { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Maximum queued Snap storage accounts included in a single storage-range request. Allowed values are between 1 and 1200.", DefaultValue = "1200", HiddenFromDocs = true)]
+    int SnapSyncStorageRequestAccountBatchSize { get; set; }
+
     [ConfigItem(Description = "Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. If `true`, the pivot number must be same one used originally as it's used as a cut-off point.", DefaultValue = "false")]
     public bool FixReceipts { get; set; }
 

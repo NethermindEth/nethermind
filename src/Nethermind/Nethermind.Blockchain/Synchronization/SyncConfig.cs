@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -61,6 +61,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int SnapSyncStorageRangeParallelism { get; set; } = 1;
         public int SnapSyncMaxActiveStorageRangeBatches { get; set; } = 2;
         public int SnapSyncMaxQueuedStorageAccountsForAccountRequests { get; set; } = 19_200;
+        public int SnapSyncStorageRequestAccountBatchSize { get; set; } = 1_200;
         public bool FixReceipts { get; set; } = false;
         public bool FixTotalDifficulty { get; set; } = false;
         public long FixTotalDifficultyStartingBlock { get; set; } = 1;
