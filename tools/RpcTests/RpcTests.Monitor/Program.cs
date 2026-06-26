@@ -80,6 +80,9 @@ rootCommand.SetAction(async (parseResult, ct) =>
 
     TimeSpan? reportAt = parseResult.GetValue(reportAtOption);
     IStatsReporter stats = reportAt is { } time ? new StatsReporter(notifier, time, reorgTracker, emptyTests) : NullStatsReporter.Instance;
+    target.OnRequestStart += stats.RecordTargetRequest;
+    reference?.OnRequestStart += stats.RecordReferenceRequest;
+
     MonitorRunner runner = new(args, notifier, stats, target, reference, reorgTracker, blockProvider, emptyTests);
 
     await Task.WhenAll(

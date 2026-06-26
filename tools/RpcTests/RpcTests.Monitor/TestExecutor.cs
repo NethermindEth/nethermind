@@ -24,9 +24,6 @@ internal class TestExecutor(RpcClient target, RpcClient? reference, EmptyTestsTr
         // TODO: inject custom IRcpClient implementation finding corresponding test
         JsonNode? expectedStatic = test.Definition.Response?.Compile(test);
 
-        // TODO: separate counters for target and reference
-        stats.RecordRequestRun(expectedStatic is null ? 1 : 2);
-
         // retry refence node, but require testee to reply on the first attempt
         JsonNode[] requests = await Task.WhenAll(
             target.SendAsync(request, ct),

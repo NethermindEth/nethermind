@@ -25,13 +25,15 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt, ReorgTracker
     private long _headUpdates;
     private long _reorgs;
     private long _testRuns;
-    private long _requestRuns;
+    private long _targetRequests;
+    private long _referenceRequests;
     private long _testFailures;
     private long _errors;
 
     public void RecordHeadUpdate() => Interlocked.Increment(ref _headUpdates);
     public void RecordTestRun() => Interlocked.Increment(ref _testRuns);
-    public void RecordRequestRun(int count) => Interlocked.Add(ref _requestRuns, count);
+    public void RecordTargetRequest() => Interlocked.Increment(ref _targetRequests);
+    public void RecordReferenceRequest() => Interlocked.Increment(ref _referenceRequests);
     public void RecordTestFailure() => Interlocked.Increment(ref _testFailures);
     public void RecordError() => Interlocked.Increment(ref _errors);
     public void RecordReorg() => Interlocked.Increment(ref _reorgs);
@@ -42,7 +44,8 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt, ReorgTracker
         HeadUpdates = Interlocked.Exchange(ref _headUpdates, 0),
         Reorgs = Interlocked.Exchange(ref _reorgs, 0),
         TestRuns = Interlocked.Exchange(ref _testRuns, 0),
-        RequestRuns = Interlocked.Exchange(ref _requestRuns, 0),
+        TargetRequests = Interlocked.Exchange(ref _targetRequests, 0),
+        ReferenceRequests = Interlocked.Exchange(ref _referenceRequests, 0),
         TestFailures = Interlocked.Exchange(ref _testFailures, 0),
         Errors = Interlocked.Exchange(ref _errors, 0)
     };

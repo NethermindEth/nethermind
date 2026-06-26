@@ -98,7 +98,7 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
                  ℹ {_prefix} statistic since `{stats.Since:u}`:
                  - `{stats.HeadUpdates}` head updates, `{stats.Reorgs}` reorgs
                  - `{stats.TestRuns}` tests executed
-                 - `{stats.RequestRuns}` requests sent
+                 - `{stats.TargetRequests}` target / `{stats.ReferenceRequests}` reference requests sent
                  - `{stats.TestFailures}` test failures
                  - `{stats.EmptyTests.Count}` tests with no data
                  - `{stats.Errors}` errors

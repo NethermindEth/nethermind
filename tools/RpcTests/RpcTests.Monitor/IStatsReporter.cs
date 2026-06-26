@@ -9,7 +9,8 @@ internal record MonitorStats
     public required long HeadUpdates { get; init; }
     public required long Reorgs { get; init; }
     public required long TestRuns { get; init; }
-    public required long RequestRuns { get; init; }
+    public required long TargetRequests { get; init; }
+    public required long ReferenceRequests { get; init; }
     public required long TestFailures { get; init; }
     public required long Errors { get; init; }
 
@@ -22,7 +23,8 @@ internal interface IStatsReporter
     void RecordHeadUpdate();
     void RecordReorg();
     void RecordTestRun();
-    void RecordRequestRun(int count);
+    void RecordTargetRequest();
+    void RecordReferenceRequest();
     void RecordTestFailure();
     void RecordError();
 
@@ -35,7 +37,8 @@ internal sealed class NullStatsReporter : IStatsReporter
 
     public void RecordHeadUpdate() { }
     public void RecordTestRun() { }
-    public void RecordRequestRun(int count) { }
+    public void RecordTargetRequest() { }
+    public void RecordReferenceRequest() { }
     public void RecordTestFailure() { }
     public void RecordError() { }
     public void RecordReorg() { }

@@ -15,8 +15,12 @@ internal sealed class RpcClient(Uri url) : IDisposable
 {
     private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(60) };
 
+    public event Action? OnRequestStart;
+
     public async Task<JsonNode> SendAsync(JsonNode requestData, CancellationToken ct = default)
     {
+        OnRequestStart?.Invoke();
+
         using HttpRequestMessage request = new(HttpMethod.Post, url) { Content = JsonContent.Create(requestData) };
 
         HttpResponseMessage response;
