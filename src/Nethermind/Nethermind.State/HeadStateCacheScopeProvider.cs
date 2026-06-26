@@ -53,17 +53,16 @@ public sealed class HeadStateCacheScopeProvider(IWorldStateScopeProvider basePro
                 return cached;
             }
 
-            // Miss (or raced an advance): load at the pinned header root and backfill while still current.
+            // Miss (or raced an advance): load at the pinned header root and backfill. The backfill is
+            // generation-guarded inside the cache, so a value loaded at the old head is dropped (not
+            // published) if an advance happened meanwhile.
             Account? loaded = baseScope.Get(address);
-            if (snapshot.IsCurrent)
-            {
-                _accounts.Set(in key, loaded);
-            }
+            cache.TryBackfillAccount(in key, loaded, snapshot.Generation);
             return loaded;
         }
 
         public IStorageTree CreateStorageTree(Address address) =>
-            new CachingStorageTree(baseScope.CreateStorageTree(address), cache.Storage, address, snapshot);
+            new CachingStorageTree(baseScope.CreateStorageTree(address), cache, address, snapshot);
 
         // --- Everything below is a straight delegation to the base scope. ---
 
@@ -79,10 +78,12 @@ public sealed class HeadStateCacheScopeProvider(IWorldStateScopeProvider basePro
 
     private sealed class CachingStorageTree(
         IStorageTree baseStorageTree,
-        SeqlockCache<StorageCell, byte[]> storage,
+        HeadStateCache cache,
         Address address,
         HeadStateSnapshot snapshot) : IStorageTree
     {
+        private readonly SeqlockCache<StorageCell, byte[]> _storage = cache.Storage;
+
         public byte[] Get(in UInt256 index)
         {
             StorageCell cell = new(address, in index);
@@ -91,16 +92,13 @@ public sealed class HeadStateCacheScopeProvider(IWorldStateScopeProvider basePro
                 return baseStorageTree.Get(index);
             }
 
-            if (storage.TryGetValue(in cell, out byte[]? cached) && snapshot.IsCurrent)
+            if (_storage.TryGetValue(in cell, out byte[]? cached) && snapshot.IsCurrent)
             {
                 return cached!;
             }
 
             byte[] loaded = baseStorageTree.Get(index);
-            if (snapshot.IsCurrent)
-            {
-                storage.Set(in cell, loaded);
-            }
+            cache.TryBackfillStorage(in cell, loaded, snapshot.Generation);
             return loaded;
         }
 

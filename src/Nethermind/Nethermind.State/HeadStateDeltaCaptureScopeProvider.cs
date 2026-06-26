@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -20,11 +21,13 @@ using IAsyncBalReaderSink = Nethermind.Evm.State.IWorldStateScopeProvider.IAsync
 namespace Nethermind.State;
 
 /// <summary>
-/// Observes the main processing world state's write batches to record, per block, the storage cells
-/// that changed — captured at commit time from <see cref="IStorageWriteBatch.Set"/> (which sees only
-/// real writes, before the journal normalizes them). Records into a <see cref="HeadStateDeltaBuffer"/>
-/// keyed by the post-commit state root, so the head cache can stay coherent on any node, independent
-/// of EIP-7928/Block Access Lists. This is a pure observer: every call is forwarded unchanged.
+/// Observes the main processing world state's write batches to record, per block, the accounts and
+/// storage cells that changed — captured at commit time from <see cref="IWorldStateWriteBatch.Set"/> and
+/// <see cref="IStorageWriteBatch.Set"/> (which see only real writes, before the journal normalizes them).
+/// Records into a <see cref="HeadStateDeltaBuffer"/> keyed by <c>(blockNumber, post-state root)</c>, so the
+/// head cache can stay coherent on any node, independent of EIP-7928/Block Access Lists, without borrowing
+/// the pooled <see cref="Block.AccountChanges"/> list (which the TxPool concurrently disposes). This is a
+/// pure observer: every call is forwarded unchanged.
 /// </summary>
 public sealed class HeadStateDeltaCaptureScopeProvider(IWorldStateScopeProvider baseProvider, HeadStateDeltaBuffer buffer)
     : IWorldStateScopeProvider
@@ -45,18 +48,40 @@ public sealed class HeadStateDeltaCaptureScopeProvider(IWorldStateScopeProvider 
         // accumulated per scope (not reset per commit). Over-inclusion across a multi-block branch is
         // safe: the consumer re-reads/defers the extra cells, which is correct, just less efficient.
         private readonly HashSet<StorageCell> _slots = [];
-        private bool _requiresFlush;
+        private readonly HashSet<AddressAsKey> _accounts = [];
+        private readonly Lock _lock = new();
+        private volatile bool _requiresFlush;
 
-        internal void RecordSlot(in StorageCell cell)
+        // Storage-root computation runs the per-contract write batches in parallel
+        // (PersistentStorageProvider.UpdateRootHashesMultiThread), so merges are locked. Each batch
+        // buffers its own keys single-threaded and merges once on dispose, keeping locking
+        // per-batch rather than per-key.
+        internal void MergeSlots(List<StorageCell> cells)
         {
-            if (_requiresFlush) return;
-            if (_slots.Count >= MaxTrackedSlots)
+            if (_requiresFlush || cells.Count == 0) return;
+            lock (_lock)
             {
-                _requiresFlush = true;
-                _slots.Clear();
-                return;
+                if (_requiresFlush) return;
+                foreach (StorageCell cell in cells)
+                {
+                    if (_slots.Count >= MaxTrackedSlots)
+                    {
+                        _requiresFlush = true;
+                        _slots.Clear();
+                        return;
+                    }
+                    _slots.Add(cell);
+                }
             }
-            _slots.Add(cell);
+        }
+
+        internal void MergeAccounts(List<AddressAsKey> addresses)
+        {
+            if (addresses.Count == 0) return;
+            lock (_lock)
+            {
+                foreach (AddressAsKey address in addresses) _accounts.Add(address);
+            }
         }
 
         internal void RecordClear() => _requiresFlush = true;
@@ -65,9 +90,16 @@ public sealed class HeadStateDeltaCaptureScopeProvider(IWorldStateScopeProvider 
         {
             baseScope.Commit(blockNumber);
 
-            // RootHash now reflects the committed state; the block's final commit stores under its
-            // final state root. Snapshot so later commits don't mutate the stored set.
-            buffer.Store(baseScope.RootHash, new HeadStateBlockDelta(_slots.ToFrozenSet(), _requiresFlush));
+            // Parallel storage workers have joined by the time Commit runs; snapshot under the lock for
+            // memory visibility. The block's final commit stores under its final state root.
+            FrozenSet<StorageCell> slots;
+            FrozenSet<AddressAsKey> accounts;
+            lock (_lock)
+            {
+                slots = _slots.ToFrozenSet();
+                accounts = _accounts.ToFrozenSet();
+            }
+            buffer.Store(blockNumber, baseScope.RootHash, new HeadStateBlockDelta(accounts, slots, _requiresFlush));
         }
 
         public IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
@@ -87,25 +119,43 @@ public sealed class HeadStateDeltaCaptureScopeProvider(IWorldStateScopeProvider 
 
     private sealed class CaptureWriteBatch(IWorldStateWriteBatch baseBatch, CaptureScope scope) : IWorldStateWriteBatch
     {
+        // Account writes on a batch are single-threaded (only storage-root computation is parallel), so
+        // this list needs no locking; it is merged into the scope's shared set once on dispose.
+        private readonly List<AddressAsKey> _accounts = [];
+
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
         {
             add => baseBatch.OnAccountUpdated += value;
             remove => baseBatch.OnAccountUpdated -= value;
         }
 
-        public void Set(Address key, Account? account) => baseBatch.Set(key, account);
+        public void Set(Address key, Account? account)
+        {
+            // Every account written to the trie this block changed (balance/nonce/code or — via a moved
+            // storage root — storage). Null means deletion, still a change.
+            _accounts.Add(key);
+            baseBatch.Set(key, account);
+        }
 
         public IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
             new CaptureStorageWriteBatch(baseBatch.CreateStorageWriteBatch(key, estimatedEntries), key, scope);
 
-        public void Dispose() => baseBatch.Dispose();
+        public void Dispose()
+        {
+            scope.MergeAccounts(_accounts);
+            baseBatch.Dispose();
+        }
     }
 
     private sealed class CaptureStorageWriteBatch(IStorageWriteBatch baseBatch, Address address, CaptureScope scope) : IStorageWriteBatch
     {
+        // A single storage batch is written by one worker thread, so this list needs no locking;
+        // it is merged into the scope's shared set once on dispose.
+        private readonly List<StorageCell> _cells = [];
+
         public void Set(in UInt256 index, byte[] value)
         {
-            scope.RecordSlot(new StorageCell(address, in index));
+            _cells.Add(new StorageCell(address, in index));
             baseBatch.Set(in index, value);
         }
 
@@ -117,6 +167,10 @@ public sealed class HeadStateDeltaCaptureScopeProvider(IWorldStateScopeProvider 
             baseBatch.Clear();
         }
 
-        public void Dispose() => baseBatch.Dispose();
+        public void Dispose()
+        {
+            scope.MergeSlots(_cells);
+            baseBatch.Dispose();
+        }
     }
 }

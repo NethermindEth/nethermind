@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -211,14 +214,56 @@ public class HeadStateCacheTests
             root = scope.RootHash;
         }
 
-        Assert.That(buffer.TryGet(root, out HeadStateBlockDelta delta), Is.True);
+        Assert.That(buffer.TryGet(1, root, out HeadStateBlockDelta delta), Is.True);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delta.RequiresFlush, Is.False);
+            Assert.That(delta.ChangedAccounts, Does.Contain((AddressAsKey)A));
             Assert.That(delta.ChangedSlots, Does.Contain(new StorageCell(A, (UInt256)1)));
             Assert.That(delta.ChangedSlots, Does.Contain(new StorageCell(A, (UInt256)2)));
             Assert.That(delta.ChangedSlots, Has.Count.EqualTo(2));
         }
+    }
+
+    [Test]
+    public void Capture_is_thread_safe_under_parallel_storage_writes()
+    {
+        // Storage-root computation runs the per-contract write batches in parallel
+        // (PersistentStorageProvider.UpdateRootHashesMultiThread); the capture must not corrupt. Driven
+        // through a no-op base so this isolates the capture's own thread-safety (the real
+        // TrieStoreScopeProvider is not built for this manual concurrent CreateStorageWriteBatch pattern).
+        HeadStateDeltaBuffer buffer = new();
+        HeadStateDeltaCaptureScopeProvider capture = new(new NoopScopeProvider(), buffer);
+
+        const int contracts = 64;
+        const int slotsPer = 50;
+        Address[] addresses = new Address[contracts];
+        for (int i = 0; i < contracts; i++)
+        {
+            byte[] addressBytes = new byte[20];
+            addressBytes[19] = (byte)i;
+            addresses[i] = new Address(addressBytes);
+        }
+
+        Hash256 root;
+        using (IWorldStateScopeProvider.IScope scope = capture.BeginScope(null, new LocalMetrics()))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(contracts))
+            {
+                foreach (Address address in addresses) batch.Set(address, new Account(1, 1));
+
+                System.Threading.Tasks.Parallel.For(0, contracts, i =>
+                {
+                    using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(addresses[i], slotsPer);
+                    for (int j = 1; j <= slotsPer; j++) storage.Set((UInt256)j, [(byte)j]);
+                });
+            }
+            scope.Commit(1);
+            root = scope.RootHash;
+        }
+
+        Assert.That(buffer.TryGet(1, root, out HeadStateBlockDelta delta), Is.True);
+        Assert.That(delta.ChangedSlots, Has.Count.EqualTo(contracts * slotsPer));
     }
 
     [Test]
@@ -242,7 +287,7 @@ public class HeadStateCacheTests
             root = scope.RootHash;
         }
 
-        Assert.That(buffer.TryGet(root, out HeadStateBlockDelta delta), Is.True);
+        Assert.That(buffer.TryGet(1, root, out HeadStateBlockDelta delta), Is.True);
         Assert.That(delta.RequiresFlush, Is.True);
     }
 
@@ -281,5 +326,41 @@ public class HeadStateCacheTests
     {
         using IWorldStateScopeProvider.IScope scope = decorated.BeginScope(header, new LocalMetrics());
         return scope.CreateStorageTree(address).Get(slot);
+    }
+
+    /// <summary>Stateless, thread-safe no-op base used to isolate the capture decorator's own concurrency.</summary>
+    private sealed class NoopScopeProvider : IWorldStateScopeProvider
+    {
+        public bool HasRoot(BlockHeader? baseBlock) => true;
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new Scope();
+
+        private sealed class Scope : IWorldStateScopeProvider.IScope
+        {
+            public Hash256 RootHash => TestItem.KeccakA;
+            public void UpdateRootHash() { }
+            public Account? Get(Address address) => null;
+            public void HintGet(Address address, Account? account) { }
+            public IWorldStateScopeProvider.ICodeDb CodeDb => throw new NotSupportedException();
+            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => throw new NotSupportedException();
+            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatch();
+            public void Commit(ulong blockNumber) { }
+            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
+            public void Dispose() { }
+        }
+
+        private sealed class WriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
+        {
+            public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated { add { } remove { } }
+            public void Set(Address key, Account? account) { }
+            public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => new StorageWriteBatch();
+            public void Dispose() { }
+        }
+
+        private sealed class StorageWriteBatch : IWorldStateScopeProvider.IStorageWriteBatch
+        {
+            public void Set(in UInt256 index, byte[] value) { }
+            public void Clear() { }
+            public void Dispose() { }
+        }
     }
 }

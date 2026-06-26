@@ -42,14 +42,13 @@ public class HeadStateCacheUpdaterTests
         cache.Accounts.Set(A, new Account(1, 100));
         cache.Storage.Set(in hotSlot, [11]);
 
-        // block1 changes A's balance and slot 1; capture supplies the changed slot, AccountChanges the address.
+        // block1 changes A's balance and slot 1; the journal delta carries both the changed account and slot.
         Hash256 root1 = TestItem.KeccakD;
         reader.Accounts[A] = new AccountStruct(2, (UInt256)999);
         reader.Storage[(A, (UInt256)1)] = [99];
-        buffer.Store(root1, new HeadStateBlockDelta(Slots(hotSlot), RequiresFlush: false));
+        buffer.Store(1, root1, new HeadStateBlockDelta(Accounts(A), Slots(hotSlot), RequiresFlush: false));
 
         Block block1 = BlockWith(TestItem.KeccakB, parent: TestItem.KeccakA, stateRoot: root1, number: 1);
-        block1.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { A };
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block1));
 
@@ -82,9 +81,8 @@ public class HeadStateCacheUpdaterTests
 
         // RequiresFlush delta: cache must drop everything (can't enumerate cleared slots) and re-anchor.
         Hash256 root1 = TestItem.KeccakD;
-        buffer.Store(root1, new HeadStateBlockDelta(FrozenSet<StorageCell>.Empty, RequiresFlush: true));
+        buffer.Store(1, root1, new HeadStateBlockDelta(FrozenSet<AddressAsKey>.Empty, FrozenSet<StorageCell>.Empty, RequiresFlush: true));
         Block block1 = BlockWith(TestItem.KeccakB, parent: TestItem.KeccakA, stateRoot: root1, number: 1);
-        block1.AccountChanges = new ArrayPoolList<AddressAsKey>(0);
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block1));
 
@@ -115,6 +113,13 @@ public class HeadStateCacheUpdaterTests
     }
 
     private static FrozenSet<StorageCell> Slots(params StorageCell[] cells) => new HashSet<StorageCell>(cells).ToFrozenSet();
+
+    private static FrozenSet<AddressAsKey> Accounts(params Address[] addresses)
+    {
+        HashSet<AddressAsKey> set = [];
+        foreach (Address address in addresses) set.Add(address);
+        return set.ToFrozenSet();
+    }
 
     private static Block BlockWith(Hash256 hash, Hash256 parent, Hash256 stateRoot, long number) =>
         new(Build.A.BlockHeader.WithNumber((ulong)number).WithParentHash(parent).WithStateRoot(stateRoot).WithHash(hash).TestObject);

@@ -45,6 +45,10 @@ public sealed class HeadStateCache
 
     private long _generation;
 
+    // Serializes cache writes (backfill, Advance, Flush) so a backfill that races an Advance is
+    // rejected by the generation check instead of publishing a stale value. Reads stay lock-free.
+    private readonly Lock _writeLock = new();
+
     public HeadStateCache(int depth, int accountSetsBits, int storageSetsBits)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(depth, 0);
@@ -129,51 +133,105 @@ public sealed class HeadStateCache
         FrozenSet<AddressAsKey> accountSet = changedAccounts as FrozenSet<AddressAsKey> ?? changedAccounts.ToFrozenSet();
         FrozenSet<StorageCell> slotSet = changedSlots as FrozenSet<StorageCell> ?? changedSlots.ToFrozenSet();
 
-        Interlocked.Increment(ref _generation); // -> odd: readers pass through while we mutate
-
-        // Refresh only changed keys that are currently cached; uncached keys get the fresh head value
-        // lazily on the next read (backfill), so there is no stale entry to fix.
-        foreach (AddressAsKey address in accountSet)
+        lock (_writeLock)
         {
-            if (_accounts.TryGetValue(in address, out _))
+            // Phase 1 (may throw — trie reads): gather refreshed values for currently-cached changed
+            // keys *before* touching the generation, so a failure leaves the cache untouched and even.
+            // The lock blocks concurrent backfills, so the cached set can't grow under us here.
+            List<(AddressAsKey Key, Account? Value)> accountUpdates = [];
+            foreach (AddressAsKey address in accountSet)
             {
-                _accounts.Set(in address, refresh.GetAccount(address.Value));
+                if (_accounts.TryGetValue(in address, out _))
+                {
+                    accountUpdates.Add((address, refresh.GetAccount(address.Value)));
+                }
+            }
+            List<(StorageCell Key, byte[] Value)> slotUpdates = [];
+            foreach (StorageCell cell in slotSet)
+            {
+                StorageCell key = cell;
+                if (_storage.TryGetValue(in key, out _))
+                {
+                    slotUpdates.Add((key, refresh.GetStorage(in key)));
+                }
+            }
+
+            // Phase 2 (no throw — in-memory publish): readers see odd generation and pass through.
+            Interlocked.Increment(ref _generation);
+            try
+            {
+                foreach ((AddressAsKey key, Account? value) in accountUpdates) _accounts.Set(in key, value);
+                foreach ((StorageCell key, byte[] value) in slotUpdates) _storage.Set(in key, value);
+                ShiftRings(newHeadHash, accountSet, slotSet);
+            }
+            finally
+            {
+                Interlocked.Increment(ref _generation); // always return to even, even on the unexpected
             }
         }
-        foreach (StorageCell cell in slotSet)
-        {
-            StorageCell key = cell;
-            if (_storage.TryGetValue(in key, out _))
-            {
-                _storage.Set(in key, refresh.GetStorage(in key));
-            }
-        }
-
-        ShiftRings(newHeadHash, accountSet, slotSet);
-
-        Interlocked.Increment(ref _generation); // -> even: publish the new head
     }
 
     /// <summary>Drops all cached content and the ancestor window, re-anchoring at <paramref name="newHeadHash"/>.
     /// Used on the first head, a reorg, or a non-sequential head jump.</summary>
     public void Flush(Hash256 newHeadHash)
     {
-        Interlocked.Increment(ref _generation); // -> odd
-
-        _accounts.Clear();
-        _storage.Clear();
-        for (int d = 0; d < _depth; d++)
+        lock (_writeLock)
         {
-            Volatile.Write(ref _changedAccounts[d], null);
-            Volatile.Write(ref _changedSlots[d], null);
+            Interlocked.Increment(ref _generation); // -> odd
+            try
+            {
+                _accounts.Clear();
+                _storage.Clear();
+                for (int d = 0; d < _depth; d++)
+                {
+                    Volatile.Write(ref _changedAccounts[d], null);
+                    Volatile.Write(ref _changedSlots[d], null);
+                }
+                Volatile.Write(ref _headHashes[0], newHeadHash);
+                for (int d = 1; d <= _depth; d++)
+                {
+                    Volatile.Write(ref _headHashes[d], null);
+                }
+            }
+            finally
+            {
+                Interlocked.Increment(ref _generation); // -> even
+            }
         }
-        Volatile.Write(ref _headHashes[0], newHeadHash);
-        for (int d = 1; d <= _depth; d++)
-        {
-            Volatile.Write(ref _headHashes[d], null);
-        }
+    }
 
-        Interlocked.Increment(ref _generation); // -> even
+    /// <summary>
+    /// Backfills a value read at scope start, but only if no <see cref="Advance"/>/<see cref="Flush"/>
+    /// has happened since (generation unchanged). Run under the write lock so the check-and-set is atomic
+    /// against head changes — this prevents publishing a stale value for a key the new head changed.
+    /// </summary>
+    public void TryBackfillAccount(in AddressAsKey key, Account? value, long expectedGeneration)
+    {
+        // Non-blocking: never stall an RPC read behind an in-progress Advance/Flush. Skipping just means
+        // the value isn't cached this time; the next read re-attempts.
+        if (!_writeLock.TryEnter()) return;
+        try
+        {
+            if (Volatile.Read(ref _generation) == expectedGeneration) _accounts.Set(in key, value);
+        }
+        finally
+        {
+            _writeLock.Exit();
+        }
+    }
+
+    /// <inheritdoc cref="TryBackfillAccount"/>
+    public void TryBackfillStorage(in StorageCell key, byte[] value, long expectedGeneration)
+    {
+        if (!_writeLock.TryEnter()) return;
+        try
+        {
+            if (Volatile.Read(ref _generation) == expectedGeneration) _storage.Set(in key, value);
+        }
+        finally
+        {
+            _writeLock.Exit();
+        }
     }
 
     private void ShiftRings(Hash256 newHeadHash, FrozenSet<AddressAsKey> accountSet, FrozenSet<StorageCell> slotSet)

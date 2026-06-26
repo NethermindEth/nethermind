@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.State;
 
 namespace Nethermind.Init.Modules;
@@ -21,11 +23,14 @@ public class HeadStateCacheModule(IBlocksConfig blocksConfig) : Module
     {
         if (!blocksConfig.EnableHeadStateCache) return;
 
+        // Clamp to valid ranges so a misconfigured value degrades gracefully instead of throwing from
+        // the cache/SeqlockCache constructors and aborting node startup with an opaque error.
+        int depth = Math.Max(0, blocksConfig.HeadStateCacheDepth);
+        int accountBits = Math.Clamp(blocksConfig.HeadStateCacheAccountSetsBits, 1, SeqlockCache<AddressAsKey, Account>.MaxSetsBits);
+        int storageBits = Math.Clamp(blocksConfig.HeadStateCacheStorageSetsBits, 1, SeqlockCache<AddressAsKey, Account>.MaxSetsBits);
+
         builder
-            .AddSingleton(new HeadStateCache(
-                blocksConfig.HeadStateCacheDepth,
-                blocksConfig.HeadStateCacheAccountSetsBits,
-                blocksConfig.HeadStateCacheStorageSetsBits))
+            .AddSingleton(new HeadStateCache(depth, accountBits, storageBits))
 
             // Per-block changed-storage capture from processing, so the cache works on any node
             // independent of EIP-7928 / Block Access Lists.

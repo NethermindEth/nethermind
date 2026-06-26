@@ -82,14 +82,15 @@ public sealed class HeadStateCacheUpdater : IDisposable
         changedAccounts = FrozenSet<AddressAsKey>.Empty;
         changedSlots = FrozenSet<StorageCell>.Empty;
 
-        // 1) Journal capture: works on any node, regardless of EIP-7928 / Block Access Lists.
-        if (block.AccountChanges is { } accountChanges
-            && block.Header.StateRoot is { } stateRoot
+        // 1) Journal capture: works on any node, regardless of EIP-7928 / Block Access Lists. The delta
+        // carries both changed accounts and slots captured from processing — we do NOT read the pooled
+        // Block.AccountChanges (the TxPool owns and disposes it concurrently).
+        if (block.Header.StateRoot is { } stateRoot
             && _deltaBuffer is not null
-            && _deltaBuffer.TryGet(stateRoot, out HeadStateBlockDelta delta))
+            && _deltaBuffer.TryGet((ulong)block.Number, stateRoot, out HeadStateBlockDelta delta))
         {
             if (delta.RequiresFlush) return false; // self-destruct: can't enumerate cleared slots
-            changedAccounts = ToAccountSet(accountChanges);
+            changedAccounts = delta.ChangedAccounts;
             changedSlots = delta.ChangedSlots;
             return true;
         }
@@ -126,13 +127,6 @@ public sealed class HeadStateCacheUpdater : IDisposable
         changedAccounts = accounts.ToFrozenSet();
         changedSlots = slots.ToFrozenSet();
         return true;
-    }
-
-    private static FrozenSet<AddressAsKey> ToAccountSet(ArrayPoolList<AddressAsKey> addresses)
-    {
-        HashSet<AddressAsKey> set = new(addresses.Count);
-        foreach (AddressAsKey address in addresses.AsSpan()) set.Add(address);
-        return set.ToFrozenSet();
     }
 
     public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
