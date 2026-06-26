@@ -142,6 +142,15 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task DebugGetRawTransaction_WhenTransactionNotFound_ReturnsNull()
+    {
+        _debugBridge.GetTransactionFromHash(Keccak.Zero).ReturnsNull();
+
+        string serialized = await SerializedRequest("debug_getRawTransaction", Keccak.Zero);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+    }
+
+    [Test]
     public async Task DebugGetRawReceipts_WhenReceiptsExist_ReturnsHexArray()
     {
         TxReceipt[] receipts = [Build.A.Receipt.TestObject, Build.A.Receipt.TestObject];
@@ -484,10 +493,6 @@ public class DebugModuleTests
             (Action<IDebugBridge>)(b => b.GetBlock(new BlockParameter(Keccak.Zero)).ReturnsNull()),
             "debug_getRawBlock", (object)Keccak.Zero)
         { TestName = "RawBlock_ByHash" };
-        yield return new TestCaseData(
-            (Action<IDebugBridge>)(b => b.GetTransactionFromHash(Keccak.Zero).ReturnsNull()),
-            "debug_getRawTransaction", (object)Keccak.Zero)
-        { TestName = "RawTransaction" };
     }
 
     private static IEnumerable<TestCaseData> RawBlockAccessListErrorCases()
