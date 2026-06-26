@@ -68,7 +68,7 @@ public static class StaticPool<T> where T : class, IResettable, new()
             return item;
         }
 
-        // Nothing available, allocate new instance.
+        // Nothing available, allocate new instance
         return new();
     }
 
