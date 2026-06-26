@@ -61,7 +61,7 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            EnsureBlockRangeWithinLimit(fromBlock, toBlock);
+            EnsureBlockRangeWithinLimit(filter, fromBlock, toBlock);
 
             if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
             {
@@ -149,15 +149,15 @@ namespace Nethermind.Facade.Find
             return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
         }
 
-        protected virtual void EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock)
+        protected virtual void EnsureBlockRangeWithinLimit(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            if (_maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number) return;
+            if (!filter.EnforceMaxBlockDepth || _maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number) return;
 
             ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
             if (rangeSize > (ulong)_maxBlockDepth)
             {
                 throw new ArgumentException(
-                    $"Block range {rangeSize} exceeds the maximum of {_maxBlockDepth} blocks per eth_getLogs request. " +
+                    $"Block range {rangeSize} exceeds the maximum of {_maxBlockDepth} blocks. " +
                     $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.");
             }
         }

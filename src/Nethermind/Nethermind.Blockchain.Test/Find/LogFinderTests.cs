@@ -164,11 +164,11 @@ public class LogFinderTests
     [TestCase(DefaultChainLength, 0UL, null, false)]
     [TestCase(DefaultChainLength, null, DefaultChainLength - 1UL, false)]
     [MaxTime(Timeout.MaxTestTime)]
-    public void block_range_limit_is_enforced(int maxBlockDepth, ulong? from, ulong? to, bool shouldThrow)
+    public void block_range_limit_applies_when_enforced(int maxBlockDepth, ulong? from, ulong? to, bool shouldThrow)
     {
         _logFinder = CreateLogFinder(receiptConfig: new ReceiptConfig { MaxBlockDepth = maxBlockDepth });
 
-        FilterBuilder builder = FilterBuilder.New();
+        FilterBuilder builder = FilterBuilder.New().WithEnforcedMaxBlockDepth();
         if (from is not null) builder.FromBlock(from.Value);
         if (to is not null) builder.ToBlock(to.Value);
         LogFilter logFilter = builder.Build();
@@ -182,6 +182,15 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void block_range_limit_is_not_enforced_by_default()
+    {
+        _logFinder = CreateLogFinder(receiptConfig: new ReceiptConfig { MaxBlockDepth = 1 });
+        LogFilter logFilter = AllBlockFilter().Build();
+
+        Assert.That(() => _logFinder.FindLogs(logFilter).ToArray(), Throws.Nothing);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void block_range_limit_is_ignored_when_log_index_is_enabled()
     {
         ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
@@ -192,7 +201,7 @@ public class LogFinderTests
             _blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery,
             logIndexStorage, new ReceiptConfig { MaxBlockDepth = 1 }, minBlocksToUseIndex: 1
         );
-        LogFilter logFilter = AllBlockFilter().Build();
+        LogFilter logFilter = AllBlockFilter().WithEnforcedMaxBlockDepth().Build();
 
         Assert.That(() => logFinder.FindLogs(logFilter).ToArray(), Throws.Nothing);
     }

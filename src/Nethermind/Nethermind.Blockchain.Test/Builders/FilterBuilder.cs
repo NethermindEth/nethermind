@@ -16,6 +16,7 @@ namespace Nethermind.Blockchain.Test.Builders
         private BlockParameter _toBlock = new(BlockParameterType.Latest);
         private AddressFilter _address = AddressFilter.AnyAddress;
         private SequenceTopicsFilter _topicsFilter = new();
+        private bool _enforceMaxBlockDepth;
 
         private FilterBuilder(int id) => _id = id;
 
@@ -135,6 +136,13 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public LogFilter Build() => new(_id, _fromBlock, _toBlock, _address, _topicsFilter);
+        public FilterBuilder WithEnforcedMaxBlockDepth()
+        {
+            _enforceMaxBlockDepth = true;
+
+            return this;
+        }
+
+        public LogFilter Build() => new(_id, _fromBlock, _toBlock, _address, _topicsFilter) { EnforceMaxBlockDepth = _enforceMaxBlockDepth };
     }
 }
