@@ -7,6 +7,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
@@ -26,7 +27,7 @@ public sealed class KademliaAdapter(
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     ILogManager logManager
-) : IKademliaAdapter
+) : KademliaAdapterBase("discv4", "ENR response"), IKademliaAdapter
 {
     private const int MaxNodesPerNeighborsMsg = 12;
 
@@ -39,6 +40,8 @@ public sealed class KademliaAdapter(
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaAdapter>();
     private readonly RateLimiter _outboundRateLimiter = new(discoveryConfig.MaxOutgoingMessagePerSecond);
     public IMsgSender? MsgSender { get; set; }
+
+    protected override ILogger Logger => _logger;
 
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
     private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
@@ -218,110 +221,24 @@ public sealed class KademliaAdapter(
         return response.HasResponse ? response.Value : null;
     }
 
-    private async Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
+    private Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
+        => advertisedSequence is { } sequence
+            ? base.RefreshRemoteRecordIfNewer(node, sequence, token)
+            : Task.CompletedTask;
+
+    protected override async ValueTask<NodeRecord?> RequestRemoteRecord(Node node, ulong requestedSequence, CancellationToken token)
     {
-        if (advertisedSequence is not { } sequence || sequence == 0)
-        {
-            return;
-        }
-
-        if (node.Enr is { Signature: not null } currentRecord && currentRecord.EnrSequence >= sequence)
-        {
-            return;
-        }
-
-        if (!node.TryRequestEnrSequence(sequence))
-        {
-            return;
-        }
-
-        try
-        {
-            while (true)
-            {
-                ulong requestedSequence = node.RequestingEnrSequence;
-                if (requestedSequence == 0)
-                {
-                    return;
-                }
-
-                if (node.Enr is { Signature: not null } signedRecord && signedRecord.EnrSequence >= requestedSequence)
-                {
-                    node.TryClearEnrRequest(signedRecord.EnrSequence);
-                    return;
-                }
-
-                EnrResponseMsg? response = await SendEnrRequest(node, token);
-                if (response is null)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"No discv4 ENR response received from {node} after advertised sequence {requestedSequence}.");
-                    if (node.TryClearEnrRequest(requestedSequence))
-                    {
-                        return;
-                    }
-
-                    continue;
-                }
-
-                NodeRecord record = response.NodeRecord;
-                if (record.EnrSequence < node.RequestingEnrSequence)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Ignoring stale discv4 ENR response from {node}; requested sequence {node.RequestingEnrSequence}, received {record.EnrSequence}.");
-                    if (node.TryClearEnrRequest(requestedSequence))
-                    {
-                        return;
-                    }
-
-                    continue;
-                }
-
-                if (!HasExpectedNodeId(record, node.Id))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Ignoring discv4 ENR response from {node}; record belongs to a different node.");
-                    if (node.TryClearEnrRequest(requestedSequence))
-                    {
-                        return;
-                    }
-
-                    continue;
-                }
-
-                if (!Node.TryFromDiscoveryEnr(record, out Node? refreshedNode))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Ignoring discv4 ENR response from {node}; record has no usable discovery endpoint.");
-                    if (node.TryClearEnrRequest(requestedSequence))
-                    {
-                        return;
-                    }
-
-                    continue;
-                }
-
-                node.Enr = record;
-                ulong requestingSequence = node.RequestingEnrSequence;
-                if (requestingSequence > record.EnrSequence)
-                {
-                    refreshedNode.TryRequestEnrSequence(requestingSequence);
-                }
-
-                node = refreshedNode;
-                kademlia.Value.AddOrRefresh(refreshedNode);
-                if (requestingSequence == 0)
-                {
-                    return;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception e)
-        {
-            node.TryClearEnrRequest(node.RequestingEnrSequence);
-            if (_logger.IsDebug) _logger.Debug($"Failed to refresh discv4 ENR for {node}: {e}");
-        }
+        EnrResponseMsg? response = await SendEnrRequest(node, token);
+        return response?.NodeRecord;
     }
+
+    protected override bool IsAcceptableRemoteRecord(Node node, NodeRecord record)
+        => HasExpectedNodeId(record, node.Id);
+
+    protected override void AddOrRefreshRemoteNode(Node node)
+        => kademlia.Value.AddOrRefresh(node);
+
+    protected override string UnexpectedRemoteRecordReason => "record belongs to a different node";
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
     {
