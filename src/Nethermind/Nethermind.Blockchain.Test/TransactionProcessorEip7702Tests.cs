@@ -8,6 +8,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -112,7 +113,6 @@ internal class TransactionProcessorEip7702Tests
             _stateProvider.InsertCode(authority.Address, ValueKeccak.Compute(delegation), delegation, Amsterdam.Instance);
         }
 
-        long intrinsicRegularGas = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular;
         long intrinsicStateGas = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
@@ -138,8 +138,19 @@ internal class TransactionProcessorEip7702Tests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
-        Assert.That(tx.SpentGas, Is.EqualTo(intrinsicRegularGas + intrinsicStateGas - expectedStateGasRefund));
-        Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(intrinsicRegularGas + intrinsicStateGas - expectedStateGasRefund));
+        // devnet-6 intrinsic split (regular = TX base + recipient + EIP-7702 per-auth regular
+        // incl ACCOUNT_WRITE; state = NEW_ACCOUNT + AUTH_BASE per auth) taken from the calculator,
+        // plus the EIP-8037 refunds: the per-authority state gas is refunded in the state dimension
+        // (expectedStateGasRefund), and existing authorities also refund the worst-case ACCOUNT_WRITE
+        // to the regular refund counter, capped at before-refund/5 (EIP-3529).
+        long intrinsicRegularGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance, block.Header.GasLimit).Standard.Value;
+        long beforeRegularRefund = intrinsicRegularGas + intrinsicStateGas - expectedStateGasRefund;
+        long regularRefund = authorityPreState == AuthorityPreState.Nonexistent
+            ? 0
+            : Math.Min(beforeRegularRefund / 5, Eip8038Constants.AccountWrite);
+        long expectedSpentGas = beforeRegularRefund - regularRefund;
+        Assert.That(tx.SpentGas, Is.EqualTo(expectedSpentGas));
+        Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(expectedSpentGas));
         Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicRegularGas, intrinsicStateGas - expectedStateGasRefund)));
         Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo((UInt256)(authorityNonce + 1)));
 
