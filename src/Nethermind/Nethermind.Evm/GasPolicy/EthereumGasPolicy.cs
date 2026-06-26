@@ -456,8 +456,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ConsumeDataCopyGas(ref EthereumGasPolicy gas, bool isExternalCode, ulong baseCost, ulong dataCost)
-        => Consume(ref gas, baseCost + dataCost);
+    public static void ConsumeDataCopyGas(ref EthereumGasPolicy gas, IReleaseSpec spec, bool isExternalCode, ulong words)
+        => Consume(ref gas, (isExternalCode ? spec.GasCosts.ExtCodeCost : GasCostOf.VeryLow) + GasCostOf.Memory * words);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void OnBeforeInstructionTrace(in EthereumGasPolicy gas, int pc, Instruction instruction, int depth) { }

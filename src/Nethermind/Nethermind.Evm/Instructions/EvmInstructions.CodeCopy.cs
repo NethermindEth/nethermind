@@ -33,7 +33,8 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
 
-        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: false, GasCostOf.VeryLow, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas));
+        ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
         if (outOfGas) goto OutOfGas;
 
         if (!result.IsZero)
@@ -101,7 +102,8 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
             goto StackUnderflow;
 
-        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: false, GasCostOf.VeryLow, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
+        ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
+        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
@@ -164,7 +166,8 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
-        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: true, spec.GasCosts.ExtCodeCost, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas));
+        ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        TGasPolicy.ConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words);
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
