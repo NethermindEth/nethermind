@@ -24,7 +24,6 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager, ISyncConfig? syncConfig = null) : ISnapProvider
     {
-        private const int MinSingleStorageResponseBatchSlots = 1024;
         private const int MaxStorageRangeParallelism = 8;
 
         private readonly IDb _codeDb = codeDb;
@@ -244,7 +243,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                     int requestLength = request.Accounts.Count;
 
-                    using ISnapStorageBatch? storageBatch = ShouldUseStorageBatch(responses, responseCount) ? _trieFactory.StartStorageBatch() : null;
+                    using ISnapStorageBatch? storageBatch = responseCount > 1 ? _trieFactory.StartStorageBatch() : null;
                     if (storageBatch is not null)
                     {
                         StorageRangeAccountResult[] results = AddStorageRangeInBatch(request, responses, response.Proofs, responseCount, storageBatch);
@@ -345,9 +344,6 @@ namespace Nethermind.Synchronization.SnapSync
 
             return results;
         }
-
-        private static bool ShouldUseStorageBatch(IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> responses, int responseCount) =>
-            responseCount > 1 || (responseCount == 1 && responses[0].Count >= MinSingleStorageResponseBatchSlots);
 
         private StorageRangeAccountResult[] AddStorageRangeInBatch(
             StorageRange request,

@@ -279,7 +279,7 @@ public class SnapProviderTests
     }
 
     [Test]
-    public void AddStorageRange_BatchedStorageFactory_CommitsLargeSingleAccountResponseOnce()
+    public void AddStorageRange_BatchedStorageFactory_DoesNotBatchSingleAccountResponse()
     {
         const int slotCount = 1024;
         Hash256 root = TestItem.KeccakA;
@@ -291,32 +291,6 @@ public class SnapProviderTests
         using SlotsAndProofs response = new()
         {
             PathsAndSlots = CreateStorageResponse(CreateSlots(slotCount)),
-            Proofs = EmptyByteArrayList.Instance
-        };
-
-        Assert.That(snapProvider.AddStorageRange(storage, response), Is.EqualTo(AddRangeResult.OK));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(factory.StartedBatches, Is.EqualTo(1));
-            Assert.That(factory.CommittedBatches, Is.EqualTo(1));
-            Assert.That(factory.AbortedBatches, Is.EqualTo(0));
-            Assert.That(factory.StorageTreesWithBatch, Is.EqualTo(1));
-        }
-    }
-
-    [Test]
-    public void AddStorageRange_BatchedStorageFactory_DoesNotBatchSmallSingleAccountResponse()
-    {
-        Hash256 root = TestItem.KeccakA;
-        BatchingSnapTrieFactory factory = new(new PathRoot(TestItem.KeccakA, root));
-        using IContainer container = CreateContainer(new TestSyncConfig(), (_, _) => factory);
-
-        SnapProvider snapProvider = container.Resolve<SnapProvider>();
-        using StorageRange storage = CreateStorageRange(root);
-        using SlotsAndProofs response = new()
-        {
-            PathsAndSlots = CreateStorageResponse(CreateSlots(ValueKeccak.Zero)),
             Proofs = EmptyByteArrayList.Instance
         };
 
