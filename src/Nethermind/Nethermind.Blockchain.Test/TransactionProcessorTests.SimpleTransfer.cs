@@ -139,7 +139,9 @@ public partial class TransactionProcessorTests
 
         (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(specProvider);
 
-        Transaction tx = BuildSimpleTransfer(recipient, (UInt256)value, withAuthorizationList: false);
+        // devnet-6 (EIP-8037) charges NEW_ACCOUNT state gas when a value transfer materialises a new
+        // recipient; the gas limit must cover it or the transfer OOGs before emitting the 7708 log.
+        Transaction tx = BuildSimpleTransfer(recipient, (UInt256)value, withAuthorizationList: false, gasLimit: 300_000);
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(1_000_000).TestObject;
         SimpleTransferLogTracer tracer = new(isTracingLogs);
 
@@ -256,13 +258,13 @@ public partial class TransactionProcessorTests
             .SetName("Delegated recipient with executable target enters VM");
     }
 
-    private Transaction BuildSimpleTransfer(Address recipient, UInt256 value, bool withAuthorizationList)
+    private Transaction BuildSimpleTransfer(Address recipient, UInt256 value, bool withAuthorizationList, long gasLimit = 100_000)
     {
         TransactionBuilder<Transaction> builder = Build.A.Transaction
             .WithTo(recipient)
             .WithValue(value)
             .WithGasPrice(1)
-            .WithGasLimit(100_000);
+            .WithGasLimit(gasLimit);
 
         if (withAuthorizationList)
         {
