@@ -28,7 +28,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
-using Nethermind.TxPool;
 using Nethermind.AuRa.Test;
 using NSubstitute;
 using NUnit.Framework;
