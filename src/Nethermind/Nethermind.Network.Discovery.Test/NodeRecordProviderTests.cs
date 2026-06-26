@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,13 +23,16 @@ namespace Nethermind.Network.Discovery.Test;
 
 public class NodeRecordProviderTests
 {
-    [Test]
-    public async Task GetCurrentAsync_PublishesEthEntryFromEffectiveHeadForkId()
+    [TestCaseSource(nameof(ForkIdPublicationCases))]
+    public async Task GetCurrentAsync_PublishesEthEntryFromEffectiveHeadForkId(
+        NetworkForkId networkForkId,
+        byte[] expectedForkHash,
+        ulong expectedNext)
     {
         Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
         NodeRecordProvider provider = CreateProvider(
             head,
-            new NetworkForkId(0x01020304, 20),
+            networkForkId,
             IPAddress.Parse("192.0.2.1"));
 
         NodeRecord record = await provider.GetCurrentAsync();
@@ -37,8 +41,8 @@ public class NodeRecordProviderTests
         Assert.That(forkId, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(forkId.Value.ForkHash, Is.EqualTo(new byte[] { 1, 2, 3, 4 }));
-            Assert.That(forkId.Value.Next, Is.EqualTo(20));
+            Assert.That(forkId.Value.ForkHash, Is.EqualTo(expectedForkHash));
+            Assert.That(forkId.Value.Next, Is.EqualTo(expectedNext));
             Assert.That(record.EnrSequence, Is.EqualTo(1_000));
         }
     }
@@ -74,6 +78,34 @@ public class NodeRecordProviderTests
             Assert.That(forkId.Value.ForkHash, Is.EqualTo(new byte[] { 5, 6, 7, 8 }));
             Assert.That(forkId.Value.Next, Is.Zero);
         }
+    }
+
+    [Test]
+    public async Task NewHeadBlock_KeepsRecordWhenAdvertisedStateDoesNotChange()
+    {
+        Block initialHead = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        Block newHead = Build.A.Block.WithNumber(2).WithTimestamp(20).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(initialHead);
+
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        NetworkForkId forkId = new(0x01020304, 20);
+        forkInfo.GetForkId(1, 10).Returns(forkId);
+        forkInfo.GetForkId(2, 20).Returns(forkId);
+
+        NodeRecordProvider provider = CreateProvider(
+            blockTree,
+            forkInfo,
+            IPAddress.Parse("192.0.2.1"),
+            timestampMilliseconds: 1_000);
+
+        NodeRecord initialRecord = await provider.GetCurrentAsync();
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(newHead));
+
+        NodeRecord currentRecord = await provider.GetCurrentAsync();
+
+        Assert.That(currentRecord, Is.SameAs(initialRecord));
+        Assert.That(currentRecord.EnrSequence, Is.EqualTo(initialRecord.EnrSequence));
     }
 
     private static NodeRecordProvider CreateProvider(Block head, NetworkForkId forkId, IPAddress externalIp)
@@ -113,5 +145,19 @@ public class NodeRecordProviderTests
             forkInfo,
             timestamper,
             LimboLogs.Instance);
+    }
+
+    private static IEnumerable<TestCaseData> ForkIdPublicationCases()
+    {
+        yield return new TestCaseData(
+                new NetworkForkId(0x01020304, 20),
+                new byte[] { 1, 2, 3, 4 },
+                20UL)
+            .SetName("GetCurrentAsync_publishes_standard_eth_fork_id");
+        yield return new TestCaseData(
+                new NetworkForkId(0xaabbccdd, ulong.MaxValue),
+                new byte[] { 0xaa, 0xbb, 0xcc, 0xdd },
+                ulong.MaxValue)
+            .SetName("GetCurrentAsync_publishes_unsigned_max_next_fork");
     }
 }

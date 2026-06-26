@@ -27,7 +27,7 @@ public sealed class KademliaAdapter(
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     ILogManager logManager
-) : KademliaAdapterBase("discv4"), IKademliaAdapter
+) : KademliaAdapterBase("discv4", logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
 {
     private const int MaxNodesPerNeighborsMsg = 12;
 
@@ -37,11 +37,8 @@ public sealed class KademliaAdapter(
     private readonly TimeSpan _expirationTime = TimeSpan.FromMilliseconds(discoveryConfig.MessageExpiryTime);
     private readonly TimeSpan _waitAfterPongDelay = TimeSpan.FromMilliseconds(discoveryConfig.BondWaitTime);
 
-    private readonly ILogger _logger = logManager.GetClassLogger<KademliaAdapter>();
     private readonly RateLimiter _outboundRateLimiter = new(discoveryConfig.MaxOutgoingMessagePerSecond);
     public IMsgSender? MsgSender { get; set; }
-
-    protected override ILogger Logger => _logger;
 
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
     private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
@@ -56,13 +53,13 @@ public sealed class KademliaAdapter(
         // If we have received ping, then we have ponged which mean we should be bonded from their point of view
         if (nodeSession is { HasReceivedPing: true, NotTooManyFailure: true }) return true;
 
-        if (_logger.IsTrace) _logger.Trace($"Ensure session for node {node}");
+        if (Logger.IsTrace) Logger.Trace($"Ensure session for node {node}");
         if (!await Ping(node, token)) return false;
         // We send them ping. But expect that eventually they send back another a ping so that we can pong.
         // Give some time for peer to process pong. Such is the logic from geth codebase.
         await Task.Delay(_waitAfterPongDelay, token);
 
-        if (_logger.IsTrace) _logger.Trace($"Node {node} pong sent.");
+        if (Logger.IsTrace) Logger.Trace($"Node {node} pong sent.");
         return true;
     }
 
@@ -255,13 +252,13 @@ public sealed class KademliaAdapter(
     {
         if (!session.HasEndpointProof(node.Address))
         {
-            if (_logger.IsDebug) _logger.Debug($"Rejecting enr request from unbonded peer {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request from unbonded peer {node}");
             return false;
         }
 
         if (msg.Hash is not { } requestHash)
         {
-            if (_logger.IsDebug) _logger.Debug($"Rejecting enr request without packet hash from {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request without packet hash from {node}");
             return false;
         }
 
@@ -273,7 +270,7 @@ public sealed class KademliaAdapter(
     {
         if (!session.HasEndpointProof(node.Address))
         {
-            if (_logger.IsDebug) _logger.Debug($"Rejecting findNode request from unbonded peer {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting findNode request from unbonded peer {node}");
             return false;
         }
 
@@ -296,10 +293,10 @@ public sealed class KademliaAdapter(
 
     private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
     {
-        if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
+        if (Logger.IsTrace) Logger.Trace($"Receive ping from {node}");
         if (ping.Mdc is not { } pingMdc)
         {
-            if (_logger.IsDebug) _logger.Debug($"Rejecting ping without packet hash from {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting ping without packet hash from {node}");
             return;
         }
 
@@ -320,7 +317,7 @@ public sealed class KademliaAdapter(
     {
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Received msg: {msg}");
+            if (Logger.IsTrace) Logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
             Node node = new(msg.FarPublicKey, msg.FarAddress);
 
@@ -359,17 +356,17 @@ public sealed class KademliaAdapter(
                     }
                     break;
                 default:
-                    if (_logger.IsError) _logger.Error($"Unsupported msgType: {msgType}");
+                    if (Logger.IsError) Logger.Error($"Unsupported msgType: {msgType}");
                     return;
             }
         }
         catch (TaskCanceledException e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Error during msg handling. {e}");
+            if (Logger.IsDebug) Logger.Debug($"Error during msg handling. {e}");
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error("Error during msg handling", e);
+            if (Logger.IsError) Logger.Error("Error during msg handling", e);
         }
     }
 
@@ -379,7 +376,7 @@ public sealed class KademliaAdapter(
     {
         if (msg.DestinationAddress is null || msg.FarAddress is null)
         {
-            if (_logger.IsError) _logger.Error($"Received a ping message with empty address, message: {msg}");
+            if (Logger.IsError) Logger.Error($"Received a ping message with empty address, message: {msg}");
             return false;
         }
 

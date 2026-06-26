@@ -8,9 +8,10 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.Discovery.Kademlia;
 
 public abstract class KademliaAdapterBase(
-    string protocolName)
+    string protocolName,
+    ILogger logger)
 {
-    protected abstract ILogger Logger { get; }
+    protected ILogger Logger { get; } = logger;
 
     protected abstract ValueTask<NodeRecord?> RequestRemoteRecord(
         Node node,

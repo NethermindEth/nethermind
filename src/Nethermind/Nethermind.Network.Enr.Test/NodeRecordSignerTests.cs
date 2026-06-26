@@ -177,9 +177,14 @@ public class NodeRecordSignerTests
         }
     }
 
-    [Test]
-    public void Eth_entry_rejects_fork_hash_with_wrong_length() =>
-        Assert.That(static () => new EthEntry([1, 2, 3], 0UL), Throws.TypeOf<ArgumentException>());
+    [TestCase(0)]
+    [TestCase(3)]
+    [TestCase(5)]
+    public void Eth_entry_rejects_fork_hash_with_wrong_length(int forkHashLength)
+    {
+        byte[] forkHash = new byte[forkHashLength];
+        Assert.That(() => new EthEntry(forkHash, 0UL), Throws.TypeOf<ArgumentException>());
+    }
 
     [TestCaseSource(nameof(InvalidRecordByteCases))]
     public void FromBytes_throws_when_record_bytes_are_invalid(Func<byte[]> createRecordBytes)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -300,33 +301,52 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(result, Is.Null);
         }
 
-        [Test]
-        [CancelAfter(10000)]
-        public async Task Ping_should_request_and_cache_remote_enr_when_pong_advertises_newer_sequence(CancellationToken token)
+        private static IEnumerable<TestCaseData> RemoteEnrRefreshCases()
         {
-            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(advertisedSequence: 2, responseSequence: 2);
-
-            bool result = await _adapter.Ping(_receiver, token);
-
-            Assert.That(result, Is.True);
-            await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
-            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
-                n.Id.Equals(_receiver.Id) &&
-                n.Enr != null &&
-                n.Enr.ToString() == remoteRecord.ToString()));
+            yield return new TestCaseData(0UL, 0UL, false, false)
+                .SetName("Ping_should_not_request_remote_enr_when_pong_has_no_advertised_sequence");
+            yield return new TestCaseData(2UL, 2UL, true, true)
+                .SetName("Ping_should_cache_remote_enr_when_response_sequence_matches_advertised_sequence");
+            yield return new TestCaseData(3UL, 2UL, true, false)
+                .SetName("Ping_should_not_cache_remote_enr_when_response_sequence_is_below_advertised_sequence");
+            yield return new TestCaseData(3UL, 4UL, true, true)
+                .SetName("Ping_should_cache_remote_enr_when_response_sequence_is_above_advertised_sequence");
         }
 
-        [Test]
+        [TestCaseSource(nameof(RemoteEnrRefreshCases))]
         [CancelAfter(10000)]
-        public async Task Ping_should_not_cache_remote_enr_when_response_sequence_is_below_advertised_sequence(CancellationToken token)
+        public async Task Ping_should_refresh_remote_enr_from_advertised_sequence(
+            ulong advertisedSequence,
+            ulong responseSequence,
+            bool shouldRequestEnr,
+            bool shouldCacheEnr,
+            CancellationToken token)
         {
-            ConfigureRemoteEnrRefresh(advertisedSequence: 3, responseSequence: 2);
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(advertisedSequence, responseSequence);
 
             bool result = await _adapter.Ping(_receiver, token);
 
             Assert.That(result, Is.True);
-            await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
-            _kademliaMessageReceiver.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
+            if (shouldRequestEnr)
+            {
+                await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
+            }
+            else
+            {
+                await _msgSender.DidNotReceive().SendMsg(Arg.Any<EnrRequestMsg>());
+            }
+
+            if (shouldCacheEnr)
+            {
+                _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                    n.Id.Equals(_receiver.Id) &&
+                    n.Enr != null &&
+                    n.Enr.ToString() == remoteRecord.ToString()));
+            }
+            else
+            {
+                _kademliaMessageReceiver.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
+            }
         }
 
         [Test]
