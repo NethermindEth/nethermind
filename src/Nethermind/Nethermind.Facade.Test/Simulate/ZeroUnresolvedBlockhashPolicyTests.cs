@@ -15,18 +15,17 @@ using NUnit.Framework;
 namespace Nethermind.Facade.Test.Simulate;
 
 [TestFixture]
-public class SimulateLenientBlockhashProviderTests
+public class ZeroUnresolvedBlockhashPolicyTests
 {
     [Test]
-    public void Returns_null_instead_of_throwing_when_in_window_hash_cannot_be_resolved()
+    public void BlockhashProvider_returns_null_instead_of_throwing_under_zero_policy()
     {
         IBlockhashCache cache = Substitute.For<IBlockhashCache>();
         cache.GetHash(Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns((Hash256?)null);
-        IWorldState worldState = Substitute.For<IWorldState>();
-        SimulateLenientBlockhashProvider sut = new(cache, worldState, LimboLogs.Instance);
+        BlockhashProvider sut = new(cache, Substitute.For<IWorldState>(), LimboLogs.Instance, new ZeroUnresolvedBlockhashPolicy());
         BlockHeader current = Build.A.BlockHeader.WithNumber(300).WithParentHash(TestItem.KeccakA).TestObject;
 
-        // Same scenario that throws for canonical BlockhashProvider must yield 0 (null) under simulate.
+        // Same in-window cache miss that throws for canonical BlockhashProvider must yield 0 (null) under simulate.
         Assert.That(sut.GetBlockhash(current, 100, Frontier.Instance), Is.Null);
     }
 }
