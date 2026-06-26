@@ -151,8 +151,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childRegularGas) => TSelf.FromULong(childRegularGas);
 
-    // EXTCODECOPY may need different categorization (state trie access) for some policies.
-    static abstract void ConsumeDataCopyGas(ref TSelf gas, bool isExternalCode, ulong baseCost, ulong dataCost);
+    // The policy computes the full data-copy cost (base access cost + per-word copy cost) from the
+    // spec and word count; EXTCODECOPY (isExternalCode) may categorize the base as state-trie access.
+    static abstract void ConsumeDataCopyGas(ref TSelf gas, IReleaseSpec spec, bool isExternalCode, ulong words);
 
     static abstract void OnBeforeInstructionTrace(in TSelf gas, int pc, Instruction instruction, int depth);
     static abstract void OnAfterInstructionTrace(in TSelf gas);
