@@ -49,7 +49,7 @@ internal readonly record struct MdbxTuningOptions(
     public const ulong DefaultMaxReaders = 8192;
     public const ulong DefaultRpAugmentLimit = 256 * 1024;
     public const int DefaultMaxBatchGroupOperations = 128 * 1024;
-    public const int DefaultStateMaxBatchGroupOperations = 1024;
+    public const int DefaultStateMaxBatchGroupOperations = 4096;
     public const long DefaultMaxBatchGroupBytes = 64L << 20;
     public const long DefaultStateDirtyPagesReserveBytes = 1L << 30;
     public const long DefaultStateTransactionDirtyPagesLimitBytes = 1L << 30;
@@ -77,7 +77,7 @@ internal readonly record struct MdbxTuningOptions(
         bool enableReadAhead = ReadBool("NETHERMIND_MDBX_READAHEAD", fallback: false, logger, ref hasOverrides);
         bool enableWriteMap = ReadBool("NETHERMIND_MDBX_WRITEMAP", fallback: true, logger, ref hasOverrides);
         bool enableCoalesce = ReadBool("NETHERMIND_MDBX_COALESCE", fallback: true, logger, ref hasOverrides);
-        bool enableBatchGrouping = ReadBool("NETHERMIND_MDBX_BATCH_GROUP", fallback: !isStateDb, logger, ref hasOverrides);
+        bool enableBatchGrouping = ReadBool("NETHERMIND_MDBX_BATCH_GROUP", fallback: true, logger, ref hasOverrides);
         bool enableAppend = ReadBool("NETHERMIND_MDBX_APPEND", fallback: true, logger, ref hasOverrides);
         MdbxDisableWalSyncMode disableWalSyncMode = ReadDisableWalSyncMode("NETHERMIND_MDBX_DISABLE_WAL_SYNC_MODE", DefaultDisableWalSyncMode, logger, ref hasOverrides);
         long defaultSyncBytes = disableWalSyncMode == MdbxDisableWalSyncMode.SafeNoSync ? DefaultSafeNoSyncSyncBytes : 0;
