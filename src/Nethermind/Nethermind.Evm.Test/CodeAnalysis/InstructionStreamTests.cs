@@ -378,8 +378,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private static IEnumerable<TestCaseData> OutOfGasCases()
     {
         // Boundary op: PUSH1 0; SLOAD; STOP — the ~100-gas budget can't pay the cold SLOAD (2100).
-        yield return new TestCaseData(
-            new byte[] { (byte)Instruction.PUSH1, 0x00, (byte)Instruction.SLOAD, (byte)Instruction.STOP }, 21_100UL) { TestName = "OutOfGasOnBoundarySLoad" };
+        yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH1, 0x00, (byte)Instruction.SLOAD, (byte)Instruction.STOP }, 21_100UL) { TestName = "OutOfGasOnBoundarySLoad" };
 
         // Metered fallback: a 500-PUSH0 block (cost 1000) behind a ~500-gas budget can't be precharged,
         // so it dispatches per-op metered and exhausts mid-block.
