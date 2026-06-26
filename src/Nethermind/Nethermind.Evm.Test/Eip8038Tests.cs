@@ -117,7 +117,7 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         long expected = GasCostOf.Transaction
                         + 2 * GasCostOf.VeryLow        // two PUSH20 target
-                        + GasCostOf.ColdAccountAccess  // cold EXTCODESIZE access (first)
+                        + ColdAccountAccess            // cold EXTCODESIZE access (first; EIP-8038 repriced when enabled)
                         + GasCostOf.WarmStateRead      // warm EXTCODESIZE access (second)
                         + 2 * ExtraWarmAccess          // EIP-8038 extra access on both
                         + 2 * GasCostOf.Base;          // two POP
@@ -139,7 +139,7 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         long expected = GasCostOf.Transaction
                         + 8 * GasCostOf.VeryLow        // two groups of three PUSH1 0x00 + PUSH20 target
-                        + GasCostOf.ColdAccountAccess  // cold EXTCODECOPY access (first)
+                        + ColdAccountAccess            // cold EXTCODECOPY access (first; EIP-8038 repriced when enabled)
                         + GasCostOf.WarmStateRead      // warm EXTCODECOPY access (second)
                         + 2 * ExtraWarmAccess;         // EIP-8038 extra access on both
         AssertGas(result, expected);

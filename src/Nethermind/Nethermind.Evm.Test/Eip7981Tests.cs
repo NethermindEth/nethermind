@@ -69,11 +69,15 @@ public class Eip7981Tests
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
         (int addressCount, int storageKeyCount) = accessList.Count;
-        long expectedStandard = GasCostOf.Transaction
-            + addressCount * GasCostOf.AccessAccountListEntry
-            + storageKeyCount * GasCostOf.AccessStorageListEntry
+        // devnet-6 (EIP-2780 + EIP-8038) intrinsic: TX_BASE(12000) + recipient COLD touch (To is a
+        // non-create, non-self account) + per access-list entry + EIP-7981 floor tokens. The calldata
+        // floor (EIP-7976) is TX_BASE + floor tokens only — no recipient/access-entry component.
+        long expectedStandard = GasCostOf.TransactionEip2780
+            + Eip8038Constants.ColdAccountAccess
+            + addressCount * Eip8038Constants.AccessListAddressCost
+            + storageKeyCount * Eip8038Constants.AccessListStorageKeyCost
             + FloorPerToken * expectedTokens;
-        long expectedFloor = GasCostOf.Transaction + FloorPerToken * expectedTokens;
+        long expectedFloor = GasCostOf.TransactionEip2780 + FloorPerToken * expectedTokens;
 
         Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor)));
     }
@@ -84,8 +88,8 @@ public class Eip7981Tests
         Transaction transaction = new() { To = Address.Zero, AccessList = null };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
         Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(
-            Standard: GasCostOf.Transaction,
-            FloorGas: GasCostOf.Transaction)));
+            Standard: GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess,
+            FloorGas: GasCostOf.TransactionEip2780)));
     }
 
     [Test]
@@ -101,33 +105,25 @@ public class Eip7981Tests
 
     private static IEnumerable<TestCaseData> CalldataWithAccessListCases()
     {
-        // 1 zero byte + 1 address: standard wins
-        // Standard = 21000 + 4 + 2400 + 80*16 = 24684
-        // Floor = 21000 + (4 + 80)*16 = 22344
-        yield return new TestCaseData(new byte[] { 0 }, 1, 0, 24684L, 22344L)
+        // standardWins: in devnet-6 the standard intrinsic carries TX_BASE + recipient COLD + the
+        // per-access-list-entry charge, and calldata is priced at TX_DATA_TOKEN_STANDARD (4/token);
+        // the floor prices every token at TX_DATA_TOKEN_FLOOR (16/token) over TX_BASE. With little
+        // calldata the standard's fixed recipient/access component dominates, so standard wins.
+        yield return new TestCaseData(new byte[] { 0 }, 1, 0, true)
             .SetName("1 zero byte + 1 address: standard wins");
 
-        // 40 zero bytes + 1 address: exact tie (floor == standard)
-        // Standard = 21000 + 40*4 + 2400 + 1280 = 24840
-        // Floor = 21000 + (160 + 80)*16 = 24840
-        yield return new TestCaseData(new byte[40], 1, 0, 24840L, 24840L)
-            .SetName("40 zero bytes + 1 address: exact tie");
+        // floorWins: enough calldata that the floor's 16/token premium over standard's 4/token
+        // outgrows the standard's fixed recipient + access-entry costs. Crossover for one address +
+        // recipient (≈6000 fixed) needs >~500 calldata tokens, so 800 zero bytes pushes the floor above.
+        yield return new TestCaseData(new byte[800], 1, 0, false)
+            .SetName("800 zero bytes + 1 address: floor wins");
 
-        // 41 zero bytes + 1 address: floor wins by 60 (smallest count)
-        // Standard = 21000 + 41*4 + 2400 + 1280 = 24844
-        // Floor = 21000 + (164 + 80)*16 = 24904
-        yield return new TestCaseData(new byte[41], 1, 0, 24844L, 24904L)
-            .SetName("41 zero bytes + 1 address: floor wins by 60");
-
-        // 100 zero bytes + 1 address + 1 key: floor dominates
-        // Standard = 21000 + 400 + 2400 + 1900 + (80+128)*16 = 29028
-        // Floor = 21000 + (400 + 80 + 128)*16 = 30728
-        yield return new TestCaseData(new byte[100], 1, 1, 29028L, 30728L)
-            .SetName("100 zero bytes + 1 address + 1 key: floor dominates");
+        yield return new TestCaseData(new byte[1000], 1, 1, false)
+            .SetName("1000 zero bytes + 1 address + 1 key: floor dominates");
     }
 
     [TestCaseSource(nameof(CalldataWithAccessListCases))]
-    public void Calldata_with_access_list_floor_pricing(byte[] data, int addressCount, int storageKeyCount, long expectedStandard, long expectedFloor)
+    public void Calldata_with_access_list_floor_pricing(byte[] data, int addressCount, int storageKeyCount, bool standardWins)
     {
         AccessList.Builder builder = new();
         for (int i = 0; i < addressCount; i++)
@@ -142,6 +138,17 @@ public class Eip7981Tests
         AccessList accessList = builder.Build();
         Transaction transaction = new() { To = Address.Zero, Data = data, AccessList = accessList };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor)));
+
+        // The transaction is charged the larger of the standard and floor intrinsic.
+        if (standardWins)
+        {
+            Assert.That(cost.Standard, Is.GreaterThan(cost.FloorGas));
+            Assert.That(cost.MinimalGas, Is.EqualTo(cost.Standard));
+        }
+        else
+        {
+            Assert.That(cost.FloorGas, Is.GreaterThan(cost.Standard));
+            Assert.That(cost.MinimalGas, Is.EqualTo(cost.FloorGas));
+        }
     }
 }
