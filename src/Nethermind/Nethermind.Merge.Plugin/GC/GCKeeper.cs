@@ -13,33 +13,20 @@ namespace Nethermind.Merge.Plugin.GC;
 
 using Nethermind.Core.Extensions;
 
-public class GCKeeper : IDisposable
+public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposable
 {
     private static ulong _forcedGcCount = 0;
     private readonly Lock _lock = new();
-    private readonly IGCStrategy _gcStrategy;
-    private readonly int _postBlockDelayMs;
-    private readonly ILogger _logger;
+    private readonly IGCStrategy _gcStrategy = gcStrategy;
+    private readonly int _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
+    private readonly ILogger _logger = logManager.GetClassLogger<GCKeeper>();
     private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
-    private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
     private CancellationTokenSource? _shutdownCts = new();
-
-    public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
-    {
-        _gcStrategy = gcStrategy;
-        _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
-        _logger = logManager.GetClassLogger<GCKeeper>();
-        _tryStartNoGCRegionFunc = TryStartNoGCRegion;
-    }
 
     public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
 
-    public IDisposable StartNoGCRegion() => TryStartNoGCRegion();
-
-    public Task<IDisposable> TryStartNoGCRegionAsync() => Task.Run(_tryStartNoGCRegionFunc);
-
-    private IDisposable TryStartNoGCRegion()
+    public IDisposable TryStartNoGCRegion()
     {
         long size = _defaultSize;
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
