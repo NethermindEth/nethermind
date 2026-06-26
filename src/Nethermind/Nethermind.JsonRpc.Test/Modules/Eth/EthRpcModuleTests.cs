@@ -948,9 +948,13 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
-    [TestCase(2, """{"fromBlock":"0x0","toBlock":"0x3"}""", true)]   // range 4 exceeds limit 2 -> rejected
-    [TestCase(4, """{"fromBlock":"0x0","toBlock":"0x3"}""", false)]  // range 4 within limit 4 -> allowed
-    [TestCase(0, """{"fromBlock":"0x0","toBlock":"0x3"}""", false)]  // limit disabled -> allowed
+    [TestCase(2, """{"fromBlock":"0x0","toBlock":"0x3"}""", true, TestName = "range 4 exceeds limit 2 -> rejected")]
+    [TestCase(4, """{"fromBlock":"0x0","toBlock":"0x3"}""", false, TestName = "range 4 within limit 4 -> allowed")]
+    [TestCase(0, """{"fromBlock":"0x0","toBlock":"0x3"}""", false, TestName = "limit disabled -> allowed")]
+    [TestCase(2, """{"toBlock":"0x3"}""", true, TestName = "fromBlock omitted -> Earliest (0x0), range 4 exceeds limit 2 -> rejected")]
+    [TestCase(4, """{"toBlock":"0x3"}""", false, TestName = "fromBlock omitted -> Earliest (0x0), range 4 within limit 4 -> allowed")]
+    [TestCase(2, """{"fromBlock":"0x0"}""", true, TestName = "toBlock omitted -> Latest (0x3), range 4 exceeds limit 2 -> rejected")]
+    [TestCase(4, """{"fromBlock":"0x0"}""", false, TestName = "toBlock omitted -> Latest (0x3), range 4 within limit 4 -> allowed")]
     public async Task Eth_get_logs_enforces_max_block_depth(int maxBlockDepth, string parameter, bool shouldReject)
     {
         using Context ctx = await Context.Create();
