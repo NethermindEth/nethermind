@@ -44,7 +44,7 @@ internal readonly record struct MdbxTuningOptions(
     public const long DefaultGrowthStep = 1L << 30;
     public const long DefaultShrinkThreshold = 1L << 30;
     public const int DefaultPageSize = 4 * 1024;
-    public const int DefaultStatePageSize = 16 * 1024;
+    public const int DefaultStatePageSize = 4 * 1024;
     public const ulong DefaultMaxDbs = 512;
     public const ulong DefaultMaxReaders = 8192;
     public const ulong DefaultRpAugmentLimit = 256 * 1024;

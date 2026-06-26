@@ -532,9 +532,9 @@ namespace Nethermind.Db.Test
             {
                 Assert.That(options.PageSize, Is.EqualTo(MdbxTuningOptions.DefaultStatePageSize));
                 Assert.That(options.RpAugmentLimit, Is.EqualTo((ulong)(256 * 1024)));
-                Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(65_536));
-                Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(65_536));
-                Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(8_192));
+                Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(262_144));
+                Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(262_144));
+                Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(32_768));
                 Assert.That(options.EnableBatchGrouping, Is.False);
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultStateMaxBatchGroupOperations));
             }
@@ -735,6 +735,44 @@ namespace Nethermind.Db.Test
                 Assert.That(db.Get(key), Is.EqualTo(value));
                 Assert.That(File.ReadAllText(Path.Combine(fullPath, MdbxEnvironment.PageSizeMarkerFileName)).Trim(), Is.EqualTo(MdbxTuningOptions.DefaultStatePageSize.ToString(CultureInfo.InvariantCulture)));
             }
+        }
+
+        [Test]
+        [Platform(Include = "Linux", Reason = "MDBX native backend is linux-x64 only.")]
+        public void Mdbx_existing_state_database_keeps_16k_page_size_after_default_changes_to_4k()
+        {
+            string dbPath = Path.Combine("mainnet", "state", "0");
+            string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, DbPath);
+            byte[] key = [1];
+            byte[] value = [2];
+
+            WithEnvironmentVariable("NETHERMIND_MDBX_PAGE_SIZE", (16 * 1024).ToString(CultureInfo.InvariantCulture), () =>
+            {
+                using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(dbPath, "State"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+                db.Set(key, value);
+
+                MdbxNative.ThrowOnError(
+                    MdbxNative.EnvInfoEx(db.Mdbx.Env, IntPtr.Zero, out MdbxNative.MdbxEnvInfo info, (nuint)Marshal.SizeOf<MdbxNative.MdbxEnvInfo>()),
+                    "mdbx_env_info_ex");
+
+                Assert.That(info.DxbPageSize, Is.EqualTo(16 * 1024));
+            });
+
+            WithoutEnvironmentVariable("NETHERMIND_MDBX_PAGE_SIZE", () =>
+            {
+                using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(dbPath, "State"), _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance);
+
+                MdbxNative.ThrowOnError(
+                    MdbxNative.EnvInfoEx(db.Mdbx.Env, IntPtr.Zero, out MdbxNative.MdbxEnvInfo info, (nuint)Marshal.SizeOf<MdbxNative.MdbxEnvInfo>()),
+                    "mdbx_env_info_ex");
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(db.Get(key), Is.EqualTo(value));
+                    Assert.That(info.DxbPageSize, Is.EqualTo(16 * 1024));
+                    Assert.That(File.ReadAllText(Path.Combine(fullPath, MdbxEnvironment.PageSizeMarkerFileName)).Trim(), Is.EqualTo((16 * 1024).ToString(CultureInfo.InvariantCulture)));
+                }
+            });
         }
 
         [Test]
@@ -958,6 +996,20 @@ namespace Nethermind.Db.Test
             try
             {
                 Environment.SetEnvironmentVariable(name, value);
+                action();
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, previous);
+            }
+        }
+
+        private static void WithoutEnvironmentVariable(string name, Action action)
+        {
+            string? previous = Environment.GetEnvironmentVariable(name);
+            try
+            {
+                Environment.SetEnvironmentVariable(name, null);
                 action();
             }
             finally
