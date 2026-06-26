@@ -14,6 +14,7 @@ internal record MonitorStats
     public required long Errors { get; init; }
 
     public IReadOnlyList<ReorgEntry> RecentReorgs { get; init; } = [];
+    public IReadOnlyList<string> EmptyTests { get; init; } = [];
 }
 
 internal interface IStatsReporter

@@ -13,13 +13,14 @@ internal class MonitorRunner(
     RpcClient target,
     RpcClient? reference,
     ReorgTracker reorgTracker,
-    BlockProvider blockProvider
+    BlockProvider blockProvider,
+    EmptyTestsTracker emptyTests
 )
 {
     private static readonly TimeSpan ReorgsPeriodOnFail = TimeSpan.FromMinutes(15);
 
     private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs, requiresResponse: args.ReferenceUrl is null);
-    private readonly TestExecutor _executor = new(stats, target, reference);
+    private readonly TestExecutor _executor = new(target, reference, emptyTests, stats);
     private readonly ErrorReporter _errorReporter = new(notifier, stats);
 
     public async Task RunAsync(CancellationToken ct)

@@ -100,12 +100,15 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
                  - `{stats.TestRuns}` tests executed
                  - `{stats.RequestRuns}` requests sent
                  - `{stats.TestFailures}` test failures
+                 - `{stats.EmptyTests.Count}` tests with no data
                  - `{stats.Errors}` errors
                  """;
 
             List<(string name, string content)> files = [];
             if (BuildReorgsFile(stats.RecentReorgs) is { } reorgsFile)
                 files.Add(reorgsFile);
+            if (BuildEmptyTestsFile(stats.EmptyTests) is { } emptyTestsFile)
+                files.Add(emptyTestsFile);
 
             await PostAsync(text, files, ct);
         }
@@ -135,6 +138,11 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
         reorgs.Count == 0
             ? null
             : ("recent-reorgs.txt", string.Join('\n', reorgs.Select(static r => r.ToString())));
+
+    private static (string name, string content)? BuildEmptyTestsFile(IReadOnlyList<string> emptyTestIds) =>
+        emptyTestIds.Count == 0
+            ? null
+            : ("no-data-tests.txt", string.Join('\n', emptyTestIds));
 
     private async Task<ExternalFileReference> UploadFileAsync(string filename, string content, CancellationToken ct)
     {

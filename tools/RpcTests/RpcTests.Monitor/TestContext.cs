@@ -59,6 +59,8 @@ internal class TestDefinition(int index, string filePath, JsonNode json, bool re
 {
     public int Index { get; } = index;
     public string FilePath { get; } = filePath;
+
+    public string Id => $"{FilePath}#{Index}";
     public string Description { get; } = json["test"]?["description"]?.GetValue<string>() ?? string.Empty;
 
     public DynamicExpression<TestContext, bool> Run { get; } = new(json["run"]?.GetValue<string>()

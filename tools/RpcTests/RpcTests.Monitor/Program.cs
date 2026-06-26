@@ -76,10 +76,11 @@ rootCommand.SetAction(async (parseResult, ct) =>
     using RpcClient? reference = args.ReferenceUrl is { } referenceUrl ? new(referenceUrl) : null;
     ReorgTracker reorgTracker = new();
     BlockProvider blockProvider = new(target);
+    EmptyTestsTracker emptyTests = new();
 
     TimeSpan? reportAt = parseResult.GetValue(reportAtOption);
-    IStatsReporter stats = reportAt is { } time ? new StatsReporter(notifier, time, reorgTracker) : NullStatsReporter.Instance;
-    MonitorRunner runner = new(args, notifier, stats, target, reference, reorgTracker, blockProvider);
+    IStatsReporter stats = reportAt is { } time ? new StatsReporter(notifier, time, reorgTracker, emptyTests) : NullStatsReporter.Instance;
+    MonitorRunner runner = new(args, notifier, stats, target, reference, reorgTracker, blockProvider, emptyTests);
 
     await Task.WhenAll(
         runner.RunAsync(ct),

@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class TestExecutor(IStatsReporter stats, RpcClient target, RpcClient? reference)
+internal class TestExecutor(RpcClient target, RpcClient? reference, EmptyTestsTracker emptyTests, IStatsReporter stats)
 {
     private long _requestNumber;
 
@@ -34,6 +34,8 @@ internal class TestExecutor(IStatsReporter stats, RpcClient target, RpcClient? r
         );
 
         JsonNode actual = requests[0], expected = requests[1];
+        emptyTests.OnTestExecuted(test, request, expected);
+
         return ResponseComparer.Compare(actual, expected, test.Definition.IgnorePaths, isStatic: expectedStatic is not null)
             ? null
             : new TestFailure(test, request, actual, expected);
