@@ -59,8 +59,8 @@ namespace Nethermind.Blockchain.Synchronization
         public int SnapSyncAccountRangeMaxResponseBytes { get; set; } = 125_000;
         public int SnapSyncStorageRangeMaxResponseBytes { get; set; } = 125_000;
         public int SnapSyncStorageRangeParallelism { get; set; } = 1;
-        public int SnapSyncMaxActiveStorageRangeBatches { get; set; } = 4;
-        public int SnapSyncMaxQueuedStorageAccountsForAccountRequests { get; set; } = 9_600;
+        public int SnapSyncMaxActiveStorageRangeBatches { get; set; } = 2;
+        public int SnapSyncMaxQueuedStorageAccountsForAccountRequests { get; set; } = 19_200;
         public bool FixReceipts { get; set; } = false;
         public bool FixTotalDifficulty { get; set; } = false;
         public long FixTotalDifficultyStartingBlock { get; set; } = 1;
