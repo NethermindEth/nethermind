@@ -163,7 +163,7 @@ public class OptimismCompactReceiptStorageDecoder :
 
         writer.StartSequence(logsLength);
 
-        LogEntry[] logs = item.Logs ?? [];
+        LogEntry[] logs = GetLogs(item);
         for (int i = 0; i < logs.Length; i++)
         {
             LogEntryDecoder.Encode(ref writer, logs[i]);
@@ -220,7 +220,7 @@ public class OptimismCompactReceiptStorageDecoder :
     private static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        LogEntry[] logs = item.Logs ?? [];
+        LogEntry[] logs = GetLogs(item);
         for (int i = 0; i < logs.Length; i++)
         {
             logsLength += LogEntryDecoder.GetLength(logs[i]);
@@ -228,6 +228,9 @@ public class OptimismCompactReceiptStorageDecoder :
 
         return logsLength;
     }
+
+    private static LogEntry[] GetLogs(TxReceipt item)
+        => item.Logs ?? throw new RlpException("Receipt logs are null.");
 
     public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {

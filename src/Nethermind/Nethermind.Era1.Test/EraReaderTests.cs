@@ -124,6 +124,22 @@ internal class EraReaderTests
         Assert.That(root, Is.EqualTo(fileRoot));
     }
 
+    [Test]
+    public void DecodeReceipts_EmptyListReceipt_Throws()
+    {
+        byte[] receiptsWithEmptyListItem = [0xc1, 0xc0];
+
+        Assert.That(
+            () => DecodeReceipts(receiptsWithEmptyListItem),
+            Throws.TypeOf<RlpException>());
+    }
+
+    private static TxReceipt[] DecodeReceipts(byte[] bytes)
+    {
+        RlpReader ctx = new(bytes);
+        return ctx.DecodeArray<TxReceipt>(new ReceiptMessageDecoder());
+    }
+
     private static void AssertBlockEquivalent(Block actual, Block expected) =>
         Assert.That(actual.ToString(Block.Format.Full), Is.EqualTo(expected.ToString(Block.Format.Full)));
 }

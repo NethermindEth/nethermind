@@ -192,6 +192,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
         RlpReader ctx = new(buffer.Span);
+        // Era1 receipts are part of the block root commitment; reject empty-list placeholders.
         return ctx.DecodeArray<TxReceipt>(_receiptDecoder);
     }
 

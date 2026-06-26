@@ -129,7 +129,7 @@ public class BlobTxStorage : IBlobTxStorage
         {
             RlpReader ctx = new(bytes);
             blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm);
-            return blockBlobTransactions is not null;
+            return true;
         }
 
         blockBlobTransactions = default;

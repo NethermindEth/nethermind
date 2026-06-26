@@ -44,13 +44,13 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         int headerCheck = decoderContext.Position + headerSequenceLength;
 
         // Common fields
-        Hash256 parentHash = decoderContext.DecodeKeccakNonNull();
-        Hash256 unclesHash = decoderContext.DecodeKeccakNonNull();
-        Address beneficiary = decoderContext.DecodeAddressNonNull();
-        Hash256 stateRoot = decoderContext.DecodeKeccakNonNull();
-        Hash256 transactionsRoot = decoderContext.DecodeKeccakNonNull();
-        Hash256 receiptsRoot = decoderContext.DecodeKeccakNonNull();
-        Bloom bloom = decoderContext.DecodeBloomNonNull();
+        Hash256? parentHash = decoderContext.DecodeKeccak();
+        Hash256? unclesHash = decoderContext.DecodeKeccak();
+        Address? beneficiary = decoderContext.DecodeAddress();
+        Hash256? stateRoot = decoderContext.DecodeKeccak();
+        Hash256? transactionsRoot = decoderContext.DecodeKeccak();
+        Hash256? receiptsRoot = decoderContext.DecodeKeccak();
+        Bloom? bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
         ulong number = decoderContext.DecodeULong();
         ulong gasLimit = decoderContext.DecodeULong();

@@ -118,7 +118,7 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            LogEntry[] logs = item.Logs ?? [];
+            LogEntry[] logs = GetLogs(item);
             for (int i = 0; i < logs.Length; i++)
             {
                 logsLength += Rlp.LengthOf(logs[i]);
@@ -126,6 +126,9 @@ namespace Nethermind.Serialization.Rlp
 
             return logsLength;
         }
+
+        private static LogEntry[] GetLogs(TxReceipt item)
+            => item.Logs ?? throw new RlpException("Receipt logs are null.");
 
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
@@ -204,7 +207,7 @@ namespace Nethermind.Serialization.Rlp
                 writer.Encode(item.Bloom);
 
             writer.StartSequence(logsLength);
-            LogEntry[] logs = item.Logs ?? [];
+            LogEntry[] logs = GetLogs(item);
             LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
             for (int i = 0; i < logs.Length; i++)
             {

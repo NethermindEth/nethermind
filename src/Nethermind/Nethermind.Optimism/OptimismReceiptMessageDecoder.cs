@@ -117,13 +117,17 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
     public static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        for (int i = 0; i < item.Logs?.Length; i++)
+        LogEntry[] logs = GetLogs(item);
+        for (int i = 0; i < logs.Length; i++)
         {
-            logsLength += Rlp.LengthOf(item.Logs[i]);
+            logsLength += Rlp.LengthOf(logs[i]);
         }
 
         return logsLength;
     }
+
+    private static LogEntry[] GetLogs(TxReceipt item)
+        => item.Logs ?? throw new RlpException("Receipt logs are null.");
 
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
@@ -178,9 +182,10 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         writer.Encode(item.Bloom);
 
         writer.StartSequence(logsLength);
-        for (int i = 0; i < item.Logs?.Length; i++)
+        LogEntry[] logs = GetLogs(item);
+        for (int i = 0; i < logs.Length; i++)
         {
-            LogEntryDecoder.Instance.Encode(ref writer, item.Logs[i]);
+            LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
         }
 
         if (item.IsOptimismTxReceipt(out OptimismTxReceipt? opItem))

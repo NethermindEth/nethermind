@@ -235,6 +235,32 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(encodedBytes, Is.EqualTo(rlp.Bytes));
         }
 
+        [Test]
+        public void Receipt_message_encoding_rejects_null_logs()
+        {
+            TxReceipt receipt = Build.A.Receipt.TestObject;
+            receipt.Logs = null;
+
+            ReceiptMessageDecoder decoder = new();
+
+            Assert.That(
+                () => decoder.Encode(receipt),
+                Throws.TypeOf<RlpException>());
+        }
+
+        [Test]
+        public void Receipt_storage_encoding_rejects_null_logs()
+        {
+            TxReceipt receipt = Build.A.Receipt.TestObject;
+            receipt.Logs = null;
+
+            ReceiptStorageDecoder decoder = new();
+
+            Assert.That(
+                () => decoder.Encode(receipt),
+                Throws.TypeOf<RlpException>());
+        }
+
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
         {
             Bloom bloom = new();

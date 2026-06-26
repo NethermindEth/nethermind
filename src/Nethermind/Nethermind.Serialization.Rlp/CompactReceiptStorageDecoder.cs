@@ -154,7 +154,7 @@ namespace Nethermind.Serialization.Rlp
 
             writer.StartSequence(logsLength);
 
-            LogEntry[] logs = item.Logs ?? [];
+            LogEntry[] logs = GetLogs(item);
             for (int i = 0; i < logs.Length; i++)
             {
                 CompactLogEntryDecoder.Instance.Encode(ref writer, logs[i]);
@@ -191,7 +191,7 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            LogEntry[] logs = item.Logs ?? [];
+            LogEntry[] logs = GetLogs(item);
             for (int i = 0; i < logs.Length; i++)
             {
                 logsLength += CompactLogEntryDecoder.Instance.GetLength(logs[i]);
@@ -199,6 +199,9 @@ namespace Nethermind.Serialization.Rlp
 
             return logsLength;
         }
+
+        private static LogEntry[] GetLogs(TxReceipt item)
+            => item.Logs ?? throw new RlpException("Receipt logs are null.");
 
         public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {

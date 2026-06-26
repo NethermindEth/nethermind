@@ -213,6 +213,19 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(encodedBytes, Is.EqualTo(rlp.Bytes));
         }
 
+        [Test]
+        public void Compact_receipt_storage_encoding_rejects_null_logs()
+        {
+            TxReceipt receipt = Build.A.Receipt.TestObject;
+            receipt.Logs = null;
+
+            CompactReceiptStorageDecoder decoder = new();
+
+            Assert.That(
+                () => decoder.Encode(receipt),
+                Throws.TypeOf<RlpException>());
+        }
+
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
         {
             yield return (Build.A.Receipt.WithCalculatedBloom().TestObject, "basic with defaults");

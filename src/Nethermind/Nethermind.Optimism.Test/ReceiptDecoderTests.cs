@@ -10,6 +10,36 @@ namespace Nethermind.Optimism.Test;
 
 public class ReceiptDecoderTests
 {
+    [Test]
+    public void Optimism_receipt_message_encoding_rejects_null_logs()
+    {
+        OptimismTxReceipt receipt = new()
+        {
+            Logs = null
+        };
+
+        OptimismReceiptMessageDecoder decoder = new();
+
+        Assert.That(
+            () => decoder.Encode(receipt),
+            Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Optimism_compact_receipt_storage_encoding_rejects_null_logs()
+    {
+        OptimismTxReceipt receipt = new()
+        {
+            Logs = null
+        };
+
+        OptimismCompactReceiptStorageDecoder decoder = new();
+
+        Assert.That(
+            () => decoder.Encode(receipt),
+            Throws.TypeOf<RlpException>());
+    }
+
     [TestCaseSource(nameof(DepositTxReceiptsSerializationTestCases))]
     public void Test_tx_network_form_receipts_properly_encoded_for_trie(byte[] rlp, bool includesNonce, bool includesVersion, bool shouldIncludeNonceAndVersionForTxTrie)
     {

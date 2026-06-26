@@ -30,22 +30,25 @@ internal static class InputGenerator
         Witness? witness;
 
         (Block? block, witness, ulong? chainId) = await FetchData(blockParam, host);
+        if (block is null || witness is null || chainId is null)
+            return 1;
 
-        using (witness)
+        Block fetchedBlock = block;
+        Witness fetchedWitness = witness;
+        ulong fetchedChainId = chainId.Value;
+
+        using (fetchedWitness)
         {
-            if (block is null || witness is null || chainId is null)
-                return 1;
-
             StatelessInput<SszExecutionPayloadV3> input = new()
             {
-                NewPayloadRequest = NewPayloadRequest<SszExecutionPayloadV3>.From(block),
-                Witness = ExecutionWitness.From(witness),
+                NewPayloadRequest = NewPayloadRequest<SszExecutionPayloadV3>.From(fetchedBlock),
+                Witness = ExecutionWitness.From(fetchedWitness),
                 ChainConfig = new()
                 {
-                    ChainId = chainId.Value,
-                    ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId.Value))
+                    ChainId = fetchedChainId,
+                    ActiveFork = ForkConfig.From(fetchedBlock.Header, GetSpecProvider(fetchedChainId))
                 },
-                PublicKeys = RecoverPublicKeys(block.Transactions, chainId.Value)
+                PublicKeys = RecoverPublicKeys(fetchedBlock.Transactions, fetchedChainId)
             };
 
             byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
@@ -70,7 +73,7 @@ internal static class InputGenerator
 
         Directory.CreateDirectory(output);
 
-        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.ssz";
+        string fileName = $"{EnsureBlockParamIsNumber(blockParam, fetchedBlock)}.ssz";
         string path = Path.Join(output, fileName);
 
         File.WriteAllBytes(path, data);
@@ -106,16 +109,24 @@ internal static class InputGenerator
 
                 IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!;
                 RlpReader blockContext = new(rlp);
-                block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
+                Block? decodedBlock = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
                 blockContext.Check(rlp.Length);
 
-                string blockNumber = EnsureBlockParamIsNumber(blockParam, block);
+                if (decodedBlock is null)
+                {
+                    AnsiConsole.MarkupLine($"[red]Block decoded as null[/]");
+                    return;
+                }
+
+                block = decodedBlock;
+
+                string blockNumber = EnsureBlockParamIsNumber(blockParam, decodedBlock);
 
                 AnsiConsole.MarkupLine($"[green]✓[/] Fetched block {blockNumber}: {rlp.Length:N0} bytes");
 
                 ctx.Status = $"[orange1]Fetching witness for block {blockNumber}[/]";
 
-                witness = await client.Post<Witness>("debug_executionWitness", $"0x{block.Number:x}");
+                witness = await client.Post<Witness>("debug_executionWitness", $"0x{decodedBlock.Number:x}");
 
                 if (witness is null)
                 {
