@@ -98,6 +98,30 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
+    public void Write_with_gap_zeroes_below_frontier_on_dirty_small_buffer_reuse()
+    {
+        // Dirty a small (<64 KiB, thread-static-cached) buffer so it returns to the pool full of 0xff.
+        EvmPooledMemory dirty = new();
+        UInt256 zero = UInt256.Zero;
+        Span<byte> pattern = new byte[1024];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(in zero, pattern), Is.True);
+        dirty.Dispose();
+
+        // Reuse that dirty buffer and write a single byte high up so a gap forms below the frontier.
+        // The gap must read as zero even though the underlying buffer came back dirty.
+        EvmPooledMemory reused = new();
+        UInt256 offset = (UInt256)1000;
+        Assert.That(reused.TrySaveByte(in offset, 0xAB), Is.True);
+
+        UInt256 readLength = (UInt256)1001;
+        Assert.That(reused.TryLoadSpan(in zero, in readLength, out Span<byte> data), Is.True);
+        Assert.That(data[..1000].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "gap below the write frontier leaked stale pooled data");
+        Assert.That(data[1000], Is.EqualTo((byte)0xAB), "the written byte was lost");
+        reused.Dispose();
+    }
+
+    [Test]
     public void CalculateMemoryCost_LengthExceedsLongMax_ShouldReturnOutOfGas()
     {
         EvmPooledMemory memory = new();

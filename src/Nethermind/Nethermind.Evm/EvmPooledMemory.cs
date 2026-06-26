@@ -237,17 +237,24 @@ public struct EvmPooledMemory
         return _memory.AsMemory((int)location, (int)length);
     }
 
-    // Zeroes the still-undefined gap [_lastZeroedSize, size) so reads there return valid (zero) EVM
-    // memory, and advances the defined frontier. Buffers are pooled dirty, so every read/grow that
-    // exposes new bytes funnels through here; contiguous writes skip it by passing their own start.
+    // Ensures the gap [_lastZeroedSize, size) reads as zero, advancing the defined frontier. This sits on
+    // every memory access, so the body is just the comparison: an access that exposes nothing new (the
+    // overwhelming common case — contracts read what they wrote) is a single branch with no call. Only an
+    // access that actually reaches past the frontier pays the out-of-line clear.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ZeroGapUpTo(ulong size)
     {
-        if (_memory is not null && size > _lastZeroedSize)
-        {
-            int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _lastZeroedSize);
-            Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
-            _lastZeroedSize += (uint)lengthToClear;
-        }
+        if (size > _lastZeroedSize)
+            ZeroGapCore(size);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ZeroGapCore(ulong size)
+    {
+        if (_memory is null) return;
+        int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _lastZeroedSize);
+        Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
+        _lastZeroedSize += (uint)lengthToClear;
     }
 
     public ulong CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
@@ -436,25 +443,25 @@ public struct EvmPooledMemory
 
     private const int MinRentSize = 1_024;
     private const int MaxCachedArrayLength = 1 << 16;
-    private const int CleanCacheSlots = 16;
+    private const int PooledCacheSlots = 16;
 
-    [ThreadStatic] private static byte[]?[]? _cleanArrays;
-    [ThreadStatic] private static int _cleanArrayCount;
+    [ThreadStatic] private static byte[]?[]? _pooledArrays;
+    [ThreadStatic] private static int _pooledArrayCount;
 
     // Rents a buffer of at least minLength. The returned bytes are NOT guaranteed zero (pooled buffers
     // come back dirty); callers rely on the defined-frontier zeroing in ZeroGapUpTo for correctness.
     private static byte[] RentBuffer(int minLength)
     {
-        byte[]?[]? cache = _cleanArrays;
-        int cleanArrayCount = _cleanArrayCount - 1;
-        for (int i = cleanArrayCount; i >= 0; i--)
+        byte[]?[]? cache = _pooledArrays;
+        int pooledArrayCount = _pooledArrayCount - 1;
+        for (int i = pooledArrayCount; i >= 0; i--)
         {
             byte[] candidate = cache![i]!;
             if (candidate.Length >= minLength)
             {
-                _cleanArrayCount = cleanArrayCount;
-                cache[i] = cache[cleanArrayCount];
-                cache[cleanArrayCount] = null;
+                _pooledArrayCount = pooledArrayCount;
+                cache[i] = cache[pooledArrayCount];
+                cache[pooledArrayCount] = null;
                 return candidate;
             }
         }
@@ -474,14 +481,18 @@ public struct EvmPooledMemory
     {
         if (array.Length > MaxCachedArrayLength)
         {
+            // Large buffers go back to the process-wide shared pool un-zeroed. This is deliberate and
+            // within the ArrayPool contract — renters must never assume a zeroed buffer, and Shared was
+            // never a zeroing guarantee. It drops a defense-in-depth wipe for the zeroing win; the other
+            // Shared consumers (Trie, Discv5 codec, BLS precompile) all fill before they read.
             ReturnLarge(array);
             return;
         }
 
-        byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
-        if (_cleanArrayCount < CleanCacheSlots)
+        byte[]?[] cache = _pooledArrays ??= new byte[PooledCacheSlots][];
+        if (_pooledArrayCount < PooledCacheSlots)
         {
-            cache[_cleanArrayCount++] = array;
+            cache[_pooledArrayCount++] = array;
         }
     }
 
