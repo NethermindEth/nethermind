@@ -70,7 +70,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     /// the build is scheduled once on the thread pool and callers keep getting <c>null</c> until it publishes,
     /// so no call blocks. Lock-free via two CASes (schedule, publish).
     /// </summary>
-    public InstructionStream? GetOrBuildStream()
+    internal InstructionStream? GetOrBuildStream()
     {
         InstructionStream? stream = Volatile.Read(ref _stream);
         if (stream is not null)

@@ -263,6 +263,38 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         return code;
     }
 
+    // PUSH; AND fuses to a bitwise superinstruction that indexes ConstantBytes — exercises the path that
+    // only allocates ConstantBytes when a bitwise fusion is actually emitted.
+    private static readonly byte[] BitwiseFusionWithConstant = Prepare.EvmCode
+        .PushData(0xFF)
+        .PushData(0x0F)
+        .Op(Instruction.AND)
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.RETURN)
+        .Done;
+
+    private static readonly byte[] FullStackStaticJump = BuildFullStackJump(Instruction.JUMP);
+    private static readonly byte[] FullStackStaticJumpI = BuildFullStackJump(Instruction.JUMPI);
+
+    private static byte[] BuildFullStackJump(Instruction jump)
+    {
+        // 1024 PUSH0 fill the stack to the limit, so the fused PUSH2 overflows on its own push exactly as the
+        // unfused PUSH2 does — the jump must never execute. The PUSH2 immediate targets the JUMPDEST so the
+        // analyzer fuses PUSH2+JUMP/JUMPI into StaticJump/StaticJumpI, which is the path under test.
+        const int fill = 1024;
+        byte[] code = new byte[fill + 6];
+        code.AsSpan(0, fill).Fill((byte)Instruction.PUSH0);
+        int dest = fill + 4;                       // offset of the JUMPDEST
+        code[fill] = (byte)Instruction.PUSH2;
+        code[fill + 1] = (byte)(dest >> 8);
+        code[fill + 2] = (byte)dest;
+        code[fill + 3] = (byte)jump;
+        code[fill + 4] = (byte)Instruction.JUMPDEST;
+        code[fill + 5] = (byte)Instruction.STOP;
+        return code;
+    }
+
     private static Address CalleeAddress => TestItem.AddressC;
     private static Address SolidityExampleAddress => TestItem.AddressE;
 
@@ -303,6 +335,9 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return new TestCaseData(FusedPush2JumpiLoop) { TestName = "FusedPush2JumpiLoop" };
         yield return new TestCaseData(TruncatedTrailingPush2) { TestName = "TruncatedTrailingPush2" };
         yield return new TestCaseData(DeepStackToTheLimit) { TestName = "DeepStackToTheLimit" };
+        yield return new TestCaseData(FullStackStaticJump) { TestName = "FullStackStaticJumpOverflows" };
+        yield return new TestCaseData(FullStackStaticJumpI) { TestName = "FullStackStaticJumpIOverflows" };
+        yield return new TestCaseData(BitwiseFusionWithConstant) { TestName = "BitwiseFusionWithConstant" };
         yield return new TestCaseData(SolidityExampleCall) { TestName = "SolidityExampleCreateAndCall" };
         yield return new TestCaseData(BuildOutOfGasMidBlock()) { TestName = "OutOfGasInsideMeteredBlock" };
     }

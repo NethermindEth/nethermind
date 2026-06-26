@@ -4,14 +4,13 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
-public static class StreamInterpreter
+internal static class StreamInterpreter
 {
     // On by default; the gate restricts it to cancelable (eth_call/simulation) frames. Volatile so a test
     // flipping it in-process is visible to frame-executing threads.
@@ -252,6 +251,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             break;
                         case (Instruction)FusedOpcode.StaticJump:
                             // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
+                            // Mirror the unfused PUSH2: at a full stack the PUSH2 overflows before the JUMP would
+                            // pop it, so the fast path must fail with StackOverflow rather than execute the jump.
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
                             TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump);
                             if (TGasPolicy.IsOutOfGas(in gas))
                             {
@@ -265,6 +271,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             entryIndex = (int)entry.Operand - 1;
                             break;
                         case (Instruction)FusedOpcode.StaticJumpI:
+                            // Same full-stack overflow as the unfused PUSH2, which pushes the destination before
+                            // JUMPI pops it; fail with StackOverflow instead of testing the condition and jumping.
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
                             TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.JumpI);
                             if (TGasPolicy.IsOutOfGas(in gas))
                             {

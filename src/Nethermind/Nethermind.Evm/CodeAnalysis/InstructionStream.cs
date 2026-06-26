@@ -12,7 +12,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 /// Values are ordered so that: "carries the block charge" is <c>Kind &lt;= FusedBlockFirst</c>,
 /// "is precharged" is <c>Kind &lt; Boundary</c>, "is a fused pair" is <c>(Kind &amp; 1) == 1</c>.
 /// </summary>
-public enum StreamOpKind : byte
+internal enum StreamOpKind : byte
 {
     BlockFirst = 0,
     FusedBlockFirst = 1,
@@ -28,7 +28,7 @@ public enum StreamOpKind : byte
 /// (0x0C..0x0F and 0x21..0x2F gaps). The fingerprint gate keeps new forks (which might define
 /// one of these) off the stream until reviewed.
 /// </summary>
-public static class FusedOpcode
+internal static class FusedOpcode
 {
     public const byte Add = 0x0C;
     public const byte Sub = 0x0D;
@@ -81,7 +81,7 @@ public static class FusedOpcode
 /// One pre-decoded instruction (or fused PUSH+op pair). Hot-first layout: dispatch fields fit
 /// the first 8 bytes; <see cref="Operand"/> is loaded only by the cases that need it.
 /// </summary>
-public readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushort blockIndex, byte advance, ulong operand)
+internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushort blockIndex, byte advance, ulong operand)
 {
     public readonly byte Opcode = opcode;
     public readonly StreamOpKind Kind = kind;
@@ -108,7 +108,7 @@ public readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushor
 /// pc and re-meters any block entered past its charging entry (metered dispatch reads raw code, so gas
 /// stays exact).
 /// </remarks>
-public sealed class InstructionStream
+internal sealed class InstructionStream
 {
     public const ushort InvalidEntry = ushort.MaxValue;
 
@@ -122,17 +122,26 @@ public sealed class InstructionStream
     /// <summary>Entry index for every entry-start pc; <see cref="InvalidEntry"/> for immediate
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
-    private InstructionStream(StreamOp[] ops, ulong[] blockGas, UInt256[] constants, ushort[] pcToEntry)
+    private InstructionStream(StreamOp[] ops, ulong[] blockGas, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes)
     {
         Ops = ops;
         BlockGas = blockGas;
         Constants = constants;
         PcToEntry = pcToEntry;
 
-        ConstantBytes = new byte[constants.Length * 32];
-        for (int i = 0; i < constants.Length; i++)
+        // Only the fused bitwise cores index ConstantBytes; arithmetic/shift fusion reads the UInt256
+        // Constants form. Skip the big-endian copy entirely when no bitwise fusion was emitted.
+        if (buildConstantBytes)
         {
-            constants[i].ToBigEndian(ConstantBytes.AsSpan(i * 32, 32));
+            ConstantBytes = new byte[constants.Length * 32];
+            for (int i = 0; i < constants.Length; i++)
+            {
+                constants[i].ToBigEndian(ConstantBytes.AsSpan(i * 32, 32));
+            }
+        }
+        else
+        {
+            ConstantBytes = [];
         }
     }
 
@@ -149,6 +158,9 @@ public sealed class InstructionStream
 
         int openBlock = -1;
         int pc = 0;
+        // ConstantBytes (the big-endian form) is read only by the fused bitwise cores; track whether any
+        // get emitted so a stream whose constants feed only arithmetic/shift fusion skips that allocation.
+        bool anyBitwiseFusion = false;
         while (pc < code.Length)
         {
             Instruction instruction = (Instruction)code[pc];
@@ -172,6 +184,7 @@ public sealed class InstructionStream
                 {
                     // Pair becomes one entry: constant goes to the pool (one indexed load, no
                     // per-width branching) and the pc map forgets this start (nothing lands in a pair).
+                    anyBitwiseFusion |= fusedOpcode is >= FusedOpcode.Eq and <= FusedOpcode.Xor;
                     blockGas[openBlock] += cost;
                     pcToEntry[pc] = InvalidEntry;
                     ulong poolIndex;
@@ -263,7 +276,7 @@ public sealed class InstructionStream
             }
         }
 
-        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry);
+        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry, anyBitwiseFusion);
     }
 
     /// <summary>
