@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Frozen;
+using System.Threading;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,13 +30,17 @@ public class BlockForRpc
         get
         {
             FrozenDictionary<RlpDecoderKey, IRlpDecoder> snapshot = Rlp.Decoders;
-            if (!ReferenceEquals(_decodersSnapshot, snapshot))
+            IRlpDecoder<Block> decoder = _blockDecoder;
+            if (!ReferenceEquals(Volatile.Read(ref _decodersSnapshot), snapshot))
             {
-                _blockDecoder = Rlp.GetDecoder<Block>() ?? new BlockDecoder();
-                _decodersSnapshot = snapshot;
+                decoder = Rlp.GetDecoder<Block>() ?? new BlockDecoder();
+                // Publish the decoder before the snapshot so a reader observing the new snapshot
+                // is guaranteed to also observe the matching decoder (no torn pairing).
+                _blockDecoder = decoder;
+                Volatile.Write(ref _decodersSnapshot, snapshot);
             }
 
-            return _blockDecoder;
+            return decoder;
         }
     }
 
