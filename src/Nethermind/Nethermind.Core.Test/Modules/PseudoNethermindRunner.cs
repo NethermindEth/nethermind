@@ -83,7 +83,7 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
         await ctx.Resolve<IStaticNodesManager>().InitAsync();
 
         _discoveryApp = ctx.Resolve<IDiscoveryApp>();
-        _ = _discoveryApp.StartAsync(); // Bootstrap is not blocking by default
+        await _discoveryApp.StartAsync();
 
         _peerPool = ctx.Resolve<IPeerPool>();
         _peerPool.Start();

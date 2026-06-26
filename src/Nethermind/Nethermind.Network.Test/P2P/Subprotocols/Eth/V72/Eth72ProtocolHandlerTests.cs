@@ -18,7 +18,6 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -95,7 +94,7 @@ public class Eth72ProtocolHandlerTests
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
-        _syncManager.LowestBlock.Returns(0);
+        _syncManager.LowestBlock.Returns(0UL);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
@@ -149,7 +148,7 @@ public class Eth72ProtocolHandlerTests
     public void should_send_sparse_blob_tx_announcement_with_cell_mask()
     {
         Transaction tx = Build.A.Transaction
-            .WithNonce((UInt256)0)
+            .WithNonce(0UL)
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .SignedAndResolved()
             .TestObject;
@@ -177,7 +176,7 @@ public class Eth72ProtocolHandlerTests
     public void should_send_non_blob_tx_announcement_with_empty_fixed_cell_mask()
     {
         Transaction tx = Build.A.Transaction
-            .WithNonce((UInt256)0)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
 
@@ -193,7 +192,7 @@ public class Eth72ProtocolHandlerTests
     public void should_reannounce_blob_tx_when_available_cell_mask_expands()
     {
         Transaction tx = Build.A.Transaction
-            .WithNonce((UInt256)0)
+            .WithNonce(0UL)
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .SignedAndResolved()
             .TestObject;
@@ -254,7 +253,7 @@ public class Eth72ProtocolHandlerTests
         RecreateHandler(providerProbabilityPercent: 100);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
 
@@ -362,7 +361,7 @@ public class Eth72ProtocolHandlerTests
         _session.Node!.ClientId = "Geth/v1.16.0-unstable/windows-amd64/go1.24.2";
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
 
@@ -429,7 +428,7 @@ public class Eth72ProtocolHandlerTests
         RecreateHandler(providerProbabilityPercent: 100);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
 
@@ -459,7 +458,7 @@ public class Eth72ProtocolHandlerTests
         _blobCustodyTracker.Update(SupernodeCustodyMask());
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         BlobCellMask announcementMask = BlobCellMask.FromIndices([2, 7]);
@@ -486,7 +485,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         int fullTxLength = tx.GetLength();
@@ -515,7 +514,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         int fullTxLength = tx.GetLength();
@@ -545,7 +544,7 @@ public class Eth72ProtocolHandlerTests
         RecreateHandler(providerProbabilityPercent: 100);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
 
@@ -575,7 +574,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         int fullTxLength = tx.GetLength();
@@ -597,7 +596,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         Transaction elidedTx = BuildElidedBlobTransaction(tx);
@@ -625,7 +624,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         Transaction txWithEmptySidecar = BuildBlobTransactionWithEmptySparseSidecar(tx);
@@ -643,7 +642,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         Transaction txWithMismatchedCommitment = BuildBlobTransactionWithMismatchedCommitment(tx);
@@ -661,7 +660,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
@@ -685,7 +684,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
 
@@ -725,12 +724,12 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction firstTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         Transaction secondTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.One)
+            .WithNonce(1UL)
             .SignedAndResolved()
             .TestObject;
         BlobCellMask requestedMask = BlobCellMask.FromIndices([1, 3]);
@@ -782,12 +781,12 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction firstTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         Transaction secondTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.One)
+            .WithNonce(1UL)
             .SignedAndResolved()
             .TestObject;
         BlobCellMask requestedMask = BlobCellMask.FromIndices([1, 3]);
@@ -1557,7 +1556,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
 
@@ -1591,7 +1590,7 @@ public class Eth72ProtocolHandlerTests
         _blobCustodyTracker.Update(SupernodeCustodyMask());
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
 
@@ -1979,7 +1978,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
         CapturingBackgroundTaskScheduler scheduler = new();
@@ -2093,7 +2092,7 @@ public class Eth72ProtocolHandlerTests
         {
             Transaction tx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-                .WithNonce((UInt256)(ulong)nonce)
+                .WithNonce((ulong)nonce)
                 .SignedAndResolved()
                 .TestObject;
 
@@ -2263,7 +2262,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
 

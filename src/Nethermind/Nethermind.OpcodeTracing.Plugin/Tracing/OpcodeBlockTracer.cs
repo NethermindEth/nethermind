@@ -92,7 +92,7 @@ internal sealed record OpcodeBlockTrace
 {
     public required Hash256 BlockHash { get; init; }
     public required Hash256 ParentHash { get; init; }
-    public required long BlockNumber { get; init; }
+    public required ulong BlockNumber { get; init; }
     public required ulong Timestamp { get; init; }
     public required int TransactionCount { get; init; }
     public required IReadOnlyDictionary<byte, long> Opcodes { get; init; }

@@ -98,7 +98,7 @@ public sealed class TxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
         _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
             ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
@@ -109,7 +109,7 @@ public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidat
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
         => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
         foreach (ITxValidator validator in validators)
         {
@@ -132,10 +132,10 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
         => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
-        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out long regular, out long floor))
+        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong regular, out ulong floor))
         {
             return TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap);
         }
@@ -404,7 +404,7 @@ public sealed class GasLimitCapTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long gasLimitCap = releaseSpec.GetTxGasLimitCap();
+        ulong gasLimitCap = releaseSpec.GetTxGasLimitCap();
         return transaction.GasLimit > gasLimitCap ?
             TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
     }

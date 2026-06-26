@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -246,32 +247,32 @@ public struct EvmPooledMemory
         }
     }
 
-    public long CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
+    public ulong CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
     {
         if (length == 0)
         {
             outOfGas = false;
-            return 0L;
+            return 0;
         }
 
         CheckMemoryAccessViolation(in location, length, out ulong newSize, out outOfGas);
         if (outOfGas) return 0;
 
-        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
-    public long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
+    public ulong CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
     {
         if (length.IsZero)
         {
             outOfGas = false;
-            return 0L;
+            return 0;
         }
 
         CheckMemoryAccessViolation(in location, in length, out ulong newSize, out outOfGas);
         if (outOfGas) return 0;
 
-        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -339,7 +340,7 @@ public struct EvmPooledMemory
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private long ComputeMemoryExpansionCost(ulong newSize)
+    private ulong ComputeMemoryExpansionCost(ulong newSize)
     {
         // CheckMemoryAccessViolation has already capped newSize at MaxMemorySize (< 2^31), so the
         // ceiling division cannot overflow uint and the squared terms stay below 2^52. Size is
@@ -347,12 +348,13 @@ public struct EvmPooledMemory
         Debug.Assert(newSize <= MaxMemorySize);
         Debug.Assert(Size % WordSize == 0);
 
-        long newActiveWords = (long)((newSize + (WordSize - 1UL)) >> 5);
-        long activeWords = (long)(Size >> 5);
+        ulong newActiveWords = (newSize + (WordSize - 1UL)) >> 5;
+        ulong activeWords = Size >> 5;
 
         // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
-        // in long -- so the outOfGas propagation that older revisions carried is unreachable.
-        long cost = (newActiveWords - activeWords) * GasCostOf.Memory +
+        // in ulong -- so the outOfGas propagation that older revisions carried is unreachable.
+        // newActiveWords >= activeWords by the gating condition in UpdateSize, so the subtractions are safe.
+        ulong cost = (newActiveWords - activeWords) * GasCostOf.Memory +
             ((newActiveWords * newActiveWords) >> 9) -
             ((activeWords * activeWords) >> 9);
 
@@ -375,7 +377,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            SafeArrayPool<byte>.Shared.Return(memory);
+            ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
         }
     }
 
@@ -419,37 +421,96 @@ public struct EvmPooledMemory
         }
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void RentSlow()
+    private const int MinRentSize = 1_024;
+    private const int MaxCachedArrayLength = 1 << 16;
+    private const int CleanCacheSlots = 16;
+
+    [ThreadStatic] private static byte[]?[]? _cleanArrays;
+    [ThreadStatic] private static int _cleanArrayCount;
+
+    private static byte[] RentClean(int minLength)
     {
-        const int MinRentSize = 1_024;
-        if (_memory is null)
+        byte[]?[]? cache = _cleanArrays;
+        int cleanArrayCount = _cleanArrayCount - 1;
+        for (int i = cleanArrayCount; i >= 0; i--)
         {
-            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
-            Array.Clear(_memory, 0, TruncateToInt32(Size));
-        }
-        else
-        {
-            int lastZeroedSize = (int)_lastZeroedSize;
-            if (Size > (ulong)_memory.LongLength)
+            byte[] candidate = cache![i]!;
+            if (candidate.Length >= minLength)
             {
-                byte[] beforeResize = _memory;
-                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
-                Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-                SafeArrayPool<byte>.Shared.Return(beforeResize);
-            }
-            else if (Size > _lastZeroedSize)
-            {
-                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-            }
-            else
-            {
-                return;
+                _cleanArrayCount = cleanArrayCount;
+                cache[i] = cache[cleanArrayCount];
+                cache[cleanArrayCount] = null;
+                return candidate;
             }
         }
 
-        _lastZeroedSize = Size;
+        if (minLength > MaxCachedArrayLength)
+        {
+            byte[] pooled = RentLarge(minLength);
+            Array.Clear(pooled);
+            return pooled;
+        }
+
+        return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
+    }
+
+    private static void ReturnClean(byte[] array, int dirtyLength)
+    {
+        if (array.Length > MaxCachedArrayLength)
+        {
+            ReturnLarge(array);
+            return;
+        }
+
+        byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
+        if (_cleanArrayCount < CleanCacheSlots)
+        {
+            Array.Clear(array, 0, dirtyLength);
+            cache[_cleanArrayCount++] = array;
+        }
+    }
+
+#if ZK_EVM
+    private static byte[] RentLarge(int minLength) => SafeArrayPool<byte>.Shared.Rent(minLength);
+
+    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
+#else
+    private const int MaxSharedArrayLength = 1 << 20;
+    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
+    private const int MaxLargePooledArrayLength = 1 << 22;
+    private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
+        System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
+
+    private static byte[] RentLarge(int minLength)
+        => minLength > MaxSharedArrayLength
+            ? _largeArrayPool.Rent(minLength)
+            : SafeArrayPool<byte>.Shared.Rent(minLength);
+
+    private static void ReturnLarge(byte[] array)
+    {
+        if (array.Length > MaxSharedArrayLength)
+            _largeArrayPool.Return(array);
+        else
+            SafeArrayPool<byte>.Shared.Return(array);
+    }
+#endif
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void RentSlow()
+    {
+        if (_memory is null)
+        {
+            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
+        }
+        else if (Size > (ulong)_memory.LongLength)
+        {
+            byte[] beforeResize = _memory;
+            _memory = RentClean(TruncateToInt32(Size));
+            Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
+            ReturnClean(beforeResize, beforeResize.Length);
+        }
+
+        _lastZeroedSize = (ulong)_memory.Length;
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a

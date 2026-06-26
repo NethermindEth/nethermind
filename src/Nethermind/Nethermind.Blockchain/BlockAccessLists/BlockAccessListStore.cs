@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -24,24 +25,16 @@ public class BlockAccessListStore(
     private readonly BlockAccessListDecoder _balDecoder = decoder ?? new();
 
     [SkipLocalsInit]
-    public void Insert(long blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal)
+    public void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal)
     {
-        using NettyRlpStream rlpStream = _balDecoder.EncodeToNewNettyStream(bal);
+        using ArrayPoolSpan<byte> rlp = _balDecoder.EncodeToArrayPoolSpan(bal);
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        balDb.PutSpan(key, rlpStream.AsSpan());
+        balDb.PutSpan(key, rlp);
     }
 
     [SkipLocalsInit]
-    public void Insert(long blockNumber, Hash256 blockHash, byte[] encodedBal)
-    {
-        Span<byte> key = stackalloc byte[KeyLength];
-        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        balDb.PutSpan(key, encodedBal);
-    }
-
-    [SkipLocalsInit]
-    public void Insert(long blockNumber, Hash256 blockHash, ReadOnlySpan<byte> encodedBal)
+    public void Insert(ulong blockNumber, Hash256 blockHash, byte[] encodedBal)
     {
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
@@ -49,7 +42,15 @@ public class BlockAccessListStore(
     }
 
     [SkipLocalsInit]
-    public MemoryManager<byte>? GetRlp(long blockNumber, Hash256 blockHash)
+    public void Insert(ulong blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> encodedBal)
+    {
+        Span<byte> key = stackalloc byte[KeyLength];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
+        balDb.PutSpan(key, encodedBal);
+    }
+
+    [SkipLocalsInit]
+    public MemoryManager<byte>? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
@@ -57,21 +58,21 @@ public class BlockAccessListStore(
     }
 
     [SkipLocalsInit]
-    public bool Exists(long blockNumber, Hash256 blockHash)
+    public bool Exists(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
         return balDb.KeyExists(key);
     }
 
-    public ReadOnlyBlockAccessList? Get(long blockNumber, Hash256 blockHash)
+    public ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash)
     {
         using MemoryManager<byte>? rlp = GetRlp(blockNumber, blockHash);
         return rlp is null ? null : _balDecoder.Decode(rlp.Memory.Span);
     }
 
     [SkipLocalsInit]
-    public void Delete(long blockNumber, Hash256 blockHash)
+    public void Delete(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);

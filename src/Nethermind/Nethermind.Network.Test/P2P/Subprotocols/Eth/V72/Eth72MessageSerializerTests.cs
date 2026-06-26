@@ -177,7 +177,7 @@ public class Eth72MessageSerializerTests
         NewPooledTransactionHashesMessageSerializer72 serializer = new();
 
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
-        RlpStream rlpStream = new NettyRlpStream(buffer);
+        ByteBufferRlpWriter writer = new(buffer);
         byte[] types = [1];
         int sizesLength = Rlp.LengthOf(size);
         int hashesLength = Rlp.LengthOf(Hash256.Zero);
@@ -185,13 +185,13 @@ public class Eth72MessageSerializerTests
             + Rlp.LengthOfSequence(sizesLength)
             + Rlp.LengthOfSequence(hashesLength)
             + Rlp.LengthOf(BlobCellMask.Full.ToBytes());
-        rlpStream.StartSequence(totalSize);
-        rlpStream.Encode(types);
-        rlpStream.StartSequence(sizesLength);
-        rlpStream.Encode(size);
-        rlpStream.StartSequence(hashesLength);
-        rlpStream.Encode(Hash256.Zero);
-        rlpStream.Encode(BlobCellMask.Full.ToBytes());
+        writer.StartSequence(totalSize);
+        writer.Encode(types);
+        writer.StartSequence(sizesLength);
+        writer.Encode(size);
+        writer.StartSequence(hashesLength);
+        writer.Encode(Hash256.Zero);
+        writer.Encode(BlobCellMask.Full.ToBytes());
 
         Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
     }
@@ -202,19 +202,19 @@ public class Eth72MessageSerializerTests
         NewPooledTransactionHashesMessageSerializer72 serializer = new();
 
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
-        RlpStream rlpStream = new NettyRlpStream(buffer);
+        ByteBufferRlpWriter writer = new(buffer);
         byte[] types = [1];
         int sizesLength = Rlp.LengthOf(1);
         int hashesLength = Rlp.LengthOf(Hash256.Zero);
         int totalSize = Rlp.LengthOf(types)
             + Rlp.LengthOfSequence(sizesLength)
             + Rlp.LengthOfSequence(hashesLength);
-        rlpStream.StartSequence(totalSize);
-        rlpStream.Encode(types);
-        rlpStream.StartSequence(sizesLength);
-        rlpStream.Encode(1);
-        rlpStream.StartSequence(hashesLength);
-        rlpStream.Encode(Hash256.Zero);
+        writer.StartSequence(totalSize);
+        writer.Encode(types);
+        writer.StartSequence(sizesLength);
+        writer.Encode(1);
+        writer.StartSequence(hashesLength);
+        writer.Encode(Hash256.Zero);
 
         Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
     }

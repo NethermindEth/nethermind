@@ -9,7 +9,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -223,7 +222,7 @@ public class Eth68ProtocolHandlerTests
 
         for (int i = 0; i < txCount; i++)
         {
-            txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+            txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
         }
 
         _handler.SendNewTransactions(txs, false);
@@ -237,7 +236,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void should_send_blob_tx_announcement_in_NewPooledTransactionHashesMessage68()
     {
-        Transaction tx = Build.A.Transaction.WithNonce((UInt256)0).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
 
         _handler.SendNewTransaction(tx);
 
@@ -315,7 +314,7 @@ public class Eth68ProtocolHandlerTests
 
         for (int i = 0; i < txCount; i++)
         {
-            txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+            txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
         }
 
         _handler.SendNewTransactions(txs, false);
@@ -374,7 +373,7 @@ public class Eth68ProtocolHandlerTests
 
     private static Transaction BuildSparseBlobTransaction()
     {
-        Transaction tx = Build.A.Transaction.WithNonce(UInt256.Zero).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
         Transaction sparseTx = new();
         tx.CopyTo(sparseTx);
         sparseTx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with { Blobs = [] };

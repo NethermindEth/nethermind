@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -47,6 +46,10 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<ITxGossipPolicySource, TxGossipPolicySource>()
             .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>(singleInstance: true)
             .AddSingleton<IIPResolver, IPResolver>()
+
+            .AddSingleton<EnodeProvider>()
+            .Map<IEnode, EnodeProvider>(provider => provider.Enode)
+
             .AddSingleton<IForkInfo, ForkInfo>()
 
             // Rlpxhost
@@ -65,6 +68,9 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry, Subprotocols.Eth.V72.SparseBlobPoolPeerRegistry>()
+            .AddSingleton<IProtocolsManager, ProtocolsManager>()
+            .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
+            .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()
@@ -146,7 +152,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V72.CellsMessage72, V72.CellsMessageSerializer72>()
 
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
-            .Map<PublicKey, IRlpxHost>(rlpx => rlpx.LocalNodeId)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
 
             .AddSingleton<State.SnapServer.ISnapServer, State.IWorldStateManager>(wsm => wsm.SnapServer)

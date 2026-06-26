@@ -24,14 +24,14 @@ public partial class TxPoolTests
         _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
         EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-        Transaction firstTx = CreateBlobTx(TestItem.PrivateKeyA, UInt256.Zero);
-        Transaction secondTx = CreateBlobTx(TestItem.PrivateKeyA, UInt256.One);
+        Transaction firstTx = CreateBlobTx(TestItem.PrivateKeyA, 0UL);
+        Transaction secondTx = CreateBlobTx(TestItem.PrivateKeyA, 1UL);
 
         Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         Assert.That(_txPool.SubmitTx(secondTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(2));
 
-        _stateProvider.CreateAccount(TestItem.AddressA, UInt256.MaxValue, UInt256.One);
+        _stateProvider.CreateAccount(TestItem.AddressA, UInt256.MaxValue, 1UL);
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(firstTx).TestObject;
         await RaiseBlockAddedToMainAndWaitForNewHead(block);
 

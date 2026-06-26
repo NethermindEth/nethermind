@@ -105,7 +105,7 @@ namespace Nethermind.TxPool
 
         public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => false;
 
-        public UInt256 GetLatestPendingNonce(Address address) => 0;
+        public ulong GetLatestPendingNonce(Address address) => 0;
 
         public AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
 

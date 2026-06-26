@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test;
 /// </summary>
 public class Eip8024Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
     protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka { IsEip8024Enabled = true });
 
@@ -124,7 +124,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
     private static IEnumerable<TestCaseData> GasCostTestCases()
     {
-        static long Gas(int pushCount) => GasCostOf.Transaction + GasCostOf.VeryLow * pushCount + GasCostOf.VeryLow;
+        static ulong Gas(ulong pushCount) => GasCostOf.Transaction + GasCostOf.VeryLow * pushCount + GasCostOf.VeryLow;
 
         yield return new TestCaseData(PushNValues(20).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("DupN_GasCost");
         yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("SwapN_GasCost");
@@ -132,7 +132,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(GasCostTestCases))]
-    public void Opcode_CostsVeryLowGas(byte[] code, long expectedGas)
+    public void Opcode_CostsVeryLowGas(byte[] code, ulong expectedGas)
     {
         TestAllTracerWithOutput result = Execute(Activation, 100000, code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -162,7 +162,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
     public class Eip8024DisabledTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
         protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka() { IsEip8024Enabled = false });
 

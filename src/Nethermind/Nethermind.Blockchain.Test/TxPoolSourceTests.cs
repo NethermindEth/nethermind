@@ -49,9 +49,9 @@ public class TxPoolSourceTests
         TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit });
 
         IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader(), long.MaxValue);
-        int blobsCount = txs.Sum(tx => tx.GetBlobCount());
+        ulong blobsCount = txs.Aggregate(0UL, (sum, tx) => sum + (ulong)tx.GetBlobCount());
 
-        Assert.That(blobsCount, Is.LessThanOrEqualTo(Cancun.Instance.MaxProductionBlobCount(customBlobLimit)));
+        Assert.That(blobsCount, Is.LessThanOrEqualTo((ulong)Cancun.Instance.MaxProductionBlobCount(customBlobLimit)));
     }
 
     public static IEnumerable<TestCaseData> BlobTransactionsWithBlobGasLimitPerBlockCombinations()
@@ -80,7 +80,7 @@ public class TxPoolSourceTests
     }
 
     [TestCaseSource(nameof(MaxProductionBlobCountTests))]
-    public int MaxProductionBlobCount_calculation(IReleaseSpec spec, int? customBlobLimit) => spec.MaxProductionBlobCount(customBlobLimit);
+    public ulong MaxProductionBlobCount_calculation(IReleaseSpec spec, int? customBlobLimit) => spec.MaxProductionBlobCount(customBlobLimit);
 
     public static IEnumerable<TestCaseData> MaxProductionBlobCountTests()
     {
@@ -90,8 +90,8 @@ public class TxPoolSourceTests
         yield return new TestCaseData(BPO2.Instance, null).Returns(BPO2.Instance.MaxBlobCount);
 
         yield return new TestCaseData(Prague.Instance, -1).Returns(Prague.Instance.MaxBlobCount);
-        yield return new TestCaseData(Prague.Instance, 0).Returns(0);
-        yield return new TestCaseData(BPO1.Instance, 5).Returns(5);
+        yield return new TestCaseData(Prague.Instance, 0).Returns(0ul);
+        yield return new TestCaseData(BPO1.Instance, 5).Returns(5ul);
         yield return new TestCaseData(BPO2.Instance, 500_000).Returns(BPO2.Instance.MaxBlobCount);
     }
 

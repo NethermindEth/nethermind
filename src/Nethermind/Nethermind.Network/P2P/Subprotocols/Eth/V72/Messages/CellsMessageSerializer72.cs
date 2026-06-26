@@ -21,35 +21,35 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
 
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(message.RequestId);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
+        writer.Encode(message.RequestId);
 
         int payloadContentLength = GetPayloadContentLength(message);
-        rlpStream.StartSequence(payloadContentLength);
+        writer.StartSequence(payloadContentLength);
 
         int hashesLength = Rlp.LengthOf(message.Hashes);
-        rlpStream.StartSequence(hashesLength);
+        writer.StartSequence(hashesLength);
 
         foreach (Hash256 hash in message.Hashes)
         {
-            rlpStream.Encode(hash);
+            writer.Encode(hash);
         }
 
         int cellsLength = GetCellsContentLength(message.Cells);
-        rlpStream.StartSequence(cellsLength);
+        writer.StartSequence(cellsLength);
 
         foreach (byte[][] cells in message.Cells)
         {
-            rlpStream.Encode(cells);
+            writer.Encode(cells);
         }
 
-        rlpStream.Encode(message.CellMask);
+        writer.Encode(message.CellMask);
     }
 
     public CellsMessage72 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
 
-    private static CellsMessage72 Deserialize(ref Rlp.ValueDecoderContext ctx)
+    private static CellsMessage72 Deserialize(ref RlpReader ctx)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int checkPosition = ctx.Position + sequenceLength;
@@ -57,7 +57,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
 
         int payloadSequenceLength = ctx.ReadSequenceLength();
         int payloadCheckPosition = ctx.Position + payloadSequenceLength;
-        using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+        using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
 
         int cellsSequenceLength = ctx.ReadSequenceLength();
         if (cellsSequenceLength > Eth72ProtocolHandler.MinCellsResponseBytes)

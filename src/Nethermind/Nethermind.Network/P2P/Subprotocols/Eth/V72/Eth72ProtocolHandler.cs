@@ -930,7 +930,7 @@ public class Eth72ProtocolHandler(
     private static bool TryPeekRequestId(IByteBuffer content, out long requestId)
     {
         requestId = 0;
-        Rlp.ValueDecoderContext ctx = content.AsRlpContext();
+        RlpReader ctx = new(content.AsSpan());
         try
         {
             ctx.ReadSequenceLength();

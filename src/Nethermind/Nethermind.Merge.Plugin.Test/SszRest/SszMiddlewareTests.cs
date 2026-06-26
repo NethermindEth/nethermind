@@ -93,7 +93,7 @@ public class SszMiddlewareTests
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>(_engineModule, _specProvider),
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>(_engineModule, _specProvider),
 
-            new GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>(_engineModule),
+            new GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
@@ -195,8 +195,7 @@ public class SszMiddlewareTests
     [TestCaseSource(nameof(GetPayloadRoutingCases))]
     public async Task GetPayload_routes_to_correct_handler_with_no_store_header(int version, string path)
     {
-        _engineModule.engine_getPayloadV1(Arg.Any<byte[]>())
-            .Returns(ResultWrapper<ExecutionPayload?>.Success(SszTestData.MakeMinimalPayload()));
+        // BuiltPayloadParis needs block_value, sourced from engine_getPayloadV2.
         _engineModule.engine_getPayloadV2(Arg.Any<byte[]>())
             .Returns(ResultWrapper<GetPayloadV2Result?>.Success(new GetPayloadV2Result(MakeMinimalBlock(), UInt256.One)));
 
@@ -206,8 +205,8 @@ public class SszMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.Headers["Cache-Control"].ToString(), Does.Contain("no-store"));
-        await _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadV1(Arg.Any<byte[]>());
-        await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadV2(Arg.Any<byte[]>());
+        await _engineModule.DidNotReceive().engine_getPayloadV1(Arg.Any<byte[]>());
+        await _engineModule.Received(1).engine_getPayloadV2(Arg.Any<byte[]>());
     }
 
     private static readonly object[] ForkchoiceRoutingCases =
@@ -402,16 +401,17 @@ public class SszMiddlewareTests
     [TestCaseSource(nameof(BodiesByRangeRoutingCases))]
     public async Task GetPayloadBodiesByRange_routes_to_correct_engine_method_with_correct_args(int version, string path)
     {
-        const long expectedStart = 7;
-        const long expectedCount = 3;
+        const ulong expectedStart = 7;
+        const ulong expectedCount = 3;
 
-        long v1Start = -1, v1Count = -1;
-        long v2Start = -1, v2Count = -1;
+        ulong v1Start = ulong.MaxValue, v1Count = ulong.MaxValue;
+        ulong v2Start = ulong.MaxValue, v2Count = ulong.MaxValue;
+
         _engineModule
-            .engine_getPayloadBodiesByRangeV1(Arg.Do<long>(s => v1Start = s), Arg.Do<long>(c => v1Count = c))
+            .engine_getPayloadBodiesByRangeV1(Arg.Do<ulong>(s => v1Start = s), Arg.Do<ulong>(c => v1Count = c))
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
         _engineModule
-            .engine_getPayloadBodiesByRangeV2(Arg.Do<long>(s => v2Start = s), Arg.Do<long>(c => v2Count = c))
+            .engine_getPayloadBodiesByRangeV2(Arg.Do<ulong>(s => v2Start = s), Arg.Do<ulong>(c => v2Count = c))
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>.Success([]));
 
         // The range endpoint is now GET with from/count as query parameters.
@@ -420,11 +420,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        await _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadBodiesByRangeV1(Arg.Any<long>(), Arg.Any<long>());
-        await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByRangeV2(Arg.Any<long>(), Arg.Any<long>());
+        await _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadBodiesByRangeV1(Arg.Any<ulong>(), Arg.Any<ulong>());
+        await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByRangeV2(Arg.Any<ulong>(), Arg.Any<ulong>());
 
-        long capturedStart = version == 1 ? v1Start : v2Start;
-        long capturedCount = version == 1 ? v1Count : v2Count;
+        ulong capturedStart = version == 1 ? v1Start : v2Start;
+        ulong capturedCount = version == 1 ? v1Count : v2Count;
         Assert.That(capturedStart, Is.EqualTo(expectedStart));
         Assert.That(capturedCount, Is.EqualTo(expectedCount));
     }
@@ -940,14 +940,9 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
     }
 
-    // Trailing slashes and unknown extra path segments must both 404 — spec forbids trailing slashes
-    // and handlers without AcceptsPathExtra must reject stray segments. Unscoped endpoints
-    // (capabilities, identity) must reject any extra segment instead of mis-classifying
-    // the trailing segment as an unsupported fork.
+    // Unknown extra path segments still 404; trailing slashes are accepted (covered below).
     private static readonly object[] MalformedPathCases =
     [
-        new object[] { "POST", $"/engine/v2/{CancunUrl}/forkchoice/", true },
-        new object[] { "GET", "/engine/v2/capabilities/", false },
         new object[] { "GET", "/engine/v2/capabilities/foo", true },
         new object[] { "GET", "/engine/v2/identity/foo", true },
         new object[] { "POST", $"/engine/v2/{CancunUrl}/forkchoice/whatever", false },
@@ -973,6 +968,31 @@ public class SszMiddlewareTests
             string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
             Assert.That(body, Does.Contain("method-not-found"));
         }
+    }
+
+    [Test]
+    public async Task Trailing_slash_on_capabilities_resolves_normally()
+    {
+        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v2/capabilities/", AuthenticatedPort);
+        ctx.Request.Headers.Accept = "application/json";
+        ctx.Request.Body = Stream.Null;
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+    }
+
+    [Test]
+    public async Task Trailing_slash_on_fork_scoped_path_with_id_does_not_leak_into_extra()
+    {
+        _engineModule.engine_getPayloadV2(Arg.Any<byte[]>())
+            .Returns(ResultWrapper<GetPayloadV2Result?>.Success(new GetPayloadV2Result(MakeMinimalBlock(), UInt256.One)));
+
+        DefaultHttpContext ctx = MakeGetContext($"/engine/v2/{ParisUrl}/payloads/0x0102030405060708/");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
     }
 
     [Test]
@@ -1023,7 +1043,7 @@ public class SszMiddlewareTests
     [Test]
     public async Task GetPayloadBodiesByRange_from_zero_is_valid()
     {
-        _engineModule.engine_getPayloadBodiesByRangeV1(Arg.Any<long>(), Arg.Any<long>())
+        _engineModule.engine_getPayloadBodiesByRangeV1(Arg.Any<ulong>(), Arg.Any<ulong>())
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
 
         DefaultHttpContext ctx = MakeGetContext($"/engine/v2/{ShanghaiUrl}/bodies");

@@ -40,7 +40,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
             Transaction tx = Build.A.Transaction
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
@@ -105,7 +105,7 @@ namespace Nethermind.TxPool.Test
             for (int i = 0; i < poolSize; i++)
             {
                 Transaction tx = Build.A.Transaction
-                    .WithNonce((UInt256)i)
+                    .WithNonce(i)
                     .WithShardBlobTxTypeAndFields()
                     .WithMaxFeePerGas(1.GWei + (UInt256)(100 - i))
                     .WithMaxPriorityFeePerGas(1.GWei + (UInt256)(100 - i))
@@ -139,7 +139,7 @@ namespace Nethermind.TxPool.Test
             Parallel.For(0, txPoolConfig.Size, (nonce) =>
             {
                 txs[nonce] = Build.A.Transaction
-                    .WithNonce((UInt256)nonce)
+                    .WithNonce(nonce)
                     .WithType(txType)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei)
@@ -174,7 +174,7 @@ namespace Nethermind.TxPool.Test
             for (int i = 0; i < poolSize; i++)
             {
                 Transaction tx = Build.A.Transaction
-                    .WithNonce((UInt256)i)
+                    .WithNonce(i)
                     .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei + (UInt256)(100 - i))
@@ -187,7 +187,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(isBlob ? poolSize : 0));
 
             Transaction feeTooLowTx = Build.A.Transaction
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(1.GWei + UInt256.One)
@@ -213,7 +213,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -318,7 +318,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction nonceGapTx = Build.A.Transaction
@@ -326,7 +326,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce((UInt256)2)
+                .WithNonce(2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -336,7 +336,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_not_allow_to_have_pending_transactions_of_both_blob_type_and_other([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
         {
-            Transaction GetTx(bool isBlob, UInt256 nonce) => Build.A.Transaction
+            Transaction GetTx(bool isBlob, ulong nonce) => Build.A.Transaction
                     .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei)
@@ -347,8 +347,8 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
-            Transaction secondTx = GetTx(secondIsBlob, UInt256.One);
+            Transaction firstTx = GetTx(firstIsBlob, 0UL);
+            Transaction secondTx = GetTx(secondIsBlob, 1UL);
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(secondTx, TxHandlingOptions.None), Is.EqualTo(firstIsBlob ^ secondIsBlob ? AcceptTxResult.PendingTxsOfConflictingType : AcceptTxResult.Accepted));
@@ -368,14 +368,14 @@ namespace Nethermind.TxPool.Test
 
             Transaction oldTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction newTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(oldTx.MaxFeePerGas * 2)
                 .WithMaxPriorityFeePerGas(oldTx.MaxPriorityFeePerGas * 2)
                 .WithMaxFeePerBlobGas(oldTx.MaxFeePerBlobGas * 2)
@@ -411,7 +411,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction tx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithMaxFeePerBlobGas(UInt256.One)
@@ -442,7 +442,7 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction
                 .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithMaxFeePerBlobGas(isBlob ? UInt256.One : null)
@@ -476,14 +476,14 @@ namespace Nethermind.TxPool.Test
 
             Transaction firstTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(blobsInFirstTx)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction secondTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(blobsInSecondTx)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(firstTx.MaxFeePerGas * 2)
                 .WithMaxPriorityFeePerGas(firstTx.MaxPriorityFeePerGas * 2)
                 .WithMaxFeePerBlobGas(firstTx.MaxFeePerBlobGas * 2)
@@ -525,14 +525,14 @@ namespace Nethermind.TxPool.Test
 
             Transaction firstTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = false })
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction secondTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(2.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -564,7 +564,7 @@ namespace Nethermind.TxPool.Test
             Transaction firstTransaction = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerBlobGas(UInt256.Zero)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
                 .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -575,7 +575,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerBlobGas(supportsBlobs
                     ? UInt256.One
                     : UInt256.Zero)
-                .WithNonce(UInt256.One)
+                .WithNonce(1)
                 .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
                 .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -586,7 +586,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task should_allow_to_have_pending_transaction_of_other_type_if_conflicting_one_was_included([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
         {
-            Transaction GetTx(bool isBlob, UInt256 nonce) => Build.A.Transaction
+            Transaction GetTx(bool isBlob, ulong nonce) => Build.A.Transaction
                     .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei)
@@ -597,8 +597,8 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
-            Transaction secondTx = GetTx(secondIsBlob, UInt256.One);
+            Transaction firstTx = GetTx(firstIsBlob, 0UL);
+            Transaction secondTx = GetTx(secondIsBlob, 1UL);
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -641,7 +641,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task should_add_processed_txs_to_db()
         {
-            const long blockNumber = 358;
+            const ulong blockNumber = 358;
 
             BlobTxStorage blobTxStorage = new();
             ITxPoolConfig txPoolConfig = new TxPoolConfig()
@@ -682,7 +682,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task should_bring_back_reorganized_blob_txs()
         {
-            const long blockNumber = 358;
+            const ulong blockNumber = 358;
 
             BlobTxStorage blobTxStorage = new();
             ITxPoolConfig txPoolConfig = new TxPoolConfig()
@@ -843,7 +843,7 @@ namespace Nethermind.TxPool.Test
                 for (int i = 0; i < txsPerSender; i++)
                 {
                     Transaction tx = Build.A.Transaction
-                        .WithNonce((UInt256)i)
+                        .WithNonce(i)
                         .WithShardBlobTxTypeAndFields()
                         .WithMaxFeePerGas(1.GWei)
                         .WithMaxPriorityFeePerGas(1.GWei)
@@ -895,7 +895,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = hasTxCellProofs })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
@@ -951,7 +951,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
@@ -996,7 +996,7 @@ namespace Nethermind.TxPool.Test
                 }
             });
 
-            UInt256 nonce = 0;
+            ulong nonce = 0;
 
             TxPoolConfig txPoolConfig = new() { BlobsSupport = poolMode, Size = 10 };
             _txPool = CreatePool(txPoolConfig, provider);
@@ -1060,7 +1060,7 @@ namespace Nethermind.TxPool.Test
             await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);
         }
 
-        private Transaction CreateBlobTx(PrivateKey sender, UInt256 nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default) => Build.A.Transaction
+        private Transaction CreateBlobTx(PrivateKey sender, ulong nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default) => Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(blobCount: blobCount, spec: releaseSpec)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
@@ -1172,14 +1172,14 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction tx2 = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -1220,7 +1220,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -1259,14 +1259,14 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction tx2 = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -1303,14 +1303,14 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction txWithFullBlob = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
             Assert.That(txWithFullBlob.BlobVersionedHashes![0], Is.EqualTo(txWithSparseCells.BlobVersionedHashes![0]));
@@ -1414,7 +1414,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
@@ -1467,14 +1467,14 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction tx2 = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -1512,7 +1512,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
@@ -1570,7 +1570,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;

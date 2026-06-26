@@ -102,6 +102,7 @@ public class SyncedTxGossipPolicyTests
         public event EventHandler<SyncModeChangedEventArgs> Changing { add { } remove { } }
         public event EventHandler<SyncModeChangedEventArgs>? Changed;
         public Task StopAsync() => Task.CompletedTask;
+        public Task StartAsync() => Task.CompletedTask;
         public void Update() { }
         public void Dispose() { }
     }

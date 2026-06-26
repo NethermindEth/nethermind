@@ -18,27 +18,27 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
 
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(message.RequestId);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
+        writer.Encode(message.RequestId);
 
         int payloadContentLength = GetPayloadContentLength(message);
-        rlpStream.StartSequence(payloadContentLength);
+        writer.StartSequence(payloadContentLength);
 
         int hashesLength = Rlp.LengthOf(message.Hashes);
-        rlpStream.StartSequence(hashesLength);
+        writer.StartSequence(hashesLength);
 
         foreach (Hash256 hash in message.Hashes)
         {
-            rlpStream.Encode(hash);
+            writer.Encode(hash);
         }
 
-        rlpStream.Encode(message.CellMask);
+        writer.Encode(message.CellMask);
     }
 
     public GetCellsMessage72 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
 
-    private static GetCellsMessage72 Deserialize(ref Rlp.ValueDecoderContext ctx)
+    private static GetCellsMessage72 Deserialize(ref RlpReader ctx)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int checkPosition = ctx.Position + sequenceLength;
@@ -46,7 +46,7 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
 
         int payloadSequenceLength = ctx.ReadSequenceLength();
         int payloadCheckPosition = ctx.Position + payloadSequenceLength;
-        using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+        using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
         byte[] cellMask = ctx.DecodeByteArray(size: BlobCellMask.FixedByteLength);
 
         ctx.Check(payloadCheckPosition);

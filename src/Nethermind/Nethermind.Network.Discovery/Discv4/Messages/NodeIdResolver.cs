@@ -1,0 +1,14 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+
+namespace Nethermind.Network.Discovery.Discv4.Messages;
+
+public sealed class NodeIdResolver(IEcdsa ecdsa) : INodeIdResolver
+{
+    private readonly IEcdsa _ecdsa = ecdsa;
+
+    public PublicKey GetNodeId(ReadOnlySpan<byte> signature, int recoveryId, Span<byte> typeAndData) => _ecdsa.RecoverPublicKey(new Signature(signature, recoveryId), ValueKeccak.Compute(typeAndData))!;
+}

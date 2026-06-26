@@ -22,7 +22,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
     public NewPooledTransactionHashesMessage72 Deserialize(IByteBuffer byteBuffer) =>
         byteBuffer.DeserializeRlp(Deserialize);
 
-    private static NewPooledTransactionHashesMessage72 Deserialize(ref Rlp.ValueDecoderContext ctx)
+    private static NewPooledTransactionHashesMessage72 Deserialize(ref RlpReader ctx)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int checkPosition = ctx.Position + sequenceLength;
@@ -33,8 +33,8 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         try
         {
             types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
-            sizes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => DecodeTransactionSize(ref c), limit: SizesRlpLimit);
-            hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+            sizes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => DecodeTransactionSize(ref c), limit: SizesRlpLimit);
+            hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
             if (ctx.PeekNumberOfItemsRemaining(checkPosition, maxSearch: 2) != 1)
             {
                 throw new RlpException($"Wrong format of {nameof(NewPooledTransactionHashesMessage72)} message. Expected exactly one cell mask field.");
@@ -61,7 +61,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         }
     }
 
-    private static int DecodeTransactionSize(ref Rlp.ValueDecoderContext ctx)
+    private static int DecodeTransactionSize(ref RlpReader ctx)
     {
         int size = ctx.DecodePositiveInt();
         if (size == 0)
@@ -93,22 +93,22 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
 
         byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(message.Types.AsSpan());
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
+        writer.Encode(message.Types.AsSpan());
 
-        rlpStream.StartSequence(sizesLength);
+        writer.StartSequence(sizesLength);
         foreach (int size in message.Sizes.AsSpan())
         {
-            rlpStream.Encode(size);
+            writer.Encode(size);
         }
 
-        rlpStream.StartSequence(hashesLength);
+        writer.StartSequence(hashesLength);
         foreach (Hash256 hash in message.Hashes.AsSpan())
         {
-            rlpStream.Encode(hash);
+            writer.Encode(hash);
         }
 
-        rlpStream.Encode(message.CellMask);
+        writer.Encode(message.CellMask);
     }
 }

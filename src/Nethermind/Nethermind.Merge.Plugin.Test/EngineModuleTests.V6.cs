@@ -609,6 +609,27 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task GetBlobsV4_should_accept_hex_cell_indices_bitarray_over_json_rpc()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance, configurer: ConfigureBlobPoolAvailable);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        string response = await RpcTest.TestSerializedRequest(
+            rpcModule,
+            "engine_getBlobsV4",
+            "[]",
+            "0x00000000000000500000000010000400");
+
+        JsonNode? responseJson = JsonNode.Parse(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseJson?["error"], Is.Null);
+            Assert.That(responseJson?["result"], Is.Not.Null);
+        }
+    }
+
     private static void ConfigureBlobPoolAvailable(ContainerBuilder builder)
     {
         IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
@@ -697,6 +718,38 @@ public partial class EngineModuleTests
         {
             Assert.That(result.Result, Is.EqualTo(Result.Success));
             Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(BlobCellMask.Empty));
+        }
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_accept_hex_custody_columns_bitarray_over_json_rpc()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
+
+        var forkchoiceState = new
+        {
+            headBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            safeBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            finalizedBlockHash = chain.BlockTree.HeadHash.ToString(true)
+        };
+
+        string response = await RpcTest.TestSerializedRequest(
+            rpcModule,
+            "engine_forkchoiceUpdatedV4",
+            chain.JsonSerializer.Serialize(forkchoiceState),
+            null,
+            "0x00000000000000500000000010000400");
+
+        JsonNode? responseJson = JsonNode.Parse(response);
+        BlobCellMask expectedCustodyMask = BlobCellMask.FromIndices([60, 62, 100, 114]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseJson?["error"], Is.Null);
+            Assert.That(responseJson?["result"], Is.Not.Null);
+            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(expectedCustodyMask));
         }
     }
 
@@ -1000,7 +1053,7 @@ public partial class EngineModuleTests
         }
     }
 
-    private static (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) BuildTestTransactionsAndWithdrawal(ulong gasPrice, long gasLimit)
+    private static (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) BuildTestTransactionsAndWithdrawal(ulong gasPrice, ulong gasLimit)
     {
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
@@ -1159,7 +1212,7 @@ public partial class EngineModuleTests
                 UInt256[] extraReads = new UInt256[100];
                 for (int i = 0; i < extraReads.Length; i++)
                 {
-                    extraReads[i] = new UInt256((ulong)(1_000_000 + i));
+                    extraReads[i] = 1_000_000UL + (ulong)i;
                 }
                 modifiedAccounts[senderAddress] = CloneAccountChanges(entry, storageReadsOverride: [.. entry.StorageReads, .. extraReads]);
             }

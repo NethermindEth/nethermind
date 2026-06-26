@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -40,43 +40,40 @@ internal sealed class StateCompositionSnapshotStore(
         // still works. The reverse order (remove-first) would let PurgeOldEntries
         // delete the freshly written snapshot because LatestKey still pointed at
         // the already-removed old block.
-        long prevBlock = long.MinValue;
+        ulong prevBlock = 0;
+        bool hasPrev = false;
         byte[]? prevBytes = db.Get(LatestKey);
         if (prevBytes is not null && prevBytes.Length >= 8)
-            prevBlock = BinaryPrimitives.ReadInt64BigEndian(prevBytes);
+        {
+            prevBlock = BinaryPrimitives.ReadUInt64BigEndian(prevBytes);
+            hasPrev = true;
+        }
 
         Span<byte> key = stackalloc byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(key, snapshot.BlockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(key, snapshot.BlockNumber);
 
         int length = Decoder.GetLength(snapshot);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-        try
-        {
-            RlpStream stream = new(buffer);
-            Decoder.Encode(stream, snapshot);
-            db.PutSpan(key, buffer.AsSpan(0, length));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using ArrayPoolSpan<byte> buffer = new(length);
+        RlpWriter writer = new(buffer);
+        Decoder.Encode(ref writer, snapshot);
+        db.PutSpan(key, buffer);
 
         Span<byte> blockBytes = stackalloc byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(blockBytes, snapshot.BlockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(blockBytes, snapshot.BlockNumber);
         db.PutSpan(LatestKey, blockBytes);
 
-        if (prevBlock != long.MinValue && prevBlock != snapshot.BlockNumber)
+        if (hasPrev && prevBlock != snapshot.BlockNumber)
         {
             Span<byte> prevKey = stackalloc byte[8];
-            BinaryPrimitives.WriteInt64BigEndian(prevKey, prevBlock);
+            BinaryPrimitives.WriteUInt64BigEndian(prevKey, prevBlock);
             db.Remove(prevKey);
         }
     }
 
-    public StateCompositionSnapshot? ReadSnapshot(long blockNumber)
+    public StateCompositionSnapshot? ReadSnapshot(ulong blockNumber)
     {
         Span<byte> key = stackalloc byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(key, blockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(key, blockNumber);
 
         byte[]? data = db.Get(key);
         if (data is null) return null;
@@ -86,7 +83,7 @@ internal sealed class StateCompositionSnapshotStore(
         // to a fresh scan — callers don't need to distinguish "missing" from "corrupt".
         try
         {
-            Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
+            RlpReader ctx = new(data);
             return Decoder.Decode(ref ctx);
         }
         catch (Exception ex) when (ex is RlpException or InvalidDataException or EndOfStreamException or IOException)
@@ -103,7 +100,7 @@ internal sealed class StateCompositionSnapshotStore(
         byte[]? latestBytes = db.Get(LatestKey);
         if (latestBytes is null || latestBytes.Length < 8) return null;
 
-        long latestBlock = BinaryPrimitives.ReadInt64BigEndian(latestBytes);
+        ulong latestBlock = BinaryPrimitives.ReadUInt64BigEndian(latestBytes);
         return ReadSnapshot(latestBlock);
     }
 
