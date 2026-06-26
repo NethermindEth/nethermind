@@ -434,6 +434,102 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void PatriciaStorageBatch_ReplaysHashWritesInGlobalKeyOrder()
+    {
+        const int replayBatchSize = 2;
+        CountingNodeStorage nodeStorage = new();
+        PatriciaSnapTrieFactory factory = new(nodeStorage, LimboLogs.Instance, replayBatchSize);
+        ValueHash256 hash1 = new("0000000000000000000000000000000000000000000000000000000000000001");
+        ValueHash256 hash2 = new("0000000000000000000000000000000000000000000000000000000000000002");
+        ValueHash256 hash3 = new("0000000000000000000000000000000000000000000000000000000000000003");
+        ValueHash256 hash4 = new("0000000000000000000000000000000000000000000000000000000000000004");
+        ValueHash256[] inputHashes = [hash3, hash1, hash4, hash2];
+        TreePath path = TreePath.Empty;
+
+        using (ISnapStorageBatch batch = factory.StartStorageBatch()!)
+        {
+            INodeStorage.IWriteBatch writeBatch = (INodeStorage.IWriteBatch)batch;
+            for (int i = 0; i < inputHashes.Length; i++)
+            {
+                writeBatch.Set(null, path, inputHashes[i], [(byte)i], WriteFlags.DisableWAL);
+            }
+
+            batch.Commit();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.DisposedBatchSizes, Is.EqualTo(new[] { replayBatchSize, replayBatchSize }));
+            Assert.That(GetWrittenHashes(nodeStorage.Writes), Is.EqualTo(new[] { hash1, hash2, hash3, hash4 }));
+        }
+    }
+
+    [Test]
+    public void PatriciaStorageBatch_PreservesDuplicateHashWriteOrder()
+    {
+        CountingNodeStorage nodeStorage = new();
+        PatriciaSnapTrieFactory factory = new(nodeStorage, LimboLogs.Instance, disableWalBatchSize: 1);
+        ValueHash256 hash = TestItem.KeccakA.ValueHash256;
+        TreePath path = TreePath.Empty;
+
+        using (ISnapStorageBatch batch = factory.StartStorageBatch()!)
+        {
+            INodeStorage.IWriteBatch writeBatch = (INodeStorage.IWriteBatch)batch;
+            writeBatch.Set(null, path, hash, [1], WriteFlags.DisableWAL);
+            writeBatch.Set(null, path, hash, [2], WriteFlags.DisableWAL);
+
+            batch.Commit();
+        }
+
+        Assert.That(GetWrittenData(nodeStorage.Writes), Is.EqualTo(new byte[] { 1, 2 }));
+    }
+
+    [Test]
+    public void PatriciaStorageBatch_ReplaysHalfPathWritesInStorageKeyOrder()
+    {
+        const int replayBatchSize = 2;
+        CountingNodeStorage nodeStorage = new()
+        {
+            Scheme = INodeStorage.KeyScheme.HalfPath
+        };
+        PatriciaSnapTrieFactory factory = new(nodeStorage, LimboLogs.Instance, replayBatchSize);
+        Hash256 address1 = new(new ValueHash256("1000000000000000000000000000000000000000000000000000000000000000"));
+        Hash256 address2 = new(new ValueHash256("2000000000000000000000000000000000000000000000000000000000000000"));
+        TreePath path1 = TreePath.FromHexString("1000000000000000");
+        TreePath path2 = TreePath.FromHexString("2000000000000000");
+        TreePath longerPath2 = TreePath.FromHexString("2000000000000001");
+        ValueHash256 hash1 = new("0000000000000000000000000000000000000000000000000000000000000001");
+        ValueHash256 hash2 = new("0000000000000000000000000000000000000000000000000000000000000002");
+        NodeStorageWrite[] inputWrites =
+        [
+            new(address2, path1, hash1, [5]),
+            new(address1, path2, hash2, [4]),
+            new(address1, longerPath2, hash1, [3]),
+            new(address1, path1, hash2, [2]),
+            new(address1, path1, hash1, [1]),
+        ];
+        byte[] expectedData = GetHalfPathKeyOrderedData(inputWrites);
+
+        using (ISnapStorageBatch batch = factory.StartStorageBatch()!)
+        {
+            INodeStorage.IWriteBatch writeBatch = (INodeStorage.IWriteBatch)batch;
+            for (int i = 0; i < inputWrites.Length; i++)
+            {
+                NodeStorageWrite write = inputWrites[i];
+                writeBatch.Set(write.Address, write.Path, write.Hash, write.Data, WriteFlags.DisableWAL);
+            }
+
+            batch.Commit();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.DisposedBatchSizes, Is.EqualTo(new[] { replayBatchSize, replayBatchSize, 1 }));
+            Assert.That(GetWrittenData(nodeStorage.Writes), Is.EqualTo(expectedData));
+        }
+    }
+
+    [Test]
     public void PatriciaStorageBatch_UsesConfiguredReplayBatchSize()
     {
         const int slotCount = 5_000;
@@ -1290,6 +1386,8 @@ public class SnapProviderTests
     {
         public List<int> DisposedBatchSizes { get; } = [];
 
+        public List<NodeStorageWrite> Writes { get; } = [];
+
         public INodeStorage.KeyScheme Scheme { get; set; } = INodeStorage.KeyScheme.Hash;
 
         public bool RequirePath => false;
@@ -1324,6 +1422,11 @@ public class SnapProviderTests
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 _count++;
+                byte[] dataCopy = data.ToArray();
+                lock (nodeStorage.Writes)
+                {
+                    nodeStorage.Writes.Add(new NodeStorageWrite(address, path, currentNodeKeccak, dataCopy));
+                }
             }
 
             public void Dispose()
@@ -1337,6 +1440,53 @@ public class SnapProviderTests
                 nodeStorage.DisposedBatchSizes.Add(_count);
             }
         }
+    }
+
+    private readonly record struct NodeStorageWrite(Hash256? Address, TreePath Path, ValueHash256 Hash, byte[] Data);
+
+    private static byte[] GetHalfPathKeyOrderedData(NodeStorageWrite[] writes)
+    {
+        NodeStorageWrite[] orderedWrites = writes.ToArray();
+        Array.Sort(orderedWrites, CompareByHalfPathKey);
+
+        byte[] data = new byte[orderedWrites.Length];
+        for (int i = 0; i < orderedWrites.Length; i++)
+        {
+            data[i] = orderedWrites[i].Data[0];
+        }
+
+        return data;
+    }
+
+    private static int CompareByHalfPathKey(NodeStorageWrite x, NodeStorageWrite y)
+    {
+        ValueHash256? xAddress = x.Address;
+        ValueHash256? yAddress = y.Address;
+        byte[] xKey = NodeStorage.GetHalfPathNodeStoragePath(xAddress, x.Path, x.Hash);
+        byte[] yKey = NodeStorage.GetHalfPathNodeStoragePath(yAddress, y.Path, y.Hash);
+        return xKey.AsSpan().SequenceCompareTo(yKey);
+    }
+
+    private static ValueHash256[] GetWrittenHashes(List<NodeStorageWrite> writes)
+    {
+        ValueHash256[] hashes = new ValueHash256[writes.Count];
+        for (int i = 0; i < writes.Count; i++)
+        {
+            hashes[i] = writes[i].Hash;
+        }
+
+        return hashes;
+    }
+
+    private static byte[] GetWrittenData(List<NodeStorageWrite> writes)
+    {
+        byte[] data = new byte[writes.Count];
+        for (int i = 0; i < writes.Count; i++)
+        {
+            data[i] = writes[i].Data[0];
+        }
+
+        return data;
     }
 
     private sealed class RecordingCodeDb : TestMemDb

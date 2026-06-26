@@ -67,7 +67,7 @@ public class PatriciaSnapTrieFactory : ISnapTrieFactory
             lock (_lock)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                _writes.Add(new NodeWrite(address, path, currentNodeKeccak, dataCopy, writeFlags));
+                _writes.Add(new NodeWrite(_writes.Count, address, path, currentNodeKeccak, dataCopy, writeFlags));
             }
         }
 
@@ -78,6 +78,10 @@ public class PatriciaSnapTrieFactory : ISnapTrieFactory
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 _disposed = true;
             }
+
+            _writes.Sort(nodeStorage.Scheme == INodeStorage.KeyScheme.Hash
+                ? NodeWriteHashComparer.Instance
+                : NodeWriteStoragePathComparer.Instance);
 
             for (int writeIndex = 0; writeIndex < _writes.Count;)
             {
@@ -91,6 +95,53 @@ public class PatriciaSnapTrieFactory : ISnapTrieFactory
             }
         }
 
+        private sealed class NodeWriteHashComparer : IComparer<NodeWrite>
+        {
+            public static NodeWriteHashComparer Instance { get; } = new();
+
+            public int Compare(NodeWrite x, NodeWrite y)
+            {
+                int result = x.Hash.CompareTo(y.Hash);
+                return result != 0 ? result : x.Sequence.CompareTo(y.Sequence);
+            }
+        }
+
+        private sealed class NodeWriteStoragePathComparer : IComparer<NodeWrite>
+        {
+            private const int StateKeyLength = 42;
+            private const int StorageKeyLength = 74;
+            private const int TopStateBoundary = 5;
+
+            public static NodeWriteStoragePathComparer Instance { get; } = new();
+
+            public int Compare(NodeWrite x, NodeWrite y)
+            {
+                Span<byte> xKey = stackalloc byte[StorageKeyLength];
+                Span<byte> yKey = stackalloc byte[StorageKeyLength];
+                int result = GetHalfPathKey(xKey, x).SequenceCompareTo(GetHalfPathKey(yKey, y));
+                return result != 0 ? result : x.Sequence.CompareTo(y.Sequence);
+            }
+
+            private static ReadOnlySpan<byte> GetHalfPathKey(Span<byte> key, in NodeWrite write)
+            {
+                if (write.Address is null)
+                {
+                    key[0] = write.Path.Length <= TopStateBoundary ? (byte)0 : (byte)1;
+                    write.Path.Path.BytesAsSpan[..8].CopyTo(key[1..]);
+                    key[9] = (byte)write.Path.Length;
+                    write.Hash.Bytes.CopyTo(key[10..]);
+                    return key[..StateKeyLength];
+                }
+
+                key[0] = 2;
+                write.Address.Bytes.CopyTo(key[1..]);
+                write.Path.Path.BytesAsSpan[..8].CopyTo(key[33..]);
+                key[41] = (byte)write.Path.Length;
+                write.Hash.Bytes.CopyTo(key[42..]);
+                return key[..StorageKeyLength];
+            }
+        }
+
         public void Dispose()
         {
             lock (_lock)
@@ -99,6 +150,6 @@ public class PatriciaSnapTrieFactory : ISnapTrieFactory
             }
         }
 
-        private readonly record struct NodeWrite(Hash256? Address, TreePath Path, ValueHash256 Hash, byte[] Data, WriteFlags WriteFlags);
+        private readonly record struct NodeWrite(int Sequence, Hash256? Address, TreePath Path, ValueHash256 Hash, byte[] Data, WriteFlags WriteFlags);
     }
 }
