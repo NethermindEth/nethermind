@@ -8,6 +8,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Init.Modules;
@@ -42,8 +43,15 @@ public class HeadStateCacheModule(IBlocksConfig blocksConfig) : Module
             .AddSingleton<IShareableTxProcessorSource>(ctx =>
                 new ShareableTxProcessingSource(ctx.Resolve<HeadCachedReadOnlyTxProcessingEnvFactory>()))
 
+            // Direct state RPCs (eth_getBalance/eth_getStorageAt/…) read through the head cache too.
+            // Decorates the shared IStateReader; the updater below deliberately uses the raw
+            // GlobalStateReader to avoid a refresh-reads-the-cache-it-refreshes cycle.
+            .AddDecorator<IStateReader>((ctx, inner) => new HeadCachedStateReader(inner, ctx.Resolve<HeadStateCache>()))
+
             // Keeps the cache coherent with the canonical head; activated alongside the shareable source.
-            .AddSingleton<HeadStateCacheUpdater>()
+            .AddSingleton<HeadStateCacheUpdater, IBlockTree, HeadStateCache, IWorldStateManager, ILogManager, HeadStateDeltaBuffer>(
+                (blockTree, cache, worldStateManager, logManager, deltaBuffer) =>
+                    new HeadStateCacheUpdater(blockTree, cache, worldStateManager.GlobalStateReader, logManager, deltaBuffer))
             .ResolveOnServiceActivation<HeadStateCacheUpdater, IShareableTxProcessorSource>();
     }
 }

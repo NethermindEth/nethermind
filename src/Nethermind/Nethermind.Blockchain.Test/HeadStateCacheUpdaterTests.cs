@@ -5,7 +5,6 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -22,6 +21,10 @@ public class HeadStateCacheUpdaterTests
 {
     private static readonly Address A = TestItem.AddressA;
 
+    // Updates are applied on a background worker, so assertions poll for the expected state.
+    private const int PollMs = 5000;
+    private const int PollEveryMs = 10;
+
     [Test]
     public void Advances_cache_from_journal_delta_on_sequential_head()
     {
@@ -30,37 +33,30 @@ public class HeadStateCacheUpdaterTests
         FakeStateReader reader = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
 
-        _ = new HeadStateCacheUpdater(blockTree, cache, reader, LimboLogs.Instance, buffer);
-
-        // First head: no parent in cache -> flush, anchors at block0.
-        Block block0 = BlockWith(TestItem.KeccakA, parent: TestItem.KeccakH, stateRoot: TestItem.KeccakC, number: 0);
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block0));
-        Assert.That(cache.HeadHash, Is.EqualTo(TestItem.KeccakA));
-
-        // Warm the cache with the pre-block (block0) values for a hot account + slot.
-        StorageCell hotSlot = new(A, (UInt256)1);
-        cache.Accounts.Set(A, new Account(1, 100));
-        cache.Storage.Set(in hotSlot, [11]);
-
-        // block1 changes A's balance and slot 1; the journal delta carries both the changed account and slot.
-        Hash256 root1 = TestItem.KeccakD;
-        reader.Accounts[A] = new AccountStruct(2, (UInt256)999);
-        reader.Storage[(A, (UInt256)1)] = [99];
-        buffer.Store(1, root1, new HeadStateBlockDelta(Accounts(A), Slots(hotSlot), RequiresFlush: false));
-
-        Block block1 = BlockWith(TestItem.KeccakB, parent: TestItem.KeccakA, stateRoot: root1, number: 1);
-
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block1));
-
-        using (Assert.EnterMultipleScope())
+        using (new HeadStateCacheUpdater(blockTree, cache, reader, LimboLogs.Instance, buffer))
         {
-            Assert.That(cache.HeadHash, Is.EqualTo(TestItem.KeccakB));
+            // First head: no parent in cache -> flush, anchors at block0.
+            Block block0 = BlockWith(TestItem.KeccakA, parent: TestItem.KeccakH, stateRoot: TestItem.KeccakC, number: 0);
+            blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block0));
+            Assert.That(() => cache.HeadHash, Is.EqualTo(TestItem.KeccakA).After(PollMs, PollEveryMs));
 
-            Assert.That(cache.Accounts.TryGetValue(A, out Account? account), Is.True);
-            Assert.That(account!.Balance, Is.EqualTo((UInt256)999), "changed account refreshed to new value");
+            // Warm the cache with the pre-block (block0) values for a hot account + slot (after block0 settled).
+            StorageCell hotSlot = new(A, (UInt256)1);
+            cache.Accounts.Set(A, new Account(1, 100));
+            cache.Storage.Set(in hotSlot, [11]);
 
-            Assert.That(cache.Storage.TryGetValue(in hotSlot, out byte[]? slot), Is.True);
-            Assert.That(slot, Is.EqualTo(new byte[] { 99 }), "changed slot refreshed to new value");
+            // block1 changes A's balance and slot 1; the journal delta carries both the changed account and slot.
+            Hash256 root1 = TestItem.KeccakD;
+            reader.Accounts[A] = new AccountStruct(2, (UInt256)999);
+            reader.Storage[(A, (UInt256)1)] = [99];
+            buffer.Store(1, root1, new HeadStateBlockDelta(Accounts(A), Slots(hotSlot), RequiresFlush: false));
+
+            Block block1 = BlockWith(TestItem.KeccakB, parent: TestItem.KeccakA, stateRoot: root1, number: 1);
+            blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block1));
+
+            Assert.That(() => cache.HeadHash, Is.EqualTo(TestItem.KeccakB).After(PollMs, PollEveryMs));
+            Assert.That(() => AccountBalance(cache, A), Is.EqualTo((UInt256)999).After(PollMs, PollEveryMs), "changed account refreshed");
+            Assert.That(() => cache.Storage.TryGetValue(in hotSlot, out byte[]? v) ? v : null, Is.EqualTo(new byte[] { 99 }).After(PollMs, PollEveryMs), "changed slot refreshed");
         }
     }
 
@@ -69,26 +65,26 @@ public class HeadStateCacheUpdaterTests
     {
         HeadStateCache cache = new(depth: 2, accountSetsBits: 8, storageSetsBits: 8);
         HeadStateDeltaBuffer buffer = new();
-        FakeStateReader reader = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        _ = new HeadStateCacheUpdater(blockTree, cache, reader, LimboLogs.Instance, buffer);
+        using (new HeadStateCacheUpdater(blockTree, cache, new FakeStateReader(), LimboLogs.Instance, buffer))
+        {
+            Block block0 = BlockWith(TestItem.KeccakA, parent: TestItem.KeccakH, stateRoot: TestItem.KeccakC, number: 0);
+            blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block0));
+            Assert.That(() => cache.HeadHash, Is.EqualTo(TestItem.KeccakA).After(PollMs, PollEveryMs));
 
-        Block block0 = BlockWith(TestItem.KeccakA, parent: TestItem.KeccakH, stateRoot: TestItem.KeccakC, number: 0);
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block0));
+            StorageCell hotSlot = new(A, (UInt256)1);
+            cache.Storage.Set(in hotSlot, [11]);
 
-        StorageCell hotSlot = new(A, (UInt256)1);
-        cache.Storage.Set(in hotSlot, [11]);
+            // RequiresFlush delta: cache must drop everything (can't enumerate cleared slots) and re-anchor.
+            Hash256 root1 = TestItem.KeccakD;
+            buffer.Store(1, root1, new HeadStateBlockDelta(FrozenSet<AddressAsKey>.Empty, FrozenSet<StorageCell>.Empty, RequiresFlush: true));
+            Block block1 = BlockWith(TestItem.KeccakB, parent: TestItem.KeccakA, stateRoot: root1, number: 1);
+            blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block1));
 
-        // RequiresFlush delta: cache must drop everything (can't enumerate cleared slots) and re-anchor.
-        Hash256 root1 = TestItem.KeccakD;
-        buffer.Store(1, root1, new HeadStateBlockDelta(FrozenSet<AddressAsKey>.Empty, FrozenSet<StorageCell>.Empty, RequiresFlush: true));
-        Block block1 = BlockWith(TestItem.KeccakB, parent: TestItem.KeccakA, stateRoot: root1, number: 1);
-
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block1));
-
-        Assert.That(cache.HeadHash, Is.EqualTo(TestItem.KeccakB), "re-anchored at new head");
-        // After a flush the slot is gone from a head (depth 0) lookup until re-read.
-        Assert.That(cache.Storage.TryGetValue(in hotSlot, out _), Is.False);
+            Assert.That(() => cache.HeadHash, Is.EqualTo(TestItem.KeccakB).After(PollMs, PollEveryMs), "re-anchored at new head");
+            // After a flush the slot is gone from a head (depth 0) lookup until re-read.
+            Assert.That(() => cache.Storage.TryGetValue(in hotSlot, out _), Is.False.After(PollMs, PollEveryMs));
+        }
     }
 
     [Test]
@@ -97,20 +93,25 @@ public class HeadStateCacheUpdaterTests
         HeadStateCache cache = new(depth: 2, accountSetsBits: 8, storageSetsBits: 8);
         HeadStateDeltaBuffer buffer = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        _ = new HeadStateCacheUpdater(blockTree, cache, new FakeStateReader(), LimboLogs.Instance, buffer);
+        using (new HeadStateCacheUpdater(blockTree, cache, new FakeStateReader(), LimboLogs.Instance, buffer))
+        {
+            Block block0 = BlockWith(TestItem.KeccakA, parent: TestItem.KeccakH, stateRoot: TestItem.KeccakC, number: 0);
+            blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block0));
+            Assert.That(() => cache.HeadHash, Is.EqualTo(TestItem.KeccakA).After(PollMs, PollEveryMs));
 
-        Block block0 = BlockWith(TestItem.KeccakA, parent: TestItem.KeccakH, stateRoot: TestItem.KeccakC, number: 0);
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block0));
+            cache.Accounts.Set(A, new Account(1, 100));
 
-        cache.Accounts.Set(A, new Account(1, 100));
+            // Parent does not match current head -> treated as reorg/gap -> flush.
+            Block forked = BlockWith(TestItem.KeccakB, parent: TestItem.KeccakF, stateRoot: TestItem.KeccakD, number: 1);
+            blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(forked));
 
-        // Parent does not match current head -> treated as reorg/gap -> flush.
-        Block forked = BlockWith(TestItem.KeccakB, parent: TestItem.KeccakF, stateRoot: TestItem.KeccakD, number: 1);
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(forked));
-
-        Assert.That(cache.HeadHash, Is.EqualTo(TestItem.KeccakB));
-        Assert.That(cache.Accounts.TryGetValue(A, out _), Is.False, "flush cleared warmed entries");
+            Assert.That(() => cache.HeadHash, Is.EqualTo(TestItem.KeccakB).After(PollMs, PollEveryMs));
+            Assert.That(() => cache.Accounts.TryGetValue(A, out _), Is.False.After(PollMs, PollEveryMs), "flush cleared warmed entries");
+        }
     }
+
+    private static UInt256? AccountBalance(HeadStateCache cache, Address address)
+        => cache.Accounts.TryGetValue(address, out Account? account) ? account!.Balance : null;
 
     private static FrozenSet<StorageCell> Slots(params StorageCell[] cells) => new HashSet<StorageCell>(cells).ToFrozenSet();
 

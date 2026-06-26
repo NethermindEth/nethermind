@@ -39,18 +39,22 @@ public sealed class HeadStateDeltaCaptureScopeProvider(IWorldStateScopeProvider 
 
     private sealed class CaptureScope(IScope baseScope, HeadStateDeltaBuffer buffer) : IScope
     {
-        // Cap on accumulated cells: a scope normally spans a single block near the head, but a long
-        // sync branch reuses one scope across many blocks. Past the cap we stop tracking and signal a
-        // flush rather than grow unbounded (the consumer then rebuilds lazily).
+        // Cap on a single block's tracked cells: past it we stop tracking and signal a flush rather than
+        // grow unbounded (the consumer then rebuilds lazily).
         private const int MaxTrackedSlots = 1 << 21;
 
-        // Writes precede a block's commits and a scope spans one block in the live case, so the set is
-        // accumulated per scope (not reset per commit). Over-inclusion across a multi-block branch is
-        // safe: the consumer re-reads/defers the extra cells, which is correct, just less efficient.
-        private readonly HashSet<StorageCell> _slots = [];
-        private readonly HashSet<AddressAsKey> _accounts = [];
+        // A processing scope can span multiple blocks (a sync branch), so writes are bucketed per block.
+        // "_pending*" accumulate the current commit's writes (write batches merge into them); at each
+        // Commit they fold into the per-block "_block*" set, which is reset when the block number changes.
+        // This keeps the snapshot work O(block) rather than O(branch²) and the delta per-block-accurate.
+        private readonly HashSet<StorageCell> _pendingSlots = [];
+        private readonly HashSet<AddressAsKey> _pendingAccounts = [];
+        private readonly HashSet<StorageCell> _blockSlots = [];
+        private readonly HashSet<AddressAsKey> _blockAccounts = [];
         private readonly Lock _lock = new();
-        private volatile bool _requiresFlush;
+        private long _currentBlockNumber = -1;
+        private bool _pendingFlush;
+        private bool _blockFlush;
 
         // Storage-root computation runs the per-contract write batches in parallel
         // (PersistentStorageProvider.UpdateRootHashesMultiThread), so merges are locked. Each batch
@@ -58,19 +62,19 @@ public sealed class HeadStateDeltaCaptureScopeProvider(IWorldStateScopeProvider 
         // per-batch rather than per-key.
         internal void MergeSlots(List<StorageCell> cells)
         {
-            if (_requiresFlush || cells.Count == 0) return;
+            if (cells.Count == 0) return;
             lock (_lock)
             {
-                if (_requiresFlush) return;
+                if (_pendingFlush) return;
                 foreach (StorageCell cell in cells)
                 {
-                    if (_slots.Count >= MaxTrackedSlots)
+                    if (_pendingSlots.Count >= MaxTrackedSlots)
                     {
-                        _requiresFlush = true;
-                        _slots.Clear();
+                        _pendingFlush = true;
+                        _pendingSlots.Clear();
                         return;
                     }
-                    _slots.Add(cell);
+                    _pendingSlots.Add(cell);
                 }
             }
         }
@@ -80,26 +84,51 @@ public sealed class HeadStateDeltaCaptureScopeProvider(IWorldStateScopeProvider 
             if (addresses.Count == 0) return;
             lock (_lock)
             {
-                foreach (AddressAsKey address in addresses) _accounts.Add(address);
+                foreach (AddressAsKey address in addresses) _pendingAccounts.Add(address);
             }
         }
 
-        internal void RecordClear() => _requiresFlush = true;
+        internal void RecordClear()
+        {
+            lock (_lock) _pendingFlush = true;
+        }
 
         public void Commit(ulong blockNumber)
         {
             baseScope.Commit(blockNumber);
 
-            // Parallel storage workers have joined by the time Commit runs; snapshot under the lock for
-            // memory visibility. The block's final commit stores under its final state root.
+            // Parallel storage workers have joined by the time Commit runs. Fold this commit's pending
+            // writes into the current block's set (resetting it on a new block), then snapshot.
             FrozenSet<StorageCell> slots;
             FrozenSet<AddressAsKey> accounts;
+            bool flush;
             lock (_lock)
             {
-                slots = _slots.ToFrozenSet();
-                accounts = _accounts.ToFrozenSet();
+                if ((long)blockNumber != _currentBlockNumber)
+                {
+                    _blockSlots.Clear();
+                    _blockAccounts.Clear();
+                    _blockSlots.UnionWith(_pendingSlots);
+                    _blockAccounts.UnionWith(_pendingAccounts);
+                    _blockFlush = _pendingFlush;
+                    _currentBlockNumber = (long)blockNumber;
+                }
+                else
+                {
+                    _blockSlots.UnionWith(_pendingSlots);
+                    _blockAccounts.UnionWith(_pendingAccounts);
+                    _blockFlush |= _pendingFlush;
+                }
+
+                _pendingSlots.Clear();
+                _pendingAccounts.Clear();
+                _pendingFlush = false;
+
+                slots = _blockSlots.ToFrozenSet();
+                accounts = _blockAccounts.ToFrozenSet();
+                flush = _blockFlush;
             }
-            buffer.Store(blockNumber, baseScope.RootHash, new HeadStateBlockDelta(accounts, slots, _requiresFlush));
+            buffer.Store(blockNumber, baseScope.RootHash, new HeadStateBlockDelta(accounts, slots, flush));
         }
 
         public IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>

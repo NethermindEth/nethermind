@@ -5,9 +5,10 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -21,9 +22,18 @@ namespace Nethermind.Blockchain;
 /// (safe: reads then rebuild lazily via backfill).
 /// </summary>
 /// <remarks>
-/// Changed accounts come from <see cref="Block.AccountChanges"/> (always populated). Changed storage
-/// cells come, in priority order, from: the per-block journal capture (<see cref="HeadStateDeltaBuffer"/>,
-/// works on any node), the consensus Block Access List, or the BAL generated during processing.
+/// <para>
+/// Updates are applied on a single background worker, not on the <see cref="IBlockTree.BlockAddedToMain"/>
+/// handler thread, so the (potentially trie-bound) refresh never delays block processing or other event
+/// subscribers. Events are enqueued in order; if the worker falls behind the bounded queue drops events,
+/// which is safe — a dropped event makes the next one non-sequential, triggering a flush + lazy rebuild.
+/// </para>
+/// <para>
+/// Changed accounts and storage come, in priority order, from: the per-block journal capture
+/// (<see cref="HeadStateDeltaBuffer"/>, works on any node), the consensus Block Access List, or the BAL
+/// generated during processing. The pooled <see cref="Block.AccountChanges"/> is deliberately not read
+/// (the TxPool owns and disposes it concurrently).
+/// </para>
 /// </remarks>
 public sealed class HeadStateCacheUpdater : IDisposable
 {
@@ -32,7 +42,14 @@ public sealed class HeadStateCacheUpdater : IDisposable
     private readonly IStateReader _stateReader;
     private readonly HeadStateDeltaBuffer? _deltaBuffer;
     private readonly ILogger _logger;
-    private readonly Lock _lock = new();
+    private readonly Channel<(Block Block, bool HadPreviousBlock)> _queue =
+        Channel.CreateBounded<(Block, bool)>(new BoundedChannelOptions(256)
+        {
+            FullMode = BoundedChannelFullMode.DropWrite,
+            SingleReader = true
+        });
+    private readonly CancellationTokenSource _cts = new();
+    private readonly Task _worker;
 
     public HeadStateCacheUpdater(IBlockTree blockTree, HeadStateCache cache, IStateReader stateReader, ILogManager logManager, HeadStateDeltaBuffer? deltaBuffer = null)
     {
@@ -41,36 +58,52 @@ public sealed class HeadStateCacheUpdater : IDisposable
         _stateReader = stateReader;
         _deltaBuffer = deltaBuffer;
         _logger = logManager.GetClassLogger<HeadStateCacheUpdater>();
+        _worker = Task.Run(ProcessLoopAsync);
         _blockTree.BlockAddedToMain += OnBlockAddedToMain;
     }
 
     private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
     {
-        Block block = e.Block;
-        if (block.Hash is null) return;
+        if (e.Block.Hash is null) return;
+        // Enqueue for off-thread processing; never block the event source. A dropped event (queue full)
+        // self-heals: the next event is non-sequential and forces a flush.
+        _queue.Writer.TryWrite((e.Block, e.PreviousBlock is not null));
+    }
 
-        lock (_lock)
+    private async Task ProcessLoopAsync()
+    {
+        try
         {
-            try
+            await foreach ((Block block, bool hadPreviousBlock) in _queue.Reader.ReadAllAsync(_cts.Token))
             {
-                bool sequential = e.PreviousBlock is null
-                    && _cache.HeadHash is not null
-                    && _cache.HeadHash.Equals(block.ParentHash);
-
-                if (!sequential || !TryCollectChangedKeys(block, out FrozenSet<AddressAsKey> changedAccounts, out FrozenSet<StorageCell> changedSlots))
-                {
-                    _cache.Flush(block.Hash);
-                    return;
-                }
-
-                _cache.Advance(block.Hash, changedAccounts, changedSlots, new Refresher(_stateReader, block.Header));
+                Apply(block, hadPreviousBlock);
             }
-            catch (Exception ex)
+        }
+        catch (OperationCanceledException) { /* shutting down */ }
+    }
+
+    private void Apply(Block block, bool hadPreviousBlock)
+    {
+        if (block.Hash is null) return;
+        try
+        {
+            bool sequential = !hadPreviousBlock
+                && _cache.HeadHash is not null
+                && _cache.HeadHash.Equals(block.ParentHash);
+
+            if (!sequential || !TryCollectChangedKeys(block, out FrozenSet<AddressAsKey> changedAccounts, out FrozenSet<StorageCell> changedSlots))
             {
-                // Never serve stale state: drop everything and re-anchor at the new head.
-                if (_logger.IsWarn) _logger.Warn($"Head state cache update failed for {block.ToString(Block.Format.Short)}, flushing. {ex}");
-                if (block.Hash is not null) _cache.Flush(block.Hash);
+                _cache.Flush(block.Hash);
+                return;
             }
+
+            _cache.Advance(block.Hash, changedAccounts, changedSlots, new Refresher(_stateReader, block.Header));
+        }
+        catch (Exception ex)
+        {
+            // Never serve stale state: drop everything and re-anchor at the new head.
+            if (_logger.IsWarn) _logger.Warn($"Head state cache update failed for {block.ToString(Block.Format.Short)}, flushing. {ex}");
+            _cache.Flush(block.Hash);
         }
     }
 
@@ -129,7 +162,14 @@ public sealed class HeadStateCacheUpdater : IDisposable
         return true;
     }
 
-    public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
+    public void Dispose()
+    {
+        _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
+        _queue.Writer.TryComplete();
+        _cts.Cancel();
+        try { _worker.Wait(TimeSpan.FromSeconds(1)); } catch { /* best-effort shutdown */ }
+        _cts.Dispose();
+    }
 
     private sealed class Refresher(IStateReader stateReader, BlockHeader header) : IHeadStateRefresher
     {
