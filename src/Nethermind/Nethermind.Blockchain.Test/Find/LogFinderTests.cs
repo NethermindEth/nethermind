@@ -32,8 +32,6 @@ namespace Nethermind.Blockchain.Test.Find;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class LogFinderTests
 {
-    private const int DefaultChainLength = 5;
-
     private IBlockTree _blockTree = null!;
     private BlockTree _rawBlockTree = null!;
     private IReceiptStorage _receiptStorage = null!;
@@ -45,7 +43,7 @@ public class LogFinderTests
     [SetUp]
     public void SetUp() => SetUp(true);
 
-    private void SetUp(bool allowReceiptIterator, int chainLength = DefaultChainLength)
+    private void SetUp(bool allowReceiptIterator, int chainLength = 5)
     {
         _specProvider = Substitute.For<ISpecProvider>();
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip155Enabled.Returns(true);
