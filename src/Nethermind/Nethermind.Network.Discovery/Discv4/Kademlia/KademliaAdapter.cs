@@ -27,7 +27,7 @@ public sealed class KademliaAdapter(
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     ILogManager logManager
-) : KademliaAdapterBase("discv4", "ENR response"), IKademliaAdapter
+) : KademliaAdapterBase("discv4"), IKademliaAdapter
 {
     private const int MaxNodesPerNeighborsMsg = 12;
 
@@ -232,13 +232,11 @@ public sealed class KademliaAdapter(
         return response?.NodeRecord;
     }
 
-    protected override bool IsAcceptableRemoteRecord(Node node, NodeRecord record)
+    protected override bool IsEnrValidForNode(Node node, NodeRecord record)
         => HasExpectedNodeId(record, node.Id);
 
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
-
-    protected override string UnexpectedRemoteRecordReason => "record belongs to a different node";
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
     {

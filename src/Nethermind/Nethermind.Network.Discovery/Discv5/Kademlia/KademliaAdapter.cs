@@ -32,7 +32,7 @@ public sealed class KademliaAdapter(
     ICryptoRandom cryptoRandom,
     IKademliaDistance<Hash256> distance,
     IDiscv5RecordFilter recordFilter,
-    ILogManager logManager) : KademliaAdapterBase("discv5", "self-record response"), IKademliaAdapter
+    ILogManager logManager) : KademliaAdapterBase("discv5"), IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
     private const int MaxEnrsPerNodesMessage = 3;
