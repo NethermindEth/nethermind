@@ -8,8 +8,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Blockchain;
 
 /// <summary>
-/// Default policy: an unresolvable in-window hash is an invariant violation, so canonical block processing
-/// fails loud rather than silently computing a wrong (zero) BLOCKHASH.
+/// Default policy: treat an unresolvable in-window hash as an invariant violation and fail loud (canonical processing).
 /// </summary>
 public sealed class ThrowingUnresolvedBlockhashPolicy : IUnresolvedBlockhashPolicy
 {

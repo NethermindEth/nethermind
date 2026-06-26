@@ -24,9 +24,6 @@ namespace Nethermind.Blockchain
         public const ulong MaxDepth = 256;
         private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
         private readonly ILogger _logger = logManager?.GetClassLogger<BlockhashProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-
-        // How to handle an in-window ancestor whose hash can't be resolved. Canonical processing fails loud;
-        // eth_simulateV1 injects a best-effort policy that returns null so the EVM pushes 0.
         private readonly IUnresolvedBlockhashPolicy _unresolvedBlockhashPolicy = unresolvedBlockhashPolicy ?? ThrowingUnresolvedBlockhashPolicy.Instance;
         private Hash256[]? _hashes;
         private long _prefetchVersion;

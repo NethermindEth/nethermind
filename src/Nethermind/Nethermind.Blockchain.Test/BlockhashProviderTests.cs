@@ -405,7 +405,6 @@ public class BlockhashProviderTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Throws_when_in_window_hash_cannot_be_resolved()
     {
-        // Canonical processing treats an unresolvable in-window hash as an invariant violation: fail loud, not push 0.
         IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
         BlockhashProvider provider = CreateBlockHashProvider(headerFinder, Frontier.Instance);
         BlockHeader current = Build.A.BlockHeader.WithNumber(300).WithParentHash(TestItem.KeccakA).TestObject;

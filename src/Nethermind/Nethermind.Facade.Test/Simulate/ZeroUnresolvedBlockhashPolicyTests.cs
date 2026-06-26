@@ -25,7 +25,6 @@ public class ZeroUnresolvedBlockhashPolicyTests
         BlockhashProvider sut = new(cache, Substitute.For<IWorldState>(), LimboLogs.Instance, new ZeroUnresolvedBlockhashPolicy());
         BlockHeader current = Build.A.BlockHeader.WithNumber(300).WithParentHash(TestItem.KeccakA).TestObject;
 
-        // Same in-window cache miss that throws for canonical BlockhashProvider must yield 0 (null) under simulate.
         Assert.That(sut.GetBlockhash(current, 100, Frontier.Instance), Is.Null);
     }
 }

@@ -54,7 +54,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddModule(validationModules)
-            // Best-effort: resolve unresolvable BLOCKHASH ancestors as 0 instead of throwing as canonical does.
             .AddSingleton<IUnresolvedBlockhashPolicy, ZeroUnresolvedBlockhashPolicy>()
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
