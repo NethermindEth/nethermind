@@ -63,6 +63,8 @@ public partial class BlockProcessor(
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private ISystemContractHandler _systemContractHandler;
 
+    private const int ReceiptsRootParallelThreshold = 16;
+
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
@@ -150,11 +152,19 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        // Compute the receipts root on the thread pool, overlapped with the post-execution work below
-        // (miner rewards, withdrawals, execution requests, state commit and state-root computation).
-        // CalculateBlooms above has already populated the per-receipt Bloom fields the trie encoding reads,
-        // and the only overlapped consumer of `receipts` (ProcessExecutionRequests) reads them, so there is no race.
-        Task<Hash256> receiptsRootTask = Task.Run(() => CalculateReceiptsRoot(receipts, spec, block));
+        // Overlapped readers of `receipts` only touch fields already populated by CalculateBlooms, so no data race.
+        Task<Hash256>? receiptsRootTask = null;
+        if (receipts.Length >= ReceiptsRootParallelThreshold)
+        {
+            using (ExecutionContext.SuppressFlow())
+            {
+                receiptsRootTask = Task.Run(() => CalculateReceiptsRoot(receipts, spec, block));
+            }
+        }
+        else
+        {
+            header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
+        }
 
         ApplyMinerRewards(block, blockTracer, spec);
         _systemContractHandler.ProcessWithdrawals(block, spec);
@@ -181,7 +191,11 @@ public partial class BlockProcessor(
 
         _balManager.SetBlockAccessList(block);
 
-        header.ReceiptsRoot = receiptsRootTask.GetAwaiter().GetResult();
+        if (receiptsRootTask is not null)
+        {
+            header.ReceiptsRoot = receiptsRootTask.GetAwaiter().GetResult();
+        }
+
         header.Hash = header.CalculateHash();
 
         return receipts;
