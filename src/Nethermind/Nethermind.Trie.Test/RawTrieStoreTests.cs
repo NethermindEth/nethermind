@@ -16,9 +16,9 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class RawTrieStoreTests
 {
-    [TestCase(WriteFlags.None, new[] { 16385 })]
-    [TestCase(WriteFlags.DisableWAL, new[] { 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 1 })]
-    public void Raw_scoped_committer_splits_only_disable_wal_batches(WriteFlags writeFlags, int[] expectedBatchSizes)
+    [TestCase(WriteFlags.None, 1, 16_385, 16_385)]
+    [TestCase(WriteFlags.DisableWAL, 17, 1024, 1)]
+    public void Raw_scoped_committer_splits_only_disable_wal_batches(WriteFlags writeFlags, int expectedBatchCount, int expectedMaxBatchSize, int expectedLastBatchSize)
     {
         CountingNodeStorage nodeStorage = new();
         using (ICommitter committer = new RawScopedTrieStore.Committer(nodeStorage, null, writeFlags))
@@ -30,7 +30,12 @@ public class RawTrieStoreTests
             }
         }
 
-        Assert.That(nodeStorage.DisposedBatchSizes, Is.EqualTo(expectedBatchSizes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.Count.EqualTo(expectedBatchCount));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(expectedMaxBatchSize));
+            Assert.That(nodeStorage.DisposedBatchSizes[^1], Is.EqualTo(expectedLastBatchSize));
+        }
     }
 
     [Test]

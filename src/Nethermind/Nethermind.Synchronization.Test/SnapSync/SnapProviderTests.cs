@@ -401,7 +401,7 @@ public class SnapProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(nodeStorage.DisposedBatchSizes, Has.Count.GreaterThan(1));
-            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(2 * 1024));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(1024));
         }
     }
 
