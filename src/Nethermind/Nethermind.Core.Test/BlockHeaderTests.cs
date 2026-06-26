@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -20,40 +19,20 @@ namespace Nethermind.Core.Test;
 public class BlockHeaderTests
 {
     /// <summary>
-    /// Guards the hand-maintained roster in <see cref="BlockHeader.CloneForProcessing"/> /
-    /// <c>CopyProcessingFields</c>: every settable member must be carried into the processing
-    /// clone except the execution outputs the processor recomputes (state root, gas used, bloom).
+    /// Guards the hand-maintained roster in <see cref="BlockHeader.CloneForProcessing"/>: every settable
+    /// member must be carried into the clone except execution outputs the processor recomputes.
     /// </summary>
     [Test]
     public void CloneForProcessing_carries_every_consensus_input()
     {
-        // Reset because processing recomputes them; everything else must be preserved.
-        HashSet<string> recomputedOutputs =
-        [
-            nameof(BlockHeader.StateRoot),
-            nameof(BlockHeader.GasUsed),
-            nameof(BlockHeader.Bloom),
-        ];
-
         BlockHeader src = new(
             Keccak.Compute("parent"), Keccak.Compute("uncles"), Address.Zero, 1, 2, 3, 4, [5]);
         BlockHeaderMembers.FillWithDistinctValues(src);
 
         BlockHeader clone = src.CloneForProcessing();
 
-        using (Assert.EnterMultipleScope())
-        {
-            foreach (PropertyInfo property in BlockHeaderMembers.SettableProperties)
-            {
-                if (recomputedOutputs.Contains(property.Name)) continue;
-                Assert.That(property.GetValue(clone), Is.EqualTo(property.GetValue(src)), property.Name);
-            }
-
-            foreach (FieldInfo field in BlockHeaderMembers.PublicFields)
-            {
-                Assert.That(field.GetValue(clone), Is.EqualTo(field.GetValue(src)), field.Name);
-            }
-        }
+        BlockHeaderMembers.AssertCarriesAllMembers(src, clone,
+            nameof(BlockHeader.StateRoot), nameof(BlockHeader.GasUsed), nameof(BlockHeader.Bloom));
     }
 
     [Test]

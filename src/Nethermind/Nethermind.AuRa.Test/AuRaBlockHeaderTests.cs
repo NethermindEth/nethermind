@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Reflection;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,17 +21,6 @@ public class AuRaBlockHeaderTests
 
         AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(src);
 
-        using (Assert.EnterMultipleScope())
-        {
-            foreach (PropertyInfo property in BlockHeaderMembers.SettableProperties)
-            {
-                Assert.That(property.GetValue(upgraded), Is.EqualTo(property.GetValue(src)), property.Name);
-            }
-
-            foreach (FieldInfo field in BlockHeaderMembers.PublicFields)
-            {
-                Assert.That(field.GetValue(upgraded), Is.EqualTo(field.GetValue(src)), field.Name);
-            }
-        }
+        BlockHeaderMembers.AssertCarriesAllMembers(src, upgraded);
     }
 }

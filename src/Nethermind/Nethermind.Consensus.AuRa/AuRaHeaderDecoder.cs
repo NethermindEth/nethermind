@@ -46,11 +46,9 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
     }
 
     /// <remarks>
-    /// Between <c>AuRaBlockProducer.PrepareBlock</c> (stamps step) and <c>AuRaSealer.SealBlock</c>
-    /// (stamps signature) an <see cref="AuRaBlockHeader"/> has a null <c>AuRaSignature</c>, which would
-    /// encode as an empty byte string. This is safe because such unsealed headers are never persisted
-    /// or sent over P2P — encoding only ever runs after the seal is complete (or on the
-    /// <see cref="RlpBehaviors.ForSealing"/> path, which omits the seal section entirely).
+    /// A pre-seal header has a null <c>AuRaSignature</c> that encodes as an empty string; safe because
+    /// unsealed headers are never persisted or sent — encoding runs only after sealing (the
+    /// <see cref="RlpBehaviors.ForSealing"/> path omits the seal entirely).
     /// </remarks>
     protected override void EncodeSeal<TWriter>(ref TWriter writer, BlockHeader header)
     {

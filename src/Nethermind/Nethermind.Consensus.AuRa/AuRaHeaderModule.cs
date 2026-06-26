@@ -46,11 +46,9 @@ public class AuRaGenesisBuilder(IGenesisBuilder inner) : IGenesisBuilder
         Block genesis = inner.Build();
         if (genesis.Header is AuRaBlockHeader) return genesis;
 
-        // Reached only when the chainspec declares `authorityRound` but omits the genesis signature.
-        // The zero signature gives this genesis a `step`+`signature` shape rather than master's
-        // `mixHash`+`nonce`, so its hash differs from master for such a chainspec. No bundled AuRa
-        // chain hits this — gnosis/chiado both ship the 65-byte signature — so it is effectively
-        // unreachable; the fallback exists only to keep genesis a valid AuRa header.
+        // Reached only if a chainspec declares `authorityRound` but omits the genesis signature
+        // (no bundled chain does). The zero signature shifts genesis to a step+signature shape,
+        // diverging from master's mixHash+nonce hash for that chainspec.
         AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(genesis.Header);
         upgraded.AuRaSignature = new byte[65];
         upgraded.Hash = new Hash256(upgraded.CalculateHash());
