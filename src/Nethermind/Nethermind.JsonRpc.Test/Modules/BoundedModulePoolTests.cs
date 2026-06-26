@@ -62,7 +62,6 @@ public class BoundedModulePoolTests
             new BlocksConfig(),
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogIndexConfig>(),
-            new ReceiptConfig(),
             new EthCapabilitiesProvider(
                 blockTree.AsReadOnly(),
                 Substitute.For<IStateBoundary>(),

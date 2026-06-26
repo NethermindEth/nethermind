@@ -948,34 +948,6 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
-    [TestCase(2, """{"fromBlock":"0x0","toBlock":"0x3"}""", true)]   // range 4 exceeds limit 2 -> rejected
-    [TestCase(4, """{"fromBlock":"0x0","toBlock":"0x3"}""", false)]  // range 4 within limit 4 -> allowed
-    [TestCase(0, """{"fromBlock":"0x0","toBlock":"0x3"}""", false)]  // limit disabled -> allowed
-    public async Task Eth_get_logs_enforces_max_block_depth(int maxBlockDepth, string parameter, bool shouldReject)
-    {
-        using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-            .Returns([CreateTestFilterLog()]);
-
-        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: false)
-            .WithBlockchainBridge(bridge)
-            .WithReceiptConfig(new ReceiptConfig { MaxBlockDepth = maxBlockDepth })
-            .Build();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
-
-        if (shouldReject)
-        {
-            Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidParams}"));
-            Assert.That(serialized, Does.Contain(nameof(IReceiptConfig.MaxBlockDepth)));
-        }
-        else
-        {
-            Assert.That(serialized, Is.EqualTo(ExpectedFilterLogResponse));
-        }
-    }
-
     [TestCase("eth_getLogs", "{}")]
     [TestCase("eth_getFilterLogs", "0x01")]
     public async Task Eth_logs_ignore_max_logs_response_body_size_when_stream_mode_disabled(string method, string parameter)
