@@ -351,10 +351,21 @@ public class WireTests
     {
         public async ValueTask DisposeAsync()
         {
-            await Adapter.DisposeAsync();
-            await Channel.CloseAsync();
-            Channel.FinishAndReleaseAll();
-            PacketCodec.Dispose();
+            try
+            {
+                await Adapter.DisposeAsync();
+            }
+            finally
+            {
+                try
+                {
+                    Channel.FinishAndReleaseAll();
+                }
+                finally
+                {
+                    PacketCodec.Dispose();
+                }
+            }
         }
     }
 
