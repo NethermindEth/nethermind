@@ -82,19 +82,77 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(2 * 1024 * 1024)]
     public void Large_pooled_buffer_is_zeroed_on_reuse(int size)
     {
-        EvmPooledMemory dirty = new();
-        UInt256 zero = UInt256.Zero;
-        Span<byte> pattern = new byte[size];
-        pattern.Fill(0xff);
-        Assert.That(dirty.TrySave(in zero, pattern), Is.True);
-        dirty.Dispose();
+        PollutePoolWith(size, 0xff);
 
         EvmPooledMemory clean = new();
+        UInt256 zero = UInt256.Zero;
         UInt256 length = (UInt256)size;
         Assert.That(clean.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
         Assert.That(data.Length, Is.EqualTo(size));
         Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
         clean.Dispose();
+    }
+
+    [Test]
+    public void MStore8_then_load_reads_word_padding_as_zero()
+    {
+        PollutePoolWith(1024, 0xff);
+
+        EvmPooledMemory memory = new();
+        UInt256 zero = UInt256.Zero;
+        Assert.That(memory.TrySaveByte(in zero, 0x11), Is.True);
+
+        Assert.That(memory.TryLoad(in zero, 32, out ReadOnlyMemory<byte> data), Is.True);
+        Assert.That(data.Span[0], Is.EqualTo((byte)0x11));
+        Assert.That(data.Span[1..].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "word padding leaked stale data");
+        memory.Dispose();
+    }
+
+    [Test]
+    public void MCopy_with_source_above_destination_reads_undefined_source_as_zero()
+    {
+        PollutePoolWith(1024, 0xff);
+
+        EvmPooledMemory memory = new();
+        UInt256 zero = UInt256.Zero;
+        memory.CalculateMemoryCost(in zero, 1024UL, out bool outOfGas);
+        Assert.That(outOfGas, Is.False);
+
+        UInt256 destination = UInt256.Zero;
+        UInt256 source = (UInt256)512;
+        memory.CopyAfterGas(in destination, in source, 512);
+
+        Assert.That(memory.TryLoad(in destination, 512, out ReadOnlyMemory<byte> data), Is.True);
+        Assert.That(data.Span.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "MCOPY copied stale data from an undefined source region");
+        memory.Dispose();
+    }
+
+    [Test]
+    public void Grow_preserves_defined_prefix_and_zeroes_exposed_tail()
+    {
+        const int large = 128 * 1024;
+        PollutePoolWith(large, 0xff);
+
+        EvmPooledMemory memory = new();
+        UInt256 zero = UInt256.Zero;
+        Assert.That(memory.TrySaveByte(in zero, 0x11), Is.True);
+
+        UInt256 length = (UInt256)large;
+        Assert.That(memory.TryLoad(in zero, in length, out ReadOnlyMemory<byte> data), Is.True);
+        Assert.That(data.Length, Is.EqualTo(large));
+        Assert.That(data.Span[0], Is.EqualTo((byte)0x11), "defined prefix lost across grow");
+        Assert.That(data.Span[1..].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "grown tail leaked stale data");
+        memory.Dispose();
+    }
+
+    private static void PollutePoolWith(int size, byte pattern)
+    {
+        EvmPooledMemory dirty = new();
+        UInt256 zero = UInt256.Zero;
+        Span<byte> bytes = new byte[size];
+        bytes.Fill(pattern);
+        Assert.That(dirty.TrySave(in zero, bytes), Is.True);
+        dirty.Dispose();
     }
 
     [Test]
