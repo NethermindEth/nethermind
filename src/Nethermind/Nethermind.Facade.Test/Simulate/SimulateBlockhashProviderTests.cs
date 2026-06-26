@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,32 +17,24 @@ namespace Nethermind.Facade.Test.Simulate;
 [TestFixture]
 public class SimulateBlockhashProviderTests
 {
-    [Test]
-    public void Returns_null_when_inner_cannot_resolve_hash()
+    private static IEnumerable<Hash256?> InnerResults()
     {
-        IBlockhashProvider inner = Substitute.For<IBlockhashProvider>();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.BestKnownNumber.Returns(100ul);
-        inner.GetBlockhash(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<IReleaseSpec>()).Returns((Hash256?)null);
-
-        SimulateBlockhashProvider sut = new(inner, blockTree);
-
-        // eth_simulateV1 is best-effort: an unresolvable ancestor hash must yield 0 (null), not fail the request.
-        Assert.That(sut.GetBlockhash(Build.A.BlockHeader.WithNumber(50).TestObject, 40, Substitute.For<IReleaseSpec>()), Is.Null);
+        yield return null;             // unresolvable ancestor -> 0
+        yield return TestItem.KeccakA; // resolved hash
     }
 
-    [Test]
-    public void Passes_through_inner_hash_in_normal_flow()
+    [TestCaseSource(nameof(InnerResults))]
+    public void Forwards_request_and_returns_inner_result(Hash256? innerResult)
     {
         IBlockhashProvider inner = Substitute.For<IBlockhashProvider>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.BestKnownNumber.Returns(100ul);
         BlockHeader current = Build.A.BlockHeader.WithNumber(50).TestObject;
-        inner.GetBlockhash(current, 40, Arg.Any<IReleaseSpec>()).Returns(TestItem.KeccakA);
+        inner.GetBlockhash(current, 40, Arg.Any<IReleaseSpec>()).Returns(innerResult);
 
         SimulateBlockhashProvider sut = new(inner, blockTree);
 
-        Assert.That(sut.GetBlockhash(current, 40, Substitute.For<IReleaseSpec>()), Is.EqualTo(TestItem.KeccakA));
+        Assert.That(sut.GetBlockhash(current, 40, Substitute.For<IReleaseSpec>()), Is.EqualTo(innerResult));
     }
 
     [Test]
@@ -56,7 +49,7 @@ public class SimulateBlockhashProviderTests
 
         SimulateBlockhashProvider sut = new(inner, blockTree);
 
-        // Requesting a block beyond best-known (150 > 100) clamps to (BestSuggestedHeader, BestKnownNumber).
+        // Requesting 150 (> best-known 100) clamps to (BestSuggestedHeader, BestKnownNumber).
         Assert.That(sut.GetBlockhash(Build.A.BlockHeader.WithNumber(151).TestObject, 150, Substitute.For<IReleaseSpec>()), Is.EqualTo(TestItem.KeccakB));
     }
 }
