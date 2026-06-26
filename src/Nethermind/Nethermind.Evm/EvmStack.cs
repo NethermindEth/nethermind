@@ -1615,13 +1615,15 @@ public ref struct EvmStack
         ulong r1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
         ulong r2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
         ulong r3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
-        ulong low = Nethermind.Core.Extensions.ZkBitOperations.Bswap64(r3);
+        ulong low = ZkEvmBitOperations.Bswap64(r3);
         return (r0 | r1 | r2) == 0
             ? new UInt256(low, 0, 0, 0)
-            : new UInt256(low,
-                Nethermind.Core.Extensions.ZkBitOperations.Bswap64(r2),
-                Nethermind.Core.Extensions.ZkBitOperations.Bswap64(r1),
-                Nethermind.Core.Extensions.ZkBitOperations.Bswap64(r0));
+            : new UInt256(
+                low,
+                ZkEvmBitOperations.Bswap64(r2),
+                ZkEvmBitOperations.Bswap64(r1),
+                ZkEvmBitOperations.Bswap64(r0)
+            );
     }
 #endif
 

@@ -17,7 +17,7 @@ using Nethermind.Core.Collections;
 // RISC-V has no CRC32 instruction; the BCL's BitOperations.Crc32C degrades to a
 // slow software loop. Redirect every BitOperations use in this file to a
 // multiply-fold substitute that lowers to a single hardware MUL.
-using BitOperations = Nethermind.Core.Extensions.ZkBitOperations;
+using BitOperations = Nethermind.Core.Extensions.ZkEvmBitOperations;
 #endif
 
 namespace Nethermind.Core.Extensions
