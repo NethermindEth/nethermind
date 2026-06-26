@@ -535,9 +535,21 @@ namespace Nethermind.Db.Test
                 Assert.That(options.DirtyPagesReserveLimit, Is.EqualTo(65_536));
                 Assert.That(options.TransactionDirtyPagesLimit, Is.EqualTo(65_536));
                 Assert.That(options.TransactionDirtyPagesInitial, Is.EqualTo(8_192));
+                Assert.That(options.EnableBatchGrouping, Is.False);
                 Assert.That(options.MaxBatchGroupOperations, Is.EqualTo(MdbxTuningOptions.DefaultStateMaxBatchGroupOperations));
             }
         }
+
+        [Test]
+        public void Mdbx_tuning_allows_state_batch_grouping_override() =>
+            WithEnvironmentVariable("NETHERMIND_MDBX_BATCH_GROUP", "true", () =>
+            {
+                MdbxTuningOptions options = MdbxTuningOptions.ReadFromEnvironment(
+                    LimboLogs.Instance.GetClassLogger<DbOnTheRocksTests>(),
+                    isStateDb: true);
+
+                Assert.That(options.EnableBatchGrouping, Is.True);
+            });
 
         [TestCase("blocks")]
         [TestCase("state/blocks")]
