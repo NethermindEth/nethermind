@@ -26,9 +26,8 @@ public class IndexedLogFinder(
     ILogManager logManager,
     IReceiptsRecovery receiptsRecovery,
     ILogIndexStorage logIndexStorage,
-    IReceiptConfig receiptConfig,
     int minBlocksToUseIndex = 32)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
 
@@ -36,9 +35,6 @@ public class IndexedLogFinder(
         GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
             ? base.FindLogs(filter, fromBlock, toBlock, cancellationToken)
             : FindIndexedLogs(filter, fromBlock, toBlock, indexRange, cancellationToken);
-
-    // no limits if log index is enabled
-    protected override void EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock) { }
 
     private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
     {

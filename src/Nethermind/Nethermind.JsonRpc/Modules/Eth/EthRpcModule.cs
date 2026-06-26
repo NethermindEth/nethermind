@@ -71,6 +71,7 @@ public partial class EthRpcModule(
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
     ILogIndexConfig? logIndexConfig,
+    IReceiptConfig receiptConfig,
     ulong? secondsPerSlot,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider) : IEthRpcModule
@@ -97,6 +98,7 @@ public partial class EthRpcModule(
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
+    private readonly IReceiptConfig _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
     private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
@@ -891,6 +893,21 @@ public partial class EthRpcModule(
 
             BlockHeader fromBlockHeader = fromResult.Object!;
             BlockHeader toBlockHeader = toResult.Object!;
+
+            // The range cap guards against unbounded bloom scans. It is skipped when LogIndex is enabled,
+            // as indexed lookups don't scan block-by-block.
+            int maxBlockDepth = _receiptConfig.MaxBlockDepth;
+            if (logIndexConfig?.Enabled is not true && maxBlockDepth > 0 && toBlockHeader.Number >= fromBlockHeader.Number)
+            {
+                ulong rangeSize = toBlockHeader.Number - fromBlockHeader.Number + 1;
+                if (rangeSize > (ulong)maxBlockDepth)
+                {
+                    return ResultWrapper<IEnumerable<FilterLog>>.Fail(
+                        $"Block range {rangeSize} exceeds the maximum of {maxBlockDepth} blocks per eth_getLogs request. " +
+                        $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.",
+                        ErrorCodes.InvalidParams);
+                }
+            }
 
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
