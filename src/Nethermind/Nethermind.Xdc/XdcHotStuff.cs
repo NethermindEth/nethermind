@@ -78,10 +78,17 @@ namespace Nethermind.Xdc
                 _logger.Info("XdcHotStuff consensus runner started");
             }
 
-            if (IsSynced() && _xdcContext.CurrentRound != 0)
+            if (_xdcContext.CurrentRound != 0)
             {
-                XdcBlockHeader head = (XdcBlockHeader)_blockTree.Head!.Header;
-                StartRoundTask(head, _xdcContext.CurrentRound);
+                bool bootstrapFirstProposer = IsBootstrapFirstProposer();
+                if (IsSynced() || bootstrapFirstProposer)
+                {
+                    if (!IsSynced() && bootstrapFirstProposer)
+                        _logger.Info("Starting round at genesis bootstrap, we are round-1 leader");
+
+                    XdcBlockHeader head = (XdcBlockHeader)_blockTree.Head!.Header;
+                    StartRoundTask(head, _xdcContext.CurrentRound);
+                }
             }
         }
 
@@ -391,5 +398,23 @@ namespace Nethermind.Xdc
 
         // TODO: consider using a another sync indicator
         private bool IsSynced() => !_blockTree.IsSyncing().isSyncing && _blockTree.Head is not null;
+
+        /// <summary>
+        /// True when this node is the round-1 leader on a freshly bootstrapped chain where
+        /// <see cref="IsSynced"/> is false only because genesis counts as syncing.
+        /// </summary>
+        private bool IsBootstrapFirstProposer()
+        {
+            if (_blockTree.Head?.Header is not XdcBlockHeader head || _xdcContext.CurrentRound != 1)
+                return false;
+
+            BlockRoundInfo qc = _xdcContext.HighestQC.ProposedBlockInfo;
+            if (qc.Round != 0 || qc.BlockNumber != head.Number || qc.Hash != head.Hash)
+                return false;
+
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, 1);
+            return _epochSwitchManager.GetEpochSwitchInfo(head) is { Masternodes.Length: > 0 }
+                && IsMyTurn(head, 1, spec);
+        }
     }
 }
