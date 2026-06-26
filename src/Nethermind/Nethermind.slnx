@@ -84,7 +84,6 @@
     <Project Path="Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
     <Project Path="Nethermind.State.Flat.Test/Nethermind.State.Flat.Test.csproj" />
     <Project Path="Nethermind.State.Test/Nethermind.State.Test.csproj" />
-    <Project Path="Nethermind.Stateless.Executor.Test/Nethermind.Stateless.Executor.Test.csproj" />
     <Project Path="Nethermind.Synchronization.Test/Nethermind.Synchronization.Test.csproj" />
     <Project Path="Nethermind.Taiko.Test/Nethermind.Taiko.Test.csproj" />
     <Project Path="Nethermind.Test.Analyzers.CodeFixes/Nethermind.Test.Analyzers.CodeFixes.csproj" />

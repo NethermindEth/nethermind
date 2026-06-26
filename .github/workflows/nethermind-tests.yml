@@ -81,7 +81,6 @@ jobs:
           - Nethermind.Specs.Test
           - Nethermind.State.Test
           - Nethermind.State.Test.Runner.Test
-          - Nethermind.Stateless.Executor.Test
           - Nethermind.Synchronization.Test
           - Nethermind.Taiko.Test
           - Nethermind.Trie.Test

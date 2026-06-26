@@ -20,19 +20,21 @@ namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
-    // Debug-only phase markers printed to the zkVM console (no-op off-zisk).
-    private static void Mark(string m)
-    {
-#if ZK_EVM
-        Nethermind.Zkvm.Abstractions.IO.PrintLine(m);
-#endif
-    }
+    /// <summary>
+    /// Gets the encoded failure result of the current execution. Intended for zkVM guests.
+    /// </summary>
+    /// <remarks>
+    /// As there's no exception unwinding in the zkVM runtime, an exception thrown during execution
+    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
+    /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
+    /// The failure result is therefore encoded up front, before execution begins, so the
+    /// callback can access it.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
 
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
-        Mark("M1 decode-start");
         StatelessPayload payload = InputDecoder.Decode(data);
-        Mark("M2 decoded");
         ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
         Transaction[] transactions = payload.Block.Transactions;
         StatelessValidationResult result = new()
@@ -44,26 +46,24 @@ public static class StatelessExecutor
         byte[] output = StatelessValidationResult.Encode(result);
         bool success = false;
 
+        FailureOutput = output;
+
         if (transactions.Length == publicKeys.Length)
         {
             try
             {
-                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig, payload.Block.Header);
+                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
                 IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
-                Mark("M3 spec-ready");
 #if !ZK_EVM
                 if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
                     KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
                 for (int i = 0; i < transactions.Length; i++)
                     transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
-                Mark("M4 senders-recovered");
 
                 using Witness witness = payload.Witness.ToWitness();
-                Mark("M5 witness-ready");
 
                 success = Execute(payload.Block, witness, specProvider);
-                Mark("M6 execute-done");
             }
             catch (Exception ex)
             {
@@ -82,9 +82,7 @@ public static class StatelessExecutor
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
     {
-        Mark("E1 decode-headers");
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
-        Mark("E2 headers-decoded");
         BlockHeader parentHeader;
 
         // The parent header must be the last one in the list
@@ -114,30 +112,24 @@ public static class StatelessExecutor
             NullLogManager.Instance
         );
 
-        Mark("E3 validate-suggested");
         if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error))
         {
-            Mark("E3-FAIL: " + error);
             Debug.Fail(error);
             return false;
         }
 
-        Mark("E4 build-env");
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance);
 
-        Mark("E5 begin-scope");
         using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
-        Mark("E6 process-one-start");
         (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
             suggestedBlock,
             ProcessingOptions.ReadOnlyChain,
             NullBlockTracer.Instance,
             specProvider.GetSpec(suggestedBlock.Header));
-        Mark("E7 process-one-done");
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
@@ -148,24 +140,8 @@ public static class StatelessExecutor
         return true;
     }
 
-    internal static ISpecProvider GetSpecProvider(ChainConfig chainConfig, BlockHeader header)
+    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
     {
-        // Real mainnet block: use the code-based MainnetSpecProvider directly and ignore the input's
-        // baked ActiveFork. Two reasons: (1) ChainSpecBasedSpecProvider builds its fork/blob-schedule
-        // transitions via reflection (GetProperties/GetValue), which the trimmed bflat AOT guest strips,
-        // dropping the BPO blob-schedule overrides; (2) StatelessInputGen bakes ActiveFork+BlobSchedule
-        // computed from that same broken provider, so a post-BPO block carries prague-era blob params
-        // (wrong TargetBlobCount/BlobBaseFeeUpdateFraction → wrong excess blob gas / blob base fee).
-        // MainnetSpecProvider resolves BPO forks correctly without reflection. EEST synthetic tests reuse
-        // chain_id 1 but only ever reach tiny block heights (the zkevm fixtures top out at block #258) and
-        // can pin arbitrary timestamps (e.g. beacon-root tests at ts=ulong.MaxValue), so gate on the block
-        // NUMBER — not the timestamp — to keep every synthetic test on the ActiveFork-pinning path below.
-        const long MainnetRealBlockThreshold = 1_000_000;
-        if (chainConfig.ChainId == BlockchainIds.Mainnet && header.Number >= MainnetRealBlockThreshold)
-        {
-            return MainnetSpecProvider.Instance;
-        }
-
         ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider);
 
         // No ActiveFork: nothing to pin, so use the chain's own schedule; an unknown chain id can't proceed.
