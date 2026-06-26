@@ -30,13 +30,13 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = decoderContext.ReadSequenceLength();
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
-            Hash256? parentHash = decoderContext.DecodeKeccak();
-            Hash256? unclesHash = decoderContext.DecodeKeccak();
-            Address? beneficiary = decoderContext.DecodeAddress();
-            Hash256? stateRoot = decoderContext.DecodeKeccak();
-            Hash256? transactionsRoot = decoderContext.DecodeKeccak();
-            Hash256? receiptsRoot = decoderContext.DecodeKeccak();
-            Bloom? bloom = decoderContext.DecodeBloom();
+            Hash256 parentHash = decoderContext.DecodeKeccakNonNull();
+            Hash256 unclesHash = decoderContext.DecodeKeccakNonNull();
+            Address beneficiary = decoderContext.DecodeAddressNonNull();
+            Hash256 stateRoot = decoderContext.DecodeKeccakNonNull();
+            Hash256 transactionsRoot = decoderContext.DecodeKeccakNonNull();
+            Hash256 receiptsRoot = decoderContext.DecodeKeccakNonNull();
+            Bloom bloom = decoderContext.DecodeBloomNonNull();
             UInt256 difficulty = decoderContext.DecodeUInt256();
             ulong number = decoderContext.DecodeULong();
             ulong gasLimit = decoderContext.DecodeULong();
@@ -52,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
                 number,
                 gasLimit,
                 timestamp,
-                extraData)
+                extraData ?? [])
             {
                 StateRoot = stateRoot,
                 TxRoot = transactionsRoot,
@@ -112,7 +112,7 @@ namespace Nethermind.Serialization.Rlp
             writer.Encode(header.GasLimit);
             writer.Encode(header.GasUsed);
             writer.Encode(header.Timestamp);
-            writer.Encode(header.ExtraData);
+            writer.Encode(header.ExtraData ?? []);
 
             if (notForSealing)
             {
@@ -120,7 +120,7 @@ namespace Nethermind.Serialization.Rlp
                 if (isAuRa)
                 {
                     writer.Encode(header.AuRaStep!.Value);
-                    writer.Encode(header.AuRaSignature);
+                    writer.Encode(header.AuRaSignature!);
                 }
                 else
                 {

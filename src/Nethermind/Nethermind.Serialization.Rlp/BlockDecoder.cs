@@ -68,8 +68,9 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
-            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
+            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
+            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck)
+                ?? throw new RlpException("Block body decoding returned null.");
 
             Block block = new(header, body)
             {
@@ -131,9 +132,10 @@ namespace Nethermind.Serialization.Rlp
             {
                 writer.StartSequence(withdrawalsLength.Value);
 
-                for (int i = 0; i < item.Withdrawals.Length; i++)
+                Withdrawal[] withdrawals = item.Withdrawals!;
+                for (int i = 0; i < withdrawals.Length; i++)
                 {
-                    _withdrawalDecoder.Encode(ref writer, item.Withdrawals[i]);
+                    _withdrawalDecoder.Encode(ref writer, withdrawals[i]);
                 }
             }
         }
@@ -151,7 +153,7 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
+            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
 
             int contentLength = decoderContext.ReadSequenceLength();
             int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);

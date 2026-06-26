@@ -31,7 +31,8 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
     {
         try
         {
-            ChainSpecJson chainSpecJson = serializer.Deserialize<ChainSpecJson>(streamData);
+            ChainSpecJson? chainSpecJson = serializer.Deserialize<ChainSpecJson>(streamData);
+            ArgumentNullException.ThrowIfNull(chainSpecJson);
             return InitChainSpecFrom(chainSpecJson);
         }
         catch (Exception e)
@@ -68,7 +69,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         {
             AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
             if (allocation is null) return null;
-            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn?.Pricing.Where(o => predicate(o)).ToArray();
+            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn!.Pricing.Where(o => predicate(o)).ToArray();
             if (pricing?.Length > 0)
             {
                 string key = pricing[0].Key;
@@ -331,7 +332,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         ulong nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0UL;
         Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
-        byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
+        byte[]? auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
         ulong? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
 
         Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
@@ -463,7 +464,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             if (account.Value.CodeHash is not null)
             {
                 string codeHashString = account.Value.CodeHash.ToString();
-                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out byte[] codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
+                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out byte[]? codeHash) || codeHash is null) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,

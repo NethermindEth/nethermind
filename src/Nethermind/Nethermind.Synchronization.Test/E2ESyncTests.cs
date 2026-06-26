@@ -229,21 +229,23 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IConfigProvider configProvider = new ConfigProvider();
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
+        Block genesis = spec.Genesis!;
+        Dictionary<Address, ChainSpecAllocation> allocations = spec.Allocations!;
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
-        spec.Genesis.Header.BaseFeePerGas = 10.Wei;
+        genesis.Header.BaseFeePerGas = 10.Wei;
 
         // Needed for generating spam state.
-        spec.Genesis.Header.GasLimit = 1_000_000_000;
-        spec.Allocations[(fundedAccountKey ?? TestItem.PrivateKeyA).Address] = new ChainSpecAllocation(300.Ether);
+        genesis.Header.GasLimit = 1_000_000_000;
+        allocations[(fundedAccountKey ?? TestItem.PrivateKeyA).Address] = new ChainSpecAllocation(300.Ether);
 
-        spec.Allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
+        allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
         {
             Code = Eip7002TestConstants.Code,
             Nonce = Eip7002TestConstants.Nonce
         };
 
-        spec.Allocations[Eip7251Constants.ConsolidationRequestPredeployAddress] = new ChainSpecAllocation
+        allocations[Eip7251Constants.ConsolidationRequestPredeployAddress] = new ChainSpecAllocation
         {
             Code = Eip7251TestConstants.Code,
             Nonce = Eip7251TestConstants.Nonce
@@ -258,7 +260,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         if (isPostMerge)
         {
-            spec.Genesis.Header.Difficulty = 10000;
+            genesis.Header.Difficulty = 10000;
 
             IMergeConfig mergeConfig = configProvider.GetConfig<IMergeConfig>();
             mergeConfig.Enabled = true;
@@ -346,7 +348,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     {
         ArgumentNullException.ThrowIfNull(spec);
         MoveBlockTransitionsToGenesis(spec);
-        spec.Parameters.Eip7928TransitionTimestamp = spec.Genesis.Header.Timestamp;
+        spec.Parameters.Eip7928TransitionTimestamp = spec.Genesis!.Header.Timestamp;
         spec.Genesis.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
     }
 
@@ -355,7 +357,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ArgumentNullException.ThrowIfNull(spec);
         MoveBlockTransitionsToGenesis(spec);
         spec.Parameters.Eip7928TransitionTimestamp = PostMergeStartTimestamp + activationBlockNumber;
-        spec.Genesis.Header.BlockAccessListHash = null;
+        spec.Genesis!.Header.BlockAccessListHash = null;
     }
 
     private static void MoveBlockTransitionsToGenesis(ChainSpec spec)
@@ -1024,7 +1026,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         private byte[] EncodeReceipts(TxReceipt[] receipts)
         {
-            TxReceipt[][] wrappedReceipts = new[] { receipts };
+            TxReceipt[][] wrappedReceipts = [receipts];
             using ReceiptsMessage asReceiptsMessage = new(wrappedReceipts.ToPooledList());
 
             IByteBuffer bb = PooledByteBufferAllocator.Default.Buffer(1024);
@@ -1162,7 +1164,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         private string? DisconnectFailure = null;
         private readonly CancellationTokenSource _cts = new();
 
-        public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
+        public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string? details)
         {
             DisconnectFailure = $"{reason} {details}";
             _cts.Cancel();

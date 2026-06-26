@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             ctx.ReadSequenceLength();
             ArrayPoolList<byte> types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
             ArrayPoolList<int> sizes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeInt(), limit: SizesRlpLimit);
-            ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+            ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakNonNull(), limit: HashesRlpLimit);
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
         }
 

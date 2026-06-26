@@ -196,7 +196,8 @@ namespace Nethermind.Hive
             byte[] fileContent = File.ReadAllBytes(file);
             if (_logger.IsDebug) _logger.Debug(fileContent.ToHexString());
             Rlp blockRlp = new(fileContent);
-            return Rlp.Decode<Block>(blockRlp);
+            return Rlp.Decode<Block>(blockRlp)
+                ?? throw new RlpException("Block decoding returned null.");
         }
 
         private static async Task WaitForBlockProcessing(SemaphoreSlim semaphore)

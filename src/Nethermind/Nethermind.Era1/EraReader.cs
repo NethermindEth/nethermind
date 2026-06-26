@@ -192,8 +192,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
         RlpReader ctx = new(buffer.Span);
-        // ReceiptMessageDecoder returns null for empty-list (0xC0) items
-        return ctx.DecodeArray<TxReceipt>(_receiptDecoder, allowNulls: true);
+        return ctx.DecodeArray<TxReceipt>(_receiptDecoder);
     }
 
     public ValueHash256 CalculateChecksum() => _fileReader.CalculateChecksum();

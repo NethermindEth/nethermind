@@ -316,7 +316,7 @@ public class TxValidatorTests
     {
         try
         {
-            Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rlp), RlpBehaviors.SkipTypedWrapping);
+            Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rlp), RlpBehaviors.SkipTypedWrapping)!;
             TxValidator txValidator = new(BlockchainIds.Mainnet);
             return txValidator.IsWellFormed(tx, London.Instance);
         }

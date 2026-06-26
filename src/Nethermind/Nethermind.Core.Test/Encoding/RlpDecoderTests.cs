@@ -96,6 +96,30 @@ public class RlpDecoderTests
         AssertEncodedNullItem(stream);
     }
 
+    [Test]
+    public void Decode_delegate_array_rejects_empty_list_for_value_type_element()
+    {
+        static void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+            context.DecodeArray(static (ref RlpReader c) => (c.DecodeKeccakNonNull(), c.DecodeULong()));
+        }
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+    }
+
+    [Test]
+    public void Decode_array_pool_list_rejects_empty_list_for_value_type_element()
+    {
+        static void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+            context.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeInt());
+        }
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+    }
+
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
         RlpReader context = new(bytes);
@@ -124,7 +148,7 @@ public class RlpDecoderTests
 
     private sealed class NonNullableItemDecoder : RlpDecoder<NonNullableItem>
     {
-        public override int GetLength(NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int GetLength(NonNullableItem? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
             return Rlp.OfEmptyByteArray.Length;

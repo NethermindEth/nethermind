@@ -70,7 +70,7 @@ namespace Nethermind.Crypto
 
         private bool Equals(PrivateKey other) => Bytes.AreEqual(KeyBytes, other.KeyBytes);
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is null)
             {

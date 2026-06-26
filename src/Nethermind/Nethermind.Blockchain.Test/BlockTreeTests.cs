@@ -2265,7 +2265,7 @@ public class BlockTreeTests
         public bool PreventsAcceptingNewBlocks => true;
         public ulong StartLevelInclusive => 0;
         public ulong EndLevelExclusive => 3;
-        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
+        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             if (_wait)
             {
@@ -2285,7 +2285,7 @@ public class BlockTreeTests
             Task.FromResult(BlockVisitOutcome.None);
 
         public Task<LevelVisitOutcome> VisitLevelEnd(
-            ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) =>
+            ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) =>
             Task.FromResult(LevelVisitOutcome.None);
     }
 

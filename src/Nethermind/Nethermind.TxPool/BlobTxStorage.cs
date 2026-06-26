@@ -121,7 +121,7 @@ public class BlobTxStorage : IBlobTxStorage
         EncodeAndSaveTxs(blockBlobTransactions, _processedBlobTxsDb, blockNumber);
     }
 
-    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[]? blockBlobTransactions)
+    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions)
     {
         byte[]? bytes = _processedBlobTxsDb.Get(blockNumber);
 
@@ -129,7 +129,7 @@ public class BlobTxStorage : IBlobTxStorage
         {
             RlpReader ctx = new(bytes);
             blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm);
-            return true;
+            return blockBlobTransactions is not null;
         }
 
         blockBlobTransactions = default;
@@ -144,6 +144,11 @@ public class BlobTxStorage : IBlobTxStorage
         if (txBytes is not null)
         {
             transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm);
+            if (transaction is null)
+            {
+                return false;
+            }
+
             transaction.SenderAddress = sender;
             return true;
         }

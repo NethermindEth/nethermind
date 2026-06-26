@@ -229,7 +229,7 @@ public class OptimismCompactReceiptStorageDecoder :
         return logsLength;
     }
 
-    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
         (int Total, _) = GetContentLength(item, rlpBehaviors);
         return LengthOfSequence(Total);

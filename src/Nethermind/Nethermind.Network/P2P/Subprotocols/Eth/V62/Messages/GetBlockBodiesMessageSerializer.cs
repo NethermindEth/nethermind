@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public static GetBlockBodiesMessage Deserialize(ref RlpReader ctx)
         {
-            Hash256[] hashes = ctx.DecodeArray(static (ref RlpReader c) => c.DecodeKeccak(), false, limit: RlpLimit);
+            Hash256[] hashes = ctx.DecodeArray(static (ref RlpReader c) => c.DecodeKeccakNonNull(), false, limit: RlpLimit);
             return new GetBlockBodiesMessage(hashes);
         }
     }

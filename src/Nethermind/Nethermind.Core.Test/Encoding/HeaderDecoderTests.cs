@@ -63,7 +63,7 @@ public class HeaderDecoderTests
     public void Can_handle_nulls()
     {
         Rlp rlp = Rlp.Encode((BlockHeader?)null);
-        BlockHeader decoded = Rlp.Decode<BlockHeader>(rlp);
+        BlockHeader? decoded = Rlp.Decode<BlockHeader>(rlp);
         Assert.That(decoded, Is.Null);
     }
 
@@ -72,7 +72,7 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp)!;
         Assert.That(blockHeader.BaseFeePerGas, Is.EqualTo((UInt256)123));
     }
 
@@ -90,7 +90,7 @@ public class HeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0)
             .WithWithdrawalsRoot(Keccak.Compute("withdrawals")).TestObject;
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp)!;
         Assert.That(blockHeader.WithdrawalsRoot, Is.EqualTo(Keccak.Compute("withdrawals")));
     }
 
@@ -112,7 +112,7 @@ public class HeaderDecoderTests
             WithGasLimit(largeValue).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -132,7 +132,7 @@ public class HeaderDecoderTests
             WithGasLimit(largeValue).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -154,7 +154,7 @@ public class HeaderDecoderTests
             .WithParentBeaconBlockRoot(parentBeaconBlockRoot).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -176,7 +176,7 @@ public class HeaderDecoderTests
             .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakB));
     }
@@ -194,7 +194,7 @@ public class HeaderDecoderTests
             .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
@@ -241,7 +241,7 @@ public class HeaderDecoderTests
             .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }

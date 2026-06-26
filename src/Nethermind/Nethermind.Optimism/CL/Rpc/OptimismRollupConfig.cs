@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -81,7 +82,13 @@ public sealed record OptimismRollupConfig
     public static OptimismRollupConfig Build(
         CLChainSpecEngineParameters clParameters,
         OptimismChainSpecEngineParameters engineParameters,
-        ChainSpec chainSpec) => new()
+        ChainSpec chainSpec)
+    {
+        Block genesis = chainSpec.Genesis ?? throw new ArgumentException("Chain spec genesis is missing.", nameof(chainSpec));
+        OptimismSystemConfig systemConfig = clParameters.GenesisSystemConfig
+            ?? throw new ArgumentException("Optimism genesis system config is missing.", nameof(clParameters));
+
+        return new()
         {
             Genesis = new OptimismGenesis
             {
@@ -108,7 +115,7 @@ public sealed record OptimismRollupConfig
             JovianTime = engineParameters.JovianTimestamp,
 
             BatchInboxAddress = clParameters.BatchSubmitter!,
-            DepositContractAddress = chainSpec.Parameters.DepositContractAddress,
+            DepositContractAddress = chainSpec.Parameters.DepositContractAddress!,
             L1SystemConfigAddress = clParameters.SystemConfigProxy!,
 
             ChainOpConfig = new OptimismChainConfig
@@ -118,4 +125,5 @@ public sealed record OptimismRollupConfig
                 EIP1559DenominatorCanyon = (ulong)engineParameters.CanyonBaseFeeChangeDenominator!.Value
             }
         };
+    }
 }

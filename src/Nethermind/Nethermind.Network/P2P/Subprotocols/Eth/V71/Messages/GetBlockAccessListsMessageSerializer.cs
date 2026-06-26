@@ -30,7 +30,7 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
     protected override GetBlockAccessListsMessage DeserializeInternal(ref RlpReader ctx, long requestId)
     {
         ArrayPoolList<Hash256> hashes =
-            ctx.DecodeArrayPoolList(static (ref RlpReader nestedContext) => nestedContext.DecodeKeccak(), limit: RlpLimit);
+            ctx.DecodeArrayPoolList(static (ref RlpReader nestedContext) => nestedContext.DecodeKeccakNonNull(), limit: RlpLimit);
 
         return new GetBlockAccessListsMessage(requestId, hashes);
     }

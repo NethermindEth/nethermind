@@ -62,7 +62,7 @@ public partial class EngineModuleTests
             }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
@@ -168,7 +168,7 @@ public partial class EngineModuleTests
         );
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
 
         Task blockImprovementWait = chain.WaitForImprovedBlock();
 
@@ -215,7 +215,7 @@ public partial class EngineModuleTests
         );
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;

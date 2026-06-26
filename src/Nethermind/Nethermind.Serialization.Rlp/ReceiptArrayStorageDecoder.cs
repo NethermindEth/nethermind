@@ -21,7 +21,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
 
     public const int CompactEncoding = 127;
 
-    public override int GetLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt[]? items, RlpBehaviors rlpBehaviors)
     {
         if (items is null || items.Length == 0)
         {
@@ -145,14 +145,14 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         RlpReader context = new(receiptData);
         try
         {
-            TxReceipt receipt = Decoder.Decode(ref context, RlpBehaviors.Storage);
+            TxReceipt receipt = Decoder.DecodeGuardNotNull(ref context, RlpBehaviors.Storage);
             receipt.TxHash = hash;
             return receipt;
         }
         catch (RlpException)
         {
             context.Position = 0;
-            TxReceipt receipt = Decoder.Decode(ref context);
+            TxReceipt receipt = Decoder.DecodeGuardNotNull(ref context);
             receipt.TxHash = hash;
             return receipt;
         }

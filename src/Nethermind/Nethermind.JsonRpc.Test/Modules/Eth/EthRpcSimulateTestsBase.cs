@@ -146,7 +146,7 @@ public class EthRpcSimulateTestsBase
             chain.NonceManager,
             chain.EthereumEcdsa);
 
-        (Hash256 hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+        (Hash256? hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
         Assert.That(code, Is.EqualTo(AcceptTxResult.Accepted));
 
         Transaction[] txs = chain.TxPool.GetPendingTransactions();
@@ -184,7 +184,7 @@ public class EthRpcSimulateTestsBase
         while (createContractTxReceipt is null)
         {
             await Task.Delay(100);
-            createContractTxReceipt = chain.Bridge.GetReceipt(hash);
+            createContractTxReceipt = chain.Bridge.GetReceipt(hash!);
         }
 
         Assert.That(createContractTxReceipt.ContractAddress, Is.Not.Null, $"Contract transaction {tx.Hash!} was not deployed.");

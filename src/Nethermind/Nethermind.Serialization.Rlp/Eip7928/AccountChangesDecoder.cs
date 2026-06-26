@@ -39,11 +39,11 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        Address address = ctx.DecodeAddress();
+        Address address = ctx.DecodeAddressNonNull();
 
         ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, limit: _slotsLimit);
         UInt256? lastSlot = null;
-        foreach (ReadOnlySlotChanges slotChange in slotChanges)
+        foreach (ReadOnlySlotChanges? slotChange in slotChanges)
         {
             UInt256 slot = slotChange!.Key;
             if (lastSlot is not null && slot <= lastSlot)
@@ -84,17 +84,18 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
             ctx.Check(check);
         }
 
-        return new ReadOnlyAccountChanges(address, slotChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
+        return new ReadOnlyAccountChanges(address, slotChanges!, storageReads, balanceChanges, nonceChanges, codeChanges);
     }
 
-    public override int GetLength(ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(ReadOnlyAccountChanges? item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item ?? throw new ArgumentNullException(nameof(item)), rlpBehaviors));
 
     public int GetLength(GeneratedAccountChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public override void Encode<TWriter>(ref TWriter writer, ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        ArgumentNullException.ThrowIfNull(item);
         EncodingLengths lengths = PrepareEncodingLengths(item, rlpBehaviors);
         EncodePrepared(ref writer, item, in lengths, rlpBehaviors);
     }
@@ -297,7 +298,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         while (low <= high)
         {
             int mid = low + ((high - low) >> 1);
-            int compare = sortedSlotChanges[mid].Key.CompareTo(key);
+            int compare = sortedSlotChanges[mid]!.Key.CompareTo(key);
             if (compare == 0)
             {
                 return true;

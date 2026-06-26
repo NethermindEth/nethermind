@@ -98,11 +98,11 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f) : INodeS
 
     public long NewPersistedNodeReputation(DateTime nowUTC) => (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
-    public P2PNodeDetails P2PNodeDetails { get; private set; }
+    public P2PNodeDetails? P2PNodeDetails { get; private set; }
 
-    public SyncPeerNodeDetails EthNodeDetails { get; private set; }
+    public SyncPeerNodeDetails? EthNodeDetails { get; private set; }
 
-    public SyncPeerNodeDetails LesNodeDetails { get; private set; }
+    public SyncPeerNodeDetails? LesNodeDetails { get; private set; }
 
     public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
