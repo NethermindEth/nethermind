@@ -26,8 +26,11 @@ public static class StreamInterpreter
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
 
-    // Interlocked-bumped so the 64-bit count is atomic on 32-bit platforms.
-    public static long FramesExecuted;
+    // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the
+    // stream engaged. [ThreadStatic] so each thread bumps its own slot with a plain write: no atomic and
+    // no cross-core cache-line bouncing on the hot RunStream entry. Tests run single-threaded, so they
+    // observe their own thread's count. Not a true global total — that is not needed.
+    [ThreadStatic] public static long FramesExecuted;
 }
 
 public unsafe partial class VirtualMachine<TGasPolicy>
@@ -47,7 +50,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         ReturnData = null;
         EvmExceptionType exceptionType = EvmExceptionType.None;
-        Interlocked.Increment(ref StreamInterpreter.FramesExecuted);
+        StreamInterpreter.FramesExecuted++;
 
         int programCounter = VmState.ProgramCounter;
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
