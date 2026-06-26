@@ -7,9 +7,9 @@ namespace Nethermind.Network.Rlpx.Handshake
 {
     public class AuthMessageBase : MessageBase
     {
-        public Signature Signature { get; set; }
-        public PublicKey PublicKey { get; set; }
-        public byte[] Nonce { get; set; }
+        public Signature Signature { get; set; } = null!;
+        public PublicKey PublicKey { get; set; } = null!;
+        public byte[] Nonce { get; set; } = null!;
         public int Version { get; set; } = 4;
     }
 }

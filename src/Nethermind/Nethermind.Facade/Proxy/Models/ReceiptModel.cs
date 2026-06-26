@@ -9,19 +9,19 @@ namespace Nethermind.Facade.Proxy.Models
 {
     public class ReceiptModel
     {
-        public Hash256 BlockHash { get; set; }
+        public Hash256 BlockHash { get; set; } = null!;
         public UInt256 BlockNumber { get; set; }
-        public Address ContractAddress { get; set; }
+        public Address? ContractAddress { get; set; }
         public UInt256 CumulativeGasUsed { get; set; }
-        public Address From { get; set; }
+        public Address From { get; set; } = null!;
         public UInt256 GasUsed { get; set; }
 
         public UInt256 EffectiveGasPrice { get; set; }
-        public LogModel[] Logs { get; set; }
+        public LogModel[] Logs { get; set; } = null!;
         public byte[]? LogsBloom { get; set; }
         public UInt256 Status { get; set; }
-        public Address To { get; set; }
-        public Hash256 TransactionHash { get; set; }
+        public Address? To { get; set; }
+        public Hash256 TransactionHash { get; set; } = null!;
         public UInt256 TransactionIndex { get; set; }
     }
 }

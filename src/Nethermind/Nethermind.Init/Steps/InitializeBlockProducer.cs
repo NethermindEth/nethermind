@@ -40,6 +40,11 @@ namespace Nethermind.Init.Steps
                 ?? throw new NotSupportedException($"Mining in {_api.ChainSpec!.SealEngineType} mode is not supported");
 
             _api.BlockProducer = blockProducerFactory.InitBlockProducer();
+            if (_api.BlockProducer is null)
+            {
+                return Task.CompletedTask;
+            }
+
             _api.BlockProducerRunner = blockProducerRunnerFactory.InitBlockProducerRunner(_api.BlockProducer);
             serviceStopper.AddStoppable(_api.BlockProducerRunner);
 

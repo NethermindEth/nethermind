@@ -5,6 +5,7 @@ using DotNetty.Buffers;
 using System;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -36,12 +37,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 {
                     PathWithAccount pwa = pathsWithAccounts[i];
 
-                    int accountContentLength = _decoder.GetContentLength(pwa.Account);
-                    int pwaLength = Rlp.LengthOf(pwa.Path) + Rlp.LengthOfSequence(accountContentLength);
+                    int accountLength = _decoder.GetLength(pwa.Account);
+                    int pwaLength = Rlp.LengthOf(pwa.Path) + accountLength;
 
                     writer.StartSequence(pwaLength);
                     writer.Encode(pwa.Path);
-                    _decoder.Encode(pwa.Account, ref writer, accountContentLength);
+                    _decoder.Encode(ref writer, pwa.Account);
                 }
             }
 
@@ -69,7 +70,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 {
                     int length = ctx.ReadSequenceLength();
                     int checkPosition = ctx.Position + length;
-                    pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                    ValueHash256 path = ctx.DecodeValueKeccak() ?? throw new RlpException("Unexpected RLP null while decoding account path.");
+                    pathsWithAccounts.Add(new PathWithAccount(path, _decoder.Decode(ref ctx)));
                     ctx.Check(checkPosition);
                 }
 

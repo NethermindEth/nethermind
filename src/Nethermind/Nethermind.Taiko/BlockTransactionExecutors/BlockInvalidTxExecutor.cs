@@ -156,6 +156,6 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         }
 
         block.TrySetTransactions([.. correctTransactions]);
-        return [.. receiptsTracer.TxReceipts];
+        return receiptsTracer.ToReceiptArray();
     }
 }

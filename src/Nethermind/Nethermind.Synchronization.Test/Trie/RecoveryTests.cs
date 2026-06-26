@@ -77,7 +77,7 @@ public class RecoveryTests
         {
             ISyncPeer peer = Substitute.For<ISyncPeer>();
             peer.ProtocolVersion.Returns(EthVersions.Eth67);
-            peer.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>())
+            peer.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer?>())
                 .Returns(c =>
                 {
                     c[1] = _snapSyncPeer;

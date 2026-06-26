@@ -28,9 +28,9 @@ namespace Nethermind.Benchmarks.Store
         [Params(0, 16384)]
         public int PreloadedCount { get; set; }
 
-        private PatriciaTree.BulkSetEntry[] _entries;
-        private BlockCacheTrieStore _blockCacheStore;
-        private Hash256 _preloadedRootHash;
+        private PatriciaTree.BulkSetEntry[] _entries = null!;
+        private BlockCacheTrieStore _blockCacheStore = null!;
+        private Hash256 _preloadedRootHash = null!;
 
         [GlobalSetup]
         public void Setup()
@@ -96,7 +96,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void RepeatedSet()
         {
-            PatriciaTree tree = null;
+            PatriciaTree? tree = null;
             for (int i = 0; i < _entryCount; i++)
             {
                 if (i % BatchSize == 0)
@@ -105,7 +105,7 @@ namespace Nethermind.Benchmarks.Store
                     tree = new(_blockCacheStore, _preloadedRootHash, true, LimboLogs.Instance);
                 }
 
-                tree.Set(_entries[i].Path.BytesAsSpan, _entries[i].Value);
+                tree!.Set(_entries[i].Path.BytesAsSpan, _entries[i].Value!);
             }
         }
 
@@ -119,7 +119,7 @@ namespace Nethermind.Benchmarks.Store
         {
             if (PreSorted) flags |= PatriciaTree.Flags.WasSorted;
 
-            PatriciaTree tree = null;
+            PatriciaTree? tree = null;
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(BatchSize);
             for (int i = 0; i < _entryCount; i++)
             {
@@ -137,7 +137,7 @@ namespace Nethermind.Benchmarks.Store
                 bulkSet.Add(_entries[i]);
             }
 
-            tree.BulkSet(bulkSet, flags);
+            tree!.BulkSet(bulkSet, flags);
         }
     }
 }

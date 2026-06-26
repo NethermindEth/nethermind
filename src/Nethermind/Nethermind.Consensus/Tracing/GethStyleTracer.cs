@@ -149,7 +149,7 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(options);
 
         Block block = blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
-        BlockHeader parent = FindParent(block);
+        BlockHeader? parent = FindParent(block);
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
@@ -167,7 +167,7 @@ public class GethStyleTracer(
                         .GetAll()
                         .FirstOrDefault(b => b.Hash == blockHash)
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
-        BlockHeader parent = FindParent(block);
+        BlockHeader? parent = FindParent(block);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
@@ -184,7 +184,7 @@ public class GethStyleTracer(
         // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
         // However, when it is `TraceTransaction`, it applies `ForceSameBlock` to `BlockchainProcessor`, which will send the same
         // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
-        BlockHeader baseBlockHeader = (processingOptions & ProcessingOptions.ForceSameBlock) == 0
+        BlockHeader? baseBlockHeader = (processingOptions & ProcessingOptions.ForceSameBlock) == 0
             ? FindParent(block)
             : block.Header;
 
@@ -211,7 +211,7 @@ public class GethStyleTracer(
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
         options switch
         {
-            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState)),
+            { Tracer: var t } when t is not null && GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState)),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options),
         };
@@ -220,7 +220,7 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        BlockHeader parent = FindParent(block);
+        BlockHeader? parent = FindParent(block);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
 
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
@@ -260,7 +260,7 @@ public class GethStyleTracer(
 
     private static Block GetBlockToTrace(Rlp blockRlp)
     {
-        Block block = Rlp.Decode<Block>(blockRlp);
+        Block block = Rlp.Decode<Block>(blockRlp) ?? throw new RlpException("Block decoding returned null.");
         if (block.TotalDifficulty is null)
         {
             block.Header.TotalDifficulty = 1;

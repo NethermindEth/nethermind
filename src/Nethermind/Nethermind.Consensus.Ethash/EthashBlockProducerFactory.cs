@@ -9,7 +9,7 @@ namespace Nethermind.Consensus.Ethash;
 internal sealed class EthashBlockProducerFactory(IManualBlockProductionTrigger manualBlockProductionTrigger, IBlockTree blockTree)
     : IBlockProducerFactory, IBlockProducerRunnerFactory
 {
-    public IBlockProducer InitBlockProducer() => null;
+    public IBlockProducer? InitBlockProducer() => null;
 
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) =>
         new StandardBlockProducerRunner(manualBlockProductionTrigger, blockTree, blockProducer);

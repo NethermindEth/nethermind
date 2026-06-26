@@ -182,8 +182,8 @@ public partial class BlockDownloaderTests
             .GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
-                IOwnedReadOnlyList<BlockHeader?> headers = new ArrayPoolList<BlockHeader?>(2) { parent, header };
-                return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers);
+                IOwnedReadOnlyList<BlockHeader> headers = new ArrayPoolList<BlockHeader>(2) { parent, header };
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(headers);
             });
 
         ctx.PeerPool

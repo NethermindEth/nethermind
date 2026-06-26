@@ -63,7 +63,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        byte[] b = _blockDb.Get(dbKey);
+        byte[]? b = _blockDb.Get(dbKey);
         if (b is not null) return b;
         return _blockDb.Get(blockHash);
     }
@@ -85,7 +85,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
         // structures, without mutating the original block instance which may
         // still be used by downstream consumers (e.g., TxPool reads and
         // disposes AccountChanges after this call).
-        _blockCache.Set(in block.Hash.ValueHash256, new(block.Header, block.Body));
+        _blockCache.Set(in block.Hash!.ValueHash256, new(block.Header, block.Body));
 
     void IClearableCache.ClearCache() => _blockCache.Clear();
 }

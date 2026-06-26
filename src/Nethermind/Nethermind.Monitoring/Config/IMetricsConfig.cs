@@ -21,7 +21,7 @@ public interface IMetricsConfig : IConfig
     bool CountersEnabled { get; }
 
     [ConfigItem(Description = "The Prometheus Pushgateway instance URL.", IsSensitive = true)]
-    string PushGatewayUrl { get; }
+    string? PushGatewayUrl { get; }
 
     [ConfigItem(DefaultValue = "5", Description = "The frequency of pushing metrics to Prometheus, in seconds.")]
     int IntervalSeconds { get; }

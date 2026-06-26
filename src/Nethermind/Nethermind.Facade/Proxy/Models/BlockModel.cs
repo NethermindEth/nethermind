@@ -11,24 +11,24 @@ namespace Nethermind.Facade.Proxy.Models
     public class BlockModel<T>
     {
         public UInt256 Difficulty { get; set; }
-        public byte[] ExtraData { get; set; }
+        public byte[] ExtraData { get; set; } = null!;
         public ulong GasLimit { get; set; }
         public ulong GasUsed { get; set; }
-        public Hash256 Hash { get; set; }
-        public Address Miner { get; set; }
-        public Hash256 MixHash { get; set; }
+        public Hash256 Hash { get; set; } = null!;
+        public Address Miner { get; set; } = null!;
+        public Hash256 MixHash { get; set; } = null!;
         public ulong Nonce { get; set; }
         public ulong Number { get; set; }
-        public Hash256 ParentHash { get; set; }
-        public Hash256 ReceiptsRoot { get; set; }
-        public Hash256 Sha3Uncles { get; set; }
+        public Hash256 ParentHash { get; set; } = null!;
+        public Hash256 ReceiptsRoot { get; set; } = null!;
+        public Hash256 Sha3Uncles { get; set; } = null!;
         public UInt256 Size { get; set; }
-        public Hash256 StateRoot { get; set; }
+        public Hash256 StateRoot { get; set; } = null!;
         public ulong Timestamp { get; set; }
         public UInt256 BaseFeePerGas { get; set; }
         public UInt256 TotalDifficulty { get; set; }
-        public List<T> Transactions { get; set; }
-        public Hash256 TransactionsRoot { get; set; }
+        public List<T> Transactions { get; set; } = null!;
+        public Hash256 TransactionsRoot { get; set; } = null!;
         public ulong? BlobGasUsed { get; set; }
         public ulong? ExcessBlobGas { get; set; }
 

@@ -63,8 +63,8 @@ public class ForensicsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-            Assert.That(highestCommittedQcs[0], Is.EqualTo(targetParentHeader.ExtraConsensusData.QuorumCert));
-            Assert.That(highestCommittedQcs[1], Is.EqualTo(targetHeader.ExtraConsensusData.QuorumCert));
+            Assert.That(highestCommittedQcs[0], Is.EqualTo(targetParentHeader.ExtraConsensusData.QuorumCert!));
+            Assert.That(highestCommittedQcs[1], Is.EqualTo(targetHeader.ExtraConsensusData.QuorumCert!));
             Assert.That(highestCommittedQcs[2], Is.EqualTo(context.HighestQC));
         }
     }
@@ -84,35 +84,35 @@ public class ForensicsTests
 
         await forensicsProcessor.SetCommittedQCs(
             [headerNMinus2, headerNMinus3],
-            headerN.ExtraConsensusData!.QuorumCert);
+            headerN.ExtraConsensusData!.QuorumCert!);
 
         QuorumCertificate[] highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         Assert.That(highestCommittedQcs, Is.EqualTo(beforeInvalidOrder));
 
         await forensicsProcessor.SetCommittedQCs(
             [headerNMinus2, headerNMinus1],
-            headerN.ExtraConsensusData!.QuorumCert);
+            headerN.ExtraConsensusData!.QuorumCert!);
 
         highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-            Assert.That(highestCommittedQcs[0], Is.EqualTo(headerNMinus2.ExtraConsensusData!.QuorumCert));
-            Assert.That(highestCommittedQcs[1], Is.EqualTo(headerNMinus1.ExtraConsensusData!.QuorumCert));
-            Assert.That(highestCommittedQcs[2], Is.EqualTo(headerN.ExtraConsensusData!.QuorumCert));
+            Assert.That(highestCommittedQcs[0], Is.EqualTo(headerNMinus2.ExtraConsensusData!.QuorumCert!));
+            Assert.That(highestCommittedQcs[1], Is.EqualTo(headerNMinus1.ExtraConsensusData!.QuorumCert!));
+            Assert.That(highestCommittedQcs[2], Is.EqualTo(headerN.ExtraConsensusData!.QuorumCert!));
         }
 
         await forensicsProcessor.SetCommittedQCs(
             [headerNMinus3, headerNMinus2],
-            headerNMinus1.ExtraConsensusData!.QuorumCert);
+            headerNMinus1.ExtraConsensusData!.QuorumCert!);
 
         highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-            Assert.That(highestCommittedQcs[0], Is.EqualTo(headerNMinus3.ExtraConsensusData!.QuorumCert));
-            Assert.That(highestCommittedQcs[1], Is.EqualTo(headerNMinus2.ExtraConsensusData!.QuorumCert));
-            Assert.That(highestCommittedQcs[2], Is.EqualTo(headerNMinus1.ExtraConsensusData!.QuorumCert));
+            Assert.That(highestCommittedQcs[0], Is.EqualTo(headerNMinus3.ExtraConsensusData!.QuorumCert!));
+            Assert.That(highestCommittedQcs[1], Is.EqualTo(headerNMinus2.ExtraConsensusData!.QuorumCert!));
+            Assert.That(highestCommittedQcs[2], Is.EqualTo(headerNMinus1.ExtraConsensusData!.QuorumCert!));
         }
     }
 
@@ -133,22 +133,22 @@ public class ForensicsTests
         // Seed forensics baseline with an older valid committed-QC triplet.
         await forensicsProcessor.SetCommittedQCs(
             [headerNMinus5, headerNMinus4],
-            headerNMinus3.ExtraConsensusData!.QuorumCert);
+            headerNMinus3.ExtraConsensusData!.QuorumCert!);
 
         Assert.That(forensicsProcessor.GetHighestCommittedQcsSnapshot().Length, Is.EqualTo(3));
 
         // Feed a newer same-chain window; happy-path behavior should update committed QCs without errors.
         Assert.That(async () => await forensicsProcessor.ForensicsMonitoring(
             [headerNMinus2, headerNMinus1],
-            headerN.ExtraConsensusData!.QuorumCert), Throws.Nothing);
+            headerN.ExtraConsensusData!.QuorumCert!), Throws.Nothing);
 
         QuorumCertificate[] highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-            Assert.That(highestCommittedQcs[0], Is.EqualTo(headerNMinus2.ExtraConsensusData!.QuorumCert));
-            Assert.That(highestCommittedQcs[1], Is.EqualTo(headerNMinus1.ExtraConsensusData!.QuorumCert));
-            Assert.That(highestCommittedQcs[2], Is.EqualTo(headerN.ExtraConsensusData!.QuorumCert));
+            Assert.That(highestCommittedQcs[0], Is.EqualTo(headerNMinus2.ExtraConsensusData!.QuorumCert!));
+            Assert.That(highestCommittedQcs[1], Is.EqualTo(headerNMinus1.ExtraConsensusData!.QuorumCert!));
+            Assert.That(highestCommittedQcs[2], Is.EqualTo(headerN.ExtraConsensusData!.QuorumCert!));
         }
     }
 
@@ -172,7 +172,7 @@ public class ForensicsTests
         // Seed highest committed QCs from canonical tip window.
         await forensicsProcessor.SetCommittedQCs(
             [headerNMinus2, headerNMinus1],
-            headerN.ExtraConsensusData!.QuorumCert);
+            headerN.ExtraConsensusData!.QuorumCert!);
 
         // Build a fork from the same grandparent; this gives a divergent chain segment.
         Block forkBlock1 = await blockchain.AddBlockFromParent(headerNMinus2);
@@ -192,17 +192,17 @@ public class ForensicsTests
         QuorumCertificate forkHeader1Qc = new(
             new BlockRoundInfo(
                 headerNMinus2.Hash!,
-                headerNMinus1.ExtraConsensusData!.QuorumCert.ProposedBlockInfo.Round,
+                headerNMinus1.ExtraConsensusData!.QuorumCert!.ProposedBlockInfo.Round,
                 headerNMinus2.Number),
             [],
-            forkHeader1.ExtraConsensusData!.QuorumCert.GapNumber);
+            forkHeader1.ExtraConsensusData!.QuorumCert!.GapNumber);
         forkHeader1.ExtraConsensusData = new ExtraFieldsV2(forkHeader1.ExtraConsensusData.BlockRound, forkHeader1Qc);
 
         // Compose incoming fork QCs in ancestor->descendant order and verify the same-round condition.
         QuorumCertificate[] incomingForkQcs = [
-            headerNMinus2.ExtraConsensusData!.QuorumCert,
+            headerNMinus2.ExtraConsensusData!.QuorumCert!,
             forkHeader1Qc,
-            forkHeader2.ExtraConsensusData!.QuorumCert
+            forkHeader2.ExtraConsensusData!.QuorumCert!
         ];
         // Build deterministic incoming QC that points to forkHeader1, matching SetCommittedQCs expectations.
         QuorumCertificate incomingForkMonitoringQc = new(
@@ -211,7 +211,7 @@ public class ForensicsTests
                 forkHeader1.ExtraConsensusData!.BlockRound,
                 forkHeader1.Number),
             [],
-            forkHeader2.ExtraConsensusData!.QuorumCert.GapNumber);
+            forkHeader2.ExtraConsensusData!.QuorumCert!.GapNumber);
         QuorumCertificate[] highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         bool hasSameRoundQc = forensicsProcessor.TryFindQCsInSameRound(
             highestCommittedQcs,
@@ -244,7 +244,7 @@ public class ForensicsTests
             Assert.That(smallerRound, Is.EqualTo(largerRound));
             Assert.That(acrossEpoch, Is.False);
             Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-            Assert.That(highestCommittedQcs[0], Is.SameAs(headerNMinus2.ExtraConsensusData!.QuorumCert));
+            Assert.That(highestCommittedQcs[0], Is.SameAs(headerNMinus2.ExtraConsensusData!.QuorumCert!));
             Assert.That(highestCommittedQcs[1], Is.SameAs(forkHeader1Qc));
             Assert.That(highestCommittedQcs[2], Is.SameAs(incomingForkMonitoringQc));
         }
@@ -271,11 +271,11 @@ public class ForensicsTests
         // cannot match by round in the live ProcessForensics path.
         QuorumCertificate baselineGrandParentQc = new(
             new BlockRoundInfo(
-                headerNMinus2.ExtraConsensusData!.QuorumCert.ProposedBlockInfo.Hash,
+                headerNMinus2.ExtraConsensusData!.QuorumCert!.ProposedBlockInfo.Hash,
                 1_000,
-                headerNMinus2.ExtraConsensusData.QuorumCert.ProposedBlockInfo.BlockNumber),
-            headerNMinus2.ExtraConsensusData.QuorumCert.Signatures,
-            headerNMinus2.ExtraConsensusData.QuorumCert.GapNumber);
+                headerNMinus2.ExtraConsensusData.QuorumCert!.ProposedBlockInfo.BlockNumber),
+            headerNMinus2.ExtraConsensusData.QuorumCert!.Signatures,
+            headerNMinus2.ExtraConsensusData.QuorumCert!.GapNumber);
         headerNMinus2.ExtraConsensusData = new ExtraFieldsV2(headerNMinus2.ExtraConsensusData.BlockRound, baselineGrandParentQc);
 
         QuorumCertificate baselineParentQc = new(
@@ -283,8 +283,8 @@ public class ForensicsTests
                 headerNMinus2.Hash!,
                 1_001,
                 headerNMinus2.Number),
-            headerNMinus1.ExtraConsensusData!.QuorumCert.Signatures,
-            headerNMinus1.ExtraConsensusData.QuorumCert.GapNumber);
+            headerNMinus1.ExtraConsensusData!.QuorumCert!.Signatures,
+            headerNMinus1.ExtraConsensusData.QuorumCert!.GapNumber);
         headerNMinus1.ExtraConsensusData = new ExtraFieldsV2(headerNMinus1.ExtraConsensusData.BlockRound, baselineParentQc);
 
         QuorumCertificate baselineIncomingQc = new(
@@ -292,8 +292,8 @@ public class ForensicsTests
                 headerNMinus1.Hash!,
                 1_002,
                 headerNMinus1.Number),
-            headerN.ExtraConsensusData!.QuorumCert.Signatures,
-            headerN.ExtraConsensusData.QuorumCert.GapNumber);
+            headerN.ExtraConsensusData!.QuorumCert!.Signatures,
+            headerN.ExtraConsensusData.QuorumCert!.GapNumber);
 
         await forensicsProcessor.SetCommittedQCs(
             [headerNMinus2, headerNMinus1],
@@ -322,7 +322,7 @@ public class ForensicsTests
                 forkRound1,
                 headerNMinus2.Number),
             [],
-            forkHeader1.ExtraConsensusData!.QuorumCert.GapNumber);
+            forkHeader1.ExtraConsensusData!.QuorumCert!.GapNumber);
         forkHeader1.ExtraConsensusData = new ExtraFieldsV2(forkHeader1.ExtraConsensusData.BlockRound, forkHeader1Qc);
 
         QuorumCertificate incomingForkMonitoringQc = new(
@@ -331,7 +331,7 @@ public class ForensicsTests
                 forkRound2,
                 forkHeader1.Number),
             [],
-            forkHeader2.ExtraConsensusData!.QuorumCert.GapNumber);
+            forkHeader2.ExtraConsensusData!.QuorumCert!.GapNumber);
 
         // Force the incoming ancestry used by ProcessForensics to be disjoint in round space
         // from highestCommittedQcs by replacing headerNMinus2 QC with a synthetic one.
@@ -383,7 +383,7 @@ public class ForensicsTests
             Assert.That(smallerRound, Is.LessThan(largerRound));
             Assert.That(acrossEpoch, Is.False);
             Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-            Assert.That(highestCommittedQcs[0], Is.SameAs(headerNMinus2.ExtraConsensusData!.QuorumCert));
+            Assert.That(highestCommittedQcs[0], Is.SameAs(headerNMinus2.ExtraConsensusData!.QuorumCert!));
             Assert.That(highestCommittedQcs[1], Is.SameAs(forkHeader1Qc));
             Assert.That(highestCommittedQcs[2], Is.SameAs(incomingForkMonitoringQc));
         }
@@ -415,8 +415,8 @@ public class ForensicsTests
         }
         Assert.That(oldEpochHeader.ExtraConsensusData, Is.Not.Null);
 
-        QuorumCertificate oldEpochQc = oldEpochHeader.ExtraConsensusData!.QuorumCert;
-        QuorumCertificate currentQc = headerN.ExtraConsensusData!.QuorumCert;
+        QuorumCertificate oldEpochQc = oldEpochHeader.ExtraConsensusData!.QuorumCert!;
+        QuorumCertificate currentQc = headerN.ExtraConsensusData!.QuorumCert!;
 
         ForensicsEvent forensicsEvent = await CaptureForensicsEvent(
             forensicsProcessor,
@@ -475,7 +475,7 @@ public class ForensicsTests
         Address currentMasternode = epochSwitchInfo.Masternodes.First();
         PrivateKey signerKey = blockchain.MasterNodeCandidates.First(candidate => candidate.Address == currentMasternode);
         ulong round = context.CurrentRound;
-        ulong gap = headerN.ExtraConsensusData.QuorumCert.GapNumber;
+        ulong gap = headerN.ExtraConsensusData.QuorumCert!.GapNumber;
         BlockRoundInfo canonicalRoundInfo = new(headerN.Hash!, round, headerN.Number);
         BlockRoundInfo forkRoundInfo = new(forkHeader.Hash!, round, forkHeader.Number);
         Vote canonicalVote = XdcTestHelper.BuildSignedVote(canonicalRoundInfo, gap, signerKey);
@@ -533,7 +533,7 @@ public class ForensicsTests
         PrivateKey signerKey = blockchain.MasterNodeCandidates.First(candidate => candidate.Address == currentMasternode);
         ulong baselineQcRound = 14;
         ulong incomingVoteRound = 16;
-        ulong gap = headerN.ExtraConsensusData!.QuorumCert.GapNumber;
+        ulong gap = headerN.ExtraConsensusData!.QuorumCert!.GapNumber;
 
         Vote qcSignedVote = XdcTestHelper.BuildSignedVote(
             new BlockRoundInfo(headerNMinus1.Hash!, baselineQcRound, headerNMinus1.Number),

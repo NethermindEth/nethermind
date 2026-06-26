@@ -8,7 +8,7 @@ namespace Nethermind.Benchmarks.Core
     public class SpecBenchmark
     {
 
-        private ISpecProvider _provider;
+        private ISpecProvider _provider = null!;
 
         [GlobalSetup]
         public void Setup() => _provider = MainnetSpecProvider.Instance;

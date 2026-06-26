@@ -14,7 +14,7 @@ namespace Nethermind.Consensus
         private readonly ISealer _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
         private readonly ISealValidator _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
 
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) =>
+        public Task<Block?> SealBlock(Block block, CancellationToken cancellationToken) =>
             _sealer.SealBlock(block, cancellationToken);
 
         public bool CanSeal(ulong blockNumber, Hash256 parentHash) =>

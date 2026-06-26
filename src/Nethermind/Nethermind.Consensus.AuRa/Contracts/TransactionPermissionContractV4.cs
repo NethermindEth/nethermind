@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             new object[]
             {
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.MaxFeePerGas, tx.MaxPriorityFeePerGas, tx.GasLimit, tx.Data.AsArray() ?? []
+                tx.SenderAddress!, tx.To ?? Address.Zero, tx.Value, tx.MaxFeePerGas, tx.MaxPriorityFeePerGas, tx.GasLimit, tx.Data.AsArray() ?? []
             };
 
         public override UInt256 Version => Four;

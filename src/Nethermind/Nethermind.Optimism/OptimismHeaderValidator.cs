@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Optimism;
 
@@ -17,7 +18,7 @@ public class PreBedrockHeaderValidator(
     ISpecProvider? specProvider,
     ILogManager? logManager) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         error = null;
         return typeof(TOrphaned) == typeof(OnFlag) || ValidateParent(header, parent, ref error);
@@ -36,7 +37,7 @@ public class OptimismHeaderValidator(
         new PreBedrockHeaderValidator(blockTree, sealValidator, specProvider, logManager),
         blockTree, specProvider, sealValidator, logManager)
 {
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         if (specHelper.IsHolocene(header))
         {

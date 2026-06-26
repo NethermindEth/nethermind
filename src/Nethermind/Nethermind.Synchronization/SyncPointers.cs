@@ -75,7 +75,7 @@ public class SyncPointers : ISyncPointers
             MigrateLegacyLowestInsertedBodyNumber(blocksDb);
         }
 
-        byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
+        byte[]? lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
         _lowestInsertedReceiptBlock = lowestBytes is null ? (ulong?)null : new RlpReader(lowestBytes).DecodeULong();
 
         _lowestInsertedBlockAccessListBlock =

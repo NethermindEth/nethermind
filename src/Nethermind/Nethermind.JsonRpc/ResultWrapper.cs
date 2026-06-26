@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
@@ -15,7 +16,7 @@ namespace Nethermind.JsonRpc
     public class ResultWrapper<T> : JsonRpcResponse, IResultWrapper
     {
         object? IResultWrapper.Data => Data;
-        public T Data { get; init; }
+        public T Data { get; init; } = default!;
         public Result Result { get; init; } = Result.Success;
         public int ErrorCode { get; init; }
         public bool IsTemporary { get; init; }
@@ -43,11 +44,11 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T> From(RpcResult<T>? rpcResult) =>
             rpcResult is null
                 ? Fail("Missing result.")
-                : rpcResult.IsValid ? Success(rpcResult.Result) : Fail(rpcResult.Error.Message);
+                : rpcResult.IsValid ? Success(rpcResult.Result!) : Fail(rpcResult.Error?.Message ?? "Missing result.");
 
         public static ResultWrapper<T> From(IResultWrapper source, T? data = default) => new()
         {
-            Data = data ?? (T)source.Data,
+            Data = data ?? (source.Data is T sourceData ? sourceData : default!),
             Result = source.Result,
             ErrorCode = source.ErrorCode,
             IsTemporary = source.IsTemporary,
@@ -85,7 +86,7 @@ namespace Nethermind.JsonRpc
             return true;
         }
 
-        internal override bool TryGetStreamableResult(out IStreamableResult? streamable)
+        internal override bool TryGetStreamableResult([NotNullWhen(true)] out IStreamableResult? streamable)
         {
             streamable = Result.ResultType == ResultType.Success && RpcPayloadTypeShape<T>.CanBeStreamable
                 ? Data as IStreamableResult
@@ -173,7 +174,7 @@ namespace Nethermind.JsonRpc
                 return null;
             }
 
-            Type runtimeType = value.GetType();
+            Type runtimeType = value!.GetType();
             return runtimeType == typeof(TValue) ? null : RpcPayloadTypeInfo.Get(options, runtimeType);
         }
 
@@ -185,7 +186,7 @@ namespace Nethermind.JsonRpc
 
     public class ResultWrapper<T, TErrorData> : ResultWrapper<T>, IResultWrapper
     {
-        public TErrorData ErrorData { get; init; }
+        public TErrorData ErrorData { get; init; } = default!;
 
         object? IResultWrapper.Data => ErrorData;
 
@@ -199,7 +200,7 @@ namespace Nethermind.JsonRpc
             new() { ErrorCode = errorCode, ErrorData = errorData, Result = Result.Fail(error), HasErrorData = true };
 
         public new static ResultWrapper<T, TErrorData> Success(T data) =>
-            new() { Data = data, ErrorData = default, Result = Result.Success };
+            new() { Data = data, ErrorData = default!, Result = Result.Success };
 
         public static implicit operator Task<ResultWrapper<T, TErrorData>>(ResultWrapper<T, TErrorData> resultWrapper) => Task.FromResult(resultWrapper);
 

@@ -22,7 +22,7 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
     private readonly IDbProvider _dbProvider;
     private readonly StateBoundaryStore _boundaryStore;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
-    private readonly ILastNStateRootTracker _lastNStateRootTracker;
+    private readonly ILastNStateRootTracker? _lastNStateRootTracker;
 
     public WorldStateManager(
         IWorldStateScopeProvider worldState,
@@ -30,7 +30,7 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
         IDbProvider dbProvider,
         ILogManager logManager,
         IPruningConfig pruningConfig,
-        ILastNStateRootTracker lastNStateRootTracker = null
+        ILastNStateRootTracker? lastNStateRootTracker = null
     )
     {
         _dbProvider = dbProvider;

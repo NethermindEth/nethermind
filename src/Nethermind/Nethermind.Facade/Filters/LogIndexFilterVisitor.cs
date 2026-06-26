@@ -135,7 +135,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
     private IEnumerator<int>? Visit(TopicsFilter topicsFilter)
     {
-        IEnumerator<int> result = null;
+        IEnumerator<int>? result = null;
 
         int topicIndex = 0;
         foreach (TopicExpression expression in topicsFilter.Expressions)

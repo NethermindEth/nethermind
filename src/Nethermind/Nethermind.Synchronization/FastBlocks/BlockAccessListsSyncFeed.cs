@@ -25,7 +25,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Synchronization.FastBlocks;
 
-public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatch?>
+public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatch>
 {
     protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
     protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
@@ -33,9 +33,9 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     protected override Func<bool> HasPivot =>
         () =>
         {
-            BlockHeader? pivotHeader = FindPivotHeader(out ulong pivotNumber, out Hash256 pivotHash);
+            BlockHeader? pivotHeader = FindPivotHeader(out ulong pivotNumber, out Hash256? pivotHash);
             return pivotHeader is not null &&
-                   (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotNumber, pivotHash));
+                   (pivotHeader.BlockAccessListHash is null || (pivotHash is not null && _blockAccessListStore.Exists(pivotNumber, pivotHash)));
         };
 
     private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.BlockAccessLists, 0, true);
@@ -49,7 +49,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private readonly BlockAccessListDownloadStrategy _blockAccessListDownloadStrategy;
     private readonly bool _blockAccessListsEverEnabled;
 
-    private SyncStatusList _syncStatusList;
+    private SyncStatusList _syncStatusList = null!;
 
     private bool ShouldFinish => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded;
     private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? ulong.MaxValue) <= _barrier;
@@ -140,10 +140,10 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncReport.FastBlockAccessLists.MarkEnd();
     }
 
-    private BlockHeader? FindPivotHeader(out ulong pivotNumber, out Hash256 pivotHash)
+    private BlockHeader? FindPivotHeader(out ulong pivotNumber, out Hash256? pivotHash)
     {
         (pivotNumber, pivotHash) = _blockTree.SyncPivot;
-        return _blockTree.FindHeader(pivotHash, blockNumber: pivotNumber);
+        return pivotHash is null ? null : _blockTree.FindHeader(pivotHash, blockNumber: pivotNumber);
     }
 
     public override async Task<BlockAccessListsSyncBatch?> PrepareRequest(CancellationToken token = default)
@@ -179,17 +179,11 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         return batch;
     }
 
-    public override SyncResponseHandlingResult HandleResponse(BlockAccessListsSyncBatch? batch, PeerInfo peer = null)
+    public override SyncResponseHandlingResult HandleResponse(BlockAccessListsSyncBatch batch, PeerInfo? peer = null)
     {
-        batch?.MarkHandlingStart();
+        batch.MarkHandlingStart();
         try
         {
-            if (batch is null)
-            {
-                if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
-                return SyncResponseHandlingResult.InternalError;
-            }
-
             int added = InsertBlockAccessLists(batch);
             return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
         }
@@ -205,8 +199,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         }
         finally
         {
-            batch?.Dispose();
-            batch?.MarkHandlingEnd();
+            batch.Dispose();
+            batch.MarkHandlingEnd();
         }
     }
 

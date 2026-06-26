@@ -11,6 +11,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -64,7 +65,9 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return Array.Empty<BlockReward>();
 
         ulong number = xdcHeader.Number;
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
+        ExtraFieldsV2 extraConsensusData = xdcHeader.ExtraConsensusData
+            ?? throw new InvalidOperationException($"Block {xdcHeader.Number} does not contain consensus data.");
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, extraConsensusData.BlockRound);
         if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
 
         Address foundationWalletAddr = spec.FoundationWallet;
@@ -138,8 +141,13 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         ulong blockIdx = number - 1;
         while (true)
         {
-            Hash256 parentHash = h.ParentHash;
-            h = (XdcBlockHeader)_blockTree.FindHeader(parentHash!, blockIdx) ?? throw new InvalidOperationException($"Header with hash {parentHash} not found");
+            Hash256 parentHash = h.ParentHash ?? throw new InvalidOperationException($"Parent hash is missing for block {h.Number}.");
+            if (_blockTree.FindHeader(parentHash, blockIdx) is not XdcBlockHeader parentHeader)
+            {
+                throw new InvalidOperationException($"Header with hash {parentHash} not found");
+            }
+
+            h = parentHeader;
             if (epochCount == 0 && !h.BaseFeePerGas.IsZero)
             {
                 UInt256 burnedInBlock = h.BaseFeePerGas * (UInt256)h.GasUsed;
@@ -184,16 +192,21 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                 }
             }
 
-            blockNumberToHash[blockIdx] = h.Hash;
-            Transaction[] signingTxs = _signingTxCache.GetSigningTransactions(h.Hash, blockIdx, spec);
+            Hash256 headerHash = h.Hash ?? throw new InvalidOperationException($"Header hash is missing for block {h.Number}.");
+            blockNumberToHash[blockIdx] = headerHash;
+            Transaction[] signingTxs = _signingTxCache.GetSigningTransactions(headerHash, blockIdx, spec);
 
             foreach (Transaction tx in signingTxs)
             {
                 Hash256 blockHash = ExtractBlockHashFromSigningTxData(tx.Data);
-                tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
+                Address? sender = tx.SenderAddress ?? _ethereumEcdsa.RecoverAddress(tx);
+                if (sender is null)
+                    continue;
+
+                tx.SenderAddress = sender;
                 if (!hashToSigningAddress.ContainsKey(blockHash))
                     hashToSigningAddress[blockHash] = [];
-                hashToSigningAddress[blockHash].Add(tx.SenderAddress);
+                hashToSigningAddress[blockHash].Add(sender);
             }
 
             if (blockIdx == 0) break;
@@ -205,8 +218,8 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         ulong start = (startBlockNumber + mergeSignRange - 1) / mergeSignRange * mergeSignRange;
         for (ulong i = start; i < endBlockNumber; i += mergeSignRange)
         {
-            if (!blockNumberToHash.TryGetValue(i, out Hash256 blockHash)) continue;
-            if (!hashToSigningAddress.TryGetValue(blockHash, out HashSet<Address> addresses)) continue;
+            if (!blockNumberToHash.TryGetValue(i, out Hash256? blockHash)) continue;
+            if (!hashToSigningAddress.TryGetValue(blockHash, out HashSet<Address>? addresses)) continue;
             foreach (Address addr in addresses)
             {
                 if (masternodes.Contains(addr))
@@ -322,7 +335,8 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     internal (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
         Address masternodeAddress, UInt256 reward, XdcBlockHeader header)
     {
-        Address owner = _masternodeVotingContract.GetCandidateOwner(_transactionProcessor, header, masternodeAddress);
+        Address owner = _masternodeVotingContract.GetCandidateOwner(_transactionProcessor, header, masternodeAddress)
+            ?? throw new InvalidOperationException($"Candidate owner not found for {masternodeAddress}.");
 
         // 90% of the reward goes to the masternode
         UInt256 masterReward = reward * 90 / 100;

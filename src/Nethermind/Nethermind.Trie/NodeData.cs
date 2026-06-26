@@ -15,13 +15,13 @@ public interface INodeData
     public NodeType NodeType { get; }
     public INodeData Clone();
     public int Length { get; }
-    public ref object this[int index] { get; }
+    public ref object? this[int index] { get; }
     public int MemorySize { get; }
 }
 
 interface INodeWithKey : INodeData
 {
-    public byte[] Key { get; set; }
+    public byte[]? Key { get; set; }
 }
 
 public class BranchData : INodeData
@@ -39,7 +39,7 @@ public class BranchData : INodeData
     private BranchData(in BranchArray branches) => _branches = branches;
 
     public ref readonly BranchArray Branches => ref _branches;
-    public ref object this[int index] => ref _branches[index];
+    public ref object? this[int index] => ref _branches[index];
 
     INodeData INodeData.Clone() => new BranchData(in _branches);
 
@@ -63,7 +63,7 @@ public class ExtensionData : INodeWithKey
     public byte[]? _key;
     public object? _value;
 
-    public byte[] Key
+    public byte[]? Key
     {
         get => _key;
         set => _key = value;
@@ -75,7 +75,7 @@ public class ExtensionData : INodeWithKey
         set => _value = value;
     }
 
-    public ref object this[int index]
+    public ref object? this[int index]
     {
         get
         {
@@ -103,7 +103,7 @@ public class ExtensionData : INodeWithKey
         Value = value;
     }
 
-    private ExtensionData(byte[] key, object? value)
+    private ExtensionData(byte[]? key, object? value)
     {
         Key = key;
         Value = value;
@@ -125,26 +125,26 @@ public class LeafData : INodeWithKey
 
     private readonly CappedArray<byte> _value;
 
-    public byte[] Key { get; set; }
+    public byte[]? Key { get; set; }
     public CappedArray<byte> Value => _value;
     public TrieNode? StorageRoot { get; set; }
 
     public LeafData() => _value = CappedArray<byte>.Empty;
 
-    internal LeafData(byte[] key, CappedArray<byte> value)
+    internal LeafData(byte[]? key, CappedArray<byte> value)
     {
         Key = key;
         _value = value;
     }
 
-    private LeafData(byte[] key, CappedArray<byte> value, TrieNode? storageRoot)
+    private LeafData(byte[]? key, CappedArray<byte> value, TrieNode? storageRoot)
     {
         Key = key;
         _value = value;
         StorageRoot = storageRoot;
     }
 
-    public ref object this[int index] => throw new IndexOutOfRangeException();
+    public ref object? this[int index] => throw new IndexOutOfRangeException();
 
     INodeData INodeData.Clone() => new LeafData(Key, _value);
 

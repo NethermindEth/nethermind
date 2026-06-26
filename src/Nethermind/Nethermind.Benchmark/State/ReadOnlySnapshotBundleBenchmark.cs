@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
@@ -301,13 +302,15 @@ public class ReadOnlySnapshotBundleBenchmark
 
     [Benchmark]
     public Account GetAccount()
-        => _bundle.GetAccount(_hitAccounts[_index++ % _hitAccounts.Length]);
+        => _bundle.GetAccount(_hitAccounts[_index++ % _hitAccounts.Length])
+           ?? throw new InvalidOperationException("Expected account snapshot hit.");
 
     [Benchmark]
     public byte[] GetSlot()
     {
         (Address addr, UInt256 slot) = _hitSlots[_index++ % _hitSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1)
+               ?? throw new InvalidOperationException("Expected storage snapshot hit.");
     }
 
     [Benchmark]
@@ -335,7 +338,8 @@ public class ReadOnlySnapshotBundleBenchmark
     public byte[] GetSlot_SameAccount()
     {
         (Address addr, UInt256 slot) = _sameAccountSlots[_index++ % _sameAccountSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1)
+               ?? throw new InvalidOperationException("Expected same-account storage snapshot hit.");
     }
 
     [Benchmark]
@@ -347,11 +351,11 @@ public class ReadOnlySnapshotBundleBenchmark
     }
 
     [Benchmark]
-    public Account GetAccount_Miss()
+    public Account? GetAccount_Miss()
         => _bundle.GetAccount(_missAccounts[_index++ % _missAccounts.Length]);
 
     [Benchmark]
-    public byte[] GetSlot_Miss()
+    public byte[]? GetSlot_Miss()
     {
         (Address addr, UInt256 slot) = _missSlots[_index++ % _missSlots.Length];
         return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
@@ -384,7 +388,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
     private sealed class NullTrieNodeCache : ITrieNodeCache
     {
-        public bool TryGet(Hash256 address, in TreePath path, Hash256 hash, out TrieNode node)
+        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
             node = null;
             return false;
@@ -397,8 +401,8 @@ public class ReadOnlySnapshotBundleBenchmark
 
     private sealed class CapturingCommitTarget : IFlatCommitTarget
     {
-        public FlatSnapshot LastSnapshot { get; private set; }
-        public TransientResource LastResource { get; private set; }
+        public FlatSnapshot? LastSnapshot { get; private set; }
+        public TransientResource? LastResource { get; private set; }
 
         public void AddSnapshot(FlatSnapshot snapshot, TransientResource transientResource)
         {
@@ -409,7 +413,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
     private sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
     {
-        public byte[] GetCode(in ValueHash256 codeHash) => null;
+        public byte[]? GetCode(in ValueHash256 codeHash) => null;
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
             => NullCodeSetter.Instance;

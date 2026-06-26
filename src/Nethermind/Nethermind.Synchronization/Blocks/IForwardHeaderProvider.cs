@@ -11,6 +11,6 @@ namespace Nethermind.Synchronization.Blocks;
 
 public interface IForwardHeaderProvider
 {
-    Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(ulong skipLastN, ulong maxHeaders, CancellationToken cancellation);
+    Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong skipLastN, ulong maxHeaders, CancellationToken cancellation);
     void OnSuggestBlock(BlockTreeSuggestOptions blockTreeSuggestOptions, Block currentBlock, AddBlockResult addResult);
 }

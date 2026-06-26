@@ -23,7 +23,7 @@ public class BlockTreeTestDouble : IBlockTree
     private ulong? _bestPersistedState;
     private BlockHeader? _lowestInsertedHeader;
     private BlockHeader? _lowestInsertedBeaconHeader;
-    private (ulong BlockNumber, Hash256 BlockHash) _syncPivot;
+    private (ulong BlockNumber, Hash256? BlockHash) _syncPivot;
     private bool _isProcessingBlock;
 
     protected IBlockTree? Inner { get; }
@@ -147,7 +147,7 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual ulong BestKnownNumber => Inner?.BestKnownNumber ?? Head?.Number ?? 0UL;
     public virtual ulong BestKnownBeaconNumber => Inner?.BestKnownBeaconNumber ?? 0UL;
     public virtual bool CanAcceptNewBlocks => Inner?.CanAcceptNewBlocks ?? true;
-    public virtual (ulong BlockNumber, Hash256 BlockHash) SyncPivot
+    public virtual (ulong BlockNumber, Hash256? BlockHash) SyncPivot
     {
         get => Inner?.SyncPivot ?? _syncPivot;
         set => _syncPivot = value;
@@ -197,8 +197,8 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual ChainLevelInfo? FindLevel(ulong number) => Inner?.FindLevel(number);
     public virtual BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => Inner?.FindCanonicalBlockInfo(blockNumber) ?? null!;
     public virtual Hash256? FindHash(ulong blockNumber) => Inner?.FindHash(blockNumber);
-    public virtual IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) =>
-        Inner?.FindHeaders(hash, numberOfBlocks, skip, reverse) ?? new ArrayPoolList<BlockHeader>(0);
+    public virtual IOwnedReadOnlyList<BlockHeader?> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) =>
+        Inner?.FindHeaders(hash, numberOfBlocks, skip, reverse) ?? new ArrayPoolList<BlockHeader?>(0);
     public virtual void DeleteInvalidBlock(Block invalidBlock) => Inner?.DeleteInvalidBlock(invalidBlock);
     public virtual void ReportBadBlock(Block badBlock) => Inner?.ReportBadBlock(badBlock);
     public virtual void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => Inner?.DeleteOldBlock(blockNumber, blockHash);

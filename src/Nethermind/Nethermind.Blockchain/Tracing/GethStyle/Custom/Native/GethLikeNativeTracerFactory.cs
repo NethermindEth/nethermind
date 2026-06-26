@@ -32,7 +32,7 @@ public static class GethLikeNativeTracerFactory
         _tracers.Add(tracerName, tracerDelegate);
 
     public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState) =>
-        _tracers.TryGetValue(options.Tracer, out GethLikeNativeTracerFactoryDelegate tracerDelegate)
+        options.Tracer is not null && _tracers.TryGetValue(options.Tracer, out GethLikeNativeTracerFactoryDelegate? tracerDelegate)
             ? tracerDelegate(options, block, transaction, worldState)
             : throw new ArgumentException($"Unknown tracer: {options.Tracer}");
 }

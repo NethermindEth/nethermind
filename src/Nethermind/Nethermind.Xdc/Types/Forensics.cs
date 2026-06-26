@@ -27,7 +27,7 @@ public class VoteEquivocationContent
 {
     public Vote SmallerRoundVote { get; set; } = null!;
     public Vote LargerRoundVote { get; set; } = null!;
-    public Address Signer { get; set; }
+    public Address Signer { get; set; } = null!;
 }
 
 public class ForensicProof

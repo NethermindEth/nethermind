@@ -11,7 +11,7 @@ namespace Nethermind.Benchmarks.Core;
 [HideColumns("Job", "RatioSD")]
 public class ParallelBenchmark
 {
-    private int[] _times;
+    private int[] _times = null!;
 
     [GlobalSetup]
     public void Setup()

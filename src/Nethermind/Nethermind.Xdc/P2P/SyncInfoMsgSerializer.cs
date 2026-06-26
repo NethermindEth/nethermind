@@ -23,7 +23,7 @@ internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
     public SyncInfoMsg Deserialize(IByteBuffer byteBuffer)
     {
         RlpReader ctx = new(byteBuffer.AsSpan());
-        Types.SyncInfo syncInfo = _syncInfoDecoder.Decode(ref ctx, RlpBehaviors.None);
+        Types.SyncInfo syncInfo = _syncInfoDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.None);
         byteBuffer.SkipBytes(ctx.Position);
         return new() { SyncInfo = syncInfo };
     }

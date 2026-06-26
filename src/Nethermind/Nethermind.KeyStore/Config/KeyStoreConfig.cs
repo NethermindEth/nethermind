@@ -33,18 +33,18 @@ namespace Nethermind.KeyStore.Config
 
         public int IVSize { get; set; } = 16;
 
-        public string TestNodeKey { get; set; }
+        public string? TestNodeKey { get; set; }
 
-        public string BlockAuthorAccount { get; set; }
+        public string? BlockAuthorAccount { get; set; }
 
-        public string EnodeAccount { get; set; }
+        public string? EnodeAccount { get; set; }
 
-        public string EnodeKeyFile { get; set; }
+        public string? EnodeKeyFile { get; set; }
 
-        public string[] Passwords { get; set; } = [];
+        public string?[]? Passwords { get; set; } = [];
 
-        public string[] PasswordFiles { get; set; } = [];
+        public string?[]? PasswordFiles { get; set; } = [];
 
-        public string[] UnlockAccounts { get; set; } = [];
+        public string?[]? UnlockAccounts { get; set; } = [];
     }
 }

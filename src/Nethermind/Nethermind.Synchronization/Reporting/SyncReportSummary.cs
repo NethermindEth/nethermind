@@ -5,6 +5,6 @@ namespace Nethermind.Synchronization.Reporting
 {
     public class SyncReportSummary
     {
-        public string CurrentStage { get; set; }
+        public string CurrentStage { get; set; } = string.Empty;
     }
 }

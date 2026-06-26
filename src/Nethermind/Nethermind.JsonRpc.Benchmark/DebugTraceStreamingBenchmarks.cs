@@ -24,7 +24,7 @@ public class DebugTraceStreamingBenchmarks
 
     private Block _block = null!;
     private Transaction _tx = null!;
-    private ExecutionEnvironment _env;
+    private ExecutionEnvironment _env = null!;
 
     [GlobalSetup]
     public void Setup()

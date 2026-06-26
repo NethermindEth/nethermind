@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -28,7 +29,7 @@ using Nethermind.History;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class ReceiptsSyncFeed : BarrierSyncFeed<ReceiptsSyncBatch?>
+    public class ReceiptsSyncFeed : BarrierSyncFeed<ReceiptsSyncBatch>
     {
         protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
@@ -43,7 +44,8 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         protected override Func<bool> HasPivot =>
-            () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
+            () => _blockTree.SyncPivot.BlockHash is { } blockHash &&
+                  _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, blockHash);
 
         private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Receipts, 0, true);
 
@@ -56,7 +58,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IHistoryPruner _historyPruner;
         private readonly ReceiptDownloadStrategy _receiptDownloadStrategy;
 
-        private SyncStatusList _syncStatusList;
+        private SyncStatusList _syncStatusList = null!;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllDownloaded;
         private bool AllDownloaded => (_syncPointers.LowestInsertedReceiptBlockNumber ?? ulong.MaxValue) <= _barrier;
@@ -173,17 +175,11 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        public override SyncResponseHandlingResult HandleResponse(ReceiptsSyncBatch? batch, PeerInfo peer = null)
+        public override SyncResponseHandlingResult HandleResponse(ReceiptsSyncBatch batch, PeerInfo? peer = null)
         {
-            batch?.MarkHandlingStart();
+            batch.MarkHandlingStart();
             try
             {
-                if (batch is null)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
-                    return SyncResponseHandlingResult.InternalError;
-                }
-
                 int added = InsertReceipts(batch);
                 return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
             }
@@ -199,12 +195,12 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
-                batch?.Dispose();
-                batch?.MarkHandlingEnd();
+                batch.Dispose();
+                batch.MarkHandlingEnd();
             }
         }
 
-        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
+        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, [NotNullWhen(true)] out TxReceipt[]? preparedReceipts)
         {
             BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
             if (header is null)

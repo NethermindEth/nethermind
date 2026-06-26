@@ -12,7 +12,7 @@ namespace Nethermind.Benchmarks.Rlp
 {
     public class RlpDecodeBlockBenchmark
     {
-        private static byte[] _block;
+        private static byte[] _block = null!;
 
         private byte[][] _scenarios;
 
@@ -38,9 +38,11 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup() => _block = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public Block Improved() => Serialization.Rlp.Rlp.Decode<Block>(_block);
+        public Block Improved() => Serialization.Rlp.Rlp.Decode<Block>(_block)
+            ?? throw new Serialization.Rlp.RlpException("Block decoding returned null.");
 
         [Benchmark]
-        public Block Current() => Serialization.Rlp.Rlp.Decode<Block>(_block);
+        public Block Current() => Serialization.Rlp.Rlp.Decode<Block>(_block)
+            ?? throw new Serialization.Rlp.RlpException("Block decoding returned null.");
     }
 }

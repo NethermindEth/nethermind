@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>

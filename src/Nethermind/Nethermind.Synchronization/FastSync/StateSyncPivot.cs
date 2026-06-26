@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void TrySetNewBestHeader(string msg)
         {
-            BlockHeader bestSuggestedHeader = blockTree.BestSuggestedHeader; // Note: Best suggested header is always `syncConfig.StateMinDistanceFromHead`. behind from actual head.
+            BlockHeader? bestSuggestedHeader = blockTree.BestSuggestedHeader; // Note: Best suggested header is always `syncConfig.StateMinDistanceFromHead`. behind from actual head.
             ulong targetBlockNumber = bestSuggestedHeader?.Number ?? 0UL;
             // The new pivot must be at least one block after the sync pivot as the forward downloader does not
             // download the block at the sync pivot which may cause state not found error if state was downloaded
@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.FastSync
                 ? blockTree.SyncPivot.BlockNumber
                 : Math.Max(targetBlockNumber, blockTree.SyncPivot.BlockNumber + 1UL);
 
-            BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
+            BlockHeader? bestHeader = blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");

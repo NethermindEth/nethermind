@@ -34,7 +34,7 @@ internal class XdcSubnetBlockProducer(
     IDifficultyCalculator? difficultyCalculator,
     IBlocksConfig? blocksConfig) : XdcBlockProducer(epochSwitchManager, subnetMasternodesCalculator, xdcContext, txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
 {
-    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
+    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes)
     {
         if (base.PrepareBlockHeader(parent, payloadAttributes) is not XdcSubnetBlockHeader headerCandidate)
             throw new InvalidOperationException("PrepareBlockHeader did not return XdcSubnetBlockHeader");
@@ -44,7 +44,9 @@ internal class XdcSubnetBlockProducer(
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(headerCandidate);
         if (headerCandidate.IsGapPlusOne(spec))
         {
-            (Address[] nextEpochCandidates, Address[] nextPenalties) = subnetMasternodesCalculator.GetNextEpochCandidatesAndPenalties(headerCandidate.ParentHash);
+            Hash256 parentHash = headerCandidate.ParentHash
+                ?? throw new InvalidOperationException($"Parent hash is missing for block {headerCandidate.Number}.");
+            (Address[] nextEpochCandidates, Address[] nextPenalties) = subnetMasternodesCalculator.GetNextEpochCandidatesAndPenalties(parentHash);
             headerCandidate.NextValidators = new byte[nextEpochCandidates.Length * Address.Size];
             for (int i = 0; i < nextEpochCandidates.Length; i++)
             {

@@ -33,11 +33,11 @@ namespace Nethermind.Consensus.Producers
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
             PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default)
         {
-            using ArrayPoolList<Task<Block>> produceTasks = new(_blockProducers.Length);
+            using ArrayPoolList<Task<Block?>> produceTasks = new(_blockProducers.Length);
             for (int i = 0; i < _blockProducers.Length; i++)
             {
                 T blockProducerInfo = _blockProducers[i];
-                produceTasks.Add(!blockProducerInfo.Condition.CanProduce(parentHeader!)
+                produceTasks.Add(parentHeader is not null && !blockProducerInfo.Condition.CanProduce(parentHeader)
                     ? Task.FromResult<Block?>(null)
                     : blockProducerInfo.BlockProducer.BuildBlock(parentHeader, blockProducerInfo.BlockTracer, payloadAttributes, flags, cancellationToken: token));
             }
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Producers
 
             try
             {
-                Block?[] blocks = await Task.WhenAll<Block?>(produceTasks.AsSpan());
+                Block?[] blocks = await Task.WhenAll(produceTasks.AsSpan());
                 blocksWithProducers = blocks.Zip(_blockProducers);
             }
             catch (OperationCanceledException)

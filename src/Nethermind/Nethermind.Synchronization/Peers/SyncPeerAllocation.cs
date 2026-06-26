@@ -13,13 +13,13 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
         /// </summary>
-        private readonly Lock? _allocationLock = allocationLock ?? new Lock();
+        private readonly Lock _allocationLock = allocationLock ?? new Lock();
 
         private AllocationContexts Contexts { get; } = contexts;
 
-        [MemberNotNullWhen(true, nameof(HasPeer))]
         public PeerInfo? Current { get; private set; }
 
+        [MemberNotNullWhen(true, nameof(Current))]
         public bool HasPeer => Current is not null;
 
         public SyncPeerAllocation(PeerInfo peerInfo, AllocationContexts contexts, Lock? allocationLock = null)

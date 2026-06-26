@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             byteBuffer.EnsureWritable(totalLength);
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
-            foreach (BlockBody? body in message.Bodies.Bodies)
+            foreach (BlockBody? body in message.Bodies?.Bodies ?? [])
             {
                 if (body is null)
                 {
@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public int GetLength(BlockBodiesMessage message, out int contentLength)
         {
             int length = 0;
-            foreach (BlockBody? body in message.Bodies.Bodies)
+            foreach (BlockBody? body in message.Bodies?.Bodies ?? [])
             {
                 length += body switch
                 {
@@ -57,7 +57,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             int startingPosition = ctx.Position;
             try
             {
-                BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false, allowNulls: true, limit: RlpLimit);
+                BlockBody?[] bodies = ctx.DecodeArray(_blockBodyDecoder, false, allowNulls: true, limit: RlpLimit);
                 OwnedBlockBodies ownedBodies = new(bodies, memoryOwner);
                 memoryOwner = null;
                 byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));

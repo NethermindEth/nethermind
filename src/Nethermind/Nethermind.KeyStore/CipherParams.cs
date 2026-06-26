@@ -8,6 +8,6 @@ namespace Nethermind.KeyStore
     public class CipherParams
     {
         [JsonPropertyName("iv")]
-        public string IV { get; set; }
+        public string? IV { get; set; }
     }
 }

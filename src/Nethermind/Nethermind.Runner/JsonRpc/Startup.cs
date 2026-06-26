@@ -212,8 +212,8 @@ public class Startup : IStartup
         // Skip response compression for localhost (low benefit, high allocation cost)
         // and for Engine API requests (latency-sensitive consensus path)
         app.UseWhen(ctx =>
-            !IsLocalhost(ctx.Connection.RemoteIpAddress!) &&
-            !(jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl url) && url.IsAuthenticated),
+            !IsLocalhost(ctx.Connection.RemoteIpAddress) &&
+            !(jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) && url.IsAuthenticated),
             builder => builder.UseResponseCompression());
 
         app.Use((ctx, next) => HandleJsonRpcHttpRequestAsync(ctx, next, jsonRpcUrlCollection));
@@ -223,7 +223,7 @@ public class Startup : IStartup
             app.UseWebSockets(new WebSocketOptions());
             app.UseWhen(ctx =>
                 ctx.WebSockets.IsWebSocketRequest &&
-                jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+                jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? jsonRpcUrl) &&
                 jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
             builder => builder.UseWebSocketsModules());
         }
@@ -272,8 +272,8 @@ public class Startup : IStartup
         }
     }
 
-    private static bool IsLocalhost(IPAddress remoteIp)
-        => IPAddress.IsLoopback(remoteIp);
+    private static bool IsLocalhost(IPAddress? remoteIp)
+        => remoteIp is not null && IPAddress.IsLoopback(remoteIp);
 
     internal static bool TryGetTrustedHttpJsonRpcUrl(
         HttpContext ctx,
@@ -313,7 +313,7 @@ public class Startup : IStartup
             return Task.CompletedTask;
         }
 
-        if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+        if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return Task.CompletedTask;
@@ -455,7 +455,7 @@ public class Startup : IStartup
             return;
         }
 
-        if (jsonRpcUrl.IsAuthenticated && !await _rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
+        if (jsonRpcUrl.IsAuthenticated && !await _rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization.ToString()))
         {
             await PushErrorResponseAsync(ctx, StatusCodes.Status401Unauthorized, ErrorCodes.InvalidRequest, "Authentication error");
             return;

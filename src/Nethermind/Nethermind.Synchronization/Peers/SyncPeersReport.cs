@@ -52,7 +52,11 @@ namespace Nethermind.Synchronization.Peers
             {
                 RememberState(out bool _);
 
-                _logger.Debug(MakeSummaryReportForPeers(_peerPool.InitializedPeers, $"Sync peers - Connected: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}"));
+                string? summary = MakeSummaryReportForPeers(_peerPool.InitializedPeers, $"Sync peers - Connected: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
+                if (summary is not null)
+                {
+                    _logger.Debug(summary);
+                }
                 _logger.Debug(MakeReportForPeers(OrderedPeers, ""));
             }
         }

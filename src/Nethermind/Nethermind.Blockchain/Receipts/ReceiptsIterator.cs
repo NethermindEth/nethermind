@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public ref struct ReceiptsIterator
     {
-        private readonly IDb _blocksDb;
+        private readonly IDb? _blocksDb;
         private readonly int _length;
         private RlpReader _reader;
         private readonly int _startingPosition;
@@ -20,9 +20,9 @@ namespace Nethermind.Blockchain.Receipts
         private readonly TxReceipt[]? _receipts;
         private int _receiptIndex;
 
-        private readonly Func<IReceiptsRecovery.IRecoveryContext>? _recoveryContextFactory;
+        private readonly Func<IReceiptsRecovery.IRecoveryContext?>? _recoveryContextFactory;
         private IReceiptsRecovery.IRecoveryContext? _recoveryContext;
-        private readonly IReceiptRefDecoder _receiptRefDecoder;
+        private readonly IReceiptRefDecoder? _receiptRefDecoder;
         private bool _recoveryContextConfigured;
 
         public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_reader.Position < _length)
                 {
-                    _receiptRefDecoder.DecodeStructRef(ref _reader, RlpBehaviors.Storage, out current);
+                    _receiptRefDecoder!.DecodeStructRef(ref _reader, RlpBehaviors.Storage, out current);
                     _recoveryContext?.RecoverReceiptData(ref current);
                     _receiptIndex++;
                     return true;
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Receipts
                 if (_length != 0) _reader.ReadSequenceLength();
                 for (int i = 0; i < _receiptIndex; i++)
                 {
-                    _receiptRefDecoder.DecodeStructRef(ref _reader, RlpBehaviors.Storage, out current);
+                    _receiptRefDecoder!.DecodeStructRef(ref _reader, RlpBehaviors.Storage, out current);
                     _recoveryContext?.RecoverReceiptData(ref current);
                 }
             }
@@ -115,11 +115,11 @@ namespace Nethermind.Blockchain.Receipts
 
         public readonly LogEntriesIterator IterateLogs(TxReceiptStructRef receipt) =>
             receipt.Logs is null
-                ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder)
+                ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder!)
                 : new LogEntriesIterator(receipt.Logs);
 
         public readonly Hash256[] DecodeTopics(RlpReader reader) =>
-            _receiptRefDecoder.DecodeTopics(reader);
+            _receiptRefDecoder!.DecodeTopics(reader);
 
         public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;
     }

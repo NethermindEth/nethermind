@@ -10,6 +10,6 @@ internal class VoteMsg : P2PMessage
 {
     public override int PacketType => XdcMessageCode.VoteMsg;
     public override string Protocol => "eth";
-    public Vote Vote { get; set; }
+    public Vote Vote { get; set; } = null!;
     public override string ToString() => $"{nameof(VoteMsg)}({Vote})";
 }

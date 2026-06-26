@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -17,7 +18,8 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
-        _blockDict[block.Hash] = block;
+        Hash256 hash = block.Hash ?? throw new InvalidOperationException("Cannot cache a block without a calculated hash.");
+        _blockDict[hash] = block;
         _blockNumDict[block.Number] = block;
     }
 
@@ -29,7 +31,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true)
     {
-        if (_blockNumDict.TryGetValue(blockNumber, out Block block))
+        if (_blockNumDict.TryGetValue(blockNumber, out Block? block))
         {
             return block;
         }
@@ -44,7 +46,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
 
     public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
-        if (_blockNumDict.TryGetValue(blockNumber, out Block block))
+        if (_blockNumDict.TryGetValue(blockNumber, out Block? block))
         {
             return _blockDecoder.Encode(block).Bytes;
         }
@@ -52,7 +54,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
-        _blockNumDict.TryGetValue(blockNumber, out Block block)
+        _blockNumDict.TryGetValue(blockNumber, out Block? block)
             ? new ReceiptRecoveryBlock(block)
             : readonlyBaseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
 

@@ -16,7 +16,7 @@ namespace Nethermind.Network.Rlpx
     /// <param name="sender">The host that observed the disconnect.</param>
     /// <param name="session">The disconnected session.</param>
     /// <param name="args">The disconnect details.</param>
-    public delegate void SessionDisconnectedEventHandler(object sender, ISession session, DisconnectEventArgs args);
+    public delegate void SessionDisconnectedEventHandler(object? sender, ISession session, DisconnectEventArgs args);
 
     public interface IRlpxHost
     {
@@ -40,12 +40,12 @@ namespace Nethermind.Network.Rlpx
         /// </returns>
         bool ShouldContact(IPAddress ip, bool exactOnly = false);
 
-        event EventHandler<SessionEventArgs> SessionCreated;
+        event EventHandler<SessionEventArgs>? SessionCreated;
 
         /// <summary>
         /// Raised when a tracked session disconnects.
         /// </summary>
-        event SessionDisconnectedEventHandler SessionDisconnected;
+        event SessionDisconnectedEventHandler? SessionDisconnected;
 
         ISessionMonitor SessionMonitor { get; }
     }

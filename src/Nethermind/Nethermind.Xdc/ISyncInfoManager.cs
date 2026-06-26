@@ -5,6 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Types;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Xdc;
 
@@ -14,5 +15,5 @@ public interface ISyncInfoManager
     SyncInfo GetSyncInfo();
 
     IDictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> GetReceivedSyncInfos();
-    bool VerifySyncInfo(SyncInfo syncInfo, out string error);
+    bool VerifySyncInfo(SyncInfo syncInfo, [NotNullWhen(false)] out string? error);
 }

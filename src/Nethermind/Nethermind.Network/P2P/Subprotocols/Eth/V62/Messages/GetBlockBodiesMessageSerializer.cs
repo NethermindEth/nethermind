@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("Get block bodies message decoding returned null.");
 
         public int GetLength(GetBlockBodiesMessage message, out int contentLength)
         {
@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public static GetBlockBodiesMessage Deserialize(ref RlpReader ctx)
         {
-            Hash256[] hashes = ctx.DecodeArray(static (ref RlpReader c) => c.DecodeKeccak(), false, limit: RlpLimit);
+            Hash256[] hashes = ctx.DecodeArray(static (ref RlpReader c) => c.DecodeKeccakNonNull(), false, limit: RlpLimit);
             return new GetBlockBodiesMessage(hashes);
         }
     }

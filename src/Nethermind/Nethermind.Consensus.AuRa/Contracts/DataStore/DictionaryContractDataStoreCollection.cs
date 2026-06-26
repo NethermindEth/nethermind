@@ -5,9 +5,9 @@ using System.Collections.Generic;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class DictionaryContractDataStoreCollection<T>(IEqualityComparer<T> comparer = null) : DictionaryBasedContractDataStoreCollection<T>
+    public class DictionaryContractDataStoreCollection<T>(IEqualityComparer<T>? comparer = null) : DictionaryBasedContractDataStoreCollection<T> where T : notnull
     {
-        private readonly IEqualityComparer<T> _comparer = comparer;
+        private readonly IEqualityComparer<T>? _comparer = comparer;
 
         protected override IDictionary<T, T> CreateDictionary() => new Dictionary<T, T>(_comparer);
         protected override bool CanReplace(T replaced, T replacing) => true;

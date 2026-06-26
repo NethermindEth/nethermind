@@ -50,7 +50,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         IRpcAuthentication auth =
             jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                 ? NoAuthentication.Instance
-                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger);
+                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile!, api.Timestamper, logger);
 
         JsonRpcProcessor jsonRpcProcessor = new(
             jsonRpcService,
@@ -89,11 +89,11 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             auth,
             api.LogManager,
             serviceConfigurers,
-            api.TxPool,
-            api.SpecProvider,
+            api.TxPool!,
+            api.SpecProvider!,
             api.ReceiptFinder,
             api.BlockTree,
-            api.SyncPeerPool,
+            api.SyncPeerPool!,
             api.MainProcessingContext);
 
         try

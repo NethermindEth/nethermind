@@ -28,7 +28,7 @@ namespace Nethermind.State;
 internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
     : PartialStorageProviderBase(logManager)
 {
-    private IWorldStateScopeProvider.IScope _currentScope;
+    private IWorldStateScopeProvider.IScope _currentScope = null!;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
@@ -79,14 +79,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns></returns>
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out byte[] value))
+        if (!_originalValues.TryGetValue(storageCell, out byte[]? value))
         {
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
 
         if (_transactionChangesSnapshots.TryPeek(out int snapshot))
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int>? stack))
             {
                 if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                 {
@@ -95,7 +95,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
         }
 
-        return value;
+        return value!;
     }
 
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
@@ -168,7 +168,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                 }
 
-                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
+                if (_originalValues.TryGetValue(change.StorageCell, out byte[]? initialValue) &&
                     initialValue.AsSpan().SequenceEqual(change.Value))
                 {
                     // no need to update the tree if the value is the same
@@ -289,7 +289,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (!exists) value = PerContractState.Rent(address, this);
         _lastStorageAddress = address;
         _lastStorage = value;
-        return value;
+        return value!;
     }
 
     public void WarmUp(in StorageCell storageCell, bool isEmpty)
@@ -404,8 +404,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private readonly DefaultableDictionary BlockChange = new();
         private bool _wasWritten = false;
-        private PersistentStorageProvider _provider;
-        private Address _address;
+        private PersistentStorageProvider _provider = null!;
+        private Address _address = null!;
 
         private PerContractState(Address address, PersistentStorageProvider provider) => Initialize(address, provider);
 
@@ -422,7 +422,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             get
             {
                 EnsureStorageTree();
-                return _backend.RootHash;
+                return _backend!.RootHash;
             }
         }
 
@@ -435,7 +435,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 if (BlockChange.HasClear) return true;
 
                 EnsureStorageTree();
-                return _backend.RootHash == Keccak.EmptyTreeHash;
+                return _backend!.RootHash == Keccak.EmptyTreeHash;
             }
         }
 
@@ -467,8 +467,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void Return()
         {
-            _address = null;
-            _provider = null;
+            _address = null!;
+            _provider = null!;
             _backend = null;
             _wasWritten = false;
             Pool.Return(this);
@@ -490,7 +490,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (!storageCell.IsHash)
             {
                 EnsureStorageTree();
-                _backend.HintSet(storageCell.Index, value);
+                _backend!.HintSet(storageCell.Index, value);
             }
         }
 
@@ -518,8 +518,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             EnsureStorageTree();
             return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
-                : _backend.Get(storageCell.Hash);
+                ? _backend!.Get(storageCell.Index)
+                : _backend!.Get(storageCell.Hash);
         }
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
@@ -593,7 +593,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             public static PerContractState Rent(Address address, PersistentStorageProvider provider)
             {
-                if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out PerContractState item))
+                if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out PerContractState? item))
                 {
                     Interlocked.Decrement(ref _poolCount);
                     item.Initialize(address, provider);

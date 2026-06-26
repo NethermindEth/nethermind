@@ -20,7 +20,7 @@ namespace Nethermind.State.Repositories
 
         private readonly object _writeLock = new();
         private readonly ClockCache<ulong, ChainLevelInfo> _blockInfoCache = new(CacheSize);
-        private readonly IRlpDecoder<ChainLevelInfo> _decoder = Rlp.GetDecoder<ChainLevelInfo>();
+        private readonly IRlpDecoder<ChainLevelInfo> _decoder = Rlp.GetDecoder<ChainLevelInfo>()!;
 
         private readonly IDb _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
 
@@ -43,7 +43,7 @@ namespace Nethermind.State.Repositories
             else
             {
                 _blockInfoCache.Delete(number);
-                batch.WriteBatch.Delete(number);
+                batch!.WriteBatch.Delete(number);
             }
         }
 
@@ -68,7 +68,7 @@ namespace Nethermind.State.Repositories
             {
                 _blockInfoCache.Set(number, level);
                 using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(level);
-                batch.WriteBatch.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
+                batch!.WriteBatch.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
             }
         }
 

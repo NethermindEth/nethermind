@@ -17,7 +17,7 @@ namespace Nethermind.KeyStore
         private readonly IKeyStoreConfig _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
         private readonly ILogger _logger = logManager?.GetClassLogger<AesEncrypter>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)
+        public byte[]? Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)
         {
             try
             {
@@ -54,7 +54,7 @@ namespace Nethermind.KeyStore
             }
         }
 
-        public byte[] Decrypt(byte[] cipher, byte[] key, byte[] iv, string cipherType)
+        public byte[]? Decrypt(byte[] cipher, byte[] key, byte[] iv, string cipherType)
         {
             try
             {

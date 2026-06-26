@@ -27,8 +27,10 @@ internal class TrieStoreDirtyNodesCache
     private long _totalDirtyMemory = 0;
     private readonly ILogger _logger;
     private readonly bool _storeByHash;
-    private readonly ConcurrentDictionary<Key, NodeRecord> _byKeyObjectCache;
-    private readonly ConcurrentDictionary<Hash256AsKey, NodeRecord> _byHashObjectCache;
+    private readonly ConcurrentDictionary<Key, NodeRecord>? _byKeyObjectCache;
+    private readonly ConcurrentDictionary<Hash256AsKey, NodeRecord>? _byHashObjectCache;
+    private ConcurrentDictionary<Key, NodeRecord> ByKeyObjectCache => _byKeyObjectCache!;
+    private ConcurrentDictionary<Hash256AsKey, NodeRecord> ByHashObjectCache => _byHashObjectCache!;
 
     public long Count => _count;
     public long DirtyCount => _dirtyCount;
@@ -97,9 +99,9 @@ internal class TrieStoreDirtyNodesCache
     public TrieNode FromCachedRlpOrUnknown(in Key key)
     {
         // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-        if (TryGetValue(key, out TrieNode trieNode))
+        if (TryGetValue(key, out TrieNode? trieNode))
         {
-            trieNode = _trieStore.CloneForReadOnly(key, trieNode);
+            trieNode = _trieStore.CloneForReadOnly(key, trieNode!);
 
             Metrics.LoadedFromCacheNodesCount++;
         }
@@ -117,8 +119,8 @@ internal class TrieStoreDirtyNodesCache
 
     public bool IsNodeCached(in Key key)
     {
-        if (_storeByHash) return _byHashObjectCache.ContainsKey(key.Keccak);
-        return _byKeyObjectCache.ContainsKey(key);
+        if (_storeByHash) return ByHashObjectCache.ContainsKey(key.Keccak);
+        return ByKeyObjectCache.ContainsKey(key);
     }
 
     // We use a ulong sentinel (ulong.MaxValue) instead of ulong? (Nullable<ulong>)
@@ -138,15 +140,15 @@ internal class TrieStoreDirtyNodesCache
         {
             if (_storeByHash)
             {
-                return _byHashObjectCache.Select(
+                return ByHashObjectCache.Select(
                     static pair => new KeyValuePair<Key, NodeRecord>(new Key(null, TreePath.Empty, pair.Key.Value), pair.Value));
             }
 
-            return _byKeyObjectCache;
+            return ByKeyObjectCache;
         }
     }
 
-    public bool TryGetValue(in Key key, out TrieNode node)
+    public bool TryGetValue(in Key key, out TrieNode? node)
     {
         bool ok = TryGetRecord(key, out NodeRecord nodeRecord);
 
@@ -161,8 +163,8 @@ internal class TrieStoreDirtyNodesCache
     }
 
     public bool TryGetRecord(Key key, out NodeRecord nodeRecord) => _storeByHash
-            ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
-            : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
+            ? ByHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
+            : ByKeyObjectCache.TryGetValue(key, out nodeRecord);
 
     // Sentinel for "no real block number assigned yet" (node discovered/created without a
     // numbered commit). IsNoLongerNeeded treats this as always-live since the sentinel is
@@ -170,13 +172,13 @@ internal class TrieStoreDirtyNodesCache
     private const ulong NoCommitSentinel = ulong.MaxValue;
 
     private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
-        ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
+        ? ByHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
         {
             TrieNode trieNode = new(NodeType.Unknown, keccak);
             cache.IncrementMemory(trieNode);
             return new NodeRecord(trieNode, NoCommitSentinel);
         }, cache)
-        : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
+        : ByKeyObjectCache.GetOrAdd(key, static (key, cache) =>
         {
             TrieNode trieNode = new(NodeType.Unknown, key.Keccak);
             cache.IncrementMemory(trieNode);
@@ -184,8 +186,8 @@ internal class TrieStoreDirtyNodesCache
         }, cache);
 
     public NodeRecord GetOrAdd(in Key key, NodeRecord record) => _storeByHash
-            ? GetOrAdd(_byHashObjectCache, key.Keccak, record)
-            : GetOrAdd(_byKeyObjectCache, key, record);
+            ? GetOrAdd(ByHashObjectCache, key.Keccak, record)
+            : GetOrAdd(ByKeyObjectCache, key, record);
 
     private static NodeRecord GetOrAdd<TKey>(ConcurrentDictionary<TKey, NodeRecord> dictionary, TKey key, NodeRecord record)
         where TKey : notnull
@@ -273,14 +275,14 @@ internal class TrieStoreDirtyNodesCache
     {
         if (_storeByHash)
         {
-            if (_byHashObjectCache.Remove(key.Keccak, out NodeRecord nodeRecord))
+            if (ByHashObjectCache.Remove(key.Keccak, out NodeRecord nodeRecord))
             {
                 DecrementMemory(nodeRecord.Node);
             }
 
             return;
         }
-        if (_byKeyObjectCache.Remove(key, out NodeRecord nodeRecord2))
+        if (ByKeyObjectCache.Remove(key, out NodeRecord nodeRecord2))
         {
             DecrementMemory(nodeRecord2.Node);
         }
@@ -388,7 +390,7 @@ internal class TrieStoreDirtyNodesCache
         {
             Hash256 keccak;
             TreePath path2 = key.Path;
-            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2);
+            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2) ?? ThrowUnableToGenerateKeccak(key, node);
             if (keccak != key.Keccak)
             {
                 ThrowPersistedNodeDoesNotMatch(key, node, keccak);
@@ -422,6 +424,10 @@ internal class TrieStoreDirtyNodesCache
         [DoesNotReturn, StackTraceHidden]
         static void ThrowPersistedNodeDoesNotMatch(in Key key, TrieNode node, Hash256 keccak)
             => throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
+
+        [DoesNotReturn, StackTraceHidden]
+        static Hash256 ThrowUnableToGenerateKeccak(in Key key, TrieNode node)
+            => throw new InvalidOperationException($"Unable to generate Keccak for persisted {node} {key}");
     }
 
     private void Delete(Key key, ConcurrentNodeWriteBatcher? writeBatch)
@@ -491,8 +497,8 @@ internal class TrieStoreDirtyNodesCache
 
     public void Clear()
     {
-        _byHashObjectCache.NoResizeClear();
-        _byKeyObjectCache.NoResizeClear();
+        _byHashObjectCache?.NoResizeClear();
+        _byKeyObjectCache?.NoResizeClear();
         Interlocked.Exchange(ref _count, 0);
     }
 

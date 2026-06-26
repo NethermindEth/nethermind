@@ -87,9 +87,9 @@ public class DebugBridge : IDebugBridge
 
     public IEnumerable<Block> GetBadBlocks() => _badBlockStore.GetAll();
 
-    public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
+    public byte[]? GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
 
-    public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
+    public ChainLevelInfo? GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 
     public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
 
@@ -105,7 +105,7 @@ public class DebugBridge : IDebugBridge
             throw new InvalidDataException(searchResult.Error);
         }
 
-        Block block = searchResult.Object;
+        Block block = searchResult.Object!;
         Hash256 root = ReceiptsRootCalculator.Instance.GetReceiptsRoot(txReceipts, _specProvider.GetSpec(block.Header), block.ReceiptsRoot);
         if (block.ReceiptsRoot != root)
         {
@@ -125,13 +125,13 @@ public class DebugBridge : IDebugBridge
             throw new InvalidDataException(searchResult.Error);
         }
 
-        Block block = searchResult.Object;
+        Block block = searchResult.Object!;
         return _receiptStorage.Get(block);
     }
 
     public Transaction? GetTransactionFromHash(Hash256 txHash)
     {
-        Hash256 blockHash = _receiptStorage.FindBlockHash(txHash);
+        Hash256? blockHash = _receiptStorage.FindBlockHash(txHash);
         if (blockHash is null)
             return null;
         SearchResult<Block> searchResult = _blockTree.SearchForBlock(new BlockParameter(blockHash));
@@ -139,9 +139,20 @@ public class DebugBridge : IDebugBridge
         {
             throw new InvalidDataException(searchResult.Error);
         }
-        Block block = searchResult.Object;
-        TxReceipt txReceipt = _receiptStorage.Get(block).ForTransaction(txHash);
-        return block?.Transactions[txReceipt.Index];
+        Block block = searchResult.Object!;
+        TxReceipt[]? receipts = _receiptStorage.Get(block);
+        if (receipts is null)
+        {
+            return null;
+        }
+
+        TxReceipt? txReceipt = receipts.ForTransaction(txHash);
+        if (txReceipt is null)
+        {
+            return null;
+        }
+
+        return block.Transactions[txReceipt.Index];
     }
 
     public GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
@@ -190,7 +201,7 @@ public class DebugBridge : IDebugBridge
     public Block? GetBlock(BlockParameter param)
         => _blockTree.FindBlock(param);
 
-    public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
+    public object? GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 
     public SyncReportSummary GetCurrentSyncStage() => new()
     {

@@ -40,15 +40,16 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
 
     private void SetTransactionCtx(Transaction? tx)
     {
-        _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
-        _ctx.TxHash = tx.Hash;
-        _ctx.txIndex = tx.Hash is not null ? _index++ : null;
-        _ctx.gas = tx.GasLimit;
+        Transaction transaction = tx ?? throw new ArgumentNullException(nameof(tx));
+        _ctx.GasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
+        _ctx.TxHash = transaction.Hash;
+        _ctx.txIndex = transaction.Hash is not null ? _index++ : null;
+        _ctx.gas = transaction.GasLimit;
         _ctx.type = "CALL";
-        _ctx.From = tx.SenderAddress;
-        _ctx.To = tx.To;
-        _ctx.Value = tx.Value;
-        _ctx.Input = tx.Data;
+        _ctx.From = transaction.SenderAddress;
+        _ctx.To = transaction.To;
+        _ctx.Value = transaction.Value;
+        _ctx.Input = transaction.Data;
     }
 
     public override void EndBlockTrace()

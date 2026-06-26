@@ -104,8 +104,8 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             RpcLimits.DecrementQueuedCalls();
-            _pool.TryDequeue(out T result);
-            return result;
+            _pool.TryDequeue(out T? result);
+            return result!;
         }
 
         public void ReturnModule(T module)

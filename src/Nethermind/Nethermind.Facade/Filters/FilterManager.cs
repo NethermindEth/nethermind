@@ -48,7 +48,7 @@ namespace Nethermind.Facade.Filters
             txPool.RemovedPending += OnRemovedPendingTransaction;
         }
 
-        private void OnFilterRemoved(object sender, FilterEventArgs e)
+        private void OnFilterRemoved(object? sender, FilterEventArgs e)
         {
             int id = e.FilterId;
             if (_blockHashes.TryRemove(id, out _)) return;
@@ -56,17 +56,20 @@ namespace Nethermind.Facade.Filters
             _pendingTransactions.TryRemove(id, out _);
         }
 
-        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
+        private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
         {
             _lastBlockHash = e.Block.Hash;
             _logIndex = 0;
             AddBlock(e.Block);
         }
 
-        private void OnTransactionProcessed(object sender, TxProcessedEventArgs e) => AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);
+        private void OnTransactionProcessed(object? sender, TxProcessedEventArgs e) => AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);
 
-        private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
+        private void OnNewPendingTransaction(object? sender, TxPool.TxEventArgs e)
         {
+            if (e.Transaction.Hash is null)
+                return;
+
             IEnumerable<PendingTransactionFilter> filters = _filterStore.GetFilters<PendingTransactionFilter>();
             foreach (PendingTransactionFilter filter in filters)
             {
@@ -77,8 +80,11 @@ namespace Nethermind.Facade.Filters
             }
         }
 
-        private void OnRemovedPendingTransaction(object sender, TxPool.TxEventArgs e)
+        private void OnRemovedPendingTransaction(object? sender, TxPool.TxEventArgs e)
         {
+            if (e.Transaction.Hash is null)
+                return;
+
             IEnumerable<PendingTransactionFilter> filters = _filterStore.GetFilters<PendingTransactionFilter>();
 
             foreach (PendingTransactionFilter filter in filters)
@@ -102,20 +108,20 @@ namespace Nethermind.Facade.Filters
         public FilterLog[] GetLogs(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            return _logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog> logs) ? logs.ToArray() : [];
+            return _logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog>? logs) ? logs.ToArray() : [];
         }
 
         public Hash256[] GetBlocksHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            return _blockHashes.TryGetValue(filterId, out ConcurrentQueue<Hash256> blockHashes) ? blockHashes.ToArray() : [];
+            return _blockHashes.TryGetValue(filterId, out ConcurrentQueue<Hash256>? blockHashes) ? blockHashes.ToArray() : [];
         }
 
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
         public Hash256[] PollBlockHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            if (!_blockHashes.TryGetValue(filterId, out ConcurrentQueue<Hash256> blockHashes))
+            if (!_blockHashes.TryGetValue(filterId, out ConcurrentQueue<Hash256>? blockHashes))
             {
                 if (_lastBlockHash is not null)
                 {
@@ -130,7 +136,10 @@ namespace Nethermind.Facade.Filters
             using ArrayPoolListRef<Hash256> result = new(blockHashes.Count);
             while (blockHashes.TryDequeue(out Hash256? hash))
             {
-                result.Add(hash);
+                if (hash is not null)
+                {
+                    result.Add(hash);
+                }
             }
             return result.ToArray();
         }
@@ -138,13 +147,16 @@ namespace Nethermind.Facade.Filters
         public FilterLog[] PollLogs(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            if (!_logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog> logs))
+            if (!_logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog>? logs))
                 return [];
 
             using ArrayPoolListRef<FilterLog> result = new(logs.Count);
             while (logs.TryDequeue(out FilterLog? log))
             {
-                result.Add(log);
+                if (log is not null)
+                {
+                    result.Add(log);
+                }
             }
             return result.ToArray();
         }
@@ -158,7 +170,7 @@ namespace Nethermind.Facade.Filters
             using ArrayPoolListRef<Hash256> result = new(pendingTransactions.Count);
             while (pendingTransactions.TryDequeue(out Option<Hash256>? option))
             {
-                if (!option.IsRemoved)
+                if (option is not null && !option.IsRemoved)
                 {
                     result.Add(option.Value);
                 }
@@ -213,7 +225,7 @@ namespace Nethermind.Facade.Filters
             ConcurrentQueue<FilterLog>? logs = null;
             for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
-                LogEntry? logEntry = txReceipt.Logs[i];
+                LogEntry logEntry = txReceipt.Logs[i];
                 FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, blockTimestamp);
                 if (filterLog is not null)
                 {

@@ -12,8 +12,8 @@ namespace Nethermind.Wallet
 {
     public class NullWallet : IWallet
     {
-        public event EventHandler<AccountLockedEventArgs> AccountLocked;
-        public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        public event EventHandler<AccountLockedEventArgs>? AccountLocked;
+        public event EventHandler<AccountUnlockedEventArgs>? AccountUnlocked;
 
         public void Import(byte[] keyData, SecureString passphrase)
         {
@@ -23,7 +23,7 @@ namespace Nethermind.Wallet
         {
         }
 
-        private static NullWallet _instance;
+        private static NullWallet? _instance;
 
         public static NullWallet Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, static () => new NullWallet());
 
@@ -45,7 +45,7 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => true;
 
-        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature? signature)
         {
             signature = null;
             return false;

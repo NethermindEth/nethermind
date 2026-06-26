@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 return [];
             }
 
-            return _contracts.TryGetForBlock(block.Number, out IRewardContract contract)
+            return _contracts.TryGetForBlock(block.Number, out IRewardContract? contract)
                 ? CalculateRewardsWithContract(block, contract)
                 : _blockRewardCalculator.CalculateRewards(block);
         }
@@ -75,7 +75,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
                 Address[] beneficiariesList = new Address[length];
                 ushort[] kindsList = new ushort[length];
-                beneficiariesList[0] = block.Beneficiary;
+                beneficiariesList[0] = block.Beneficiary!;
                 kindsList[0] = BenefactorKind.Author;
 
                 for (int i = 0; i < block.Uncles.Length; i++)
@@ -83,7 +83,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                     BlockHeader uncle = block.Uncles[i];
                     if (BenefactorKind.TryGetUncle(block.Number - uncle.Number, out ushort kind))
                     {
-                        beneficiariesList[i + 1] = uncle.Beneficiary;
+                        beneficiariesList[i + 1] = uncle.Beneficiary!;
                         kindsList[i + 1] = kind;
                     }
                 }

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <Nullable>annotations</Nullable>
+    <Nullable>enable</Nullable>
     <AssemblyName>nethermind</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>

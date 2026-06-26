@@ -22,8 +22,13 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
     public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash) => ResultWrapper<byte[]?>.Success(stateReader.GetCode(hash));
 
-    public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange> accountDiff)
+    public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange?>? accountDiff)
     {
+        if (accountDiff is null)
+        {
+            return ResultWrapper<Hash256>.Fail("Account diff must not be null", ErrorCodes.InvalidParams);
+        }
+
         BlockHeader? blockHeader = blockFinder.FindHeader(blockParam);
         if (blockHeader is null)
         {
@@ -34,10 +39,13 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         IWorldState worldState = worldScope.WorldState;
         IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
 
-        foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
+        foreach (KeyValuePair<Address, AccountChange?> kv in accountDiff)
         {
             Address address = kv.Key;
-            AccountChange accountChange = kv.Value;
+            if (kv.Value is not { } accountChange)
+            {
+                return ResultWrapper<Hash256>.Fail("Account change must not be null", ErrorCodes.InvalidParams);
+            }
 
             if (accountChange.SelfDestructed)
             {

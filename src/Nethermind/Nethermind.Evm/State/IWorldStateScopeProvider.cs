@@ -176,7 +176,7 @@ public interface IWorldStateScopeProvider
 
     public interface IWorldStateWriteBatch : IDisposable
     {
-        public event EventHandler<AccountUpdated> OnAccountUpdated;
+        public event EventHandler<AccountUpdated>? OnAccountUpdated;
 
         // Note: Null account imply removal and clearing of storage.
         void Set(Address key, Account? account);

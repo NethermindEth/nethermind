@@ -50,6 +50,7 @@ public class SyncDbTunerTests
     public void WhenReceiptsIsOn_TriggerReceiptsDbTune() => TestFeedAndDbTune(_receiptSyncFeed, _receiptDb);
 
     private void TestFeedAndDbTune<T>(ISyncFeed<T> feed, ITunableDb db, ITunableDb.TuneType? tuneType = null)
+        where T : class
     {
         feed.StateChanged += Raise.EventWith(new SyncFeedStateEventArgs(SyncFeedState.Active));
 

@@ -18,7 +18,7 @@ public class ContractRewriter(
     public bool RewriteContracts(ulong blockNumber, IWorldState stateProvider, IReleaseSpec spec)
     {
         bool result = false;
-        if (_contractOverrides.TryGetValue(blockNumber, out IDictionary<Address, byte[]> overrides))
+        if (_contractOverrides.TryGetValue(blockNumber, out IDictionary<Address, byte[]>? overrides))
         {
             result = InsertOverwriteCode(overrides, stateProvider, spec);
         }

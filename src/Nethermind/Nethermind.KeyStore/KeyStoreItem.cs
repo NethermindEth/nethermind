@@ -7,10 +7,10 @@ namespace Nethermind.KeyStore
     {
         public int Version { get; set; }
 
-        public string Id { get; set; }
+        public string? Id { get; set; }
 
-        public string Address { get; set; }
+        public string? Address { get; set; }
 
-        public Crypto Crypto { get; set; }
+        public Crypto? Crypto { get; set; }
     }
 }

@@ -36,12 +36,14 @@ public class TdxsClient(ISurgeTdxConfig config) : ITdxsClient
         }
 
         if (!response.TryGetProperty("data", out JsonElement data) ||
-            !data.TryGetProperty("document", out JsonElement document))
+            !data.TryGetProperty("document", out JsonElement document) ||
+            document.ValueKind != JsonValueKind.String ||
+            document.GetString() is not { } documentHex)
         {
             throw new TdxException("Invalid response: missing document");
         }
 
-        return Convert.FromHexString(document.GetString()!);
+        return Convert.FromHexString(documentHex);
     }
 
     public TdxMetadata GetMetadata()
@@ -54,14 +56,17 @@ public class TdxsClient(ISurgeTdxConfig config) : ITdxsClient
             throw new TdxException($"Attestation service error: {error.GetString()}");
         }
 
-        if (!response.TryGetProperty("data", out JsonElement data))
+        if (!response.TryGetProperty("data", out JsonElement data) ||
+            !data.TryGetProperty("issuerType", out JsonElement issuerType) ||
+            issuerType.ValueKind != JsonValueKind.String ||
+            issuerType.GetString() is not { } issuerTypeValue)
         {
-            throw new TdxException("Invalid response: missing data");
+            throw new TdxException("Invalid response: missing issuerType");
         }
 
         return new TdxMetadata
         {
-            IssuerType = data.GetProperty("issuerType").GetString()!,
+            IssuerType = issuerTypeValue,
             Metadata = data.TryGetProperty("metadata", out JsonElement meta) ? meta.Clone() : null
         };
     }

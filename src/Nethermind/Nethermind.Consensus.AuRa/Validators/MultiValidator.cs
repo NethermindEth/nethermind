@@ -19,11 +19,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly IBlockTree _blockTree;
         private readonly IValidatorStore _validatorStore;
         private readonly bool _forSealing;
-        private IAuRaBlockFinalizationManager _blockFinalizationManager;
+        private IAuRaBlockFinalizationManager _blockFinalizationManager = null!;
         private readonly IDictionary<ulong, AuRaParameters.Validator> _validators;
         private readonly ILogger _logger;
-        private IAuRaValidator _currentValidator;
-        private AuRaParameters.Validator _currentValidatorPrototype;
+        private IAuRaValidator _currentValidator = null!;
+        private AuRaParameters.Validator? _currentValidatorPrototype;
         private ulong _lastProcessedBlock = 0;
 
         public bool SupportsBlobs => false;
@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             IBlockTree blockTree,
             IValidatorStore validatorStore,
             IAuRaBlockFinalizationManager finalizationManager,
-            BlockHeader parentHeader,
+            BlockHeader? parentHeader,
             ILogManager logManager,
             bool forSealing = false)
         {
@@ -53,9 +53,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             SetFinalizationManager(finalizationManager, parentHeader);
         }
 
-        public Address[] Validators => _currentValidator?.Validators;
+        public Address[]? Validators => _currentValidator?.Validators;
 
-        private void InitCurrentValidator(ulong blockNumber, BlockHeader parentHeader)
+        private void InitCurrentValidator(ulong blockNumber, BlockHeader? parentHeader)
         {
             if (TryGetLastValidator(blockNumber, out KeyValuePair<ulong, AuRaParameters.Validator> validatorInfo))
             {
@@ -84,12 +84,12 @@ namespace Nethermind.Consensus.AuRa.Validators
             return found;
         }
 
-        private void OnBlocksFinalized(object sender, AuRaFinalizeEventArgs e)
+        private void OnBlocksFinalized(object? sender, AuRaFinalizeEventArgs e)
         {
             for (int i = 0; i < e.FinalizedBlocks.Count; i++)
             {
                 BlockHeader finalizedBlockHeader = e.FinalizedBlocks[i];
-                if (TryGetValidator(finalizedBlockHeader.Number, out AuRaParameters.Validator validator) && !validator.ValidatorType.CanChangeImmediately())
+                if (TryGetValidator(finalizedBlockHeader.Number, out AuRaParameters.Validator? validator) && validator is not null && !validator.ValidatorType.CanChangeImmediately())
                 {
                     SetCurrentValidator(e.FinalizingBlock.Number, validator, e.FinalizingBlock);
                     if (!_forSealing)
@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 {
                     if (TryGetLastValidator(previousBlockNumber, out KeyValuePair<ulong, AuRaParameters.Validator> validatorInfo))
                     {
-                        BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                        BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)!;
                         if (validatorInfo.Value.ValidatorType.CanChangeImmediately() || ValidatorWasAlreadyFinalized(validatorInfo))
                         {
                             SetCurrentValidator(validatorInfo, parentHeader);
@@ -142,7 +142,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _currentValidator?.OnBlockProcessingStart(block, options);
         }
 
-        private bool TryGetValidator(ulong blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
+        private bool TryGetValidator(ulong blockNumber, out AuRaParameters.Validator? validator) => _validators.TryGetValue(blockNumber, out validator);
 
         public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
@@ -152,11 +152,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 bool notProducing = !options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-                if (TryGetValidator(block.Number, out AuRaParameters.Validator validator))
+                if (TryGetValidator(block.Number, out AuRaParameters.Validator? validator) && validator is not null)
                 {
                     if (validator.ValidatorType.CanChangeImmediately())
                     {
-                        SetCurrentValidator(block.Number, validator, _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
+                        SetCurrentValidator(block.Number, validator, _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)!);
                         if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
                     }
                     else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.ToString(Block.Format.Short)}.");
@@ -166,7 +166,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public void SetFinalizationManager(IAuRaBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
+        public void SetFinalizationManager(IAuRaBlockFinalizationManager finalizationManager, BlockHeader? parentHeader)
         {
             _blockFinalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
             _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
@@ -175,9 +175,9 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void Dispose() => _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
 
-        private void SetCurrentValidator(KeyValuePair<ulong, AuRaParameters.Validator> validatorInfo, BlockHeader parentHeader) => SetCurrentValidator(validatorInfo.Key, validatorInfo.Value, parentHeader);
+        private void SetCurrentValidator(KeyValuePair<ulong, AuRaParameters.Validator> validatorInfo, BlockHeader? parentHeader) => SetCurrentValidator(validatorInfo.Key, validatorInfo.Value, parentHeader);
 
-        private void SetCurrentValidator(ulong finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader)
+        private void SetCurrentValidator(ulong finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader? parentHeader)
         {
             if (validatorPrototype != _currentValidatorPrototype)
             {
@@ -199,14 +199,14 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private IAuRaValidator CreateValidator(ulong finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader) =>
+        private IAuRaValidator CreateValidator(ulong finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader? parentHeader) =>
             _validatorFactory.CreateValidatorProcessor(validatorPrototype, parentHeader, finalizedAtBlockNumber + 1);
 
         public void ReportMalicious(Address validator, ulong blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause) => _currentValidator.GetReportingValidator().ReportMalicious(validator, blockNumber, proof, cause);
 
         public void ReportBenign(Address validator, ulong blockNumber, IReportingValidator.BenignCause cause) => _currentValidator.GetReportingValidator().ReportBenign(validator, blockNumber, cause);
 
-        public void TryReportSkipped(BlockHeader header, BlockHeader parent) => _currentValidator.GetReportingValidator().TryReportSkipped(header, parent);
+        public void TryReportSkipped(BlockHeader header, BlockHeader parent) => _currentValidator!.GetReportingValidator().TryReportSkipped(header, parent);
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource) =>
             _currentValidator is ITxSource txSource

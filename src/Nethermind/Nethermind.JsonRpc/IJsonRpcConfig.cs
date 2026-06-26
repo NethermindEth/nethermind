@@ -59,7 +59,7 @@ public interface IJsonRpcConfig : IConfig
     int WebSocketsPort { get; set; }
 
     [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
-    string IpcUnixDomainSocketPath { get; set; }
+    string? IpcUnixDomainSocketPath { get; set; }
 
     [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
     bool RestrictIpcSocketPermissions { get; set; }
@@ -162,7 +162,7 @@ public interface IJsonRpcConfig : IConfig
     int? EthModuleConcurrentInstances { get; set; }
 
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
-    public string JwtSecretFile { get; set; }
+    public string? JwtSecretFile { get; set; }
 
     [ConfigItem(Description = "Whether to disable authentication of the Engine API. Should not be used in production environments.", DefaultValue = "false", HiddenFromDocs = true)]
     public bool UnsecureDevNoRpcAuthentication { get; set; }

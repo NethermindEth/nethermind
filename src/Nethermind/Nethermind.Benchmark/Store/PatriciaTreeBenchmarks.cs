@@ -29,29 +29,29 @@ namespace Nethermind.Benchmarks.Store
         private static readonly Account _account2 = Build.An.Account.WithBalance(3).TestObject;
         private static readonly Account _account3 = Build.An.Account.WithBalance(4).TestObject;
 
-        private StateTree _tree;
+        private StateTree _tree = null!;
 
-        private Hash256 _rootHash;
+        private Hash256 _rootHash = null!;
 
         // Just the backing KV. Used for benchmarking that include deserialization overhead.
-        private MemDb _backingMemory;
+        private MemDb _backingMemory = null!;
 
         // Full uncommitted tree with in memory node. Node should be fully deserialized.
-        private StateTree _uncommittedFullTree;
+        private StateTree _uncommittedFullTree = null!;
 
-        private StateTree _fullTree;
+        private StateTree _fullTree = null!;
 
-        private TrieStore _memoryTrieStore;
+        private TrieStore _memoryTrieStore = null!;
 
         // All entries
         private const int _entryCount = 1024 * 4;
-        private (Hash256, Account)[] _entries;
-        private (Hash256, Account)[] _entriesShuffled;
+        private (Hash256, Account)[] _entries = null!;
+        private (Hash256, Account)[] _entriesShuffled = null!;
 
         private const int _largerEntryCount = 1024 * 10;
         private const int _repeatedlyFactor = 500;
-        private (bool, Hash256, Account)[] _largerEntriesAccess;
-        private (Hash256, Account)[] _uniqueLargeSet;
+        private (bool, Hash256, Account)[] _largerEntriesAccess = null!;
+        private (Hash256, Account)[] _uniqueLargeSet = null!;
 
         private (string Name, Action<StateTree> Action)[] _scenarios = new (string, Action<StateTree>)[]
         {
@@ -100,7 +100,7 @@ namespace Nethermind.Benchmarks.Store
             {
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
-                Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
+                _ = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
                 tree.Commit();
@@ -109,7 +109,7 @@ namespace Nethermind.Benchmarks.Store
             {
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
-                Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
+                _ = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
                 tree.Commit();
@@ -185,7 +185,7 @@ namespace Nethermind.Benchmarks.Store
             ("leaf_read", tree =>
             {
                 tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
-                Account account = tree.Get(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"));
+                _ = tree.Get(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
                 tree.Commit();
@@ -193,7 +193,7 @@ namespace Nethermind.Benchmarks.Store
             ("leaf_update_missing", tree =>
             {
                 tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
-                Account account = tree.Get(new Hash256("111111111111111111111111111111111111111111111111111111111ddddddd"));
+                _ = tree.Get(new Hash256("111111111111111111111111111111111111111111111111111111111ddddddd"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
                 tree.Commit();
@@ -211,7 +211,7 @@ namespace Nethermind.Benchmarks.Store
             {
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
-                Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
+                _ = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
                 tree.Commit();
@@ -396,8 +396,8 @@ namespace Nethermind.Benchmarks.Store
             tempTree.Commit();
         }
 
-        TrieStore _largeUncommittedFullTree;
-        StateTree _largeUncommittedStateTree;
+        TrieStore _largeUncommittedFullTree = null!;
+        StateTree _largeUncommittedStateTree = null!;
 
         [IterationSetup(Targets = [
             nameof(LargeCommit),

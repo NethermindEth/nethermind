@@ -59,7 +59,8 @@ public static class T8nInputReader
         try
         {
             string fileContent = File.ReadAllText(filePath);
-            return EthereumJsonSerializer.Deserialize<T>(fileContent);
+            return EthereumJsonSerializer.Deserialize<T>(fileContent)
+                ?? throw new T8nException($"failed unmarshalling {filePath} file: {description}", T8nErrorCodes.ErrorJson);
         }
         catch (FileNotFoundException e)
         {
@@ -76,7 +77,8 @@ public static class T8nInputReader
         using StreamReader reader = new(Console.OpenStandardInput());
         try
         {
-            return EthereumJsonSerializer.Deserialize<InputData>(reader.ReadToEnd());
+            return EthereumJsonSerializer.Deserialize<InputData>(reader.ReadToEnd())
+                ?? throw new T8nException("failed unmarshalling stdin", T8nErrorCodes.ErrorJson);
         }
         catch (Exception e)
         {

@@ -161,11 +161,11 @@ namespace Nethermind.Blockchain
 
         ChainLevelInfo? FindLevel(ulong number);
 
-        BlockInfo FindCanonicalBlockInfo(ulong blockNumber);
+        BlockInfo? FindCanonicalBlockInfo(ulong blockNumber);
 
         Hash256? FindHash(ulong blockNumber);
 
-        IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
+        IOwnedReadOnlyList<BlockHeader?> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
         /// <summary>
@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain
         /// for blocks before sync pivot.
         /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
         /// </summary>
-        (ulong BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+        (ulong BlockNumber, Hash256? BlockHash) SyncPivot { get; set; }
 
         public readonly struct ForkChoiceUpdateEventArgs(Block? head, ulong safe, ulong finalized)
         {

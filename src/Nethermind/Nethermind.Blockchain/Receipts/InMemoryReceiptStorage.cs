@@ -36,21 +36,21 @@ namespace Nethermind.Blockchain.Receipts
             NewCanonicalReceipts?.Invoke(this, e);
         }
 
-        public Hash256 FindBlockHash(Hash256 txHash)
+        public Hash256? FindBlockHash(Hash256 txHash)
         {
-            _transactions.TryGetValue(txHash, out TxReceipt receipt);
+            _transactions.TryGetValue(txHash, out TxReceipt? receipt);
             return receipt?.BlockHash;
         }
 
-        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => Get(block.Hash);
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => Get(block.Hash!);
 
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) =>
-            _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : [];
+            _receipts.TryGetValue(blockHash, out TxReceipt[]? receipts) ? receipts : [];
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => true;
         public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
-            if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out TxReceipt[] receipts))
+            if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out TxReceipt[]? receipts))
             {
 #pragma warning disable 618
                 iterator = new ReceiptsIterator(receipts);
@@ -64,12 +64,16 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
-            => Insert(block, txReceipts, null, ensureCanonical, writeFlags, lastBlockNumber);
+        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
+            => InsertCore(block, txReceipts, ensureCanonical);
 
-        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
+        public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
+            => InsertCore(block, txReceipts, ensureCanonical);
+
+        private void InsertCore(Block block, TxReceipt[]? txReceipts, bool ensureCanonical)
         {
-            _receipts[block.Hash] = txReceipts;
+            txReceipts ??= [];
+            _receipts[block.Hash!] = txReceipts;
             if (ensureCanonical)
             {
                 EnsureCanonical(block);
@@ -90,16 +94,16 @@ namespace Nethermind.Blockchain.Receipts
             {
                 TxReceipt txReceipt = txReceipts[i];
                 txReceipt.BlockHash = block.Hash;
-                _transactions[txReceipt.TxHash] = txReceipt;
+                _transactions[txReceipt.TxHash!] = txReceipt;
             }
         }
 
         public void RemoveReceipts(Block block)
         {
-            _receipts.TryRemove(block.Hash, out _);
+            _receipts.TryRemove(block.Hash!, out _);
             foreach (Transaction tx in block.Transactions)
             {
-                _transactions.TryRemove(tx.Hash, out _);
+                _transactions.TryRemove(tx.Hash!, out _);
             }
         }
 

@@ -124,15 +124,15 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             int i = 0;
             while (true)
             {
-                TrieNode node = boundaryNodes[i];
+                TrieNode? node = boundaryNodes[i];
                 if (node is null) break;
 
-                proofs.Add(node.FullRlp.ToArray());
+                proofs.Add(node.FullRlp.ToArray()!);
 
                 if (node.IsBranch)
                     i++;
                 else if (node.IsExtension)
-                    i += node.Key.Length;
+                    i += node.Key!.Length;
                 else
                     break;
             }
@@ -163,7 +163,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
 
-        TreePath path = ctx.Path.Append(node.Key);
+        TreePath path = ctx.Path.Append(node.Key!);
         if (!ShouldVisit(path))
         {
             return;

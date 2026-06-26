@@ -9,6 +9,6 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 [JsonConverter(typeof(ParityVmTraceConverter))]
 public class ParityVmTrace
 {
-    public byte[] Code { get; set; }
-    public IReadOnlyList<ParityVmOperationTrace> Operations { get; set; }
+    public byte[]? Code { get; set; }
+    public IReadOnlyList<ParityVmOperationTrace>? Operations { get; set; }
 }

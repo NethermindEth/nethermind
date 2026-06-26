@@ -16,6 +16,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -150,7 +151,7 @@ public class DataFeed
     private class ChannelEntry
     {
         public EntryType Type { get; set; }
-        public byte[] Data { get; set; }
+        public byte[] Data { get; set; } = [];
     }
     private static async Task ChannelSubscribe(EntryType type, Func<Task<byte[]>> nextTask, Channel<ChannelEntry> channel, CancellationToken ct)
     {
@@ -331,13 +332,21 @@ public class DataFeed
     private DataCompletion _forkChoice = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private void OnForkChoiceUpdated(IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
+        Block? head = choice.Head;
+        if (head is null)
+            return;
+
         DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
 
-        Block head = choice.Head;
         Transaction[] txs = head.Transactions;
-        IReleaseSpec spec = _specProvider.GetSpec(head.Header);
+        IReleaseSpec spec = _specProvider.GetSpec(head.Header)
+            ?? throw new InvalidOperationException($"Spec not found for block {head.Number}.");
         ReceiptForRpc[] receipts = _receiptFinder.Get(head)
-            .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header)))
+            .Select((r, i) => new ReceiptForRpc(
+                txs[i].Hash ?? txs[i].CalculateHash(),
+                r,
+                head.Timestamp,
+                txs[i].GetGasInfo(spec, head.Header)))
             .ToArray();
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
@@ -398,48 +407,48 @@ public class DataFeed
 
     private class ForkData
     {
-        public BlockForWeb Head { get; set; }
+        public BlockForWeb Head { get; set; } = null!;
         public ulong Safe { get; set; }
         public ulong Finalized { get; set; }
     }
 
     private class BlockForWeb
     {
-        public byte[] ExtraData { get; set; }
+        public byte[] ExtraData { get; set; } = [];
         public ulong GasLimit { get; set; }
         public ulong GasUsed { get; set; }
-        public Hash256 Hash { get; set; }
-        public Address Beneficiary { get; set; }
+        public Hash256 Hash { get; set; } = Hash256.Zero;
+        public Address Beneficiary { get; set; } = Address.Zero;
         public ulong Number { get; set; }
         public int Size { get; set; }
         public ulong Timestamp { get; set; }
         public UInt256 BaseFeePerGas { get; set; }
         public ulong BlobGasUsed { get; set; }
         public ulong ExcessBlobGas { get; set; }
-        public TransactionForWeb[] Tx { get; set; }
-        public ReceiptForWeb[] Receipts { get; set; }
-        public ReceiptForWeb[] Withdrawals { get; set; }
+        public TransactionForWeb[] Tx { get; set; } = [];
+        public ReceiptForWeb[] Receipts { get; set; } = [];
+        public ReceiptForWeb[] Withdrawals { get; set; } = [];
     }
     private class ReceiptForWeb
     {
         public ulong GasUsed { get; set; }
         public UInt256 EffectiveGasPrice { get; set; }
         public Address? ContractAddress { get; set; }
-        public LogEntryForWeb[] Logs { get; set; }
+        public LogEntryForWeb[] Logs { get; set; } = [];
         public long? Status { get; set; }
         public UInt256 BlobGasPrice { get; set; }
         public ulong BlobGasUsed { get; set; }
     }
     private class LogEntryForWeb
     {
-        public Address Address { get; set; }
-        public byte[] Data { get; set; }
-        public Hash256[] Topics { get; set; }
+        public Address? Address { get; set; }
+        public byte[] Data { get; set; } = [];
+        public Hash256[] Topics { get; set; } = [];
     }
     private class TransactionForWeb
     {
-        public Hash256 Hash { get; set; }
-        public Address From { get; set; }
+        public Hash256? Hash { get; set; }
+        public Address? From { get; set; }
         public Address? To { get; set; }
         public int TxType { get; set; }
         public UInt256 MaxPriorityFeePerGas { get; set; }
@@ -450,7 +459,7 @@ public class DataFeed
         public UInt256 Value { get; set; }
         public int DataLength { get; set; }
         public int Blobs { get; set; }
-        public byte[] Method { get; set; }
+        public byte[] Method { get; set; } = [];
     }
     private class WithdrawalForWeb
     {

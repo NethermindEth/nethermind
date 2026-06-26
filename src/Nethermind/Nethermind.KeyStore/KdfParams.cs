@@ -10,7 +10,7 @@ namespace Nethermind.KeyStore
         [JsonPropertyName("dklen")]
         public int DkLen { get; set; }
 
-        public string Salt { get; set; }
+        public string? Salt { get; set; }
 
         public int? N { get; set; }
 
@@ -20,6 +20,6 @@ namespace Nethermind.KeyStore
 
         public int? C { get; set; }
 
-        public string Prf { get; set; }
+        public string? Prf { get; set; }
     }
 }

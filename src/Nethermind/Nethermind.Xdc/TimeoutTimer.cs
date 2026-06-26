@@ -17,7 +17,7 @@ namespace Nethermind.Xdc
             timer.Elapsed += (s, e) => TimeoutElapsed?.Invoke(s, e);
         }
 
-        public event EventHandler<ElapsedEventArgs> TimeoutElapsed;
+        public event EventHandler<ElapsedEventArgs>? TimeoutElapsed;
 
         public void Start(TimeSpan period)
         {

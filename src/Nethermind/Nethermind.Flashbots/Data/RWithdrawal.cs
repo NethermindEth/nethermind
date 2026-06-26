@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using Nethermind.Core;
 
 public class RWithdrawal
@@ -30,13 +31,13 @@ public class RWithdrawal
     public RWithdrawal(
         ulong index,
         ulong validator_index,
-        Address address,
+        Address? address,
         ulong amount_in_gwei
     )
     {
         this.index = index;
         this.validator_index = validator_index;
-        this.address = address;
+        this.address = address ?? throw new JsonException("address must not be null");
         this.amount_in_gwei = amount_in_gwei;
     }
 }

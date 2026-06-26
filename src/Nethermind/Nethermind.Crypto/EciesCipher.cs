@@ -22,11 +22,11 @@ public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
     private readonly PrivateKeyGenerator _keyGenerator = new(cryptoRandom);
     private static readonly int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
-    public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
+    public EciesDecryptionResult Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
     {
         if (cipherText[0] != 4) // if not a compressed public key then probably we need to use EIP8
         {
-            return (false, null);
+            return EciesDecryptionResult.Failed;
         }
 
         Span<byte> ephemBytes = cipherText.AsSpan(0, ephemBytesLength);
@@ -34,10 +34,10 @@ public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
         byte[] cipherBody = cipherText.Slice(ephemBytesLength + KeySize / 8);
 
         byte[] plaintext = Decrypt(new PublicKey(ephemBytes), privateKey, iv, cipherBody, macData);
-        return (true, plaintext);
+        return EciesDecryptionResult.Succeeded(plaintext);
     }
 
-    public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[] macData)
+    public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[]? macData = null)
     {
         byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
         PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
@@ -60,7 +60,7 @@ public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
         return outputArray;
     }
 
-    private static byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
+    private static byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[]? macData)
     {
         EthereumIesEngine iesEngine = MakeIesEngine(false, ephemeralPublicKey, privateKey, iv);
         return iesEngine.ProcessBlock(ciphertextBody, macData);

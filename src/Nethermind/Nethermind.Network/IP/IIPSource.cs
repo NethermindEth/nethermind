@@ -8,6 +8,6 @@ namespace Nethermind.Network.IP
 {
     public interface IIPSource
     {
-        Task<(bool Success, IPAddress Ip)> TryGetIP();
+        Task<(bool Success, IPAddress? Ip)> TryGetIP();
     }
 }

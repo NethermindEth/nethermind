@@ -15,17 +15,17 @@ public sealed class TimeoutDecoder : RlpDecoder<Timeout>
         if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
-            return null;
+            return null!;
         }
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
         ulong round = decoderContext.DecodeULong();
 
-        Signature signature = null;
+        Signature? signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            signature = decoderContext.DecodeSignature();
+            signature = decoderContext.DecodeSignature()!;
         }
 
         ulong gapNumber = decoderContext.DecodeULong();
@@ -38,7 +38,7 @@ public sealed class TimeoutDecoder : RlpDecoder<Timeout>
         return new Timeout(round, signature, gapNumber);
     }
 
-    public override Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -78,7 +78,7 @@ public sealed class TimeoutDecoder : RlpDecoder<Timeout>
         writer.Encode(item.GapNumber);
     }
 
-    public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     public int GetContentLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

@@ -214,7 +214,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         return PopLast(_storageDictPool);
     }
 
-    protected override ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after)
+    protected override ParityStateChange<byte[]> RentByteStateChange(byte[]? before, byte[]? after)
     {
         if (_byteStateChangePool.Count == 0) return new ParityStateChange<byte[]>(before, after);
         ParityStateChange<byte[]> sc = PopLast(_byteStateChangePool);

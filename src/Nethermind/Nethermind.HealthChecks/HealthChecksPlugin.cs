@@ -17,10 +17,10 @@ namespace Nethermind.HealthChecks
 {
     public class HealthChecksPlugin : INethermindPlugin
     {
-        private INethermindApi _api;
-        private IHealthChecksConfig _healthChecksConfig;
+        private INethermindApi _api = null!;
+        private IHealthChecksConfig _healthChecksConfig = null!;
         private ILogger _logger;
-        private IMergeConfig _mergeConfig;
+        private IMergeConfig _mergeConfig = null!;
 
         public string Name => "HealthChecks";
 

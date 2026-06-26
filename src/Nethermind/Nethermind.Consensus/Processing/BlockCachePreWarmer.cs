@@ -260,9 +260,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
-            Address sender = tx.SenderAddress!;
+            Address sender = tx.SenderAddress ?? throw new InvalidOperationException("Transaction sender is required for cache prewarming.");
 
-            if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
+            if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)>? list))
             {
                 list = new(4);
                 groups[sender] = list;
@@ -331,7 +331,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             foreach (IHasAccessList systemAccessList in systemAccessLists)
             {
-                list.Add(systemAccessList.GetAccessList(block, spec));
+                AccessList? accessList = systemAccessList.GetAccessList(block, spec);
+                if (accessList is not null)
+                {
+                    list.Add(accessList);
+                }
             }
 
             return list;

@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly IValidSealerStrategy _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
         private readonly ILogger _logger = logManager?.GetClassLogger<AuRaValidatorBase>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public Address[] Validators { get; protected internal set; }
+        public Address[]? Validators { get; protected internal set; }
 
         protected ulong InitBlockNumber { get; } = startBlockNumber;
         protected internal bool ForSealing { get; } = forSealing;
@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (!ForSealing && InitBlockNumber == DefaultStartBlockNumber)
             {
-                ValidatorStore.SetValidators(InitBlockNumber, Validators);
+                ValidatorStore.SetValidators(InitBlockNumber, Validators ?? throw new InvalidOperationException("Validators are not initialized."));
             }
         }
 
@@ -39,12 +39,13 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (!options.ContainsFlag(ProcessingOptions.ProducingBlock) && !block.IsGenesis)
             {
-                ulong auRaStep = block.Header.AuRaStep.Value;
-                if (!_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, auRaStep, out Address expectedAddress))
+                ulong auRaStep = block.Header.AuRaStep ?? throw new InvalidOperationException("Block doesn't have AuRaStep specified.");
+                Address[] validators = Validators ?? throw new InvalidOperationException("Validators are not initialized.");
+                if (!_validSealerStrategy.IsValidSealer(validators, block.Beneficiary!, auRaStep, out Address? expectedAddress))
                 {
                     string reason = $"Incorrect proposer at step {auRaStep}, expected {expectedAddress}, but found {block.Beneficiary}";
                     if (_logger.IsError) _logger.Error($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {reason}.");
-                    this.GetReportingValidator().ReportBenign(block.Beneficiary, block.Number, IReportingValidator.BenignCause.IncorrectProposer);
+                    this.GetReportingValidator().ReportBenign(block.Beneficiary!, block.Number, IReportingValidator.BenignCause.IncorrectProposer);
                     throw new InvalidBlockException(block, reason);
                 }
             }

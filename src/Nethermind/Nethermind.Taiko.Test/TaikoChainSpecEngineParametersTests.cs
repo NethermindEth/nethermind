@@ -245,7 +245,7 @@ public class TaikoChainSpecEngineParametersTests
         }";
 
         TaikoChainSpecEngineParameters parameters =
-            new EthereumJsonSerializer().Deserialize<TaikoChainSpecEngineParameters>(json);
+            new EthereumJsonSerializer().Deserialize<TaikoChainSpecEngineParameters>(json)!;
 
         Assert.That(parameters.UnzenZkGasSchedules, Is.Not.Null);
         Assert.That(parameters.UnzenZkGasSchedules!, Has.Count.EqualTo(1));

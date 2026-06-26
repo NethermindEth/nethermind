@@ -691,6 +691,12 @@ public sealed class KademliaAdapter(
 
     private NodeRecord? GetFindNodeRecord(Node node, bool allowNonRoutableRelays)
     {
+        string? enr = node.Enr;
+        if (string.IsNullOrEmpty(enr))
+        {
+            return null;
+        }
+
         if (TryGetKnownRecord(node.Id.Hash, out NodeRecord? knownRecord))
         {
             return IsAcceptableNodeRecord(knownRecord, node.Id.Hash, allowNonRoutableRelays, recordFilter) ? knownRecord : null;
@@ -698,7 +704,7 @@ public sealed class KademliaAdapter(
 
         try
         {
-            NodeRecord record = NodeRecord.FromEnrString(node.Enr);
+            NodeRecord record = NodeRecord.FromEnrString(enr);
             return IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays, recordFilter) ? record : null;
         }
         catch (Exception e)

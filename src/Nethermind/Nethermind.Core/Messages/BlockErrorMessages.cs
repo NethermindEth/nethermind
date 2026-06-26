@@ -14,10 +14,10 @@ public static class BlockErrorMessages
     public static string InsufficientMaxFeePerBlobGas(Address? address, UInt256? blobGasFeeCap, UInt256 blobBaseFee) =>
         $"max fee per blob gas less than block blob gas fee: address {address?.ToString(withEip55Checksum: true)}, blobGasFeeCap: {blobGasFeeCap}, blobBaseFee: {blobBaseFee}";
 
-    public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
+    public static string InvalidLogsBloom(Bloom? expected, Bloom? actual) =>
         $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";
 
-    public static string InvalidTxRoot(Hash256 expected, Hash256 actual) =>
+    public static string InvalidTxRoot(Hash256? expected, Hash256? actual) =>
         $"InvalidTxRoot: Expected {expected}, got {actual}";
 
     public const string InvalidUncle =
@@ -26,7 +26,7 @@ public static class BlockErrorMessages
     public const string InvalidUnclesHash =
         "InvalidUnclesHash: Uncle header hash does not match.";
 
-    public static string InvalidWithdrawalsRoot(Hash256 expected, Hash256 actual) =>
+    public static string InvalidWithdrawalsRoot(Hash256? expected, Hash256? actual) =>
         $"InvalidWithdrawalsRoot: expected {expected}, got {actual}";
 
     public const string MissingWithdrawals =
@@ -35,19 +35,19 @@ public static class BlockErrorMessages
     public const string WithdrawalsNotEnabled =
         "WithdrawalsNotEnabled: Block body cannot have withdrawals.";
 
-    public static string InvalidReceiptsRoot(Hash256 expected, Hash256 actual) =>
+    public static string InvalidReceiptsRoot(Hash256? expected, Hash256? actual) =>
         $"InvalidReceiptsRoot: Receipts root in header does not match. Expected {expected}, got {actual}";
 
-    public static string InvalidStateRoot(Hash256 expected, Hash256 actual) =>
+    public static string InvalidStateRoot(Hash256? expected, Hash256? actual) =>
         $"InvalidStateRoot: State root in header does not match. Expected {expected}, got {actual}";
 
-    public static string InvalidParentBeaconBlockRoot(Hash256 expected, Hash256 actual) =>
+    public static string InvalidParentBeaconBlockRoot(Hash256? expected, Hash256? actual) =>
         $"InvalidParentBeaconBlockRoot: Beacon block root in header does not match. Expected {expected}, got {actual}";
 
     public const string BlobGasPriceOverflow =
         "BlobGasPriceOverflow: Overflow in excess blob gas.";
 
-    public static string InvalidHeaderHash(Hash256 expected, Hash256 actual) =>
+    public static string InvalidHeaderHash(Hash256? expected, Hash256? actual) =>
         $"InvalidHeaderHash: Header hash does not match. Expected {expected}, got {actual}";
 
     public const string InvalidExtraData =
@@ -162,7 +162,7 @@ public static class BlockErrorMessages
 
     public const string BlockLevelAccessListHashNotEnabled =
         "BlockLevelAccessListHashNotEnabled: Block header cannot have block level access list hash.";
-    public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
+    public static string InvalidBlockLevelAccessListHash(Hash256? expected, Hash256? actual) =>
         $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
 
     public static string BlockAccessListGasLimitExceeded(ulong balItems, ulong maxBalItems) =>

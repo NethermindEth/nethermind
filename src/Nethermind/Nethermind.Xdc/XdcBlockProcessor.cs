@@ -17,6 +17,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
+using System;
 
 namespace Nethermind.Xdc;
 
@@ -42,11 +43,13 @@ internal class XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blo
     protected override Block PrepareBlockForProcessing(Block suggestedBlock)
     {
         //TODO find a better way to do this copy
-        XdcBlockHeader bh = suggestedBlock.Header as XdcBlockHeader;
+        if (suggestedBlock.Header is not XdcBlockHeader bh)
+            throw new InvalidOperationException("Only supports XDC headers");
+
         XdcBlockHeader headerForProcessing = new(
-            bh.ParentHash,
-            bh.UnclesHash,
-            bh.Beneficiary,
+            bh.ParentHash ?? throw new InvalidOperationException($"Parent hash is missing for block {bh.Number}."),
+            bh.UnclesHash ?? throw new InvalidOperationException($"Uncles hash is missing for block {bh.Number}."),
+            bh.Beneficiary ?? throw new InvalidOperationException($"Beneficiary is missing for block {bh.Number}."),
             bh.Difficulty,
             bh.Number,
             bh.GasLimit,

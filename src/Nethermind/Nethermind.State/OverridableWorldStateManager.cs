@@ -13,7 +13,7 @@ public class OverridableWorldStateManager : IOverridableWorldScope
     private readonly StateReader _reader;
     private readonly IReadOnlyDbProvider _dbProvider;
 
-    public OverridableWorldStateManager(IDbProvider dbProvider, IReadOnlyTrieStore trieStore, ILogManager? logManager)
+    public OverridableWorldStateManager(IDbProvider dbProvider, IReadOnlyTrieStore trieStore, ILogManager logManager)
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         _dbProvider = readOnlyDbProvider;

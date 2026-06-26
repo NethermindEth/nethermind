@@ -36,7 +36,7 @@ internal class XdcBlockTree(
     {
         if (!CanAcceptNewBlocks) return AddBlockResult.CannotAccept;
 
-        BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
+        BlockRoundInfo? finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
         if (finalizedBlockInfo is null)
             return base.Suggest(block, header, options);
 
@@ -44,6 +44,9 @@ internal class XdcBlockTree(
         {
             // During sync, already-finalized blocks may be re-suggested (e.g. gap filling).
             // Accept them as AlreadyKnown instead of treating them as invalid reorg attempts.
+            if (header.Hash is null)
+                return AddBlockResult.InvalidBlock;
+
             return IsKnownBlock(header.Number, header.Hash) && (BestSuggestedHeader?.Number ?? 0) >= header.Number
                 ? AddBlockResult.AlreadyKnown
                 : AddBlockResult.InvalidBlock;
@@ -58,9 +61,14 @@ internal class XdcBlockTree(
             if (finalizedBlockInfo.Hash == current.ParentHash)
                 return base.Suggest(block, header, options);
 
-            current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-            if (current is null)
+            if (current.ParentHash is null)
                 return AddBlockResult.UnknownParent;
+
+            BlockHeader? parentHeader = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            if (parentHeader is null)
+                return AddBlockResult.UnknownParent;
+
+            current = parentHeader;
         }
     }
 

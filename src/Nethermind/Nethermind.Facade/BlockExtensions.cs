@@ -14,7 +14,7 @@ namespace Nethermind.Facade
             this Block block,
             TxReceipt[] receipts,
             LogEntry matchEntry,
-            out LogEntry foundEntry,
+            out LogEntry? foundEntry,
             FindOrder receiptFindOrder = FindOrder.Descending,
             FindOrder logsFindOrder = FindOrder.Descending,
             IEqualityComparer<LogEntry>? comparer = null) =>
@@ -24,23 +24,27 @@ namespace Nethermind.Facade
             this BlockHeader blockHeader,
             TxReceipt[] receipts,
             LogEntry matchEntry,
-            out LogEntry foundEntry,
+            out LogEntry? foundEntry,
             FindOrder receiptFindOrder = FindOrder.Descending, // iterating backwards, by default we are interested only in the last one
             FindOrder logsFindOrder = FindOrder.Descending, // iterating backwards, by default we are interested only in the last one
             IEqualityComparer<LogEntry>? comparer = null)
         {
             comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;
 
-            if (blockHeader.Bloom.Matches(matchEntry))
+            if (blockHeader.Bloom is not null && blockHeader.Bloom.Matches(matchEntry))
             {
                 for (int i = 0; i < receipts.Length; i++)
                 {
                     TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
-                    if (receipt.Bloom.Matches(matchEntry))
+                    if (receipt.Bloom is not null && receipt.Bloom.Matches(matchEntry))
                     {
-                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        LogEntry[]? logs = receipt.Logs;
+                        if (logs is null)
+                            continue;
+
+                        for (int j = 0; j < logs.Length; j++)
                         {
-                            LogEntry receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            LogEntry receiptLog = GetItemAt(logs, j, logsFindOrder);
                             if (comparer.Equals(receiptLog, matchEntry))
                             {
                                 foundEntry = receiptLog;
@@ -65,16 +69,20 @@ namespace Nethermind.Facade
         {
             comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;
 
-            if (blockHeader.Bloom.Matches(matchEntry))
+            if (blockHeader.Bloom is not null && blockHeader.Bloom.Matches(matchEntry))
             {
                 for (int i = 0; i < receipts.Length; i++)
                 {
                     TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
-                    if (receipt.Bloom.Matches(matchEntry))
+                    if (receipt.Bloom is not null && receipt.Bloom.Matches(matchEntry))
                     {
-                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        LogEntry[]? logs = receipt.Logs;
+                        if (logs is null)
+                            continue;
+
+                        for (int j = 0; j < logs.Length; j++)
                         {
-                            LogEntry receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            LogEntry receiptLog = GetItemAt(logs, j, logsFindOrder);
                             if (comparer.Equals(receiptLog, matchEntry))
                             {
                                 yield return receiptLog;
@@ -92,16 +100,20 @@ namespace Nethermind.Facade
             FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance 
             FindOrder logsFindOrder = FindOrder.Ascending) // iterating forwards, by default we are interested in all items in order of appearance
         {
-            if (logFilter.Matches(blockHeader.Bloom))
+            if (blockHeader.Bloom is not null && logFilter.Matches(blockHeader.Bloom))
             {
                 for (int i = 0; i < receipts.Length; i++)
                 {
                     TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
-                    if (logFilter.Matches(receipt.Bloom))
+                    if (receipt.Bloom is not null && logFilter.Matches(receipt.Bloom))
                     {
-                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        LogEntry[]? logs = receipt.Logs;
+                        if (logs is null)
+                            continue;
+
+                        for (int j = 0; j < logs.Length; j++)
                         {
-                            LogEntry receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            LogEntry receiptLog = GetItemAt(logs, j, logsFindOrder);
                             if (logFilter.Accepts(receiptLog))
                             {
                                 yield return receiptLog;

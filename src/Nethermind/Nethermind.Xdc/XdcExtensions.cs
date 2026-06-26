@@ -28,8 +28,13 @@ internal static partial class XdcExtensions
         return ecdsa.Sign(privateKey, in hash);
     }
 
-    public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
+    public static Address? RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
+        if (vote.Signature is null)
+        {
+            return null;
+        }
+
         KeccakRlpWriter writer = new();
         _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
         ValueHash256 hash = writer.GetValueHash();
@@ -83,7 +88,7 @@ internal static partial class XdcExtensions
     public static bool ValidateBlockInfo(this BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>
         (blockInfo.BlockNumber == blockHeader.Number)
         && (blockInfo.Hash == blockHeader.Hash)
-        && (blockInfo.Round == blockHeader.ExtraConsensusData.BlockRound);
+        && (blockInfo.Round == blockHeader.ExtraConsensusData?.BlockRound);
 
     public static Signature DecodeSignature(this ref RlpReader decoderContext)
     {
@@ -113,5 +118,5 @@ internal static partial class XdcExtensions
     /// <param name="a"></param>
     /// <param name="b"></param>
     /// <returns>Returns <see cref="true"/> if the lists contain the same addresses, ignoring order; otherwise, <see cref="false"/>.</returns>
-    public static bool ListsAreEqual(this IList<Address> a, IList<Address> b) => a.Count == b.Count && new HashSet<Address>(a).SetEquals(b);
+    public static bool ListsAreEqual(this IList<Address>? a, IList<Address>? b) => a is not null && b is not null && a.Count == b.Count && new HashSet<Address>(a).SetEquals(b);
 }

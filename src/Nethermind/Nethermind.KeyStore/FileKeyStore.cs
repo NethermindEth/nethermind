@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -81,11 +82,16 @@ namespace Nethermind.KeyStore
         public int Version => 3;
         public int CryptoVersion => 1;
 
-        public (KeyStoreItem KeyData, Result Result) Verify(string keyJson)
+        public (KeyStoreItem? KeyData, Result Result) Verify(string keyJson)
         {
             try
             {
-                KeyStoreItem keyData = _jsonSerializer.Deserialize<KeyStoreItem>(keyJson);
+                KeyStoreItem? keyData = _jsonSerializer.Deserialize<KeyStoreItem>(keyJson);
+                if (keyData is null || !HasRequiredKeyData(keyData))
+                {
+                    return (null, Result.Fail("Invalid key data format"));
+                }
+
                 return (keyData, Result.Success);
             }
             catch (Exception)
@@ -94,52 +100,65 @@ namespace Nethermind.KeyStore
             }
         }
 
-        public (byte[] Key, Result Result) GetKeyBytes(Address address, SecureString password)
+        public (byte[]? Key, Result Result) GetKeyBytes(Address address, SecureString password)
         {
             if (!password.IsReadOnly())
             {
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
 
-            string serializedKey = ReadKey(address);
+            string? serializedKey = ReadKey(address);
             if (serializedKey is null)
             {
                 return (null, Result.Fail("Cannot find key"));
             }
-            KeyStoreItem keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(serializedKey);
+            KeyStoreItem? keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(serializedKey);
             if (keyStoreItem?.Crypto is null)
             {
                 return (null, Result.Fail("Cannot deserialize key"));
             }
 
-            Result validationResult = Validate(keyStoreItem);
-            if (validationResult.ResultType != ResultType.Success)
+            if (!TryValidate(
+                keyStoreItem,
+                out string? macHex,
+                out string? ivHex,
+                out string? cipherHex,
+                out string? saltHex,
+                out KdfParams? kdfParams,
+                out string? kdf,
+                out string? cipherType,
+                out Result validationResult))
             {
                 return (null, validationResult);
             }
 
-            byte[] mac = Bytes.FromHexString(keyStoreItem.Crypto.MAC);
-            byte[] iv = Bytes.FromHexString(keyStoreItem.Crypto.CipherParams.IV);
-            byte[] cipher = Bytes.FromHexString(keyStoreItem.Crypto.CipherText);
-            byte[] salt = Bytes.FromHexString(keyStoreItem.Crypto.KDFParams.Salt);
+            byte[] mac = Bytes.FromHexString(macHex);
+            byte[] iv = Bytes.FromHexString(ivHex);
+            byte[] cipher = Bytes.FromHexString(cipherHex);
+            byte[] salt = Bytes.FromHexString(saltHex);
 
-            KdfParams kdfParams = keyStoreItem.Crypto.KDFParams;
             byte[] passBytes = password.ToByteArray(_keyStoreEncoding);
 
             byte[] derivedKey;
-            string kdf = keyStoreItem.Crypto.KDF.Trim();
+            kdf = kdf.Trim();
             switch (kdf)
             {
                 case "scrypt":
-                    int r = kdfParams.R.Value;
-                    int p = kdfParams.P.Value;
-                    int n = kdfParams.N.Value;
+                    if (kdfParams is not { R: int r, P: int p, N: int n })
+                    {
+                        return (null, Result.Fail("Incorrect scrypt KDF parameters"));
+                    }
+
                     // ComputeDerivedKey uses too little stack size in case of multithread processing, which may cause stack overflow.
                     // Switch to single thread if "cost" is too high, see Scrypt.ThreadSMixCalls internals
                     derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, n, r, p, n > 8192 ? 1 : null, kdfParams.DkLen);
                     break;
                 case "pbkdf2":
-                    int c = kdfParams.C.Value;
+                    if (kdfParams.C is not int c)
+                    {
+                        return (null, Result.Fail("Incorrect pbkdf2 KDF parameters"));
+                    }
+
                     derivedKey = Rfc2898DeriveBytes.Pbkdf2(passBytes, salt, c, HashAlgorithmName.SHA256, 256);
                     break;
                 default:
@@ -152,7 +171,7 @@ namespace Nethermind.KeyStore
                 return (null, Result.Fail("Incorrect MAC"));
             }
 
-            string cipherType = keyStoreItem.Crypto.Cipher.Trim();
+            cipherType = cipherType.Trim();
             byte[] decryptKey;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
@@ -163,7 +182,7 @@ namespace Nethermind.KeyStore
                 decryptKey = derivedKey.Slice(0, 16);
             }
 
-            byte[] key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv, cipherType);
+            byte[]? key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv, cipherType);
             if (key is null)
             {
                 return (null, Result.Fail("Error during decryption"));
@@ -173,30 +192,43 @@ namespace Nethermind.KeyStore
             return (key, Result.Success);
         }
 
-        public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
+        public (PrivateKey? PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
-            (byte[] Key, Result Result) geyKeyResult = GetKeyBytes(address, password);
-            if (geyKeyResult.Result.ResultType == ResultType.Failure)
+            (byte[]? Key, Result Result) geyKeyResult = GetKeyBytes(address, password);
+            if (geyKeyResult.Result.ResultType == ResultType.Failure || geyKeyResult.Key is null)
             {
                 return (null, geyKeyResult.Result);
             }
             return (new PrivateKey(geyKeyResult.Key), geyKeyResult.Result);
         }
 
-        public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
+        public (ProtectedPrivateKey? PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
         {
-            (PrivateKey privateKey, Result result) = GetKey(address, password);
+            (PrivateKey? privateKey, Result result) = GetKey(address, password);
+            if (result != Result.Success || privateKey is null)
+            {
+                return (null, result);
+            }
+
             using PrivateKey key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
+            return (new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom), result);
         }
 
-        public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
+        public (KeyStoreItem? KeyData, Result Result) GetKeyData(Address address)
         {
-            string keyDataJson = ReadKey(address);
-            return (_jsonSerializer.Deserialize<KeyStoreItem>(keyDataJson), Result.Success);
+            string? keyDataJson = ReadKey(address);
+            if (keyDataJson is null)
+            {
+                return (null, Result.Fail("Cannot find key"));
+            }
+
+            KeyStoreItem? keyData = _jsonSerializer.Deserialize<KeyStoreItem>(keyDataJson);
+            return keyData is not null && HasRequiredKeyData(keyData)
+                ? (keyData, Result.Success)
+                : (null, Result.Fail("Cannot deserialize key"));
         }
 
-        public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
+        public (PrivateKey? PrivateKey, Result Result) GenerateKey(SecureString password)
         {
             if (!password.IsReadOnly())
             {
@@ -208,11 +240,16 @@ namespace Nethermind.KeyStore
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
         }
 
-        public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
+        public (ProtectedPrivateKey? PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
         {
-            (PrivateKey privateKey, Result result) = GenerateKey(password);
+            (PrivateKey? privateKey, Result result) = GenerateKey(password);
+            if (result != Result.Success || privateKey is null)
+            {
+                return (null, result);
+            }
+
             using PrivateKey key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
+            return (new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom), result);
         }
 
         public Result StoreKey(Address address, KeyStoreItem keyStoreItem) => PersistKey(address, keyStoreItem);
@@ -244,7 +281,7 @@ namespace Nethermind.KeyStore
             byte[] encryptContent = keyContent;
             byte[] iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
 
-            byte[] cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _config.Cipher);
+            byte[]? cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _config.Cipher);
             if (cipher is null)
             {
                 return Result.Fail("Error during encryption");
@@ -284,12 +321,22 @@ namespace Nethermind.KeyStore
 
         public Result StoreKey(PrivateKey key, SecureString password) => StoreKey(key.Address, key.KeyBytes, password);
 
-        public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()
+        public (IReadOnlyCollection<Address>? Addresses, Result Result) GetKeyAddresses()
         {
             try
             {
                 string[] files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
-                Address[] addresses = files.Select(Path.GetFileName).Select(static fn => fn.Split("--").LastOrDefault()).Where(static x => Address.IsValidAddress(x, false)).Select(static x => new Address(x)).ToArray();
+                List<Address> addresses = [];
+                foreach (string file in files)
+                {
+                    string? fileName = Path.GetFileName(file);
+                    string? addressString = fileName?.Split("--").LastOrDefault();
+                    if (addressString is not null && Address.IsValidAddress(addressString, false))
+                    {
+                        addresses.Add(new Address(addressString));
+                    }
+                }
+
                 return (addresses, Result.Success);
             }
             catch (Exception e)
@@ -300,20 +347,67 @@ namespace Nethermind.KeyStore
             }
         }
 
-        private Result Validate(KeyStoreItem keyStoreItem)
+        private bool TryValidate(
+            KeyStoreItem keyStoreItem,
+            [NotNullWhen(true)] out string? mac,
+            [NotNullWhen(true)] out string? iv,
+            [NotNullWhen(true)] out string? cipherText,
+            [NotNullWhen(true)] out string? salt,
+            [NotNullWhen(true)] out KdfParams? kdfParams,
+            [NotNullWhen(true)] out string? kdf,
+            [NotNullWhen(true)] out string? cipher,
+            out Result result)
         {
-            if (keyStoreItem.Crypto?.CipherParams is null || keyStoreItem.Crypto.KDFParams is null)
+            mac = null;
+            iv = null;
+            cipherText = null;
+            salt = null;
+            kdfParams = null;
+            kdf = null;
+            cipher = null;
+
+            if (keyStoreItem.Crypto is not
+                {
+                    MAC: { Length: > 0 } macValue,
+                    CipherParams: { IV: { Length: > 0 } ivValue },
+                    CipherText: { Length: > 0 } cipherTextValue,
+                    Cipher: { Length: > 0 } cipherValue,
+                    KDF: { Length: > 0 } kdfValue,
+                    KDFParams: { Salt: { Length: > 0 } saltValue } kdfParamsValue,
+                })
             {
-                return Result.Fail("Incorrect key");
+                result = Result.Fail("Incorrect key");
+                return false;
+            }
+
+            if (kdfParamsValue.DkLen < 16)
+            {
+                result = Result.Fail("Incorrect KDF parameters");
+                return false;
             }
 
             if (keyStoreItem.Version != Version)
             {
-                return Result.Fail("KeyStore version mismatch");
+                result = Result.Fail("KeyStore version mismatch");
+                return false;
             }
 
-            return Result.Success;
+            mac = macValue;
+            iv = ivValue;
+            cipherText = cipherTextValue;
+            salt = saltValue;
+            kdfParams = kdfParamsValue;
+            kdf = kdfValue;
+            cipher = cipherValue;
+
+            result = Result.Success;
+            return true;
         }
+
+        private static bool HasRequiredKeyData(KeyStoreItem keyData) =>
+            !string.IsNullOrWhiteSpace(keyData.Id) &&
+            !string.IsNullOrWhiteSpace(keyData.Address) &&
+            keyData.Crypto is not null;
 
         private Result PersistKey(Address address, KeyStoreItem keyData)
         {
@@ -361,7 +455,7 @@ namespace Nethermind.KeyStore
             }
         }
 
-        private string ReadKey(Address address)
+        private string? ReadKey(Address address)
         {
             if (address == Address.Zero)
             {

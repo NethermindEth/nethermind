@@ -13,12 +13,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// List of list of consecutive slots from the trie (one list per account)
         /// </summary>
-        public IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> Slots { get; set; }
+        public IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? Slots { get; set; }
 
         /// <summary>
         /// List of trie nodes proving the slot range
         /// </summary>
-        public IByteArrayList Proofs { get; set; }
+        public IByteArrayList? Proofs { get; set; }
 
         public override void Dispose()
         {

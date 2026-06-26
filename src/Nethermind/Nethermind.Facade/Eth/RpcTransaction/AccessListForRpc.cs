@@ -24,7 +24,7 @@ public class AccessListForRpc
 
     private class Item
     {
-        public Address Address { get; set; }
+        public Address Address { get; set; } = null!;
 
         [JsonConverter(typeof(StorageCellIndexConverter))]
         public IEnumerable<UInt256>? StorageKeys { get; set; }

@@ -47,13 +47,16 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
+                ulong blockNumber = request.BlockNumber ?? throw new ArgumentException("Account range block number is required.", nameof(request));
+                ValueHash256 effectiveLimitHash = request.LimitHash ?? ValueKeccak.MaxValue;
+
                 result = AddAccountRange(
-                    request.BlockNumber.Value,
+                    blockNumber,
                     request.RootHash,
                     request.StartingHash,
                     response.PathAndAccounts,
                     response.Proofs,
-                    hashLimit: request.LimitHash);
+                    hashLimit: effectiveLimitHash);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -61,7 +64,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
+            _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash ?? ValueKeccak.MaxValue);
             response.Dispose();
 
             Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: false, result: result));
@@ -73,7 +76,7 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             IReadOnlyList<PathWithAccount> accounts,
-            IByteArrayList proofs = null,
+            IByteArrayList? proofs = null,
             in ValueHash256? hashLimit = null!)
         {
             if (accounts.Count == 0)
@@ -114,7 +117,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             if (_logger.IsTrace)
             {
-                string message = result switch
+                string? message = result switch
                 {
                     AddRangeResult.MissingRootHashInProofs => $"SNAP - AddAccountRange failed, missing root hash {actualRootHash} in the proofs, startingHash:{startingHash}",
                     AddRangeResult.DifferentRootHash => $"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {actualRootHash}, startingHash:{startingHash}",
@@ -155,7 +158,7 @@ namespace Nethermind.Synchronization.SnapSync
                 for (int i = 0; i < responses.Length; i++)
                 {
                     // only the last can have proofs
-                    IByteArrayList proofs = null;
+                    IByteArrayList? proofs = null;
                     if (i == responses.Length - 1)
                     {
                         proofs = response.Proofs;
@@ -218,10 +221,10 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (_logger.IsTrace)
                 {
-                    string message = result switch
+                    string? message = result switch
                     {
                         AddRangeResult.MissingRootHashInProofs => $"SNAP - AddStorageRange failed, missing root hash {actualRootHash} in the proofs, startingHash:{request.StartingHash}",
-                        AddRangeResult.DifferentRootHash => $"SNAP - AddStorageRange failed, expected storage root hash:{pathWithAccount.Account.StorageRoot} but was {actualRootHash}, startingHash:{request.StartingHash}",
+                        AddRangeResult.DifferentRootHash => $"SNAP - AddStorageRange failed, expected storage root hash:{pathWithAccount.Account?.StorageRoot} but was {actualRootHash}, startingHash:{request.StartingHash}",
                         AddRangeResult.InvalidOrder => $"SNAP - AddStorageRange failed, slots are not in sorted order, startingHash:{request.StartingHash}",
                         AddRangeResult.OutOfBounds => $"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}",
                         AddRangeResult.EmptyRange => $"SNAP - AddStorageRange failed, slots list is empty, startingHash:{request.StartingHash}",
@@ -252,9 +255,9 @@ namespace Nethermind.Synchronization.SnapSync
             AddRangeResult result;
             switch (VerifyRefreshedAccount(response, request.RootHash, path, out Account? account))
             {
-                case RefreshVerifyResult.Verified:
+                case RefreshVerifyResult.Verified when account is not null:
                     result = AddRangeResult.OK;
-                    requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(account!.StorageRoot);
+                    requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account!.WithChangedStorageRoot(account.StorageRoot);
 
                     if (requestedPath.StorageStartingHash > ValueKeccak.Zero)
                     {
@@ -271,6 +274,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                     break;
 
+                case RefreshVerifyResult.Verified:
                 case RefreshVerifyResult.NotFound:
                     // The account no longer exists at the pivot, so there is no storage to retrieve. It remains
                     // tracked for healing. Terminal success - must not retry or the refresh would loop forever.
@@ -374,7 +378,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (batch.AccountRangeRequest is not null)
             {
-                _progressTracker.ReportAccountRangePartitionFinished(batch.AccountRangeRequest.LimitHash.Value);
+                _progressTracker.ReportAccountRangePartitionFinished(batch.AccountRangeRequest.LimitHash ?? ValueKeccak.MaxValue);
             }
             else if (batch.StorageRangeRequest is not null)
             {

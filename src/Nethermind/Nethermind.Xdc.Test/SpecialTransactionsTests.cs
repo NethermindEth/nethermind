@@ -948,7 +948,7 @@ internal class SpecialTransactionsTests
 
         UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-        TxReceipt receipt = receiptsTracer.TxReceipts[^1];
+        TxReceipt receipt = receiptsTracer.TxReceipts[^1]!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -1020,7 +1020,7 @@ internal class SpecialTransactionsTests
 
         UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-        TxReceipt receipt = receiptsTracer.TxReceipts[^1];
+        TxReceipt receipt = receiptsTracer.TxReceipts[^1]!;
 
         using (Assert.EnterMultipleScope())
         {

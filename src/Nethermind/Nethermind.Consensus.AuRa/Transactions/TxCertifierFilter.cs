@@ -18,18 +18,18 @@ public class TxCertifierFilter(ICertifierContract certifierContract, ITxFilter n
 {
     private readonly ResettableDictionary<Address, bool> _certifiedCache = new(8);
     private readonly ILogger _logger = logManager.GetClassLogger<TxCertifierFilter>();
-    private Hash256 _cachedBlock;
+    private Hash256 _cachedBlock = Keccak.Zero;
 
     public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec) =>
         IsCertified(tx, parentHeader, currentSpec) ? AcceptTxResult.Accepted : notCertifiedFilter.IsAllowed(tx, parentHeader, currentSpec);
 
     private bool IsCertified(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
     {
-        Address sender = tx.SenderAddress;
+        Address? sender = tx.SenderAddress;
         if (tx.IsZeroGasPrice(currentSpec) && sender is not null)
         {
             if (_logger.IsTrace) _logger.Trace($"Checking service transaction checker contract from {sender}.");
-            IDictionary<Address, bool> cache = GetCache(parentHeader.Hash);
+            IDictionary<Address, bool> cache = GetCache(parentHeader.Hash!);
 
             if (cache.TryGetValue(sender, out bool isCertified))
             {

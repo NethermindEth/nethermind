@@ -336,7 +336,7 @@ namespace Nethermind.Consensus.Processing
             Block? block = data.Block;
             if (block is null) return;
 
-            ulong blockNumber = data.Block.Number;
+            ulong blockNumber = block.Number;
             double chunkMGas = (_chunkMGas += data.GasUsed / 1_000_000.0);
 
             // We want the rate here
@@ -392,9 +392,11 @@ namespace Nethermind.Consensus.Processing
             long cachedContractsUsed = (_cachedContractsUsed += data.CurrentCachedContractsUsed - data.StartCachedContractsUsed);
 
             Address beneficiary = block.Header.GasBeneficiary ?? Address.Zero;
-            Transaction lastTx = txs.Length > 0 ? txs[^1] : null;
+            Transaction? lastTx = txs.Length > 0 ? txs[^1] : null;
             bool isMev = false;
-            if (lastTx?.To is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
+            if (lastTx?.To is not null
+                && lastTx.SenderAddress is not null
+                && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
             {
                 // Mev reward with in last tx
                 isMev = true;
@@ -419,12 +421,14 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
+                    Transaction mevTx = lastTx ?? throw new InvalidOperationException("MEV transaction was not captured.");
                     // Sometimes the beneficiary has done their own balance changing tx
                     // So prefer the mev reward tx value
-                    rewards = lastTx.Value;
+                    rewards = mevTx.Value;
                     if (rewards.IsZero)
                     {
-                        rewards = CalculateBalanceChange(data.BaseBlock, block.Header, lastTx.To);
+                        Address mevRecipient = mevTx.To ?? throw new InvalidOperationException("MEV transaction recipient is missing.");
+                        rewards = CalculateBalanceChange(data.BaseBlock, block.Header, mevRecipient);
                     }
                 }
             }
@@ -868,7 +872,7 @@ namespace Nethermind.Consensus.Processing
 
         protected class BlockData
         {
-            public Block Block;
+            public Block? Block;
             public BlockHeader? BaseBlock;
             public long BlockCount;
             public ulong FirstBlockNumber;

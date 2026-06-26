@@ -373,7 +373,7 @@ public class BeaconHeadersSyncTests
         HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
         Assert.That(request!, Is.Not.Null);
         request!.Response = TestRange.ULongRange(request.StartNumber, request.RequestSize)
-            .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber))
+            .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber)!)
             .ToPooledList(request.RequestSize);
 
         ctx.Feed.HandleResponse(request);
@@ -389,7 +389,7 @@ public class BeaconHeadersSyncTests
 
         // We respond it again
         request!.Response = TestRange.ULongRange(request.StartNumber, request.RequestSize)
-            .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber))
+            .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber)!)
             .ToPooledList(request.RequestSize);
         ctx.Feed.HandleResponse(request);
         request.Dispose();
@@ -470,8 +470,14 @@ public class BeaconHeadersSyncTests
             return;
         }
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, false);
-        batch.Response = new ArrayPoolList<BlockHeader?>(headers.Count, headers);
+        using IOwnedReadOnlyList<BlockHeader?> headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, false);
+        ArrayPoolList<BlockHeader> response = new(headers.Count);
+        for (int i = 0; i < headers.Count; i++)
+        {
+            response.Add(headers[i]!);
+        }
+
+        batch.Response = response;
     }
 
     private static IBeaconPivot PreparePivot(ulong blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)

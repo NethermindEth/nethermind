@@ -51,41 +51,44 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
         storageIndex.ToBigEndian(bigEndian);
 
-        CurrentTraceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left)
+        GethTxMemoryTraceEntry traceEntry = CurrentTraceEntry ?? throw new InvalidOperationException("Missing the current trace on storage update.");
+        traceEntry.Storage ??= [];
+        traceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left)
             .ToArray()
             .ToHexString(false);
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
-        GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
+        GethTxMemoryTraceEntry? previousTraceEntry = CurrentTraceEntry;
         int previousDepth = CurrentTraceEntry?.Depth ?? 0;
 
         base.StartOperation(pc, opcode, gas, env);
+        GethTxMemoryTraceEntry currentTraceEntry = CurrentTraceEntry ?? throw new InvalidOperationException("Missing the current trace on operation start.");
 
         // Geth's struct logger captures the cumulative gas-refund counter before the opcode
         // executes and emits it only when non-zero (matching go-ethereum's pre-op GetRefund()).
-        CurrentTraceEntry.Refund = _refund != 0 ? _refund : null;
+        currentTraceEntry.Refund = _refund != 0 ? _refund : null;
 
-        if (CurrentTraceEntry.Depth > previousDepth)
+        if (currentTraceEntry.Depth > previousDepth)
         {
-            CurrentTraceEntry.Storage = [];
+            currentTraceEntry.Storage = [];
 
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? [] : previousTraceEntry.Storage);
+            Trace.StoragesByDepth.Push(previousTraceEntry?.Storage ?? []);
         }
-        else if (CurrentTraceEntry.Depth < previousDepth)
+        else if (currentTraceEntry.Depth < previousDepth)
         {
             if (previousTraceEntry is null)
                 throw new InvalidOperationException("Missing the previous trace on leaving the call.");
 
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
+            currentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
         }
         else
         {
             if (previousTraceEntry is null)
                 throw new InvalidOperationException("Missing the previous trace on continuation.");
 
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
+            currentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage ?? []);
         }
     }
 

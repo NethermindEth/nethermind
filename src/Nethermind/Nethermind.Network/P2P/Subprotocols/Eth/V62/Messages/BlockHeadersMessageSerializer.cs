@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using System;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class BlockHeadersMessageSerializer(IHeaderDecoder headerDecoder = null) : IZeroInnerMessageSerializer<BlockHeadersMessage>
+    public class BlockHeadersMessageSerializer(IHeaderDecoder? headerDecoder = null) : IZeroInnerMessageSerializer<BlockHeadersMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockHeadersMessage>(NethermindSyncLimits.MaxHeaderFetch, nameof(BlockHeadersMessage.BlockHeaders));
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
@@ -21,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             ByteBufferRlpWriter writer = new(byteBuffer);
 
             writer.StartSequence(contentLength);
-            ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
+            System.ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders is null ? [] : message.BlockHeaders.AsSpan();
             for (int i = 0; i < blockHeaders.Length; i++)
             {
                 _headerDecoder.Encode(ref writer, blockHeaders[i]);
@@ -29,12 +28,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("Block headers message decoding returned null.");
 
         public int GetLength(BlockHeadersMessage message, out int contentLength)
         {
             contentLength = 0;
-            ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
+            System.ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders is null ? [] : message.BlockHeaders.AsSpan();
             for (int i = 0; i < blockHeaders.Length; i++)
             {
                 contentLength += _headerDecoder.GetLength(blockHeaders[i], RlpBehaviors.None);
@@ -46,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public BlockHeadersMessage Deserialize(ref RlpReader ctx)
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = Rlp.DecodeArrayPool(ref ctx, _headerDecoder, limit: RlpLimit);
+            message.BlockHeaders = ctx.DecodeArrayPoolList((ref RlpReader c) => _headerDecoder.DecodeGuardNotNull(ref c), limit: RlpLimit);
             return message;
         }
     }

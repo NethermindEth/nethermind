@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
     public class FeeHistoryOracle : IFeeHistoryOracle, IDisposable
     {
-        private static readonly ResultWrapper<FeeHistoryResults> _validationPassed = ResultWrapper<FeeHistoryResults>.Success(null);
+        private static readonly ResultWrapper<FeeHistoryResults> _validationPassed = ResultWrapper<FeeHistoryResults>.Success(null!);
         private const int MaxBlockCount = 1024;
         private const int RewardPercentilesLengthLimit = 100;
         private readonly ulong _oldestBlockDistanceFromHeadAllowedInCache;
@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         {
             if (e.PreviousBlock is not null)
             {
-                _feeHistoryCache.TryRemove(e.PreviousBlock.Hash, out _);
+                _feeHistoryCache.TryRemove(e.PreviousBlock.Hash!, out _);
             }
 
             if (ShouldCache(e.Block))
@@ -87,7 +87,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return i;
             }
 
-            Block block = _blockTree.FindBlock(blockParameter);
+            Block? block = _blockTree.FindBlock(blockParameter);
             return block is null
                 ? null
                 : _feeHistoryCache.TryGetValue(block.Hash!, out BlockFeeHistorySearchInfo info)

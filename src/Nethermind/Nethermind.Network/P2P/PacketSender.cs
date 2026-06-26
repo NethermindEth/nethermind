@@ -19,9 +19,9 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
     private readonly ILogger _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly TimeSpan _sendLatency = sendLatency;
     private readonly CancellationTokenSource _cts = new();
-    private IChannelHandlerContext _context;
-    private Action<Task, object?> _delayThenWrite;
-    private Action<Task, object?> _observeWriteCompletion;
+    private IChannelHandlerContext _context = null!;
+    private Action<Task, object?> _delayThenWrite = null!;
+    private Action<Task, object?> _observeWriteCompletion = null!;
 
     // Thread-safe: Netty guarantees single-threaded channel event delivery,
     // so ??= is never racing on these fields.

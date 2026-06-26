@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -32,26 +33,26 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
-        public Node Node => Session?.Node;
-        public string ClientId => Node?.ClientId;
+        public Node Node => Session.Node;
+        public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
         public PublicKey Id => Node.Id;
-        string ITxPoolPeer.Enode => Node?.ToString();
+        string ITxPoolPeer.Enode => Node.ToString();
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
 
         public ulong HeadNumber { get; set; }
-        public Hash256 HeadHash { get; set; }
+        public Hash256? HeadHash { get; set; }
 
         // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
         public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:a}|{Session?.Direction,4}]";
 
-        protected Hash256 _remoteHeadBlockHash;
+        protected Hash256? _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;
 
-        protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
+        protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
         protected AssociativeKeyCache<ValueHash256>? _notifiedTransactions;
@@ -89,7 +90,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 return new OwnedBlockBodies([]);
             }
 
-            OwnedBlockBodies blocks = await _nodeStats.RunSizeAndLatencyRequestSizer<OwnedBlockBodies, Hash256, BlockBody?>(RequestType.Bodies, blockHashes, async clampedBlockHashes =>
+            OwnedBlockBodies blocks = await NodeStats.RunSizeAndLatencyRequestSizer<OwnedBlockBodies, Hash256, BlockBody?>(RequestType.Bodies, blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token));
 
             return blocks;
@@ -111,7 +112,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 token);
         }
 
-        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
+        async Task<IOwnedReadOnlyList<BlockHeader>?> ISyncPeer.GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
@@ -161,7 +162,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return headersSpan.Length > 0 ? headersSpan[0] : null;
         }
 
-        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+        async Task<IOwnedReadOnlyList<BlockHeader>?> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
@@ -178,7 +179,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return headers;
         }
 
-        public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
+        public virtual Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
         public virtual Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
@@ -296,17 +297,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 throw new EthSyncException("Incoming headers request for more than 1024 headers");
             }
 
-            Hash256 startingHash = msg.StartBlockHash;
+            Hash256? startingHash = msg.StartBlockHash;
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
-            IOwnedReadOnlyList<BlockHeader> headers =
+            IOwnedReadOnlyList<BlockHeader?> headers =
                 startingHash is null || cancellationToken.IsCancellationRequested
-                    ? ArrayPoolList<BlockHeader>.Empty()
+                    ? ArrayPoolList<BlockHeader?>.Empty()
                     : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
-            headers = FixHeadersForGeth(headers);
+            IOwnedReadOnlyList<BlockHeader> responseHeaders = TrimMissingHeaders(headers);
 
-            return Task.FromResult(new BlockHeadersMessage(headers));
+            return Task.FromResult(new BlockHeadersMessage(responseHeaders));
         }
 
         protected async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage request, CancellationToken cancellationToken)
@@ -363,9 +364,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return Task.FromResult(new BlockBodiesMessage(blocks));
         }
 
-        protected void Handle(BlockHeadersMessage message, long size) => _headersRequests.Handle(message.BlockHeaders, size);
+        protected void Handle(BlockHeadersMessage message, long size) => _headersRequests.Handle(message.BlockHeaders ?? ArrayPoolList<BlockHeader>.Empty(), size);
 
-        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size) => _bodiesRequests.Handle((blockBodiesMessage.Bodies, size), size);
+        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size) => _bodiesRequests.Handle((blockBodiesMessage.Bodies ?? new OwnedBlockBodies([]), size), size);
 
         protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage msg, CancellationToken cancellationToken)
         {
@@ -380,7 +381,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-            ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
+            ArrayPoolList<TxReceipt[]?> txReceipts = new(hashes.Length);
 
             ulong sizeEstimate = 0;
             for (int i = 0; i < hashes.Length; i++)
@@ -409,38 +410,23 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return Task.FromResult(new ReceiptsMessage(txReceipts));
         }
 
-        private static IOwnedReadOnlyList<BlockHeader> FixHeadersForGeth(IOwnedReadOnlyList<BlockHeader> headers)
+        private static IOwnedReadOnlyList<BlockHeader> TrimMissingHeaders(IOwnedReadOnlyList<BlockHeader?> headers)
         {
-            int emptyBlocksAtTheEnd = 0;
-            ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
-            for (int i = 0; i < headersSpan.Length; i++)
+            ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
+            int toTake = headersSpan.Length;
+            while (toTake > 0 && headersSpan[toTake - 1] is null)
             {
-                if (headersSpan[headersSpan.Length - 1 - i] is null)
-                {
-                    emptyBlocksAtTheEnd++;
-                }
-                else
-                {
-                    break;
-                }
+                toTake--;
             }
 
-            if (emptyBlocksAtTheEnd != 0)
+            ArrayPoolList<BlockHeader> trimmedHeaders = new(toTake);
+            for (int i = 0; i < toTake; i++)
             {
-                int toTake = headersSpan.Length - emptyBlocksAtTheEnd;
-                if (headers is ArrayPoolList<BlockHeader> asArrayPoolList)
-                {
-                    asArrayPoolList.Truncate(toTake);
-                    return headers;
-                }
-
-                ArrayPoolList<BlockHeader> newList = new(toTake);
-                newList.AddRange(headersSpan[..toTake]);
-                headers.Dispose();
-                return newList;
+                trimmedHeaders.Add(headersSpan[i]!);
             }
 
-            return headers;
+            headers.Dispose();
+            return trimmedHeaders;
         }
 
 
@@ -485,9 +471,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => ProtocolHandlers[protocol] = protocolHandler;
 
-        public bool TryGetSatelliteProtocol<T>(string protocol, out T? protocolHandler) where T : class
+        public bool TryGetSatelliteProtocol<T>(string protocol, [NotNullWhen(true)] out T? protocolHandler) where T : class
         {
-            if (ProtocolHandlers.TryGetValue(protocol, out object handler))
+            if (ProtocolHandlers.TryGetValue(protocol, out object? handler))
             {
                 protocolHandler = handler as T;
                 return protocolHandler is not null;

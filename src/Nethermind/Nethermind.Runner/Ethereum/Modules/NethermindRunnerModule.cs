@@ -47,7 +47,7 @@ public class NethermindRunnerModule(
             throw new NotSupportedException($"There should be exactly one consensus plugin enabled. Seal engine type: {chainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
         }
 
-        IConsensusPlugin consensusPlugin = consensusPlugins.FirstOrDefault();
+        IConsensusPlugin consensusPlugin = consensusPlugins.First();
 
         builder
             .AddModule(new NethermindModule(chainSpec, configProvider, logManager))

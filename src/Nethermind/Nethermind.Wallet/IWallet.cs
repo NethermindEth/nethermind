@@ -18,21 +18,21 @@ namespace Nethermind.Wallet
         bool LockAccount(Address address);
         bool IsUnlocked(Address address);
         Address[] GetAccounts();
-        event EventHandler<AccountLockedEventArgs> AccountLocked;
-        event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        event EventHandler<AccountLockedEventArgs>? AccountLocked;
+        event EventHandler<AccountUnlockedEventArgs>? AccountUnlocked;
 
-        bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature);
+        bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature? signature);
 
-        bool TrySignMessage(byte[] message, Address address, [NotNullWhen(true)] out Signature signature)
+        bool TrySignMessage(byte[] message, Address address, [NotNullWhen(true)] out Signature? signature)
         {
             ValueHash256 hash = Eip191Hasher.HashMessageValue(message);
             return TrySign(in hash, address, out signature);
         }
 
-        bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+        bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature? signature)
             => TrySign(in message, address, out signature);
 
-        bool TrySignMessage(byte[] message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+        bool TrySignMessage(byte[] message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature? signature)
         {
             ValueHash256 hash = Eip191Hasher.HashMessageValue(message);
             return TrySign(in hash, address, passphrase, out signature);
@@ -41,7 +41,8 @@ namespace Nethermind.Wallet
         bool TrySignTransaction(Transaction tx, ulong chainId)
         {
             ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
-            if (!TrySign(in hash, tx.SenderAddress, out Signature sig)) return false;
+            Address? senderAddress = tx.SenderAddress;
+            if (senderAddress is null || !TrySign(in hash, senderAddress, out Signature? sig)) return false;
             sig.V = tx.Type == TxType.Legacy ? sig.V + 8 + 2 * chainId : (ulong)(sig.RecoveryId + 27);
             tx.Signature = sig;
             return true;

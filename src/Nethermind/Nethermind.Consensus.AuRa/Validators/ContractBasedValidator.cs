@@ -20,10 +20,10 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         private readonly ILogger _logger;
 
-        private PendingValidators _currentPendingValidators;
+        private PendingValidators? _currentPendingValidators;
         private ulong? _lastProcessedBlockNumber = null;
         private Hash256? _lastProcessedBlockHash = null;
-        private IAuRaBlockFinalizationManager _blockFinalizationManager;
+        private IAuRaBlockFinalizationManager _blockFinalizationManager = null!;
         internal IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
 
@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
             IAuRaBlockFinalizationManager finalizationManager,
-            BlockHeader parentHeader,
+            BlockHeader? parentHeader,
             ILogManager logManager,
             ulong startBlockNumber,
             ulong posdaoTransition = ulong.MaxValue,
@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             SetFinalizationManager(finalizationManager, parentHeader ?? BlockTree.Head?.Header);
         }
 
-        private void SetFinalizationManager(IAuRaBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
+        private void SetFinalizationManager(IAuRaBlockFinalizationManager finalizationManager, BlockHeader? parentHeader)
         {
             _blockFinalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
 
@@ -84,33 +84,40 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             // this condition is probably redundant because whenever Validators is null, isConsecutiveBlock will be false
             // but let's leave it here just in case, it does not harm
-            if (Validators is null || (!isConsecutiveBlock && !isInitBlock))
+            Address[]? currentValidators = Validators;
+            Address[] validators;
+            if (currentValidators is null || (!isConsecutiveBlock && !isInitBlock))
             {
-                BlockHeader parentHeader = BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-                Validators = isInitBlock || !isInProcessedRange ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(block.Number);
+                BlockHeader? parentHeader = BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                validators = isInitBlock || !isInProcessedRange ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(block.Number);
+                Validators = validators;
 
                 if (isMainChainProcessing)
                 {
                     if (_logger.IsInfo)
-                        _logger.Info($"{(isInitBlock ? "Initial" : "Current")} contract validators ({Validators.Length}): [{string.Join<Address>(", ", Validators)}].");
+                        _logger.Info($"{(isInitBlock ? "Initial" : "Current")} contract validators ({validators.Length}): [{string.Join<Address>(", ", validators)}].");
                 }
+            }
+            else
+            {
+                validators = currentValidators;
             }
 
             if (isInitBlock)
             {
                 if (isMainChainProcessing)
                 {
-                    ValidatorStore.SetValidators(InitBlockNumber, Validators);
+                    ValidatorStore.SetValidators(InitBlockNumber, validators);
                 }
             }
             else
             {
                 if (isMainChainProcessing && !isInProcessedRange)
                 {
-                    bool loadedValidatorsAreSameInStore = (ValidatorStore.GetValidators()?.SequenceEqual(Validators) == true);
+                    bool loadedValidatorsAreSameInStore = (ValidatorStore.GetValidators()?.SequenceEqual(validators) == true);
                     if (!loadedValidatorsAreSameInStore)
                     {
-                        ValidatorStore.SetValidators(_blockFinalizationManager.GetLastLevelFinalizedBy(block.ParentHash), Validators);
+                        ValidatorStore.SetValidators(_blockFinalizationManager.GetLastLevelFinalizedBy(block.ParentHash!), validators);
                     }
                 }
 
@@ -121,7 +128,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     _currentPendingValidators = ValidatorStore.PendingValidators;
                 }
                 else if (!isConsecutiveBlock) // either reorg or blocks skipped (like fast sync)
-                    _currentPendingValidators = ValidatorStore.PendingValidators = TryGetInitChangeFromPastBlocks(block.ParentHash);
+                    _currentPendingValidators = ValidatorStore.PendingValidators = TryGetInitChangeFromPastBlocks(block.ParentHash!);
             }
 
 
@@ -132,25 +139,25 @@ namespace Nethermind.Consensus.AuRa.Validators
             (_lastProcessedBlockNumber, _lastProcessedBlockHash) = (block.Number, block.Hash);
         }
 
-        private PendingValidators TryGetInitChangeFromPastBlocks(Hash256 blockHash)
+        private PendingValidators? TryGetInitChangeFromPastBlocks(Hash256 blockHash)
         {
-            PendingValidators pendingValidators = null;
+            PendingValidators? pendingValidators = null;
             ulong lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
             ulong toBlock = Math.Max(lastFinalized, InitBlockNumber);
-            Block block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+            Block? block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             while (block?.Number >= toBlock)
             {
                 TxReceipt[] receipts = _receiptFinder.Get(block) ?? [];
-                if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out Address[] potentialValidators))
+                if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out Address[]? potentialValidators))
                 {
-                    if (Validators.SequenceEqual(potentialValidators))
+                    if (Validators is not null && Validators.SequenceEqual(potentialValidators))
                     {
                         break; // TODO: why this?
                     }
 
-                    pendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators);
+                    pendingValidators = new PendingValidators(block.Number, block.Hash!, potentialValidators);
                 }
-                block = BlockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);
+                block = BlockTree.FindBlock(block.ParentHash!, BlockTreeLookupOptions.None);
             }
 
             return pendingValidators;
@@ -165,7 +172,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
             }
 
-            if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out Address[] potentialValidators))
+            if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out Address[]? potentialValidators))
             {
                 bool isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
@@ -173,7 +180,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 // This replicates openethereum's behaviour which can be seen as a bug.
                 if (_currentPendingValidators is null && potentialValidators.Length > 0)
                 {
-                    _currentPendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators);
+                    _currentPendingValidators = new PendingValidators(block.Number, block.Hash!, potentialValidators);
                     if (!isProducingBlock)
                     {
                         ValidatorStore.PendingValidators = _currentPendingValidators;
@@ -203,7 +210,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private Address[] LoadValidatorsFromContract(BlockHeader parentHeader)
+        private Address[] LoadValidatorsFromContract(BlockHeader? parentHeader)
         {
             try
             {
@@ -218,17 +225,19 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
             catch (AbiException e)
             {
-                throw new AuRaException($"Failed to initialize validators list on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}\n{new StackTrace()}.", e);
+                string parentHeaderDescription = parentHeader?.ToString(BlockHeader.Format.FullHashAndNumber) ?? "<missing parent header>";
+                throw new AuRaException($"Failed to initialize validators list on block {parentHeaderDescription}\n{new StackTrace()}.", e);
             }
         }
 
         // NOTE: this is only added to `_blockFinalizationManager.BlocksFinalized` when `!ForSealing`
-        private void OnBlocksFinalized(object sender, AuRaFinalizeEventArgs e)
+        private void OnBlocksFinalized(object? sender, AuRaFinalizeEventArgs e)
         {
             if (e.FinalizedBlocks.Any(header => header.Hash == _currentPendingValidators?.BlockHash))
             {
-                Validators = _currentPendingValidators.Addresses;
-                ValidatorStore.SetValidators(e.FinalizingBlock.Number, Validators);
+                Address[] validators = _currentPendingValidators!.Addresses;
+                Validators = validators;
+                ValidatorStore.SetValidators(e.FinalizingBlock.Number, validators);
                 if (_logger.IsInfo)
                     _logger.Info($"Finalizing validators for transition signalled within contract at block {_currentPendingValidators.BlockNumber} after block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
                 _currentPendingValidators = ValidatorStore.PendingValidators = null;

@@ -10,6 +10,6 @@ internal class SyncInfoMsg : P2PMessage
 {
     public override int PacketType => XdcMessageCode.SyncInfoMsg;
     public override string Protocol => "eth";
-    public SyncInfo SyncInfo { get; set; }
+    public SyncInfo SyncInfo { get; set; } = null!;
     public override string ToString() => $"{nameof(SyncInfoMsg)}({SyncInfo})";
 }

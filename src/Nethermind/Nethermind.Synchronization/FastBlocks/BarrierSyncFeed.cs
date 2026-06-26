@@ -11,7 +11,7 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.FastBlocks;
 
-public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvider, ILogger logger) : ActivatedSyncFeed<T>
+public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvider, ILogger logger) : ActivatedSyncFeed<T> where T : class
 {
     protected abstract ulong? LowestInsertedNumber { get; }
     protected abstract int BarrierWhenStartedMetadataDbKey { get; }

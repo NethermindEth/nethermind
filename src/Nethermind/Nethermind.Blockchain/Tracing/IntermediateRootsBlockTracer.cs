@@ -31,7 +31,7 @@ public class IntermediateRootsBlockTracer(IWorldState worldState, IReleaseSpec s
     {
         public override bool IsTracingReceipt => true;
 
-        public Hash256 StateRoot { get; private set; }
+        public Hash256 StateRoot { get; private set; } = null!;
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
             Capture(stateRoot);

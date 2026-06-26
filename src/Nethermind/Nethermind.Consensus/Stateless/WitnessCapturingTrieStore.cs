@@ -31,13 +31,14 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
         TrieNode node = baseStore.FindCachedOrUnknown(address, in path, hash);
-        if (node.NodeType != NodeType.Unknown)
+        if (node.NodeType != NodeType.Unknown && node.Keccak is not null && node.FullRlp.IsNotNull)
         {
             // Materialise the RLP only on first capture: TryAdd would allocate node.FullRlp.ToArray()
             // on every cache hit (hot in SLOAD loops touching the same branch) just to discard it.
             ref byte[]? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_rlpCollector, node.Keccak, out bool exists);
-            if (!exists) slot = node.FullRlp.ToArray();
+            if (!exists) slot = node.FullRlp.ToArray()!;
         }
+
         return node;
     }
 

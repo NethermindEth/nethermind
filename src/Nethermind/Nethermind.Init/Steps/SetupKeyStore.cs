@@ -29,30 +29,33 @@ namespace Nethermind.Init.Steps
 
             AesEncrypter encrypter = new(keyStoreConfig, get.LogManager);
 
-            IKeyStore? keyStore = set.KeyStore = new FileKeyStore(
+            IKeyStore keyStore = new FileKeyStore(
                 keyStoreConfig,
                 get.EthereumJsonSerializer,
                 encrypter,
                 cryptoRandom,
                 get.LogManager,
                 new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
+            set.KeyStore = keyStore;
 
-            set.Wallet = get.Config<IInitConfig>() switch
+            IWallet wallet = get.Config<IInitConfig>() switch
             {
                 { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: true } => new DevWallet(get.Config<IWalletConfig>(), get.LogManager),
-                { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: false } => new DevKeyStoreWallet(get.KeyStore, get.LogManager),
+                { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: false } => new DevKeyStoreWallet(keyStore, get.LogManager),
                 _ => new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(cryptoRandom, get.Timestamper, keyStoreConfig.KeyStoreDirectory),
                     get.Timestamper, get.LogManager),
             };
+            set.Wallet = wallet;
 
-            new AccountUnlocker(keyStoreConfig, get.Wallet, get.LogManager, new KeyStorePasswordProvider(keyStoreConfig))
+            new AccountUnlocker(keyStoreConfig, wallet, get.LogManager, new KeyStorePasswordProvider(keyStoreConfig))
                 .UnlockAccounts();
 
             BasePasswordProvider passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
                 .OrReadFromConsole($"Provide password for validator account {keyStoreConfig.BlockAuthorAccount}");
 
-            INodeKeyManager nodeKeyManager = new NodeKeyManager(cryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
-            IProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
+            INodeKeyManager nodeKeyManager = new NodeKeyManager(cryptoRandom, keyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
+            IProtectedPrivateKey nodeKey = nodeKeyManager.LoadNodeKey();
+            set.NodeKey = nodeKey;
 
             IMiningConfig miningConfig = get.Config<IMiningConfig>();
             //Don't load the local key if an external signer is configured

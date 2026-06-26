@@ -9,7 +9,7 @@ namespace Nethermind.KeyStore
 {
     public abstract class BasePasswordProvider : IPasswordProvider
     {
-        public IPasswordProvider AlternativeProvider { get; private set; }
+        public IPasswordProvider? AlternativeProvider { get; private set; }
 
         public BasePasswordProvider OrReadFromConsole(string message)
         {
@@ -24,6 +24,6 @@ namespace Nethermind.KeyStore
             return this;
         }
 
-        public abstract SecureString GetPassword(Address address);
+        public abstract SecureString? GetPassword(Address address);
     }
 }

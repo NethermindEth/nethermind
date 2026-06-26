@@ -58,14 +58,14 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             if (reader.ValueTextEquals("returnValue"u8))
             {
                 reader.Read();
-                trace.ReturnValue = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                trace.ReturnValue = JsonSerializer.Deserialize<byte[]>(ref reader, options) ?? [];
                 continue;
             }
 
             if (reader.ValueTextEquals("structLogs"u8))
             {
                 reader.Read();
-                trace.Entries = JsonSerializer.Deserialize<List<GethTxTraceEntry>>(ref reader, options);
+                trace.Entries = JsonSerializer.Deserialize<List<GethTxTraceEntry>>(ref reader, options) ?? [];
                 continue;
             }
 

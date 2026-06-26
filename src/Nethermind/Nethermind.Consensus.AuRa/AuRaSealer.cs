@@ -29,9 +29,9 @@ namespace Nethermind.Consensus.AuRa
         private readonly IValidSealerStrategy _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
         private readonly ILogger _logger = logManager?.GetClassLogger<AuRaSealer>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
+        public Task<Block?> SealBlock(Block block, CancellationToken cancellationToken)
         {
-            Block sealedBlock = Seal(block);
+            Block? sealedBlock = Seal(block);
             if (sealedBlock is not null)
             {
                 sealedBlock.Header.Hash = sealedBlock.Header.CalculateHash();
@@ -40,10 +40,10 @@ namespace Nethermind.Consensus.AuRa
             return Task.FromResult(sealedBlock);
         }
 
-        private Block Seal(Block block)
+        private Block? Seal(Block block)
         {
             // Bail out if we're unauthorized to sign a block
-            if (!CanSeal(block.Number, block.ParentHash))
+            if (!CanSeal(block.Number, block.ParentHash!))
             {
                 if (_logger.IsInfo) _logger.Info($"Not authorized to seal the block {block.ToString(Block.Format.Short)}");
                 return null;
@@ -62,14 +62,15 @@ namespace Nethermind.Consensus.AuRa
 
         public bool CanSeal(ulong blockNumber, Hash256 parentHash)
         {
-            bool StepNotYetProduced(ulong step) => !_blockTree.Head.Header.AuRaStep.HasValue
+            BlockHeader head = _blockTree.Head?.Header ?? throw new InvalidOperationException("Head block is not available.");
+            bool StepNotYetProduced(ulong step) => !head.AuRaStep.HasValue
                 ? throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'")
-                : _blockTree.Head.Header.AuRaStep.Value < step;
+                : head.AuRaStep.Value < step;
 
             bool IsThisNodeTurn(ulong step)
             {
                 Address[] validators = _validatorStore.GetValidators();
-                return _validSealerStrategy.IsValidSealer(validators, _signer.Address, step, out _);
+                return _validSealerStrategy.IsValidSealer(validators, _signer.Address!, step, out _);
             }
 
             ulong currentStep = _auRaStepCalculator.CurrentStep;
@@ -85,6 +86,6 @@ namespace Nethermind.Consensus.AuRa
             return _signer.CanSign && stepNotYetProduced && isThisNodeTurn;
         }
 
-        public Address Address => _signer.Address;
+        public Address Address => _signer.Address!;
     }
 }

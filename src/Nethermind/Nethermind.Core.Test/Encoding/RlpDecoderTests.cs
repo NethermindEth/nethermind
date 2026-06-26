@@ -124,7 +124,7 @@ public class RlpDecoderTests
 
     private sealed class NonNullableItemDecoder : RlpDecoder<NonNullableItem>
     {
-        public override int GetLength(NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int GetLength(NonNullableItem? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
             return Rlp.OfEmptyByteArray.Length;

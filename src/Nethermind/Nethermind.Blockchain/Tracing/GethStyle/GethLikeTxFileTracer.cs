@@ -24,13 +24,19 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     {
         GethLikeTxTrace trace = base.BuildResult();
 
-        if (_startGas.HasValue)
+        if (_startGas.HasValue && CurrentTraceEntry is not null)
             trace.Gas = _startGas.Value - CurrentTraceEntry.Gas;
 
         return trace;
     }
 
-    public override void ReportRefund(long refund) => CurrentTraceEntry.Refund = refund;
+    public override void ReportRefund(long refund)
+    {
+        if (CurrentTraceEntry is not null)
+        {
+            CurrentTraceEntry.Refund = refund;
+        }
+    }
 
     protected override void AddTraceEntry(GethTxFileTraceEntry entry)
     {

@@ -359,7 +359,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private INodeData CreateNodeData(NodeType nodeType) => nodeType switch
+        private INodeData? CreateNodeData(NodeType nodeType) => nodeType switch
         {
             NodeType.Branch => new BranchData(),
             NodeType.Extension => new ExtensionData(),
@@ -404,11 +404,7 @@ namespace Nethermind.Trie
             CappedArray<byte> rlp = ReadRlp();
             if (rlp.IsNull)
             {
-                Hash256 keccak = Keccak;
-                if (keccak is null)
-                {
-                    ThrowMissingKeccak();
-                }
+                Hash256 keccak = Keccak ?? ThrowMissingKeccak();
 
                 byte[]? fullRlp = tree.LoadRlp(path, keccak, readFlags);
 
@@ -427,7 +423,7 @@ namespace Nethermind.Trie
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
+            static Hash256 ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
 
             [DoesNotReturn, StackTraceHidden]
             void ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
@@ -451,13 +447,13 @@ namespace Nethermind.Trie
                 {
                     if (rlp.IsNull)
                     {
-                        Hash256 keccak = Keccak;
+                        Hash256? keccak = Keccak;
                         if (keccak is null)
                         {
                             return false;
                         }
 
-                        byte[] fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
+                        byte[]? fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
 
                         if (fullRlp is null)
                         {
@@ -481,7 +477,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private bool DecodeRlp(RlpReader rlpReader, ICappedArrayPool bufferPool, out int itemsCount)
+        private bool DecodeRlp(RlpReader rlpReader, ICappedArrayPool? bufferPool, out int itemsCount)
         {
             Metrics.TreeNodeRlpDecodings++;
 
@@ -645,7 +641,7 @@ namespace Nethermind.Trie
             }
 
             CappedArray<byte> rlp = ReadRlp();
-            ref object data = ref _nodeData[i];
+            ref object? data = ref _nodeData![i];
             if (rlp.IsNotNull && data is null)
             {
                 RlpReader rlpReader = new(rlp);
@@ -667,7 +663,7 @@ namespace Nethermind.Trie
                 i++;
             }
 
-            ref object data = ref _nodeData[i];
+            ref object? data = ref _nodeData![i];
             if (data is null)
             {
                 dirtyChild = null;
@@ -732,7 +728,7 @@ namespace Nethermind.Trie
              * so just to treat them in the same way we update index on extensions
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
-            object childOrRef = ResolveChildWithChildPath(tree, ref childPath, childIndex);
+            object? childOrRef = ResolveChildWithChildPath(tree, ref childPath, childIndex);
 
             TrieNode? child;
             if (ReferenceEquals(childOrRef, _nullNode) || childOrRef is null)
@@ -806,10 +802,10 @@ namespace Nethermind.Trie
         /// when setting to object[] array
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetItem(int i, TrieNode node)
+        private void SetItem(int i, TrieNode? node)
         {
             int index = IsExtension ? i + 1 : i;
-            _nodeData[i] = node ?? _nullNode;
+            _nodeData![i] = node ?? _nullNode;
         }
 
         public long GetMemorySize(bool recursive)
@@ -825,7 +821,7 @@ namespace Nethermind.Trie
             {
                 for (int i = 0; i < data.Length; i++)
                 {
-                    object child = data[i];
+                    object? child = data[i];
                     dataSize += child switch
                     {
                         null => 0,
@@ -1128,7 +1124,7 @@ namespace Nethermind.Trie
                     ref readonly BranchArray data = ref branchData.Branches;
                     for (int i = 0; i < BranchArray.Length; i++)
                     {
-                        object o = data[i];
+                        object? o = data[i];
                         if (o is TrieNode child)
                         {
                             if (child.IsPersisted)
@@ -1242,7 +1238,7 @@ namespace Nethermind.Trie
         {
             object? childOrRef;
             CappedArray<byte> rlp = ReadRlp();
-            ref object data = ref _nodeData[i];
+            ref object? data = ref _nodeData![i];
             if (rlp.IsNull)
             {
                 childOrRef = data;
@@ -1268,7 +1264,7 @@ namespace Nethermind.Trie
                         case 160:
                             {
                                 rlpReader.Position--;
-                                Hash256 keccak = rlpReader.DecodeKeccak();
+                                Hash256 keccak = rlpReader.DecodeKeccakNonNull();
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 data = childOrRef = child;
@@ -1307,7 +1303,7 @@ namespace Nethermind.Trie
                 for (int i = 0; i < 16; i++)
                 {
                     path.SetLast(i);
-                    TrieNode n = GetChildWithChildPath(tree, ref path, i);
+                    TrieNode? n = GetChildWithChildPath(tree, ref path, i);
                     if (n is not null) chCount++;
                     output[i] = n;
                 }
@@ -1337,7 +1333,7 @@ namespace Nethermind.Trie
                     case 160:
                         {
                             path.SetLast(i);
-                            Hash256 keccak = rlpReader.DecodeKeccak();
+                            Hash256 keccak = rlpReader.DecodeKeccakNonNull();
                             TrieNode child = tree.FindCachedOrUnknown(path, keccak);
                             chCount++;
                             output[i] = child;
@@ -1363,7 +1359,7 @@ namespace Nethermind.Trie
 
         internal void UnresolveChild(int i)
         {
-            ref object data = ref _nodeData[i];
+            ref object? data = ref _nodeData![i];
             if (IsPersisted)
             {
                 data = null;
@@ -1399,7 +1395,7 @@ namespace Nethermind.Trie
             {
                 object? childOrRef;
                 CappedArray<byte> rlp = node.ReadRlp();
-                ref object data = ref node._nodeData[i];
+                ref object? data = ref node._nodeData![i];
                 if (rlp.IsNull)
                 {
                     childOrRef = data;
@@ -1447,7 +1443,7 @@ namespace Nethermind.Trie
                             case 160:
                                 {
                                     _rlpReader.Position--;
-                                    Hash256 keccak = _rlpReader.DecodeKeccak();
+                                    Hash256 keccak = _rlpReader.DecodeKeccakNonNull();
                                     _currentStreamIndex++;
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
@@ -1476,7 +1472,7 @@ namespace Nethermind.Trie
                  * so just to treat them in the same way we update index on extensions
                  */
                 childIndex = node.IsExtension ? childIndex + 1 : childIndex;
-                object childOrRef = ResolveChildWithChildPath(tree, ref childPath, childIndex);
+                object? childOrRef = ResolveChildWithChildPath(tree, ref childPath, childIndex);
 
                 TrieNode? child;
                 if (ReferenceEquals(childOrRef, _nullNode) || childOrRef is null)

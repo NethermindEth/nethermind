@@ -53,6 +53,7 @@ namespace Nethermind.State
             IWorldStateScopeProvider scopeProvider,
             ILogManager? logManager)
         {
+            logManager ??= NullLogManager.Instance;
             ScopeProvider = scopeProvider;
             _stateProvider = new StateProvider(logManager, _localMetrics);
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics);
@@ -61,6 +62,7 @@ namespace Nethermind.State
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MemberNotNull(nameof(_currentScope))]
         private void GuardInScope()
         {
             if (_currentScope is null) ThrowOutOfScope();
@@ -207,7 +209,7 @@ namespace Nethermind.State
 
         public void CommitTree(ulong blockNumber)
         {
-            DebugGuardInScope();
+            GuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
             _persistentStorageProvider.ClearStorageMap();
@@ -277,7 +279,7 @@ namespace Nethermind.State
         public Task HintBal(ReadOnlyBlockAccessList bal)
         {
             GuardInScope();
-            return _currentScope!.HintBal(bal);
+            return _currentScope.HintBal(bal);
         }
 
         public ref readonly UInt256 GetBalance(Address address)
@@ -335,7 +337,7 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
-            DebugGuardInScope();
+            GuardInScope();
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);

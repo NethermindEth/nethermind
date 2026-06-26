@@ -13,19 +13,19 @@ public class PeerEventArgs : EventArgs
         Peer = peer;
         Node = peer.Node;
     }
-    public PeerEventArgs(Node remoteNode, string msgProtocol, int msgPacketType, int msgSize)
+    public PeerEventArgs(Node? remoteNode, string? msgProtocol, int msgPacketType, int msgSize)
     {
         Node = remoteNode;
         MessageInfo = new MessageInfoModel(msgProtocol, msgPacketType, msgSize);
     }
 
-    public Peer Peer { get; set; }
-    public Node Node { get; set; }
-    public MessageInfoModel MessageInfo { get; set; }
+    public Peer? Peer { get; set; }
+    public Node? Node { get; set; }
+    public MessageInfoModel? MessageInfo { get; set; }
 
-    public class MessageInfoModel(string msgProtocol, int msgPacketType, int msgSize)
+    public class MessageInfoModel(string? msgProtocol, int msgPacketType, int msgSize)
     {
-        public string Protocol { get; set; } = msgProtocol;
+        public string? Protocol { get; set; } = msgProtocol;
         public int PacketType { get; set; } = msgPacketType;
         public int Size { get; set; } = msgSize;
     }

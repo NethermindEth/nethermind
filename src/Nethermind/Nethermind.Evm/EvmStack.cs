@@ -39,7 +39,7 @@ public ref struct EvmStack
     public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
     {
         Head = head;
-        _tracer = null;
+        _tracer = NullTxTracer.Instance;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
@@ -2048,7 +2048,7 @@ public ref struct EvmStack
         return new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
     }
 
-    public bool PopAddress(out Address address)
+    public bool PopAddress([NotNullWhen(true)] out Address? address)
     {
         int head = Head - 1;
         if (head < 0)

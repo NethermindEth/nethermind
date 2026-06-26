@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.Peers
         public UInt256? TotalDifficulty => SyncPeer.TotalDifficulty;
 
         public ulong HeadNumber => SyncPeer.HeadNumber;
-        public Hash256 HeadHash => SyncPeer.HeadHash;
+        public Hash256? HeadHash => SyncPeer.HeadHash;
 
         public AllocationContexts SleepingContexts => (AllocationContexts)Volatile.Read(ref _sleepingContexts);
 

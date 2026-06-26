@@ -53,10 +53,12 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
+    private IWorldStateScopeProvider.IScope Scope => _tree ?? throw new InvalidOperationException("State scope is not set.");
+    private IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb ?? throw new InvalidOperationException("Code database is not set.");
 
     public void RecalculateStateRoot()
     {
-        _tree.UpdateRootHash();
+        Scope.UpdateRootHash();
         _needsStateRootUpdate = false;
     }
 
@@ -65,7 +67,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         get
         {
             if (_needsStateRootUpdate) ThrowStateRootNeedsToBeUpdated();
-            return _tree.RootHash;
+            return Scope.RootHash;
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowStateRootNeedsToBeUpdated() => throw new InvalidOperationException("State root needs to be updated");
@@ -127,7 +129,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
                 && codeArray.Offset == 0
                 && codeArray.Count == code.Length)
             {
-                _codeBatchAlternate[codeHash] = codeArray.Array;
+                _codeBatchAlternate[codeHash] = codeArray.Array!;
             }
             else
             {
@@ -179,7 +181,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
         Account GetThroughCacheCheckExists()
         {
-            Account result = GetThroughCache(address);
+            Account? result = GetThroughCache(address);
             if (result is null)
             {
                 ThrowNonExistingAccount();
@@ -306,7 +308,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
         if (_codeBatch is null || !_codeBatchAlternate.TryGetValue(codeHash, out byte[]? code))
         {
-            code = _codeDb.GetCode(codeHash);
+            code = CodeDb.GetCode(codeHash);
         }
         return code ?? ThrowMissingCode(in codeHash);
 
@@ -437,13 +439,13 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
     // used by Arbitrum
     public void CreateEmptyAccountIfDeletedOrNew(Address address)
     {
-        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        if (_intraTxCache.TryGetValue(address, out StackList<int>? value))
         {
             //we only want to persist empty accounts if they were deleted or created as empty
             //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
             Change lastChange = _changes[value.Peek()];
             if (lastChange.ChangeType == ChangeType.Delete ||
-                (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
+                (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account?.IsEmpty == true))
             {
                 _needsStateRootUpdate = true;
                 if (_logger.IsTrace) Trace(address);
@@ -485,7 +487,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
     {
         Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
             ? Task.CompletedTask
-            : CommitCodeAsync(_codeDb);
+            : CommitCodeAsync(CodeDb);
 
         bool isTracing = _logger.IsTrace;
         int stepsBack = _changes.Count - 1;
@@ -547,7 +549,8 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
                 case ChangeType.Touch:
                 case ChangeType.Update:
                     {
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
+                        Account account = change.Account!;
+                        if (releaseSpec.IsEip158Enabled && account.IsEmpty && !isGenesis)
                         {
                             if (isTracing) TraceRemoveEmpty(change);
                             SetState(change.Address, null);
@@ -556,19 +559,20 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
                         else
                         {
                             if (isTracing) TraceUpdate(change);
-                            SetState(change.Address, change.Account);
-                            trace?.AddToTrace(change.Address, change.Account);
+                            SetState(change.Address, account);
+                            trace?.AddToTrace(change.Address, account);
                         }
 
                         break;
                     }
                 case ChangeType.New:
                     {
-                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                        Account account = change.Account!;
+                        if (!releaseSpec.IsEip158Enabled || !account.IsEmpty || isGenesis)
                         {
                             if (isTracing) TraceCreate(change);
-                            SetState(change.Address, change.Account);
-                            trace?.AddToTrace(change.Address, change.Account);
+                            SetState(change.Address, account);
+                            trace?.AddToTrace(change.Address, account);
                         }
 
                         break;
@@ -576,8 +580,9 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
                 case ChangeType.RecreateEmpty:
                     {
                         if (isTracing) TraceCreate(change);
-                        SetState(change.Address, change.Account);
-                        trace?.AddToTrace(change.Address, change.Account);
+                        Account account = change.Account!;
+                        SetState(change.Address, account);
+                        trace?.AddToTrace(change.Address, account);
 
                         break;
                     }
@@ -668,15 +673,15 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceCreate(in Change change)
-            => _logger.Trace($"Commit create {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
+            => _logger.Trace($"Commit create {change.Address} B = {change.Account!.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceUpdate(in Change change)
-            => _logger.Trace($"Commit update {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.Account.CodeHash}");
+            => _logger.Trace($"Commit update {change.Address} B = {change.Account!.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.Account.CodeHash}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceRemoveEmpty(in Change change)
-            => _logger.Trace($"Commit remove empty {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
+            => _logger.Trace($"Commit remove empty {change.Address} B = {change.Account!.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowStartOfCommitIsNull(int currentPosition)
@@ -726,7 +731,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         if (!exists)
         {
             _metrics.IncrementStateTreeReads();
-            Account? account = _tree.Get(address);
+            Account? account = Scope.Get(address);
 
             accountChanges = new(account, account);
         }
@@ -769,7 +774,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
     }
 
     internal Account? GetThroughCache(Address address) =>
-        _intraTxCache.TryGetValue(address, out StackList<int> value)
+        _intraTxCache.TryGetValue(address, out StackList<int>? value)
             ? _changes[value.Peek()].Account
             : GetAndAddToCache(address);
 
@@ -822,7 +827,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
             value = StackList<int>.Rent();
         }
 
-        return value;
+        return value!;
     }
 
     public ArrayPoolList<AddressAsKey>? ChangedAddresses()
@@ -936,13 +941,17 @@ internal static class Extensions
             // // this may be enough, let us write tests
             stateTracer.ReportAccountRead(nullRead);
         }
-        ReportChanges(trace, stateTracer, stateProvider);
+        if (trace is not null)
+        {
+            ReportChanges(trace, stateTracer, stateProvider);
+        }
     }
 
     private static void ReportChanges(Dictionary<AddressAsKey, ChangeTrace> trace, IStateTracer stateTracer, StateProvider stateProvider)
     {
-        foreach ((Address address, ChangeTrace change) in trace)
+        foreach ((AddressAsKey addressKey, ChangeTrace change) in trace)
         {
+            Address address = addressKey;
             bool someChangeReported = false;
 
             Account? before = change.Before;

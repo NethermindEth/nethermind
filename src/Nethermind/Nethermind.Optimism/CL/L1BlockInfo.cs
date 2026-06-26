@@ -91,8 +91,18 @@ public class L1BlockInfoBuilder
 
     public static L1BlockInfo FromL1BlockAndSystemConfig(L1Block block, SystemConfig config, ulong sequenceNumber)
     {
+        if (block.ExcessBlobGas is not { } excessBlobGas)
+        {
+            throw new ArgumentException("L1 block is missing excess blob gas.", nameof(block));
+        }
+
+        if (block.BaseFeePerGas is not { } baseFeePerGas)
+        {
+            throw new ArgumentException("L1 block is missing base fee per gas.", nameof(block));
+        }
+
         // TODO: fetch BlobBaseFeeUpdateFraction
-        BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, Prague.Instance.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, Prague.Instance.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
         return new()
         {
             BaseFeeScalar = config.BaseFeeScalar,
@@ -100,7 +110,7 @@ public class L1BlockInfoBuilder
             SequenceNumber = sequenceNumber,
             Timestamp = block.Timestamp.ToUInt64(null),
             Number = block.Number,
-            BaseFee = block.BaseFeePerGas!.Value,
+            BaseFee = baseFeePerGas,
             BlobBaseFee = feePerBlobGas,
             BlockHash = block.Hash,
             BatcherAddress = config.BatcherAddress,

@@ -25,7 +25,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
     {
         try
         {
-            GethGenesisJson gethGenesis = serializer.Deserialize<GethGenesisJson>(streamData);
+            GethGenesisJson? gethGenesis = serializer.Deserialize<GethGenesisJson>(streamData);
+            ArgumentNullException.ThrowIfNull(gethGenesis);
             return ConvertToChainSpec(gethGenesis);
         }
         catch (Exception e)
@@ -362,7 +363,7 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         private static readonly UInt256 ThreeEth = new(3_000_000_000_000_000_000ul);
         private static readonly UInt256 TwoEth = new(2_000_000_000_000_000_000ul);
 
-        public string? EngineName => SealEngineType;
+        public string EngineName => Core.SealEngineType.Ethash;
         public string? SealEngineType => Core.SealEngineType.Ethash;
 
         public ulong HomesteadTransition { get; } = config.HomesteadBlock ?? 0;

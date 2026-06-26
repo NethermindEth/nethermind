@@ -41,20 +41,20 @@ namespace Nethermind.Trie
 
         public void VisitBranch(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
 
-        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key!).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
 
         public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
         {
             if (!expectAccounts)
             {
-                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.FromBytes(node.Key!).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
             }
         }
 
         public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key!).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
             RlpReader valueReader = new(node.Value.AsSpan());
             if (!context.IsStorage)
             {

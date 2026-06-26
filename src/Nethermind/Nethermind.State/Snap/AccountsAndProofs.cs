@@ -8,8 +8,8 @@ namespace Nethermind.State.Snap
 {
     public class AccountsAndProofs : IDisposable
     {
-        public IOwnedReadOnlyList<PathWithAccount> PathAndAccounts { get; set; }
-        public IByteArrayList Proofs { get; set; }
+        public IOwnedReadOnlyList<PathWithAccount> PathAndAccounts { get; set; } = null!;
+        public IByteArrayList Proofs { get; set; } = null!;
 
         public void Dispose()
         {

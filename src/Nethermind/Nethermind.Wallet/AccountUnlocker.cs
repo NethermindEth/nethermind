@@ -19,9 +19,16 @@ namespace Nethermind.Wallet
 
         public void UnlockAccounts()
         {
-            for (int i = 0; i < _config.UnlockAccounts.Length; i++)
+            string?[] unlockAccounts = _config.UnlockAccounts ?? [];
+            for (int i = 0; i < unlockAccounts.Length; i++)
             {
-                string unlockAccount = _config.UnlockAccounts[i];
+                string? unlockAccount = unlockAccounts[i];
+                if (unlockAccount is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("Skipping null unlock account entry.");
+                    continue;
+                }
+
                 if (unlockAccount != _config.BlockAuthorAccount)
                 {
                     try

@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
@@ -160,11 +161,11 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 nextBatch = DequeAccountToRefresh(rootHash);
             }
-            else if (ShouldRequestAccountRequests() && AccountRangeReadyForRequest.TryDequeue(out AccountRangePartition partition))
+            else if (ShouldRequestAccountRequests() && AccountRangeReadyForRequest.TryDequeue(out AccountRangePartition? partition))
             {
                 nextBatch = CreateAccountRangeRequest(rootHash, partition, blockNumber);
             }
-            else if (TryDequeNextSlotRange(out StorageRange slotRange))
+            else if (TryDequeNextSlotRange(out StorageRange? slotRange))
             {
                 nextBatch = CreateNextSlowRangeRequest(slotRange, rootHash, blockNumber);
             }
@@ -224,7 +225,7 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Increment(ref _activeStorageRequests); // for race condition so that snap does not exit prematurely
 
             ArrayPoolList<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
-            for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
+            for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount? storage) && storage is not null; i++)
             {
                 storagesToQuery.Add(storage);
             }
@@ -272,7 +273,7 @@ namespace Nethermind.Synchronization.SnapSync
         private SnapSyncBatch? DequeAccountToRefresh(Hash256 rootHash)
         {
             // One account per request: each refresh is served by a single GetAccountRange.
-            if (!AccountsToRefresh.TryDequeue(out AccountWithStorageStartingHash acc))
+            if (!AccountsToRefresh.TryDequeue(out AccountWithStorageStartingHash? acc) || acc is null)
                 return null;
 
             Interlocked.Increment(ref _activeAccRefreshRequests);
@@ -428,7 +429,7 @@ namespace Nethermind.Synchronization.SnapSync
                 dispose = true;
             }
 
-            Interlocked.Add(ref _activeStorageRequests, -(storageRange?.Accounts.Count ?? 0));
+            Interlocked.Add(ref _activeStorageRequests, -storageRange.Accounts.Count);
             if (dispose) storageRange.Dispose();
         }
 
@@ -465,7 +466,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             // Note, as before, the progress actually only store MaxValue or 0. So we can't actually resume
             // snap sync on restart.
-            byte[] progress = _db.Get(ACC_PROGRESS_KEY);
+            byte[]? progress = _db.Get(ACC_PROGRESS_KEY);
             if (progress is { Length: 32 })
             {
                 ValueHash256 path = new(progress);
@@ -577,7 +578,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        private bool TryDequeNextSlotRange(out StorageRange item)
+        private bool TryDequeNextSlotRange([NotNullWhen(true)] out StorageRange? item)
         {
             Interlocked.Increment(ref _activeStorageRequests);
             if (!NextSlotRange.TryDequeue(out item))
@@ -600,11 +601,11 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void OnCompletedLargeStorage(PathWithAccount pathWithAccount)
         {
-            if (_largeStorageProgress.TryGetValue(pathWithAccount.Path, out LargeProgressStatus progressStatus))
+            if (_largeStorageProgress.TryGetValue(pathWithAccount.Path, out LargeProgressStatus? progressStatus))
             {
                 if (progressStatus.OnCompletedPartition())
                 {
-                    _largeStorageProgress.Remove(pathWithAccount.Path, out LargeProgressStatus value);
+                    _largeStorageProgress.Remove(pathWithAccount.Path, out _);
                 }
             }
         }

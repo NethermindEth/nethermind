@@ -10,6 +10,6 @@ internal class TimeoutMsg : P2PMessage
 {
     public override int PacketType => XdcMessageCode.TimeoutMsg;
     public override string Protocol => "eth";
-    public Timeout Timeout { get; set; }
+    public Timeout Timeout { get; set; } = null!;
     public override string ToString() => $"{nameof(TimeoutMsg)}({Timeout})";
 }

@@ -39,7 +39,7 @@ public readonly record struct P2PMessageKey(VersionedProtocol Protocol, int Pack
         classType.GetFields(
                 BindingFlags.Public | BindingFlags.Static)
             .Where(field => field.FieldType.IsAssignableTo(typeof(int)))
-            .Select(field => KeyValuePair.Create((protocol, (int)field.GetValue(null)), field.Name));
+            .Select(field => KeyValuePair.Create((protocol, (int)field.GetValue(null)!), field.Name));
 
     private static readonly ConcurrentDictionary<P2PMessageKey, string[]> s_labelCache = new();
     public readonly string[] Labels => s_labelCache.GetOrAdd(this, static key => key.CalculateLabel());
@@ -48,7 +48,7 @@ public readonly record struct P2PMessageKey(VersionedProtocol Protocol, int Pack
 
     private readonly string GetMessageType()
     {
-        if (!MessageNames.TryGetValue((Protocol.Protocol, PacketType), out string messageName))
+        if (!MessageNames.TryGetValue((Protocol.Protocol, PacketType), out string? messageName))
         {
 #if DEBUG
             throw new NotImplementedException($"Message name for protocol {Protocol.Protocol} message id {PacketType} not set.");

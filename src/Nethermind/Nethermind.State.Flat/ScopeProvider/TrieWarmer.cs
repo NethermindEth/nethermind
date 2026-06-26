@@ -161,7 +161,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             if (job.scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
             {
-                scope.WarmUpStateTrie(job.path!, job.sequenceId);
+                scope.WarmUpStateTrie(job.path ?? throw new InvalidOperationException("Address warm-up job is missing its path."), job.sequenceId);
             }
             else
             {
@@ -188,7 +188,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+    public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address path, int sequenceId)
     {
         if (Volatile.Read(ref _isDisposed)) return false;
 

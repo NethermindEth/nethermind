@@ -46,7 +46,7 @@ AuRaContractGasLimitOverride.Cache cache,
                 return gasLimit;
             }
 
-            if (_contracts.TryGetForBlock(parentHeader.Number + 1, out IBlockGasLimitContract contract))
+            if (_contracts.TryGetForBlock(parentHeader.Number + 1, out IBlockGasLimitContract? contract))
             {
                 UInt256? contractLimit = GetContractGasLimit(parentHeader, contract);
                 gasLimit = contractLimit.HasValue ? (ulong)contractLimit.Value : null;

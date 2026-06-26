@@ -18,11 +18,11 @@ namespace Nethermind.Blockchain.Data
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
-        private T _data;
-        private Timer _timer;
+        private T? _data;
+        private Timer? _timer;
         private readonly int _interval;
         private DateTime _lastChange = DateTime.MinValue;
-        public string FilePath { get; private set; }
+        public string? FilePath { get; private set; }
 
         public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
         {
@@ -34,18 +34,18 @@ namespace Nethermind.Blockchain.Data
             LoadFile();
         }
 
-        protected virtual T DefaultValue => default;
+        protected virtual T? DefaultValue => default;
 
-        public T Data => _data;
+        public T? Data => _data;
 
-        public event EventHandler Changed;
+        public event EventHandler? Changed;
 
         public void Dispose() => _timer?.Dispose();
 
         private void SetupWatcher(string filePath)
         {
             _data = DefaultValue;
-            IFileInfo fileInfo = null;
+            IFileInfo? fileInfo = null;
             try
             {
                 fileInfo = _fileSystem.FileInfo.New(filePath);
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Data
         {
             DateTime? lastChange = null;
 
-            if (_fileSystem.File.Exists(FilePath))
+            if (FilePath is not null && _fileSystem.File.Exists(FilePath))
             {
                 DateTime lastWriteTime = _fileSystem.File.GetLastWriteTime(FilePath);
                 if (lastWriteTime > _lastChange)

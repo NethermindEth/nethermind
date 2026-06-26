@@ -16,7 +16,7 @@ namespace Nethermind.TxPool
         private readonly INonceManager _nonceManager = nonceManager ?? throw new ArgumentNullException(nameof(nonceManager));
         private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
 
-        public ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Hash256?, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
@@ -27,7 +27,7 @@ namespace Nethermind.TxPool
                 ? SubmitTxWithManagedNonce(tx, txHandlingOptions)
                 : SubmitTxWithNonce(tx, txHandlingOptions);
 
-            return new ValueTask<(Hash256, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
+            return new ValueTask<(Hash256?, AcceptTxResult?)>((tx.Hash, result)); // The sealer calculates the hash
         }
 
         private AcceptTxResult SubmitTxWithNonce(Transaction tx, TxHandlingOptions txHandlingOptions)

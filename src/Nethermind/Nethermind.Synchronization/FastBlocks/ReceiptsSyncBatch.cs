@@ -17,6 +17,6 @@ namespace Nethermind.Synchronization.FastBlocks
             Response?.Dispose();
         }
 
-        public override ulong? MinNumber => Infos[0].BlockNumber;
+        public override ulong? MinNumber => Infos[0]?.BlockNumber;
     }
 }

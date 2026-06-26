@@ -17,7 +17,7 @@ namespace Nethermind.Network.P2P
             return Stopwatch.ElapsedMilliseconds;
         }
 
-        private Stopwatch Stopwatch { get; set; }
+        private Stopwatch Stopwatch { get; set; } = null!;
 
         public TimeSpan Elapsed => Stopwatch.Elapsed;
         public long ResponseSize { get; set; }

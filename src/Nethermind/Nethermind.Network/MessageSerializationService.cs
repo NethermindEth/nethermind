@@ -40,7 +40,7 @@ public class MessageSerializationService : IMessageSerializationService
 
     public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
     {
-        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T>? zeroMessageSerializer))
             ThrowNoSerializerRegistered<T>();
 
         IByteBuffer byteBuffer = NethermindBuffers.Default.Buffer(bytes.Count);
@@ -58,7 +58,7 @@ public class MessageSerializationService : IMessageSerializationService
 
     public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
     {
-        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T>? zeroMessageSerializer))
             ThrowNoSerializerRegistered<T>();
 
         return zeroMessageSerializer.Deserialize(buffer);
@@ -66,7 +66,7 @@ public class MessageSerializationService : IMessageSerializationService
 
     public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
     {
-        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T>? zeroMessageSerializer))
             ThrowNoSerializerRegistered<T>();
 
         void WriteAdaptivePacketType(in IByteBuffer buffer)
@@ -98,12 +98,12 @@ public class MessageSerializationService : IMessageSerializationService
         }
     }
 
-    private bool TryGetZeroSerializer<T>(out IZeroMessageSerializer<T> serializer) where T : MessageBase
+    private bool TryGetZeroSerializer<T>([NotNullWhen(true)] out IZeroMessageSerializer<T>? serializer) where T : MessageBase
     {
         RuntimeTypeHandle typeHandle = typeof(T).TypeHandle;
-        if (!_zeroSerializers.TryGetValue(typeHandle, out object serializerObject))
+        if (!_zeroSerializers.TryGetValue(typeHandle, out object? serializerObject))
         {
-            serializer = null!;
+            serializer = null;
             return false;
         }
 
@@ -115,7 +115,7 @@ public class MessageSerializationService : IMessageSerializationService
 
         ThrowInvalidSerializerType<T>(serializerObject);
         // unreachable
-        serializer = null!;
+        serializer = null;
         return false;
     }
 

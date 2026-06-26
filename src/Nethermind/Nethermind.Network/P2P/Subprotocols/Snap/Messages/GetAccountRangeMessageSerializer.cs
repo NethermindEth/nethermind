@@ -15,7 +15,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             ctx.ReadSequenceLength();
 
             message.RequestId = ctx.DecodeLong();
-            message.AccountRange = new(ctx.DecodeKeccak(), ctx.DecodeKeccak(), ctx.DecodeKeccak());
+            Hash256 rootHash = ctx.DecodeKeccakNonNull();
+            ValueHash256 startingHash = ctx.DecodeValueKeccak() ?? throw new RlpException("Unexpected RLP null while decoding account range starting hash.");
+            ValueHash256? limitHash = ctx.DecodeValueKeccak();
+            message.AccountRange = new(rootHash, startingHash, limitHash);
             message.ResponseBytes = ctx.DecodeLong();
 
             return message;

@@ -69,7 +69,7 @@ namespace Nethermind.Evm
             in UInt256 value,
             in ReadOnlyMemory<byte> inputData)
         {
-            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment pooled) ? pooled : new ExecutionEnvironment();
+            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment? pooled) ? pooled : new ExecutionEnvironment();
             env.CodeInfo = codeInfo;
             env.ExecutingAccount = executingAccount;
             env.Caller = caller;

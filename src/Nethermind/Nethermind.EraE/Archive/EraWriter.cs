@@ -307,7 +307,10 @@ public sealed class EraWriter : IDisposable
         int logsLength = 0;
         if (receipt.Logs is not null)
             foreach (LogEntry log in receipt.Logs)
+            {
+                if (log is null) throw new RlpException("Unexpected null receipt log entry.");
                 logsLength += LogEntryDecoder.Instance.GetLength(log);
+            }
 
         // txType: 0x80 (empty = legacy) or single self-encoding byte (type 1/2/3) — always 1 byte
         int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
@@ -322,7 +325,10 @@ public sealed class EraWriter : IDisposable
         if (receipt.Logs is not null)
         {
             foreach (LogEntry log in receipt.Logs)
+            {
+                if (log is null) throw new RlpException("Unexpected null receipt log entry.");
                 logsLength += LogEntryDecoder.Instance.GetLength(log);
+            }
         }
 
         int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);

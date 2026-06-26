@@ -9,13 +9,13 @@ namespace Nethermind.Xdc;
 public interface IXdcConsensusContext
 {
     ulong CurrentRound { get; }
-    BlockRoundInfo HighestCommitBlock { get; set; }
+    BlockRoundInfo? HighestCommitBlock { get; set; }
     QuorumCertificate HighestQC { get; set; }
     TimeoutCertificate HighestTC { get; set; }
     QuorumCertificate? LockQC { get; set; }
     int TimeoutCounter { get; set; }
 
-    event EventHandler<NewRoundEventArgs> NewRoundSetEvent;
+    event EventHandler<NewRoundEventArgs>? NewRoundSetEvent;
 
     void SetNewRound();
     void SetNewRound(ulong round);

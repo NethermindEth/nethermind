@@ -10,8 +10,8 @@ namespace Nethermind.Benchmarks.Core
 {
     public class BytesCompareBenchmarks
     {
-        private byte[] _a;
-        private byte[] _b;
+        private byte[] _a = null!;
+        private byte[] _b = null!;
 
         private (byte[] A, byte[] B)[] _scenarios = new[]
         {

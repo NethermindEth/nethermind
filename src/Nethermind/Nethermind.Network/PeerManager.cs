@@ -112,16 +112,20 @@ namespace Nethermind.Network
         /// The simplest hack for now until it is cleaned further.
         /// Peer manager / peer pool responsibilities still not clearly separated.
         /// </summary>
-        private readonly ConcurrentDictionary<PublicKey, object> _nodesBeingAdded = new();
+        private readonly ConcurrentDictionary<PublicKey, object?> _nodesBeingAdded = new();
 
         /// <summary>
         /// New peer probably added via discovery app or some other form of discovery.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="nodeEventArgs"></param>
-        private void PeerPoolOnPeerAdded(object sender, PeerEventArgs nodeEventArgs)
+        private void PeerPoolOnPeerAdded(object? sender, PeerEventArgs nodeEventArgs)
         {
-            Peer peer = nodeEventArgs.Peer;
+            Peer? peer = nodeEventArgs.Peer;
+            if (peer is null)
+            {
+                return;
+            }
             int newPeerPoolLength = _peerPool.PeerCount;
             Metrics.PeerCandidateCount = newPeerPoolLength;
             int currentMaxPeerPoolLength = Volatile.Read(ref _maxPeerPoolLength);
@@ -168,8 +172,13 @@ namespace Nethermind.Network
 
         private void PeerPoolOnPeerRemoved(object? sender, PeerEventArgs e)
         {
+            if (e.Peer is null)
+            {
+                return;
+            }
+
             e.Peer.IsAwaitingConnection = false;
-            _peerPool.ActivePeers.TryRemove(e.Peer.Node.Id, out Peer _);
+            _peerPool.ActivePeers.TryRemove(e.Peer.Node.Id, out _);
         }
 
         public void Start()
@@ -568,15 +577,16 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                (bool Result, NodeStatsEventType? DelayReason) delayResult = preCandidate.Stats.IsConnectionDelayed(nowUTC);
+                INodeStats preCandidateStats = preCandidate.Stats ?? _stats.GetOrAdd(preCandidate.Node);
+                (bool Result, NodeStatsEventType? DelayReason) delayResult = preCandidateStats.IsConnectionDelayed(nowUTC);
                 if (delayResult.Result)
                 {
-                    _currentSelection.Counters.Increment(delayResult.DelayReason.ToString());
+                    _currentSelection.Counters.Increment(delayResult.DelayReason?.ToString() ?? "Unknown");
 
                     continue;
                 }
 
-                if (preCandidate.Stats.FailedCompatibilityValidation.HasValue)
+                if (preCandidateStats.FailedCompatibilityValidation.HasValue)
                 {
                     _currentSelection.Counters.Increment(ActivePeerSelectionCounter.Incompatible.ToString());
                     _currentSelection.Incompatible.Add(preCandidate);
@@ -603,7 +613,7 @@ namespace Nethermind.Network
 
                 if (node is null) continue;
 
-                node.CurrentReputation = peer.Stats.CurrentNodeReputation(nowUTC);
+                node.CurrentReputation = (peer.Stats ?? _stats.GetOrAdd(node)).CurrentNodeReputation(nowUTC);
             }
 
             CollectionsMarshal.AsSpan(_currentSelection.Candidates).Sort(default(PeerComparer));
@@ -693,7 +703,7 @@ namespace Nethermind.Network
             try
             {
                 int failedValidationCandidatesCount = 0;
-                foreach ((PublicKey key, Peer peer) in _peerPool.Peers)
+                foreach ((PublicKeyAsKey key, Peer peer) in _peerPool.Peers)
                 {
                     if (!peer.Node.IsStatic)
                     {
@@ -863,10 +873,17 @@ namespace Nethermind.Network
         /// <param name="session"></param>
         private void ProcessOutgoingConnection(ISession session)
         {
-            PublicKey id = session.RemoteNodeId;
+            PublicKey? remoteNodeId = session.RemoteNodeId;
+            if (remoteNodeId is null)
+            {
+                session.MarkDisconnected(DisconnectReason.NullNodeIdentityReceived, DisconnectType.Local, "missing remote node id");
+                return;
+            }
+
+            PublicKey id = remoteNodeId;
             if (_logger.IsTrace) TraceProcessingOutgoing();
 
-            if (!_peerPool.ActivePeers.TryGetValue(id, out Peer peer))
+            if (!_peerPool.ActivePeers.TryGetValue(id, out Peer? peer))
             {
                 session.MarkDisconnected(DisconnectReason.DuplicatedConnection, DisconnectType.Local, "peer removed");
                 return;
@@ -883,7 +900,7 @@ namespace Nethermind.Network
 
         private void ProcessIncomingConnection(ISession session)
         {
-            if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
+            if (_peerPool.TryGet(session.Node.Id, out Peer? existingPeer))
             {
                 // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
                 session.Node.IsStatic = existingPeer.Node.IsStatic;
@@ -892,7 +909,10 @@ namespace Nethermind.Network
             if (_logger.IsTrace) TraceProcessingIncoming();
 
             // if we have already initiated connection before
-            if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer existingActivePeer))
+            PublicKey remoteNodeId = session.RemoteNodeId
+                ?? throw new InvalidOperationException("Cannot process incoming connection before handshake remote node id is available");
+
+            if (_peerPool.ActivePeers.TryGetValue(remoteNodeId, out Peer? existingActivePeer))
             {
                 AddSession(session, existingActivePeer);
                 return;
@@ -907,13 +927,13 @@ namespace Nethermind.Network
 
             try
             {
-                _nodesBeingAdded.TryAdd(session.RemoteNodeId, null);
+                _nodesBeingAdded.TryAdd(remoteNodeId, null);
                 Peer peer = _peerPool.GetOrAdd(session.Node);
                 AddSession(session, peer);
             }
             finally
             {
-                _nodesBeingAdded.TryRemove(session.RemoteNodeId, out _);
+                _nodesBeingAdded.TryRemove(remoteNodeId, out _);
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -945,7 +965,7 @@ namespace Nethermind.Network
                 return false;
             }
 
-            (bool delayed, NodeStatsEventType? reason) = peer.Stats.IsConnectionDelayed(DateTime.UtcNow);
+            (bool delayed, NodeStatsEventType? reason) = (peer.Stats ?? _stats.GetOrAdd(peer.Node)).IsConnectionDelayed(DateTime.UtcNow);
             if (delayed)
             {
                 if (_logger.IsTrace) TraceConnectionDelay(reason);
@@ -1079,7 +1099,7 @@ namespace Nethermind.Network
             {
                 if (sessionDirection == ConnectionDirection.In)
                 {
-                    peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
+                    peer.Stats?.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
                     peer.InSession = session;
                 }
                 else
@@ -1119,7 +1139,9 @@ namespace Nethermind.Network
 
         private void ResolveOppositeDirectionSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
         {
-            ConnectionDirection directionToKeep = ChooseDirectionToKeep(session.RemoteNodeId);
+            PublicKey remoteNodeId = session.RemoteNodeId
+                ?? throw new InvalidOperationException("Cannot resolve session conflict before handshake remote node id is available");
+            ConnectionDirection directionToKeep = ChooseDirectionToKeep(remoteNodeId);
             if (session.Direction != directionToKeep)
             {
                 if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.NewSessionAlreadyConnected, directionToKeep);
@@ -1141,7 +1163,7 @@ namespace Nethermind.Network
         private static bool IsConnected(Peer peer)
             => HasOpenSession(peer.InSession) || HasOpenSession(peer.OutSession);
 
-        private void OnDisconnected(object sender, ISession session, DisconnectEventArgs e)
+        private void OnDisconnected(object? sender, ISession session, DisconnectEventArgs e)
         {
             lock (_sessionLock)
             {
@@ -1161,7 +1183,8 @@ namespace Nethermind.Network
 
                 if (_logger.IsTrace) TracePeerDisconnected();
 
-                if (session.RemoteNodeId is null)
+                PublicKey? remoteNodeId = session.RemoteNodeId;
+                if (remoteNodeId is null)
                 {
                     // this happens when we have a disconnect on incoming connection before handshake
                     if (_logger.IsTrace) TraceDisconnectWithoutRemoteNodeId();
@@ -1174,7 +1197,7 @@ namespace Nethermind.Network
                     peer.IsAwaitingConnection = false;
                 }
 
-                if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
+                if (_peerPool.ActivePeers.TryGetValue(remoteNodeId, out Peer? activePeer))
                 {
                     //we want to update reputation always
                     _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
@@ -1214,9 +1237,9 @@ namespace Nethermind.Network
             }
         }
 
-        private void OnHandshakeComplete(object sender, EventArgs args)
+        private void OnHandshakeComplete(object? sender, EventArgs args)
         {
-            ISession session = (ISession)sender;
+            ISession session = (ISession)sender!;
             lock (_sessionLock)
             {
                 if (_isStopping)
@@ -1239,14 +1262,16 @@ namespace Nethermind.Network
                 }
                 else
                 {
-                    if (!_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
+                    PublicKey remoteNodeId = session.RemoteNodeId
+                        ?? throw new InvalidOperationException("Cannot complete outgoing handshake without a remote node id");
+                    if (!_peerPool.ActivePeers.TryGetValue(remoteNodeId, out Peer? peer))
                     {
                         //Can happen when peer sent Disconnect message before handshake is done, it takes us a while to disconnect
                         if (_logger.IsTrace) TraceHandshakeWithoutActivePeer();
                         return;
                     }
 
-                    peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
+                    (peer.Stats ?? _stats.GetOrAdd(peer.Node)).AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
                 }
 
                 if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeInitialized);
@@ -1259,15 +1284,17 @@ namespace Nethermind.Network
 
         private void ManageNewRemoteNodeId(ISession session)
         {
-            if (session.ObsoleteRemoteNodeId is null)
+            PublicKey? obsoleteRemoteNodeId = session.ObsoleteRemoteNodeId;
+            PublicKey? remoteNodeId = session.RemoteNodeId;
+            if (obsoleteRemoteNodeId is null || remoteNodeId is null)
             {
                 return;
             }
 
             Peer newPeer = _peerPool.Replace(session);
 
-            RemoveActivePeer(session.ObsoleteRemoteNodeId, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
-            AddActivePeer(session.RemoteNodeId, newPeer, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
+            RemoveActivePeer(obsoleteRemoteNodeId, $"handshake difference old: {obsoleteRemoteNodeId}, new: {remoteNodeId}");
+            AddActivePeer(remoteNodeId, newPeer, $"handshake difference old: {obsoleteRemoteNodeId}, new: {remoteNodeId}");
             if (_logger.IsTrace) TraceRemoteNodeIdUpdated();
 
             [MethodImpl(MethodImplOptions.NoInlining)]

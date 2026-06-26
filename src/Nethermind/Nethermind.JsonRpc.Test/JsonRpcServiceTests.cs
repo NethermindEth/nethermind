@@ -212,7 +212,7 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
+        ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc?>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
         BlockForRpc result = RpcTest.AssertSuccess<BlockForRpc>(TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true"));
         Assert.That(assertSize ? (ulong)result.Size : result.Number!.Value, Is.EqualTo(expected));
     }

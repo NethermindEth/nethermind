@@ -33,7 +33,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 {
                     if (tx is not GeneratedTransaction) return true;
 
-                    tx.Nonce = CalculateNonce(tx.SenderAddress, parent, _nonces);
+                    Address? senderAddress = tx.SenderAddress;
+                    if (senderAddress is null)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Generated transaction {tx.ToShortString()} has no sender address — skipping.");
+                        return false;
+                    }
+
+                    tx.Nonce = CalculateNonce(senderAddress, parent, _nonces);
                     if (!_txSealer.TrySeal(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature))
                     {
                         if (_logger.IsWarn) _logger.Warn($"AuRa sealer could not sign generated transaction from {tx.SenderAddress} — skipping.");

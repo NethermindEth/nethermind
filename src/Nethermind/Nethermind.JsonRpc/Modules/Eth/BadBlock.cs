@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvider specProvider, BlockDecoder blockDecoder)
 {
     public BlockForRpc Block { get; } = new BlockForRpc(block, includeFullTransactionData, specProvider);
-    public Hash256 Hash { get; } = block.Header.Hash;
+    public Hash256 Hash { get; } = block.Hash!;
     public byte[] Rlp { get; } = blockDecoder.Encode(block).Bytes;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

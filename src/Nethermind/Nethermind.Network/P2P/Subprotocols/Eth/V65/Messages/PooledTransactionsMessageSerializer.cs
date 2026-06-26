@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
         public void Serialize(IByteBuffer byteBuffer, PooledTransactionsMessage message) => _txsMessageDeserializer.Serialize(byteBuffer, message);
 
         public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("Pooled transactions message decoding returned null.");
 
         private static PooledTransactionsMessage Deserialize(ref RlpReader ctx) =>
             new(TransactionsMessageSerializer.DeserializeTxs(ref ctx));

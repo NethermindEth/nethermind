@@ -81,7 +81,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
     protected override TxPool.TxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
-        TxPriorityContract txPriorityContract = api.TxAuRaFilterBuilders.CreateTxPrioritySources();
+        TxPriorityContract? txPriorityContract = api.TxAuRaFilterBuilders.CreateTxPrioritySources();
         TxPriorityContract.LocalDataSource? localDataSource = api.AuraStatefulComponents.TxPriorityContractLocalDataSource;
 
         ReportTxPriorityRules(txPriorityContract, localDataSource);

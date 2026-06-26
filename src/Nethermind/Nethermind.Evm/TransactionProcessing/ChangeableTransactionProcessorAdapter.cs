@@ -11,10 +11,14 @@ namespace Nethermind.Evm.TransactionProcessing
         public ITransactionProcessorAdapter CurrentAdapter { get; set; }
         public ITransactionProcessor TransactionProcessor { get; }
 
-        private ChangeableTransactionProcessorAdapter(ITransactionProcessorAdapter adapter) => CurrentAdapter = adapter;
+        private ChangeableTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, ITransactionProcessorAdapter adapter)
+        {
+            TransactionProcessor = transactionProcessor;
+            CurrentAdapter = adapter;
+        }
 
         public ChangeableTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
-            : this(new ExecuteTransactionProcessorAdapter(transactionProcessor)) => TransactionProcessor = transactionProcessor;
+            : this(transactionProcessor, new ExecuteTransactionProcessorAdapter(transactionProcessor)) { }
 
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
             CurrentAdapter.Execute(transaction, txTracer);

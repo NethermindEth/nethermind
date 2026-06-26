@@ -6,6 +6,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
@@ -158,12 +159,12 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        internal record CommonMetricInfo(string Name, string Description, Dictionary<string, string> Tags);
+        internal record CommonMetricInfo(string Name, string? Description, Dictionary<string, string> Tags);
 
         private static CommonMetricInfo DetermineMetricInfo(MemberInfo member)
         {
             string name = BuildGaugeName(member);
-            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description!;
+            string? description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
 
             Dictionary<string, string> CreateTags() =>
                 member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ToDictionary(
@@ -194,7 +195,7 @@ namespace Nethermind.Monitoring.Metrics
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
         {
-            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description!;
+            string? description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = member.GetCustomAttribute<DataMemberAttribute>()?.Name ?? member.Name;
 
             return member.GetCustomAttribute<CounterMetricAttribute>() is not null
@@ -218,7 +219,7 @@ namespace Nethermind.Monitoring.Metrics
                 Meter? meter = null;
                 if (_useCounters)
                 {
-                    meter = new(type.Namespace!);
+                    meter = new(type.Namespace ?? type.FullName ?? type.Name);
                 }
 
                 IList<IMetricUpdater> metricUpdaters = [];
@@ -231,7 +232,7 @@ namespace Nethermind.Monitoring.Metrics
                         continue;
                     }
                     if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
-                    if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
+                    if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater? updater))
                     {
                         metricUpdaters.Add(updater);
                     }
@@ -241,7 +242,7 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        private bool TryCreateMetricUpdater(Type type, Meter? meter, MemberInfo memberInfo, out IMetricUpdater metricUpdater)
+        private bool TryCreateMetricUpdater(Type type, Meter? meter, MemberInfo memberInfo, [NotNullWhen(true)] out IMetricUpdater? metricUpdater)
         {
             Type memberType = memberInfo.GetMemberType();
 
@@ -249,7 +250,7 @@ namespace Nethermind.Monitoring.Metrics
             {
                 CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
 
-                Summary summary = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateSummary(metricInfo.Name, metricInfo.Description,
+                Summary summary = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateSummary(metricInfo.Name, metricInfo.Description ?? string.Empty,
                     new SummaryConfiguration()
                     {
                         LabelNames = summaryAttribute.LabelNames,
@@ -267,7 +268,7 @@ namespace Nethermind.Monitoring.Metrics
             {
                 CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
 
-                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description,
+                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description ?? string.Empty,
                     new HistogramConfiguration()
                     {
                         LabelNames = explicitHistogramAttribute.LabelNames,
@@ -285,7 +286,7 @@ namespace Nethermind.Monitoring.Metrics
             {
                 CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
 
-                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description,
+                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description ?? string.Empty,
                     new HistogramConfiguration()
                     {
                         LabelNames = histogramAttribute.LabelNames,
@@ -325,7 +326,7 @@ namespace Nethermind.Monitoring.Metrics
                 return true;
             }
 
-            metricUpdater = null!;
+            metricUpdater = null;
             return false;
         }
 

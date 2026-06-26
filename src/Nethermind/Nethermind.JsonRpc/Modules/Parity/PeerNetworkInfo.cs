@@ -5,8 +5,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
 {
     public class PeerNetworkInfo
     {
-        public string LocalAddress { get; set; }
+        public string? LocalAddress { get; set; }
 
-        public string RemoteAddress { get; set; }
+        public string? RemoteAddress { get; set; }
     }
 }

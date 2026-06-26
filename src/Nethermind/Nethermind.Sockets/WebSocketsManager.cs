@@ -9,7 +9,7 @@ namespace Nethermind.Sockets
     {
         private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules = new();
 
-        private IWebSocketsModule _defaultModule = null!;
+        private IWebSocketsModule? _defaultModule;
 
         public void AddModule(IWebSocketsModule module, bool isDefault = false)
         {
@@ -21,6 +21,6 @@ namespace Nethermind.Sockets
             }
         }
 
-        public IWebSocketsModule GetModule(string name) => _modules.TryGetValue(name, out IWebSocketsModule? module) ? module : _defaultModule;
+        public IWebSocketsModule? GetModule(string name) => _modules.TryGetValue(name, out IWebSocketsModule? module) ? module : _defaultModule;
     }
 }

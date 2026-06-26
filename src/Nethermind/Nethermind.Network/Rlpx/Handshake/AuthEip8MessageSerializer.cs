@@ -37,7 +37,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         }
 
         public AuthEip8Message Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
+            msgBytes.DeserializeRlp(Deserialize) ?? throw new RlpException("Auth EIP-8 message decoding returned null.");
 
         private static AuthEip8Message Deserialize(ref RlpReader ctx)
         {

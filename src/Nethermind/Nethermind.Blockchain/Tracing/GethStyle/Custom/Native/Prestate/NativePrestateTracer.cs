@@ -27,9 +27,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     private Address? _executingAccount;
     private EvmExceptionType? _error;
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = [];
-    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
-    private readonly HashSet<AddressAsKey> _createdAccounts;
-    private readonly HashSet<AddressAsKey> _deletedAccounts;
+    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate = [];
+    private readonly HashSet<AddressAsKey> _createdAccounts = [];
+    private readonly HashSet<AddressAsKey> _deletedAccounts = [];
     private readonly bool _diffMode;
 
     public NativePrestateTracer(
@@ -51,15 +51,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
 
         NativePrestateTracerConfig config = options.TracerConfig?.Deserialize<NativePrestateTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
-        if (_diffMode)
-        {
-            _poststate = [];
-            _deletedAccounts = [];
-            _createdAccounts = [];
-        }
-
         LookupAccount(from!);
-        LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        LookupAccount(to ?? ContractAddress.From(from!, _prestate[from!].Nonce ?? 0));
         LookupAccount(beneficiary ?? Address.Zero);
     }
 

@@ -99,7 +99,7 @@ namespace Nethermind.Facade.Filters.Topics
             return result;
         }
 
-        public bool Equals(SequenceTopicsFilter other) => _expressions.SequenceEqual(other._expressions);
+        public bool Equals(SequenceTopicsFilter? other) => other is not null && _expressions.SequenceEqual(other._expressions);
 
         public override bool Equals(object? obj)
         {

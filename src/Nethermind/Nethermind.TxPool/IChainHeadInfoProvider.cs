@@ -28,6 +28,6 @@ namespace Nethermind.TxPool
         bool IsSyncing { get; }
         bool IsProcessingBlock { get; }
 
-        event EventHandler<BlockReplacementEventArgs> HeadChanged;
+        event EventHandler<BlockReplacementEventArgs>? HeadChanged;
     }
 }

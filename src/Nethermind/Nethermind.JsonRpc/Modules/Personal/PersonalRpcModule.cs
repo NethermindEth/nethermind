@@ -65,10 +65,10 @@ namespace Nethermind.JsonRpc.Modules.Personal
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Signature> personal_sign(byte[] message, Address address, string passphrase = null)
+        public ResultWrapper<Signature> personal_sign(byte[] message, Address address, string? passphrase = null)
         {
             bool signed;
-            Signature signature;
+            Signature? signature;
             if (passphrase is not null)
             {
                 using SecureString securePassphrase = passphrase.Secure();
@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             }
 
             return signed
-                ? ResultWrapper<Signature>.Success(signature)
+                ? ResultWrapper<Signature>.Success(signature!)
                 : ResultWrapper<Signature>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
         }
     }

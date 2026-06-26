@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.Peers
             SyncPeerAllocation syncPeerAllocation = await Allocate(allocationStrategy, context, 1000, token);
             if (!syncPeerAllocation.HasPeer) return null;
 
-            int requestSize = _stats.GetOrAdd(syncPeerAllocation.Current!.SyncPeer.Node).GetCurrentRequestLimit(requestType);
+            int requestSize = _stats.GetOrAdd(syncPeerAllocation.Current.SyncPeer.Node).GetCurrentRequestLimit(requestType);
             Free(syncPeerAllocation);
             return requestSize;
         }
@@ -265,7 +265,9 @@ namespace Nethermind.Synchronization.Peers
             }
             if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
 
-            BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BlockHeader? header = syncPeer.HeadHash is { } headHash
+                ? _blockTree.FindHeader(headHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                : null;
             if (header is not null)
             {
                 syncPeer.HeadNumber = header.Number;
@@ -319,7 +321,7 @@ namespace Nethermind.Synchronization.Peers
 
         public void SetPeerPriority(PublicKey id)
         {
-            if (_peers.TryGetValue(id, out PeerInfo peerInfo) && !peerInfo.SyncPeer.IsPriority)
+            if (_peers.TryGetValue(id, out PeerInfo? peerInfo) && !peerInfo.SyncPeer.IsPriority)
             {
                 peerInfo.SyncPeer.IsPriority = true;
                 Interlocked.Increment(ref PriorityPeerCount);
@@ -437,7 +439,10 @@ namespace Nethermind.Synchronization.Peers
                         if (syncPeer.TotalDifficulty is { } syncPeerTD && syncPeerTD == _blockTree.BestSuggestedHeader?.TotalDifficulty &&
                             syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                         {
-                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
+                            BlockHeader? bestSuggestedHeader = _blockTree.BestSuggestedHeader;
+                            Block? block = bestSuggestedHeader?.Hash is null
+                                ? null
+                                : _blockTree.FindBlock(bestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
                             if (block is not null) // can be null if fast syncing headers only
                             {
                                 if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer}");

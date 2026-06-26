@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.SnapSync
         internal const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
 
-        private const SnapSyncBatch EmptyBatch = null;
+        private const SnapSyncBatch? EmptyBatch = null;
 
         private readonly ISnapProvider _snapProvider = snapProvider;
 
@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 try
                 {
-                    bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
+                    bool finished = _snapProvider.IsFinished(out SnapSyncBatch? request);
 
                     if (request is not null)
                     {
@@ -70,19 +70,19 @@ namespace Nethermind.Synchronization.SnapSync
 
             try
             {
-                if (batch.AccountRangeResponse is not null)
+                if (batch.AccountRangeResponse is not null && batch.AccountRangeRequest is not null)
                 {
                     result = _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
                 }
-                else if (batch.StorageRangeResponse is not null)
+                else if (batch.StorageRangeResponse is not null && batch.StorageRangeRequest is not null)
                 {
                     result = _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
                 }
-                else if (batch.CodesResponse is not null)
+                else if (batch.CodesResponse is not null && batch.CodesRequest is not null)
                 {
                     _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
                 }
-                else if (batch.AccountsToRefreshResponse is not null)
+                else if (batch.AccountsToRefreshResponse is not null && batch.AccountsToRefreshRequest is not null)
                 {
                     result = _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
                 }

@@ -65,7 +65,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
             Transaction transaction = new()
             {
                 Value = 0,
-                Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
+                Data = header.ParentBeaconBlockRoot!.Bytes.ToArray(),
                 To = toAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = GasLimit,

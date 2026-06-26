@@ -17,7 +17,7 @@ public interface IHealthChecksConfig : IConfig
     public string Slug { get; set; }
 
     [ConfigItem(Description = "The web hook URL.", DefaultValue = "null", IsSensitive = true)]
-    public string WebhooksUri { get; set; }
+    public string? WebhooksUri { get; set; }
 
     [ConfigItem(Description = "An escaped JSON payload to be sent to the web hook on failure.",
         DefaultValue = """

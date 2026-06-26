@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules
     {
         public static SearchResult<Hash256> SearchForReceiptBlockHash(this IReceiptFinder receiptFinder, Hash256 txHash)
         {
-            Hash256 blockHash = receiptFinder.FindBlockHash(txHash);
+            Hash256? blockHash = receiptFinder.FindBlockHash(txHash);
             return blockHash is null
                 ? new SearchResult<Hash256>($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<Hash256>(blockHash);
@@ -31,14 +31,14 @@ namespace Nethermind.JsonRpc.Modules
                 return ResultWrapper<ReceiptForRpc[]?>.Success(null);
             }
 
-            Block block = searchResult.Object;
+            Block block = searchResult.Object!;
             TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             IEnumerable<ReceiptForRpc> result = receipts
                 .Zip(block.Transactions, (r, t) =>
                 {
                     return new ReceiptForRpc(
-                        t.Hash,
+                        t.Hash!,
                         r,
                         block.Timestamp,
                         t.GetGasInfo(spec, block.Header),

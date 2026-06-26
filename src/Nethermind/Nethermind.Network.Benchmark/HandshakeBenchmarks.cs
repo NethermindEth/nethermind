@@ -37,7 +37,7 @@ namespace Nethermind.Network.Benchmarks
         private class BenchmarkTestRandom : ICryptoRandom
         {
             private readonly int _mod;
-            private byte[][] responses;
+            private readonly byte[][] responses;
             private int _i;
 
             public BenchmarkTestRandom(ICryptoRandom trueRandom, int mod)
@@ -73,23 +73,23 @@ namespace Nethermind.Network.Benchmarks
 
         private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Sepolia); // TODO: separate general crypto signer from Ethereum transaction signing
 
-        private IMessageSerializationService _messageSerializationService;
+        private IMessageSerializationService _messageSerializationService = null!;
 
-        private ICryptoRandom _testRandom;
+        private ICryptoRandom _testRandom = null!;
 
-        private ICryptoRandom _trueCryptoRandom;
+        private ICryptoRandom _trueCryptoRandom = null!;
 
-        private IEciesCipher _eciesCipher;
+        private IEciesCipher _eciesCipher = null!;
 
-        private IHandshakeService _initiatorService;
+        private IHandshakeService _initiatorService = null!;
 
-        private IHandshakeService _recipientService;
+        private IHandshakeService _recipientService = null!;
 
-        private EncryptionHandshake _initiatorHandshake;
+        private EncryptionHandshake _initiatorHandshake = null!;
 
-        private Packet _auth;
+        private Packet _auth = null!;
 
-        private Packet _ack;
+        private Packet _ack = null!;
 
         private void Auth()
         {

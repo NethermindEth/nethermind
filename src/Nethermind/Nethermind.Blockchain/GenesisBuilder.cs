@@ -28,7 +28,7 @@ public class GenesisBuilder(
 
     public Block Build()
     {
-        Block genesis = chainSpec.Genesis;
+        Block genesis = chainSpec.Genesis ?? throw new InvalidOperationException("Genesis block was not loaded from chain spec.");
         Preallocate(genesis);
 
         foreach (IGenesisPostProcessor postProcessor in postProcessors)
@@ -55,7 +55,9 @@ public class GenesisBuilder(
     private void Preallocate(Block genesis)
     {
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
-        foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations.OrderBy(static a => a.Key))
+        Dictionary<Address, ChainSpecAllocation> allocations = chainSpec.Allocations
+            ?? throw new InvalidOperationException("Genesis allocations were not loaded from chain spec.");
+        foreach ((Address address, ChainSpecAllocation allocation) in allocations.OrderBy(static a => a.Key))
         {
             stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
 

@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Synchronization
         public ulong AncientBodiesBarrier { get; set; }
         public ulong AncientReceiptsBarrier { get; set; }
         public ulong AncientBlockAccessListsBarrier { get; set; }
-        public string PivotTotalDifficulty { get; set; }
+        public string PivotTotalDifficulty { get; set; } = null!;
         private ulong _pivotNumber = 0;
         public ulong PivotNumber
         {

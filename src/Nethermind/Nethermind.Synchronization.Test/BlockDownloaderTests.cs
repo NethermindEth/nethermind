@@ -214,13 +214,13 @@ public partial class BlockDownloaderTests
     [Test]
     public async Task Return_Null_On_InConsistentHeaderSequence()
     {
-        using ArrayPoolList<BlockHeader?> headers = new(1);
+        using ArrayPoolList<BlockHeader> headers = new(1);
         headers.Add(Build.A.EmptyBlockHeader);
         headers.Add(Build.A.EmptyBlockHeader);
 
         IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
         mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers));
+            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(headers));
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
@@ -526,7 +526,7 @@ public partial class BlockDownloaderTests
         syncPeer.HeadNumber.Returns(1000UL);
         ctx.ConfigureBestPeer(peerInfo);
 
-        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
+        BlocksRequest blockRequest = (await ctx.Feed.PrepareRequest(default))!;
         await ctx.FullSyncFeedComponent.Downloader.Dispatch(peerInfo, blockRequest, default);
         ctx.Feed.HandleResponse(blockRequest, peerInfo);
         _ = await ctx.Feed.PrepareRequest(default); // The block is validated here.
@@ -611,7 +611,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        BlocksRequest req1 = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+        BlocksRequest req1 = (await ctx.FastSyncFeedComponent.Feed.PrepareRequest())!;
         Assert.That(req1, Is.Not.Null);
         await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, req1, default);
 
@@ -626,7 +626,7 @@ public partial class BlockDownloaderTests
         ctx.FastSyncFeedComponent.Feed.HandleResponse(req1);
 
         // Receipt for the first req
-        BlocksRequest finalReq = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+        BlocksRequest finalReq = (await ctx.FastSyncFeedComponent.Feed.PrepareRequest())!;
         await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, finalReq, default);
         ctx.FastSyncFeedComponent.Feed.HandleResponse(finalReq);
 
@@ -768,7 +768,7 @@ public partial class BlockDownloaderTests
         Assert.That((await ctx.HandleFastSyncOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.OK));
         Assert.That((await ctx.HandleFastSyncOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.OK));
 
-        Assert.That((await ctx.FastSyncFeedComponent.Feed.PrepareRequest(default)).ReceiptsRequests.Count, Is.GreaterThan(0));
+        Assert.That((await ctx.FastSyncFeedComponent.Feed.PrepareRequest(default))!.ReceiptsRequests.Count, Is.GreaterThan(0));
     }
 
     [Test]
@@ -978,7 +978,7 @@ public partial class BlockDownloaderTests
 
         public async Task<SyncResponseHandlingResult> HandleOneRequest(PeerInfo peerInfo)
         {
-            BlocksRequest blockRequest = await FullSyncFeedComponent.Feed.PrepareRequest(default);
+            BlocksRequest blockRequest = (await FullSyncFeedComponent.Feed.PrepareRequest(default))!;
             try
             {
                 await FullSyncFeedComponent.Downloader.Dispatch(peerInfo, blockRequest, default);
@@ -992,7 +992,7 @@ public partial class BlockDownloaderTests
 
         public async Task<SyncResponseHandlingResult> HandleFastSyncOneRequest(PeerInfo peerInfo)
         {
-            BlocksRequest blockRequest = await FastSyncFeedComponent.Feed.PrepareRequest(default);
+            BlocksRequest blockRequest = (await FastSyncFeedComponent.Feed.PrepareRequest(default))!;
             Assert.That(blockRequest, Is.Not.Null);
             try
             {
@@ -1079,7 +1079,7 @@ public partial class BlockDownloaderTests
         public string ClientId { get; } = null!;
         public byte ProtocolVersion { get; } = default;
         public string ProtocolCode { get; } = null!;
-        public Hash256 HeadHash { get; set; } = null!;
+        public Hash256? HeadHash { get; set; }
         public PublicKey Id => Node.Id;
         public ulong HeadNumber { get; set; }
         public UInt256? TotalDifficulty { get; set; }
@@ -1123,7 +1123,7 @@ public partial class BlockDownloaderTests
 
         public async Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
         {
-            TxReceipt[][] receipts = new TxReceipt[blockHash.Count][];
+            TxReceipt[]?[] receipts = new TxReceipt[]?[blockHash.Count];
             int i = 0;
             foreach (Hash256 keccak in blockHash)
             {
@@ -1304,7 +1304,7 @@ public partial class BlockDownloaderTests
 
         public async Task<IOwnedReadOnlyList<TxReceipt[]?>> BuildReceiptsResponse(IList<Hash256> blockHashes, Response flags = Response.AllCorrect)
         {
-            TxReceipt[][] receipts = new TxReceipt[blockHashes.Count][];
+            TxReceipt[]?[] receipts = new TxReceipt[]?[blockHashes.Count];
             for (int i = 0; i < receipts.Length; i++)
             {
                 BlockBody body = _bodies[blockHashes[i]];

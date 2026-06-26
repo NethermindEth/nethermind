@@ -16,10 +16,10 @@ namespace Nethermind.Synchronization.ParallelSync
         IBlockTree blockTree,
         IFullStateFinder fullStateFinder,
         ISyncConfig syncConfig,
-        [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
-        ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
-        ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
-        ISyncFeed<BlockAccessListsSyncBatch?> blockAccessListsSyncFeed)
+        [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch> headersSyncFeed,
+        ISyncFeed<BodiesSyncBatch> bodiesSyncFeed,
+        ISyncFeed<ReceiptsSyncBatch> receiptsSyncFeed,
+        ISyncFeed<BlockAccessListsSyncBatch> blockAccessListsSyncFeed)
         : ISyncProgressResolver
     {
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public UInt256? GetTotalDifficulty(Hash256 blockHash)
         {
-            BlockHeader best = _blockTree.BestSuggestedHeader;
+            BlockHeader? best = _blockTree.BestSuggestedHeader;
 
             if (best is not null)
             {
@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || receiptsSyncFeed.IsFinished;
         public bool IsFastBlockAccessListsFinished() => !IsFastBlocks() || !_syncConfig.DownloadBlockAccessListsInFastSync || blockAccessListsSyncFeed.IsFinished;
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
-        public (ulong BlockNumber, Hash256 BlockHash) SyncPivot => _blockTree.SyncPivot;
+        public (ulong BlockNumber, Hash256? BlockHash) SyncPivot => _blockTree.SyncPivot;
         private bool IsFastBlocks() => _syncConfig.FastSync && _blockTree.SyncPivot.BlockNumber != 0UL; // if pivot number is 0 then it is equivalent to fast blocks disabled
     }
 }

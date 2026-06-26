@@ -122,7 +122,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
-                if (_txPool.TryGetPendingTransaction(hash, out Transaction tx))
+                if (_txPool.TryGetPendingTransaction(hash, out Transaction? tx))
                 {
                     int txSize = tx.GetLength();
 

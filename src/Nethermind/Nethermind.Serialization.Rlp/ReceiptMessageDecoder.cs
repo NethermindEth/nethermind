@@ -17,6 +17,7 @@ namespace Nethermind.Serialization.Rlp
         // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
         private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
 
+        [return: MaybeNull]
         protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (ctx.IsNextItemEmptyList())
@@ -61,7 +62,8 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)
             {
-                entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+                entries[i] = LogEntryDecoder.Instance.Decode(ref ctx, RlpBehaviors.AllowExtraBytes)
+                    ?? throw new RlpException("Receipt log decoding returned null.");
             }
             txReceipt.Logs = entries;
 
@@ -116,9 +118,10 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            for (int i = 0; i < item.Logs.Length; i++)
+            LogEntry[] logs = item.Logs ?? [];
+            for (int i = 0; i < logs.Length; i++)
             {
-                logsLength += Rlp.LengthOf(item.Logs[i]);
+                logsLength += Rlp.LengthOf(logs[i]);
             }
 
             return logsLength;
@@ -127,8 +130,13 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
+            if (item is null)
+            {
+                return Rlp.OfEmptyList.Length;
+            }
+
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
@@ -196,7 +204,7 @@ namespace Nethermind.Serialization.Rlp
                 writer.Encode(item.Bloom);
 
             writer.StartSequence(logsLength);
-            LogEntry[] logs = item.Logs;
+            LogEntry[] logs = item.Logs ?? [];
             LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
             for (int i = 0; i < logs.Length; i++)
             {

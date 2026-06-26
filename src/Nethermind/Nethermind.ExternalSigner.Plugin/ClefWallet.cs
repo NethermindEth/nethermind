@@ -20,13 +20,13 @@ namespace Nethermind.ExternalSigner.Plugin
     {
         private readonly HeaderDecoder _headerDecoder = new();
 
-        public event EventHandler<AccountLockedEventArgs> AccountLocked
+        public event EventHandler<AccountLockedEventArgs>? AccountLocked
         {
             add { }
             remove { }
         }
 
-        public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked
+        public event EventHandler<AccountUnlockedEventArgs>? AccountUnlocked
         {
             add { }
             remove { }

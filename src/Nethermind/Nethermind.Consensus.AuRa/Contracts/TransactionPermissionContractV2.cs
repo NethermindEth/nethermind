@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private static readonly UInt256 Two = 2;
 
         protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) =>
-            new object[] { tx.SenderAddress, tx.To ?? Address.Zero, tx.Value };
+            new object[] { tx.SenderAddress!, tx.To ?? Address.Zero, tx.Value };
 
         public override UInt256 Version => Two;
     }

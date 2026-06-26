@@ -134,7 +134,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingState)

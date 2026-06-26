@@ -16,7 +16,7 @@ namespace Nethermind.Benchmarks.Core
 {
     public class BytesReverseBenchmarks
     {
-        private byte[] _a;
+        private byte[] _a = null!;
 
         private byte[][] _scenarios = new[]
         {

@@ -15,31 +15,31 @@ public interface IXdcRpcModule : IRpcModule
     /// Retrieves the state snapshot at a given block number
     /// </summary>
     [JsonRpcMethod(Description = "Retrieves the state snapshot at a given block number")]
-    ResultWrapper<PublicApiSnapshot> GetSnapshot(BlockParameter blockParam);
+    ResultWrapper<PublicApiSnapshot> GetSnapshot(BlockParameter? blockParam);
 
     /// <summary>
     /// Retrieves the state snapshot at a given block hash
     /// </summary>
     [JsonRpcMethod(Description = "Retrieves the state snapshot at a given block hash")]
-    ResultWrapper<PublicApiSnapshot> GetSnapshotAtHash(BlockParameter blockParam);
+    ResultWrapper<PublicApiSnapshot> GetSnapshotAtHash(BlockParameter? blockParam);
 
     /// <summary>
     /// Retrieves the list of authorized signers at the specified block
     /// </summary>
     [JsonRpcMethod(Description = "Retrieves the list of authorized signers at the specified block")]
-    ResultWrapper<Address[]> GetSigners(BlockParameter blockParam);
+    ResultWrapper<Address[]> GetSigners(BlockParameter? blockParam);
 
     /// <summary>
     /// Retrieves the list of authorized signers at the specified block hash
     /// </summary>
     [JsonRpcMethod(Description = "Retrieves the list of authorized signers at the specified block hash")]
-    ResultWrapper<Address[]> GetSignersAtHash(BlockParameter blockParam);
+    ResultWrapper<Address[]> GetSignersAtHash(BlockParameter? blockParam);
 
     /// <summary>
     /// Gets masternode information by block number
     /// </summary>
     [JsonRpcMethod(Description = "Gets masternode information by block number")]
-    ResultWrapper<MasternodesStatus> GetMasternodesByNumber(BlockParameter blockNumber);
+    ResultWrapper<MasternodesStatus> GetMasternodesByNumber(BlockParameter? blockNumber);
 
     /// <summary>
     /// Gets the current vote pool and timeout pool content and missing messages
@@ -51,13 +51,13 @@ public interface IXdcRpcModule : IRpcModule
     /// Gets V2 block information by block number
     /// </summary>
     [JsonRpcMethod(Description = "Gets V2 block information by block number")]
-    ResultWrapper<V2BlockInfo> GetV2BlockByNumber(BlockParameter blockNumber);
+    ResultWrapper<V2BlockInfo> GetV2BlockByNumber(BlockParameter? blockNumber);
 
     /// <summary>
     /// Confirms V2 block committed status by hash
     /// </summary>
     [JsonRpcMethod(Description = "Confirms V2 block committed status by hash")]
-    ResultWrapper<V2BlockInfo> GetV2BlockByHash(BlockParameter blockParam);
+    ResultWrapper<V2BlockInfo> GetV2BlockByHash(BlockParameter? blockParam);
 
     /// <summary>
     /// Gets network configuration information
@@ -69,7 +69,7 @@ public interface IXdcRpcModule : IRpcModule
     /// Gets missed rounds in epoch by block number (V2 consensus only)
     /// </summary>
     [JsonRpcMethod(Description = "Gets missed rounds in epoch by block number (V2 consensus only)")]
-    ResultWrapper<PublicApiMissedRoundsMetadata> GetMissedRoundsInEpochByBlockNum(BlockParameter blockNumber);
+    ResultWrapper<PublicApiMissedRoundsMetadata> GetMissedRoundsInEpochByBlockNum(BlockParameter? blockNumber);
 
     /// <summary>
     /// Gets reward information for a specific account between block numbers

@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.Blocks;
 /// </summary>
 public interface IForwardSyncController
 {
-    public Task<BlocksRequest> PrepareRequest(DownloaderOptions buildOptions, ulong fastSyncLag, CancellationToken token = default);
+    public Task<BlocksRequest?> PrepareRequest(DownloaderOptions buildOptions, ulong fastSyncLag, CancellationToken token = default);
     public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer);
 
     public int DownloadRequestBufferSize { get; }

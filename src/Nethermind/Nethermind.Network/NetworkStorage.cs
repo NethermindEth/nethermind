@@ -33,7 +33,7 @@ namespace Nethermind.Network
 
         public NetworkNode[] GetPersistedNodes()
         {
-            NetworkNode[] nodes = _nodes;
+            NetworkNode[]? nodes = _nodes;
             return nodes ?? GenerateNodes();
         }
 
@@ -72,13 +72,8 @@ namespace Nethermind.Network
 
         private void LoadFromDbNoLock()
         {
-            foreach (byte[]? nodeRlp in _fullDb.Values)
+            foreach (byte[] nodeRlp in _fullDb.Values)
             {
-                if (nodeRlp is null)
-                {
-                    continue;
-                }
-
                 try
                 {
                     NetworkNode node = GetNode(nodeRlp);
@@ -235,18 +230,19 @@ namespace Nethermind.Network
 
         public bool AnyPendingChange() => _updateCounter > 0 || _removeCounter > 0;
 
-        private static NetworkNode GetNode(byte[] networkNodeRaw)
-        {
-            NetworkNode persistedNode = NodeDecoder.DecodeComplete(networkNodeRaw);
-            return persistedNode;
-        }
+        private static NetworkNode GetNode(byte[] networkNodeRaw) => NodeDecoder.DecodeCompleteNotNull(networkNodeRaw);
 
-        private void LogDbContent(IEnumerable<byte[]> values)
+        private void LogDbContent(IEnumerable<byte[]?> values)
         {
             StringBuilder sb = new();
             sb.AppendLine($"[{_fullDb.Name}]");
-            foreach (byte[] value in values)
+            foreach (byte[]? value in values)
             {
+                if (value is null)
+                {
+                    continue;
+                }
+
                 NetworkNode node = GetNode(value);
                 sb.AppendLine($"{node.NodeId}@{node.Host}:{node.Port}, Rep: {node.Reputation}");
             }

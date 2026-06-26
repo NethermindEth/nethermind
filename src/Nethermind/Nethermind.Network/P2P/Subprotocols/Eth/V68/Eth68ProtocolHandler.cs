@@ -197,7 +197,7 @@ public class Eth68ProtocolHandler(ISession session,
             SendMessage(
                 new ArrayPoolList<byte>(1) { (byte)tx.Type },
                 new ArrayPoolList<int>(1) { tx.GetLength() },
-                new ArrayPoolList<Hash256>(1) { tx.Hash }
+                new ArrayPoolList<Hash256>(1) { tx.Hash! }
             );
         }
     }

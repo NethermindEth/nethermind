@@ -20,15 +20,15 @@ namespace Nethermind.Benchmarks.Core
     {
         private ISpecProvider _specProvider = MainnetSpecProvider.Instance;
 
-        private static EthereumEcdsa _ethereumEcdsa;
-        private static RecoverSignatures _sut;
+        private static EthereumEcdsa _ethereumEcdsa = null!;
+        private static RecoverSignatures _sut = null!;
 
-        private Block _block100TxWith100AuthSigs;
-        private Block _block100TxWith10AuthSigs;
-        private Block _block100TxWith1AuthSigs;
-        private Block _block3TxWith1AuthSigs;
-        private Block _block10TxWith0AuthSigs;
-        private Block _block10TxWith10AuthSigs;
+        private Block _block100TxWith100AuthSigs = null!;
+        private Block _block100TxWith10AuthSigs = null!;
+        private Block _block100TxWith1AuthSigs = null!;
+        private Block _block3TxWith1AuthSigs = null!;
+        private Block _block10TxWith0AuthSigs = null!;
+        private Block _block10TxWith10AuthSigs = null!;
 
         private static PrivateKey[] _privateKeys = Enumerable.Range(0, 1000)
             .Select(i => Build.A.PrivateKey.TestObject)
@@ -147,6 +147,8 @@ namespace Nethermind.Benchmarks.Core
             {
                 t.SenderAddress = null;
                 t.Hash = null;
+                if (t.AuthorizationList is null) return;
+
                 Parallel.ForEach(t.AuthorizationList, (tuple) =>
                 {
                     tuple.Authority = null;

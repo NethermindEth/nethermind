@@ -8,7 +8,7 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 
-public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature signature = null, bool isMyVote = false) : RlpHashEqualityBase, IXdcPoolItem
+public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature? signature = null, bool isMyVote = false) : RlpHashEqualityBase, IXdcPoolItem
 {
     private static readonly VoteDecoder _decoder = new();
 

@@ -116,17 +116,17 @@ namespace Nethermind.Synchronization.Test
 
         private SyncProgressResolver CreateProgressResolver(bool isReceiptFinished, SyncConfig syncConfig)
         {
-            ISyncFeed<ReceiptsSyncBatch?> receiptFeed = Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>();
+            ISyncFeed<ReceiptsSyncBatch> receiptFeed = Substitute.For<ISyncFeed<ReceiptsSyncBatch>>();
             receiptFeed.IsFinished.Returns(isReceiptFinished);
 
             return new SyncProgressResolver(
                 _blockTree,
                 new FullStateFinder(_blockTree, _stateReader),
                 syncConfig,
-                Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
-                Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
+                Substitute.For<ISyncFeed<HeadersSyncBatch>>(),
+                Substitute.For<ISyncFeed<BodiesSyncBatch>>(),
                 receiptFeed,
-                Substitute.For<ISyncFeed<BlockAccessListsSyncBatch?>>()
+                Substitute.For<ISyncFeed<BlockAccessListsSyncBatch>>()
             );
         }
     }

@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -33,15 +33,29 @@ namespace Nethermind.Db.Rpc
 
         public string Name => "RpcDb";
 
-        public byte[] this[ReadOnlySpan<byte> key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => Get(key);
             set => Set(key, value);
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None) => ThrowWritesNotSupported();
-        public byte[] Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => GetThroughRpc(key);
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => ThrowWritesNotSupported();
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => GetThroughRpc(key);
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
+        {
+            get
+            {
+                KeyValuePair<byte[], byte[]?>[] pairs = new KeyValuePair<byte[], byte[]?>[keys.Length];
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    byte[] key = keys[i];
+                    pairs[i] = new KeyValuePair<byte[], byte[]?>(key, GetThroughRpc(key));
+                }
+
+                return pairs;
+            }
+        }
+
         public void Remove(ReadOnlySpan<byte> key) => ThrowWritesNotSupported();
         public bool KeyExists(ReadOnlySpan<byte> key) => GetThroughRpc(key) is not null;
         public void Flush(bool onlyWal = false) { }
@@ -49,24 +63,31 @@ namespace Nethermind.Db.Rpc
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => recordDb.GetAll();
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => recordDb.GetAllKeys();
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => recordDb.GetAllValues();
-        public IWriteBatch StartWriteBatch()
-        {
-            ThrowWritesNotSupported();
-            // Make compiler happy
-            return null!;
-        }
+        public IWriteBatch StartWriteBatch() => throw new InvalidOperationException("RPC DB does not support writes");
 
-        private byte[] GetThroughRpc(ReadOnlySpan<byte> key)
+        private byte[]? GetThroughRpc(ReadOnlySpan<byte> key)
         {
-            string responseJson = _rpcClient.Post("debug_getFromDb", dbName, key.ToHexString()).Result;
-            JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson);
-
-            byte[] value = null;
-            if (response.Result is not null)
+            string? responseJson = _rpcClient.Post("debug_getFromDb", dbName, key.ToHexString()).Result;
+            if (responseJson is null)
             {
-                value = Bytes.FromHexString((string)response.Result);
-                if (recordDb is not null)
+                return null;
+            }
+
+            JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson)
+                ?? throw new JsonException("RPC DB response decoding returned null.");
+
+            byte[]? value = null;
+            if (response.Result is string result)
+            {
+                value = Bytes.FromHexString(result);
+                recordDb[key] = value;
+            }
+            else if (response.Result is JsonElement { ValueKind: JsonValueKind.String } resultElement)
+            {
+                string? resultText = resultElement.GetString();
+                if (resultText is not null)
                 {
+                    value = Bytes.FromHexString(resultText);
                     recordDb[key] = value;
                 }
             }

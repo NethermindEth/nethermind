@@ -67,7 +67,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         }
     }
 
-    protected TxReceipt BuildFailedReceipt(Address recipient, in GasConsumed gasSpent, string error, Hash256? stateRoot)
+    protected TxReceipt BuildFailedReceipt(Address recipient, in GasConsumed gasSpent, string? error, Hash256? stateRoot)
     {
         TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, [], stateRoot);
         receipt.Error = error;
@@ -188,7 +188,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) =>
         _currentTxTracer.ReportBalanceChange(address, before, after);
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after) =>
+    public void ReportCodeChange(Address address, byte[]? before, byte[]? after) =>
         _currentTxTracer.ReportCodeChange(address, before, after);
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after) =>
@@ -259,9 +259,22 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     private readonly List<(ulong Regular, ulong State)> _cumulativeBlockGasPerTx = [];  // Track pre-refund block gas for restore (regular + EIP-8037 state)
     private ulong _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
     protected Transaction? CurrentTx;
-    public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
-    public TxReceipt LastReceipt => _txReceipts[^1];
+    public ReadOnlySpan<TxReceipt?> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
+    public TxReceipt LastReceipt => _txReceipts[^1] ?? ThrowMissingReceipt(_txReceipts.Count - 1);
     public IBlockTracer OtherTracer => _otherTracer;
+
+    public TxReceipt GetReceipt(int index) => _txReceipts[index] ?? ThrowMissingReceipt(index);
+
+    public TxReceipt[] ToReceiptArray()
+    {
+        TxReceipt[] receipts = new TxReceipt[_txReceipts.Count];
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            receipts[i] = _txReceipts[i] ?? ThrowMissingReceipt(i);
+        }
+
+        return receipts;
+    }
 
     /// <summary>
     /// Diagnostic-only: place a receipt at a specific tx index, leaving any prior gaps as null.
@@ -308,7 +321,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         Block.Header.GasUsed = Math.Max(cumulativeRegular, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
-        _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+        _cumulativeReceiptGas = _txReceipts.Count > 0 ? LastReceipt.GasUsedTotal : 0;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -381,4 +394,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     }
 
     public void Dispose() => _currentTxTracer.Dispose();
+
+    private static TxReceipt ThrowMissingReceipt(int index) =>
+        throw new InvalidOperationException($"Missing receipt at index {index}.");
 }

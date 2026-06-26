@@ -35,8 +35,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             this.BlockActivationCheck(parentHeader);
             string function = nameof(BlockGasLimit);
-            object[] returnData = Constant.Call(new CallInfo(parentHeader, function, Address.Zero));
-            return (returnData?.Length ?? 0) == 0 ? (UInt256?)null : (UInt256)returnData[0];
+            object[]? returnData = Constant.Call(new CallInfo(parentHeader, function, Address.Zero));
+            return returnData is null || returnData.Length == 0 ? (UInt256?)null : (UInt256)returnData[0];
         }
     }
 }

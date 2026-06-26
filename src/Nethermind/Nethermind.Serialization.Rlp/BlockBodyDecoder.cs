@@ -27,7 +27,8 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     private static BlockBodyDecoder? _instance;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
-    public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetBodyLength(item));
+    public override int GetLength(BlockBody? item, RlpBehaviors rlpBehaviors)
+        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetBodyLength(item));
 
     public int GetBodyLength(BlockBody b)
     {

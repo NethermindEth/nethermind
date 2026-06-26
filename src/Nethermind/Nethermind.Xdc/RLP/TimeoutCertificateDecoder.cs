@@ -15,7 +15,7 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
         if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
-            return null;
+            return null!;
         }
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
@@ -40,10 +40,10 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
             decoderContext.Check(endPosition);
         }
 
-        return new TimeoutCertificate(round, signatures, gapNumber);
+        return new TimeoutCertificate(round, signatures ?? [], gapNumber);
     }
 
-    public override Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -83,7 +83,7 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
         writer.Encode(item.GapNumber);
     }
 
-    public override int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     private int GetContentLength(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

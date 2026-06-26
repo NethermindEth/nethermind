@@ -54,7 +54,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("Get block headers message decoding returned null.");
 
         public int GetLength(GetBlockHeadersMessage message, out int contentLength)
         {

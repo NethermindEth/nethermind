@@ -99,10 +99,10 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void FilterReports(BlockHeader parent)
         {
-            LinkedListNode<PersistentReport> node = _persistentReports.First;
+            LinkedListNode<PersistentReport>? node = _persistentReports.First;
             while (node is not null)
             {
-                LinkedListNode<PersistentReport> next = node.Next;
+                LinkedListNode<PersistentReport>? next = node.Next;
                 PersistentReport persistentReport = node.Value;
 
                 if (_logger.IsTrace) _logger.Trace($"Checking if report of malicious validator {persistentReport.MaliciousValidator} at block {persistentReport.BlockNumber} should be removed from cache.");
@@ -146,14 +146,14 @@ namespace Nethermind.Consensus.AuRa.Validators
             public UInt256 BlockNumber { get; } = blockNumber;
             public byte[] Proof { get; } = proof;
 
-            public bool Equals(PersistentReport other)
+            public bool Equals(PersistentReport? other)
             {
                 if (other is null) return false;
                 if (ReferenceEquals(this, other)) return true;
                 return Equals(MaliciousValidator, other.MaliciousValidator) && BlockNumber == other.BlockNumber;
             }
 
-            public override bool Equals(object obj)
+            public override bool Equals(object? obj)
             {
                 if (obj is null) return false;
                 if (ReferenceEquals(this, obj)) return true;

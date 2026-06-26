@@ -7,9 +7,9 @@ namespace Nethermind.JsonRpc.Modules.Proof;
 
 public class TransactionForRpcWithProof
 {
-    public TransactionForRpc Transaction { get; set; }
+    public TransactionForRpc Transaction { get; set; } = null!;
 
-    public byte[][] TxProof { get; set; }
+    public byte[][] TxProof { get; set; } = [];
 
-    public byte[] BlockHeader { get; set; }
+    public byte[]? BlockHeader { get; set; }
 }

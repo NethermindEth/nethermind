@@ -93,7 +93,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("+"u8);
-                _32BytesConverter.Write(writer, change.After, options);
+                _32BytesConverter.Write(writer, change.After ?? [], options);
                 writer.WriteEndObject();
             }
             else
@@ -102,9 +102,9 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 writer.WritePropertyName("*"u8);
                 writer.WriteStartObject();
                 writer.WritePropertyName("from"u8);
-                _32BytesConverter.Write(writer, change.Before, options);
+                _32BytesConverter.Write(writer, change.Before ?? [], options);
                 writer.WritePropertyName("to"u8);
-                _32BytesConverter.Write(writer, change.After, options);
+                _32BytesConverter.Write(writer, change.After ?? [], options);
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             }

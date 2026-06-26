@@ -31,7 +31,7 @@ internal class XdcSealValidatorTests
             //Should this throw instead?
             return false;
         }
-        ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
+        ulong parentRound = extraFields.QuorumCert!.ProposedBlockInfo.Round;
         ulong epochStart = extraFields.BlockRound - extraFields.BlockRound % spec.EpochLength;
 
         return parentRound < epochStart;

@@ -6,9 +6,9 @@ using System.Linq;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class HashSetContractDataStoreCollection<T> : IContractDataStoreCollection<T>
+    public class HashSetContractDataStoreCollection<T> : IContractDataStoreCollection<T> where T : notnull
     {
-        private HashSet<T> _items;
+        private HashSet<T>? _items;
 
         private ISet<T> Items => _items ??= [];
 

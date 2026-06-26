@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
         private readonly uint _percentDelta = percentDelta;
 
-        public async ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public async ValueTask<(Hash256?, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
             UInt256 gasPriceEstimated = gasPrice * _percentDelta / 100;

@@ -28,11 +28,11 @@ namespace Nethermind.Specs
         public ulong TimestampFork { get; set; } = ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; set; }
 
-        public IReleaseSpec GenesisSpec { get; set; }
+        public IReleaseSpec GenesisSpec { get; set; } = MainnetSpecProvider.Instance.GenesisSpec;
 
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber == 0 || forkActivation.BlockNumber < ForkOnBlockNumber ? GenesisSpec : NextForkSpec;
 
-        public IReleaseSpec NextForkSpec { get; set; }
+        public IReleaseSpec NextForkSpec { get; set; } = MainnetSpecProvider.Instance.GenesisSpec;
         public ulong? ForkOnBlockNumber { get; set; }
 
         public ulong? DaoBlockNumber { get; set; }

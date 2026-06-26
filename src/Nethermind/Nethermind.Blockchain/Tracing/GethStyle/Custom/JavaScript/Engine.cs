@@ -206,7 +206,7 @@ public class Engine : IDisposable
                     tracer = Path.ChangeExtension(tracer, Extension);
                 }
 
-                return _builtInScripts.TryGetValue(tracer, out V8Script script)
+                return _builtInScripts.TryGetValue(tracer, out V8Script? script)
                     ? script
                     // fallback, shouldn't happen if the tracers were initialized from file before
                     : LoadBuiltIn(tracer, LoadTracerCodeFromFile(tracer));

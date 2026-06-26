@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain.Visitors
             return BlockVisitOutcome.Suggest;
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) => Task.FromResult(LevelVisitOutcome.None);
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) => Task.FromResult(LevelVisitOutcome.None);
 
         private void LogPlannedOperation()
         {

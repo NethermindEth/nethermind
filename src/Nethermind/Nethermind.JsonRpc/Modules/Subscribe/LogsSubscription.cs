@@ -61,11 +61,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private async Task TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
         {
-            BlockHeader fromBlock = _blockTree.FindHeader(_filter.FromBlock);
-            BlockHeader toBlock = _blockTree.FindHeader(_filter.ToBlock, true);
+            BlockHeader? fromBlock = _blockTree.FindHeader(_filter.FromBlock);
+            BlockHeader? toBlock = _blockTree.FindHeader(_filter.ToBlock, true);
 
-            bool isAfterFromBlock = blockHeader.Number >= fromBlock?.Number;
-            bool isBeforeToBlock = blockHeader.Number <= toBlock?.Number;
+            bool isAfterFromBlock = fromBlock is not null && blockHeader.Number >= fromBlock.Number;
+            bool isBeforeToBlock = toBlock is not null && blockHeader.Number <= toBlock.Number;
 
             if (isAfterFromBlock && isBeforeToBlock)
             {
@@ -112,7 +112,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     }
                     else
                     {
-                        logIndex += receipt.Logs.Length;
+                        logIndex += receipt.Logs?.Length ?? 0;
                     }
                 }
             }

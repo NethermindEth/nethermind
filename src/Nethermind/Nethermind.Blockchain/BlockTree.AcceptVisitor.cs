@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain
                         break;
                     }
 
-                    ChainLevelInfo level = LoadLevel(levelNumber);
+                    ChainLevelInfo? level = LoadLevel(levelNumber);
 
                     LevelVisitOutcome visitOutcome = await visitor.VisitLevelStart(level, levelNumber, cancellationToken);
                     if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
@@ -50,10 +50,10 @@ namespace Nethermind.Blockchain
                     {
                         // if we delete blocks during the process then the number of blocks at this level will be falling and we need to adjust the index
                         Hash256 hash = level!.BlockInfos[blockIndex - (numberOfBlocksAtThisLevel - level.BlockInfos.Length)].BlockHash;
-                        Block block = FindBlock(hash, BlockTreeLookupOptions.None);
+                        Block? block = FindBlock(hash, BlockTreeLookupOptions.None);
                         if (block is null)
                         {
-                            BlockHeader header = FindHeader(hash, BlockTreeLookupOptions.None);
+                            BlockHeader? header = FindHeader(hash, BlockTreeLookupOptions.None);
                             if (header is null)
                             {
                                 if (await VisitMissing(visitor, hash, cancellationToken)) break;

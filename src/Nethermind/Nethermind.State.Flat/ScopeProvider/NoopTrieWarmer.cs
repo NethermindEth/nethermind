@@ -12,7 +12,7 @@ public class NoopTrieWarmer : ITrieWarmer
 
     public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
 
-    public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
+    public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address path, int sequenceId) => false;
 
     public void OnEnterScope() { }
 

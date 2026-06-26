@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Xdc;
 
@@ -17,7 +18,7 @@ internal sealed class XdcSubnetSealValidator(
     IEpochSwitchManager epochSwitchManager,
     ISpecProvider specProvider) : XdcSealValidator(masternodesCalculator, epochSwitchManager, specProvider)
 {
-    public override bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
+    public override bool ValidateParams(BlockHeader parent, BlockHeader header, [NotNullWhen(false)] out string? error)
     {
         if (header is not XdcSubnetBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcSubnetBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
@@ -29,7 +30,13 @@ internal sealed class XdcSubnetSealValidator(
         IXdcReleaseSpec spec = SpecProvider.GetXdcSpec(xdcHeader);
         if (xdcHeader.IsGapPlusOne(spec))
         {
-            (Address[] masternodes, Address[] penaltiesAddresses) = masternodesCalculator.GetNextEpochCandidatesAndPenalties(xdcHeader.ParentHash);
+            if (xdcHeader.ParentHash is not { } parentHash)
+            {
+                error = $"Parent hash is missing for block {xdcHeader.Number}.";
+                return false;
+            }
+
+            (Address[] masternodes, Address[] penaltiesAddresses) = masternodesCalculator.GetNextEpochCandidatesAndPenalties(parentHash);
 
             if (xdcHeader.NextValidatorsAddress is null || !xdcHeader.NextValidatorsAddress.ListsAreEqual(masternodes))
             {
@@ -62,7 +69,7 @@ internal sealed class XdcSubnetSealValidator(
         return true;
     }
 
-    protected override bool ValidateEpochFields(XdcBlockHeader xdcHeader, Address[] masternodes, Address[] penalties, out string? error)
+    protected override bool ValidateEpochFields(XdcBlockHeader xdcHeader, Address[] masternodes, Address[] penalties, [NotNullWhen(false)] out string? error)
     {
         if (xdcHeader.Validators is null || xdcHeader.Validators.Length == 0)
         {
@@ -74,7 +81,7 @@ internal sealed class XdcSubnetSealValidator(
             error = "Invalid signer list on checkpoint block.";
             return false;
         }
-        if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
+        if (xdcHeader.ValidatorsAddress is null || !xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
         {
             error = "Validators does not match what's stored in snapshot minus its penalty.";
             return false;
@@ -83,7 +90,7 @@ internal sealed class XdcSubnetSealValidator(
         return true;
     }
 
-    protected override bool ValidateNonEpochFields(XdcBlockHeader xdcHeader, out string? error)
+    protected override bool ValidateNonEpochFields(XdcBlockHeader xdcHeader, [NotNullWhen(false)] out string? error)
     {
         if (xdcHeader.Validators is not null && xdcHeader.Validators.Length != 0)
         {

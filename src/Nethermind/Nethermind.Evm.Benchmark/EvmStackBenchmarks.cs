@@ -19,7 +19,7 @@ namespace Nethermind.Evm.Benchmark
             UInt256.MaxValue
         };
 
-        private byte[] _stack;
+        private byte[] _stack = null!;
 
         [GlobalSetup]
         public void GlobalSetup() => _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength * 32) * 1024];

@@ -31,7 +31,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ILogger _logger;
     private readonly IJsonRpcService _jsonRpcService;
-    private readonly Recorder _recorder;
+    private readonly Recorder? _recorder;
     private readonly IProcessExitSource? _processExitSource;
 
     public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager, IProcessExitSource? processExitSource = null)
@@ -260,7 +260,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                             {
                                 result = await ProcessParsedSingleDocumentToSink(
                                     processingState,
-                                    jsonDocument,
+                                    jsonDocument!,
                                     buffer,
                                     isCompleted,
                                     context,
@@ -274,7 +274,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                             }
                             else
                             {
-                                await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, cancellationToken);
+                                await ProcessJsonDocumentToSink(jsonDocument!, context, sink, options, startTime, cancellationToken);
                             }
                         }
                         else if (isCompleted && !buffer.IsEmpty)
@@ -876,7 +876,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         if (_logger.IsDebug)
         {
             const int sliceSize = 1000;
-            if (Encoding.UTF8.TryGetStringSlice(in buffer, sliceSize, out bool isFullString, out string data))
+            if (Encoding.UTF8.TryGetStringSlice(in buffer, sliceSize, out bool isFullString, out string? data))
             {
                 error = isFullString
                     ? $"{error} Data:\n{data}\n"
@@ -953,7 +953,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     [MethodImpl(MethodImplOptions.NoInlining)]
     private JsonRpcResult.Entry RecordResponseSlow(in JsonRpcResult.Entry result)
     {
-        _recorder.RecordResponse(SerializeForDiagnostics(result));
+        _recorder!.RecordResponse(SerializeForDiagnostics(result));
         return result;
     }
 
@@ -961,7 +961,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RecordRequest(ReadOnlyMemory<byte> requestBody) =>
-        _recorder.RecordRequest(Encoding.UTF8.GetString(requestBody.Span));
+        _recorder!.RecordRequest(Encoding.UTF8.GetString(requestBody.Span));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private async ValueTask<PipeReader> RecordRequest(PipeReader reader)
@@ -973,7 +973,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         StreamReader streamReader = new(memoryStream);
 
         string requestString = await streamReader.ReadToEndAsync();
-        _recorder.RecordRequest(requestString);
+        _recorder!.RecordRequest(requestString);
 
         memoryStream.Seek(0, SeekOrigin.Begin);
         return PipeReader.Create(memoryStream, _pipeReaderOptions);

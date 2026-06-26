@@ -164,8 +164,8 @@ namespace Nethermind.Network.Rlpx
             {
                 _logger.Error($"{nameof(Init)} failed.", ex);
                 // Replacing to prevent double dispose which hangs
-                IEventLoopGroup bossGroup = Interlocked.Exchange(ref _bossGroup, null);
-                IEventLoopGroup workerGroup = Interlocked.Exchange(ref _workerGroup, null);
+                IEventLoopGroup? bossGroup = Interlocked.Exchange(ref _bossGroup, null);
+                IEventLoopGroup? workerGroup = Interlocked.Exchange(ref _workerGroup, null);
                 await Task.WhenAll(
                     bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
                     workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
@@ -237,8 +237,8 @@ namespace Nethermind.Network.Rlpx
             return true;
         }
 
-        public event EventHandler<SessionEventArgs> SessionCreated;
-        public event SessionDisconnectedEventHandler SessionDisconnected;
+        public event EventHandler<SessionEventArgs>? SessionCreated;
+        public event SessionDisconnectedEventHandler? SessionDisconnected;
 
         internal SessionActivitySubscription TrackSessionActivity(ISession session)
         {

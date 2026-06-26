@@ -59,7 +59,7 @@ public partial class BlockProcessor(
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
-    private ISystemContractHandler _systemContractHandler;
+    private ISystemContractHandler _systemContractHandler = null!;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -291,9 +291,9 @@ public partial class BlockProcessor(
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
         BlockHeader headerForProcessing = new(
-            bh.ParentHash,
-            bh.UnclesHash,
-            bh.Beneficiary,
+            bh.ParentHash ?? throw new InvalidOperationException("Parent hash is required to prepare block processing."),
+            bh.UnclesHash ?? throw new InvalidOperationException("Uncles hash is required to prepare block processing."),
+            bh.Beneficiary ?? throw new InvalidOperationException("Beneficiary is required to prepare block processing."),
             bh.Difficulty,
             bh.Number,
             bh.GasLimit,

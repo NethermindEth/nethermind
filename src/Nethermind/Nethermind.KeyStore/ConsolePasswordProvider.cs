@@ -11,14 +11,7 @@ namespace Nethermind.KeyStore
     {
         private readonly IConsoleUtils _consoleUtils = consoleUtils;
 
-        public string Message { get; set; }
-        public override SecureString GetPassword(Address address)
-        {
-            SecureString password = _consoleUtils.ReadSecret(Message);
-            if (password is null && AlternativeProvider is not null)
-                password = AlternativeProvider.GetPassword(address);
-
-            return password;
-        }
+        public string Message { get; set; } = string.Empty;
+        public override SecureString GetPassword(Address address) => _consoleUtils.ReadSecret(Message);
     }
 }

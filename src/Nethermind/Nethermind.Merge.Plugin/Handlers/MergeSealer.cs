@@ -16,11 +16,11 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ISealer _preMergeSealer = preMergeSealer;
         private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
 
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
+        public Task<Block?> SealBlock(Block block, CancellationToken cancellationToken)
         {
             if (_poSSwitcher.IsPostMerge(block.Header))
             {
-                return Task.FromResult(block);
+                return Task.FromResult<Block?>(block);
             }
 
             return _preMergeSealer.SealBlock(block, cancellationToken);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Security;
 using Nethermind.Core;
@@ -14,16 +15,17 @@ namespace Nethermind.Wallet
     {
         public static Signature Sign(in ValueHash256 message, PrivateKey key)
         {
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v)
+                ?? throw new InvalidOperationException("Unable to sign message.");
             return new Signature(rs, v);
         }
 
         // Decrypts the account with the passphrase for a single signing operation; the account is never unlocked.
         public static bool TrySignWithPassphrase(
-            IKeyStore keyStore, in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+            IKeyStore keyStore, in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature? signature)
         {
-            (PrivateKey key, Result result) = keyStore.GetKey(address, passphrase);
-            if (result.ResultType != ResultType.Success)
+            (PrivateKey? key, Result result) = keyStore.GetKey(address, passphrase);
+            if (result.ResultType != ResultType.Success || key is null)
             {
                 signature = null;
                 return false;

@@ -7,7 +7,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
 {
     public class AccountForRpc
     {
-        public Address Address { get; set; }
+        public Address Address { get; set; } = null!;
         public bool Unlocked { get; set; }
     }
 }

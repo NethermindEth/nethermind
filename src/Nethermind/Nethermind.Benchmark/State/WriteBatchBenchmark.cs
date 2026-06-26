@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
@@ -33,7 +34,10 @@ public class WriteBatchBenchmark
     private StateId _currentStateId;
     private Address[] _addresses = null!;
 
-    private FlatWorldStateScope _scope = null!;
+    private FlatWorldStateScope? _scope;
+
+    private FlatWorldStateScope Scope =>
+        _scope ?? throw new InvalidOperationException("Iteration scope is not initialized.");
 
     [Params(100, 500)]
     public int AccountCount { get; set; }
@@ -166,14 +170,14 @@ public class WriteBatchBenchmark
     public void IterationCleanup()
     {
         _scope?.Dispose();
-        _scope = null!;
+        _scope = null;
     }
 
     [Benchmark]
     public void BatchWriteAccount()
     {
         using IWorldStateScopeProvider.IWorldStateWriteBatch batch =
-            _scope.StartWriteBatch(AccountCount);
+            Scope.StartWriteBatch(AccountCount);
         for (int i = 0; i < AccountCount; i++)
         {
             batch.Set(_addresses[i], new Account(balance: (UInt256)(ulong)(i + 1)));
@@ -184,7 +188,7 @@ public class WriteBatchBenchmark
     public void BatchWriteStorage()
     {
         using IWorldStateScopeProvider.IWorldStateWriteBatch batch =
-            _scope.StartWriteBatch(AccountCount);
+            Scope.StartWriteBatch(AccountCount);
 
         for (int i = 0; i < AccountCount; i++)
         {
@@ -204,7 +208,7 @@ public class WriteBatchBenchmark
     public void ParallelBatchWriteStorage()
     {
         using IWorldStateScopeProvider.IWorldStateWriteBatch batch =
-            _scope.StartWriteBatch(AccountCount);
+            Scope.StartWriteBatch(AccountCount);
 
         // Phase 1 (sequential): set accounts and create storage batches
         IWorldStateScopeProvider.IStorageWriteBatch[] storageBatches =
@@ -236,7 +240,7 @@ public class WriteBatchBenchmark
 
     private sealed class NullTrieNodeCache : ITrieNodeCache
     {
-        public bool TryGet(Hash256 address, in TreePath path, Hash256 hash, out TrieNode node)
+        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
             node = null;
             return false;
@@ -249,8 +253,8 @@ public class WriteBatchBenchmark
 
     private sealed class CapturingCommitTarget : IFlatCommitTarget
     {
-        public FlatSnapshot LastSnapshot { get; private set; }
-        public TransientResource LastResource { get; private set; }
+        public FlatSnapshot? LastSnapshot { get; private set; }
+        public TransientResource? LastResource { get; private set; }
 
         public void AddSnapshot(FlatSnapshot snapshot, TransientResource transientResource)
         {
@@ -261,7 +265,7 @@ public class WriteBatchBenchmark
 
     private sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
     {
-        public byte[] GetCode(in ValueHash256 codeHash) => null;
+        public byte[]? GetCode(in ValueHash256 codeHash) => null;
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
             => NullCodeSetter.Instance;

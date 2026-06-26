@@ -21,8 +21,8 @@ namespace Nethermind.Network
     {
         private readonly Lock _initLock = new();
         private bool _wasInitialized = false;
-        private Dictionary<uint, Fork> DictForks { get; set; }
-        internal Fork[] Forks { get; set; }
+        private Dictionary<uint, Fork> DictForks { get; set; } = [];
+        internal Fork[] Forks { get; set; } = [];
         private bool _hasTimestampFork;
 
         internal void EnsureInitialized()
@@ -32,7 +32,7 @@ namespace Nethermind.Network
             if (_wasInitialized) return;
             _wasInitialized = true;
 
-            Hash256 genesisHash = syncServer.Genesis!.Hash;
+            Hash256 genesisHash = syncServer.Genesis?.Hash ?? throw new InvalidOperationException("Cannot initialize fork info before genesis is available");
 
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;

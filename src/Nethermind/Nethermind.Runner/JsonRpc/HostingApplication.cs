@@ -18,7 +18,7 @@ internal sealed class HostingApplication(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<HostingApplication>();
     private readonly RequestDelegate _application = application;
-    private readonly HttpContextFactory? _httpContextFactory = httpContextFactory;
+    private readonly HttpContextFactory _httpContextFactory = httpContextFactory;
 
     // Set up the request
     public Context CreateContext(IFeatureCollection contextFeatures)
@@ -40,8 +40,7 @@ internal sealed class HostingApplication(
         }
 
         HttpContext httpContext;
-        DefaultHttpContext defaultHttpContext = (DefaultHttpContext?)hostContext.HttpContext;
-        if (defaultHttpContext is null)
+        if (hostContext.HttpContext is not DefaultHttpContext defaultHttpContext)
         {
             httpContext = _httpContextFactory.Create(contextFeatures);
             hostContext.HttpContext = httpContext;
@@ -63,7 +62,8 @@ internal sealed class HostingApplication(
     {
         HttpContext httpContext = context.HttpContext!;
 
-        _httpContextFactory.Dispose((DefaultHttpContext)httpContext);
+        if (httpContext is DefaultHttpContext defaultHttpContext)
+            _httpContextFactory.Dispose(defaultHttpContext);
 
         if (_httpContextFactory.HttpContextAccessor != null)
             // Clear the HttpContext if the accessor was used. It's likely that the lifetime extends

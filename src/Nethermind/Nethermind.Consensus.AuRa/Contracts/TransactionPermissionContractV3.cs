@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             return new object[]
             {
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, gasPrice, tx.Data.AsArray() ?? []
+                tx.SenderAddress!, tx.To ?? Address.Zero, tx.Value, gasPrice, tx.Data.AsArray() ?? []
             };
         }
 

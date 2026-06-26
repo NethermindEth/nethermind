@@ -13,7 +13,7 @@ namespace Nethermind.Network.Rlpx
             PacketType = (byte)packet.PacketType;
         }
 
-        public string Protocol { get; set; }
+        public string? Protocol { get; set; }
         public byte PacketType { get; set; }
 
         public ZeroPacket(IByteBuffer data) : base(data)

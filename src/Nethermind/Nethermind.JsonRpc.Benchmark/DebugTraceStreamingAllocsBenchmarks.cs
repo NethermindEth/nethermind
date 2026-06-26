@@ -27,11 +27,13 @@ public class DebugTraceStreamingAllocsBenchmarks
     private static readonly Action<GethLikeTxDirectStreamingTracer, Transaction?> _resetForNextTx =
         (Action<GethLikeTxDirectStreamingTracer, Transaction?>)Delegate.CreateDelegate(
             typeof(Action<GethLikeTxDirectStreamingTracer, Transaction?>),
-            typeof(GethLikeTxDirectStreamingTracer).GetMethod("ResetForNextTx", BindingFlags.Instance | BindingFlags.NonPublic)!);
+            typeof(GethLikeTxDirectStreamingTracer).GetMethod("ResetForNextTx", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new MissingMethodException(nameof(GethLikeTxDirectStreamingTracer), "ResetForNextTx"));
     private static readonly Action<GethLikeTxDirectStreamingTracer> _releaseResources =
         (Action<GethLikeTxDirectStreamingTracer>)Delegate.CreateDelegate(
             typeof(Action<GethLikeTxDirectStreamingTracer>),
-            typeof(GethLikeTxDirectStreamingTracer).GetMethod("ReleaseResources", BindingFlags.Instance | BindingFlags.NonPublic)!);
+            typeof(GethLikeTxDirectStreamingTracer).GetMethod("ReleaseResources", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new MissingMethodException(nameof(GethLikeTxDirectStreamingTracer), "ReleaseResources"));
 
     [GlobalSetup]
     public void Setup()

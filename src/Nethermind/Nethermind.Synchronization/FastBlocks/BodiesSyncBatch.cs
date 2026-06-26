@@ -5,11 +5,11 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncBatch(BlockInfo[] infos) : FastBlocksBatch
+    public class BodiesSyncBatch(BlockInfo?[] infos) : FastBlocksBatch
     {
         public BlockInfo?[] Infos { get; } = infos;
         public OwnedBlockBodies? Response { get; set; }
-        public override ulong? MinNumber => Infos[0].BlockNumber;
+        public override ulong? MinNumber => Infos[0]?.BlockNumber;
 
         public override void Dispose()
         {

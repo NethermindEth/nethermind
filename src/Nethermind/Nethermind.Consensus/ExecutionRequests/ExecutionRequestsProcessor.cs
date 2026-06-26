@@ -66,14 +66,18 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
             if (spec.WithdrawalRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7002ContractAddress, ref requests, _withdrawalTransaction,
+                Address withdrawalContractAddress = spec.Eip7002ContractAddress
+                    ?? throw new InvalidOperationException("EIP-7002 contract address is required when withdrawal requests are enabled.");
+                ReadRequests(block, state, withdrawalContractAddress, ref requests, _withdrawalTransaction,
                     ExecutionRequestType.WithdrawalRequest,
                     BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
             }
 
             if (spec.ConsolidationRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests, _consolidationTransaction,
+                Address consolidationContractAddress = spec.Eip7251ContractAddress
+                    ?? throw new InvalidOperationException("EIP-7251 contract address is required when consolidation requests are enabled.");
+                ReadRequests(block, state, consolidationContractAddress, ref requests, _consolidationTransaction,
                     ExecutionRequestType.ConsolidationRequest,
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
             }

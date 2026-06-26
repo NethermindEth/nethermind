@@ -25,21 +25,21 @@ public class BidTrace(
     public ulong Slot { get; set; } = slot;
 
     [JsonPropertyName("parent_hash")]
-    public Hash256 ParentHash { get; set; } = parentHash;
+    public Hash256 ParentHash { get; set; } = parentHash!;
 
     [JsonPropertyName("block_hash")]
-    public Hash256 BlockHash { get; set; } = blockHash;
+    public Hash256 BlockHash { get; set; } = blockHash!;
 
     [JsonPropertyName("builder_public_key")]
     [JsonConverter(typeof(PublicKeyConverter))]
-    public PublicKey BuilderPublicKey { get; set; } = builderPublicKey;
+    public PublicKey BuilderPublicKey { get; set; } = builderPublicKey!;
 
     [JsonPropertyName("proposer_public_key")]
     [JsonConverter(typeof(PublicKeyConverter))]
-    public PublicKey ProposerPublicKey { get; set; } = proposerPublicKey;
+    public PublicKey ProposerPublicKey { get; set; } = proposerPublicKey!;
 
     [JsonPropertyName("proposer_fee_recipient")]
-    public Address ProposerFeeRecipient { get; set; } = proposerFeeRecipient;
+    public Address ProposerFeeRecipient { get; set; } = proposerFeeRecipient!;
 
     [JsonPropertyName("gas_limit")]
     public ulong GasLimit { get; set; } = gasLimit;

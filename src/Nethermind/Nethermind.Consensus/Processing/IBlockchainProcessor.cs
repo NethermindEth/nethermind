@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Processing
 
         public class InvalidBlockEventArgs : EventArgs
         {
-            public Block InvalidBlock { get; init; }
+            public Block InvalidBlock { get; init; } = null!;
         }
     }
 }

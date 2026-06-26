@@ -19,9 +19,9 @@ namespace Nethermind.State.Proofs
     [JsonConverter(typeof(ProofJsonConverter))]
     public class AccountProof
     {
-        public Address? Address { get; set; }
+        public Address Address { get; set; } = null!;
 
-        public byte[][]? Proof { get; set; }
+        public byte[][] Proof { get; set; } = [];
 
         public UInt256 Balance { get; set; }
 
@@ -31,7 +31,7 @@ namespace Nethermind.State.Proofs
 
         public Hash256 StorageRoot { get; set; } = Keccak.EmptyTreeHash;
 
-        public StorageProof[]? StorageProofs { get; set; }
+        public StorageProof[] StorageProofs { get; set; } = [];
     }
 
     /// <summary>

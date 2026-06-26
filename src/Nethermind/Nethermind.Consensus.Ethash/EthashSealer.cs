@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Ethash
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
 
-        public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
+        public async Task<Block?> SealBlock(Block processed, CancellationToken cancellationToken)
         {
             Block? block = await MineAsync(cancellationToken, processed, null).ContinueWith(t =>
             {
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Ethash
 
         public bool CanSeal(ulong blockNumber, Hash256 parentHash) => true;
 
-        public Address Address => _signer.Address;
+        public Address Address => _signer.Address!;
 
         internal async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {

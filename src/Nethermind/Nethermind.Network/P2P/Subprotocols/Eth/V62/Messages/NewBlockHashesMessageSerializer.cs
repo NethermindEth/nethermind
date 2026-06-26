@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("New block hashes message decoding returned null.");
 
         public int GetLength(NewBlockHashesMessage message, out int contentLength)
         {
@@ -52,7 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;
 
-                (Hash256, ulong) result = (c.DecodeKeccak(), c.DecodeULong());
+                (Hash256, ulong) result = (c.DecodeKeccakNonNull(), c.DecodeULong());
 
                 c.Check(checkPosition);
                 return result;

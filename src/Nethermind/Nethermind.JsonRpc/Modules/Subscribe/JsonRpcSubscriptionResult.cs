@@ -5,15 +5,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class JsonRpcSubscriptionResult
     {
-        public string Subscription { get; set; }
+        public string Subscription { get; set; } = null!;
 
-        public object Result { get; set; }
+        public object? Result { get; set; }
     }
 
     public class JsonRpcSubscriptionResult<T>
     {
-        public string Subscription { get; set; }
+        public string Subscription { get; set; } = null!;
 
-        public T Result { get; set; }
+        public T Result { get; set; } = default!;
     }
 }

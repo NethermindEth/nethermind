@@ -5,6 +5,7 @@ using System;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
 using DotNetty.Common;
+using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -12,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
+using NSubstitute;
 
 namespace Nethermind.Network.Benchmarks
 {
@@ -24,13 +26,13 @@ namespace Nethermind.Network.Benchmarks
         private IByteBuffer _encoderBuffer = PooledByteBufferAllocator.Default.Buffer(MemorySizes.MiB);
         private IByteBuffer _outputBuffer = PooledByteBufferAllocator.Default.Buffer(MemorySizes.MiB);
 
-        private NewBlockMessageSerializer _newBlockMessageSerializer;
-        private Block _block;
-        private TestZeroSplitter _zeroSplitter;
-        private TestZeroEncoder _zeroEncoder;
-        private TestZeroSnappy _zeroSnappyEncoder;
-        private NewBlockMessage _newBlockMessage;
-        private MessageSerializationService _serializationService;
+        private NewBlockMessageSerializer _newBlockMessageSerializer = null!;
+        private Block _block = null!;
+        private TestZeroSplitter _zeroSplitter = null!;
+        private TestZeroEncoder _zeroEncoder = null!;
+        private TestZeroSnappy _zeroSnappyEncoder = null!;
+        private NewBlockMessage _newBlockMessage = null!;
+        private MessageSerializationService _serializationService = null!;
 
         [GlobalSetup]
         public void Setup()
@@ -71,12 +73,12 @@ namespace Nethermind.Network.Benchmarks
         private class TestZeroEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
             : ZeroFrameEncoder(frameCipher, frameMacProcessor)
         {
-            public void Encode(IByteBuffer message, IByteBuffer buffer) => base.Encode(null, message, buffer);
+            public void Encode(IByteBuffer message, IByteBuffer buffer) => base.Encode(CreateContext(), message, buffer);
         }
 
         private class TestZeroSplitter : ZeroPacketSplitter
         {
-            public void Encode(IByteBuffer input, IByteBuffer output) => base.Encode(null, input, output);
+            public void Encode(IByteBuffer input, IByteBuffer output) => base.Encode(CreateContext(), input, output);
         }
 
         public class TestZeroSnappy : ZeroSnappyEncoder
@@ -86,7 +88,14 @@ namespace Nethermind.Network.Benchmarks
             {
             }
 
-            public void TestEncode(IByteBuffer input, IByteBuffer output) => Encode(null, input, output);
+            public void TestEncode(IByteBuffer input, IByteBuffer output) => Encode(CreateContext(), input, output);
+        }
+
+        private static IChannelHandlerContext CreateContext()
+        {
+            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+            context.Allocator.Returns(PooledByteBufferAllocator.Default);
+            return context;
         }
 
         private void Check()

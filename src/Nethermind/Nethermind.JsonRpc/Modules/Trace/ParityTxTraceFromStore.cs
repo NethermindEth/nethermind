@@ -61,23 +61,23 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         [JsonConverter(typeof(ParityTraceActionConverter))]
-        public ParityTraceAction Action { get; set; }
+        public ParityTraceAction Action { get; set; } = null!;
 
-        public Hash256 BlockHash { get; set; }
+        public Hash256? BlockHash { get; set; }
 
         [JsonConverter(typeof(ULongRawJsonConverter))]
         public ulong BlockNumber { get; set; }
 
-        public ParityTraceResult Result { get; set; }
+        public ParityTraceResult? Result { get; set; }
 
         public int Subtraces { get; set; }
 
         public CappedArray<int> TraceAddress { get; set; } = default;
 
-        public Hash256 TransactionHash { get; set; }
+        public Hash256? TransactionHash { get; set; }
 
         public int? TransactionPosition { get; set; }
-        public string Type { get; set; }
+        public string? Type { get; set; }
         public string? Error { get; set; }
     }
 }

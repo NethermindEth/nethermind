@@ -122,7 +122,7 @@ public class SnapServerTest
     {
         using IWriteBatch batch = context.BeginWriteBatch();
         foreach (PathWithAccount pwa in TestItem.Tree.AccountsWithPaths)
-            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account);
+            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account!);
     }
 
     private static void FillMultipleAccounts(ISnapServerContext context, int count)
@@ -224,7 +224,7 @@ public class SnapServerTest
         {
             Assert.That(result, Is.EqualTo(expectedResult));
             // On success the stale empty storage root must be replaced by the verified one.
-            Assert.That(stale.Account.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
+            Assert.That(stale.Account!.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
         }
     }
 
@@ -269,7 +269,7 @@ public class SnapServerTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(stale.Account.StorageRoot, Is.EqualTo(storageRoot));
+            Assert.That(stale.Account!.StorageRoot, Is.EqualTo(storageRoot));
         }
     }
 
@@ -303,7 +303,7 @@ public class SnapServerTest
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             // Absent account: nothing adopted, storage root unchanged.
-            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(stale.Account!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
         }
     }
 

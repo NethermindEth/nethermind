@@ -23,10 +23,10 @@ namespace Nethermind.Wallet
         private readonly Dictionary<Address, bool> _isUnlocked = [];
         private readonly Dictionary<Address, PrivateKey> _keys = [];
         private readonly Dictionary<Address, string> _passwords = [];
-        public event EventHandler<AccountLockedEventArgs> AccountLocked;
-        public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        public event EventHandler<AccountLockedEventArgs>? AccountLocked;
+        public event EventHandler<AccountUnlockedEventArgs>? AccountUnlocked;
 
-        public DevWallet(IWalletConfig walletConfig, ILogManager logManager)
+        public DevWallet(IWalletConfig? walletConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger<DevWallet>() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -96,11 +96,11 @@ namespace Nethermind.Wallet
         }
         public bool IsUnlocked(Address address) => _isUnlocked.TryGetValue(address, out bool unlocked) && unlocked;
 
-        private bool CheckPassword(Address address, SecureString passphrase) => _passwords[address] == AnyPassword || passphrase?.Unsecure() == _passwords[address];
+        private bool CheckPassword(Address address, SecureString? passphrase) => _passwords[address] == AnyPassword || passphrase?.Unsecure() == _passwords[address];
 
-        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature? signature)
         {
-            if (!_isUnlocked.TryGetValue(address, out bool unlocked) || !unlocked || !_keys.TryGetValue(address, out PrivateKey key))
+            if (!_isUnlocked.TryGetValue(address, out bool unlocked) || !unlocked || !_keys.TryGetValue(address, out PrivateKey? key))
             {
                 signature = null;
                 return false;
@@ -110,10 +110,10 @@ namespace Nethermind.Wallet
             return true;
         }
 
-        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature? signature)
         {
             // Dev accounts created with AnyPassword accept any passphrase here (see CheckPassword) — dev-only behavior.
-            if (!_passwords.ContainsKey(address) || !CheckPassword(address, passphrase) || !_keys.TryGetValue(address, out PrivateKey key))
+            if (!_passwords.ContainsKey(address) || !CheckPassword(address, passphrase) || !_keys.TryGetValue(address, out PrivateKey? key))
             {
                 signature = null;
                 return false;

@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ulong _posdaoTransition = posdaoTransition;
         private readonly bool _forSealing = forSealing;
 
-        public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, ulong? startBlock = null)
+        public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader? parentHeader = null, ulong? startBlock = null)
         {
             IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyTxProcessorSource, _signer);
             IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _signer);

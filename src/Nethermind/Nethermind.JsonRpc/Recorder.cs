@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
         private int _recorderFileCounter;
-        private string _currentRecorderFilePath;
+        private string? _currentRecorderFilePath;
         private int _currentRecorderFileLength;
         private bool _isEnabled = true;
         private readonly Lock _recorderSync = new();
@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc
                     }
 
                     string singleLineRequest = data.Replace(Environment.NewLine, string.Empty);
-                    _fileSystem.File.AppendAllText(_currentRecorderFilePath, singleLineRequest + Environment.NewLine);
+                    _fileSystem.File.AppendAllText(_currentRecorderFilePath!, singleLineRequest + Environment.NewLine);
                 }
             }
         }

@@ -47,6 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnPeerAdded(object? sender, PeerEventArgs args)
         {
+            if (args.Node is null) return;
             (string localHost, string remoteAddress, PublicKey? peerId) = GetPeerEventInfo(args.Node);
             PeerEventResponse response = new()
             {
@@ -66,6 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnPeerRemoved(object? sender, PeerEventArgs args)
         {
+            if (args.Node is null) return;
             (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
             PeerEventResponse response = new()
             {
@@ -85,6 +87,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnMsgReceived(object? sender, PeerEventArgs args)
         {
+            if (args.Node is null || args.MessageInfo is null) return;
             (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
             PeerEventResponse response = new()
             {
@@ -107,6 +110,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnMsgDelivered(object? sender, PeerEventArgs args)
         {
+            if (args.Node is null || args.MessageInfo is null) return;
             (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
             PeerEventResponse response = new()
             {
@@ -144,7 +148,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             args.Session.MsgReceived += OnMsgReceived;
         }
 
-        private void OnSessionDisconnected(object sender, ISession session, DisconnectEventArgs e)
+        private void OnSessionDisconnected(object? sender, ISession session, DisconnectEventArgs e)
         {
             session.MsgDelivered -= OnMsgDelivered;
             session.MsgReceived -= OnMsgReceived;

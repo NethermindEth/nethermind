@@ -16,7 +16,7 @@ public class BoostRelay(IHttpClient httpClient, string relayUrl) : IBoostRelay
     private readonly IHttpClient _httpClient = httpClient;
     private readonly string _relayUrl = relayUrl;
 
-    public Task<BoostPayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) =>
+    public Task<BoostPayloadAttributes?> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) =>
         _httpClient.PostJsonAsync<BoostPayloadAttributes>(GetUri(_relayUrl, GetPayloadAttributesPath), payloadAttributes, cancellationToken);
 
     public Task SendPayload(BoostExecutionPayloadV1 executionPayloadV1, CancellationToken cancellationToken) =>

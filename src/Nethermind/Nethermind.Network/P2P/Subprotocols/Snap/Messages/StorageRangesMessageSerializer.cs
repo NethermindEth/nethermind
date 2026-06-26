@@ -76,10 +76,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                     {
                         int length = innerCtx.ReadSequenceLength();
                         int checkPosition = innerCtx.Position + length;
-                        Hash256 path = innerCtx.DecodeKeccak();
+                        ValueHash256 path = innerCtx.DecodeValueKeccak() ?? throw new RlpException("Unexpected RLP null while decoding storage path.");
                         byte[] value = innerCtx.DecodeByteArray(StorageSlotValueRlpLimit);
                         innerCtx.Check(checkPosition);
-                        return new PathWithStorageSlot(in path.ValueHash256, value);
+                        return new PathWithStorageSlot(in path, value);
                     }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit), limit: SnapMessageLimits.StorageRangeAccountsRlpLimit);
                 message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.StorageRangeProofsRlpLimit);
                 memoryOwner = null;

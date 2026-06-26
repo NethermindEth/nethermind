@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>

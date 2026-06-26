@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
-            const long rejectedStepDrift = 4;
+            const ulong rejectedStepDrift = 4;
 
             if (header.AuRaSignature is null)
             {
@@ -58,17 +58,18 @@ namespace Nethermind.Consensus.AuRa
             else
             {
                 ulong step = header.AuRaStep.Value;
+                ulong parentStep = parent.AuRaStep ?? throw new InvalidOperationException("Parent block doesn't have AuRaStep specified.");
 
-                if (step == parent.AuRaStep)
+                if (step == parentStep)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary!, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
-                else if (step < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
+                else if (step < parentStep && header.Number >= _parameters.ValidateStepTransition)
                 {
                     if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is lesser than parents step {parent.AuRaStep}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary!, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
 
@@ -76,7 +77,7 @@ namespace Nethermind.Consensus.AuRa
                 // no worries we do this validation later before processing the block
                 if (parent.Hash == _blockTree.Head?.Hash)
                 {
-                    if (!_validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), header.Beneficiary, step, out Address expectedAddress))
+                    if (!_validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), header.Beneficiary!, step, out Address? expectedAddress))
                     {
                         if (_logger.IsError) _logger.Error($"Proposed block is not valid {header.ToString(BlockHeader.Format.FullHashAndNumber)}. Incorrect proposer at step {step}, expected {expectedAddress}, but found {header.Beneficiary}.");
                         return false;
@@ -88,7 +89,7 @@ namespace Nethermind.Consensus.AuRa
                 if (step > currentStep + rejectedStepDrift)
                 {
                     if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is from the future. Current step is {currentStep}.");
-                    ReportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.FutureBlock);
+                    ReportingValidator.ReportBenign(header.Beneficiary!, header.Number, IReportingValidator.BenignCause.FutureBlock);
                     return false;
                 }
 
@@ -111,7 +112,7 @@ namespace Nethermind.Consensus.AuRa
                 if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {step} in block {header.Number}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary!, header.Number, [], IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
                 }
 
                 if (header.Number >= _parameters.ValidateScoreTransition)
@@ -122,7 +123,7 @@ namespace Nethermind.Consensus.AuRa
                         return false;
                     }
 
-                    UInt256 expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, step, 0);
+                    UInt256 expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(parentStep, step, 0);
                     if (header.Difficulty != expectedDifficulty)
                     {
                         if (_logger.IsError) _logger.Error($"Invalid difficulty for block {header.Number}, hash {header.Hash}, expected value {expectedDifficulty}, but found {header.Difficulty}.");
@@ -138,7 +139,7 @@ namespace Nethermind.Consensus.AuRa
         {
             if (header.IsGenesis) return true;
 
-            Address author = GetSealer(header);
+            Address? author = GetSealer(header);
 
             if (author != header.Beneficiary)
             {
@@ -151,7 +152,7 @@ namespace Nethermind.Consensus.AuRa
             return true;
         }
 
-        private Address GetSealer(BlockHeader header)
+        private Address? GetSealer(BlockHeader header)
         {
             Signature signature = new(header.AuRaSignature);
             signature.V += Signature.VOffset;
@@ -169,7 +170,7 @@ namespace Nethermind.Consensus.AuRa
                 public Hash256 Block { get; } = block;
 
                 public bool Equals(AuthorBlock other) => Equals(Author, other.Author) && Equals(Block, other.Block);
-                public override bool Equals(object obj) => obj is AuthorBlock other && Equals(other);
+                public override bool Equals(object? obj) => obj is AuthorBlock other && Equals(other);
                 public override int GetHashCode() => HashCode.Combine(Author, Block);
                 public static bool operator ==(AuthorBlock obj1, AuthorBlock obj2) => obj1.Equals(obj2);
                 public static bool operator !=(AuthorBlock obj1, AuthorBlock obj2) => !obj1.Equals(obj2);
@@ -179,14 +180,15 @@ namespace Nethermind.Consensus.AuRa
             {
                 public ulong Step { get; } = step;
                 public AuthorBlock? AuthorBlock { get; set; } = authorBlock;
-                public ISet<AuthorBlock> AuthorBlocks { get; set; }
+                public ISet<AuthorBlock>? AuthorBlocks { get; set; }
             }
 
             private class StepElementComparer : IComparer<AuthorBlockForStep>
             {
                 public static readonly StepElementComparer Instance = new();
 
-                public int Compare(AuthorBlockForStep x, AuthorBlockForStep y) => x.Step.CompareTo(y.Step);
+                public int Compare(AuthorBlockForStep? x, AuthorBlockForStep? y) =>
+                    x is null ? (y is null ? 0 : -1) : y is null ? 1 : x.Step.CompareTo(y.Step);
             }
 
             private readonly List<AuthorBlockForStep> _list
@@ -198,9 +200,9 @@ namespace Nethermind.Consensus.AuRa
             {
                 using McsLock.Disposable _ = _lock.Acquire();
 
-                ulong step = header.AuRaStep.Value;
-                Address author = header.Beneficiary;
-                Hash256 hash = header.Hash;
+                ulong step = header.AuRaStep ?? throw new InvalidOperationException("Block doesn't have AuRaStep specified.");
+                Address author = header.Beneficiary!;
+                Hash256 hash = header.Hash!;
                 int index = BinarySearch(step);
                 bool contains = index >= 0;
                 AuthorBlock item = new(author, hash);
@@ -215,7 +217,7 @@ namespace Nethermind.Consensus.AuRa
                         {
                             stepElement.AuthorBlocks = new HashSet<AuthorBlock>
                             {
-                                stepElement.AuthorBlock.Value
+                                stepElement.AuthorBlock!.Value
                             };
 
                             stepElement.AuthorBlock = null;

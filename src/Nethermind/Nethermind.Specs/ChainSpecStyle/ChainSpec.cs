@@ -16,12 +16,12 @@ namespace Nethermind.Specs.ChainSpecStyle
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
     {
-        public string Name { get; set; }
+        public string? Name { get; set; }
 
         /// <summary>
         /// Not used in Nethermind
         /// </summary>
-        public string DataDir { get; set; }
+        public string? DataDir { get; set; }
 
         public ulong NetworkId { get; set; }
 
@@ -30,15 +30,15 @@ namespace Nethermind.Specs.ChainSpecStyle
         public NetworkNode[] Bootnodes { get; set; } = [];
 
         public bool GenesisStateUnavailable { get; set; }
-        public Block Genesis { get; set; }
+        public Block? Genesis { get; set; }
 
-        public string SealEngineType { get; set; }
+        public string SealEngineType { get; set; } = null!;
 
-        public ChainParameters Parameters { get; set; }
+        public ChainParameters Parameters { get; set; } = null!;
 
-        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; }
+        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; } = null!;
 
-        public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
+        public Dictionary<Address, ChainSpecAllocation>? Allocations { get; set; }
 
         public long? FixedDifficulty { get; set; }
 

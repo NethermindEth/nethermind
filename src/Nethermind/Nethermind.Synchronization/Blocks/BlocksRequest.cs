@@ -18,7 +18,7 @@ public sealed class BlocksRequest : IDisposable
     public IOwnedReadOnlyList<TxReceipt[]?>? Receipts { get; set; }
 
     public int? NumberOfLatestBlocksToBeIgnored { get; }
-    public Task DownloadTask { get; set; }
+    public Task DownloadTask { get; set; } = Task.CompletedTask;
     public int AllCounts => BodiesRequests.Count + BlockAccessListsRequests.Count + ReceiptsRequests.Count;
     private bool _disposed;
 

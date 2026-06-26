@@ -115,7 +115,7 @@ namespace Nethermind.Consensus.Producers
             else
             {
                 bool dontSeal = (flags & IBlockProducer.Flags.DontSeal) != 0;
-                if (dontSeal || Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                if (dontSeal || (parentHeader.Hash is { } parentHash && Sealer.CanSeal(parentHeader.Number + 1, parentHash)))
                 {
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
                     return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes, flags);
@@ -145,9 +145,9 @@ namespace Nethermind.Consensus.Producers
                     }
                     else
                     {
-                        if ((flags & IBlockProducer.Flags.DontSeal) != 0) return Task.FromResult(processedBlock);
+                        if ((flags & IBlockProducer.Flags.DontSeal) != 0) return Task.FromResult<Block?>(processedBlock);
 
-                        return SealBlock(processedBlock, parent, token).ContinueWith((Func<Task<Block?>, Block?>)(t =>
+                        return SealBlock(processedBlock, parent, token).ContinueWith(t =>
                         {
                             if (t.IsCompletedSuccessfully)
                             {
@@ -178,7 +178,7 @@ namespace Nethermind.Consensus.Producers
                             }
 
                             return null;
-                        }), CancellationToken.None);
+                        }, CancellationToken.None);
                     }
                 }
             }
@@ -186,7 +186,7 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
+        protected virtual Task<Block?> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
         protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,

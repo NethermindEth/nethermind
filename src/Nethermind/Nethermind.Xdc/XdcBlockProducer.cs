@@ -44,7 +44,7 @@ internal class XdcBlockProducer(
     protected readonly ISpecProvider specProvider = specProvider;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
-    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
+    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes)
     {
         if (parent is not XdcBlockHeader xdcParent)
             throw new ArgumentException("Only XDC header are supported.");
@@ -55,7 +55,8 @@ internal class XdcBlockProducer(
         if (payloadAttributes is XdcPayloadAttributes xdcPayloadAttributes)
         {
             currentRound = xdcPayloadAttributes.Round;
-            highestCert = xdcPayloadAttributes.QuorumCertificate;
+            highestCert = xdcPayloadAttributes.QuorumCertificate
+                ?? throw new InvalidOperationException("XDC payload attributes must include a quorum certificate.");
         }
 
         //TODO maybe some sanity checks here for round and hash
@@ -80,7 +81,9 @@ internal class XdcBlockProducer(
 
         if (epochSwitchManager.IsEpochSwitchAtBlock(xdcBlockHeader))
         {
-            (Address[] masternodes, Address[] penalties) = masternodesCalculator.CalculateNextEpochMasternodes(xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
+            Hash256 parentHash = xdcBlockHeader.ParentHash
+                ?? throw new InvalidOperationException($"Parent hash is missing for block {xdcBlockHeader.Number}.");
+            (Address[] masternodes, Address[] penalties) = masternodesCalculator.CalculateNextEpochMasternodes(xdcBlockHeader.Number, parentHash, spec);
             xdcBlockHeader.Validators = new byte[masternodes.Length * Address.Size];
 
             for (int i = 0; i < masternodes.Length; i++)

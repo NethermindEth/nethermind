@@ -15,7 +15,7 @@ namespace Nethermind.Benchmarks.State
         private static readonly UInt256 _index = new(0, 1, 2, 3);
         private static readonly byte[] _value = { 17, 19, 23 };
 
-        private StorageTree _tree;
+        private StorageTree _tree = null!;
 
         [GlobalSetup]
         public void Setup() => _tree = new StorageTree(NullTrieStore.Instance, NullLogManager.Instance);

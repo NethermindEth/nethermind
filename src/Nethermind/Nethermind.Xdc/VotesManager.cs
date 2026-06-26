@@ -119,7 +119,7 @@ internal class VotesManager(
             return Task.CompletedTask;
         }
 
-        EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(proposedHeader);
+        EpochSwitchInfo? epochInfo = _epochSwitchManager.GetEpochSwitchInfo(proposedHeader);
         if (epochInfo is null)
         {
             //Unknown epoch switch info, cannot process vote
@@ -163,13 +163,33 @@ internal class VotesManager(
             if (kvp.Key <= round) _qcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
-    public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>
+    public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, [NotNullWhen(false)] out string? error) =>
         VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc, out error);
 
-    public bool VerifyVotingRules(XdcBlockHeader header, [NotNullWhen(false)] out string? error) =>
-        VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert, out error);
+    public bool VerifyVotingRules(XdcBlockHeader header, [NotNullWhen(false)] out string? error)
+    {
+        if (header.Hash is not { } headerHash)
+        {
+            error = $"Block {header.Number} is missing a hash.";
+            return false;
+        }
 
-    public bool VerifyVotingRules(Hash256 blockHash, ulong blockNumber, ulong roundNumber, QuorumCertificate qc, out string? error)
+        if (header.ExtraConsensusData is not { } extraConsensusData)
+        {
+            error = $"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data.";
+            return false;
+        }
+
+        if (extraConsensusData.QuorumCert is not { } quorumCert)
+        {
+            error = $"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} has no quorum certificate.";
+            return false;
+        }
+
+        return VerifyVotingRules(headerHash, header.Number, extraConsensusData.BlockRound, quorumCert, out error);
+    }
+
+    public bool VerifyVotingRules(Hash256 blockHash, ulong blockNumber, ulong roundNumber, QuorumCertificate qc, [NotNullWhen(false)] out string? error)
     {
         // _highestVotedRound is null until a vote is cast; once set, any round <= it is rejected.
         if (_highestVotedRound.HasValue && _ctx.CurrentRound <= _highestVotedRound.Value)
@@ -235,11 +255,13 @@ internal class VotesManager(
     {
         if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(vote.GapNumber);
+        Snapshot? snapshot = _snapshotManager.GetSnapshotByGapNumber(vote.GapNumber);
         if (snapshot is null) return false;
         // Verify message signature
-        vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
-        return snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
+        Address? signer = vote.Signer ?? _ethereumEcdsa.RecoverVoteSigner(vote);
+        if (signer is null) return false;
+        vote.Signer = signer;
+        return snapshot.NextEpochCandidates.Any(x => x == signer);
     }
 
     private void BroadcastVote(Vote vote)
@@ -271,7 +293,10 @@ internal class VotesManager(
             if (_blockTree.FindHeader(nextBlockHash) is not XdcBlockHeader parentHeader)
                 return false;
 
-            nextBlockHash = parentHeader.ParentHash;
+            if (parentHeader.ParentHash is not { } parentHash)
+                return false;
+
+            nextBlockHash = parentHash;
         }
 
         return nextBlockHash == ancestorBlockInfo.Hash;
@@ -283,10 +308,11 @@ internal class VotesManager(
         List<Signature> signatures = [];
         foreach (Vote vote in votes)
         {
-            vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
+            Address? signer = vote.Signer ?? _ethereumEcdsa.RecoverVoteSigner(vote);
 
-            if (masternodeSet.Contains(vote.Signer))
+            if (signer is not null && vote.Signature is not null && masternodeSet.Contains(signer))
             {
+                vote.Signer = signer;
                 signatures.Add(vote.Signature);
             }
         }
@@ -316,7 +342,14 @@ internal class VotesManager(
         string? localError = null; // concurrent "overwrite" is ok, no need to synchronize
         Parallel.ForEach(signatures, (s, state) =>
         {
-            Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
+            Address? signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
+            if (signer is null)
+            {
+                localError = "Certificate contains an unrecoverable signature";
+                state.Stop();
+                return;
+            }
+
             ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 
             if (Unsafe.IsNullRef(ref signCount))

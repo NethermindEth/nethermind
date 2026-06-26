@@ -79,7 +79,7 @@ namespace Nethermind.Consensus.AuRa
             return processedBlock;
         }
 
-        protected override Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token)
+        protected override Task<Block?> SealBlock(Block block, BlockHeader parent, CancellationToken token)
         {
             // if (block.Number < EmptyStepsTransition)
             _reportingValidator.TryReportSkipped(block.Header, parent);

@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 ? []
                 : _getData(_localDataSource.Data) ?? [];
 
-            public event EventHandler Changed
+            public event EventHandler? Changed
             {
                 add { _localDataSource.Changed += value; }
                 remove { _localDataSource.Changed -= value; }

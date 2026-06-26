@@ -29,9 +29,9 @@ namespace Nethermind.Network.Benchmarks
 
         public int ReferenceCount { get; }
 
-        public int CompareTo(IByteBuffer other) => throw new NotImplementedException();
+        public int CompareTo(IByteBuffer? other) => throw new NotImplementedException();
 
-        public bool Equals(IByteBuffer other) => throw new NotImplementedException();
+        public bool Equals(IByteBuffer? other) => throw new NotImplementedException();
 
         public IByteBuffer AdjustCapacity(int newCapacity) => throw new NotImplementedException();
 
@@ -353,7 +353,7 @@ namespace Nethermind.Network.Benchmarks
 
         public int Capacity { get; } = int.MaxValue;
         public int MaxCapacity { get; } = int.MaxValue;
-        public IByteBufferAllocator Allocator { get; }
+        public IByteBufferAllocator Allocator { get; } = UnpooledByteBufferAllocator.Default;
         public bool IsDirect { get; }
         public int ReaderIndex { get; }
         public int WriterIndex { get; }

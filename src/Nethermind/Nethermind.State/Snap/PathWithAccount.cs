@@ -11,16 +11,16 @@ namespace Nethermind.State.Snap
     {
         public PathWithAccount() { }
 
-        public PathWithAccount(ValueHash256 path, Account account)
+        public PathWithAccount(ValueHash256 path, Account? account)
         {
             Path = path;
             Account = account;
         }
 
         public ValueHash256 Path { get; set; }
-        public Account Account { get; set; }
+        public Account? Account { get; set; }
 
         public byte[] ToRlpValue() =>
-            (Account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(Account)).Bytes;
+            Account is null ? [] : (Account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(Account)).Bytes;
     }
 }

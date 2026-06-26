@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Contracts
             AbiDefinition = abiDefinition ?? new AbiDefinitionParser().Parse(GetType());
         }
 
-        protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, ulong gasLimit = DefaultContractGasLimit, BlockHeader header = null)
+        protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, ulong gasLimit = DefaultContractGasLimit, BlockHeader? header = null)
             where T : Transaction, new() =>
             GenerateTransaction<T>(contractAddress, transactionData, sender, gasLimit);
 
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, ulong gasLimit, BlockHeader header, params object[] arguments) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, ulong gasLimit, BlockHeader? header, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(contractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit, header);
 
         /// <summary>
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="callAndRestore">Is it restore call.</param>
         /// <returns>Bytes with result.</returns>
         /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
-        protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, bool callAndRestore = false)
+        protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader? header, string functionName, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
 
@@ -177,27 +177,43 @@ namespace Nethermind.Blockchain.Contracts
             {
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, header, tracer);
+                    if (header is null)
+                    {
+                        transactionProcessor.CallAndRestore(transaction, tracer);
+                    }
+                    else
+                    {
+                        transactionProcessor.CallAndRestore(transaction, header, tracer);
+                    }
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, header, tracer);
+                    if (header is null)
+                    {
+                        transactionProcessor.Execute(transaction, tracer);
+                    }
+                    else
+                    {
+                        transactionProcessor.Execute(transaction, header, tracer);
+                    }
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;
             }
             catch (Exception e)
             {
-                throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned an exception '{e.Message}' at block {header.Number}.", e);
+                string blockNumber = header?.Number.ToString() ?? "<unknown>";
+                throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned an exception '{e.Message}' at block {blockNumber}.", e);
             }
 
             if (failure)
             {
-                throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned error '{tracer.Error}' at block {header.Number}.");
+                string blockNumber = header?.Number.ToString() ?? "<unknown>";
+                throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned error '{tracer.Error}' at block {blockNumber}.");
             }
             else
             {
-                return tracer.ReturnValue;
+                return tracer.ReturnValue ?? [];
             }
         }
         protected object[] DecodeReturnData(string functionName, byte[] data)
@@ -218,11 +234,11 @@ namespace Nethermind.Blockchain.Contracts
             }
         }
 
-        protected LogEntry GetSearchLogEntry(string eventName, byte[] data = null, params Hash256[] topics)
+        protected LogEntry GetSearchLogEntry(string eventName, byte[]? data = null, params Hash256[] topics)
         {
             Hash256[] eventNameTopic = { AbiDefinition.GetEvent(eventName).GetHash() };
             topics = topics.Length == 0 ? eventNameTopic : eventNameTopic.Concat(topics).ToArray();
-            return new LogEntry(ContractAddress, data ?? [], topics);
+            return new LogEntry(ContractAddress!, data ?? [], topics);
         }
 
         protected LogEntry GetSearchLogEntry(string eventName, params Hash256[] topics) => GetSearchLogEntry(eventName, null, topics);

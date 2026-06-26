@@ -32,7 +32,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         }
 
         public AckEip8Message Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
+            msgBytes.DeserializeRlp(Deserialize) ?? throw new RlpException("Ack EIP-8 message decoding returned null.");
 
         private static AckEip8Message Deserialize(ref RlpReader ctx)
         {

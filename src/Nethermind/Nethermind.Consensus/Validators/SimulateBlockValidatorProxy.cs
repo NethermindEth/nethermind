@@ -8,22 +8,22 @@ namespace Nethermind.Consensus.Validators;
 
 public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : IBlockValidator
 {
-    public bool ValidateWithdrawals(Block block, out string? error) =>
+    public bool ValidateWithdrawals(Block block, [NotNullWhen(false)] out string? error) =>
         baseBlockValidator.ValidateWithdrawals(block, out error);
 
-    public bool ValidateOrphanedBlock(Block block, out string? error) =>
+    public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) =>
         baseBlockValidator.ValidateOrphanedBlock(block, out error);
 
-    public bool ValidateSuggestedBlock(Block block, BlockHeader parentHeader, out string? error, bool validateHashes = true) =>
+    public bool ValidateSuggestedBlock(Block block, BlockHeader parentHeader, [NotNullWhen(false)] out string? error, bool validateHashes = true) =>
         baseBlockValidator.ValidateSuggestedBlock(block, parentHeader, out error, validateHashes);
 
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
     {
         error = "";
         return true;
     }
 
-    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
         baseBlockValidator.Validate(header, parent, isUncle, out error);
 
     public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>

@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttribute, bool filterSources)
         {
-            if (_contracts.TryGetForBlock(parent.Number + 1, out IRandomContract contract))
+            if (_contracts.TryGetForBlock(parent.Number + 1, out IRandomContract? contract))
             {
                 Transaction? tx = GetTransaction(contract, parent);
                 if (tx is not null)
@@ -80,12 +80,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
                             byte[] bytes;
                             try
                             {
-                                PrivateKey privateKey = _signer.Key;
+                                PrivateKey? privateKey = _signer.Key;
                                 if (privateKey is not null)
                                 {
                                     using (privateKey)
                                     {
-                                        bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
+                                        EciesDecryptionResult decryptionResult = _eciesCipher.Decrypt(privateKey, cipher);
+                                        if (!decryptionResult.Success)
+                                        {
+                                            throw new AuRaException("Could not decrypt random number.");
+                                        }
+
+                                        bytes = decryptionResult.PlainText;
                                     }
                                 }
                                 else
@@ -99,10 +105,16 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 // But we need to fallback to node key here when we upgrade version.
                                 // This is temporary code after all validators are upgraded we can remove it.
                                 using PrivateKey privateKey = _previousCryptoKey.Unprotect();
-                                bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
+                                EciesDecryptionResult decryptionResult = _eciesCipher.Decrypt(privateKey, cipher);
+                                if (!decryptionResult.Success)
+                                {
+                                    throw new AuRaException("Could not decrypt random number with previous crypto key.");
+                                }
+
+                                bytes = decryptionResult.PlainText;
                             }
 
-                            if (bytes?.Length != 32)
+                            if (bytes.Length != 32)
                             {
                                 // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.
                                 throw new AuRaException("Decrypted random number has the wrong length.");

@@ -32,10 +32,10 @@ namespace Nethermind.Network.Benchmarks
 {
     public class Eth62ProtocolHandlerBenchmarks
     {
-        private Eth62ProtocolHandler _handler;
-        private ZeroPacket _zeroPacket;
-        private MessageSerializationService _ser;
-        private TransactionsMessage _txMsg;
+        private Eth62ProtocolHandler _handler = null!;
+        private ZeroPacket _zeroPacket = null!;
+        private MessageSerializationService _ser = null!;
+        private TransactionsMessage _txMsg = null!;
 
         [GlobalSetup]
         public void SetUp()

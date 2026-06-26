@@ -35,7 +35,7 @@ public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLi
         IsTracingRewards = false;
     }
 
-    protected override ParityLikeTxTracer OnStart(Transaction? tx) => new(_block, tx,
+    protected override ParityLikeTxTracer OnStart(Transaction? tx) => new(_block!, tx,
         tx is not null && _typesByTransaction?.TryGetValue(tx.Hash!, out ParityTraceTypes types) == true
             ? types
             : _types);
@@ -46,7 +46,7 @@ public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLi
 
     public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
     {
-        ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
+        ParityLikeTxTrace? rewardTrace = TxTraces.LastOrDefault();
         if (rewardTrace is not null)
         {
             rewardTrace.Action = new ParityTraceAction

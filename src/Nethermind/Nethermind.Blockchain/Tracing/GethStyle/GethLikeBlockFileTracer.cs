@@ -32,7 +32,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _options = options ?? throw new ArgumentNullException(nameof(options));
 
-        string hash = _block.Hash.Bytes[..4].ToHexString(true);
+        string hash = _block.Hash!.Bytes[..4].ToHexString(true);
 
         _fileNameFormat = _fileSystem.Path.Combine(_fileSystem.Path.GetTempPath(), $"block_{hash}-{{0}}-{{1}}-{{2}}.jsonl");
 
@@ -54,7 +54,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 
-        JsonSerializer.Serialize(_jsonWriter,
+        JsonSerializer.Serialize(_jsonWriter!,
             new
             {
                 output = trace.ReturnValue.ToHexString(true),
@@ -72,7 +72,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         // Ensure the current file stream is disposed in case of API misuse
         DisposeFileStreamIfAny();
 
-        _fileNames.Add(GetFileName(tx.Hash));
+        _fileNames.Add(GetFileName(tx?.Hash));
 
         _file = _fileSystem.File.OpenWrite(_fileNames.Last());
         _jsonWriter = new(_file);
@@ -89,11 +89,11 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter = null;
     }
 
-    private void DumpTraceEntry(GethTxFileTraceEntry entry) => JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+    private void DumpTraceEntry(GethTxFileTraceEntry entry) => JsonSerializer.Serialize(_jsonWriter!, entry, _serializerOptions);
 
-    private string GetFileName(Hash256 txHash)
+    private string GetFileName(Hash256? txHash)
     {
-        string hash = txHash.Bytes[..4].ToHexString(true);
+        string hash = txHash?.Bytes[..4].ToHexString(true) ?? "unknown";
         int index = 0;
         string suffix = string.Create(8, Random.Shared,
             static (chars, rand) =>

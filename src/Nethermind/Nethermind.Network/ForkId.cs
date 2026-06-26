@@ -25,7 +25,7 @@ namespace Nethermind.Network
 
         public bool Equals(ForkId other) => ForkHash == other.ForkHash && Next == other.Next;
 
-        public override bool Equals(object obj) => obj is ForkId other && Equals(other);
+        public override bool Equals(object? obj) => obj is ForkId other && Equals(other);
 
         public override int GetHashCode() => HashCode.Combine(ForkHash.GetHashCode(), Next);
 

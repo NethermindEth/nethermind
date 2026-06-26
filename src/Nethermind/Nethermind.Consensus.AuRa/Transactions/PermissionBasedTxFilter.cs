@@ -39,7 +39,7 @@ PermissionBasedTxFilter.Cache cache,
 
         private (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) GetPermissions(Transaction tx, BlockHeader parentHeader)
         {
-            (Hash256 Hash, Address SenderAddress) key = (parentHeader.Hash, tx.SenderAddress);
+            (Hash256 Hash, Address SenderAddress) key = (parentHeader.Hash!, tx.SenderAddress!);
             return _cache.Permissions.TryGet(key, out (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) txCachedPermissions)
                 ? txCachedPermissions
                 : GetPermissionsFromContract(tx, parentHeader, key);
@@ -54,7 +54,7 @@ PermissionBasedTxFilter.Cache cache,
             bool shouldCache = true;
             bool contractExists = false;
 
-            ITransactionPermissionContract versionedContract = GetVersionedContract(parentHeader);
+            ITransactionPermissionContract? versionedContract = GetVersionedContract(parentHeader);
             if (versionedContract is null)
             {
                 if (_logger.IsError) _logger.Error("Unknown version of tx permissions contract is used.");

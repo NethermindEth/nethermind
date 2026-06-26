@@ -156,7 +156,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => base.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, Hash256[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => base.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
 
     public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
          ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists) =>

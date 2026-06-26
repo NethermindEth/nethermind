@@ -194,7 +194,7 @@ public class SyncDispatcherTests
 
         private int _pendingRequests;
 
-        public override async Task<TestBatch> PrepareRequest(CancellationToken token = default)
+        public override async Task<TestBatch?> PrepareRequest(CancellationToken token = default)
         {
             TestBatch testBatch;
             if (_returned.TryDequeue(out TestBatch? returned))

@@ -77,6 +77,6 @@ public class MergeSynchronizerModule : Module
 
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed), ConfigureBeaconHeader);
 
-    private void ConfigureBeaconHeader(ContainerBuilder scopeConfig) => scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch?>, BeaconHeadersSyncFeed>()
+    private void ConfigureBeaconHeader(ContainerBuilder scopeConfig) => scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, BeaconHeadersSyncFeed>()
             .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>();
 }

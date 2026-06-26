@@ -19,7 +19,7 @@ public class TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter, ILogManag
     {
         if (tx is not GeneratedTransaction)
         {
-            BlockHeader parentHeader = blockTree.Head?.Header;
+            BlockHeader? parentHeader = blockTree.Head?.Header;
             if (parentHeader is null) return AcceptTxResult.Accepted;
 
             AcceptTxResult isAllowed = txFilter.IsAllowed(tx, parentHeader, specProvider.GetSpec(parentHeader));

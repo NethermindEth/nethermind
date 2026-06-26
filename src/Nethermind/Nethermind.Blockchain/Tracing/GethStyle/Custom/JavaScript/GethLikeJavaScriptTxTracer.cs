@@ -55,7 +55,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _db = db;
         _ctx = ctx;
 
-        _tracer = engine.CreateTracer(options.Tracer);
+        _tracer = engine.CreateTracer(options.Tracer ?? throw new ArgumentException("JavaScript tracer name is required.", nameof(options)));
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
         if (_functions.HasFlag(TracerFunctions.setup))
         {
@@ -240,7 +240,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         // skip none
         foreach (TracerFunctions function in FastEnum.GetValues<TracerFunctions>().Skip(1))
         {
-            string name = FastEnum.GetName(function);
+            string name = FastEnum.GetName(function)!;
             if (functions.Contains(name))
             {
                 result |= function;

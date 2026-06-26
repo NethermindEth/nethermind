@@ -77,7 +77,7 @@ public partial class BlockTree
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
             ulong blockNumber = BestPersistedState ?? BestSuggestedHeader.Number;
-            ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
+            ChainLevelInfo? chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
             if (canonicalBlock is not null && canonicalBlock.WasProcessed)
             {
@@ -103,7 +103,7 @@ public partial class BlockTree
 
     private bool HeaderExists(ulong blockNumber, bool findBeacon = false)
     {
-        ChainLevelInfo level = LoadLevel(blockNumber);
+        ChainLevelInfo? level = LoadLevel(blockNumber);
         if (level is null)
         {
             return false;
@@ -131,7 +131,7 @@ public partial class BlockTree
 
     private bool BodyExists(ulong blockNumber, bool findBeacon = false)
     {
-        ChainLevelInfo level = LoadLevel(blockNumber);
+        ChainLevelInfo? level = LoadLevel(blockNumber);
         if (level is null)
         {
             return false;
@@ -197,10 +197,11 @@ public partial class BlockTree
 
     private void LoadBestKnown()
     {
+        Block? head = Head;
         ulong pivotOrLowest = Math.Max(SyncPivot.BlockNumber, LowestInsertedHeader?.Number ?? 0);
-        ulong left = (Head?.Number ?? 0) == 0
+        ulong left = head is null || head.Number == 0
             ? pivotOrLowest.SaturatingSub(1)
-            : Head.Number;
+            : head.Number;
 
         ulong right = left + BestKnownSearchLimit;
 
@@ -311,7 +312,7 @@ public partial class BlockTree
     private void LoadStartBlock()
     {
         Block? startBlock = null;
-        byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
+        byte[]? persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
         BestPersistedState = persistedNumberData is null ? null : new RlpReader(persistedNumberData).DecodeULong();
         ulong? persistedNumber = BestPersistedState;
         if (persistedNumber is not null)
@@ -322,7 +323,7 @@ public partial class BlockTree
         }
         else
         {
-            byte[] data = _blockInfoDb.Get(HeadAddressInDb);
+            byte[]? data = _blockInfoDb.Get(HeadAddressInDb);
             if (data is not null)
             {
                 startBlock = FindBlock(new Hash256(data), BlockTreeLookupOptions.None);
@@ -347,7 +348,7 @@ public partial class BlockTree
                 "An attempt to set a head block that has not been stored in the DB.");
         ChainLevelInfo? level = LoadLevel(headBlock.Number);
         int? index = level?.FindIndex(headHash);
-        if (!index.HasValue)
+        if (level is null || !index.HasValue)
         {
             throw new InvalidDataException("Head block data missing from chain info");
         }
@@ -367,9 +368,9 @@ public partial class BlockTree
 
         RlpReader pivotReader = new(pivotFromDb!);
         ulong updatedPivotBlockNumber = pivotReader.DecodeULong();
-        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak()!;
+        Hash256? updatedPivotBlockHash = pivotReader.DecodeKeccak();
 
-        if (updatedPivotBlockHash.IsZero)
+        if (updatedPivotBlockHash is null || updatedPivotBlockHash.IsZero)
         {
             _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;

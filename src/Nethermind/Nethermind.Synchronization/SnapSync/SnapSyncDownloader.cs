@@ -17,13 +17,13 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncDownloader(ILogManager? logManager) : ISyncDownloader<SnapSyncBatch>
     {
-        private readonly ILogger Logger = logManager.GetClassLogger<SnapSyncDownloader>();
+        private readonly ILogger Logger = (logManager ?? NullLogManager.Instance).GetClassLogger<SnapSyncDownloader>();
 
         public async Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
 
-            if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer handler))
+            if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? handler))
             {
                 try
                 {

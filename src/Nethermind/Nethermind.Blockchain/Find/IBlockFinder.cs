@@ -9,9 +9,9 @@ namespace Nethermind.Blockchain.Find
 {
     public interface IBlockFinder
     {
-        Hash256 HeadHash { get; }
+        Hash256? HeadHash { get; }
 
-        Hash256 GenesisHash { get; }
+        Hash256? GenesisHash { get; }
 
         Hash256? PendingHash { get; }
 
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindBlock(ulong blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 
-        public Block? FindGenesisBlock() => FindBlock(GenesisHash, BlockTreeLookupOptions.RequireCanonical);
+        public Block? FindGenesisBlock() => GenesisHash is null ? null : FindBlock(GenesisHash, BlockTreeLookupOptions.RequireCanonical);
 
         public Block? FindHeadBlock() => Head;
 
@@ -71,7 +71,9 @@ namespace Nethermind.Blockchain.Find
 
         public BlockHeader? FindHeader(ulong blockNumber) => FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 
-        public BlockHeader FindGenesisHeader() => FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception("Genesis header could not be found");
+        public BlockHeader FindGenesisHeader() => GenesisHash is not null
+            ? FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception("Genesis header could not be found")
+            : throw new Exception("Genesis header could not be found");
 
         public BlockHeader FindEarliestHeader() => FindGenesisHeader();
 
@@ -83,7 +85,7 @@ namespace Nethermind.Blockchain.Find
 
         public BlockHeader? FindSafeHeader() => SafeHash is null ? null : FindHeader(SafeHash, BlockTreeLookupOptions.None);
 
-        BlockHeader FindBestSuggestedHeader();
+        BlockHeader? FindBestSuggestedHeader();
 
         public Block? FindBlock(BlockParameter? blockParameter, bool headLimit = false)
         {
@@ -99,13 +101,13 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Earliest => FindEarliestBlock(),
                 BlockParameterType.Finalized => FindFinalizedBlock(),
                 BlockParameterType.Safe => FindSafeBlock(),
-                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= Head.Number
+                BlockParameterType.BlockNumber => headLimit && Head is not null && blockParameter.BlockNumber!.Value >= Head.Number
                     ? FindLatestBlock()
                     : FindBlock(blockParameter.BlockNumber!.Value,
                         blockParameter.RequireCanonical
                             ? BlockTreeLookupOptions.RequireCanonical
                             : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => blockParameter.BlockHash! == HeadHash
+                BlockParameterType.BlockHash => blockParameter.BlockHash == HeadHash
                     ? FindLatestBlock()
                     : FindBlock(blockParameter.BlockHash!, blockParameter.RequireCanonical
                         ? BlockTreeLookupOptions.RequireCanonical
@@ -128,7 +130,7 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Earliest => FindEarliestHeader(),
                 BlockParameterType.Finalized => FindFinalizedHeader(),
                 BlockParameterType.Safe => FindSafeHeader(),
-                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= Head.Number
+                BlockParameterType.BlockNumber => headLimit && Head is not null && blockParameter.BlockNumber!.Value >= Head.Number
                     ? FindLatestHeader()
                     : FindHeader(blockParameter.BlockNumber!.Value,
                         blockParameter.RequireCanonical

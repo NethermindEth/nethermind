@@ -219,7 +219,7 @@ public static partial class EvmInstructions
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.
-        Address inheritor = stack.PopAddress();
+        Address? inheritor = stack.PopAddress();
         if (inheritor is null)
             goto StackUnderflow;
 

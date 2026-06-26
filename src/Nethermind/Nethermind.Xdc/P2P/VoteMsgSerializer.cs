@@ -23,7 +23,7 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
     public VoteMsg Deserialize(IByteBuffer byteBuffer)
     {
         RlpReader ctx = new(byteBuffer.AsSpan());
-        Types.Vote vote = _voteDecoder.Decode(ref ctx, RlpBehaviors.None);
+        Types.Vote vote = _voteDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.None);
         byteBuffer.SkipBytes(ctx.Position);
         return new() { Vote = vote };
     }

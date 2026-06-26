@@ -9,7 +9,7 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
+    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods = null!;
 
     // Select and lazily build the opcode dispatch table for the active tracing mode, caching each
     // mode separately on the spec. Mirrors the std build minus its periodic PGO-driven cache refresh,

@@ -47,17 +47,17 @@ namespace Nethermind.JsonRpc.Modules.Parity
                  : _txPool.GetPendingTransactionsBySender(address);
             return ResultWrapper<ParityTransaction[]>.Success(enumerable
                 .Select(t => new ParityTransaction(t, Rlp.Encode(t).Bytes,
-                t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null)).ToArray());
+                t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature!, t.Hash!) : null)).ToArray());
         }
 
-        public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter) => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
+        public ResultWrapper<ReceiptForRpc[]?> parity_getBlockReceipts(BlockParameter blockParameter) => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
 
         public ResultWrapper<bool> parity_setEngineSigner(Address address, string password)
         {
-            (ProtectedPrivateKey privateKey, Result result) = _keyStore.GetProtectedKey(address, password.Secure());
+            (ProtectedPrivateKey? privateKey, Result result) = _keyStore.GetProtectedKey(address, password.Secure());
             if (result == Result.Success)
             {
-                _signerStore.SetSigner(privateKey);
+                _signerStore.SetSigner(privateKey!);
                 return ResultWrapper<bool>.Success(true);
             }
             else
@@ -75,11 +75,11 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public ResultWrapper<bool> parity_clearEngineSigner()
         {
-            _signerStore.SetSigner((ProtectedPrivateKey)null);
+            _signerStore.SetSigner((ProtectedPrivateKey?)null);
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<string> parity_enode() => ResultWrapper<string>.Success(_enode.ToString());
+        public ResultWrapper<string> parity_enode() => ResultWrapper<string>.Success(_enode.ToString() ?? string.Empty);
 
         public ResultWrapper<ParityNetPeers> parity_netPeers()
         {

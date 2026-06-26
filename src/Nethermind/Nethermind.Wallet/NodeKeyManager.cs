@@ -83,23 +83,24 @@ namespace Nethermind.Wallet
             if (_config.TestNodeKey is not null)
                 return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _config.KeyStoreDirectory, _cryptoRandom);
 
-            ProtectedPrivateKey key = LoadKeyForAccount(_config.EnodeAccount);
+            ProtectedPrivateKey? key = LoadKeyForAccount(_config.EnodeAccount);
             return key ?? LoadKeyFromFile();
         }
 
         public ProtectedPrivateKey LoadSignerKey() => LoadKeyForAccount(_config.BlockAuthorAccount) ?? LoadNodeKey();
 
-        private ProtectedPrivateKey LoadKeyForAccount(string account)
+        private ProtectedPrivateKey? LoadKeyForAccount(string? account)
         {
             if (!string.IsNullOrEmpty(account))
             {
                 Address blockAuthor = new(Bytes.FromHexString(account));
-                SecureString password = _passwordProvider.GetPassword(blockAuthor);
+                SecureString password = _passwordProvider.GetPassword(blockAuthor)
+                    ?? throw new InvalidOperationException($"Unable to load configured account {account}: no password was provided.");
 
                 try
                 {
-                    (ProtectedPrivateKey privateKey, Result result) = _keyStore.GetProtectedKey(new Address(account), password);
-                    if (result == Result.Success)
+                    (ProtectedPrivateKey? privateKey, Result result) = _keyStore.GetProtectedKey(new Address(account), password);
+                    if (result == Result.Success && privateKey is not null)
                     {
                         return privateKey;
                     }

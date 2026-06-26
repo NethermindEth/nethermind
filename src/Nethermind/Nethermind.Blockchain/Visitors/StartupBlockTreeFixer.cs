@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Visitors
         private readonly ulong _startNumber;
         private readonly ulong _blocksToLoad;
 
-        private ChainLevelInfo _currentLevel;
+        private ChainLevelInfo? _currentLevel;
         private ulong _currentLevelNumber;
         private ulong _blocksCheckedInCurrentLevel;
         private ulong _bodiesInCurrentLevel;
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Visitors
 
         public ulong EndLevelExclusive => _startNumber + _blocksToLoad;
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, ulong levelNumber,
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo? chainLevelInfo, ulong levelNumber,
             CancellationToken cancellationToken)
         {
             if (_currentLevelNumber >= EndLevelExclusive - 1)
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(LevelVisitOutcome.None);
         }
 
-        private void WarnAboutProcessingGaps(ChainLevelInfo chainLevelInfo)
+        private void WarnAboutProcessingGaps(ChainLevelInfo? chainLevelInfo)
         {
             bool thisLevelWasProcessed = chainLevelInfo?.BlockInfos.Any(static b => b.WasProcessed) ?? false;
             if (thisLevelWasProcessed)
@@ -165,7 +165,7 @@ namespace Nethermind.Blockchain.Visitors
 
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, ulong levelNumber,
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo? chainLevelInfo, ulong levelNumber,
             CancellationToken cancellationToken)
         {
             ulong expectedVisitedBlocksCount = (ulong)(_currentLevel?.BlockInfos.Length ?? 0);

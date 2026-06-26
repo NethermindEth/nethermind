@@ -8,7 +8,7 @@ namespace Nethermind.Benchmarks.Rlp
 {
     public class RlpDecodeKeccakBenchmark
     {
-        private byte[][] _scenarios;
+        private byte[][] _scenarios = null!;
 
         [GlobalSetup]
         public void GlobalSetup() => _scenarios = new[]
@@ -26,7 +26,7 @@ namespace Nethermind.Benchmarks.Rlp
         public Hash256 Current()
         {
             Serialization.Rlp.RlpReader ctx = new(_scenarios[ScenarioIndex]);
-            return ctx.DecodeKeccak();
+            return ctx.DecodeKeccakNonNull();
         }
     }
 }

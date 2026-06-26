@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 ? GetLatestValidatorInfo()
                 : FindValidatorInfo(blockNumber.Value);
 
-        public PendingValidators PendingValidators
+        public PendingValidators? PendingValidators
         {
             get
             {
@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             set => StorePendingValidators(value);
         }
 
-        private void StorePendingValidators(PendingValidators value)
+        private void StorePendingValidators(PendingValidators? value)
         {
             using ArrayPoolSpan<byte> rlp = PendingValidatorsDecoder.EncodeToArrayPoolSpan(value);
             _db.PutSpan(PendingValidatorsKey.Bytes, rlp);
@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
                 return bytes.IsEmpty
                     ? throw new InvalidOperationException($"No validator info for block number {blockNumber}.")
-                    : Rlp.Decode<ValidatorInfo>(bytes);
+                    : Rlp.Decode<ValidatorInfo>(bytes) ?? throw new RlpException("Validator info decoding returned null.");
             }
 
             return EmptyValidatorInfo;

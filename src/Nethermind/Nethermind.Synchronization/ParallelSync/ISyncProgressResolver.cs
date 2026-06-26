@@ -32,6 +32,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         void RecalculateProgressPointers();
 
-        (ulong BlockNumber, Hash256 BlockHash) SyncPivot { get; }
+        (ulong BlockNumber, Hash256? BlockHash) SyncPivot { get; }
     }
 }

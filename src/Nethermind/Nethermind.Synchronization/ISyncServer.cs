@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization
         Block? Find(Hash256 hash);
         BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(ulong number);
-        IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
+        IOwnedReadOnlyList<BlockHeader?> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
         IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
         ulong NetworkId { get; }

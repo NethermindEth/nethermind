@@ -217,7 +217,7 @@ public class ReceiptsSyncFeedTests
     {
         LoadScenario(_256BodiesWithOneTxEach);
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-        _feed.HandleResponse(request);
+        _feed.HandleResponse(request!);
         using ReceiptsSyncBatch? request2 = await _feed.PrepareRequest();
         Assert.That(request2?.MinNumber, Is.EqualTo(request?.MinNumber));
     }
@@ -448,7 +448,7 @@ public class ReceiptsSyncFeedTests
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
 
         FillBatchResponses(batch!);
-        _feed.HandleResponse(batch);
+        _feed.HandleResponse(batch!);
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1UL);
         Assert.That(_feed.PrepareRequest().Result, Is.EqualTo(null));
 

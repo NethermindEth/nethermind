@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public BlockBodiesMessage(IReadOnlyList<Block> blocks)
         {
-            BlockBody[] bodies = new BlockBody[blocks.Count];
+            BlockBody?[] bodies = new BlockBody?[blocks.Count];
             for (int i = 0; i < blocks.Count; i++)
             {
                 bodies[i] = blocks[i]?.Body;

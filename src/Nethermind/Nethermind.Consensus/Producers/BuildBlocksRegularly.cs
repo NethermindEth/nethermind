@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Producers
             _timer.Start();
         }
 
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
             TriggerBlockProduction?.Invoke(this, new BlockProductionEventArgs());
             _timer.Enabled = true;

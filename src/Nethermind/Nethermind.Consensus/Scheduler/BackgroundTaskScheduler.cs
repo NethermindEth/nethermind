@@ -115,8 +115,13 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 try
                 {
                     CancellationToken token = cts.Token;
-                    while (_taskQueue.Reader.TryRead(out IActivity activity))
+                    while (_taskQueue.Reader.TryRead(out IActivity? activity))
                     {
+                        if (activity is null)
+                        {
+                            continue;
+                        }
+
                         Interlocked.Decrement(ref _queueCount);
                         UpdateQueueCount();
 
@@ -334,7 +339,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                             })];
         }
 
-        private void ProcessBackgroundTasks(object _)
+        private void ProcessBackgroundTasks(object? _)
         {
             try
             {

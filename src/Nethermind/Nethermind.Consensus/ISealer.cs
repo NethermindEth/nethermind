@@ -10,7 +10,7 @@ namespace Nethermind.Consensus
 {
     public interface ISealer
     {
-        Task<Block> SealBlock(Block block, CancellationToken cancellationToken);
+        Task<Block?> SealBlock(Block block, CancellationToken cancellationToken);
 
         bool CanSeal(ulong blockNumber, Hash256 parentHash);
 

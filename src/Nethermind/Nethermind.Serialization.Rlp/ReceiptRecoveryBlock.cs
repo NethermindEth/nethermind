@@ -56,10 +56,11 @@ public struct ReceiptRecoveryBlock
             Position = _currentTransactionPosition
         };
         TxDecoder.Instance.Decode(ref decoderContext, ref _txBuffer, RlpBehaviors.AllowUnsigned);
-        Hash256 _ = _txBuffer.Hash; // Force Hash evaluation
+        Transaction tx = _txBuffer ?? throw new RlpException("Transaction decoding returned null.");
+        Hash256? _ = tx.Hash; // Force Hash evaluation
         _currentTransactionPosition = decoderContext.Position;
 
-        return _txBuffer;
+        return tx;
     }
 
     public readonly Hash256? Hash => Header.Hash; // do not add setter here

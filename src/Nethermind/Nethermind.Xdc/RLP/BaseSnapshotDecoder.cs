@@ -11,7 +11,7 @@ namespace Nethermind.Xdc.RLP;
 
 internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapshot
 {
-    protected TResult DecodeBase<TResult>(ref RlpReader decoderContext, Func<ulong, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
+    protected TResult? DecodeBase<TResult>(ref RlpReader decoderContext, Func<ulong, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -21,7 +21,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
 
         decoderContext.ReadSequenceLength();
         ulong number = decoderContext.DecodeULong();
-        Hash256 hash256 = decoderContext.DecodeKeccak();
+        Hash256 hash256 = decoderContext.DecodeKeccakNonNull();
         Address[] candidates = DecodeAddressArray(ref decoderContext);
         return createSnapshot(number, hash256, candidates);
     }
@@ -40,14 +40,14 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         int index = 0;
         while (length > 0)
         {
-            addresses[index++] = decoderContext.DecodeAddress();
+            addresses[index++] = decoderContext.DecodeAddressNonNull();
             length -= Rlp.LengthOfAddressRlp;
         }
 
         return addresses;
     }
 
-    public override Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -93,8 +93,8 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         }
     }
 
-    public override int GetLength(T item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    protected virtual int GetContentLength(T item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(T? item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    protected virtual int GetContentLength(T? item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
             return 0;

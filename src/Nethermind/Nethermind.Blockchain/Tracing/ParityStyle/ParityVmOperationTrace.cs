@@ -20,10 +20,10 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 public class ParityVmOperationTrace
 {
     public ulong Cost { get; set; }
-    public ParityMemoryChangeTrace Memory { get; set; }
-    public byte[][] Push { get; set; }
-    public ParityStorageChangeTrace Store { get; set; }
+    public ParityMemoryChangeTrace? Memory { get; set; }
+    public byte[][]? Push { get; set; }
+    public ParityStorageChangeTrace? Store { get; set; }
     public ulong Used { get; set; }
     public int Pc { get; set; }
-    public ParityVmTrace Sub { get; set; }
+    public ParityVmTrace? Sub { get; set; }
 }

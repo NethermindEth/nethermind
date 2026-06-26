@@ -26,10 +26,10 @@ namespace Nethermind.State
             : base(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance, bufferPool: bufferPool) => TrieType = TrieType.State;
 
         [DebuggerStepThrough]
-        public StateTree(IScopedTrieStore? store, ILogManager? logManager)
+        public StateTree(IScopedTrieStore store, ILogManager logManager)
             : base(store, Keccak.EmptyTreeHash, true, logManager) => TrieType = TrieType.State;
 
-        public StateTree(ITrieStore? store, ILogManager? logManager)
+        public StateTree(ITrieStore store, ILogManager logManager)
             : base(store.GetTrieStore(null), logManager)
         {
         }
@@ -90,7 +90,7 @@ namespace Nethermind.State
             {
                 KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
 
-                Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : _decoder.Encode(account);
+                Rlp? accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : _decoder.Encode(account);
 
                 _bulkWrite.Add(new BulkSetEntry(keccak, accountRlp?.Bytes));
             }
@@ -105,7 +105,7 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Rlp? Set(Hash256 keccak, Account? account)
         {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
+            Rlp? rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
             Set(keccak.Bytes, rlp);
             return rlp;
@@ -113,7 +113,7 @@ namespace Nethermind.State
 
         public Rlp? Set(in ValueHash256 keccak, Account? account)
         {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
+            Rlp? rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
             Set(keccak.Bytes, rlp);
             return rlp;

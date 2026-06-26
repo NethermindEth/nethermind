@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("Transactions message decoding returned null.");
 
         private static TransactionsMessage Deserialize(ref RlpReader ctx) =>
             new(DeserializeTxs(ref ctx));

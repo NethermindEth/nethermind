@@ -68,7 +68,7 @@ public partial class ForwardHeaderProviderTests
 
         int maxNHeader = Math.Min(maxHeader, peerInfo!.MaxHeadersPerRequest());
 
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders((ulong)skipLastN, (ulong)maxNHeader, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader>? headers = await forwardHeader.GetBlockHeaders((ulong)skipLastN, (ulong)maxNHeader, CancellationToken.None);
         Assert.That(headers?[0]?.Number, Is.EqualTo(expectedStartNumber));
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedEndNumber));
     }
@@ -98,7 +98,7 @@ public partial class ForwardHeaderProviderTests
             Assert.That(syncPeer.BlockTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(ctx.BlockTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash), i.ToString());
         }
 
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         Assert.That(headers?[0]?.Number, Is.EqualTo(1019));
         Assert.That(headers?[^1]?.Number, Is.EqualTo(1146));
     }
@@ -125,7 +125,7 @@ public partial class ForwardHeaderProviderTests
         syncPeer.HeadNumber = 700;
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
 
         Assert.That(headers?[0]?.Number, Is.EqualTo(pivotNumber));
     }
@@ -164,7 +164,7 @@ public partial class ForwardHeaderProviderTests
 
         ctx.ConfigureBestPeer(peerInfo);
 
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         Assert.That(headers?[0]?.Number, Is.EqualTo(0));
         Assert.That(headers?[^1]?.Number, Is.EqualTo(headNumber));
     }
@@ -259,9 +259,9 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
 
-        using IOwnedReadOnlyList<BlockHeader?>? headers1 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader>? headers1 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         Assert.That(headers1, Is.Not.Null);
-        using IOwnedReadOnlyList<BlockHeader?>? headers2 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader>? headers2 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         Assert.That(headers2, Is.Not.Null);
 
         await syncPeer.Received(1).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
@@ -329,7 +329,7 @@ public partial class ForwardHeaderProviderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        using IOwnedReadOnlyList<BlockHeader?>? _ = await forwardHeader.GetBlockHeaders(0, 128, default);
+        using IOwnedReadOnlyList<BlockHeader>? _ = await forwardHeader.GetBlockHeaders(0, 128, default);
 
         sealValidator.Received(2).ValidateSeal(Arg.Any<BlockHeader>(), true);
         sealValidator.Received(510).ValidateSeal(Arg.Any<BlockHeader>(), false);
@@ -343,7 +343,7 @@ public partial class ForwardHeaderProviderTests
         public Node Node { get; } = null!;
         public string ProtocolCode { get; } = null!;
         public byte ProtocolVersion { get; } = default;
-        public Hash256 HeadHash { get; set; } = headHash ?? Keccak.Zero;
+        public Hash256? HeadHash { get; set; } = headHash;
         public ulong HeadNumber { get; set; } = number;
         public UInt256? TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
         public bool IsInitialized { get; set; }
@@ -560,7 +560,7 @@ public partial class ForwardHeaderProviderTests
         public string ClientId { get; } = null!;
         public byte ProtocolVersion { get; } = default;
         public string ProtocolCode { get; } = null!;
-        public Hash256 HeadHash { get; set; } = null!;
+        public Hash256? HeadHash { get; set; }
         public PublicKey Id => Node.Id;
         public ulong HeadNumber { get; set; }
         public UInt256? TotalDifficulty { get; set; }
@@ -604,7 +604,7 @@ public partial class ForwardHeaderProviderTests
 
         public async Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
         {
-            TxReceipt[][] receipts = new TxReceipt[blockHash.Count][];
+            TxReceipt[]?[] receipts = new TxReceipt[]?[blockHash.Count];
             int i = 0;
             foreach (Hash256 keccak in blockHash)
             {

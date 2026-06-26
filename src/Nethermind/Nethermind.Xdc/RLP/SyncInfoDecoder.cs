@@ -16,14 +16,14 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
-            return null;
+            return null!;
         }
 
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
-        QuorumCertificate highestQuorumCert = _quorumCertificateDecoder.Decode(ref decoderContext, rlpBehaviors);
-        TimeoutCertificate highestTimeoutCert = _timeoutCertificateDecoder.Decode(ref decoderContext, rlpBehaviors);
+        QuorumCertificate highestQuorumCert = _quorumCertificateDecoder.DecodeGuardNotNull(ref decoderContext, rlpBehaviors);
+        TimeoutCertificate highestTimeoutCert = _timeoutCertificateDecoder.DecodeGuardNotNull(ref decoderContext, rlpBehaviors);
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
@@ -33,7 +33,7 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         return new SyncInfo(highestQuorumCert, highestTimeoutCert);
     }
 
-    public override Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(SyncInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -58,9 +58,9 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         _timeoutCertificateDecoder.Encode(ref writer, item.HighestTimeoutCert, rlpBehaviors);
     }
 
-    public override int GetLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(SyncInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public int GetContentLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public int GetContentLength(SyncInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return 0;

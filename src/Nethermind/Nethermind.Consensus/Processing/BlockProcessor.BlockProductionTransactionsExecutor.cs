@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     blockToProduce.Transactions = includedTx.ToArray();
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+                return receiptsTracer.ToReceiptArray();
             }
 
             private TxAction ProcessTransaction(
@@ -112,7 +112,7 @@ namespace Nethermind.Consensus.Processing
                     if (result)
                     {
                         _transactionProcessed?.Invoke(this,
-                            new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+                            new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.GetReceipt(index)));
                         balManager.NextTransaction();
                     }
                     else

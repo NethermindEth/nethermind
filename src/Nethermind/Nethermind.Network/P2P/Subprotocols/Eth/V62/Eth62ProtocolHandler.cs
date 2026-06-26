@@ -211,7 +211,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             _statusReceived = true;
-            _remoteHeadBlockHash = status.BestHash;
+            Hash256? bestHash = status.BestHash;
+            Hash256? genesisHash = status.GenesisHash;
+            _remoteHeadBlockHash = bestHash;
 
             ReceivedProtocolInitMsg(status);
 
@@ -349,7 +351,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return;
             }
 
-            if (LastBlockNotificationCache.Set(block.Hash))
+            Hash256 blockHash = block.Hash ?? throw new InvalidOperationException("Cannot notify peers about a block without a hash");
+            if (LastBlockNotificationCache.Set(blockHash))
             {
                 switch (mode)
                 {
@@ -357,11 +360,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         SendNewBlock(block);
                         break;
                     case SendBlockMode.HashOnly:
-                        HintNewBlock(block.Hash, block.Number);
+                        HintNewBlock(blockHash, block.Number);
                         break;
                     default:
                         if (Logger.IsError) Logger.Error($"Unknown mode ({mode}) passed to {nameof(NotifyOfNewBlock)} - handling as {nameof(SendBlockMode.HashOnly)} mode");
-                        HintNewBlock(block.Hash, block.Number);
+                        HintNewBlock(blockHash, block.Number);
                         break;
                 }
             }

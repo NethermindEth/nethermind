@@ -152,8 +152,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         return ValidationResult.Success;
     }
 
-    private static bool FlattenedHashesEqual(Transaction[] transactions, ReadOnlySpan<Hash256?> expected)
+    private static bool FlattenedHashesEqual(Transaction[] transactions, Hash256?[]? expected)
     {
+        int expectedLength = expected?.Length ?? 0;
         int expectedIndex = 0;
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
         {
@@ -162,9 +163,10 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
             for (int hashIndex = 0; hashIndex < hashes.Length; hashIndex++)
             {
-                if (expectedIndex >= expected.Length) return false;
-                ReadOnlySpan<byte> expectedBytes = expected[expectedIndex] is { } expectedHash ? expectedHash.Bytes : default;
-                if (!hashes[hashIndex].AsSpan().SequenceEqual(expectedBytes))
+                if (expected is null || expectedIndex >= expected.Length) return false;
+                byte[]? hash = hashes[hashIndex];
+                Hash256? expectedHash = expected[expectedIndex];
+                if (hash is null || expectedHash is null || !hash.AsSpan().SequenceEqual(expectedHash.Bytes))
                 {
                     return false;
                 }
@@ -172,6 +174,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             }
         }
 
-        return expectedIndex == expected.Length;
+        return expectedIndex == expectedLength;
     }
 }

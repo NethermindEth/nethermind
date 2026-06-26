@@ -14,12 +14,12 @@ namespace Nethermind.Consensus.Ethash;
 
 public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => SealEngineType;
-    public string? SealEngineType => Core.SealEngineType.Ethash;
+    public string EngineName => SealEngineType;
+    public string SealEngineType => Core.SealEngineType.Ethash;
 
     public ulong HomesteadTransition { get; set; } = 0;
     public ulong? DaoHardforkTransition { get; set; }
-    public Address DaoHardforkBeneficiary { get; set; }
+    public Address? DaoHardforkBeneficiary { get; set; }
     public Address[] DaoHardforkAccounts { get; set; } = [];
     public ulong? Eip100bTransition { get; set; }
     public ulong? FixedDifficulty { get; set; }

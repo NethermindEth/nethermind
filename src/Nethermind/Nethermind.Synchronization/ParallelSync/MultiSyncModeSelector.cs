@@ -548,7 +548,9 @@ namespace Nethermind.Synchronization.ParallelSync
                     if (peer.TotalDifficulty is { } peerTD)
                     {
                         // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
-                        UInt256 realTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peerTD;
+                        UInt256 realTotalDifficulty = peer.HeadHash is { } peerHeadHash
+                            ? _syncProgressResolver.GetTotalDifficulty(peerHeadHash) ?? peerTD
+                            : peerTD;
 
                         // during the beacon header sync our realTotalDifficulty could be 0. We're using peer.TotalDifficulty in this case
                         realTotalDifficulty = realTotalDifficulty == 0 ? peerTD : realTotalDifficulty;

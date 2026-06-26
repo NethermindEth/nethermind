@@ -8,6 +8,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Optimism;
 
@@ -37,7 +38,7 @@ public class OptimismBlockValidator(
     private const string NonNullWithdrawalsRootError =
         $"{nameof(BlockHeader.WithdrawalsRoot)} is not null";
 
-    public override bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? error)
+    public override bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error)
     {
         if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
         {
@@ -67,7 +68,7 @@ public class OptimismBlockValidator(
     protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error) =>
         ValidateWithdrawals(block.Header, block.Body, out error);
 
-    private bool ValidateWithdrawals(BlockHeader header, BlockBody body, out string? error)
+    private bool ValidateWithdrawals(BlockHeader header, BlockBody body, [NotNullWhen(false)] out string? error)
     {
         // From the most recent
         if (specHelper.IsIsthmus(header))

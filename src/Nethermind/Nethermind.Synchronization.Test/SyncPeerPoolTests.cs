@@ -50,7 +50,7 @@ public class SyncPeerPoolTests
     {
         public string Name => "SimpleMock";
 
-        public Hash256 HeadHash { get; set; } = null!;
+        public Hash256? HeadHash { get; set; }
         public byte ProtocolVersion { get; } = default;
         public string ProtocolCode { get; } = null!;
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);

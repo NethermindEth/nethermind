@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 JsonRpcRequest request = CreateRequest("eth_getBlockByHash", Parameter.ToString(), false);
                 string blockJson = await SendRequest(request);
-                BlockForRpcTxHashes block = _serializer.Deserialize<JsonRpcSuccessResponse<BlockForRpcTxHashes>>(blockJson).Result;
+                BlockForRpcTxHashes block = _serializer.Deserialize<JsonRpcSuccessResponse<BlockForRpcTxHashes>>(blockJson)!.Result;
                 List<string> transactionJsonPayloads = new(block.Transactions!.Length);
                 foreach (string tx in block.Transactions)
                 {
@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Test
             public override async Task<(IEnumerable<ReceiptForRpc>, string)> GetData()
             {
                 IEnumerable<string> receiptJsonPayloads = (await GetJsonPayloads()).ToArray();
-                return (receiptJsonPayloads.Select(j => _serializer.Deserialize<JsonRpcSuccessResponse<ReceiptForRpc>>(j).Result), GetJson(receiptJsonPayloads));
+                return (receiptJsonPayloads.Select(j => _serializer.Deserialize<JsonRpcSuccessResponse<ReceiptForRpc>>(j)!.Result), GetJson(receiptJsonPayloads));
             }
 
             private class BlockForRpcTxHashes : BlockForRpc

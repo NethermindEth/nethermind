@@ -117,7 +117,7 @@ public class ForensicsProcessorTests
 
         QuorumCertificate incomingQc = new(new BlockRoundInfo(header2.Hash!, 13, 102), [], 450);
 
-        Assert.That(header2.ExtraConsensusData!.QuorumCert.ProposedBlockInfo.Hash, Is.EqualTo(header1.Hash));
+        Assert.That(header2.ExtraConsensusData!.QuorumCert!.ProposedBlockInfo.Hash, Is.EqualTo(header1.Hash));
         Assert.That(incomingQc.ProposedBlockInfo.Hash, Is.EqualTo(header2.Hash));
 
         await processor.SetCommittedQCs([header1, header2], incomingQc);

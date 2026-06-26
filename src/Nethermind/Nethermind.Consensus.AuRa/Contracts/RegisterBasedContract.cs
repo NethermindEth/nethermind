@@ -23,26 +23,27 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Address GetContractAddress(BlockHeader? header)
         {
             bool needUpdate = false;
+            Hash256? headerHash = header?.Hash;
             lock (_currentHashAddress)
             {
-                needUpdate = header is not null && _currentHashAddress != header.Hash;
+                needUpdate = header is not null && headerHash is not null && _currentHashAddress != headerHash;
             }
 
             if (needUpdate)
             {
-                if (_registerContract.TryGetAddress(header, _registryKey, out Address contractAddress))
+                if (_registerContract.TryGetAddress(header!, _registryKey, out Address contractAddress))
                 {
                     lock (_currentHashAddress)
                     {
                         ContractAddress = contractAddress;
-                        _currentHashAddress = header.Hash!;
+                        _currentHashAddress = headerHash!;
                     }
-                }
 
-                return contractAddress;
+                    return contractAddress;
+                }
             }
 
-            return ContractAddress;
+            return ContractAddress!;
 
         }
     }

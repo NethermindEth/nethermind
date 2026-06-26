@@ -98,7 +98,9 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void PassFrame(List<object> output)
         {
-            output.Add(_innerBuffer);
+            IByteBuffer innerBuffer = _innerBuffer
+                ?? throw new InvalidOperationException("Cannot pass a frame before allocating its buffer");
+            output.Add(innerBuffer);
             _innerBuffer = null;
         }
 
@@ -156,7 +158,9 @@ namespace Nethermind.Network.Rlpx
             input.ReadBytes(_frameBlockBytes);
             _authenticator.UpdateIngressMac(_frameBlockBytes, false);
             _cipher.Decrypt(_frameBlockBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
-            _innerBuffer.WriteBytes(_decryptedBytes);
+            IByteBuffer innerBuffer = _innerBuffer
+                ?? throw new InvalidOperationException("Cannot process a frame block before allocating its buffer");
+            innerBuffer.WriteBytes(_decryptedBytes);
             _remainingPayloadBlocks--;
         }
 

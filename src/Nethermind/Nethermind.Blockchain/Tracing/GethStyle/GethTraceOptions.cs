@@ -27,7 +27,7 @@ public record GethTraceOptions
     [JsonConverter(typeof(CustomTimeDurationConverter))]
     public TimeSpan? Timeout { get; init; }
 
-    public string Tracer { get; init; }
+    public string? Tracer { get; init; }
 
     public Hash256? TxHash { get; init; }
 

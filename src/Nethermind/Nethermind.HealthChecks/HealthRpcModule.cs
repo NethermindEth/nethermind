@@ -10,8 +10,8 @@ namespace Nethermind.HealthChecks
     public class NodeStatusResult
     {
         public bool Healthy { get; set; }
-        public IEnumerable<string> Messages { get; set; }
-        public IEnumerable<string> Errors { get; set; }
+        public IEnumerable<string> Messages { get; set; } = [];
+        public IEnumerable<string> Errors { get; set; } = [];
         public bool IsSyncing { get; set; }
     }
 

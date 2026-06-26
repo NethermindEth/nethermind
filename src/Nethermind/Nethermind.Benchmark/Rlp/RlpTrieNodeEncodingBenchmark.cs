@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
@@ -36,20 +37,20 @@ public class RlpTrieNodeEncodingBenchmark
 
         tree.Commit();
 
-        TrieNode extension = tree.Root;
+        TrieNode extension = tree.Root ?? throw new InvalidOperationException("Expected extension root node.");
 
         _extension = extension;
         Assert.That(_extension.NodeType, Is.EqualTo(NodeType.Extension));
 
         TreePath path = default;
 
-        _branch = _extension.GetChild(_store, ref path, 0);
+        _branch = _extension.GetChild(_store, ref path, 0) ?? throw new InvalidOperationException("Expected branch child node.");
 
         path.AppendMut(0);
         _branch.TryResolveNode(_store, ref path);
         Assert.That(_branch.NodeType, Is.EqualTo(NodeType.Branch));
 
-        _leaf = _branch.GetChild(_store, ref path, 0);
+        _leaf = _branch.GetChild(_store, ref path, 0) ?? throw new InvalidOperationException("Expected leaf child node.");
         _leaf.TryResolveNode(_store, ref path);
         Assert.That(_leaf.NodeType, Is.EqualTo(NodeType.Leaf));
     }

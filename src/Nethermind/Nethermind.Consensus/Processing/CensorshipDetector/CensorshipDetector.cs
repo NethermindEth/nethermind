@@ -64,10 +64,10 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         {
             foreach (string hexString in censorshipDetectorConfig.AddressesForCensorshipDetection)
             {
-                if (Address.TryParse(hexString, out Address address))
+                if (Address.TryParse(hexString, out Address? address) && address is not null)
                 {
                     _bestTxPerObservedAddresses ??= [];
-                    _bestTxPerObservedAddresses[address!] = null;
+                    _bestTxPerObservedAddresses[address] = null;
                 }
                 else
                 {
@@ -93,20 +93,22 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         // skip censorship detection if node is not synced yet
         if (IsSyncing()) return;
 
-        bool tracksPerAddressCensorship = _bestTxPerObservedAddresses is not null;
-        if (tracksPerAddressCensorship)
+        Dictionary<AddressAsKey, Transaction?>? bestTxPerObservedAddresses = _bestTxPerObservedAddresses;
+        bool tracksPerAddressCensorship = bestTxPerObservedAddresses is not null;
+        if (bestTxPerObservedAddresses is not null)
         {
             UInt256 baseFee = e.Block.BaseFeePerGas;
             IEnumerable<Transaction> poolBestTransactions = _txPool.GetBestTxOfEachSender();
             foreach (Transaction tx in poolBestTransactions)
             {
+                Address? to = tx.To;
                 // checking tx.GasBottleneck > baseFee ensures only ready transactions are considered.
-                if (tx.To is not null
+                if (to is not null
                     && tx.GasBottleneck > baseFee
-                    && _bestTxPerObservedAddresses.TryGetValue(tx.To, out Transaction? bestTx)
+                    && bestTxPerObservedAddresses.TryGetValue(to, out Transaction? bestTx)
                     && (bestTx is null || _betterTxComparer.Compare(bestTx, tx) > 0))
                 {
-                    _bestTxPerObservedAddresses[tx.To] = tx;
+                    bestTxPerObservedAddresses[to] = tx;
                 }
             }
         }
@@ -129,7 +131,8 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
 
     private void Cache(Block block)
     {
-        bool tracksPerAddressCensorship = _bestTxPerObservedAddresses is not null;
+        Dictionary<AddressAsKey, Transaction?>? bestTxPerObservedAddresses = _bestTxPerObservedAddresses;
+        bool tracksPerAddressCensorship = bestTxPerObservedAddresses is not null;
 
         try
         {
@@ -170,8 +173,9 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                                 worstTxInBlock = tx;
                             }
 
-                            bool trackAddress = _bestTxPerObservedAddresses.ContainsKey(tx.To!);
-                            if (trackAddress && trackedAddressesInBlock.Add(tx.To!))
+                            Address? to = tx.To;
+                            bool trackAddress = to is not null && bestTxPerObservedAddresses!.ContainsKey(to);
+                            if (trackAddress && trackedAddressesInBlock.Add(to!))
                             {
                                 blockTxsOfTrackedAddresses++;
                             }
@@ -181,7 +185,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
 
                 if (tracksPerAddressCensorship)
                 {
-                    foreach (Transaction? bestTx in _bestTxPerObservedAddresses.Values)
+                    foreach (Transaction? bestTx in bestTxPerObservedAddresses!.Values)
                     {
                         // if there is no transaction in block or the best tx in the pool is better than the worst tx in the block
                         if (bestTx is null || _betterTxComparer.Compare(bestTx, worstTxInBlock) < 0)
@@ -214,9 +218,9 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         {
             if (tracksPerAddressCensorship)
             {
-                foreach (AddressAsKey key in _bestTxPerObservedAddresses.Keys)
+                foreach (AddressAsKey key in bestTxPerObservedAddresses!.Keys)
                 {
-                    _bestTxPerObservedAddresses[key] = null;
+                    bestTxPerObservedAddresses[key] = null;
                 }
             }
         }

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
@@ -23,7 +24,7 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
             IReadOnlyList<PathWithAccount> accounts,
-            IByteArrayList proofs = null
+            IByteArrayList? proofs = null
         )
         {
             using ISnapTree<PathWithAccount> tree = factory.CreateStateTree();
@@ -31,7 +32,7 @@ namespace Nethermind.Synchronization.SnapSync
             (AddRangeResult result, bool moreChildrenToRight, _) = CommitRange(
                 tree, accounts, startingHash, limitHash, expectedRootHash, proofs);
             if (result != AddRangeResult.OK)
-                return (result, true, null, null, tree.RootHash);
+                return (result, true, [], [], tree.RootHash);
 
             List<PathWithAccount> accountsWithStorage = [];
             List<ValueHash256> codeHashes = [];
@@ -39,11 +40,15 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 PathWithAccount account = accounts[index];
 
-                if (account.Account.HasStorage && account.Path <= limitHash)
+                Account? accountValue = account.Account;
+                if (accountValue is null)
+                    continue;
+
+                if (accountValue.HasStorage && account.Path <= limitHash)
                     accountsWithStorage.Add(account);
 
-                if (account.Account.HasCode)
-                    codeHashes.Add(account.Account.CodeHash);
+                if (accountValue.HasCode)
+                    codeHashes.Add(accountValue.CodeHash);
             }
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, tree.RootHash);
@@ -62,6 +67,9 @@ namespace Nethermind.Synchronization.SnapSync
 
             ValueHash256 effectiveLimitHash = limitHash ?? Keccak.MaxValue;
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
+
+            if (account.Account is null)
+                return (AddRangeResult.EmptyRange, true, tree.RootHash, false);
 
             (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) = CommitRange(
                 tree, slots, effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs);
@@ -152,7 +160,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             ValueHash256 lastPath = entries[entries.Count - 1].Path;
 
-            (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
+            (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastPath, limitHash, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
@@ -167,7 +175,7 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         [SkipLocalsInit]
-        private static (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree<TEntry>(
+        private static (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree<TEntry>(
             ISnapTree<TEntry> tree,
             in ValueHash256? startingHash,
             in ValueHash256 endHash,
@@ -188,7 +196,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs);
 
-            if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
+            if (!dict.TryGetValue(expectedRootHash, out TrieNode? root))
             {
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
             }
@@ -234,7 +242,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                         moreChildrenToRight |= childPath.Path > limitHash;
 
-                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0 && dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0 && dict.TryGetValue(childKeccak, out TrieNode? child))
                         {
                             node.SetChild(0, child);
 
@@ -321,7 +329,7 @@ namespace Nethermind.Synchronization.SnapSync
                                     // Leaf are range proof, proof that the range covers the requested path.
                                     // But we dont persist them as it should be persisted by the range itself through
                                     // other range.
-                                    node.NodeData[ci] = child.Keccak;
+                                    node.NodeData![ci] = child.Keccak;
                                 }
                             }
                         }
@@ -364,7 +372,7 @@ namespace Nethermind.Synchronization.SnapSync
                 (TrieNode node, TreePath path) = sortedBoundaryList[i];
                 if (!node.IsPersisted)
                 {
-                    INodeData nodeData = node.NodeData;
+                    INodeData? nodeData = node.NodeData;
                     if (nodeData is ExtensionData extensionData)
                     {
                         if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, tree, startPath))

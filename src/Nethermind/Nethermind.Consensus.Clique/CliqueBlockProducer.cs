@@ -90,11 +90,18 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
     }
 
-    public void ProduceOnTopOf(Hash256 hash) => _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
+    public void ProduceOnTopOf(Hash256 hash)
+    {
+        Block? block = _blockTree.FindBlock(hash, BlockTreeLookupOptions.None);
+        if (block is not null)
+        {
+            _signalsQueue.Writer.TryWrite(block);
+        }
+    }
 
     public IReadOnlyDictionary<Address, bool> GetProposals() => _blockProducer.Proposals.ToDictionary();
 
-    private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+    private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
     {
         try
         {
@@ -109,7 +116,13 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
             {
                 if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.UnixTime.Seconds)
                 {
-                    _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
+                    Block? headBlock = _blockTree.FindBlock(
+                        _blockTree.Head.Hash ?? throw new InvalidOperationException($"Head block {_blockTree.Head.Number} has no hash."),
+                        BlockTreeLookupOptions.None);
+                    if (headBlock is not null)
+                    {
+                        _signalsQueue.Writer.TryWrite(headBlock);
+                    }
                 }
 
                 _timer.Enabled = true;
@@ -125,8 +138,15 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
                 {
                     if (ReferenceEquals(scheduledBlock, _scheduledBlock))
                     {
-                        BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header,
+                        BlockHeader? parent = _blockTree.FindParentHeader(scheduledBlock.Header,
                             BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                        if (parent is null)
+                        {
+                            _scheduledBlock = null;
+                            _timer.Enabled = true;
+                            return;
+                        }
+
                         Address parentSigner = _snapshotManager.GetBlockSealer(parent);
 
                         string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";
@@ -231,7 +251,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
             try
             {
-                Block? block = await _blockProducer.BuildBlock(parentBlock?.Header, token: CancellationToken.None);
+                Block? block = await _blockProducer.BuildBlock(parentBlock.Header, token: CancellationToken.None);
                 if (block is not null)
                 {
                     _scheduledBlock = block;
@@ -302,7 +322,7 @@ public class CliqueBlockProducer : IBlockProducer
         ISnapshotManager snapshotManager,
         ISealer cliqueSealer,
         IGasLimitCalculator gasLimitCalculator,
-        ISpecProvider? specProvider,
+        ISpecProvider specProvider,
         ICliqueConfig config,
         ILogManager logManager
     )
@@ -384,8 +404,13 @@ public class CliqueBlockProducer : IBlockProducer
 
     private Hash256? _recentNotAllowedParent;
 
-    private Block? PrepareBlock(BlockHeader parentHeader)
+    private Block? PrepareBlock(BlockHeader? parentHeader)
     {
+        if (parentHeader is null)
+        {
+            return null;
+        }
+
         if (parentHeader.Hash is null)
         {
             if (_logger.IsError) _logger.Error(

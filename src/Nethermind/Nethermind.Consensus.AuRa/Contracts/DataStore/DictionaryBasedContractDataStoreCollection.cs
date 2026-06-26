@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public abstract class DictionaryBasedContractDataStoreCollection<T> : IDictionaryContractDataStoreCollection<T>
+    public abstract class DictionaryBasedContractDataStoreCollection<T> : IDictionaryContractDataStoreCollection<T> where T : notnull
     {
-        private IDictionary<T, T> _items;
+        private IDictionary<T, T>? _items;
 
         protected IDictionary<T, T> Items => _items ??= CreateDictionary();
 
@@ -24,8 +25,8 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
             foreach (T item in items)
             {
-                bool keyAlreadyPresent = dictionary.TryGetValue(item, out T value);
-                if (!keyAlreadyPresent || CanReplace(item, value))
+                bool keyAlreadyPresent = dictionary.TryGetValue(item, out T? value);
+                if (!keyAlreadyPresent || CanReplace(item, value!))
                 {
                     dictionary[item] = item;
                 }
@@ -44,6 +45,11 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             }
         }
 
-        public bool TryGetValue(T key, out T value) => Items.TryGetValue(key, out value);
+        public bool TryGetValue(T key, [MaybeNullWhen(false)] out T value)
+        {
+            bool result = Items.TryGetValue(key, out T? found);
+            value = found!;
+            return result;
+        }
     }
 }

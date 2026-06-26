@@ -26,7 +26,7 @@ public class TraceStreamingBenchmarks
 
     private Block _block = null!;
     private Transaction _tx = null!;
-    private ExecutionEnvironment _env;
+    private ExecutionEnvironment _env = null!;
     private byte[] _value32 = null!;
 
     [GlobalSetup]

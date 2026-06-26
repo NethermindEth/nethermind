@@ -52,11 +52,16 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         CancellationToken cancellationToken)
     {
 
-        payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
-        Address feeRecipient = payloadAttributes.SuggestedFeeRecipient!;
+        BoostPayloadAttributes? boostPayloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
+        if (boostPayloadAttributes is null)
+        {
+            return CurrentBestBlock;
+        }
+
+        Address feeRecipient = boostPayloadAttributes.SuggestedFeeRecipient!;
         _stateReader.TryGetAccount(parentHeader, feeRecipient, out AccountStruct account);
         UInt256 balanceBefore = account.Balance;
-        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
+        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, boostPayloadAttributes, IBlockProducer.Flags.None, cancellationToken);
         if (block is not null)
         {
             CurrentBestBlock = block;

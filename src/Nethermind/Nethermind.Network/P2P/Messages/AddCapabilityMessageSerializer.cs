@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Messages
         }
 
         public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("Add capability message decoding returned null.");
 
         private static AddCapabilityMessage Deserialize(ref RlpReader ctx)
         {

@@ -35,6 +35,8 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 
     private void ResetAvailableStateRoots(BlockHeader? newHead, bool resetQueue)
     {
+        if (newHead?.StateRoot is null) return;
+
         if (_availableStateRoots.TryGetValue(newHead.StateRoot, out int num) && num > 0) return;
 
         BlockHeader? parent = _blockTree.FindParentHeader(newHead, BlockTreeLookupOptions.All);
@@ -47,8 +49,13 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
                 newHead.StateRoot,
                 static (_) => 1,
                 static (_, oldValue) => oldValue + 1);
-            while ((ulong)_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256 oldStateRoot))
+            while ((ulong)_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256? oldStateRoot))
             {
+                if (oldStateRoot is null)
+                {
+                    continue;
+                }
+
                 int newNum = _availableStateRoots.AddOrUpdate(
                     oldStateRoot,
                     static (_) => 0,
@@ -68,10 +75,10 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         while (parent is not null && (ulong)stateRoots.Count < _lastN)
         {
             newStateRootSet.AddOrUpdate(
-                parent.StateRoot,
+                parent.StateRoot!,
                 static (_) => 1,
                 static (_, oldValue) => oldValue + 1);
-            stateRoots.Add(parent.StateRoot);
+            stateRoots.Add(parent.StateRoot!);
             parent = _blockTree.FindParentHeader(parent, BlockTreeLookupOptions.All);
         }
 

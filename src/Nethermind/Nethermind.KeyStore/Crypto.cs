@@ -8,20 +8,20 @@ namespace Nethermind.KeyStore
     public class Crypto
     {
         [JsonPropertyName("ciphertext")]
-        public string CipherText { get; set; }
+        public string? CipherText { get; set; }
 
         [JsonPropertyName("cipherparams")]
-        public CipherParams CipherParams { get; set; }
+        public CipherParams? CipherParams { get; set; }
 
-        public string Cipher { get; set; }
+        public string? Cipher { get; set; }
 
         [JsonPropertyName("kdf")]
-        public string KDF { get; set; }
+        public string? KDF { get; set; }
 
         [JsonPropertyName("kdfparams")]
-        public KdfParams KDFParams { get; set; }
+        public KdfParams? KDFParams { get; set; }
 
         [JsonPropertyName("mac")]
-        public string MAC { get; set; }
+        public string? MAC { get; set; }
     }
 }

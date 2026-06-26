@@ -147,7 +147,7 @@ namespace Nethermind.Facade.Find
         }
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>
-            block is not null && filter.Matches(block.Bloom!)
+            block is { Bloom: not null } && filter.Matches(block.Bloom)
                 ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
                 : [];
 
@@ -165,7 +165,7 @@ namespace Nethermind.Facade.Find
 
         private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, ulong blockTimestamp, CancellationToken cancellationToken)
         {
-            List<FilterLog> logList = null;
+            List<FilterLog>? logList = null;
             try
             {
                 long logIndexInBlock = 0;
@@ -186,9 +186,7 @@ namespace Nethermind.Facade.Find
                                 iterator.RecoverIfNeeded(ref receipt);
 
                                 logList ??= [];
-                                Hash256[] topics = log.Topics;
-
-                                topics ??= iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
+                                Hash256[] topics = log.Topics ?? iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
@@ -234,7 +232,7 @@ namespace Nethermind.Facade.Find
                 }
                 else
                 {
-                    Block block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    Block? block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     return block is null ? null : _receiptFinder.Get(block);
                 }
             }
@@ -243,7 +241,7 @@ namespace Nethermind.Facade.Find
             {
                 if (_receiptsRecovery.NeedRecover(receipts))
                 {
-                    Block block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    Block? block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (block is not null)
                     {
                         if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
@@ -256,7 +254,7 @@ namespace Nethermind.Facade.Find
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            TxReceipt[] receipts = GetReceipts(blockHash, blockNumber);
+            TxReceipt[]? receipts = GetReceipts(blockHash, blockNumber);
             long logIndexInBlock = 0;
             if (receipts is not null)
             {
@@ -265,14 +263,15 @@ namespace Nethermind.Facade.Find
                     cancellationToken.ThrowIfCancellationRequested();
 
                     TxReceipt receipt = receipts[i];
+                    LogEntry[]? logs = receipt.Logs;
 
-                    if (filter.Matches(receipt.Bloom))
+                    if (receipt.Bloom is not null && logs is not null && filter.Matches(receipt.Bloom))
                     {
-                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        for (int j = 0; j < logs.Length; j++)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
 
-                            LogEntry log = receipt.Logs[j];
+                            LogEntry log = logs[j];
                             if (filter.Accepts(log))
                             {
                                 RecoverReceiptsData(blockHash, receipts);
@@ -284,7 +283,7 @@ namespace Nethermind.Facade.Find
                     }
                     else
                     {
-                        logIndexInBlock += receipt.Logs.Length;
+                        logIndexInBlock += logs?.Length ?? 0;
                     }
                 }
             }

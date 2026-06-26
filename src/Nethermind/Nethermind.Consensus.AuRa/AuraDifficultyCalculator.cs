@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -28,7 +29,10 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
-            CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);
+        public UInt256 Calculate(BlockHeader header, BlockHeader parent)
+        {
+            ulong parentStep = parent.AuRaStep ?? throw new InvalidOperationException("Parent block doesn't have AuRaStep specified.");
+            return CalculateDifficulty(parentStep, _auRaStepCalculator.CurrentStep);
+        }
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -30,11 +31,11 @@ public class FlatSnapServer(
     // Flat state uses HintCacheMiss since it has different I/O patterns than Patricia
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
 
-    private bool TryGetBundle(Hash256 rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId)
+    private bool TryGetBundle(Hash256 rootHash, [NotNullWhen(true)] out ReadOnlySnapshotBundle? bundle, out StateId stateId)
     {
         if (!stateRootIndex.TryGetStateId(rootHash, out stateId))
         {
-            bundle = null!;
+            bundle = null;
             return false;
         }
 
@@ -44,7 +45,7 @@ public class FlatSnapServer(
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {
-        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
+        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle? bundle, out StateId stateId))
             return EmptyByteArrayList.Instance;
 
         using (bundle)
@@ -153,7 +154,7 @@ public class FlatSnapServer(
         long byteLimit,
         CancellationToken cancellationToken)
     {
-        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
+        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle? bundle, out StateId stateId))
             return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
 
         using (bundle)
@@ -185,7 +186,7 @@ public class FlatSnapServer(
         long byteLimit,
         CancellationToken cancellationToken)
     {
-        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
+        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle? bundle, out StateId stateId))
             return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), EmptyByteArrayList.Instance);
 
         using (bundle)

@@ -35,7 +35,7 @@ public class BlockValidator(
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
 
-    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
 
     public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
@@ -49,7 +49,7 @@ public class BlockValidator(
     /// <remarks>
     /// Parent may be absent during BeaconSync
     /// </remarks>
-    public bool ValidateOrphanedBlock(Block block, out string? error) =>
+    public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) =>
         ValidateBlock<OnFlag>(block, null, out error);
 
     /// <summary>
@@ -62,10 +62,10 @@ public class BlockValidator(
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
-    public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? errorMessage, bool validateHashes = true) =>
+    public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? errorMessage, bool validateHashes = true) =>
         ValidateBlock<OffFlag>(block, parent, out errorMessage, validateHashes);
 
-    private bool ValidateBlock<TOrphaned>(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes = true) where TOrphaned : struct, IFlag
+    private bool ValidateBlock<TOrphaned>(Block block, BlockHeader? parent, [NotNullWhen(false)] out string? errorMessage, bool validateHashes = true) where TOrphaned : struct, IFlag
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         errorMessage = null;
@@ -155,7 +155,7 @@ public class BlockValidator(
     /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
     /// <param name="error">Detailed error message if validation fails otherwise <value>null</value>.</param>
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
     {
         // EIP-7928: enforce the BAL item gas-limit floor against the BAL produced during
         // execution. The pre-execution check in ValidateBlockLevelAccessList only fires when
@@ -168,7 +168,9 @@ public class BlockValidator(
             && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
             && !ValidateBlockLevelAccessListSize(processedBlock, ref balSizeError))
         {
-            error = balSizeError;
+            error = balSizeError ?? BlockErrorMessages.BlockAccessListGasLimitExceeded(
+                (ulong)processedBlock.GeneratedBlockAccessList.ItemCount,
+                processedBlock.Header.GasLimit / Eip7928Constants.ItemCost);
             return false;
         }
 
@@ -265,10 +267,11 @@ public class BlockValidator(
             if (_logger.IsWarn) _logger.Warn($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
         }
 
+        error ??= BlockErrorMessages.InvalidHeaderHash(suggestedBlock.Header.Hash, processedBlock.Header.Hash);
         return false;
     }
 
-    public bool ValidateWithdrawals(Block block, out string? error)
+    public bool ValidateWithdrawals(Block block, [NotNullWhen(false)] out string? error)
     {
         error = null;
         return ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), true, ref error);
@@ -294,7 +297,7 @@ public class BlockValidator(
 
             if (block.Withdrawals is not null)
             {
-                if (!ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
+                if (!ValidateWithdrawalsHashMatches(block, out Hash256? withdrawalsRoot))
                 {
                     error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
                     if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
@@ -388,7 +391,7 @@ public class BlockValidator(
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
         ValidateBodyAgainstHeader(header, toBeValidated, out _);
 
-    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? error)
+    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error)
     {
         if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
         {
@@ -429,7 +432,7 @@ public class BlockValidator(
 
         if (block.BlockAccessList is not null)
         {
-            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListHash))
+            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256? blockLevelAccessListHash))
             {
                 error = BlockErrorMessages.InvalidBlockLevelAccessListHash(block.Header.BlockAccessListHash, blockLevelAccessListHash);
                 if (_logger.IsWarn) _logger.Warn($"Block level access list hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListHash}");

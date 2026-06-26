@@ -45,14 +45,14 @@ namespace Nethermind.Serialization.Rlp
             byte[]? extraData = decoderContext.DecodeByteArray();
 
             BlockHeader blockHeader = new(
-                parentHash,
-                unclesHash,
-                beneficiary,
+                parentHash!,
+                unclesHash!,
+                beneficiary!,
                 difficulty,
                 number,
                 gasLimit,
                 timestamp,
-                extraData)
+                extraData ?? [])
             {
                 StateRoot = stateRoot,
                 TxRoot = transactionsRoot,
@@ -112,7 +112,7 @@ namespace Nethermind.Serialization.Rlp
             writer.Encode(header.GasLimit);
             writer.Encode(header.GasUsed);
             writer.Encode(header.Timestamp);
-            writer.Encode(header.ExtraData);
+            writer.Encode(header.ExtraData ?? []);
 
             if (notForSealing)
             {
@@ -120,7 +120,7 @@ namespace Nethermind.Serialization.Rlp
                 if (isAuRa)
                 {
                     writer.Encode(header.AuRaStep!.Value);
-                    writer.Encode(header.AuRaSignature);
+                    writer.Encode(header.AuRaSignature!);
                 }
                 else
                 {

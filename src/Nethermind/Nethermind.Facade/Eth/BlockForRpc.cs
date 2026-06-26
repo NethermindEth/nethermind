@@ -88,7 +88,7 @@ public class BlockForRpc
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
-                    ? GetTransactionsForRpc(block, specProvider.ChainId)
+                    ? GetTransactionsForRpc(block, specProvider?.ChainId ?? 0)
                     : GetTransactionHashes(block.Transactions);
         }
         TransactionsRoot = block.TxRoot;
@@ -103,7 +103,7 @@ public class BlockForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
-    public byte[] ExtraData { get; set; }
+    public byte[]? ExtraData { get; set; }
     public ulong GasLimit { get; set; }
     public ulong GasUsed { get; set; }
 
@@ -111,7 +111,7 @@ public class BlockForRpc
     public Hash256? Hash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public Bloom LogsBloom { get; set; }
+    public Bloom? LogsBloom { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? Miner { get; set; }
@@ -122,12 +122,12 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public ulong? Number { get; set; }
-    public Hash256 ParentHash { get; set; }
-    public Hash256 ReceiptsRoot { get; set; }
-    public Hash256 Sha3Uncles { get; set; }
+    public Hash256? ParentHash { get; set; }
+    public Hash256? ReceiptsRoot { get; set; }
+    public Hash256? Sha3Uncles { get; set; }
     public byte[]? Signature { get; set; }
     public long Size { get; set; }
-    public Hash256 StateRoot { get; set; }
+    public Hash256? StateRoot { get; set; }
     [JsonConverter(typeof(NullableRawULongConverter))]
     public ulong? Step { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -135,9 +135,9 @@ public class BlockForRpc
     public UInt256 Timestamp { get; set; }
 
     public UInt256? BaseFeePerGas { get; set; }
-    public object[] Transactions { get; set; }
-    public Hash256 TransactionsRoot { get; set; }
-    public Hash256[] Uncles { get; set; }
+    public object[]? Transactions { get; set; }
+    public Hash256? TransactionsRoot { get; set; }
+    public Hash256[]? Uncles { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Withdrawal[]? Withdrawals { get; set; }
@@ -173,7 +173,7 @@ public class BlockForRpc
         Hash256[] hashes = new Hash256[transactions.Length];
         for (int i = 0; i < transactions.Length; i++)
         {
-            hashes[i] = transactions[i].Hash;
+            hashes[i] = transactions[i].Hash!;
         }
         return hashes;
     }
@@ -188,7 +188,7 @@ public class BlockForRpc
         {
             TransactionForRpcContext extraData = new(
                 chainId: chainId,
-                blockHash: block.Hash,
+                blockHash: block.Hash!,
                 blockNumber: block.Number,
                 txIndex: i,
                 blockTimestamp: block.Timestamp,
@@ -206,7 +206,7 @@ public class BlockForRpc
         Hash256[] hashes = new Hash256[headers.Length];
         for (int i = 0; i < headers.Length; i++)
         {
-            hashes[i] = headers[i].Hash;
+            hashes[i] = headers[i].Hash!;
         }
         return hashes;
     }

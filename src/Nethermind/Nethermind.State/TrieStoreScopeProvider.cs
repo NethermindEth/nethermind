@@ -38,7 +38,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 {
     private readonly ITrieStore _trieStore = trieStore;
     private readonly ILogManager _logManager = logManager;
-    protected StateTree _backingStateTree;
+    protected StateTree _backingStateTree = null!;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
 
     protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
@@ -226,7 +226,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 {
                     commitTask.Add(Task.Factory.StartNew((ctx) =>
                     {
-                        StorageTree st = (StorageTree)ctx;
+                        StorageTree st = (StorageTree)ctx!;
                         st.Commit();
                         blockCommitter.ReturnConcurrencyQuota();
                     }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
@@ -244,7 +244,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         internal StorageTree LookupStorageTree(Address address)
         {
-            if (_storages.TryGetValue(address, out StorageTree storageTree))
+            if (_storages.TryGetValue(address, out StorageTree? storageTree))
             {
                 return storageTree;
             }
