@@ -279,6 +279,59 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddStorageRange_BatchedStorageFactory_CommitsLargeSingleAccountResponseOnce()
+    {
+        const int slotCount = 1024;
+        Hash256 root = TestItem.KeccakA;
+        BatchingSnapTrieFactory factory = new(new PathRoot(TestItem.KeccakA, root));
+        using IContainer container = CreateContainer(new TestSyncConfig(), (_, _) => factory);
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        using StorageRange storage = CreateStorageRange(root);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = CreateStorageResponse(CreateSlots(slotCount)),
+            Proofs = EmptyByteArrayList.Instance
+        };
+
+        Assert.That(snapProvider.AddStorageRange(storage, response), Is.EqualTo(AddRangeResult.OK));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.StartedBatches, Is.EqualTo(1));
+            Assert.That(factory.CommittedBatches, Is.EqualTo(1));
+            Assert.That(factory.AbortedBatches, Is.EqualTo(0));
+            Assert.That(factory.StorageTreesWithBatch, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void AddStorageRange_BatchedStorageFactory_DoesNotBatchSmallSingleAccountResponse()
+    {
+        Hash256 root = TestItem.KeccakA;
+        BatchingSnapTrieFactory factory = new(new PathRoot(TestItem.KeccakA, root));
+        using IContainer container = CreateContainer(new TestSyncConfig(), (_, _) => factory);
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        using StorageRange storage = CreateStorageRange(root);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = CreateStorageResponse(CreateSlots(ValueKeccak.Zero)),
+            Proofs = EmptyByteArrayList.Instance
+        };
+
+        Assert.That(snapProvider.AddStorageRange(storage, response), Is.EqualTo(AddRangeResult.OK));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.StartedBatches, Is.EqualTo(0));
+            Assert.That(factory.CommittedBatches, Is.EqualTo(0));
+            Assert.That(factory.AbortedBatches, Is.EqualTo(0));
+            Assert.That(factory.StorageTreesWithBatch, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
     public void AddStorageRange_ParallelBatch_ProcessesStorageAccountsConcurrently()
     {
         Hash256 firstRoot = TestItem.KeccakA;
@@ -759,6 +812,17 @@ public class SnapProviderTests
             }
         };
 
+    private static StorageRange CreateStorageRange(Hash256 storageRoot) =>
+        new()
+        {
+            StartingHash = ValueKeccak.Zero,
+            LimitHash = ValueKeccak.MaxValue,
+            Accounts = new ArrayPoolList<PathWithAccount>(1)
+            {
+                new(TestItem.KeccakA, new Account(0, 1).WithChangedStorageRoot(storageRoot))
+            }
+        };
+
     private static CountingOwnedReadOnlyList<PathWithStorageSlot> CreateSlots(params ValueHash256[] paths)
     {
         PathWithStorageSlot[] slots = new PathWithStorageSlot[paths.Length];
@@ -767,6 +831,18 @@ public class SnapProviderTests
             slots[i] = new PathWithStorageSlot(paths[i], []);
         }
 
+        return new CountingOwnedReadOnlyList<PathWithStorageSlot>(slots);
+    }
+
+    private static CountingOwnedReadOnlyList<PathWithStorageSlot> CreateSlots(int count)
+    {
+        PathWithStorageSlot[] slots = new PathWithStorageSlot[count];
+        for (int i = 0; i < slots.Length; i++)
+        {
+            slots[i] = new PathWithStorageSlot(Keccak.Compute(i.ToBigEndianByteArray()), []);
+        }
+
+        Array.Sort(slots, static (left, right) => left.Path.CompareTo(right.Path));
         return new CountingOwnedReadOnlyList<PathWithStorageSlot>(slots);
     }
 

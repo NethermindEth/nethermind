@@ -18,7 +18,8 @@ internal sealed class SnapRangeProfiler
     private const int DefaultSlowRangeMilliseconds = 1_000;
     private const int AccountIndex = 0;
     private const int StorageIndex = 1;
-    private const int KindCount = 2;
+    private const int StorageBatchIndex = 2;
+    private const int KindCount = 3;
 
     private readonly ILogger _logger;
     // Report cadence is compared to Stopwatch.GetTimestamp(), while range durations are stored as TimeSpan ticks.
@@ -124,6 +125,36 @@ internal sealed class SnapRangeProfiler
         MaybeReport();
     }
 
+    public void ReportStorageBatchCommit(int responses, int entries, bool threw, long commitTicks)
+    {
+        Interlocked.Increment(ref _ranges[StorageBatchIndex]);
+        Interlocked.Add(ref _entries[StorageBatchIndex], entries);
+        Interlocked.Add(ref _proofs[StorageBatchIndex], responses);
+        Interlocked.Add(ref _commitTicks[StorageBatchIndex], commitTicks);
+        Interlocked.Add(ref _totalTicks[StorageBatchIndex], commitTicks);
+        UpdateMax(ref _maxCommitTicks[StorageBatchIndex], commitTicks);
+        UpdateMax(ref _maxTotalTicks[StorageBatchIndex], commitTicks);
+
+        if (threw)
+        {
+            Interlocked.Increment(ref _exceptions[StorageBatchIndex]);
+        }
+
+        if (commitTicks >= _slowRangeTicks)
+        {
+            Interlocked.Increment(ref _slowRanges[StorageBatchIndex]);
+            if (_logger.IsInfo)
+            {
+                _logger.Info(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Snap range profile slow type={KindName(StorageBatchIndex)} threw={threw} responses={responses} entries={entries} commitMs={ToMilliseconds(commitTicks):F1}"));
+            }
+        }
+
+        MaybeReport();
+    }
+
     private void MaybeReport()
     {
         long now = Stopwatch.GetTimestamp();
@@ -164,10 +195,20 @@ internal sealed class SnapRangeProfiler
 
             if (_logger.IsInfo)
             {
-                _logger.Info(
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"Snap range profile {reason} type={KindName(index)} ranges={ranges} entries={entries} avgEntries={Average(entries, ranges):F1} proofs={proofs} avgProofs={Average(proofs, ranges):F1} boundaryNodes={boundaryNodes} avgBoundaryNodes={Average(boundaryNodes, ranges):F1} persistedProbes={persistedProbes} avgPersistedProbes={Average(persistedProbes, ranges):F1} persistedHitPct={Percent(persistedHits, persistedProbes):F1} avgFillMs={AverageMilliseconds(fillTicks, ranges):F1} avgBulkMs={AverageMilliseconds(bulkTicks, ranges):F1} avgStitchMs={AverageMilliseconds(stitchTicks, ranges):F1} avgCommitMs={AverageMilliseconds(commitTicks, ranges):F1} avgTotalMs={AverageMilliseconds(totalTicks, ranges):F1} maxCommitMs={ToMilliseconds(maxCommitTicks):F1} maxTotalMs={ToMilliseconds(maxTotalTicks):F1} slowRanges={slowRanges} exceptions={exceptions}"));
+                if (index == StorageBatchIndex)
+                {
+                    _logger.Info(
+                        string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"Snap range profile {reason} type={KindName(index)} batches={ranges} entries={entries} avgEntries={Average(entries, ranges):F1} responses={proofs} avgResponses={Average(proofs, ranges):F1} avgCommitMs={AverageMilliseconds(commitTicks, ranges):F1} maxCommitMs={ToMilliseconds(maxCommitTicks):F1} slowBatches={slowRanges} exceptions={exceptions}"));
+                }
+                else
+                {
+                    _logger.Info(
+                        string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"Snap range profile {reason} type={KindName(index)} ranges={ranges} entries={entries} avgEntries={Average(entries, ranges):F1} proofs={proofs} avgProofs={Average(proofs, ranges):F1} boundaryNodes={boundaryNodes} avgBoundaryNodes={Average(boundaryNodes, ranges):F1} persistedProbes={persistedProbes} avgPersistedProbes={Average(persistedProbes, ranges):F1} persistedHitPct={Percent(persistedHits, persistedProbes):F1} avgFillMs={AverageMilliseconds(fillTicks, ranges):F1} avgBulkMs={AverageMilliseconds(bulkTicks, ranges):F1} avgStitchMs={AverageMilliseconds(stitchTicks, ranges):F1} avgCommitMs={AverageMilliseconds(commitTicks, ranges):F1} avgTotalMs={AverageMilliseconds(totalTicks, ranges):F1} maxCommitMs={ToMilliseconds(maxCommitTicks):F1} maxTotalMs={ToMilliseconds(maxTotalTicks):F1} slowRanges={slowRanges} exceptions={exceptions}"));
+                }
             }
         }
     }
@@ -241,7 +282,13 @@ internal sealed class SnapRangeProfiler
         while (Interlocked.CompareExchange(ref location, candidate, current) != current);
     }
 
-    private static string KindName(int index) => index == StorageIndex ? "storage" : "account";
+    private static string KindName(int index) =>
+        index switch
+        {
+            StorageIndex => "storage",
+            StorageBatchIndex => "storageBatch",
+            _ => "account"
+        };
 
     private static double ToMilliseconds(long ticks) => ticks / (double)TimeSpan.TicksPerMillisecond;
 
