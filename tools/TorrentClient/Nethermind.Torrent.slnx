@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Nethermind.Torrent.Cli/Nethermind.Torrent.Cli.csproj" />
+    <Project Path="src/Nethermind.Torrent.Maui/Nethermind.Torrent.Maui.csproj" />
+    <Project Path="src/Nethermind.Torrent/Nethermind.Torrent.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Nethermind.Torrent.Maui.Tests/Nethermind.Torrent.Maui.Tests.csproj" />
+    <Project Path="tests/Nethermind.Torrent.Tests/Nethermind.Torrent.Tests.csproj" />
+  </Folder>
+</Solution>
