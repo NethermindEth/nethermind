@@ -22,7 +22,7 @@ namespace Nethermind.Facade.Find
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
         IReceiptsRecovery? receiptsRecovery,
-        int maxBlockDepth = 1000)
+        IReceiptConfig? receiptConfig)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;
@@ -34,6 +34,7 @@ namespace Nethermind.Facade.Find
         private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private readonly ILogger _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly int _maxBlockDepth = (receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig))).MaxBlockDepth;
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
@@ -59,6 +60,8 @@ namespace Nethermind.Facade.Find
                 throw new ArgumentException($"From block {fromBlock.Number} is later than to block {toBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
+
+            EnsureBlockRangeWithinLimit(fromBlock, toBlock);
 
             if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
             {
@@ -141,9 +144,22 @@ namespace Nethermind.Facade.Find
                 for (ulong i = 0; i < count; i++) yield return from + i;
             }
 
-            ulong rangeSize = Math.Min((ulong)maxBlockDepth, toBlock.Number - fromBlock.Number + 1);
+            ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
             bool tryParallel = rangeSize >= (ulong)_rpcConfigGetLogsThreads;
             return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
+        }
+
+        protected virtual void EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock)
+        {
+            if (_maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number) return;
+
+            ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
+            if (rangeSize > (ulong)_maxBlockDepth)
+            {
+                throw new ArgumentException(
+                    $"Block range {rangeSize} exceeds the maximum of {_maxBlockDepth} blocks per eth_getLogs request. " +
+                    $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(ReceiptConfig.MaxBlockDepth)}.");
+            }
         }
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>
