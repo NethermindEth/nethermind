@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
+using Nethermind.Trie.Utils;
 
 namespace Nethermind.Trie.Pruning;
 
@@ -38,7 +39,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
         private readonly bool _canCommitConcurrently = writeBatch is null && (writeFlags & WriteFlags.DisableWAL) != 0;
         private INodeStorage.IWriteBatch? _writeBatch =
             writeBatch is null && (writeFlags & WriteFlags.DisableWAL) != 0
-                ? new ConcurrentNodeWriteBatcher(nodeStorage, TrieWriteBatchSettings.GetDisableWalBatchSize(disableWalBatchSize))
+                ? new SortedNodeWriteBatcher(nodeStorage, TrieWriteBatchSettings.GetDisableWalBatchSize(disableWalBatchSize))
                 : writeBatch;
         private int _concurrency = Environment.ProcessorCount;
 

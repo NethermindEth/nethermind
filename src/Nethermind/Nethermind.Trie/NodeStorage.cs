@@ -32,6 +32,14 @@ public class NodeStorage(
     public static byte[] GetHalfPathNodeStoragePath(in ValueHash256? address, in TreePath path, in ValueHash256 keccak) =>
         GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak).ToArray();
 
+    public static byte[] GetNodeStoragePath(INodeStorage.KeyScheme scheme, in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
+    {
+        Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
+        return scheme == INodeStorage.KeyScheme.HalfPath
+            ? GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak).ToArray()
+            : GetHashBasedStoragePath(storagePathSpan, keccak).ToArray();
+    }
+
     private static Span<byte> GetHalfPathNodeStoragePathSpan(Span<byte> pathSpan, in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
     {
         Debug.Assert(pathSpan.Length == StoragePathLength);

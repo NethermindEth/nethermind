@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -10,6 +11,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Nethermind.Trie.Utils;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -54,6 +56,109 @@ public class RawTrieStoreTests
         }
 
         Assert.That(nodeStorage.DisposedBatchSizes, Is.EqualTo(new[] { batchSize, 1 }));
+    }
+
+    [Test]
+    public void Raw_scoped_committer_replays_disable_wal_hash_writes_in_global_key_order()
+    {
+        const int batchSize = 2;
+        CountingNodeStorage nodeStorage = new();
+        ValueHash256 hash1 = new("0000000000000000000000000000000000000000000000000000000000000001");
+        ValueHash256 hash2 = new("0000000000000000000000000000000000000000000000000000000000000002");
+        ValueHash256 hash3 = new("0000000000000000000000000000000000000000000000000000000000000003");
+        ValueHash256 hash4 = new("0000000000000000000000000000000000000000000000000000000000000004");
+        ValueHash256[] inputHashes = [hash3, hash1, hash4, hash2];
+
+        using (ICommitter committer = new RawScopedTrieStore.Committer(nodeStorage, null, WriteFlags.DisableWAL, disableWalBatchSize: batchSize))
+        {
+            TreePath path = TreePath.Empty;
+            for (int i = 0; i < inputHashes.Length; i++)
+            {
+                committer.CommitNode(ref path, CreateNode(inputHashes[i], (byte)i));
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.DisposedBatchSizes, Is.EqualTo(new[] { batchSize, batchSize }));
+            Assert.That(GetWrittenHashes(nodeStorage.Writes), Is.EqualTo(new[] { hash1, hash2, hash3, hash4 }));
+        }
+    }
+
+    [Test]
+    public void Raw_scoped_committer_preserves_duplicate_disable_wal_write_order()
+    {
+        CountingNodeStorage nodeStorage = new();
+        ValueHash256 hash = TestItem.KeccakA.ValueHash256;
+
+        using (ICommitter committer = new RawScopedTrieStore.Committer(nodeStorage, null, WriteFlags.DisableWAL, disableWalBatchSize: 1))
+        {
+            TreePath path = TreePath.Empty;
+            committer.CommitNode(ref path, CreateNode(hash, 1));
+            committer.CommitNode(ref path, CreateNode(hash, 2));
+        }
+
+        Assert.That(GetWrittenData(nodeStorage.Writes), Is.EqualTo(new byte[] { 1, 2 }));
+    }
+
+    [Test]
+    public void Raw_scoped_committer_replays_disable_wal_half_path_writes_in_storage_key_order()
+    {
+        const int batchSize = 2;
+        CountingNodeStorage nodeStorage = new()
+        {
+            Scheme = INodeStorage.KeyScheme.HalfPath
+        };
+        NodeStorageWrite[] inputWrites =
+        [
+            new(null, TreePath.FromHexString("2000000000000001"), new ValueHash256("0000000000000000000000000000000000000000000000000000000000000003"), [5]),
+            new(null, TreePath.FromHexString("1000000000000000"), new ValueHash256("0000000000000000000000000000000000000000000000000000000000000002"), [4]),
+            new(null, TreePath.Empty, new ValueHash256("0000000000000000000000000000000000000000000000000000000000000004"), [3]),
+            new(null, TreePath.FromHexString("1000000000000000"), new ValueHash256("0000000000000000000000000000000000000000000000000000000000000001"), [2]),
+            new(null, TreePath.FromHexString("2000000000000000"), new ValueHash256("0000000000000000000000000000000000000000000000000000000000000005"), [1]),
+        ];
+        byte[] expectedData = GetNodeStorageKeyOrderedData(INodeStorage.KeyScheme.HalfPath, inputWrites);
+
+        using (ICommitter committer = new RawScopedTrieStore.Committer(nodeStorage, null, WriteFlags.DisableWAL, disableWalBatchSize: batchSize))
+        {
+            for (int i = 0; i < inputWrites.Length; i++)
+            {
+                NodeStorageWrite write = inputWrites[i];
+                TreePath path = write.Path;
+                committer.CommitNode(ref path, CreateNode(write.Hash, write.Data[0]));
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.DisposedBatchSizes, Is.EqualTo(new[] { batchSize, batchSize, 1 }));
+            Assert.That(GetWrittenData(nodeStorage.Writes), Is.EqualTo(expectedData));
+        }
+    }
+
+    [Test]
+    public void Sorted_node_write_batcher_accepts_concurrent_writes_and_replays_in_key_order()
+    {
+        const int writeCount = 64;
+        const int batchSize = 8;
+        CountingNodeStorage nodeStorage = new();
+
+        using (SortedNodeWriteBatcher batcher = new(nodeStorage, batchSize))
+        {
+            Parallel.For(0, writeCount, index =>
+            {
+                int value = writeCount - index;
+                TreePath path = TreePath.Empty;
+                batcher.Set(null, path, CreateHash(value), [(byte)value], WriteFlags.DisableWAL);
+            });
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.Count.EqualTo(writeCount / batchSize));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.EqualTo(batchSize));
+            Assert.That(GetWrittenData(nodeStorage.Writes), Is.EqualTo(CreateExpectedAscendingData(writeCount)));
+        }
     }
 
     [Test]
@@ -128,9 +233,77 @@ public class RawTrieStoreTests
         return new TrieNode(NodeType.Unknown, Keccak.Compute(rlp), rlp);
     }
 
+    private static TrieNode CreateNode(ValueHash256 hash, byte data) =>
+        new(NodeType.Unknown, new Hash256(hash), [data]);
+
+    private static ValueHash256 CreateHash(int value)
+    {
+        byte[] bytes = new byte[32];
+        bytes[^1] = (byte)value;
+        return new ValueHash256(bytes);
+    }
+
+    private static byte[] CreateExpectedAscendingData(int count)
+    {
+        byte[] data = new byte[count];
+        for (int i = 0; i < data.Length; i++)
+        {
+            data[i] = (byte)(i + 1);
+        }
+
+        return data;
+    }
+
+    private static ValueHash256[] GetWrittenHashes(List<NodeStorageWrite> writes)
+    {
+        ValueHash256[] hashes = new ValueHash256[writes.Count];
+        for (int i = 0; i < writes.Count; i++)
+        {
+            hashes[i] = writes[i].Hash;
+        }
+
+        return hashes;
+    }
+
+    private static byte[] GetWrittenData(List<NodeStorageWrite> writes)
+    {
+        byte[] data = new byte[writes.Count];
+        for (int i = 0; i < writes.Count; i++)
+        {
+            data[i] = writes[i].Data[0];
+        }
+
+        return data;
+    }
+
+    private static byte[] GetNodeStorageKeyOrderedData(INodeStorage.KeyScheme scheme, NodeStorageWrite[] writes)
+    {
+        NodeStorageWrite[] orderedWrites = [.. writes];
+        Array.Sort(orderedWrites, (x, y) => CompareByNodeStorageKey(scheme, x, y));
+
+        byte[] data = new byte[orderedWrites.Length];
+        for (int i = 0; i < orderedWrites.Length; i++)
+        {
+            data[i] = orderedWrites[i].Data[0];
+        }
+
+        return data;
+    }
+
+    private static int CompareByNodeStorageKey(INodeStorage.KeyScheme scheme, NodeStorageWrite x, NodeStorageWrite y)
+    {
+        ValueHash256? xAddress = x.Address;
+        ValueHash256? yAddress = y.Address;
+        byte[] xKey = NodeStorage.GetNodeStoragePath(scheme, xAddress, x.Path, x.Hash);
+        byte[] yKey = NodeStorage.GetNodeStoragePath(scheme, yAddress, y.Path, y.Hash);
+        return xKey.AsSpan().SequenceCompareTo(yKey);
+    }
+
     private sealed class CountingNodeStorage : INodeStorage
     {
         public List<int> DisposedBatchSizes { get; } = [];
+
+        public List<NodeStorageWrite> Writes { get; } = [];
 
         public INodeStorage.KeyScheme Scheme { get; set; } = INodeStorage.KeyScheme.Hash;
 
@@ -157,6 +330,7 @@ public class RawTrieStoreTests
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 _count++;
+                nodeStorage.Writes.Add(new NodeStorageWrite(address, path, currentNodeKeccak, data.ToArray()));
             }
 
             public void Dispose()
@@ -171,4 +345,6 @@ public class RawTrieStoreTests
             }
         }
     }
+
+    private readonly record struct NodeStorageWrite(Hash256? Address, TreePath Path, ValueHash256 Hash, byte[] Data);
 }
