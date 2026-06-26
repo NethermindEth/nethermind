@@ -401,7 +401,7 @@ public class ProgressTrackerTests
     private ProgressTracker CreateProgressTracker(
         int accountRangePartition = 1,
         bool enableStorageSplits = false,
-        int maxActiveStorageRangeBatches = 8,
+        int maxActiveStorageRangeBatches = 4,
         int maxQueuedStorageAccountsForAccountRequests = 9_600)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
