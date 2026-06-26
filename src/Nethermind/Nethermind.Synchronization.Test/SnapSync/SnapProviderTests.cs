@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
@@ -20,6 +20,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -428,7 +429,67 @@ public class SnapProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(nodeStorage.DisposedBatchSizes, Has.Count.GreaterThan(1));
-            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(1024));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(TrieWriteBatchSettings.DefaultDisableWalBatchSize));
+        }
+    }
+
+    [Test]
+    public void PatriciaStorageBatch_UsesConfiguredReplayBatchSize()
+    {
+        const int slotCount = 5_000;
+        const int replayBatchSize = 4096;
+        CountingNodeStorage nodeStorage = new();
+        PatriciaSnapTrieFactory factory = new(nodeStorage, LimboLogs.Instance, replayBatchSize);
+        PathWithStorageSlot[] slots = new PathWithStorageSlot[slotCount];
+        for (int i = 0; i < slotCount; i++)
+        {
+            slots[i] = new PathWithStorageSlot(Keccak.Compute(i.ToBigEndianByteArray()), [1]);
+        }
+
+        Array.Sort(slots, static (left, right) => left.Path.CompareTo(right.Path));
+
+        using (ISnapStorageBatch batch = factory.StartStorageBatch()!)
+        {
+            using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(TestItem.KeccakA, batch);
+            tree.BulkSetAndUpdateRootHash(slots);
+            tree.Commit(ValueKeccak.MaxValue);
+            batch.Commit();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.Count.GreaterThan(1));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(replayBatchSize));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.Some.GreaterThan(TrieWriteBatchSettings.DefaultDisableWalBatchSize));
+        }
+    }
+
+    [Test]
+    public void PatriciaStateTree_UsesConfiguredDisableWalBatchSize()
+    {
+        const int accountCount = 5_000;
+        const int batchSize = 4096;
+        CountingNodeStorage nodeStorage = new();
+        PatriciaSnapTrieFactory factory = new(nodeStorage, LimboLogs.Instance, batchSize);
+        PathWithAccount[] accounts = new PathWithAccount[accountCount];
+        for (int i = 0; i < accountCount; i++)
+        {
+            accounts[i] = new PathWithAccount(Keccak.Compute(i.ToBigEndianByteArray()), Build.An.Account.WithBalance((UInt256)(uint)(i + 1)).TestObject);
+        }
+
+        Array.Sort(accounts, static (left, right) => left.Path.CompareTo(right.Path));
+
+        using (ISnapTree<PathWithAccount> tree = factory.CreateStateTree())
+        {
+            tree.BulkSetAndUpdateRootHash(accounts);
+            tree.Commit(ValueKeccak.MaxValue);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.Count.GreaterThan(1));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(batchSize));
+            Assert.That(nodeStorage.DisposedBatchSizes, Has.Some.GreaterThan(TrieWriteBatchSettings.DefaultDisableWalBatchSize));
         }
     }
 

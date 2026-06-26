@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -13,14 +13,25 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logManager) : ISnapTrieFactory
+public class PatriciaSnapTrieFactory : ISnapTrieFactory
 {
-    private readonly RawScopedTrieStore _stateTrieStore = new(nodeStorage, null);
+    private readonly INodeStorage _nodeStorage;
+    private readonly ILogManager _logManager;
+    private readonly int _disableWalBatchSize;
+    private readonly RawScopedTrieStore _stateTrieStore;
+
+    public PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logManager, int disableWalBatchSize = 0)
+    {
+        _nodeStorage = nodeStorage;
+        _logManager = logManager;
+        _disableWalBatchSize = TrieWriteBatchSettings.GetDisableWalBatchSize(disableWalBatchSize);
+        _stateTrieStore = new RawScopedTrieStore(nodeStorage, null, disableWalBatchSize: _disableWalBatchSize);
+    }
 
     public ISnapTree<PathWithAccount> CreateStateTree()
     {
         SnapUpperBoundAdapter adapter = new(_stateTrieStore);
-        return new PatriciaSnapStateTree(new StateTree(adapter, logManager), adapter, nodeStorage);
+        return new PatriciaSnapStateTree(new StateTree(adapter, _logManager), adapter, _nodeStorage);
     }
 
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
@@ -36,18 +47,16 @@ public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logMa
             _ => throw new ArgumentException($"Unsupported storage batch type {storageBatch.GetType().FullName}.", nameof(storageBatch))
         };
 
-        RawScopedTrieStore storageTrieStore = new(nodeStorage, address, sharedWriteBatch);
+        RawScopedTrieStore storageTrieStore = new(_nodeStorage, address, sharedWriteBatch, _disableWalBatchSize);
         SnapUpperBoundAdapter adapter = new(storageTrieStore);
-        return new PatriciaSnapStorageTree(new StorageTree(adapter, logManager), adapter, nodeStorage, address);
+        return new PatriciaSnapStorageTree(new StorageTree(adapter, _logManager), adapter, _nodeStorage, address);
     }
 
     public ISnapStorageBatch StartStorageBatch() =>
-        new PatriciaSnapStorageBatch(nodeStorage);
+        new PatriciaSnapStorageBatch(_nodeStorage, _disableWalBatchSize);
 
-    private sealed class PatriciaSnapStorageBatch(INodeStorage nodeStorage) : IParallelSnapStorageBatch, INodeStorage.IWriteBatch
+    private sealed class PatriciaSnapStorageBatch(INodeStorage nodeStorage, int disableWalBatchSize) : IParallelSnapStorageBatch, INodeStorage.IWriteBatch
     {
-        private const int MaxReplayBatchSize = 1024;
-
         private readonly object _lock = new();
         private readonly List<NodeWrite> _writes = [];
         private bool _disposed;
@@ -72,7 +81,7 @@ public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logMa
 
             for (int writeIndex = 0; writeIndex < _writes.Count;)
             {
-                int endIndex = Math.Min(writeIndex + MaxReplayBatchSize, _writes.Count);
+                int endIndex = Math.Min(writeIndex + disableWalBatchSize, _writes.Count);
                 using INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
                 for (; writeIndex < endIndex; writeIndex++)
                 {

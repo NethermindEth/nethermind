@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -11,7 +11,7 @@ using Nethermind.Core.Utils;
 
 namespace Nethermind.Trie.Pruning;
 
-public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null, INodeStorage.IWriteBatch? writeBatch = null) : IScopedTrieStore
+public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null, INodeStorage.IWriteBatch? writeBatch = null, int disableWalBatchSize = 0) : IScopedTrieStore
 {
     public RawScopedTrieStore(IKeyValueStoreWithBatching kv, Hash256? address = null) : this(new NodeStorage(kv), address)
     {
@@ -30,19 +30,16 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public INodeStorage.KeyScheme Scheme => nodeStorage.Scheme;
 
-    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags, writeBatch);
+    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags, writeBatch, disableWalBatchSize);
 
-    public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags, INodeStorage.IWriteBatch? writeBatch = null) : ICommitter
+    public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags, INodeStorage.IWriteBatch? writeBatch = null, int disableWalBatchSize = 0) : ICommitter
     {
-        private const int DisableWalBatchSize = 1024;
-
         private readonly bool _ownsWriteBatch = writeBatch is null;
         private readonly bool _canCommitConcurrently = writeBatch is null && (writeFlags & WriteFlags.DisableWAL) != 0;
         private INodeStorage.IWriteBatch? _writeBatch =
             writeBatch is null && (writeFlags & WriteFlags.DisableWAL) != 0
-                ? new ConcurrentNodeWriteBatcher(nodeStorage, DisableWalBatchSize)
+                ? new ConcurrentNodeWriteBatcher(nodeStorage, TrieWriteBatchSettings.GetDisableWalBatchSize(disableWalBatchSize))
                 : writeBatch;
-        private int _pendingWrites;
         private int _concurrency = Environment.ProcessorCount;
 
         public void Dispose()
@@ -64,7 +61,6 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
                 node.IsPersisted = true;
                 CurrentBatch.Set(address, path, node.Keccak, node.FullRlp.AsSpan(), writeFlags);
-                FlushDisableWalBatchIfFull();
             }
 
             return node;
@@ -95,18 +91,6 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
         }
 
         private INodeStorage.IWriteBatch CurrentBatch => _writeBatch ??= nodeStorage.StartWriteBatch();
-
-        private void FlushDisableWalBatchIfFull()
-        {
-            if (_canCommitConcurrently || !_ownsWriteBatch || (writeFlags & WriteFlags.DisableWAL) == 0 || ++_pendingWrites < DisableWalBatchSize)
-            {
-                return;
-            }
-
-            _writeBatch?.Dispose();
-            _writeBatch = null;
-            _pendingWrites = 0;
-        }
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");

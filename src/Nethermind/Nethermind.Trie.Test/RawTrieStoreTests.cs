@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -17,7 +18,7 @@ namespace Nethermind.Trie.Test;
 public class RawTrieStoreTests
 {
     [TestCase(WriteFlags.None, 1, 16_385, 16_385)]
-    [TestCase(WriteFlags.DisableWAL, 17, 1024, 1)]
+    [TestCase(WriteFlags.DisableWAL, 17, TrieWriteBatchSettings.DefaultDisableWalBatchSize, 1)]
     public void Raw_scoped_committer_splits_only_disable_wal_batches(WriteFlags writeFlags, int expectedBatchCount, int expectedMaxBatchSize, int expectedLastBatchSize)
     {
         CountingNodeStorage nodeStorage = new();
@@ -36,6 +37,23 @@ public class RawTrieStoreTests
             Assert.That(nodeStorage.DisposedBatchSizes, Has.All.LessThanOrEqualTo(expectedMaxBatchSize));
             Assert.That(nodeStorage.DisposedBatchSizes[^1], Is.EqualTo(expectedLastBatchSize));
         }
+    }
+
+    [Test]
+    public void Raw_scoped_committer_uses_configured_disable_wal_batch_size()
+    {
+        const int batchSize = 4096;
+        CountingNodeStorage nodeStorage = new();
+        using (ICommitter committer = new RawScopedTrieStore.Committer(nodeStorage, null, WriteFlags.DisableWAL, disableWalBatchSize: batchSize))
+        {
+            TreePath path = TreePath.Empty;
+            for (int i = 0; i < batchSize + 1; i++)
+            {
+                committer.CommitNode(ref path, CreateNode(i));
+            }
+        }
+
+        Assert.That(nodeStorage.DisposedBatchSizes, Is.EqualTo(new[] { batchSize, 1 }));
     }
 
     [Test]
