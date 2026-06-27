@@ -1424,15 +1424,10 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!spec.IsEip8037Enabled)
                 return tx.GasLimit;
 
-            ulong stateReservoir = TGasPolicy.GetStateReservoir(in gas);
-            ulong spentGas = Math.Max(tx.GasLimit.SaturatingSub(stateReservoir), floorGas);
-            ulong intrinsicStateGas = TGasPolicy.GetStateGasUsed(in gas);
-            ulong spillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
-            ulong effectiveStateGas = intrinsicStateGas.SaturatingSub(spillBurned) + refundedCreateStateSpillForHalt;
-            ulong totalSub = stateReservoir + effectiveStateGas;
-            ulong blockGas = Math.Max(tx.GasLimit.SaturatingSub(totalSub), floorGas);
+            (ulong spentGas, ulong blockGas, ulong blockStateGas) =
+                TGasPolicy.ComputeHaltGas(in gas, tx.GasLimit, floorGas, refundedCreateStateSpillForHalt);
 
-            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
+            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
 
         private GasConsumed RefundFailedEip8037Gas(
