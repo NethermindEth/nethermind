@@ -91,9 +91,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static ulong GetStateGasUsed(in EthereumGasPolicy gas) => gas.StateGasUsed;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateGasSpillBurned(in EthereumGasPolicy gas) => gas.StateGasSpillBurned;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Consume(ref EthereumGasPolicy gas, ulong cost)
     {
         if (gas.Value < cost)
@@ -483,6 +480,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         // Only whole CREATE-state units are restored to state on halt; partial spill remains regular.
         return (refundedSpillNotInReservoir / createStateGas) * createStateGas;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (ulong spentGas, ulong blockGas, ulong blockStateGas) ComputeHaltGas(in EthereumGasPolicy gas, ulong txGasLimit, ulong floorGas, ulong refundedCreateStateSpillForHalt)
+    {
+        ulong stateReservoir = gas.StateReservoir;
+        ulong spentGas = Math.Max(txGasLimit.SaturatingSub(stateReservoir), floorGas);
+        ulong effectiveStateGas = gas.StateGasUsed.SaturatingSub(gas.StateGasSpillBurned) + refundedCreateStateSpillForHalt;
+        ulong totalSub = stateReservoir + effectiveStateGas;
+        ulong blockGas = Math.Max(txGasLimit.SaturatingSub(totalSub), floorGas);
+        return (spentGas, blockGas, effectiveStateGas);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
