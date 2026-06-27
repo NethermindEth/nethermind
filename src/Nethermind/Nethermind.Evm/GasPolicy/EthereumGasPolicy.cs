@@ -403,12 +403,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetCodeInsertRegularRefund(ulong codeInsertRefunds, IReleaseSpec spec) =>
-        spec.IsEip8037Enabled || codeInsertRefunds == 0UL
-            ? 0UL
-            : (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, ulong codeInsertRefunds, IReleaseSpec spec, ulong stateGasFloor)
     {
         if (codeInsertRefunds > 0UL && spec.IsEip8037Enabled)
@@ -418,7 +412,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             RefundStateGas(ref gas, stateGasRefund, refundFloor, trackSpillRefund: false);
         }
 
-        return GetCodeInsertRegularRefund(codeInsertRefunds, spec);
+        // Under EIP-8037 the code-insert refund is taken via state gas above; otherwise refund the regular portion.
+        return spec.IsEip8037Enabled || codeInsertRefunds == 0UL
+            ? 0UL
+            : (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
