@@ -18,13 +18,13 @@ public class TaikoTransactionProcessor(
     ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider specProvider,
     IWorldState worldState,
-    IVirtualMachine virtualMachine,
+    IVirtualMachine<TaikoGasPolicy> virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager
-    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessorBase<TaikoGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
+        in IntrinsicGas<TaikoGasPolicy> intrinsicGas)
         => base.ValidateStatic(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in intrinsicGas);
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
