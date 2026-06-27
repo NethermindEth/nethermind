@@ -85,6 +85,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // Spec-dependent fixed charge: the cost is read from the price book (spec) inside the policy.
     static virtual void Consume<TCost>(ref TSelf gas, IReleaseSpec spec) where TCost : struct, ISpecGasCost =>
         TSelf.Consume(ref gas, TCost.GasCost(spec));
+
+    // Dynamic per-word charges — the caller passes the word count (the data), the policy owns the
+    // base + per-word cost formula and its categorization (computation). Mirrors ConsumeDataCopyGas.
+    static virtual void ConsumeKeccak(ref TSelf gas, ulong words) =>
+        TSelf.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * words);
+
+    static virtual void ConsumeMemoryCopy(ref TSelf gas, ulong words) =>
+        TSelf.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * words);
+
+    // EXP per-byte charge: caller passes the exponent's significant byte length; cost from the spec.
+    static virtual void ConsumeExpBytes(ref TSelf gas, IReleaseSpec spec, ulong exponentByteSize) =>
+        TSelf.Consume(ref gas, spec.GasCosts.ExpByteCost * exponentByteSize);
     static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
     static abstract void ConsumeCodeDeposit(ref TSelf gas, ulong cost);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
