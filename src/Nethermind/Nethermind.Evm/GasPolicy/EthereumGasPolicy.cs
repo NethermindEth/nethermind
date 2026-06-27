@@ -100,9 +100,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static ulong GetStateGasSpillBurned(in EthereumGasPolicy gas) => gas.StateGasSpillBurned;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateGasSpillReclassified(in EthereumGasPolicy gas) => gas.StateGasSpillReclassified;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong GetStateGasSpillRefunded(in EthereumGasPolicy gas) => gas.StateGasSpillRefunded;
 
 
@@ -468,6 +465,19 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy Max(in EthereumGasPolicy a, in EthereumGasPolicy b) =>
         a.Value >= b.Value ? a : b;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong ComputeBlockRegularGas(in EthereumGasPolicy gas, in EthereumGasPolicy intrinsic, ulong txGasLimit, ulong floorGas, ulong remainingRegularGas)
+    {
+        ulong intrinsicRegularGas = intrinsic.Value;
+        ulong intrinsicStateGas = intrinsic.StateReservoir;
+        ulong totalCap = intrinsicStateGas + Eip7825Constants.DefaultTxGasLimitCap;
+        ulong initialReservoir = txGasLimit.SaturatingSub(totalCap);
+        ulong totalSub = intrinsicRegularGas + intrinsicStateGas + initialReservoir;
+        ulong initialRegularGas = txGasLimit.SaturatingSub(totalSub);
+        return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
+            intrinsicRegularGas, initialRegularGas, remainingRegularGas, gas.StateGasSpill, gas.StateGasSpillReclassified, floorGas);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateChildFrameGas(ref EthereumGasPolicy parentGas, ulong childRegularGas)
