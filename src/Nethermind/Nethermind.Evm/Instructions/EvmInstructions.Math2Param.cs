@@ -275,7 +275,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        TGasPolicy.Consume(ref gas, GasCostOf.Exp);
+        TGasPolicy.Consume<ExpGasCost>(ref gas);
 
         // Pop the base value and exponent from the stack.
         if (!stack.PopUInt256(out UInt256 a, out UInt256 exponent))
@@ -293,7 +293,7 @@ public static partial class EvmInstructions
 
         ulong expSize = (ulong)(32 - leadingZeros);
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-        TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
+        TGasPolicy.ConsumeExpBytes(ref gas, vm.Spec, expSize);
 
         if (a.IsZero)
         {

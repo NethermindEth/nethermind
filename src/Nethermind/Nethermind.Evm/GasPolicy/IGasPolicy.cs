@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
@@ -97,9 +98,22 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // EXP per-byte charge: caller passes the exponent's significant byte length; cost from the spec.
     static virtual void ConsumeExpBytes(ref TSelf gas, IReleaseSpec spec, ulong exponentByteSize) =>
         TSelf.Consume(ref gas, spec.GasCosts.ExpByteCost * exponentByteSize);
+
+    // Precompile charge: the caller passes the precompile + input + spec (the data needed to price it);
+    // the policy reads the precompile's own base/data cost formulas. Returns false on OOG (incl. the
+    // overflow guard before summing), without charging on overflow — matching the prior inline guard.
+    static virtual bool ConsumePrecompileGas(ref TSelf gas, IPrecompile precompile, ReadOnlyMemory<byte> inputData, IReleaseSpec spec)
+    {
+        ulong baseGasCost = precompile.BaseGasCost(spec);
+        ulong dataGasCost = precompile.DataGasCost(inputData, spec);
+        return baseGasCost <= ulong.MaxValue - dataGasCost && TSelf.UpdateGas(ref gas, baseGasCost + dataGasCost);
+    }
     static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
-    static abstract void ConsumeCodeDeposit(ref TSelf gas, ulong cost);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
+
+    // CREATE state-gas charge (EIP-8037): the policy reads its own CreateState cost, no number passed.
+    static virtual bool ConsumeCreateStateGas(ref TSelf gas) =>
+        TSelf.ConsumeStateGas(ref gas, TSelf.GetCreateStateCost(in gas));
 
     // Revert path: restore the child's state gas into the parent reservoir.
     static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas) { }

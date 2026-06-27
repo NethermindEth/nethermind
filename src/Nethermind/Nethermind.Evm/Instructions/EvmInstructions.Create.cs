@@ -143,7 +143,7 @@ public static partial class EvmInstructions
         if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
-        if (TEip8037.IsActive && !TGasPolicy.ConsumeStateGas(ref gas, TGasPolicy.GetCreateStateCost(in gas)))
+        if (TEip8037.IsActive && !TGasPolicy.ConsumeCreateStateGas(ref gas))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.

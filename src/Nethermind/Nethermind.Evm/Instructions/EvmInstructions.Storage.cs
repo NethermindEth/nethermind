@@ -288,7 +288,8 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c)) goto StackUnderflow;
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
+        ulong words = EvmCalculations.Div32Ceiling(c, out bool outOfGas);
+        TGasPolicy.ConsumeMemoryCopy(ref gas, words);
         if (outOfGas) goto OutOfGas;
 
         if (c.IsZero)
