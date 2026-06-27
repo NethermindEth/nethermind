@@ -125,10 +125,6 @@ public struct MultiDimensionalGasPolicy : IGasPolicy<MultiDimensionalGasPolicy>
         Charge(ref gas, MultiGasDimension.StorageAccessWrite, GasCostOf.SelfDestructEip150);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ConsumeCodeDeposit(ref MultiDimensionalGasPolicy gas, ulong cost) =>
-        ChargeSaturating(ref gas, MultiGasDimension.StorageGrowth, cost);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Refund(ref MultiDimensionalGasPolicy gas, in MultiDimensionalGasPolicy childGas)
     {
         gas.Remaining += childGas.Remaining;
