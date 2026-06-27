@@ -81,6 +81,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // categorize the charge. Default routes to the scalar Consume; multidimensional policies override.
     static virtual void Consume<TCost>(ref TSelf gas) where TCost : struct, IGasCost =>
         TSelf.Consume(ref gas, TCost.GasCost);
+
+    // Spec-dependent fixed charge: the cost is read from the price book (spec) inside the policy.
+    static virtual void Consume<TCost>(ref TSelf gas, IReleaseSpec spec) where TCost : struct, ISpecGasCost =>
+        TSelf.Consume(ref gas, TCost.GasCost(spec));
     static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
     static abstract void ConsumeCodeDeposit(ref TSelf gas, ulong cost);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
