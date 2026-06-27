@@ -1354,7 +1354,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ulong refundedIntrinsicStateGas = postIntrinsicStateReservoir.SaturatingSub(initialStateReservoir) + refundedTopLevelCreateStateGas;
             ulong postHaltIntrinsicStateGas = intrinsicStateGas.SaturatingSub(refundedIntrinsicStateGas);
             RefundRevertedExecutionStateGas(spec, postHaltIntrinsicStateGas, ref gas);
-            ulong refundedCreateStateSpillForHalt = CalculateRefundedCreateStateSpillForHalt(in gas);
+            ulong refundedCreateStateSpillForHalt = TGasPolicy.ComputeRefundedCreateStateSpillForHalt(in gas);
             ulong postHaltStateReservoir = Math.Max(postIntrinsicStateReservoir, TGasPolicy.GetStateReservoir(in gas));
             TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, postHaltIntrinsicStateGas);
             return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, refundedCreateStateSpillForHalt);
@@ -1618,25 +1618,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long quotient = spec.IsEip3529Enabled ? (long)RefundHelper.MaxRefundQuotientEIP3529 : (long)RefundHelper.MaxRefundQuotient;
             return (spentGas, Math.Min((long)(spentGas / (ulong)quotient), totalToRefund));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong CalculateRefundedCreateStateSpillForHalt(in TGasPolicy gas)
-        {
-            ulong stateReservoir = TGasPolicy.GetStateReservoir(in gas);
-            ulong stateGasSpillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
-            ulong totalSub = stateReservoir + stateGasSpillBurned;
-            ulong returnedSpillNotInReservoir = TGasPolicy.GetStateGasSpill(in gas).SaturatingSub(totalSub);
-            ulong refundedSpill = TGasPolicy.GetStateGasSpillRefunded(in gas);
-            ulong refundedSpillNotInReservoir = Math.Min(returnedSpillNotInReservoir, refundedSpill);
-            ulong createStateGas = TGasPolicy.GetCreateStateCost(in gas);
-            if (createStateGas <= 0)
-            {
-                return 0;
-            }
-
-            // Only whole CREATE-state units are restored to state on halt; partial spill remains regular.
-            return (refundedSpillNotInReservoir / createStateGas) * createStateGas;
         }
 
         private static (ulong blockGas, ulong blockStateGas) CalculateBlockGas(

@@ -85,23 +85,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static ulong GetCodeDepositStateCost(in EthereumGasPolicy gas, int byteCodeLength) => GasCostOf.CodeDepositState * (ulong)byteCodeLength;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStorageSetReversalRefund(in EthereumGasPolicy gas) => RefundOf.SSetReversedEip8037;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong GetStateReservoir(in EthereumGasPolicy gas) => gas.StateReservoir;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong GetStateGasUsed(in EthereumGasPolicy gas) => gas.StateGasUsed;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong GetStateGasSpillBurned(in EthereumGasPolicy gas) => gas.StateGasSpillBurned;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateGasSpillRefunded(in EthereumGasPolicy gas) => gas.StateGasSpillRefunded;
-
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Consume(ref EthereumGasPolicy gas, ulong cost)
@@ -475,6 +465,22 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ulong initialRegularGas = txGasLimit.SaturatingSub(totalSub);
         return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
             intrinsicRegularGas, initialRegularGas, remainingRegularGas, gas.StateGasSpill, gas.StateGasSpillReclassified, floorGas);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong ComputeRefundedCreateStateSpillForHalt(in EthereumGasPolicy gas)
+    {
+        ulong totalSub = gas.StateReservoir + gas.StateGasSpillBurned;
+        ulong returnedSpillNotInReservoir = gas.StateGasSpill.SaturatingSub(totalSub);
+        ulong refundedSpillNotInReservoir = Math.Min(returnedSpillNotInReservoir, gas.StateGasSpillRefunded);
+        ulong createStateGas = GasCostOf.CreateState;
+        if (createStateGas == 0)
+        {
+            return 0;
+        }
+
+        // Only whole CREATE-state units are restored to state on halt; partial spill remains regular.
+        return (refundedSpillNotInReservoir / createStateGas) * createStateGas;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
