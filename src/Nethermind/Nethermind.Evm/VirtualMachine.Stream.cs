@@ -260,12 +260,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 exceptionType = EvmExceptionType.StackOverflow;
                                 break;
                             }
-                            TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump);
-                            if (TGasPolicy.IsOutOfGas(in gas))
+                            ulong jumpCost = GasCostOf.VeryLow + GasCostOf.Jump;
+                            if (TGasPolicy.GetRemainingGas(in gas) < jumpCost)
                             {
+                                TGasPolicy.SetOutOfGas(ref gas);
                                 OpCodeCount += opCodeCount;
                                 goto OutOfGas;
                             }
+                            TGasPolicy.ConsumeUnchecked(ref gas, jumpCost);
 
                             opCodeCount++;
                             // Set entryIndex to dest-1; the shared loop-tail entryIndex++ lands it on dest.
@@ -280,12 +282,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 exceptionType = EvmExceptionType.StackOverflow;
                                 break;
                             }
-                            TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.JumpI);
-                            if (TGasPolicy.IsOutOfGas(in gas))
+                            ulong jumpiCost = GasCostOf.VeryLow + GasCostOf.JumpI;
+                            if (TGasPolicy.GetRemainingGas(in gas) < jumpiCost)
                             {
+                                TGasPolicy.SetOutOfGas(ref gas);
                                 OpCodeCount += opCodeCount;
                                 goto OutOfGas;
                             }
+                            TGasPolicy.ConsumeUnchecked(ref gas, jumpiCost);
 
                             if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
                             {

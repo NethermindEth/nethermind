@@ -139,7 +139,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return false;
         }
 
-        Consume(ref gas, spillAmount);
+        ConsumeUnchecked(ref gas, spillAmount);
         gas.StateReservoir = 0;
         gas.StateGasUsed += stateGasCost;
         gas.StateGasSpill += spillAmount;
