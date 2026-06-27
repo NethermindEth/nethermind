@@ -30,6 +30,20 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // For single-dimensional policies blockStateGas is 0, so max(regular, 0) == regular.
     static virtual ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) => Math.Max(blockRegularGas, blockStateGas);
 
+    // EIP-8037 regular-dimension block gas at tx end. Computed inside the policy so its spill
+    // bookkeeping stays private; the default models a single-dimensional policy (no spill).
+    static virtual ulong ComputeBlockRegularGas(in TSelf gas, in TSelf intrinsic, ulong txGasLimit, ulong floorGas, ulong remainingRegularGas)
+    {
+        ulong intrinsicRegularGas = TSelf.GetRemainingGas(in intrinsic);
+        ulong intrinsicStateGas = TSelf.GetStateReservoir(in intrinsic);
+        ulong totalCap = intrinsicStateGas + Eip7825Constants.DefaultTxGasLimitCap;
+        ulong initialReservoir = txGasLimit.SaturatingSub(totalCap);
+        ulong totalSub = intrinsicRegularGas + intrinsicStateGas + initialReservoir;
+        ulong initialRegularGas = txGasLimit.SaturatingSub(totalSub);
+        return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
+            intrinsicRegularGas, initialRegularGas, remainingRegularGas, 0, 0, floorGas);
+    }
+
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
     static virtual ulong GetStorageSetStateCost(in TSelf gas) => GasCostOf.SSetState;
     static virtual ulong GetCreateStateCost(in TSelf gas) => GasCostOf.CreateState;
@@ -45,10 +59,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // Tx-wide cumulative spill paid via gas_left in reverted child frames; never undone.
     // Used by top-level halt to reattribute burned spill from state to regular dimension.
     static virtual ulong GetStateGasSpillBurned(in TSelf gas) => 0;
-    // Spill from reverted children that remains in block regular after in-frame state refund.
-    static virtual ulong GetStateGasSpillReclassified(in TSelf gas) => 0;
     // Spill whose state side was refunded but regular side stays spent; excluded from
-    // Calculate8037BlockRegularGas subtraction.
+    // the block-regular-gas computation.
     static virtual ulong GetStateGasSpillRefunded(in TSelf gas) => 0;
 
     static abstract void Consume(ref TSelf gas, ulong cost);
