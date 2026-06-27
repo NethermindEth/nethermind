@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -53,11 +52,11 @@ public class StatusMessageSerializer69 :
         {
             ProtocolVersion = ctx.DecodeByte(),
             NetworkId = ctx.DecodeULong(),
-            GenesisHash = ctx.DecodeKeccak() ?? Hash256.Zero,
+            GenesisHash = ctx.DecodeKeccakNonNull(),
             ForkId = DecodeForkId(ref ctx),
             EarliestBlock = ctx.DecodeULong(),
             LatestBlock = ctx.DecodeULong(),
-            LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
+            LatestBlockHash = ctx.DecodeKeccakNonNull()
         };
     }
 
