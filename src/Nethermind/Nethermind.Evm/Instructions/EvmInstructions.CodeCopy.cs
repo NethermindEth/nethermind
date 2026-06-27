@@ -237,7 +237,7 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
-        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeCost);
+        TGasPolicy.Consume<ExtCodeSizeGasCost>(ref gas, spec);
 
         // Pop the account address from the stack.
         Address address = stack.PopAddress();
@@ -278,7 +278,7 @@ public static partial class EvmInstructions
                 vm.OpCodeCount++;
                 programCounter++;
                 // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
-                TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+                TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
                 // Determine if the account is a contract by checking the loaded CodeHash.
                 bool isCodeLengthNotZero = vm.WorldState.IsContract(address);

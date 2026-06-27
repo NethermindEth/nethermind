@@ -15,12 +15,12 @@ public static partial class EvmInstructions
     /// Represents a bitwise operation on 256-bit vectors.
     /// Implementers define a static operation that takes two 256-bit vectors and returns a result vector.
     /// </summary>
-    public interface IOpBitwise
+    public interface IOpBitwise : IGasCost
     {
         /// <summary>
         /// The gas cost for executing the bitwise operation.
         /// </summary>
-        static virtual ulong GasCost => GasCostOf.VeryLow;
+        static ulong IGasCost.GasCost => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the bitwise operation.
         /// </summary>
@@ -47,7 +47,7 @@ public static partial class EvmInstructions
         where TOpBitwise : struct, IOpBitwise
     {
         // Deduct the operation's gas cost.
-        TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
+        TGasPolicy.Consume<TOpBitwise>(ref gas);
 
         return BitwiseCore<TOpBitwise>(ref stack);
     }
