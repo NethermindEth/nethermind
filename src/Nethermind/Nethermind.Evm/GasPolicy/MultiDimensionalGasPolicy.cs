@@ -80,6 +80,12 @@ public struct MultiDimensionalGasPolicy : IGasPolicy<MultiDimensionalGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong GetRemainingGas(in MultiDimensionalGasPolicy gas) => gas.Remaining;
 
+    // Instrumentation multi-gas sums its dimensions back to the legacy single number, so block gas is
+    // the sum of the per-dimension totals — contrast EIP-8037's bottleneck max. This is the concrete
+    // point where the block combination rule is a policy concern.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) => blockRegularGas + blockStateGas;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Consume(ref MultiDimensionalGasPolicy gas, ulong cost) =>
         ChargeSaturating(ref gas, MultiGasDimension.Computation, cost);

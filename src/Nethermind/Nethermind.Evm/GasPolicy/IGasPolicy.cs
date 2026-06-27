@@ -24,6 +24,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static abstract ulong GetRemainingGas(in TSelf gas);
 
+    // Block-gas combination rule. The two-dimensional regular/state gas is reduced to the single
+    // header GasUsed by taking the per-dimension max — a block is full when its bottleneck resource
+    // is full (EIP-8037). Summing/instrumentation policies (e.g. Arbitrum multigas) override to add.
+    // For single-dimensional policies blockStateGas is 0, so max(regular, 0) == regular.
+    static virtual ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) => Math.Max(blockRegularGas, blockStateGas);
+
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
     static virtual ulong GetStorageSetStateCost(in TSelf gas) => GasCostOf.SSetState;
     static virtual ulong GetCreateStateCost(in TSelf gas) => GasCostOf.CreateState;
