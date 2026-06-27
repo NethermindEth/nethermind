@@ -59,7 +59,7 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.GasUsed = decoderContext.DecodeULong();
             txReceipt.GasUsedTotal = decoderContext.DecodeULong();
-            txReceipt.Bloom = decoderContext.DecodeBloom();
+            txReceipt.Bloom = decoderContext.DecodeBloomNonNull();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             List<LogEntry> logEntries = [];

@@ -261,6 +261,8 @@ public ref struct RlpReader
         return new ValueHash256(keccakSpan);
     }
 
+    public ValueHash256 DecodeValueKeccakNonNull() => DecodeValueKeccak() ?? ThrowNullDecodedValue<ValueHash256>();
+
     public bool TryDecodeValueKeccak(out ValueHash256 keccak)
     {
         Unsafe.SkipInit(out keccak);
@@ -515,7 +517,8 @@ public ref struct RlpReader
             bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom);
             if (bloomBytes.Length == 0)
             {
-                bloom = new BloomStructRef(Bloom.Empty.Bytes);
+                ThrowNullDecodedValue<Bloom>();
+                bloom = default;
                 return;
             }
         }
@@ -1017,6 +1020,34 @@ public ref struct RlpReader
         return result;
     }
 
+    public T?[] DecodeNullableArray<T>(DecodeRlpValue<T?> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
+        where T : class
+    {
+        int positionCheck = ReadSequenceLength() + Position;
+        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+        GuardLimit(count, limit);
+        T?[] result = new T?[count];
+        for (int i = 0; i < result.Length; i++)
+        {
+            if (PeekByte() == Rlp.OfEmptyList[0])
+            {
+                result[i] = defaultElement;
+                Position++;
+            }
+            else
+            {
+                result[i] = decodeItem(ref this);
+            }
+        }
+
+        if (checkPositions)
+        {
+            Check(positionCheck);
+        }
+
+        return result;
+    }
+
     public ArrayPoolList<T> DecodeArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
     {
         int positionCheck = ReadSequenceLength() + Position;
@@ -1048,6 +1079,48 @@ public ref struct RlpReader
                     }
 
                     result[i] = value!;
+                }
+            }
+
+            if (checkPositions)
+            {
+                Check(positionCheck);
+            }
+
+            return result;
+        }
+        catch (RlpException)
+        {
+            Rlp.DisposeDecodedItemsAndList(result, i);
+            throw;
+        }
+        catch (Exception e)
+        {
+            Rlp.DisposeDecodedItemsAndList(result, i);
+            throw new RlpException($"Error decoding array of {typeof(T).Name}.", e);
+        }
+    }
+
+    public ArrayPoolList<T?> DecodeNullableArrayPoolList<T>(DecodeRlpValue<T?> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
+        where T : class
+    {
+        int positionCheck = ReadSequenceLength() + Position;
+        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+        GuardLimit(count, limit);
+        ArrayPoolList<T?> result = new(count, count);
+        int i = 0;
+        try
+        {
+            for (; i < result.Count; i++)
+            {
+                if (PeekByte() == Rlp.OfEmptyList[0])
+                {
+                    result[i] = defaultElement;
+                    Position++;
+                }
+                else
+                {
+                    result[i] = decodeItem(ref this);
                 }
             }
 

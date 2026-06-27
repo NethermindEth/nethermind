@@ -5,6 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
@@ -28,10 +29,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         }
 
         [Test]
-        public void Roundtrip_with_nulls()
+        public void Deserialize_throws_on_null_hash()
         {
-            Hash256[] keys = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
-            Test(keys);
+            Hash256[] keys = { null!, TestItem.KeccakA, null!, TestItem.KeccakB, null!, null! };
+            using GetPooledTransactionsMessage message = new(keys.ToPooledList());
+            GetPooledTransactionsMessageSerializer serializer = new();
+            byte[] bytes = serializer.Serialize(message);
+
+            Assert.That(() => serializer.Deserialize(bytes), Throws.TypeOf<RlpException>());
         }
 
         [Test]

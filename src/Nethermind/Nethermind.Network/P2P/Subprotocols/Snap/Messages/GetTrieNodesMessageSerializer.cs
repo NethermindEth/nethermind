@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -123,8 +122,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             {
                 ctx.ReadSequenceLength();
                 message.RequestId = ctx.DecodeLong();
-                Hash256? rootHash = ctx.DecodeKeccak();
-                message.RootHash = rootHash;
+                message.RootHash = ctx.DecodeKeccakNonNull();
 
                 rawPaths = RlpItemList.DecodeList(ref ctx, memoryOwner);
                 memoryOwner = null;

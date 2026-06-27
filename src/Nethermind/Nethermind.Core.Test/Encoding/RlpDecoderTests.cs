@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -118,6 +119,54 @@ public class RlpDecoderTests
         }
 
         Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+    }
+
+    [Test]
+    public void Decode_nullable_delegate_array_allows_null_reference_element()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
+
+        Hash256?[] result = context.DecodeNullableArray(static (ref RlpReader c) => c.DecodeKeccak());
+
+        Assert.That(result, Has.Length.EqualTo(1));
+        Assert.That(result[0], Is.Null);
+    }
+
+    [Test]
+    public void Decode_nullable_delegate_array_uses_default_for_empty_list_element()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+
+        Hash256?[] result = context.DecodeNullableArray(
+            static (ref RlpReader _) => throw new InvalidOperationException(),
+            defaultElement: TestItem.KeccakA);
+
+        Assert.That(result, Has.Length.EqualTo(1));
+        Assert.That(result[0], Is.EqualTo(TestItem.KeccakA));
+    }
+
+    [Test]
+    public void Decode_nullable_array_pool_list_allows_null_reference_element()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
+
+        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak());
+
+        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That(result[0], Is.Null);
+    }
+
+    [Test]
+    public void Decode_nullable_array_pool_list_uses_default_for_empty_list_element()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+
+        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(
+            static (ref RlpReader _) => throw new InvalidOperationException(),
+            defaultElement: TestItem.KeccakA);
+
+        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That(result[0], Is.EqualTo(TestItem.KeccakA));
     }
 
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)

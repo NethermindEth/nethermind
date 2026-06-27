@@ -135,6 +135,15 @@ public class GetBlockAccessListsMessageSerializerTests
         SerializerTester.TestZero(serializer, msg);
     }
 
+    [Test]
+    public void Deserialize_throws_on_null_hash()
+    {
+        GetBlockAccessListsMessageSerializer serializer = new();
+        using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc3, 0x01, 0xc1, 0x80]).AsDisposable();
+
+        Assert.That(() => serializer.Deserialize(payload), Throws.TypeOf<RlpException>());
+    }
+
     private static IEnumerable<TestCaseData> GetBlockAccessListsRoundtripCases()
     {
         yield return new TestCaseData(

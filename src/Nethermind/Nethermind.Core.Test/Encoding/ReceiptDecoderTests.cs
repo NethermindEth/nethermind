@@ -261,6 +261,51 @@ namespace Nethermind.Core.Test.Encoding
                 Throws.TypeOf<RlpException>());
         }
 
+        [Test]
+        public void Receipt_message_decoding_rejects_null_bloom()
+        {
+            byte[] encoded = EncodeReceiptMessageWithNullBloom();
+            ReceiptMessageDecoder decoder = new();
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+            void Decode()
+            {
+                RlpReader reader = new(encoded);
+                decoder.Decode(ref reader, RlpBehaviors.Eip658Receipts);
+            }
+        }
+
+        [Test]
+        public void Receipt_storage_decoding_rejects_null_bloom()
+        {
+            byte[] encoded = EncodeStorageReceiptWithNullBloom();
+            ReceiptStorageDecoder decoder = new();
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+            void Decode()
+            {
+                RlpReader reader = new(encoded);
+                decoder.Decode(ref reader, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            }
+        }
+
+        [Test]
+        public void Receipt_storage_struct_ref_decoding_rejects_null_bloom()
+        {
+            byte[] encoded = EncodeStorageReceiptWithNullBloom();
+            ReceiptStorageDecoder decoder = new();
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+            void Decode()
+            {
+                RlpReader reader = new(encoded);
+                decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, out _);
+            }
+        }
+
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
         {
             Bloom bloom = new();
@@ -308,6 +353,52 @@ namespace Nethermind.Core.Test.Encoding
                 Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
                 Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "type");
             }
+        }
+
+        private static byte[] EncodeReceiptMessageWithNullBloom()
+        {
+            int contentLength = Rlp.LengthOf((byte)1)
+                + Rlp.LengthOf(1UL)
+                + Rlp.LengthOf((Bloom?)null)
+                + Rlp.LengthOfSequence(0);
+            byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = new(encoded);
+            writer.StartSequence(contentLength);
+            writer.Encode((byte)1);
+            writer.Encode(1UL);
+            writer.Encode((Bloom?)null);
+            writer.StartSequence(0);
+            return encoded;
+        }
+
+        private static byte[] EncodeStorageReceiptWithNullBloom()
+        {
+            int contentLength = Rlp.LengthOf((byte)1)
+                + Rlp.LengthOf(TestItem.KeccakA)
+                + Rlp.LengthOf(1UL)
+                + Rlp.LengthOf(0)
+                + Rlp.LengthOf(TestItem.AddressA)
+                + Rlp.LengthOf(TestItem.AddressB)
+                + Rlp.LengthOf(TestItem.AddressC)
+                + Rlp.LengthOf(1UL)
+                + Rlp.LengthOf(1UL)
+                + Rlp.LengthOf((Bloom?)null)
+                + Rlp.LengthOfSequence(0);
+            byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = new(encoded);
+            writer.StartSequence(contentLength);
+            writer.Encode((byte)1);
+            writer.Encode(TestItem.KeccakA);
+            writer.Encode(1UL);
+            writer.Encode(0);
+            writer.Encode(TestItem.AddressA);
+            writer.Encode(TestItem.AddressB);
+            writer.Encode(TestItem.AddressC);
+            writer.Encode(1UL);
+            writer.Encode(1UL);
+            writer.Encode((Bloom?)null);
+            writer.StartSequence(0);
+            return encoded;
         }
 
         private void AssertStorageReceipt(TxReceipt txReceipt, TxReceipt? deserialized)

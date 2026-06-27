@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             ctx.ReadSequenceLength();
 
             message.RequestId = ctx.DecodeLong();
-            message.AccountRange = new(ctx.DecodeKeccak(), ctx.DecodeKeccak(), ctx.DecodeKeccak());
+            message.AccountRange = new(ctx.DecodeKeccakNonNull(), ctx.DecodeValueKeccakNonNull(), ctx.DecodeValueKeccakNonNull());
             message.ResponseBytes = ctx.DecodeLong();
 
             return message;

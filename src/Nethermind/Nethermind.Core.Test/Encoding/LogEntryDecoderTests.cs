@@ -85,6 +85,27 @@ public class LogEntryDecoderTests
         Assert.That(decoder.Decode(ref ctx), Is.Null);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Struct_ref_decoders_reject_empty_log_entry(bool compact)
+    {
+        Assert.That(
+            compact ? DecodeCompact : DecodeRegular,
+            Throws.TypeOf<RlpException>());
+
+        static void DecodeCompact()
+        {
+            RlpReader ctx = new(Rlp.OfEmptyList.Bytes);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
+        }
+
+        static void DecodeRegular()
+        {
+            RlpReader ctx = new(Rlp.OfEmptyList.Bytes);
+            LogEntryDecoder.DecodeStructRef(ref ctx, RlpBehaviors.None, out _);
+        }
+    }
+
     [Test]
     public void Rejects_extra_topic_items_inside_topics_sequence()
     {

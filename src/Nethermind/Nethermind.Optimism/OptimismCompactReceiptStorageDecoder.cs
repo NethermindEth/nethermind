@@ -48,7 +48,9 @@ public class OptimismCompactReceiptStorageDecoder :
         using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
         while (decoderContext.Position < logEntriesCheck)
         {
-            logEntries.Add(LogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes)!);
+            LogEntry logEntry = LogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes)
+                ?? throw new RlpException("Unexpected RLP null while decoding receipt log entry.");
+            logEntries.Add(logEntry);
         }
 
         txReceipt.Logs = [.. logEntries];

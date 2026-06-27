@@ -30,13 +30,13 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = decoderContext.ReadSequenceLength();
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
-            Hash256? parentHash = decoderContext.DecodeKeccak();
-            Hash256? unclesHash = decoderContext.DecodeKeccak();
-            Address? beneficiary = decoderContext.DecodeAddress();
-            Hash256? stateRoot = decoderContext.DecodeKeccak();
-            Hash256? transactionsRoot = decoderContext.DecodeKeccak();
-            Hash256? receiptsRoot = decoderContext.DecodeKeccak();
-            Bloom? bloom = decoderContext.DecodeBloom();
+            Hash256 parentHash = decoderContext.DecodeKeccakNonNull();
+            Hash256 unclesHash = decoderContext.DecodeKeccakNonNull();
+            Address beneficiary = decoderContext.DecodeAddressNonNull();
+            Hash256 stateRoot = decoderContext.DecodeKeccakNonNull();
+            Hash256 transactionsRoot = decoderContext.DecodeKeccakNonNull();
+            Hash256 receiptsRoot = decoderContext.DecodeKeccakNonNull();
+            Bloom bloom = decoderContext.DecodeBloomNonNull();
             UInt256 difficulty = decoderContext.DecodeUInt256();
             ulong number = decoderContext.DecodeULong();
             ulong gasLimit = decoderContext.DecodeULong();
@@ -45,9 +45,9 @@ namespace Nethermind.Serialization.Rlp
             byte[]? extraData = decoderContext.DecodeByteArray();
 
             BlockHeader blockHeader = new(
-                parentHash!,
-                unclesHash!,
-                beneficiary!,
+                parentHash,
+                unclesHash,
+                beneficiary,
                 difficulty,
                 number,
                 gasLimit,
@@ -64,22 +64,26 @@ namespace Nethermind.Serialization.Rlp
 
             if (decoderContext.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
             {
-                blockHeader.MixHash = decoderContext.DecodeKeccak();
+                blockHeader.MixHash = decoderContext.DecodeKeccakNonNull();
                 blockHeader.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
             }
             else
             {
                 blockHeader.AuRaStep = decoderContext.DecodeULong();
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
+                if (blockHeader.AuRaSignature is null || blockHeader.AuRaSignature.Length == NonceLength)
+                {
+                    throw new RlpException("Invalid AuRa signature RLP.");
+                }
             }
 
             if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
-            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccakNonNull();
             if (decoderContext.Position != headerCheck) blockHeader.BlobGasUsed = decoderContext.DecodeULong();
             if (decoderContext.Position != headerCheck) blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
-            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
-            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccak();
-            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccakNonNull();
+            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccakNonNull();
+            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccakNonNull();
             if (decoderContext.Position != headerCheck) blockHeader.SlotNumber = decoderContext.DecodeULong();
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
