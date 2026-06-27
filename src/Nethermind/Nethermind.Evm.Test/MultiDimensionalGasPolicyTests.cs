@@ -95,6 +95,18 @@ public class MultiDimensionalGasPolicyTests
         }
     }
 
+    private static ulong Combine<T>(ulong regular, ulong state) where T : struct, IGasPolicy<T> =>
+        T.CombineBlockGas(regular, state);
+
+    [Test]
+    public void CombineBlockGas_is_a_policy_concern_max_for_Ethereum_sum_for_multidim()
+    {
+        // EIP-8037: a block is full when its bottleneck dimension is full → max.
+        Assert.That(Combine<EthereumGasPolicy>(100, 50), Is.EqualTo(100UL));
+        // Multi-gas instrumentation sums the dimensions back to the legacy total → sum.
+        Assert.That(Combine<MultiDimensionalGasPolicy>(100, 50), Is.EqualTo(150UL));
+    }
+
     [Test]
     public void UpdateGas_failure_burns_remaining_and_flags_out_of_gas()
     {
