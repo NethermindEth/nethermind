@@ -21,7 +21,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
 
         decoderContext.ReadSequenceLength();
         ulong number = decoderContext.DecodeULong();
-        Hash256 hash256 = decoderContext.DecodeKeccak();
+        Hash256 hash256 = decoderContext.DecodeKeccakNonNull();
         Address[] candidates = DecodeAddressArray(ref decoderContext);
         return createSnapshot(number, hash256, candidates);
     }
@@ -40,7 +40,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         int index = 0;
         while (length > 0)
         {
-            addresses[index++] = decoderContext.DecodeAddress();
+            addresses[index++] = decoderContext.DecodeAddressNonNull();
             length -= Rlp.LengthOfAddressRlp;
         }
 
