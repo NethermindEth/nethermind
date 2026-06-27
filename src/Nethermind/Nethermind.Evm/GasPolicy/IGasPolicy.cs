@@ -44,24 +44,23 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             intrinsicRegularGas, initialRegularGas, remainingRegularGas, 0, 0, floorGas);
     }
 
+    // EIP-8037 top-level-halt spill reattribution: whole CREATE-state units whose spill was refunded
+    // are restored to the state dimension. Default 0 — single-dimensional policies have no spill.
+    static virtual ulong ComputeRefundedCreateStateSpillForHalt(in TSelf gas) => 0;
+
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
     static virtual ulong GetStorageSetStateCost(in TSelf gas) => GasCostOf.SSetState;
     static virtual ulong GetCreateStateCost(in TSelf gas) => GasCostOf.CreateState;
     static virtual ulong GetNewAccountStateCost(in TSelf gas) => GasCostOf.NewAccountState;
     static virtual ulong GetPerAuthBaseStateCost(in TSelf gas) => GasCostOf.PerAuthBaseState;
     static virtual ulong GetCodeDepositStateCost(in TSelf gas, int byteCodeLength) => GasCostOf.CodeDepositState * (ulong)byteCodeLength;
-    static virtual ulong GetStorageSetReversalRefund(in TSelf gas) => RefundOf.SSetReversedEip8037;
 
     // EIP-8037 state-accounting accessors. Pre-EIP-8037 policies return 0.
     static virtual ulong GetStateReservoir(in TSelf gas) => 0;
     static virtual ulong GetStateGasUsed(in TSelf gas) => 0;
-    static virtual ulong GetStateGasSpill(in TSelf gas) => 0;
     // Tx-wide cumulative spill paid via gas_left in reverted child frames; never undone.
     // Used by top-level halt to reattribute burned spill from state to regular dimension.
     static virtual ulong GetStateGasSpillBurned(in TSelf gas) => 0;
-    // Spill whose state side was refunded but regular side stays spent; excluded from
-    // the block-regular-gas computation.
-    static virtual ulong GetStateGasSpillRefunded(in TSelf gas) => 0;
 
     static abstract void Consume(ref TSelf gas, ulong cost);
     static virtual bool TryConsume(ref TSelf gas, ulong cost)
