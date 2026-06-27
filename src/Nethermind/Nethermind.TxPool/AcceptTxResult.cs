@@ -18,7 +18,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// A transaction with the same hash has already been added to the pool in the past.
         /// </summary>
-        public static readonly AcceptTxResult AlreadyKnown = new(1, nameof(AlreadyKnown));
+        public static readonly AcceptTxResult AlreadyKnown = new(1, "already known");
 
         /// <summary>
         /// Covers scenarios where sender recovery fails.
@@ -28,12 +28,12 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Fee paid by this transaction is not enough to be accepted in the mempool.
         /// </summary>
-        public static readonly AcceptTxResult FeeTooLow = new(3, nameof(FeeTooLow));
+        public static readonly AcceptTxResult FeeTooLow = new(3, "transaction underpriced");
 
         /// <summary>
         /// Fee paid by this transaction is not enough to be accepted in the mempool.
         /// </summary>
-        public static readonly AcceptTxResult FeeTooLowToCompete = new(4, nameof(FeeTooLowToCompete));
+        public static readonly AcceptTxResult FeeTooLowToCompete = new(4, "replacement transaction underpriced");
 
         /// <summary>
         /// Transaction gas limit exceeds the block gas limit.
@@ -43,7 +43,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Sender account has not enough balance to execute this transaction.
         /// </summary>
-        public static readonly AcceptTxResult InsufficientFunds = new(6, nameof(InsufficientFunds));
+        public static readonly AcceptTxResult InsufficientFunds = new(6, "insufficient funds for gas * price + value");
 
         /// <summary>
         /// Calculation of gas price * gas limit + value overflowed int256.
@@ -68,7 +68,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transaction is not allowed to replace the one already in the pool. Fee bump is too low or some requirements are not fulfilled
         /// </summary>
-        public static readonly AcceptTxResult ReplacementNotAllowed = new(11, nameof(ReplacementNotAllowed));
+        public static readonly AcceptTxResult ReplacementNotAllowed = new(11, "replacement transaction underpriced");
 
         /// <summary>
         /// Transaction sender has code hash that is not null.

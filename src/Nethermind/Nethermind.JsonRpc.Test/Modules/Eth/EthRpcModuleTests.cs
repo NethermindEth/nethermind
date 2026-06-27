@@ -2067,7 +2067,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", txForRpc);
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"InsufficientFunds, Balance is zero, cannot pay gas\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for gas * price + value, Balance is zero, cannot pay gas\"},\"id\":67}"));
     }
 
     public enum AccessListProvided
