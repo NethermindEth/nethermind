@@ -90,6 +90,12 @@ public struct MultiDimensionalGasPolicy : IGasPolicy<MultiDimensionalGasPolicy>
     public static void Consume(ref MultiDimensionalGasPolicy gas, ulong cost) =>
         ChargeSaturating(ref gas, MultiGasDimension.Computation, cost);
 
+    // Attribute the fixed charge to the tag's dimension (compile-time constant) instead of the
+    // Computation default — this is where the categorization the type tag carries is realized.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Consume<TCost>(ref MultiDimensionalGasPolicy gas) where TCost : struct, IGasCost =>
+        ChargeSaturating(ref gas, TCost.Dimension, TCost.GasCost);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateGas(ref MultiDimensionalGasPolicy gas, ulong gasCost) =>
         Charge(ref gas, MultiGasDimension.Computation, gasCost);

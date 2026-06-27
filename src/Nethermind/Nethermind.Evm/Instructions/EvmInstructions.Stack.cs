@@ -28,7 +28,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the minimal gas cost for a POP operation.
-        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        TGasPolicy.Consume<BaseGasCost>(ref gas);
         // Pop from the stack; if nothing to pop, signal a stack underflow.
         return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
     }

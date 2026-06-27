@@ -68,6 +68,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual ulong GetStateGasUsed(in TSelf gas) => 0;
 
     static abstract void Consume(ref TSelf gas, ulong cost);
+
     static virtual bool TryConsume(ref TSelf gas, ulong cost)
     {
         if (TSelf.GetRemainingGas(in gas) < cost) return false;
@@ -75,6 +76,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return true;
     }
 
+    // Charge a fixed opcode cost by compile-time category tag. The cost/dimension come from TCost
+    // (monomorphized → const-folded), so the caller passes no precomputed number and the policy can
+    // categorize the charge. Default routes to the scalar Consume; multidimensional policies override.
+    static virtual void Consume<TCost>(ref TSelf gas) where TCost : struct, IGasCost =>
+        TSelf.Consume(ref gas, TCost.GasCost);
     static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
     static abstract void ConsumeCodeDeposit(ref TSelf gas, ulong cost);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);

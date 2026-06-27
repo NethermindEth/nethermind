@@ -667,7 +667,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading gas.
-        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        TGasPolicy.Consume<BaseGasCost>(ref gas);
 
         // If gas falls below zero after cost deduction, signal out-of-gas error.
         if (TGasPolicy.IsOutOfGas(in gas)) goto OutOfGas;
