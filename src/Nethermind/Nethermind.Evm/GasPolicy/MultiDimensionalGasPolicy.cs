@@ -97,6 +97,10 @@ public struct MultiDimensionalGasPolicy : IGasPolicy<MultiDimensionalGasPolicy>
         ChargeSaturating(ref gas, TCost.Dimension, TCost.GasCost);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Consume<TCost>(ref MultiDimensionalGasPolicy gas, IReleaseSpec spec) where TCost : struct, ISpecGasCost =>
+        ChargeSaturating(ref gas, TCost.Dimension, TCost.GasCost(spec));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateGas(ref MultiDimensionalGasPolicy gas, ulong gasCost) =>
         Charge(ref gas, MultiGasDimension.Computation, gasCost);
 
