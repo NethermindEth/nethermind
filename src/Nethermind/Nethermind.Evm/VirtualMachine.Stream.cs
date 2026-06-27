@@ -80,7 +80,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         ulong cost = blockGas[entry.BlockIndex];
                         if (TGasPolicy.GetRemainingGas(in gas) >= cost)
                         {
-                            TGasPolicy.Consume(ref gas, cost);
+                            // Sufficiency just proven by the >= gate, so skip the redundant bounds branch
+                            // the ulong migration added to Consume — this is the dominant per-block charge.
+                            TGasPolicy.ConsumeUnchecked(ref gas, cost);
                             metered = false;
                         }
                         else
