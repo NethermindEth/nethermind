@@ -29,8 +29,6 @@ public struct TaikoGasPolicy : IGasPolicy<TaikoGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeL1Gas(ref TaikoGasPolicy gas, ulong gasConsumed) => EthereumGasPolicy.UpdateGas(ref gas._eth, gasConsumed);
 
-    // --- IGasPolicy delegation to the embedded EthereumGasPolicy ---
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TaikoGasPolicy FromULong(ulong value) => new() { _eth = EthereumGasPolicy.FromULong(value) };
 

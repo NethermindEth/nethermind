@@ -77,9 +77,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return true;
     }
 
-    // Charge a fixed opcode cost by compile-time category tag. The cost/dimension come from TCost
-    // (monomorphized → const-folded), so the caller passes no precomputed number and the policy can
-    // categorize the charge. Default routes to the scalar Consume; multidimensional policies override.
+    // Charge a fixed opcode cost via a compile-time tag: TCost.GasCost const-folds (monomorphized),
+    // so the caller passes no precomputed number.
     static virtual void Consume<TCost>(ref TSelf gas) where TCost : struct, IGasCost =>
         TSelf.Consume(ref gas, TCost.GasCost);
 
@@ -88,7 +87,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         TSelf.Consume(ref gas, TCost.GasCost(spec));
 
     // Dynamic per-word charges — the caller passes the word count (the data), the policy owns the
-    // base + per-word cost formula and its categorization (computation). Mirrors ConsumeDataCopyGas.
+    // base + per-word cost formula. Mirrors ConsumeDataCopyGas.
     static virtual void ConsumeKeccak(ref TSelf gas, ulong words) =>
         TSelf.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * words);
 
