@@ -265,6 +265,46 @@ public class HeaderDecoderTests
     }
 
     [Test]
+    public void Can_encode_decode_with_requests_hash_and_missing_parent_beacon_root()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithRequestsHash(TestItem.KeccakA).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
+            Assert.That(blockHeader.RequestsHash, Is.EqualTo(TestItem.KeccakA));
+        }
+    }
+
+    [Test]
+    public void Can_encode_decode_with_slot_number_and_missing_intermediate_hashes()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithSlotNumber(1).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
+            Assert.That(blockHeader.RequestsHash, Is.EqualTo(Keccak.Zero));
+            Assert.That(blockHeader.BlockAccessListHash, Is.EqualTo(Keccak.Zero));
+            Assert.That(blockHeader.SlotNumber, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Can_encode_decode_with_ValidatorExitRoot_equals_to_null()
     {
         BlockHeader header = Build.A.BlockHeader
