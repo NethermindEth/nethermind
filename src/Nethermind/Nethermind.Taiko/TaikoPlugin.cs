@@ -138,7 +138,7 @@ public class TaikoModule : Module
             .AddModule(new TaikoSynchronizerModule())
 
             .AddSingleton<IPrecompileProvider, TaikoPrecompileProvider>()
-            .AddScoped<IVirtualMachine, TaikoEthereumVirtualMachine>()
+            .AddScoped<IVirtualMachine<TaikoGasPolicy>, TaikoEthereumVirtualMachine>()
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())

@@ -6,7 +6,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -23,13 +22,12 @@ namespace Nethermind.Taiko;
 /// where <c>L1BlockHeight</c> is 0/null, or <c>eth_call</c> at a block with no stored origin) and
 /// the precompile must treat that as permissive.
 /// </summary>
-public class TaikoVirtualMachine<TGasPolicy>(
+public class TaikoVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     IL1OriginStore l1OriginStore,
     ILogManager? logManager
-) : VirtualMachine<TGasPolicy>(blockHashProvider, specProvider, logManager)
-    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+) : VirtualMachine<TaikoGasPolicy>(blockHashProvider, specProvider, logManager)
 {
     private readonly IL1OriginStore _l1OriginStore = l1OriginStore ?? throw new ArgumentNullException(nameof(l1OriginStore));
     private UInt256? _blockL1Origin;
@@ -45,16 +43,16 @@ public class TaikoVirtualMachine<TGasPolicy>(
     }
 
     protected override CallResult ExecutePrecompileCall(
-        VmState<TGasPolicy> state,
+        VmState<TaikoGasPolicy> state,
         IPrecompile precompile,
         ReadOnlyMemory<byte> callData,
         IReleaseSpec spec)
     {
         if (precompile is IContextAwarePrecompile contextAwarePrecompile)
         {
-            TGasPolicy gas = state.Gas;
+            TaikoGasPolicy gas = state.Gas;
             PrecompileExtras extras = new(
-                remainingGas: TGasPolicy.GetRemainingGas(in gas),
+                remainingGas: TaikoGasPolicy.GetRemainingGas(in gas),
                 l1Origin: _blockL1Origin);
 
             Result<(byte[] returnValue, ulong gasConsumed)> output;
@@ -77,7 +75,7 @@ public class TaikoVirtualMachine<TGasPolicy>(
             // Deduct dynamic gas (e.g. actual L1 consumption) regardless of success/failure.
             // On L1 OOG the user loses the full gas limit — matching standard EVM sub-call semantics.
             ulong gasConsumed = output.Data.gasConsumed;
-            if (gasConsumed > 0 && !TGasPolicy.UpdateGas(ref gas, gasConsumed))
+            if (gasConsumed > 0 && !TaikoGasPolicy.ConsumeL1Gas(ref gas, gasConsumed))
             {
                 return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
             }
@@ -114,6 +112,6 @@ public sealed class TaikoEthereumVirtualMachine(
     ISpecProvider? specProvider,
     IL1OriginStore l1OriginStore,
     ILogManager? logManager
-) : TaikoVirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, l1OriginStore, logManager), IVirtualMachine
+) : TaikoVirtualMachine(blockHashProvider, specProvider, l1OriginStore, logManager), IVirtualMachine<TaikoGasPolicy>
 {
 }
