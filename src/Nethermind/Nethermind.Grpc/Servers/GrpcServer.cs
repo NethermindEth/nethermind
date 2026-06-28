@@ -105,7 +105,6 @@ namespace Nethermind.Grpc.Servers
             }
             catch (ObjectDisposedException)
             {
-                // Queue disposed by a concurrent stream teardown; drop this publish.
             }
 
             return Task.CompletedTask;
