@@ -1090,7 +1090,7 @@ public static partial class EvmInstructions
         ulong topicsCount = (ulong)TOpCount.Count;
 
         // Ensure that the memory expansion for the log data is accounted for.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, vmState)) goto OutOfGas;
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, ref vmState.Memory)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
         ulong dataSize = (ulong)length;
         if (!TGasPolicy.ConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
