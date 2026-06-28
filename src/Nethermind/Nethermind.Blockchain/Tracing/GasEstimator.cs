@@ -194,8 +194,6 @@ public class GasEstimator(
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
 
-        // Use the same spec the bounds were computed with (the block the tx would execute in, header.Number + 1),
-        // so estimation stays consistent across a fork-activation boundary instead of executing under the parent's rules.
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         TransactionResult callResult = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
