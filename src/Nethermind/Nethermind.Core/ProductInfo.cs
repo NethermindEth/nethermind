@@ -43,6 +43,7 @@ public static class ProductInfo
         {
             { "name", Name },
             { "version", $"v{Version}" },
+            { "versionPostfix", "" },
             { "os", $"{OS.ToLowerInvariant()}-{OSArchitecture}" },
             { "runtime", $"dotnet{Runtime[5..]}" }
         };
@@ -85,6 +86,12 @@ public static class ProductInfo
 
     public static string Version { get; }
 
+    public static string VersionPostfix
+    {
+        get => ClientIdParts["versionPostfix"];
+        set => ClientIdParts["versionPostfix"] = value;
+    }
+
     public static string Network { get; set; } = string.Empty;
 
     public static string Instance { get; set; } = string.Empty;
@@ -97,7 +104,7 @@ public static class ProductInfo
 
     public static string PublicClientId { get; private set; }
 
-    public const string DefaultPublicClientIdFormat = "{name}/{version}/{os}/{runtime}";
+    public const string DefaultPublicClientIdFormat = "{name}/{version}{versionPostfix}/{os}/{runtime}";
 
     public static void InitializePublicClientId(string formatString) =>
         PublicClientId = FormatClientId(formatString);

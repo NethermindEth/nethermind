@@ -63,7 +63,10 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
-            .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
+            .AddModule(new MonitoringModule(
+                configProvider.GetConfig<IMetricsConfig>(),
+                configProvider.GetConfig<IInitConfig>(),
+                configProvider.GetConfig<IFlatDbConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)

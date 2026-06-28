@@ -8,7 +8,11 @@ namespace Nethermind.Core.Test;
 public class ProductInfoTest
 {
     [TearDown]
-    public void TearDown() => ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
+    public void TearDown()
+    {
+        ProductInfo.VersionPostfix = "";
+        ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
+    }
 
     [Test]
     public void Public_client_id_template_properly_initialized()
@@ -38,4 +42,17 @@ public class ProductInfoTest
 
     [Test]
     public void Public_client_id_not_initialized_returns_the_default_client_id() => Assert.That(ProductInfo.PublicClientId, Is.EqualTo(ProductInfo.ClientId));
+
+    [TestCase("-halfpath", "Nethermind/v{0}-halfpath/{1}/dotnet{2}")]
+    [TestCase("-hash", "Nethermind/v{0}-hash/{1}/dotnet{2}")]
+    [TestCase("", "Nethermind/v{0}/{1}/dotnet{2}")]
+    public void Version_postfix_appended_after_version(string postfix, string expectedTemplate)
+    {
+        ProductInfo.VersionPostfix = postfix;
+        ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
+
+        string os = $"{ProductInfo.OS.ToLowerInvariant()}-{ProductInfo.OSArchitecture}";
+        string expected = string.Format(expectedTemplate, ProductInfo.Version, os, ProductInfo.Runtime[5..]);
+        Assert.That(ProductInfo.PublicClientId, Is.EqualTo(expected));
+    }
 }
