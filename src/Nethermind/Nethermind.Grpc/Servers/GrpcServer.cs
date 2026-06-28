@@ -55,8 +55,6 @@ namespace Nethermind.Grpc.Servers
             }
             finally
             {
-                // Same-named streams share one queue, so only the stream that wins TryRemove
-                // disposes it — concurrent teardowns can't double-dispose.
                 if (_clientResults.TryRemove(client, out BlockingCollection<string> removed)) removed.Dispose();
                 if (_logger.IsInfo) _logger.Info($"Finished the data stream for client: '{client}'.");
             }
