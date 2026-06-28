@@ -47,7 +47,6 @@ namespace Nethermind.Grpc.Servers
             }
             catch (ObjectDisposedException)
             {
-                // The shared queue was disposed by a concurrent same-named stream teardown; exit cleanly.
             }
             catch (Exception ex)
             {
