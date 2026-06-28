@@ -11,7 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 
-namespace Nethermind.State.Flat;
+namespace Nethermind.State.Flat.History;
 
 /// <summary>
 /// Captures finalized per-block changesets into the history columns before the per-block snapshots are pruned.
@@ -20,7 +20,7 @@ namespace Nethermind.State.Flat;
 /// bytes are identical to what the live flat columns store. A deleted account or zeroed/removed slot is recorded
 /// as an empty (tombstone) value.
 /// </summary>
-public sealed class HistoryWriter
+public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 {
     private readonly IColumnsDb<FlatDbColumns> _db;
     private readonly HistoryStore _accountHistory;
@@ -36,11 +36,6 @@ public sealed class HistoryWriter
             db,
             (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
             logManager.GetClassLogger<HistoryWriter>()), config.HistoryEnabled)
-    {
-    }
-
-    internal HistoryWriter(IColumnsDb<FlatDbColumns> db, bool rlpWrapSlots)
-        : this(db, rlpWrapSlots, enabled: true)
     {
     }
 

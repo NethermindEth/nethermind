@@ -21,7 +21,7 @@ using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.History.Test;
 
 /// <summary>
 /// Regression guard for historical <c>trace_*</c>/<c>debug_trace*</c> returning an empty result on a flat node with
@@ -73,7 +73,7 @@ public class HistoricalTraceReExecutionTests
         _blocksConfig.SecondsPerSlot.Returns(12UL);
 
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _historyReader = new HistoryReader(_historyDb, rlpWrapSlots: true);
+        _historyReader = new HistoryReader(_historyDb, LimboLogs.Instance);
         _accountStore = new HistoryStore(
             _historyDb.GetColumnDb(FlatDbColumns.AccountHistory),
             _historyDb.GetColumnDb(FlatDbColumns.AccountChangeSets));
@@ -106,7 +106,14 @@ public class HistoricalTraceReExecutionTests
         byte[] freshSlotValue = [0xBE, 0xEF];
         byte[] updatedExistingSlotValue = [0x12, 0x34];
 
-        await using FlatDbManager manager = CreateHistoryManager();
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = new(
+            inner,
+            _persistenceManager,
+            _historyReader,
+            _trieNodeCache,
+            _resourcePool,
+            enableDetailedMetrics: false);
         using FlatScopeProvider scopeProvider = CreateScopeProvider(manager);
         WorldState worldState = new(scopeProvider, LimboLogs.Instance);
 
@@ -158,7 +165,7 @@ public class HistoricalTraceReExecutionTests
         }, Throws.Nothing);
     }
 
-    private FlatDbManager CreateHistoryManager() => new(
+    private FlatDbManager CreateManager() => new(
         _resourcePool,
         _processExitSource,
         _trieNodeCache,
@@ -168,11 +175,9 @@ public class HistoricalTraceReExecutionTests
         new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, HistoryEnabled = true },
         _blocksConfig,
         LimboLogs.Instance,
-        enableDetailedMetrics: false,
-        historyWriter: null,
-        historyReader: _historyReader);
+        enableDetailedMetrics: false);
 
-    private static FlatScopeProvider CreateScopeProvider(FlatDbManager manager) => new(
+    private static FlatScopeProvider CreateScopeProvider(IFlatDbManager manager) => new(
         new MemDb(),
         manager,
         new FlatDbConfig { CompactSize = 16, HistoryEnabled = true },

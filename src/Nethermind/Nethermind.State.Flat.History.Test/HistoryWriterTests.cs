@@ -14,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.History.Test;
 
 [TestFixture]
 public class HistoryWriterTests
@@ -40,8 +40,8 @@ public class HistoryWriterTests
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _resourcePool = new ResourcePool(new FlatDbConfig { CompactSize = 16 });
         _repository = new SnapshotRepository(LimboLogs.Instance);
-        _writer = new HistoryWriter(_db, RlpWrapSlots);
-        _reader = new HistoryReader(_db, RlpWrapSlots);
+        _writer = new HistoryWriter(_db, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
+        _reader = new HistoryReader(_db, LimboLogs.Instance);
         _accountHistory = new HistoryStore(
             _db.GetColumnDb(FlatDbColumns.AccountHistory),
             _db.GetColumnDb(FlatDbColumns.AccountChangeSets));

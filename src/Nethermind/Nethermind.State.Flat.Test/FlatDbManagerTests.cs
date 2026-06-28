@@ -13,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.Persistence;
 using NSubstitute;
 using NUnit.Framework;
@@ -57,7 +58,7 @@ public class FlatDbManagerTests
         _blocksConfig.SecondsPerSlot.Returns(12UL);
 
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _historyReader = new HistoryReader(_historyDb, rlpWrapSlots: true);
+        _historyReader = new HistoryReader(_historyDb, LimboLogs.Instance);
         _accountStore = new HistoryStore(
             _historyDb.GetColumnDb(FlatDbColumns.AccountHistory),
             _historyDb.GetColumnDb(FlatDbColumns.AccountChangeSets));
@@ -236,7 +237,8 @@ public class FlatDbManagerTests
         RecordHistoryWindow();
         StateId historicalBlock = CreateStateId(block, (byte)block);
 
-        await using FlatDbManager manager = CreateHistoryManager();
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
         using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(historicalBlock);
 
         Account? account = bundle.GetAccount(HistoryAddr);
@@ -276,23 +278,18 @@ public class FlatDbManagerTests
         StateId historicalBlock = CreateStateId(10, rootByte: 10);
         _snapshotRepository.HasState(historicalBlock).Returns(false);
 
-        await using FlatDbManager manager = CreateHistoryManager(historyEnabled);
+        await using FlatDbManager inner = CreateManager();
+        IFlatDbManager manager = historyEnabled ? WrapHistory(inner) : inner;
         Assert.That(manager.HasStateForBlock(historicalBlock), Is.EqualTo(expected));
     }
 
-    private FlatDbManager CreateHistoryManager(bool historyEnabled = true) => new(
-        _resourcePool,
-        _processExitSource,
-        _trieNodeCache,
-        _snapshotCompactor,
-        _snapshotRepository,
+    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(
+        inner,
         _persistenceManager,
-        new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, HistoryEnabled = historyEnabled },
-        _blocksConfig,
-        LimboLogs.Instance,
-        enableDetailedMetrics: false,
-        historyWriter: null,
-        historyReader: _historyReader);
+        _historyReader,
+        _trieNodeCache,
+        _resourcePool,
+        enableDetailedMetrics: false);
 
     private void RecordHistoryWindow()
     {

@@ -8,11 +8,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.History.Test;
 
 public class HistoryReaderTests
 {
@@ -28,7 +29,7 @@ public class HistoryReaderTests
     public void SetUp()
     {
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _reader = new HistoryReader(_db, rlpWrapSlots: true);
+        _reader = new HistoryReader(_db, LimboLogs.Instance);
         _accountStore = new HistoryStore(
             _db.GetColumnDb(FlatDbColumns.AccountHistory),
             _db.GetColumnDb(FlatDbColumns.AccountChangeSets));

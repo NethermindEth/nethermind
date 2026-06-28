@@ -10,7 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 
-namespace Nethermind.State.Flat;
+namespace Nethermind.State.Flat.History;
 
 /// <summary>
 /// Reads finalized historical state "as of block B" from the history columns. The mirror of
@@ -35,7 +35,7 @@ public sealed class HistoryReader
     {
     }
 
-    internal HistoryReader(IColumnsDb<FlatDbColumns> db, bool rlpWrapSlots)
+    private HistoryReader(IColumnsDb<FlatDbColumns> db, bool rlpWrapSlots)
     {
         ArgumentNullException.ThrowIfNull(db);
         _rlpWrapSlots = rlpWrapSlots;

@@ -5,7 +5,7 @@ using System;
 using Nethermind.Db;
 using NUnit.Framework;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.History.Test;
 
 public class HistoryStoreTests
 {

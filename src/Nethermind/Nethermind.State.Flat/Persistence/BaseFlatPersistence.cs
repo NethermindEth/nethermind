@@ -40,23 +40,23 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public static class BaseFlatPersistence
 {
-    internal const int AccountKeyLength = 20;
+    public const int AccountKeyLength = 20;
 
     private const int StoragePrefixPortion = BasePersistence.StoragePrefixPortion;
     private const int StorageSlotKeySize = 32;
     private const int StoragePostfixPortion = 16;
-    internal const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
+    public const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32 bytes.
-    internal const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
+    public const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
 
-    internal static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
+    public static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
         address.Bytes[..AccountKeyLength].CopyTo(buffer);
         return buffer[..AccountKeyLength];
     }
 
-    internal static ReadOnlySpan<byte> EncodeStorageKeyHashedWithShortPrefix(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash)
+    public static ReadOnlySpan<byte> EncodeStorageKeyHashedWithShortPrefix(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash)
     {
         // So we store the key with only a small part of the addr early then put the rest at the end.
         // This helps with rocksdb comparator skipping 16 bytes during comparison, and with index shortening, which reduces
@@ -75,7 +75,7 @@ public static class BaseFlatPersistence
     /// <paramref name="buffer"/> must be at least <see cref="RlpSlotValueBufferSize"/> bytes. Returns the number
     /// of bytes written. Shared so callers (flat writes and the history changeset) produce byte-identical values.
     /// </summary>
-    internal static int EncodeSlotValue(in SlotValue slot, bool rlpWrapSlots, Span<byte> buffer)
+    public static int EncodeSlotValue(in SlotValue slot, bool rlpWrapSlots, Span<byte> buffer)
     {
         ReadOnlySpan<byte> withoutLeadingZeros = slot.AsReadOnlySpan.WithoutLeadingZeros();
         if (!rlpWrapSlots)

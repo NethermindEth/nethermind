@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
 
-namespace Nethermind.State.Flat;
+namespace Nethermind.State.Flat.History;
 
 /// <summary>
 /// Finalized-only historical state for one flat domain (account or storage), over already-encoded byte keys.

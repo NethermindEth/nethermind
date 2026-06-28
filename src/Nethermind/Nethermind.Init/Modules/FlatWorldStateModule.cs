@@ -33,8 +33,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
-            .AddSingleton<HistoryReader>()
-            .AddSingleton<HistoryWriter>()
             .AddSingleton<FlatWorldStateManager>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.
@@ -51,9 +49,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
-                ctx.Resolve<HistoryWriter>(),
-                ctx.Resolve<HistoryReader>()))
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
@@ -109,6 +105,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             builder
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
+        }
+
+        if (flatDbConfig.HistoryEnabled)
+        {
+            builder.AddModule(new FlatHistoryModule());
         }
     }
 

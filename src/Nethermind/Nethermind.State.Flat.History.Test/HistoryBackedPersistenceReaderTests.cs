@@ -8,11 +8,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
 
-namespace Nethermind.State.Flat.Test;
+namespace Nethermind.State.Flat.History.Test;
 
 public class HistoryBackedPersistenceReaderTests
 {
@@ -95,7 +96,7 @@ public class HistoryBackedPersistenceReaderTests
     }
 
     private HistoryBackedPersistenceReader Reader(ulong block) =>
-        new(new HistoryReader(_db, rlpWrapSlots: true), new StateId(block, Keccak.EmptyTreeHash));
+        new(new HistoryReader(_db, LimboLogs.Instance), new StateId(block, Keccak.EmptyTreeHash));
 
     private void RecordAccount(ulong block, Account account)
     {

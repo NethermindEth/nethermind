@@ -4,9 +4,10 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
-namespace Nethermind.State.Flat.Persistence;
+namespace Nethermind.State.Flat.History;
 
 /// <summary>
 /// An <see cref="IPersistence.IPersistenceReader"/> pinned to a single historical block, serving account and storage

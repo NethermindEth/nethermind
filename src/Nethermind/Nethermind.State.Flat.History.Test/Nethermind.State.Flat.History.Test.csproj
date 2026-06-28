@@ -3,7 +3,7 @@
   <Import Project="../tests.props" />
 
   <PropertyGroup>
-    <RootNamespace>Nethermind.State.Flat.Test</RootNamespace>
+    <RootNamespace>Nethermind.State.Flat.History.Test</RootNamespace>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
