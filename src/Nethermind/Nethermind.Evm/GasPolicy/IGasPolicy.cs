@@ -42,7 +42,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         ulong totalSub = intrinsicRegularGas + intrinsicStateGas + initialReservoir;
         ulong initialRegularGas = txGasLimit.SaturatingSub(totalSub);
         return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-            intrinsicRegularGas, initialRegularGas, remainingRegularGas, 0, floorGas);
+            intrinsicRegularGas, initialRegularGas, remainingRegularGas, TSelf.GetStateGasSpill(in gas), floorGas);
     }
 
     // EIP-8037 top-level-halt spill reattribution: whole CREATE-state units whose spill was refunded
@@ -68,6 +68,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // EIP-8037 state-accounting accessors. Pre-EIP-8037 policies return 0.
     static virtual ulong GetStateReservoir(in TSelf gas) => 0;
     static virtual ulong GetStateGasUsed(in TSelf gas) => 0;
+    static virtual ulong GetStateGasSpill(in TSelf gas) => 0;
 
     static abstract void Consume(ref TSelf gas, ulong cost);
 
@@ -175,12 +176,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         StorageAccessType storageAccessType,
         IReleaseSpec spec);
 
-    static abstract bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, in UInt256 length, VmState<TSelf> vmState);
+    static abstract bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, in UInt256 length, ref EvmPooledMemory memory);
 
-    static virtual bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, ulong length, VmState<TSelf> vmState)
+    static virtual bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, ulong length, ref EvmPooledMemory memory)
     {
         UInt256 uint256Length = new(length);
-        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, vmState);
+        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, ref memory);
     }
 
     static abstract bool UpdateGas(ref TSelf gas, ulong gasCost);

@@ -147,8 +147,8 @@ public static partial class EvmInstructions
 
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.ConsumeCallBaseGas(ref gas, spec) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
+            !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, ref vm.VmState.Memory) ||
+            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
@@ -371,7 +371,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState) ||
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;

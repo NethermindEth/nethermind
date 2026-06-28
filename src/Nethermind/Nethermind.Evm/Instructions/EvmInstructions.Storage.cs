@@ -147,7 +147,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update the memory cost for a 32-byte store; if insufficient gas, signal out-of-gas.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, vmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
         {
             goto OutOfGas;
         }
@@ -199,7 +199,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update the memory cost for a single-byte extension; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 1UL, vmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 1UL, ref vmState.Memory))
         {
             goto OutOfGas;
         }
@@ -244,7 +244,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update memory cost for a 32-byte load.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, vmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
         {
             goto OutOfGas;
         }
@@ -300,7 +300,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update memory cost for the destination area (largest offset among source and destination) over the specified length.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, UInt256.Max(b, a), c, vmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, UInt256.Max(b, a), c, ref vmState.Memory))
         {
             goto OutOfGas;
         }

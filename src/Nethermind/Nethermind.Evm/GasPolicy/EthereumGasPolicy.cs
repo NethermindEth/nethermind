@@ -72,6 +72,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static ulong GetStateGasUsed(in EthereumGasPolicy gas) => gas.StateGasUsed;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Consume(ref EthereumGasPolicy gas, ulong cost)
     {
         if (gas.Value < cost)
@@ -239,9 +242,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
         in UInt256 position,
-        in UInt256 length, VmState<EthereumGasPolicy> vmState)
+        in UInt256 length, ref EvmPooledMemory memory)
     {
-        ulong memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        ulong memoryCost = memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (memoryCost == 0L)
             return !outOfGas;
         return UpdateGas(ref gas, memoryCost);
@@ -250,9 +253,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
         in UInt256 position,
-        ulong length, VmState<EthereumGasPolicy> vmState)
+        ulong length, ref EvmPooledMemory memory)
     {
-        ulong memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        ulong memoryCost = memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (memoryCost == 0)
             return !outOfGas;
         return UpdateGas(ref gas, memoryCost);
@@ -413,19 +416,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy Max(in EthereumGasPolicy a, in EthereumGasPolicy b) =>
         a.Value >= b.Value ? a : b;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong ComputeBlockRegularGas(in EthereumGasPolicy gas, in EthereumGasPolicy intrinsic, ulong txGasLimit, ulong floorGas, ulong remainingRegularGas)
-    {
-        ulong intrinsicRegularGas = intrinsic.Value;
-        ulong intrinsicStateGas = intrinsic.StateReservoir;
-        ulong totalCap = intrinsicStateGas + Eip7825Constants.DefaultTxGasLimitCap;
-        ulong initialReservoir = txGasLimit.SaturatingSub(totalCap);
-        ulong totalSub = intrinsicRegularGas + intrinsicStateGas + initialReservoir;
-        ulong initialRegularGas = txGasLimit.SaturatingSub(totalSub);
-        return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-            intrinsicRegularGas, initialRegularGas, remainingRegularGas, gas.StateGasSpill, floorGas);
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ComputeRefundedCreateStateSpillForHalt(in EthereumGasPolicy gas)

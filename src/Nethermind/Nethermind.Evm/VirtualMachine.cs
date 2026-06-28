@@ -1173,7 +1173,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             UInt256 localPreviousDest = previousCallOutputDestination;
 
             // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, vmState))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, ref vmState.Memory))
             {
                 goto OutOfGas;
             }
