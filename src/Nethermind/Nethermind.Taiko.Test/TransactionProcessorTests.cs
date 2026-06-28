@@ -17,6 +17,7 @@ using System.Collections;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -49,7 +50,7 @@ public class TransactionProcessorTests
         _stateProvider.CommitTree(0);
 
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        VirtualMachine<TaikoGasPolicy> virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        VirtualMachine<EthereumGasPolicy> virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
