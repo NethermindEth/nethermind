@@ -42,21 +42,6 @@ public struct TaikoGasPolicy : IGasPolicy<TaikoGasPolicy>
     public static ulong GetRemainingGas(in TaikoGasPolicy gas) => EthereumGasPolicy.GetRemainingGas(in gas._eth);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStorageSetStateCost(in TaikoGasPolicy gas) => EthereumGasPolicy.GetStorageSetStateCost(in gas._eth);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetCreateStateCost(in TaikoGasPolicy gas) => EthereumGasPolicy.GetCreateStateCost(in gas._eth);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetNewAccountStateCost(in TaikoGasPolicy gas) => EthereumGasPolicy.GetNewAccountStateCost(in gas._eth);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetPerAuthBaseStateCost(in TaikoGasPolicy gas) => EthereumGasPolicy.GetPerAuthBaseStateCost(in gas._eth);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetCodeDepositStateCost(in TaikoGasPolicy gas, int byteCodeLength) => EthereumGasPolicy.GetCodeDepositStateCost(in gas._eth, byteCodeLength);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong GetStateReservoir(in TaikoGasPolicy gas) => EthereumGasPolicy.GetStateReservoir(in gas._eth);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

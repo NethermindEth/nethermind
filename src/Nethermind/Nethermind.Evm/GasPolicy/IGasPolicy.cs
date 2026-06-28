@@ -57,12 +57,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return (spentGas, spentGas, 0);
     }
 
-    // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
-    static virtual ulong GetStorageSetStateCost(in TSelf gas) => GasCostOf.SSetState;
-    static virtual ulong GetCreateStateCost(in TSelf gas) => GasCostOf.CreateState;
-    static virtual ulong GetNewAccountStateCost(in TSelf gas) => GasCostOf.NewAccountState;
-    static virtual ulong GetPerAuthBaseStateCost(in TSelf gas) => GasCostOf.PerAuthBaseState;
-    static virtual ulong GetCodeDepositStateCost(in TSelf gas, int byteCodeLength) => GasCostOf.CodeDepositState * (ulong)byteCodeLength;
+    // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback;
+    // a repricing policy overrides these to charge chain-specific state costs.
+    static virtual ulong GetStorageSetStateCost() => GasCostOf.SSetState;
+    static virtual ulong GetCreateStateCost() => GasCostOf.CreateState;
+    static virtual ulong GetNewAccountStateCost() => GasCostOf.NewAccountState;
+    static virtual ulong GetPerAuthBaseStateCost() => GasCostOf.PerAuthBaseState;
+    static virtual ulong GetCodeDepositStateCost(int byteCodeLength) => GasCostOf.CodeDepositState * (ulong)byteCodeLength;
 
     // EIP-8037 state-accounting accessors. Pre-EIP-8037 policies return 0.
     static virtual ulong GetStateReservoir(in TSelf gas) => 0;
@@ -112,7 +113,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     // CREATE state-gas charge (EIP-8037): the policy reads its own CreateState cost, no number passed.
     static virtual bool ConsumeCreateStateGas(ref TSelf gas) =>
-        TSelf.ConsumeStateGas(ref gas, TSelf.GetCreateStateCost(in gas));
+        TSelf.ConsumeStateGas(ref gas, TSelf.GetCreateStateCost());
 
     // Revert path: restore the child's state gas into the parent reservoir.
     static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas) { }

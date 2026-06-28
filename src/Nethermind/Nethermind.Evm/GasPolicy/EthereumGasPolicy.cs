@@ -70,21 +70,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static ulong GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStorageSetStateCost(in EthereumGasPolicy gas) => GasCostOf.SSetState;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetCreateStateCost(in EthereumGasPolicy gas) => GasCostOf.CreateState;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetNewAccountStateCost(in EthereumGasPolicy gas) => GasCostOf.NewAccountState;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetPerAuthBaseStateCost(in EthereumGasPolicy gas) => GasCostOf.PerAuthBaseState;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetCodeDepositStateCost(in EthereumGasPolicy gas, int byteCodeLength) => GasCostOf.CodeDepositState * (ulong)byteCodeLength;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong GetStateReservoir(in EthereumGasPolicy gas) => gas.StateReservoir;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -309,7 +294,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         {
             // EIP-8037: charge the regular component first so an OOG halt does not
             // spill state gas into gas_left and then restore it to the parent frame.
-            true => TryConsumeStateAndRegularGas(ref gas, GetStorageSetStateCost(in gas), GasCostOf.SSetRegular),
+            true => TryConsumeStateAndRegularGas(ref gas, GasCostOf.SSetState, GasCostOf.SSetRegular),
             false => UpdateGas(ref gas, GasCostOf.SSet),
         };
     }
@@ -400,7 +385,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (codeInsertRefunds > 0UL && spec.IsEip8037Enabled)
         {
-            ulong stateGasRefund = checked(GetNewAccountStateCost(in gas) * codeInsertRefunds);
+            ulong stateGasRefund = checked(GasCostOf.NewAccountState * codeInsertRefunds);
             ulong refundFloor = stateGasFloor.SaturatingSub(stateGasRefund);
             RefundStateGas(ref gas, stateGasRefund, refundFloor, trackSpillRefund: false);
         }
@@ -418,7 +403,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
     {
-        true => ConsumeStateGas(ref gas, GetNewAccountStateCost(in gas)),
+        true => ConsumeStateGas(ref gas, GasCostOf.NewAccountState),
         false => UpdateGas(ref gas, GasCostOf.NewAccount)
     };
 

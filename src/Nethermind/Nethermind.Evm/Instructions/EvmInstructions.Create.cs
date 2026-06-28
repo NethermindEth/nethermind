@@ -255,7 +255,7 @@ public static partial class EvmInstructions
         {
             if (TEip8037.IsActive)
             {
-                vm.CreditStateGasRefund(ref gasState, TGasPolicy.GetCreateStateCost(in gasState));
+                vm.CreditStateGasRefund(ref gasState, TGasPolicy.GetCreateStateCost());
             }
         }
     }
