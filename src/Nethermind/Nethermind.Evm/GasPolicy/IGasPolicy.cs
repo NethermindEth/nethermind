@@ -14,6 +14,26 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
 
+/// <summary>
+/// Per-chain EVM gas accounting strategy. Implemented by a <c>struct</c> and monomorphized into
+/// <see cref="VirtualMachine{TGasPolicy}"/>/<c>TransactionProcessor&lt;TGasPolicy&gt;</c> so every charge
+/// dispatches with zero overhead (devirtualized + const-folded) on the per-opcode hot path.
+/// </summary>
+/// <remarks>
+/// Design invariants (do not re-litigate — these were established empirically against the EVM Opcode
+/// Benchmark and are enforced by tests):
+/// <list type="bullet">
+/// <item>The implementing struct must hold ONLY flat top-level scalar fields. A vector / <c>[InlineArray]</c> /
+/// SIMD / nested-struct field address-exposes the struct (dotnet/runtime#110968) and defeats JIT
+/// enregistration, regressing every opcode. "Vector gas" is shelved; guarded by a layout test.</item>
+/// <item>Multidimensional ("multigas") accounting is modelled as additional flat scalar fields routed by
+/// compile-time cost/dimension tags, never an indexed runtime vector on the live budget. Any vector/SIMD
+/// representation belongs only on the cold per-tx/per-block accounting layer.</item>
+/// <item>Charges carry no precomputed number from the opcode: fixed costs use the compile-time
+/// <see cref="IGasCost"/>/<see cref="ISpecGasCost"/> tags, dynamic costs use named policy methods.</item>
+/// <item>The policy is WorldState/VmState/refund/tracer-free; those concerns stay in the VM/processor.</item>
+/// </list>
+/// </remarks>
 public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     static abstract TSelf FromULong(ulong value);
