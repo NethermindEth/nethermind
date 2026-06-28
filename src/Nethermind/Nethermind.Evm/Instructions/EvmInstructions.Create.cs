@@ -171,10 +171,8 @@ public static partial class EvmInstructions
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(gasAvailable);
 
-        // Calculate gas available for the contract creation call.
-        // Use the 63/64 gas rule if specified in the current EVM specification.
-        ulong callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64 : gasAvailable;
-        if (!TGasPolicy.UpdateGas(ref gas, callGas))
+        // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
+        if (!TGasPolicy.TryReserveChildGas(ref gas, spec, out ulong callGas))
             goto OutOfGas;
 
         // Compute the contract address:
