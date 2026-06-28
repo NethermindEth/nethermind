@@ -206,6 +206,39 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childRegularGas) => TSelf.FromULong(childRegularGas);
 
+    // EIP-150: gas forwarded to a child frame is capped at 63/64 of the parent's remaining gas
+    // (no cap pre-EIP-150). These charge the forwarded amount from the parent and return it, so the
+    // 63/64 rule lives in the policy rather than being recomputed at each call/create site.
+
+    // CALL-style: forward the requested amount, capped to 63/64. Pre-EIP-150 the request must fit ulong.
+    static virtual bool TryReserveChildGas(ref TSelf gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
+    {
+        ulong gasAvailable = TSelf.GetRemainingGas(in gas);
+        if (spec.Use63Over64Rule)
+        {
+            ulong cap = gasAvailable - gasAvailable / 64;
+            childGas = requestedGas.IsUint64 && requestedGas.u0 <= cap ? requestedGas.u0 : cap;
+        }
+        else
+        {
+            if (!requestedGas.IsUint64)
+            {
+                childGas = 0;
+                return false;
+            }
+            childGas = requestedGas.u0;
+        }
+        return TSelf.UpdateGas(ref gas, childGas);
+    }
+
+    // CREATE-style: forward all remaining gas (capped to 63/64 under EIP-150).
+    static virtual bool TryReserveChildGas(ref TSelf gas, IReleaseSpec spec, out ulong childGas)
+    {
+        ulong gasAvailable = TSelf.GetRemainingGas(in gas);
+        childGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64 : gasAvailable;
+        return TSelf.UpdateGas(ref gas, childGas);
+    }
+
     // The policy computes the full data-copy cost (base access cost + per-word copy cost) from the
     // spec and word count; EXTCODECOPY (isExternalCode) may categorize the base as state-trie access.
     static abstract void ConsumeDataCopyGas(ref TSelf gas, IReleaseSpec spec, bool isExternalCode, ulong words);
