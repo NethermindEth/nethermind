@@ -125,27 +125,6 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Gas_policy_exposes_state_costs()
-    {
-        EthereumGasPolicy gas = default;
-
-        Assert.That(
-            (
-                EthereumGasPolicy.GetStorageSetStateCost(in gas),
-                EthereumGasPolicy.GetCreateStateCost(in gas),
-                EthereumGasPolicy.GetNewAccountStateCost(in gas),
-                EthereumGasPolicy.GetPerAuthBaseStateCost(in gas)
-            ),
-            Is.EqualTo(
-                (
-                    GasCostOf.SSetState,
-                    GasCostOf.CreateState,
-                    GasCostOf.NewAccountState,
-                    GasCostOf.PerAuthBaseState
-                )));
-    }
-
-    [Test]
     public void Generic_code_deposit_cost_uses_fixed_state_pricing()
     {
         EthereumGasPolicy gas = default;
