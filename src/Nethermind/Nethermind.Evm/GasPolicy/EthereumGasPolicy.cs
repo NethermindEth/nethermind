@@ -420,6 +420,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         a.Value >= b.Value ? a : b;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) =>
+        Math.Max(blockRegularGas, blockStateGas);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ComputeRefundedCreateStateSpillForHalt(in EthereumGasPolicy gas)
     {
         ulong totalSub = gas.StateReservoir;
