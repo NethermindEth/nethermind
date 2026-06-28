@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -27,7 +28,7 @@ public class TaikoVirtualMachine(
     ISpecProvider? specProvider,
     IL1OriginStore l1OriginStore,
     ILogManager? logManager
-) : VirtualMachine<TaikoGasPolicy>(blockHashProvider, specProvider, logManager)
+) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager)
 {
     private readonly IL1OriginStore _l1OriginStore = l1OriginStore ?? throw new ArgumentNullException(nameof(l1OriginStore));
     private UInt256? _blockL1Origin;
@@ -43,16 +44,16 @@ public class TaikoVirtualMachine(
     }
 
     protected override CallResult ExecutePrecompileCall(
-        VmState<TaikoGasPolicy> state,
+        VmState<EthereumGasPolicy> state,
         IPrecompile precompile,
         ReadOnlyMemory<byte> callData,
         IReleaseSpec spec)
     {
         if (precompile is IContextAwarePrecompile contextAwarePrecompile)
         {
-            TaikoGasPolicy gas = state.Gas;
+            EthereumGasPolicy gas = state.Gas;
             PrecompileExtras extras = new(
-                remainingGas: TaikoGasPolicy.GetRemainingGas(in gas),
+                remainingGas: EthereumGasPolicy.GetRemainingGas(in gas),
                 l1Origin: _blockL1Origin);
 
             Result<(byte[] returnValue, ulong gasConsumed)> output;
@@ -75,7 +76,7 @@ public class TaikoVirtualMachine(
             // Deduct dynamic gas (e.g. actual L1 consumption) regardless of success/failure.
             // On L1 OOG the user loses the full gas limit — matching standard EVM sub-call semantics.
             ulong gasConsumed = output.Data.gasConsumed;
-            if (gasConsumed > 0 && !TaikoGasPolicy.ConsumeL1Gas(ref gas, gasConsumed))
+            if (gasConsumed > 0 && !EthereumGasPolicy.UpdateGas(ref gas, gasConsumed))
             {
                 return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
             }
@@ -112,6 +113,6 @@ public sealed class TaikoEthereumVirtualMachine(
     ISpecProvider? specProvider,
     IL1OriginStore l1OriginStore,
     ILogManager? logManager
-) : TaikoVirtualMachine(blockHashProvider, specProvider, l1OriginStore, logManager), IVirtualMachine<TaikoGasPolicy>
+) : TaikoVirtualMachine(blockHashProvider, specProvider, l1OriginStore, logManager), IVirtualMachine<EthereumGasPolicy>
 {
 }
