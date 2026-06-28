@@ -19,18 +19,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     // which is moot for the AOT-compiled guest.
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
-        if (!TTracingInst.IsActive)
-        {
-            _opcodeMethods =
-                (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])
-                (spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
-        }
-        else
-        {
-            _opcodeMethods =
-                (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])
-                (spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
-        }
+        OpcodeTable table = _opcodeTablesBySpec.GetValue(spec, static _ => new OpcodeTable());
+        _opcodeMethods = !TTracingInst.IsActive
+            ? table.NoTrace ??= GenerateOpCodes<TTracingInst>(spec)
+            : table.Traced ??= GenerateOpCodes<TTracingInst>(spec);
     }
 
     protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>

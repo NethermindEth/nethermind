@@ -15,6 +15,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
+        OpcodeTable table = _opcodeTablesBySpec.GetValue(spec, static _ => new OpcodeTable());
+
         // Check if tracing instructions are inactive.
         if (!TTracingInst.IsActive)
         {
@@ -30,15 +32,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                     _logger.Debug("Refreshing EVM instruction cache");
                 }
                 // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
-                spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
+                table.NoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = table.NoTrace ??= GenerateOpCodes<TTracingInst>(spec);
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = table.Traced ??= GenerateOpCodes<TTracingInst>(spec);
         }
     }
 
