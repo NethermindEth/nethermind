@@ -42,7 +42,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         ulong totalSub = intrinsicRegularGas + intrinsicStateGas + initialReservoir;
         ulong initialRegularGas = txGasLimit.SaturatingSub(totalSub);
         return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-            intrinsicRegularGas, initialRegularGas, remainingRegularGas, 0, 0, floorGas);
+            intrinsicRegularGas, initialRegularGas, remainingRegularGas, 0, floorGas);
     }
 
     // EIP-8037 top-level-halt spill reattribution: whole CREATE-state units whose spill was refunded

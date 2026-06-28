@@ -28,10 +28,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public ulong StateGasUsed;
     /// <summary>State gas that spilled from gas_left (for block regular gas exclusion).</summary>
     public ulong StateGasSpill;
-    /// <summary>Tx-cumulative spill from reverted child frames used by top-level halt accounting.</summary>
-    public ulong StateGasSpillBurned;
-    /// <summary>Spill that should remain in the block regular dimension.</summary>
-    public ulong StateGasSpillReclassified;
     /// <summary>Spill consumed by state refunds and excluded from block regular gas.</summary>
     public ulong StateGasSpillRefunded;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
@@ -134,8 +130,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateReservoir += childGas.StateReservoir;
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
-        gas.StateGasSpillBurned += childGas.StateGasSpillBurned;
-        gas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
         gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
@@ -146,8 +140,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed;
         parentGas.StateGasSpill += childGas.StateGasSpill;
-        parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned;
-        parentGas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
         parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
@@ -160,7 +152,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed;
         parentGas.StateGasSpill += childGas.StateGasSpill;
-        parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -370,9 +361,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Snap state-gas back to its tx-start shape (reservoir=R0, used=intrinsic floor,
         // spill=0). The post-reset StateGasUsed feeds SpentGas so the user does not keep
         // paying for state-gas that did not commit.
-        // StateGasSpillBurned is intentionally preserved: it records spill from inner-frame
-        // reverts that was burned earlier in the tx and must remain available to the halt
-        // formula so the spill can be reattributed from state to regular dimension.
         gas.StateReservoir = initialStateReservoir;
         gas.StateGasUsed = initialStateGasUsed;
         gas.StateGasSpill = 0;
@@ -436,13 +424,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ulong totalSub = intrinsicRegularGas + intrinsicStateGas + initialReservoir;
         ulong initialRegularGas = txGasLimit.SaturatingSub(totalSub);
         return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-            intrinsicRegularGas, initialRegularGas, remainingRegularGas, gas.StateGasSpill, gas.StateGasSpillReclassified, floorGas);
+            intrinsicRegularGas, initialRegularGas, remainingRegularGas, gas.StateGasSpill, floorGas);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ComputeRefundedCreateStateSpillForHalt(in EthereumGasPolicy gas)
     {
-        ulong totalSub = gas.StateReservoir + gas.StateGasSpillBurned;
+        ulong totalSub = gas.StateReservoir;
         ulong returnedSpillNotInReservoir = gas.StateGasSpill.SaturatingSub(totalSub);
         ulong refundedSpillNotInReservoir = Math.Min(returnedSpillNotInReservoir, gas.StateGasSpillRefunded);
         ulong createStateGas = GasCostOf.CreateState;
@@ -460,7 +448,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         ulong stateReservoir = gas.StateReservoir;
         ulong spentGas = Math.Max(txGasLimit.SaturatingSub(stateReservoir), floorGas);
-        ulong effectiveStateGas = gas.StateGasUsed.SaturatingSub(gas.StateGasSpillBurned) + refundedCreateStateSpillForHalt;
+        ulong effectiveStateGas = gas.StateGasUsed + refundedCreateStateSpillForHalt;
         ulong totalSub = stateReservoir + effectiveStateGas;
         ulong blockGas = Math.Max(txGasLimit.SaturatingSub(totalSub), floorGas);
         return (spentGas, blockGas, effectiveStateGas);
