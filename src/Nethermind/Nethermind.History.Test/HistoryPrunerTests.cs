@@ -423,7 +423,8 @@ public class HistoryPrunerTests
         public TimeSpan? CapturedTimeout { get; private set; }
         public TaskCompletionSource Invoked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string source = null)
+        public bool TryScheduleTask<TReq>(in TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
         {
             CapturedTimeout = timeout;
             Invoked.TrySetResult();

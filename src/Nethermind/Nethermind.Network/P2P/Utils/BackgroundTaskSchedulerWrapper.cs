@@ -44,7 +44,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
     {
         SyncServeTaskRequest<TReq, TRes> syncServeRequest = new(handler, request, fulfillFunc);
-        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeTaskRequestRunner<TReq, TRes>.Run, source: RequestSource<TReq>.Name))
+        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeTaskRequestRunner<TReq, TRes>.Run))
         {
             request.TryDispose();
             return false;
@@ -59,7 +59,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes>
     {
         HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler> syncServeRequest = new(requestHandler, request);
-        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, HandlerSyncServeTaskRequestRunner<THandler, TReq, TRes, TRequestHandler>.Run, source: RequestSource<TReq>.Name))
+        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, HandlerSyncServeTaskRequestRunner<THandler, TReq, TRes, TRequestHandler>.Run))
         {
             request.TryDispose();
             return false;
@@ -71,7 +71,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage
     {
         SyncServeValueTaskRequest<TReq, TRes> syncServeRequest = new(handler, request, fulfillFunc);
-        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeValueTaskRequestRunner<TReq, TRes>.Run, source: RequestSource<TReq>.Name))
+        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeValueTaskRequestRunner<TReq, TRes>.Run))
         {
             request.TryDispose();
             return false;
@@ -80,12 +80,12 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         return true;
     }
 
-    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc, string? source = null) =>
-        TryScheduleBackgroundTask(new BackgroundTaskRequest<TReq>(handler, request, fulfillFunc), request, source);
+    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc) =>
+        TryScheduleBackgroundTask(new BackgroundTaskRequest<TReq>(handler, request, fulfillFunc), request);
 
-    private bool TryScheduleBackgroundTask<TReq>(BackgroundTaskRequest<TReq> backgroundTaskRequest, TReq request, string? source)
+    private bool TryScheduleBackgroundTask<TReq>(BackgroundTaskRequest<TReq> backgroundTaskRequest, TReq request)
     {
-        if (backgroundTaskScheduler.TryScheduleTask(backgroundTaskRequest, BackgroundTaskRequestRunner<TReq>.Run, source: source))
+        if (backgroundTaskScheduler.TryScheduleTask(backgroundTaskRequest, BackgroundTaskRequestRunner<TReq>.Run))
         {
             return true;
         }
@@ -111,9 +111,11 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     private readonly struct SyncServeTaskRequest<TReq, TRes>(
         ProtocolHandlerBase handler,
         TReq request,
-        Func<TReq, CancellationToken, Task<TRes>> fulfillFunc)
+        Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) : IBackgroundTaskRequest<SyncServeTaskRequest<TReq, TRes>>
         where TRes : P2PMessage
     {
+        public static int TaskId => BackgroundTaskTypeId<SyncServeTaskRequest<TReq, TRes>>.Id;
+
         public async Task Execute(CancellationToken cancellationToken)
         {
             try
@@ -135,11 +137,13 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
 
     private readonly struct HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>(
         THandler handler,
-        TReq request)
+        TReq request) : IBackgroundTaskRequest<HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>>
         where THandler : ProtocolHandlerBase
         where TRes : P2PMessage
         where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes>
     {
+        public static int TaskId => BackgroundTaskTypeId<HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>>.Id;
+
         public async Task Execute(CancellationToken cancellationToken)
         {
             try
@@ -162,9 +166,11 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     private readonly struct SyncServeValueTaskRequest<TReq, TRes>(
         ProtocolHandlerBase handler,
         TReq request,
-        Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc)
+        Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) : IBackgroundTaskRequest<SyncServeValueTaskRequest<TReq, TRes>>
         where TRes : P2PMessage
     {
+        public static int TaskId => BackgroundTaskTypeId<SyncServeValueTaskRequest<TReq, TRes>>.Id;
+
         public async Task Execute(CancellationToken cancellationToken)
         {
             try
@@ -187,8 +193,10 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     private readonly struct BackgroundTaskRequest<TReq>(
         ProtocolHandlerBase handler,
         TReq request,
-        Func<TReq, CancellationToken, ValueTask> fulfillFunc)
+        Func<TReq, CancellationToken, ValueTask> fulfillFunc) : IBackgroundTaskRequest<BackgroundTaskRequest<TReq>>
     {
+        public static int TaskId => BackgroundTaskTypeId<BackgroundTaskRequest<TReq>>.Id;
+
         public async Task Execute(CancellationToken cancellationToken)
         {
             try
@@ -234,10 +242,5 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     {
         public static readonly Func<BackgroundTaskRequest<TReq>, CancellationToken, Task> Run =
             static (request, cancellationToken) => request.Execute(cancellationToken);
-    }
-
-    private static class RequestSource<TReq>
-    {
-        public static readonly string Name = typeof(TReq).Name;
     }
 }

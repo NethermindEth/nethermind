@@ -35,6 +35,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly IChainHeadInfoProvider _headInfo;
     private readonly int _capacity;
     private long _queueCount;
+    private readonly ConcurrentDictionary<int, int> _stats = new();
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
     private volatile TaskCompletionSource? _blockProcessingDoneSignal;
@@ -140,6 +141,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                             // Task already expired or re-queue failed — run with cancelled token
                         }
 
+                        DecrementStats(activity.TaskId);
                         await activity.Do(token);
                         Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
                     }
@@ -173,7 +175,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
     }
 
-    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
+    public bool TryScheduleTask<TReq>(in TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+        where TReq : notnull, IBackgroundTaskRequest<TReq>
     {
         Activity<TReq> activity = Activity<TReq>.Rent(
             DateTimeOffset.UtcNow + (timeout ?? DefaultTimeout),
@@ -187,6 +190,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             if (_taskQueue.Writer.TryWrite(activity))
             {
                 UpdateQueueCount();
+                IncrementStats(TReq.TaskId);
                 return true;
             }
         }
@@ -197,15 +201,22 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         if (_logger.IsWarn && now - lastLog > 10_000 && Interlocked.CompareExchange(ref _lastDropLogTicks, now, lastLog) == lastLog)
         {
             _logger.Warn(
-                $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{source ?? "unknown"}]. " +
+                $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{BackgroundTaskTypeRegistry.GetName(TReq.TaskId)}]. " +
                 $"Totals: queued={Evm.Metrics.TotalBackgroundTasksQueued}, executed={Evm.Metrics.TotalBackgroundTasksExecuted}, " +
-                $"dropped={Evm.Metrics.TotalBackgroundTasksDropped}");
+                $"dropped={Evm.Metrics.TotalBackgroundTasksDropped}. " +
+                $"Stats: {string.Join(", ", _stats.Where(static kv => kv.Value > 0).Select(static kv => $"({BackgroundTaskTypeRegistry.GetName(kv.Key)}: {kv.Value})"))}");
         }
         Interlocked.Decrement(ref _queueCount);
         request.TryDispose();
         activity.Return();
         return false;
     }
+
+    private void IncrementStats(int taskId) =>
+        _stats.AddOrUpdate(taskId, 1, static (_, value) => value + 1);
+
+    private void DecrementStats(int taskId) =>
+        _stats.AddOrUpdate(taskId, 0, static (_, value) => value - 1);
 
     private void UpdateQueueCount() => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);
 
@@ -226,7 +237,13 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _scheduler.Dispose();
     }
 
-    private sealed class Activity<TReq> : IActivity
+    /// <summary>
+    /// Snapshot of currently queued task counts, keyed by the request type's friendly name.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> GetStats() =>
+        _stats.ToDictionary(static kv => BackgroundTaskTypeRegistry.GetName(kv.Key), static kv => kv.Value);
+
+    private sealed class Activity<TReq> : IActivity where TReq : IBackgroundTaskRequest<TReq>
     {
         private const int MaxPooled = 1024;
         private static readonly ConcurrentQueue<Activity<TReq>> Pool = new();
@@ -236,6 +253,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         private Func<TReq, CancellationToken, Task>? _fulfillFunc;
 
         public DateTimeOffset Deadline { get; private set; }
+        public int TaskId => TReq.TaskId;
 
         public static Activity<TReq> Rent(DateTimeOffset deadline, TReq request, Func<TReq, CancellationToken, Task> fulfillFunc)
         {
@@ -304,6 +322,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private interface IActivity : IComparable<IActivity>
     {
         DateTimeOffset Deadline { get; }
+        int TaskId { get; }
         Task Do(CancellationToken cancellationToken);
     }
 

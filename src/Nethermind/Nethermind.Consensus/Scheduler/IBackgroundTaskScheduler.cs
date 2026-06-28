@@ -9,5 +9,6 @@ namespace Nethermind.Consensus.Scheduler;
 
 public interface IBackgroundTaskScheduler
 {
-    bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null);
+    bool TryScheduleTask<TReq>(in TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+        where TReq : notnull, IBackgroundTaskRequest<TReq>;
 }

@@ -415,7 +415,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             public List<Delegate> ScheduledFulfillFuncs { get; } = [];
             public List<bool> ScheduledRequestsHaveDelegateFields { get; } = [];
 
-            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
+            public bool TryScheduleTask<TReq>(in TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+                where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
                 ScheduledRequestsHaveDelegateFields.Add(HasDelegateField<TReq>());
                 ScheduledFulfillFuncs.Add(fulfillFunc);

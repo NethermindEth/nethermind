@@ -200,7 +200,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         /// <inheritdoc cref="HandleInBackground{TReq, TRes}(ZeroPacket, Func{TReq, CancellationToken, Task{TRes}})"/>
         protected void HandleInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
-            BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle, typeof(TReq).Name);
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
 
         private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
         {

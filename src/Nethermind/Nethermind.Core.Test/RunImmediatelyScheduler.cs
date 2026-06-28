@@ -16,7 +16,8 @@ public class RunImmediatelyScheduler : IBackgroundTaskScheduler
     {
     }
 
-    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
+    public bool TryScheduleTask<TReq>(in TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+        where TReq : notnull, IBackgroundTaskRequest<TReq>
     {
         fulfillFunc(request, CancellationToken.None);
         return true;
