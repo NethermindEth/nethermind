@@ -357,7 +357,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.SStoreResetCost))
+        if (!TGasPolicy.ConsumeSStoreResetGas(ref gas, spec))
             goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
@@ -399,7 +399,7 @@ public static partial class EvmInstructions
         // When setting a non-zero value over an existing zero, apply the difference in gas costs.
         else if (currentIsZero)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.SSet - GasCostOf.SReset))
+            if (!TGasPolicy.ConsumeSSetFromCleanGas(ref gas))
                 goto OutOfGas;
         }
 
@@ -503,7 +503,7 @@ public static partial class EvmInstructions
 
         if (newSameAsCurrent)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, gasCosts.NetMeteredSStoreCost))
+            if (!TGasPolicy.ConsumeNetMeteredSStoreGas(ref gas, spec))
                 goto OutOfGas;
         }
         else
@@ -535,8 +535,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                ulong netMeteredStoreCost = gasCosts.NetMeteredSStoreCost;
-                if (!TGasPolicy.UpdateGas(ref gas, netMeteredStoreCost))
+                if (!TGasPolicy.ConsumeNetMeteredSStoreGas(ref gas, spec))
                     goto OutOfGas;
 
                 if (!originalIsZero)

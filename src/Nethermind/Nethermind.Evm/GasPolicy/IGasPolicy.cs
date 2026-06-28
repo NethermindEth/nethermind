@@ -99,6 +99,34 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void ConsumeExpBytes(ref TSelf gas, IReleaseSpec spec, ulong exponentByteSize) =>
         TSelf.Consume(ref gas, spec.GasCosts.ExpByteCost * exponentByteSize);
 
+    // Opcode base-cost charges (return false on OOG). The amount is produced inside the policy from the
+    // spec price book, fork/opcode flags, and opcode-extracted scalars. Selecting which charge applies
+    // (e.g. the SSTORE net-metering decision, which reads world state) stays in the opcode.
+
+    // CREATE/CREATE2 base cost: fixed base + EIP-3860 per-init-word + (CREATE2 only) keccak-per-word.
+    static virtual bool ConsumeCreateGas<TEip8037, TOpCreate>(ref TSelf gas, IReleaseSpec spec, ulong initCodeWords)
+        where TEip8037 : struct, IFlag
+        where TOpCreate : struct, EvmInstructions.IOpCreate
+    {
+        ulong baseCost = TEip8037.IsActive ? GasCostOf.CreateRegular : GasCostOf.Create;
+        ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        ulong create2HashCost = typeof(TOpCreate) == typeof(EvmInstructions.OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
+        return TSelf.UpdateGas(ref gas, baseCost + initCodeWordCost + create2HashCost);
+    }
+
+    static virtual bool ConsumeCallBaseGas(ref TSelf gas, IReleaseSpec spec) =>
+        TSelf.UpdateGas(ref gas, spec.GasCosts.CallCost);
+
+    static virtual bool ConsumeSStoreResetGas(ref TSelf gas, IReleaseSpec spec) =>
+        TSelf.UpdateGas(ref gas, spec.GasCosts.SStoreResetCost);
+
+    static virtual bool ConsumeNetMeteredSStoreGas(ref TSelf gas, IReleaseSpec spec) =>
+        TSelf.UpdateGas(ref gas, spec.GasCosts.NetMeteredSStoreCost);
+
+    // SSTORE first non-zero write over a clean zero slot: the SSet/SReset delta on top of the reset already charged.
+    static virtual bool ConsumeSSetFromCleanGas(ref TSelf gas) =>
+        TSelf.UpdateGas(ref gas, GasCostOf.SSet - GasCostOf.SReset);
+
     // Precompile charge: the caller passes the precompile + input + spec (the data needed to price it);
     // the policy reads the precompile's own base/data cost formulas. Returns false on OOG (incl. the
     // overflow guard before summing), without charging on overflow — matching the prior inline guard.
