@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -14,11 +15,14 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -334,18 +338,9 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        using Witness witness = await ProduceWitnessedBlock(chain);
 
-        ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await chain.EngineRpcModule.engine_newPayloadWithWitness(
-                payload, [], TestItem.KeccakE, requests ?? []);
-
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-
-        using Witness? witness = result.Data.ExecutionWitness;
-        Assert.That(witness, Is.Not.Null, "VALID block must include a witness");
-        Assert.That(witness!.State.Count, Is.GreaterThan(0),
+        Assert.That(witness.State.Count, Is.GreaterThan(0),
             "witness State must contain at least the state root proof node");
     }
 
@@ -363,18 +358,10 @@ public partial class EngineModuleTests
             .WithType(TxType.EIP1559)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
-        chain.AddTransactions(tx);
 
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        using Witness witness = await ProduceWitnessedBlock(chain, tx);
 
-        ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await chain.EngineRpcModule.engine_newPayloadWithWitness(
-                payload, [], TestItem.KeccakE, requests ?? []);
-
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        using Witness? witness = result.Data.ExecutionWitness;
-        Assert.That(witness, Is.Not.Null);
-        Assert.That(witness!.State.Count, Is.GreaterThan(1),
+        Assert.That(witness.State.Count, Is.GreaterThan(1),
             "a transfer touches sender, recipient and fee-recipient: at least 2 proof paths");
     }
 
@@ -384,16 +371,9 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        using Witness witness = await ProduceWitnessedBlock(chain);
 
-        ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await chain.EngineRpcModule.engine_newPayloadWithWitness(
-                payload, [], TestItem.KeccakE, requests ?? []);
-
-        using Witness? witness = result.Data.ExecutionWitness;
-        Assert.That(witness, Is.Not.Null);
-
-        foreach (byte[] node in witness!.State)
+        foreach (byte[] node in witness.State)
         {
             Assert.That(node, Is.Not.Empty, "every state node must be a non-empty RLP blob");
             Assert.That(node.Length, Is.LessThanOrEqualTo(1_048_576),
@@ -527,10 +507,33 @@ public partial class EngineModuleTests
 
     [Test]
     [Category("WitnessCapture")]
-    public async Task Witness_state_nodes_are_consistent_with_parent_state_root()
+    public async Task Witness_headers_contain_parent_and_are_well_formed()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
+        using Witness witness = await ProduceWitnessedBlock(chain);
+
+        Assert.That(witness.Headers.Count, Is.GreaterThanOrEqualTo(1),
+            "Witness.Headers must contain at least the parent block header " +
+            "(WitnessHeaderRecorder.BuildHeaders always includes parentHash).");
+
+        foreach (byte[] header in witness.Headers)
+        {
+            Assert.That(header, Is.Not.Empty, "each header entry must be an RLP-encoded block header");
+            Assert.That(header.Length, Is.LessThanOrEqualTo(1_048_576),
+                "each header must fit within MAX_WITNESS_ITEM_BYTES per execution-apis#773");
+        }
+    }
+
+    [Test]
+    [Category("WitnessCapture")]
+    public async Task Witness_State_proves_the_touched_accounts_against_the_parent_state()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+
+        // A simple value transfer touches the sender and the recipient at the account level.
+        // Both are funded in genesis (AddressA, AddressB), so each has an inclusion proof.
         Transaction tx = Build.A.Transaction
             .WithValue(UInt256.One)
             .WithTo(TestItem.AddressB)
@@ -539,64 +542,103 @@ public partial class EngineModuleTests
             .WithType(TxType.EIP1559)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
-        chain.AddTransactions(tx);
 
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
-        ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await chain.EngineRpcModule.engine_newPayloadWithWitness(
-                payload, [], TestItem.KeccakE, requests ?? []);
+        using Witness witness = await ProduceWitnessedBlock(chain, tx);
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        using Witness? witness = result.Data.ExecutionWitness;
-        Assert.That(witness, Is.Not.Null);
-
-        foreach (byte[] node in witness!.State)
-        {
-            Assert.That(node.Length, Is.GreaterThanOrEqualTo(1),
-                "an empty node indicates drain ran before CommitTree populated the trie cache");
-        }
+        // Independently compute each account's canonical Merkle proof against the parent state and
+        // assert the witness carries every node of it — a stateless verifier needs the full path.
+        AssertWitnessProvesAccount(witness, chain.StateReader, parent, TestItem.AddressA);
+        AssertWitnessProvesAccount(witness, chain.StateReader, parent, TestItem.AddressB);
     }
 
     [Test]
     [Category("WitnessCapture")]
-    public async Task Witness_headers_contain_at_least_parent_header()
+    public async Task Witness_includes_bytecode_and_storage_proof_for_a_called_contract()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
-        ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await chain.EngineRpcModule.engine_newPayloadWithWitness(
-                payload, [], TestItem.KeccakE, requests ?? []);
+        // Runtime reads storage slot 0; init writes slot 0 = 7 then deploys the runtime — so the slot
+        // already exists in the parent state when the witnessed block reads it.
+        byte[] runtimeCode = Prepare.EvmCode
+            .PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        byte[] initCode = Prepare.EvmCode
+            .PushData(7).PushData(0).Op(Instruction.SSTORE).ForInitOf(runtimeCode).Done;
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        using Witness? witness = result.Data.ExecutionWitness;
-        Assert.That(witness, Is.Not.Null);
+        // Deploy from AddressB (a funded EOA) so the deployer has no code (EIP-3607 friendly).
+        Address contract = ContractAddress.From(TestItem.AddressB, 0);
+        Transaction deploy = Build.A.Transaction
+            .WithNonce(0).WithValue(0).WithCode(initCode).WithGasLimit(1_000_000)
+            .WithMaxFeePerGas(20.GWei).WithMaxPriorityFeePerGas(1.GWei).WithType(TxType.EIP1559)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject;
+        await ProduceCanonicalBlock(chain, deploy);
 
-        Assert.That(witness!.Headers.Count, Is.GreaterThanOrEqualTo(1),
-            "Witness.Headers must contain at least the parent block header " +
-            "(WitnessHeaderRecorder.BuildHeaders always includes parentHash).");
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction call = Build.A.Transaction
+            .WithNonce(1).WithTo(contract).WithGasLimit(1_000_000)
+            .WithMaxFeePerGas(20.GWei).WithMaxPriorityFeePerGas(1.GWei).WithType(TxType.EIP1559)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject;
+        using Witness witness = await ProduceWitnessedBlock(chain, call);
+
+        // Executing the call reads the contract's code, so the exact bytecode must be in Witness.Codes.
+        Assert.That(witness.Codes.Any(code => code.AsSpan().SequenceEqual(runtimeCode)), Is.True,
+            "witness Codes must contain the called contract's runtime bytecode");
+
+        // The witness must prove the contract account and the storage slot it read.
+        AssertWitnessProvesAccount(witness, chain.StateReader, parent, contract, UInt256.Zero);
     }
 
-    [Test]
-    [Category("WitnessCapture")]
-    public async Task Witness_headers_items_are_valid_RLP_encoded_block_headers()
+    /// <summary>
+    /// Builds one Amsterdam block on the current head (including <paramref name="txs"/>), submits it via
+    /// <c>engine_newPayloadWithWitness</c>, asserts the block is VALID, and returns the produced witness.
+    /// </summary>
+    private static async Task<Witness> ProduceWitnessedBlock(MergeTestBlockchain chain, params Transaction[] txs)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-
+        if (txs.Length > 0) chain.AddTransactions(txs);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await chain.EngineRpcModule.engine_newPayloadWithWitness(
-                payload, [], TestItem.KeccakE, requests ?? []);
+            await chain.EngineRpcModule.engine_newPayloadWithWitness(payload, [], TestItem.KeccakE, requests ?? []);
 
-        using Witness? witness = result.Data.ExecutionWitness;
-        Assert.That(witness, Is.Not.Null);
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Witness? witness = result.Data.ExecutionWitness;
+        Assert.That(witness, Is.Not.Null, "a VALID Amsterdam block must produce a witness");
+        return witness!;
+    }
 
-        foreach (byte[] header in witness!.Headers)
-        {
-            Assert.That(header, Is.Not.Empty, "each header entry must be an RLP-encoded block header");
-            Assert.That(header.Length, Is.LessThanOrEqualTo(1_048_576),
-                "each header must fit within MAX_WITNESS_ITEM_BYTES per execution-apis#773");
-        }
+    /// <summary>Builds, imports, and forkchoice-canonicalizes one Amsterdam block (advancing the head).</summary>
+    private static async Task ProduceCanonicalBlock(MergeTestBlockchain chain, params Transaction[] txs)
+    {
+        if (txs.Length > 0) chain.AddTransactions(txs);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
+        await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
+            new ForkchoiceStateV1(payload.BlockHash!, payload.BlockHash!, payload.BlockHash!), null);
+    }
+
+    /// <summary>
+    /// Independently computes the canonical Merkle proof for <paramref name="account"/> (and the given
+    /// <paramref name="storageKeys"/>) against the <paramref name="parent"/> state with
+    /// <see cref="AccountProofCollector"/>, and asserts the witness State carries every proof node.
+    /// </summary>
+    private static void AssertWitnessProvesAccount(
+        Witness witness, IStateReader stateReader, BlockHeader parent, Address account, params UInt256[] storageKeys)
+    {
+        AccountProofCollector collector = new(account, storageKeys);
+        stateReader.RunTreeVisitor(collector, parent);
+        AccountProof proof = collector.BuildResult();
+
+        HashSet<ValueHash256> witnessNodes = new(witness.State.Count);
+        foreach (byte[] node in witness.State)
+            witnessNodes.Add(ValueKeccak.Compute(node));
+
+        Assert.That(proof.Proof, Is.Not.Null.And.Not.Empty, $"expected a non-empty account proof for {account}");
+        foreach (byte[] node in proof.Proof!)
+            Assert.That(witnessNodes, Does.Contain(ValueKeccak.Compute(node)),
+                $"witness State must contain the account-proof node for {account}");
+
+        foreach (StorageProof storageProof in proof.StorageProofs ?? [])
+            foreach (byte[] node in storageProof.Proof ?? [])
+                Assert.That(witnessNodes, Does.Contain(ValueKeccak.Compute(node)),
+                    $"witness State must contain the storage-proof node for {account}");
     }
 
     private static async Task<(ExecutionPayloadV4 Payload, byte[][]? ExecutionRequests)>
