@@ -55,9 +55,9 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         bool fireAdded;
         lock (_lock)
         {
-            if (_logger.IsDebug)
+            if (_logger.IsTrace)
             {
-                _logger.Debug($"Adding node {node} with XOR distance {_distance.CalculateLogDistance(_currentNodeHash, nodeHash)}");
+                _logger.Trace($"Adding node {node} with XOR distance {_distance.CalculateLogDistance(_currentNodeHash, nodeHash)}");
             }
 
             TreeNode current = _root;
@@ -73,7 +73,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
                     fireAdded = resp == BucketAddResult.Added;
                     if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Successfully added/refreshed node {node} in bucket at depth {depth}");
+                        if (_logger.IsTrace) _logger.Trace($"Successfully added/refreshed node {node} in bucket at depth {depth}");
                         break;
                     }
 
@@ -153,7 +153,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         }
 
         node.Bucket.Clear();
-        if (_logger.IsDebug) _logger.Debug($"Finished splitting bucket. Left count: {node.Left.Bucket.Count}, Right count: {node.Right.Bucket.Count}");
+        if (_logger.IsTrace) _logger.Trace($"Finished splitting bucket. Left count: {node.Left.Bucket.Count}, Right count: {node.Right.Bucket.Count}");
     }
 
     public bool Remove(in TKadKey nodeHash)
@@ -162,7 +162,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         TNode? removedNode;
         lock (_lock)
         {
-            if (_logger.IsDebug) _logger.Debug($"Attempting to remove node {nodeHash}");
+            if (_logger.IsTrace) _logger.Trace($"Attempting to remove node {nodeHash}");
 
             KBucket<TNode, TKadKey> bucket = GetBucketForHash(nodeHash);
             removedNode = bucket.GetByHash(nodeHash);
@@ -177,13 +177,13 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     {
         lock (_lock)
         {
-            if (_logger.IsDebug) _logger.Debug($"Getting all nodes at distance {distance}");
+            if (_logger.IsTrace) _logger.Trace($"Getting all nodes at distance {distance}");
             using PooledList<TNode> result = new(_k);
             (TKadKey Hash, TNode Node)[] bucketEntries = ArrayPool<(TKadKey Hash, TNode Node)>.Shared.Rent(_k);
             try
             {
                 GetAllAtDistanceRecursive(_root, 0, distance, result, bucketEntries);
-                if (_logger.IsDebug) _logger.Debug($"Found {result.Count} nodes at distance {distance}");
+                if (_logger.IsTrace) _logger.Trace($"Found {result.Count} nodes at distance {distance}");
 
                 return result.Span.ToArray();
             }

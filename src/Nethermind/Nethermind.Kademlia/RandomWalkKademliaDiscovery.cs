@@ -87,7 +87,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
             {
                 int targetDistance = Random.Shared.Next(_maxDistance) + 1;
                 TKey target = keyOperator.CreateRandomKeyAtDistance(_currentNodeHash, targetDistance);
-                if (_logger.IsDebug) _logger.Debug($"Looking up random Kademlia target at distance {targetDistance}.");
+                if (_logger.IsTrace) _logger.Trace($"Looking up random Kademlia target at distance {targetDistance}.");
 
                 int count = 0;
                 await foreach (TNode node in kademlia.LookupNodes(target, token, lookupResultLimit).WithCancellation(token))
@@ -96,7 +96,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
                     await writer.WriteAsync(node, token);
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"Found {count} nodes from random Kademlia lookup.");
+                if (_logger.IsTrace) _logger.Trace($"Found {count} nodes from random Kademlia lookup.");
 
                 if (iterationTime.Elapsed < MinimumIterationDuration)
                 {
