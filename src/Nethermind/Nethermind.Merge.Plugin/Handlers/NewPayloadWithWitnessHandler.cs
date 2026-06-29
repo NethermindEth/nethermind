@@ -16,8 +16,8 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <see cref="IEngineRpcModule"/> is taken via <see cref="Lazy{T}"/> to break the construction
 /// cycle (the module composes this handler). On pre-Amsterdam chains the
 /// <see cref="WitnessCapturingBlockProcessor"/> decorator is not installed, so the rendezvous
-/// TCS for any requested block hash never completes; the cancel-on-non-VALID and
-/// cancel-when-not-completed branches below handle that gracefully.
+/// registration for any requested block hash never completes — the <c>using</c> registration
+/// cancels it on return, so the handler simply yields VALID with no witness.
 /// </remarks>
 public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
@@ -41,60 +41,37 @@ public sealed class NewPayloadWithWitnessHandler(
                 "executionPayload.blockHash is required", ErrorCodes.InvalidParams);
         }
 
-        Task<Witness?> captureTask = rendezvous.RequestWitness(blockHash);
+        // The using guarantees the rendezvous slot is removed and the capture task cancelled on every
+        // exit path (exception, non-success, non-VALID, or VALID-but-not-captured).
+        using WitnessRequest request = rendezvous.RequestWitness(blockHash);
 
-        ResultWrapper<PayloadStatusV1> statusResult;
-        try
+        using ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
+            executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+
+        if (statusResult.Result.ResultType != ResultType.Success)
         {
-            statusResult = await engineModule.Value.engine_newPayloadV5(
-                executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+            return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
+                statusResult.Result.Error ?? "engine_newPayloadV5 failed",
+                statusResult.ErrorCode);
         }
-        catch
+
+        PayloadStatusV1 payloadStatus = statusResult.Data!;
+        Witness? witness = null;
+
+        // engine_newPayloadV5 returns only after ProcessOne has run, so the witness processor has
+        // already completed the registration (happy path) — or it never will (the block took an
+        // early-return path, or the decorator is absent pre-Amsterdam). Either way the task is in its
+        // final state here, so a synchronous check suffices and the using-Dispose cleans up the rest.
+        if (request.Task.IsCompletedSuccessfully)
         {
-            rendezvous.CancelWitnessRequest(blockHash);
-            throw;
-        }
-
-        using (statusResult)
-        {
-            if (statusResult.Result.ResultType != ResultType.Success)
-            {
-                rendezvous.CancelWitnessRequest(blockHash);
-                return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
-                    statusResult.Result.Error ?? "engine_newPayloadV5 failed",
-                    statusResult.ErrorCode);
-            }
-
-            PayloadStatusV1 payloadStatus = statusResult.Data!;
-            Witness? witness = null;
-
             if (payloadStatus.Status == PayloadStatus.Valid)
-            {
-                // BlockProcessor normally completes the TCS synchronously inside ProcessOne.
-                // If it didn't, the block either took an early-return path (already known, etc.)
-                // or the decorator isn't installed (pre-Amsterdam) — cancel so the await below
-                // doesn't block forever.
-                if (!captureTask.IsCompleted)
-                    rendezvous.CancelWitnessRequest(blockHash);
-
-                try
-                {
-                    witness = await captureTask;
-                }
-                catch (OperationCanceledException)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash}. Returning VALID with no witness.");
-                }
-            }
+                witness = request.Task.Result;
             else
-            {
-                rendezvous.CancelWitnessRequest(blockHash);
-                if (captureTask.IsCompletedSuccessfully)
-                    (await captureTask)?.Dispose();
-            }
-
-            return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(
-                NewPayloadWithWitnessV1Result.FromPayloadStatus(payloadStatus, witness));
+                // Non-VALID but a witness was still produced: we won't return it, so dispose to avoid a leak.
+                request.Task.Result?.Dispose();
         }
+
+        return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(
+            NewPayloadWithWitnessV1Result.FromPayloadStatus(payloadStatus, witness));
     }
 }

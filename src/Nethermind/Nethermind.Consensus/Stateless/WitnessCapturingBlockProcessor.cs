@@ -67,29 +67,23 @@ public sealed class WitnessCapturingBlockProcessor(
 
         witness.ResetForBlock();
 
+        // If ProcessOne throws, the request slot is left pending; the handler's using-registration
+        // cancels it, so there is no cleanup to do here.
+        (Block Block, TxReceipt[] Receipts) result = witness.Processor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+
+        if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
+            return result; // request was declined or cancelled — nothing to publish.
+
+        Witness? capturedWitness = null;
         try
         {
-            (Block Block, TxReceipt[] Receipts) result = witness.Processor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
-
-            if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
-                return result; // request was cancelled while we were processing — nothing to publish.
-
-            Witness? capturedWitness = null;
-            try
-            {
-                capturedWitness = witness.GetWitness(parent);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"{nameof(WitnessCapturingBlockProcessor)}: witness build failed for block {blockHash}", ex);
-            }
-            tcs!.SetResult(capturedWitness);
-            return result;
+            capturedWitness = witness.GetWitness(parent);
         }
-        catch
+        catch (Exception ex)
         {
-            rendezvous.CancelWitnessRequest(blockHash!);
-            throw;
+            if (_logger.IsError) _logger.Error($"{nameof(WitnessCapturingBlockProcessor)}: witness build failed for block {blockHash}", ex);
         }
+        tcs!.SetResult(capturedWitness);
+        return result;
     }
 }

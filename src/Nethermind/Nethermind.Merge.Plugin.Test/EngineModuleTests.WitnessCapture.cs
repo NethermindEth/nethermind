@@ -70,52 +70,58 @@ public partial class EngineModuleTests
     {
         WitnessRendezvous rendezvous = new();
 
-        Task<Witness?> task = rendezvous.RequestWitness(TestItem.KeccakA);
+        using WitnessRequest request = rendezvous.RequestWitness(TestItem.KeccakA);
 
-        Assert.That(task.IsCompleted, Is.False,
+        Assert.That(request.Task.IsCompleted, Is.False,
             "the task must remain pending until the block-processor decorator publishes a result");
     }
 
     [Test]
     [Category("WitnessCapture")]
-    public void Rendezvous_CancelWitnessRequest_cancels_TCS_and_removes_entry()
+    public void Rendezvous_disposing_request_cancels_task_and_clears_slot()
     {
         WitnessRendezvous rendezvous = new();
         Hash256 hash = TestItem.KeccakD;
 
-        Task<Witness?> captureTask = rendezvous.RequestWitness(hash);
+        WitnessRequest request = rendezvous.RequestWitness(hash);
         Assert.That(rendezvous.HasPendingRequest(hash), Is.True);
 
-        rendezvous.CancelWitnessRequest(hash);
+        request.Dispose();
 
         Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
-            "CancelWitnessRequest must remove the entry");
-        Assert.That(captureTask.IsCanceled, Is.True,
-            "CancelWitnessRequest must cancel the TCS so any awaiter gets OperationCanceledException");
+            "disposing the registration must clear the slot");
+        Assert.That(request.Task.IsCanceled, Is.True,
+            "disposing must cancel the task so any awaiter gets OperationCanceledException");
     }
 
     [Test]
     [Category("WitnessCapture")]
-    public void Rendezvous_CancelWitnessRequest_noop_when_no_entry_exists()
+    public void Rendezvous_disposing_request_twice_is_safe()
     {
         WitnessRendezvous rendezvous = new();
-        Action cancel = () => rendezvous.CancelWitnessRequest(Keccak.Zero);
-        Assert.That(cancel, Throws.Nothing, "cancelling a non-existent request is a valid no-op");
+        WitnessRequest request = rendezvous.RequestWitness(TestItem.KeccakA);
+
+        request.Dispose();
+        Action disposeAgain = () => request.Dispose();
+        Assert.That(disposeAgain, Throws.Nothing, "disposing twice is an idempotent no-op");
     }
 
     [Test]
     [Category("WitnessCapture")]
-    public void Rendezvous_duplicate_RequestWitness_cancels_previous_TCS()
+    public void Rendezvous_second_request_while_one_outstanding_is_declined()
     {
         WitnessRendezvous rendezvous = new();
         Hash256 hash = TestItem.KeccakE;
 
-        Task<Witness?> first = rendezvous.RequestWitness(hash);
-        Task<Witness?> second = rendezvous.RequestWitness(hash);
+        using WitnessRequest first = rendezvous.RequestWitness(hash);
+        using WitnessRequest second = rendezvous.RequestWitness(hash);
 
-        Assert.That(first.IsCanceled, Is.True,
-            "the orphaned TCS must be cancelled so any awaiter gets OperationCanceledException rather than hanging forever");
-        Assert.That(second.IsCompleted, Is.False, "the replacement TCS is still pending");
+        Assert.That(first.Task.IsCompleted, Is.False, "the outstanding request stays pending");
+        Assert.That(second.Task.IsCompletedSuccessfully, Is.True,
+            "a second request while one is outstanding is declined: it completes immediately with no witness");
+        Assert.That(second.Task.Result, Is.Null);
+        Assert.That(rendezvous.HasPendingRequest(hash), Is.True,
+            "the original request still owns the slot");
     }
 
     [Test]
@@ -128,15 +134,15 @@ public partial class EngineModuleTests
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
         Hash256 hash = payload.BlockHash!;
 
-        Task<Witness?> captureTask = rendezvous.RequestWitness(hash);
+        using WitnessRequest request = rendezvous.RequestWitness(hash);
 
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        Assert.That(captureTask.IsCompleted, Is.True,
+        Assert.That(request.Task.IsCompleted, Is.True,
             "the block-processor decorator must complete the TCS synchronously inside ProcessOne, " +
             "before engine_newPayloadV5 returns, so the handler's await is a non-blocking retrieval");
 
-        using Witness? witness = await captureTask;
+        using Witness? witness = await request.Task;
         Assert.That(witness, Is.Not.Null, "a VALID block must produce a non-null witness");
     }
 
@@ -164,20 +170,20 @@ public partial class EngineModuleTests
         WitnessRendezvous rendezvous = chain.Container.Resolve<WitnessRendezvous>();
 
         (ExecutionPayloadV4 p1, byte[][]? r1) = await BuildAmsterdamPayload(chain);
-        Task<Witness?> t1 = rendezvous.RequestWitness(p1.BlockHash!);
+        using WitnessRequest req1 = rendezvous.RequestWitness(p1.BlockHash!);
         await rpc.engine_newPayloadV5(p1, [], TestItem.KeccakE, r1 ?? []);
         await rpc.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(p1.BlockHash!, p1.BlockHash!, p1.BlockHash!), null);
-        (await t1)?.Dispose();
+        (await req1.Task)?.Dispose();
 
         (ExecutionPayloadV4 p2, byte[][]? r2) = await BuildAmsterdamPayload(chain);
-        Task<Witness?> t2 = rendezvous.RequestWitness(p2.BlockHash!);
+        using WitnessRequest req2 = rendezvous.RequestWitness(p2.BlockHash!);
         await rpc.engine_newPayloadV5(p2, [], TestItem.KeccakE, r2 ?? []);
 
-        Assert.That(t1.IsCompletedSuccessfully, Is.True, "block-1 task was completed during block-1");
-        Assert.That(t2.IsCompletedSuccessfully, Is.True, "block-2 task must be completed during block-2");
+        Assert.That(req1.Task.IsCompletedSuccessfully, Is.True, "block-1 task was completed during block-1");
+        Assert.That(req2.Task.IsCompletedSuccessfully, Is.True, "block-2 task must be completed during block-2");
 
-        using Witness? w2 = await t2;
+        using Witness? w2 = await req2.Task;
         Assert.That(w2, Is.Not.Null, "block 2 must produce a valid witness");
     }
 
@@ -190,22 +196,22 @@ public partial class EngineModuleTests
         WitnessRendezvous rendezvous = chain.Container.Resolve<WitnessRendezvous>();
 
         (ExecutionPayloadV4 p1, byte[][]? r1) = await BuildAmsterdamPayload(chain);
-        Task<Witness?> t1 = rendezvous.RequestWitness(p1.BlockHash!);
+        using WitnessRequest req1 = rendezvous.RequestWitness(p1.BlockHash!);
         await rpc.engine_newPayloadV5(p1, [], TestItem.KeccakE, r1 ?? []);
         await rpc.engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(p1.BlockHash!, p1.BlockHash!, p1.BlockHash!), null);
-        (await t1)?.Dispose();
+        (await req1.Task)?.Dispose();
 
         (ExecutionPayloadV4 p2, byte[][]? r2) = await BuildAmsterdamPayload(chain);
         await rpc.engine_newPayloadV5(p2, [], TestItem.KeccakE, r2 ?? []);
         await rpc.engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(p2.BlockHash!, p2.BlockHash!, p2.BlockHash!), null);
 
         (ExecutionPayloadV4 p3, byte[][]? r3) = await BuildAmsterdamPayload(chain);
-        Task<Witness?> t3 = rendezvous.RequestWitness(p3.BlockHash!);
+        using WitnessRequest req3 = rendezvous.RequestWitness(p3.BlockHash!);
         await rpc.engine_newPayloadV5(p3, [], TestItem.KeccakE, r3 ?? []);
 
-        Assert.That(t3.IsCompletedSuccessfully, Is.True,
+        Assert.That(req3.Task.IsCompletedSuccessfully, Is.True,
             "an armed capture for block 3 must succeed even after an uncaptured block 2");
-        using Witness? w3 = await t3;
+        using Witness? w3 = await req3.Task;
         Assert.That(w3, Is.Not.Null, "block 3 must produce a valid witness");
     }
 
