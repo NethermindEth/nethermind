@@ -67,10 +67,9 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
         });
     }
 
-    public override Task<VmPb.SetStateResponse> SetState(VmPb.SetStateRequest request, ServerCallContext context)
-    {
+    public override Task<VmPb.SetStateResponse> SetState(VmPb.SetStateRequest request, ServerCallContext context) =>
         // TODO: react to STATE_SYNCING / BOOTSTRAPPING / NORMAL_OP transitions. For now echo the genesis stub.
-        return Task.FromResult(new VmPb.SetStateResponse
+        Task.FromResult(new VmPb.SetStateResponse
         {
             LastAcceptedId = ByteString.Empty,
             LastAcceptedParentId = ByteString.Empty,
@@ -78,7 +77,6 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
             Bytes = ByteString.Empty,
             Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UnixEpoch),
         });
-    }
 
     public override async Task<Empty> Shutdown(Empty request, ServerCallContext context)
     {
@@ -98,17 +96,13 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
         return new Empty();
     }
 
-    public override Task<VmPb.CreateHandlersResponse> CreateHandlers(Empty request, ServerCallContext context)
-    {
+    public override Task<VmPb.CreateHandlersResponse> CreateHandlers(Empty request, ServerCallContext context) =>
         // TODO: stand up a gRPC http.HTTP server for the JSON-RPC API and return its address as a Handler.
-        return Task.FromResult(new VmPb.CreateHandlersResponse());
-    }
+        Task.FromResult(new VmPb.CreateHandlersResponse());
 
-    public override Task<VmPb.NewHTTPHandlerResponse> NewHTTPHandler(Empty request, ServerCallContext context)
-    {
+    public override Task<VmPb.NewHTTPHandlerResponse> NewHTTPHandler(Empty request, ServerCallContext context) =>
         // TODO: as above, return the address of the gRPC http server serving JSON-RPC.
-        return Task.FromResult(new VmPb.NewHTTPHandlerResponse());
-    }
+        Task.FromResult(new VmPb.NewHTTPHandlerResponse());
 
     public override async Task<VmPb.WaitForEventResponse> WaitForEvent(Empty request, ServerCallContext context)
     {
@@ -138,25 +132,19 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
     public override Task<Empty> Disconnected(VmPb.DisconnectedRequest request, ServerCallContext context) =>
         Task.FromResult(new Empty());
 
-    public override Task<VmPb.BuildBlockResponse> BuildBlock(VmPb.BuildBlockRequest request, ServerCallContext context)
-    {
+    public override Task<VmPb.BuildBlockResponse> BuildBlock(VmPb.BuildBlockRequest request, ServerCallContext context) =>
         // TODO: ask Nethermind to assemble a block from the mempool, persist it via rpcdb, and return its
         // id/parent_id/bytes/height/timestamp. Until implemented, fail rather than return a bogus block.
         throw new RpcException(new Status(StatusCode.Unimplemented, "BuildBlock is not implemented yet"));
-    }
 
-    public override Task<VmPb.ParseBlockResponse> ParseBlock(VmPb.ParseBlockRequest request, ServerCallContext context)
-    {
+    public override Task<VmPb.ParseBlockResponse> ParseBlock(VmPb.ParseBlockRequest request, ServerCallContext context) =>
         // TODO: decode request.Bytes into a Nethermind block and return its header fields.
         throw new RpcException(new Status(StatusCode.Unimplemented, "ParseBlock is not implemented yet"));
-    }
 
-    public override Task<VmPb.GetBlockResponse> GetBlock(VmPb.GetBlockRequest request, ServerCallContext context)
-    {
+    public override Task<VmPb.GetBlockResponse> GetBlock(VmPb.GetBlockRequest request, ServerCallContext context) =>
         // TODO: look up the block by id (via rpcdb / Nethermind block store). On a miss, AvalancheGo expects
         // ERROR_NOT_FOUND in the response rather than a gRPC error.
-        return Task.FromResult(new VmPb.GetBlockResponse { Err = VmPb.Error.NotFound });
-    }
+        Task.FromResult(new VmPb.GetBlockResponse { Err = VmPb.Error.NotFound });
 
     public override Task<Empty> SetPreference(VmPb.SetPreferenceRequest request, ServerCallContext context) =>
         // TODO: set the preferred head used as the parent of the next BuildBlock.
@@ -221,23 +209,17 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
     public override Task<VmPb.GetStateSummaryResponse> GetStateSummary(VmPb.GetStateSummaryRequest request, ServerCallContext context) =>
         Task.FromResult(new VmPb.GetStateSummaryResponse { Err = VmPb.Error.StateSyncNotImplemented });
 
-    public override Task<VmPb.BlockVerifyResponse> BlockVerify(VmPb.BlockVerifyRequest request, ServerCallContext context)
-    {
+    public override Task<VmPb.BlockVerifyResponse> BlockVerify(VmPb.BlockVerifyRequest request, ServerCallContext context) =>
         // TODO: run Nethermind block validation/execution over request.Bytes and return the block timestamp.
         throw new RpcException(new Status(StatusCode.Unimplemented, "BlockVerify is not implemented yet"));
-    }
 
-    public override Task<Empty> BlockAccept(VmPb.BlockAcceptRequest request, ServerCallContext context)
-    {
+    public override Task<Empty> BlockAccept(VmPb.BlockAcceptRequest request, ServerCallContext context) =>
         // TODO: commit the block identified by request.Id (advance head, flush state to rpcdb via WriteBatch).
         throw new RpcException(new Status(StatusCode.Unimplemented, "BlockAccept is not implemented yet"));
-    }
 
-    public override Task<Empty> BlockReject(VmPb.BlockRejectRequest request, ServerCallContext context)
-    {
+    public override Task<Empty> BlockReject(VmPb.BlockRejectRequest request, ServerCallContext context) =>
         // TODO: drop the block identified by request.Id and any speculative state derived from it.
         throw new RpcException(new Status(StatusCode.Unimplemented, "BlockReject is not implemented yet"));
-    }
 
     public override Task<VmPb.StateSummaryAcceptResponse> StateSummaryAccept(VmPb.StateSummaryAcceptRequest request, ServerCallContext context) =>
         Task.FromResult(new VmPb.StateSummaryAcceptResponse
