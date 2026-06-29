@@ -74,6 +74,9 @@ public sealed class WitnessCapturingBlockProcessor(
         if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
             return result; // request was declined or cancelled — nothing to publish.
 
+        // Witness building is a best-effort side-channel: the block has already been processed and its
+        // result stands regardless. Swallow every failure (publishing a null witness) so a witness-build
+        // bug can never fail an otherwise-valid block — the requester just gets VALID with no witness.
         Witness? capturedWitness = null;
         try
         {
