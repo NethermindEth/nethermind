@@ -65,7 +65,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient sender balance"));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient funds for gas * price + value"));
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
@@ -335,7 +335,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient sender balance"));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient funds for gas * price + value"));
     }
 
     [Test]
@@ -525,7 +525,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_gas_available_is_capped_by_gas_cap()
     {
         using Context ctx = await Context.Create();
-        long gasCap = 50_000;
+        ulong gasCap = 50_000;
         ctx.Test.RpcConfig.GasCap = gasCap;
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
@@ -540,12 +540,12 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
         string result = JToken.Parse(serialized).Value<string>("result")!;
-        long gasAvailable = (long)Bytes.FromHexString(result).ToUInt256();
+        ulong gasAvailable = (ulong)Bytes.FromHexString(result).ToUInt256();
 
         // gas available = gasLimit - intrinsicGas; if gas cap works, gasLimit ≤ 50K so gas available < 50K
         // Without gas cap, gas available would be ~79K (100K - 21K intrinsic)
         Assert.That(gasAvailable, Is.LessThan(gasCap));
-        Assert.That(gasAvailable, Is.GreaterThan(0));
+        Assert.That(gasAvailable, Is.GreaterThan(0UL));
     }
 
     /// <summary>
@@ -561,9 +561,9 @@ public partial class EthRpcModuleTests
         string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
         string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
         string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
-        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+        ulong blockGasLimit = Convert.ToUInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
-        long gasCap = blockGasLimit * 10;
+        ulong gasCap = blockGasLimit * 10;
         ctx.Test.RpcConfig.GasCap = gasCap;
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
@@ -847,7 +847,7 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"]!["message"]!.Value<string>(), Is.EqualTo("header not found"));
     }
 
-    private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit)
+    private static async Task TestEthCallOutOfGas(Context ctx, ulong? specifiedGasLimit)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
@@ -929,7 +929,14 @@ public partial class EthRpcModuleTests
         """{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"balance":"0x56BC75E2D63100000"}}""",
         """{"blobBaseFee":"0xb","baseFeePerGas":"0x1"}""",
         null,
-        BlockErrorMessages.InsufficientMaxFeePerBlobGas,
+        "max fee per blob gas less than block blob gas fee",
+        TestName = "blob tx rejected when maxFeePerBlobGas below blobBaseFee override")]
+    [TestCase(
+        """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","maxFeePerBlobGas":"0xa","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"],"gas":"0x5208"}""",
+        """{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"balance":"0x56BC75E2D63100000"}}""",
+        """{"blobBaseFee":"0xb","baseFeePerGas":"0x1"}""",
+        null,
+        "max fee per blob gas less than block blob gas fee",
         TestName = "blob tx rejected when maxFeePerBlobGas below blobBaseFee override")]
 
     public async Task Eth_call_blobBaseFeePerGas_override_test(
@@ -985,7 +992,7 @@ public partial class EthRpcModuleTests
         string serialized = await test.TestEthRpc("eth_call", tx, "latest", stateOverride, null);
         Assert.That(
             JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
-            Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas));
+            Does.Contain("max fee per blob gas less than block blob gas fee"));
     }
 
     [TestCase(
@@ -1061,7 +1068,7 @@ public partial class EthRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-            Assert.That(message, Does.Contain("insufficient sender balance for gas * price + value"));
+            Assert.That(message, Does.Contain("insufficient funds for gas * price + value"));
             Assert.That(message, Does.Contain(expectedDetailSubstring));
         }
     }

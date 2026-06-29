@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -16,12 +15,10 @@ namespace Nethermind.Api
     {
         IBlobTxStorage BlobTxStorage { get; }
         IBlockTree BlockTree { get; }
-        IChainLevelInfoRepository? ChainLevelInfoRepository { get; }
         ISigner? EngineSigner { get; set; }
         ISignerStore? EngineSignerStore { get; set; }
         [SkipServiceCollection]
         IProtectedPrivateKey? NodeKey { get; set; }
-        IReceiptStorage? ReceiptStorage { get; }
         IReceiptFinder ReceiptFinder { get; }
         IWallet? Wallet { get; set; }
     }

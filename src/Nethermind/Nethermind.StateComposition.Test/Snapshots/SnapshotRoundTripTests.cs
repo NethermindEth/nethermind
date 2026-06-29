@@ -51,10 +51,10 @@ public class SnapshotRoundTripTests
 
     private static StateCompositionSnapshot BuildSnapshot(
         CumulativeTrieStats stats,
-        long blockNumber,
+        ulong blockNumber,
         Hash256 stateRoot,
         int diffsSinceBaseline = 0,
-        long scanBlockNumber = 0,
+        ulong scanBlockNumber = 0,
         Dictionary<ValueHash256, long>? slotCountByAddress = null,
         Dictionary<ValueHash256, int>? codeHashRefcounts = null,
         Dictionary<ValueHash256, int>? codeHashSizes = null) =>
@@ -72,12 +72,11 @@ public class SnapshotRoundTripTests
     private static StateCompositionSnapshot RoundTrip(StateCompositionSnapshot original)
     {
         StateCompositionSnapshotDecoder decoder = StateCompositionSnapshotDecoder.Instance;
-        int length = decoder.GetLength(original);
-        byte[] buffer = new byte[length];
-        RlpStream stream = new(buffer);
-        decoder.Encode(stream, original);
+        byte[] buffer = new byte[decoder.GetLength(original, RlpBehaviors.None)];
+        RlpWriter writer = new(buffer);
+        decoder.Encode(ref writer, original);
 
-        Rlp.ValueDecoderContext ctx = buffer.AsRlpValueContext();
+        RlpReader ctx = new(buffer);
         return decoder.Decode(ref ctx);
     }
 

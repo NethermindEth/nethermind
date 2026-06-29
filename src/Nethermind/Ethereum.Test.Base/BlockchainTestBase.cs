@@ -448,7 +448,7 @@ public abstract class BlockchainTestBase
         ("TransactionException.INITCODE_SIZE_EXCEEDED", "max initcode size exceeded"),
         ("TransactionException.NONCE_MISMATCH_TOO_LOW", "nonce too low"),
         ("TransactionException.NONCE_MISMATCH_TOO_HIGH", "nonce too high"),
-        ("TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS", "InsufficientMaxFeePerBlobGas: Not enough to cover blob gas fee"),
+        ("TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS", "max fee per blob gas less than block blob gas fee"),
         ("TransactionException.TYPE_1_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
         ("TransactionException.TYPE_2_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
         ("TransactionException.TYPE_3_TX_PRE_FORK", "InvalidTxType: Transaction type in"),

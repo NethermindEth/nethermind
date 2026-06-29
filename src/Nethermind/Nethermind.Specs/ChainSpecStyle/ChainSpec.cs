@@ -42,35 +42,35 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public long? FixedDifficulty { get; set; }
 
-        public long? DaoForkBlockNumber { get; set; }
+        public ulong? DaoForkBlockNumber { get; set; }
 
-        public long? HomesteadBlockNumber { get; set; }
+        public ulong? HomesteadBlockNumber { get; set; }
 
-        public long? TangerineWhistleBlockNumber { get; set; }
+        public ulong? TangerineWhistleBlockNumber { get; set; }
 
-        public long? SpuriousDragonBlockNumber { get; set; }
+        public ulong? SpuriousDragonBlockNumber { get; set; }
 
-        public long? ByzantiumBlockNumber { get; set; }
+        public ulong? ByzantiumBlockNumber { get; set; }
 
-        public long? ConstantinopleBlockNumber { get; set; }
+        public ulong? ConstantinopleBlockNumber { get; set; }
 
-        public long? ConstantinopleFixBlockNumber { get; set; }
+        public ulong? ConstantinopleFixBlockNumber { get; set; }
 
-        public long? IstanbulBlockNumber { get; set; }
+        public ulong? IstanbulBlockNumber { get; set; }
 
-        public long? MuirGlacierNumber { get; set; }
+        public ulong? MuirGlacierNumber { get; set; }
 
-        public long? BerlinBlockNumber { get; set; }
+        public ulong? BerlinBlockNumber { get; set; }
 
-        public long? LondonBlockNumber { get; set; }
+        public ulong? LondonBlockNumber { get; set; }
 
-        public long? ArrowGlacierBlockNumber { get; set; }
+        public ulong? ArrowGlacierBlockNumber { get; set; }
 
-        public long? GrayGlacierBlockNumber { get; set; }
+        public ulong? GrayGlacierBlockNumber { get; set; }
 
-        public long? MergeForkIdBlockNumber { get; set; }
+        public ulong? MergeForkIdBlockNumber { get; set; }
 
-        public long? TerminalPoWBlockNumber { get; set; }
+        public ulong? TerminalPoWBlockNumber { get; set; }
 
         public UInt256? TerminalTotalDifficulty { get; set; }
 

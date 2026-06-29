@@ -63,7 +63,7 @@ public class LogFinderTests
             .WithParent(_headTestBlock)
             .TestObject;
         Assert.That(_rawBlockTree.SuggestBlock(blockWithNoTransaction), Is.EqualTo(AddBlockResult.Added));
-        _rawBlockTree.UpdateMainChain(blockWithNoTransaction);
+        _rawBlockTree.TryUpdateMainChain(blockWithNoTransaction.Header, true, preloadedBlocks: new[] { blockWithNoTransaction });
     }
 
     private IEnumerable<LogEntry> LogsForBlockBuilder(Block block, Transaction transaction)
@@ -178,23 +178,23 @@ public class LogFinderTests
     {
         get
         {
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, new long[] { 1, 1, 4 }).SetName("filter_by_topic_A");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_any_then_topic_B");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, new long[] { 4 }).SetName("filter_by_any_A_any");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, new long[] { 4 }).SetName("filter_by_B_any_E");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, new long[] { 1, 1, 4, 4 }).SetName("filter_by_topic_A_or_B");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_A_or_B_then_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, new ulong[] { 1ul, 1ul, 4ul }).SetName("filter_by_topic_A");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, new ulong[] { 1ul, 4ul }).SetName("filter_by_any_then_topic_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, new ulong[] { 4ul }).SetName("filter_by_any_A_any");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, new ulong[] { 4ul }).SetName("filter_by_B_any_E");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, new ulong[] { 1ul, 1ul, 4ul, 4ul }).SetName("filter_by_topic_A_or_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, new ulong[] { 1ul, 4ul }).SetName("filter_by_A_or_B_then_B");
         }
     }
 
     [TestCaseSource(nameof(FilterByTopicsTestsData))]
-    public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, long[] expectedBlockNumbers)
+    public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, ulong[] expectedBlockNumbers)
     {
         LogFilter logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
 
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
 
-        long[] blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
+        ulong[] blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
         Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
     }
 
@@ -278,67 +278,67 @@ public class LogFinderTests
     }
 
     [TestCase("Empty index",
-        1, 2,
+        1UL, 2UL,
         null, null,
         null, null
     )]
     [TestCase("No intersection, left",
-        1, 2,
+        1UL, 2UL,
         4, 6,
         null, null
     )]
     [TestCase("No intersection, adjacent left",
-        1, 3,
+        1UL, 3UL,
         4, 6,
         null, null
     )]
     [TestCase("1 block intersection, left",
-        1, 4,
+        1UL, 4UL,
         4, 6,
         4, 4
     )]
     [TestCase("Partial intersection, left",
-        1, 5,
+        1UL, 5UL,
         4, 6,
         4, 5
     )]
     [TestCase("Full containment, border right",
-        1, 6,
+        1UL, 6UL,
         4, 6,
         4, 6
     )]
     [TestCase("Full containment",
-        1, 9,
+        1UL, 9UL,
         4, 6,
         4, 6
     )]
     [TestCase("Full containment, border left",
-        4, 9,
+        4UL, 9UL,
         4, 6,
         4, 6
     )]
     [TestCase("Partial intersection, right",
-        5, 9,
+        5UL, 9UL,
         4, 6,
         5, 6
     )]
     [TestCase("1 block intersection, right",
-        6, 9,
+        6UL, 9UL,
         4, 6,
         6, 6
     )]
     [TestCase("No intersection, adjacent right",
-        7, 9,
+        7UL, 9UL,
         4, 6,
         null, null
     )]
     [TestCase("No intersection, right",
-        8, 9,
+        8UL, 9UL,
         4, 6,
         null, null
     )]
     public void query_intersected_range_from_log_index(string name,
-        int from, int to,
+        ulong from, ulong to,
         int? indexFrom, int? indexTo,
         int? exFrom, int? exTo
     )

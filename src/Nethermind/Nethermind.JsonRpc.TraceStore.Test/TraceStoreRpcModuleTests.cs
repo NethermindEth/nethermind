@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -114,6 +118,23 @@ public class TraceStoreRpcModuleTests
         Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
 
         test.InnerModule.Received().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public async Task trace_block_to_async_stream()
+    {
+        TestContext test = new();
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_block(BlockParameter.Latest);
+        Assert.That(result.Data, Is.AssignableTo<IStreamableResult>());
+        IStreamableResult streaming = (IStreamableResult)result.Data;
+
+        await using AsyncCompletingStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+
+        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+
+        await writer.CompleteAsync();
     }
 
     private class TestContext

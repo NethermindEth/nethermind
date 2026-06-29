@@ -35,7 +35,7 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual bool TryGetAccount(Address address, out AccountStruct account)
         => State.TryGetAccount(address, out account);
 
-    public virtual UInt256 GetNonce(Address address)
+    public virtual ulong GetNonce(Address address)
         => State.GetNonce(address);
 
     public virtual bool IsStorageEmpty(Address address)
@@ -101,10 +101,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void DeleteAccount(Address address)
         => State.DeleteAccount(address);
 
-    public virtual void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public virtual void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
         => State.CreateAccount(address, in balance, in nonce);
 
-    public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
         => State.CreateAccountIfNotExists(address, in balance, in nonce);
 
     public virtual void CreateEmptyAccountIfDeleted(Address address)
@@ -122,19 +122,19 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         => State.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
 
-    public virtual void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public virtual void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
         => State.IncrementNonce(address, delta, out oldNonce);
 
-    public virtual void DecrementNonce(Address address, UInt256 delta)
+    public virtual void DecrementNonce(Address address, ulong delta)
         => State.DecrementNonce(address, delta);
 
-    public virtual void SetNonce(Address address, in UInt256 nonce)
+    public virtual void SetNonce(Address address, in ulong nonce)
         => State.SetNonce(address, in nonce);
 
     public virtual void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => State.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
-    public virtual void CommitTree(long blockNumber)
+    public virtual void CommitTree(ulong blockNumber)
         => State.CommitTree(blockNumber);
 
     public virtual ArrayPoolList<AddressAsKey>? GetAccountChanges()

@@ -18,7 +18,7 @@ public class FilteredTxSource<T>(ITxSource innerSource, ITxFilter txFilter, ILog
 
     public bool SupportsBlobs => innerSource.SupportsBlobs;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parentHeader, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parentHeader, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
     {
         IReleaseSpec currentSpec = NextBlockSpecHelper.GetSpec(specProvider, parentHeader, payloadAttributes, blocksConfig);
 

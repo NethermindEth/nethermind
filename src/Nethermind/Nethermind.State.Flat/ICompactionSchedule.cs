@@ -11,12 +11,12 @@ public interface ICompactionSchedule
     /// not compact in lockstep. Returns 1 when no compaction should run (block 0 or compaction
     /// disabled).
     /// </summary>
-    int GetCompactSize(long blockNumber);
+    ulong GetCompactSize(ulong blockNumber);
 
     /// <summary>
     /// The next block strictly greater than <paramref name="from"/> at which a full-size
     /// compaction (and hence a persistence boundary) will occur. Returns <see cref="long.MaxValue"/>
     /// when compaction is disabled.
     /// </summary>
-    long NextFullCompactionAfter(long from);
+    ulong NextFullCompactionAfter(ulong from);
 }

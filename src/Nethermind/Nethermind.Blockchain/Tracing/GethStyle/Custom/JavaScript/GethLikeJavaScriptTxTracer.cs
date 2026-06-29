@@ -30,7 +30,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly CancellationTokenSource _cts;
     private readonly IDisposable _ctsRegistration;
     private bool _resultConstructed;
-    private Stack<long>? _frameGas;
+    private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
     private int _depth = -1;
 
@@ -83,7 +83,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         return result;
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         _depth++;
 
@@ -109,7 +109,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             _frame.Gas = gas;
             _frame.Type = callType.FastToString();
             _tracer.enter(_frame);
-            _frameGas ??= new Stack<long>();
+            _frameGas ??= new Stack<ulong>();
             _frameGas.Push(gas);
         }
 
@@ -118,7 +118,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             : new Log.Contract(from, to, value, isAnyCreate ? null : input);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         _log.pc = pc;
         _log.op = new Log.Opcode(opcode);
@@ -128,7 +128,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _log.gasCost = null;
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         _log.gasCost ??= _log.gas - gas;
         if (_functions.HasFlag(TracerFunctions.postStep))
@@ -144,7 +144,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _tracer.fault(_log, _db);
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
@@ -152,13 +152,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         InvokeExit(gas, deployedCode);
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionEnd(gas, output);
         InvokeExit(gas, output);
     }
 
-    public override void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+    public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionError(EvmExceptionType.Revert);
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
@@ -170,7 +170,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         InvokeExit(0, Array.Empty<byte>(), evmExceptionType.GetEvmExceptionDescription());
     }
 
-    private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)
+    private void InvokeExit(ulong gas, ReadOnlyMemory<byte> output, string? error = null)
     {
         if (_contracts?.TryPop(out Log.Contract contract) == true)
         {

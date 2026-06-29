@@ -22,7 +22,6 @@ public class LongConverterTests : ConverterTestBase<long>
 
     [TestCase("\"0xa00000\"", 10485760L)]
     [TestCase("\"0x0\"", 0L)]
-    [TestCase("\"0x0000\"", 0L)]
     [TestCase("0", 0L)]
     [TestCase("1", 1L)]
     public void Can_read_value(string json, long expected)

@@ -9,6 +9,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -40,7 +41,7 @@ public class XdcTestBlockchain : TestBlockchain
     private readonly bool _useHotStuffModule;
     private readonly bool _withPresetPenaltyHistory;
 
-    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null, bool withPenalty = false)
+    public static async Task<XdcTestBlockchain> Create(ulong blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null, bool withPenalty = false)
     {
         XdcTestBlockchain chain = new(useHotStuffModule, withPenalty);
         await chain.Build(configurer);
@@ -171,7 +172,7 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
             .AddSingleton<IRewardCalculator, ZeroRewardCalculator>()
-            .AddSingleton<ITimestamper>((_) => Timestamper)
+            .AddSingleton<ITimestamper>((ctx) => ctx.Resolve<ManualTimestamper>())
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
 
             .AddSingleton<ITxPool>((ctx) =>
@@ -225,7 +226,7 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.ObserverReward = Unit.Ether / 2;            // 0.5 Ether in Wei per observer
         xdcSpec.MinimumMinerBlockPerEpoch = 1;
         xdcSpec.MinimumSigningTx = 1;
-        xdcSpec.GasLimitBoundDivisor = 1024;
+        xdcSpec.GasLimitBoundDivisor = 1024UL;
         xdcSpec.LimitPenaltyEpoch = 4;
         xdcSpec.LimitPenaltyEpochV2 = 0;
 
@@ -390,7 +391,7 @@ public class XdcTestBlockchain : TestBlockchain
         IBlockTree blockTree,
         IEpochSwitchManager epochSwitchManager) : IPenaltyHandler
     {
-        public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
+        public Address[] HandlePenalties(ulong number, Hash256 currentHash, Address[] candidates)
         {
             if (candidates.Length == 0)
             {
@@ -437,11 +438,13 @@ public class XdcTestBlockchain : TestBlockchain
         return BlockProducerRunner.StopAsync();
     }
 
-    public async Task AddBlocks(int count, bool withTransaction = false)
-    {
-        UInt256 nonce = 0;
+    public Task AddBlocks(int count, bool withTransaction = false) => AddBlocks((ulong)count, withTransaction);
 
-        for (int i = 0; i < count; i++)
+    public async Task AddBlocks(ulong count, bool withTransaction = false)
+    {
+        ulong nonce = 0;
+
+        for (ulong i = 0; i < count; i++)
         {
             if (withTransaction)
                 await AddBlock(CreateTransactionBuilder().WithNonce(nonce++).TestObject);
@@ -486,8 +489,9 @@ public class XdcTestBlockchain : TestBlockchain
         Address leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
 
         EpochSwitchInfo epochSwitchInfo = EpochSwitchManager.GetEpochSwitchInfo(head)!;
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-        long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
+        ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong temp = epochSwitchNumber - epochSwitchNumber % spec.EpochLength;
+        ulong gapNumber = epochSwitchNumber == 0 ? 0UL : temp.SaturatingSub(spec.Gap);
 
         VoteDecoder voteDecoder = new();
 
@@ -507,7 +511,7 @@ public class XdcTestBlockchain : TestBlockchain
                     break;
                 }
                 //Will cast a random master candidate vote for the head block and when vote threshold is reached the block should be proposed
-                Vote vote = new(new BlockRoundInfo(head.Hash!, head.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, head.Number), (ulong)gapNumber);
+                Vote vote = new(new BlockRoundInfo(head.Hash!, head.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, head.Number), gapNumber);
                 SignRandom(vote);
                 Task voteTask = this.VotesManager.OnReceiveVote(vote);
             }
@@ -525,9 +529,9 @@ public class XdcTestBlockchain : TestBlockchain
             newRoundWaitHandle.SetResult();
         void SignRandom(Vote vote)
         {
-            KeccakRlpStream stream = new();
-            voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-            ValueHash256 hash = stream.GetValueHash();
+            KeccakRlpWriter writer = new();
+            voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
+            ValueHash256 hash = writer.GetValueHash();
             RandomSigner!.TrySign(in hash, out Signature signature);
             vote.Signature = signature;
             vote.Signer = RandomSigner.Address;
@@ -549,7 +553,7 @@ public class XdcTestBlockchain : TestBlockchain
             //by setting the correct signer the block producer runner should trigger trying to propose a block
             Address leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
             Signer.SetSigner(MasterNodeCandidates.First(k => k.Address == leader));
-            Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + (ulong)spec.MinePeriod)).UtcDateTime);
+            Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
             ConsensusModule.StartRoundTask(head, XdcContext.CurrentRound);
 
             Task waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
@@ -570,7 +574,8 @@ public class XdcTestBlockchain : TestBlockchain
         IXdcReleaseSpec headSpec = SpecProvider.GetXdcSpec(header, XdcContext.CurrentRound);
         EpochSwitchInfo switchInfo = EpochSwitchManager.GetEpochSwitchInfo(header.Hash!)!;
 
-        ulong gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % headSpec.EpochLength - headSpec.Gap);
+        ulong baseBlockNum = switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % headSpec.EpochLength;
+        ulong gap = baseBlockNum.SaturatingSub(headSpec.Gap);
         PrivateKey[] masterNodes = TakeRandomMasterNodes(headSpec, switchInfo);
         QuorumCertificate headQc = XdcTestHelper.CreateQc(new BlockRoundInfo(header.Hash!, header.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, header.Number), gap,
             masterNodes);

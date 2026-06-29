@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
+using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -26,7 +27,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers;
 
 public class P2PProtocolHandler(
     ISession session,
-    PublicKey localNodeId,
+    IEnode enode,
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
@@ -60,7 +61,7 @@ public class P2PProtocolHandler(
     private readonly List<Capability> _supportedCapabilities = [];
 
     public int ListenPort { get; } = session.LocalPort;
-    public PublicKey LocalNodeId { get; } = localNodeId;
+    private readonly PublicKey _localNodeId = enode.PublicKey;
     private string RemoteClientId { get; set; }
 
     public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
@@ -430,7 +431,7 @@ public class P2PProtocolHandler(
         {
             Capabilities = _supportedCapabilities.ToPooledList(),
             ClientId = ProductInfo.PublicClientId,
-            NodeId = LocalNodeId,
+            NodeId = _localNodeId,
             ListenPort = ListenPort,
             P2PVersion = ProtocolVersion
         };

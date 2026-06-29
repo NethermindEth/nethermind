@@ -61,8 +61,12 @@ public static class SszCodec
         safeBlockHash: w.SafeBlockHash);
 
 
-    public static int EncodeGetPayloadV1Response(ExecutionPayload ep, IBufferWriter<byte> writer)
-        => EncodeToWriter(new SszExecutionPayloadV1(ep), writer);
+    public static int EncodeBuiltPayloadParis(GetPayloadV2Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new BuiltPayloadParisWire
+        {
+            ExecutionPayload = new SszExecutionPayloadV1(r!.ExecutionPayload),
+            BlockValue = r.BlockValue
+        }, writer);
 
     public static int EncodeGetPayloadV2Response(GetPayloadV2Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV2Wire
@@ -86,8 +90,8 @@ public static class SszCodec
             ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
-            ShouldOverrideBuilder = r.ShouldOverrideBuilder,
-            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
+            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
+            ShouldOverrideBuilder = r.ShouldOverrideBuilder
         }, writer);
 
     public static int EncodeGetPayloadV5Response(GetPayloadV5Result? r, IBufferWriter<byte> writer)
@@ -96,8 +100,8 @@ public static class SszCodec
             ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
-            ShouldOverrideBuilder = r.ShouldOverrideBuilder,
-            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
+            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
+            ShouldOverrideBuilder = r.ShouldOverrideBuilder
         }, writer);
 
     public static int EncodeGetPayloadV6Response(GetPayloadV6Result? r, IBufferWriter<byte> writer)
@@ -106,8 +110,8 @@ public static class SszCodec
             ExecutionPayload = new SszExecutionPayloadV4(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
-            ShouldOverrideBuilder = r.ShouldOverrideBuilder,
-            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
+            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
+            ShouldOverrideBuilder = r.ShouldOverrideBuilder
         }, writer);
 
     public static byte[][] DecodeGetBlobsRequest(ReadOnlySequence<byte> buf)
@@ -148,19 +152,9 @@ public static class SszCodec
         return EncodeToWriter(new GetBlobsV2ResponseWire { Entries = arr }, writer);
     }
 
+    // V3 entry shape is byte-identical to V2; only response-level semantics differ.
     public static int EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
-    {
-        int count = blobs.Count;
-        BlobV3EntryWire[] arr = new BlobV3EntryWire[count];
-        for (int i = 0; i < count; i++)
-        {
-            BlobAndProofV2? b = blobs[i];
-            arr[i] = b is null
-                ? new BlobV3EntryWire { Available = false, Contents = default }
-                : new BlobV3EntryWire { Available = true, Contents = new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() } };
-        }
-        return EncodeToWriter(new GetBlobsV3ResponseWire { Entries = arr }, writer);
-    }
+        => EncodeGetBlobsV2Response(blobs, writer);
 
     public static (byte[][] hashes, System.Collections.BitArray indices) DecodeGetBlobsV4Request(ReadOnlySequence<byte> buf)
     {
@@ -217,10 +211,10 @@ public static class SszCodec
         return wire.BlockHashes ?? [];
     }
 
-    public static (long start, long count) DecodeGetPayloadBodiesByRangeRequest(ReadOnlySequence<byte> buf)
+    public static (ulong start, ulong count) DecodeGetPayloadBodiesByRangeRequest(ReadOnlySequence<byte> buf)
     {
         GetPayloadBodiesByRangeRequestWire.Decode(buf, out GetPayloadBodiesByRangeRequestWire wire);
-        return (SszNumericChecks.CheckedLong(wire.Start), SszNumericChecks.CheckedLong(wire.Count));
+        return (wire.Start, wire.Count);
     }
 
     public static int EncodePayloadBodiesV1Response(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies, IBufferWriter<byte> writer)
