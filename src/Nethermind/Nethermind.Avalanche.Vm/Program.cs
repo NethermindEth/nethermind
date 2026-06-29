@@ -74,13 +74,20 @@ await app.StartAsync();
 // --- 3. Resolve the actual bound port and announce ourselves to the engine within 5s. ---
 string serverAddress = ResolveLoopbackAddress(app);
 
-using (GrpcChannel runtimeChannel = CreateInsecureChannel(engineAddr))
+try
 {
+    using GrpcChannel runtimeChannel = CreateInsecureChannel(engineAddr);
     RuntimePb.Runtime.RuntimeClient runtimeClient = new(runtimeChannel);
-    using CancellationTokenSource initTimeout = new(TimeSpan.FromSeconds(5));
-    await runtimeClient.InitializeAsync(
-        new RuntimePb.InitializeRequest { ProtocolVersion = ProtocolVersion, Addr = serverAddress },
-        cancellationToken: initTimeout.Token);
+    await CompleteHandshakeAsync(runtimeClient, serverAddress);
+}
+catch (Exception ex)
+{
+    // A failed handshake is fatal, but exit gracefully (non-zero) rather than crashing with an
+    // unhandled exception so AvalancheGo sees a clean process exit and a clear diagnostic.
+    await Console.Error.WriteLineAsync(
+        $"rpcchainvm handshake to the engine at '{engineAddr}' failed: {ex.Message}");
+    await app.StopAsync();
+    return 1;
 }
 
 // --- 4. Serve until the Shutdown RPC arrives. Per the rpcchainvm contract, OS termination signals are
@@ -141,4 +148,38 @@ static GrpcChannel CreateInsecureChannel(string address)
             MaxReceiveMessageSize = null,
             MaxSendMessageSize = null,
         });
+}
+
+// Announces this VM to AvalancheGo's Runtime engine, retrying briefly while the engine finishes
+// coming up. AvalancheGo normally has its Runtime server ready before launching the plugin, but a
+// short retry makes the handshake robust to a transient connection refusal instead of crashing.
+static async Task CompleteHandshakeAsync(RuntimePb.Runtime.RuntimeClient client, string serverAddress)
+{
+    RuntimePb.InitializeRequest request = new() { ProtocolVersion = ProtocolVersion, Addr = serverAddress };
+    using CancellationTokenSource overall = new(TimeSpan.FromSeconds(10));
+    RpcException? last = null;
+    while (!overall.IsCancellationRequested)
+    {
+        try
+        {
+            using CancellationTokenSource perCall = CancellationTokenSource.CreateLinkedTokenSource(overall.Token);
+            perCall.CancelAfter(TimeSpan.FromSeconds(2));
+            await client.InitializeAsync(request, cancellationToken: perCall.Token);
+            return;
+        }
+        catch (RpcException ex) when (ex.StatusCode is StatusCode.Unavailable or StatusCode.DeadlineExceeded)
+        {
+            last = ex;
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200), overall.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    throw new InvalidOperationException("rpcchainvm Runtime.Initialize handshake did not succeed within 10s.", last);
 }
