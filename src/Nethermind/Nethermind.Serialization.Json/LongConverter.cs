@@ -13,9 +13,11 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
-public class LongConverter(bool strictQuantity = false) : JsonConverter<long>
+public class LongConverter : JsonConverter<long>
 {
-    private readonly bool _strictQuantity = strictQuantity;
+    private readonly bool _strictQuantity;
+    public LongConverter() { }
+    public LongConverter(bool strictQuantity) => _strictQuantity = strictQuantity;
     public static long FromString(string s)
     {
         if (s is null)

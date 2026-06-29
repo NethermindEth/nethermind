@@ -12,9 +12,11 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json;
 
-public class ULongConverter(bool strictQuantity = false) : JsonConverter<ulong>
+public class ULongConverter : JsonConverter<ulong>
 {
-    private readonly bool _strictQuantity = strictQuantity;
+    private readonly bool _strictQuantity;
+    public ULongConverter() { }
+    public ULongConverter(bool strictQuantity) => _strictQuantity = strictQuantity;
     public static ulong FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<ulong>(s);
 
     public static ulong FromString(string s)
