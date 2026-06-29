@@ -48,7 +48,7 @@ public static class BlockSource
 
     private static IReadOnlyList<Block> LoadFromDirectory(string directory)
     {
-        List<Block> blocks = new();
+        List<Block> blocks = [];
         foreach (string file in Directory.EnumerateFiles(directory, "*.rlp", SearchOption.TopDirectoryOnly))
         {
             byte[] bytes = ReadRlpBytes(file);
@@ -66,7 +66,7 @@ public static class BlockSource
     private static IReadOnlyList<Block> LoadFromConcatenatedFile(string file)
     {
         byte[] bytes = ReadRlpBytes(file);
-        List<Block> blocks = new();
+        List<Block> blocks = [];
 
         // Walk the concatenated stream item-by-item. Each top-level RLP list is one block; the public
         // RlpReader.PeekNextRlpLength() reports the full item length (prefix + content) at the cursor.

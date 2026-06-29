@@ -57,7 +57,7 @@ public sealed class BenchmarkResult
         Blocks = blocks;
         TotalBlocks = blocks.Count;
 
-        List<double> okTimes = new();
+        List<double> okTimes = [];
         ulong totalGas = 0;
         long totalTxs = 0;
         double totalMs = 0;
