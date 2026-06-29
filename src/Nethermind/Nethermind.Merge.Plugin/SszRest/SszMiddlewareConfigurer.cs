@@ -82,8 +82,6 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         foreach (Type handler in SingletonHandlers)
             services.AddSingleton(typeof(ISszEndpointHandler), handler);
 
-        // EIP-7928 witness endpoint: a fork-routed sub-resource of payloads (/engine/v2/{fork}/payloads/witness),
-        // routed through the same machinery as everything else.
         services.AddSingleton<ISszEndpointHandler, NewPayloadWithWitnessSszHandler>();
     }
 }

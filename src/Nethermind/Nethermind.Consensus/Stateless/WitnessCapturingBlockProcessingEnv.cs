@@ -98,11 +98,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             // Recording header finder + scoped blockhash cache so BLOCKHASH header reads are captured.
             .AddScoped<IHeaderFinder>(recordingFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
-            // Non-caching code repo so every bytecode/code-hash lookup flows through the recorder.
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            // Witness BAL: non-caching code reads, and statically sequential — it supplies no parallel
-            // parent-reader pool factories, so ParallelExecutionEnabled stays false (no pre-state reads
-            // outside the recorder).
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),
                 ctx.Resolve<ISpecProvider>(),

@@ -116,7 +116,6 @@ public class SszMiddlewareTests
             new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
             new CapabilitiesSszHandler(_specProvider),
 
-            // Witness endpoint: a fork-routed sub-resource of payloads (/engine/v2/{fork}/payloads/witness).
             new NewPayloadWithWitnessSszHandler(_engineModule),
         ];
 
@@ -1048,10 +1047,6 @@ public class SszMiddlewareTests
         Assert.That(root.TryGetProperty("detail", out _), Is.True, "unsupported-fork must include 'detail'");
         Assert.That(root.EnumerateObject().Count(), Is.EqualTo(2), "error body must have exactly two keys: type + detail");
     }
-
-    // The witness endpoint (EIP-7928) is a fork-routed sub-resource of payloads:
-    // POST /engine/v2/{fork}/payloads/witness, gated to Amsterdam+. The SSZ request is the same
-    // shape as the standard payloads endpoint; the SSZ response is PayloadStatusWithWitness.
 
     private static string WitnessPath => $"/engine/v2/{AmsterdamUrl}/payloads/witness";
 

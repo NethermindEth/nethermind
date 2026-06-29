@@ -63,9 +63,7 @@ public partial class BlockAccessListManager(
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
 
-    // Parallel execution depends on the pooled parent-reader snapshots that back each worker's
-    // parent-state fallback. That pool is built only when the right factories are supplied (mirrors
-    // CreateParentReaderEnvPool); witness-capturing and stateless registrations supply none.
+    // Parallel execution requires this pool (mirrors CreateParentReaderEnvPool); witness/stateless supply none.
     private readonly bool _hasParentReaderPool =
         (prewarmerEnvFactory is not null && preBlockCaches is not null)
         || readOnlyTxProcessingEnvFactory is not null;
@@ -129,9 +127,6 @@ public partial class BlockAccessListManager(
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-        // Parallel execution needs the decoded BAL body (RLP fixtures only carry the hash), an active
-        // state scope (to capture the parent state root for workers), and the parent-reader pool that
-        // backs each worker's parent-state fallback (see _hasParentReaderPool).
         ParallelExecutionEnabled = Enabled
             && blocksConfig.ParallelExecution
             && !_isBuilding

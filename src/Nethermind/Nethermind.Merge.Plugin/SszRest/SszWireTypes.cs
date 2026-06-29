@@ -459,9 +459,6 @@ public partial struct ExecutionWitnessV1Wire
     [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
 }
 
-// PayloadStatusWithWitness (EIP-7928): the regular PayloadStatus plus an optional witness, the witness
-// present (as a length-1 list) only when status == VALID. Optional is encoded as List[T, 1] per the
-// engine SSZ transport — same convention as the other optional fields in this file.
 [SszContainer]
 public partial struct PayloadStatusWithWitnessWire
 {

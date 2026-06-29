@@ -14,12 +14,8 @@ namespace Nethermind.Consensus.Stateless;
 /// the processor completes it once the matching <c>ProcessOne</c> finishes.
 /// </summary>
 /// <remarks>
-/// Only one witness is ever in flight: the engine module serializes all <c>newPayload*</c>/
-/// <c>forkchoiceUpdated</c> calls under a single semaphore, and the processing queue runs one block
-/// at a time on a single thread. So this is a single hash-validated slot — bounded by construction,
-/// not an unbounded registry. Handlers register via <see cref="RequestWitness"/> and hold the
-/// returned <see cref="WitnessRequest"/> in a <c>using</c>; its <c>Dispose</c> removes the slot and
-/// cancels the task on every exit path, so leak-safety is structural rather than caller-disciplined.
+/// Only one witness is ever in flight (block processing is serialized), so this is a single
+/// hash-validated slot rather than a registry.
 /// </remarks>
 public sealed class WitnessRendezvous(ILogManager? logManager = null)
 {
@@ -33,12 +29,7 @@ public sealed class WitnessRendezvous(ILogManager? logManager = null)
     /// disposable registration whose <see cref="WitnessRequest.Task"/> completes when the block is
     /// processed (or is cancelled when the registration is disposed).
     /// </summary>
-    /// <remarks>
-    /// If a request is already outstanding, the returned registration is <em>declined</em>: its task
-    /// yields <c>null</c> and disposing it is a no-op. Declining (rather than evicting the in-flight
-    /// request) matches the "one witness at a time" reality; the caller treats a null witness as
-    /// VALID-with-no-witness, exactly like the other give-up paths.
-    /// </remarks>
+    /// <remarks>If a request is already outstanding, the registration is declined: its task yields <c>null</c>.</remarks>
     public WitnessRequest RequestWitness(Hash256 blockHash)
     {
         lock (_lock)
@@ -49,8 +40,7 @@ public sealed class WitnessRendezvous(ILogManager? logManager = null)
                 return WitnessRequest.Declined;
             }
 
-            // RunContinuationsAsynchronously: completion fires from the block-processing thread; we must
-            // not run the handler's continuation inline there.
+            // Completion fires on the block-processing thread; don't run the handler's continuation inline there.
             _pending = new TaskCompletionSource<Witness?>(TaskCreationOptions.RunContinuationsAsynchronously);
             _requestedHash = blockHash;
             return new WitnessRequest(this, blockHash, _pending);
@@ -68,13 +58,8 @@ public sealed class WitnessRendezvous(ILogManager? logManager = null)
 
     /// <summary>
     /// Recorder-side: atomically take the pending TCS for <paramref name="blockHash"/> so the caller
-    /// can complete it. Returns <c>false</c> when no request is pending for that hash (declined,
-    /// cancelled, or already claimed).
+    /// can complete it. Returns <c>false</c> when no request is pending for that hash.
     /// </summary>
-    /// <remarks>
-    /// Two-step (claim + complete) rather than a single <c>Complete(hash, witness)</c> so the recorder
-    /// can avoid building the witness when no request is pending.
-    /// </remarks>
     public bool TryClaim(Hash256 blockHash, out TaskCompletionSource<Witness?>? tcs)
     {
         lock (_lock)
@@ -100,8 +85,7 @@ public sealed class WitnessRendezvous(ILogManager? logManager = null)
     {
         lock (_lock)
         {
-            // Identity check: only clear the slot if this exact registration still owns it. A claimed
-            // (and thus replaced/cleared) slot leaves _pending != tcs, so this is a no-op there.
+            // Only clear the slot if this registration still owns it (no-op once claimed).
             if (!ReferenceEquals(_pending, tcs)) return;
 
             _pending = null;

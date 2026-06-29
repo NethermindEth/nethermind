@@ -75,9 +75,7 @@ public static class SszRestPaths
 
     public const string Blobs = "blobs";
 
-    // Witness endpoint resource segment (EIP-7928): a fork-scoped sub-resource of `payloads`, routed
-    // like every other endpoint via /engine/v2/{fork}/payloads/witness (execution-apis#773/#793).
-    public const string PayloadsWitness = "payloads/witness";
+    public const string PayloadWithWitness = "payloads/witness";
 
     // Documentation strings for the SSZ-REST routes — used by EngineRpcCapabilitiesProvider
     // (registration) and EngineModuleTests (coverage assertions). Built at static-init time from
@@ -131,9 +129,7 @@ public static class SszRestPaths
             if (Eq(resource, Payloads)) return spec.EngineApiNewPayloadVersion;
             if (Eq(resource, Forkchoice)) return spec.EngineApiForkchoiceVersion;
             if (Eq(resource, PayloadBodiesByHash)) return spec.EngineApiPayloadBodiesByHashVersion;
-            // EIP-7928 witness endpoint: version-less, gated on fork support so pre-Amsterdam forks
-            // resolve to null (404). Tracks the newPayload wire version it shares.
-            if (Eq(resource, PayloadsWitness)) return spec.IsEip7928Enabled ? spec.EngineApiNewPayloadVersion : null;
+            if (Eq(resource, PayloadWithWitness)) return spec.IsEip7928Enabled ? spec.EngineApiNewPayloadVersion : null;
         }
         else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
         {

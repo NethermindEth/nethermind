@@ -742,7 +742,6 @@ public class SszCodecTests
             Assert.That(decoded.Commitments![i].AsSpan().ToArray(), Is.EqualTo(proofs[i]), $"commitment {i} bytes must round-trip exactly");
     }
 
-    // Witness is present (length-1 list) iff status is VALID AND witness is non-null; otherwise empty.
     [TestCase(PayloadStatus.Valid, true, true)]
     [TestCase(PayloadStatus.Valid, false, false)]
     [TestCase(PayloadStatus.Invalid, true, false)]
@@ -777,7 +776,6 @@ public class SszCodecTests
         int offWitness = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(4, 4));
         Assert.That(offStatus, Is.EqualTo(8), "two-offset container header is 8 bytes");
 
-        // The nested payload_status must encode byte-for-byte like the standalone PayloadStatus response.
         Assert.That(buf.Slice(offStatus, offWitness - offStatus).ToArray(), Is.EqualTo(standalone),
             "the witness response must reuse the regular PayloadStatus encoding");
         Assert.That(offWitness, Is.EqualTo(buf.Length),

@@ -20,7 +20,7 @@ public sealed class NewPayloadWithWitnessSszHandler(IEngineRpcModule engineModul
 {
     public override string HttpMethod => "POST";
 
-    public override string Resource => SszRestPaths.PayloadsWitness;
+    public override string Resource => SszRestPaths.PayloadWithWitness;
 
     // Version-less: the endpoint is gated by the fork segment (Amsterdam+), not a version number.
     public override int? Version => null;

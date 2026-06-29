@@ -35,8 +35,6 @@ public static class SszCodec
 
     public static int EncodeNewPayloadWithWitnessResponse(PayloadStatusV1 ps, Witness? witness, IBufferWriter<byte> writer)
     {
-        // PayloadStatusWithWitness reuses the regular PayloadStatus encoding plus the witness as an
-        // Optional (List[ExecutionWitness, 1]) — present only when the status is VALID.
         bool hasWitness = witness is not null && ps.Status == PayloadStatus.Valid;
         return EncodeToWriter(new PayloadStatusWithWitnessWire
         {

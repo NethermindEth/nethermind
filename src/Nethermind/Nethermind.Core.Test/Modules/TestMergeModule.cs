@@ -36,9 +36,7 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig, IModule? mergeModule) :
     {
         base.Load(builder);
 
-        // The core merge module is optional: AuRa-merge blockchains pass null and install
-        // AuRaMergeModule themselves (after AuRaModule, so its last-wins overrides take effect),
-        // ensuring the shared BaseMergePluginModule still loads exactly once.
+        // Optional: AuRa passes null and installs AuRaMergeModule itself (see MergeTestBlockchain.MergeModule).
         if (mergeModule is not null)
             builder.AddModule(mergeModule);
 

@@ -266,13 +266,9 @@ public class BaseMergePluginModule : Module
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
             .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
-            // Rendezvous lives in the root scope so the JSON-RPC handler can take it directly; the
-            // selector decorator (installed by the main-processing module when EIP-7928 is enabled)
-            // publishes the witness through it.
             .AddSingleton<WitnessRendezvous>()
-            // The witness processor graph also lives at root so it builds off the root scope and does
-            // not inherit the main scope's IBlockProcessor selector decorator (which would cycle), while
-            // still wrapping the shared main IWorldState. Built lazily on the first witnessed block.
+            // At root so it doesn't inherit the main scope's IBlockProcessor selector decorator (which
+            // would cycle), while still wrapping the shared main IWorldState. Built lazily.
             .AddSingleton<WitnessCapturingBlockProcessingEnv>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()

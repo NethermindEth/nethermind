@@ -368,12 +368,10 @@ public sealed class SszMiddleware
             extraMem = default;
         }
 
-        // EIP-7928 witness endpoint: a sub-resource of `payloads`, collapsed to a single resource key
-        // so it routes by resource like every other endpoint (cf. bodies/hash above).
         if (resource.Span.Equals("payloads".AsSpan(), StringComparison.OrdinalIgnoreCase)
             && extraMem.Span.Equals("witness".AsSpan(), StringComparison.OrdinalIgnoreCase))
         {
-            resource = SszRestPaths.PayloadsWitness.AsMemory();
+            resource = SszRestPaths.PayloadWithWitness.AsMemory();
             extraMem = default;
         }
 

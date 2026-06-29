@@ -532,8 +532,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         BlockHeader parent = chain.BlockTree.Head!.Header;
 
-        // A simple value transfer touches the sender and the recipient at the account level.
-        // Both are funded in genesis (AddressA, AddressB), so each has an inclusion proof.
+        // Transfer between two genesis-funded accounts (sender AddressA, recipient AddressB).
         Transaction tx = Build.A.Transaction
             .WithValue(UInt256.One)
             .WithTo(TestItem.AddressB)
@@ -545,8 +544,6 @@ public partial class EngineModuleTests
 
         using Witness witness = await ProduceWitnessedBlock(chain, tx);
 
-        // Independently compute each account's canonical Merkle proof against the parent state and
-        // assert the witness carries every node of it — a stateless verifier needs the full path.
         AssertWitnessProvesAccount(witness, chain.StateReader, parent, TestItem.AddressA);
         AssertWitnessProvesAccount(witness, chain.StateReader, parent, TestItem.AddressB);
     }
@@ -579,11 +576,8 @@ public partial class EngineModuleTests
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject;
         using Witness witness = await ProduceWitnessedBlock(chain, call);
 
-        // Executing the call reads the contract's code, so the exact bytecode must be in Witness.Codes.
         Assert.That(witness.Codes.Any(code => code.AsSpan().SequenceEqual(runtimeCode)), Is.True,
             "witness Codes must contain the called contract's runtime bytecode");
-
-        // The witness must prove the contract account and the storage slot it read.
         AssertWitnessProvesAccount(witness, chain.StateReader, parent, contract, UInt256.Zero);
     }
 

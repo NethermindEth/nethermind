@@ -388,10 +388,6 @@ public partial class BlockAccessListManager
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
-            // The factory chooses the code repository: normal processing gets the caching
-            // EthereumCodeInfoRepository; witness/stateless execution gets a non-caching one so every code
-            // access reads through the (traced) WorldState (the caching repo serves hits from a
-            // process-wide static cache, so those accesses would be missing from the generated witness).
             ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(WorldState);
             TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
             TxProcessorAdapter = new(TxProcessor);

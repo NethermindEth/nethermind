@@ -13,11 +13,8 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <remarks>
-/// <see cref="IEngineRpcModule"/> is taken via <see cref="Lazy{T}"/> to break the construction
-/// cycle (the module composes this handler). On pre-Amsterdam chains the
-/// <see cref="WitnessCapturingBlockProcessor"/> decorator is not installed, so the rendezvous
-/// registration for any requested block hash never completes — the <c>using</c> registration
-/// cancels it on return, so the handler simply yields VALID with no witness.
+/// <see cref="IEngineRpcModule"/> is taken via <see cref="Lazy{T}"/> to break the construction cycle
+/// (the module composes this handler).
 /// </remarks>
 public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
@@ -41,8 +38,6 @@ public sealed class NewPayloadWithWitnessHandler(
                 "executionPayload.blockHash is required", ErrorCodes.InvalidParams);
         }
 
-        // The using guarantees the rendezvous slot is removed and the capture task cancelled on every
-        // exit path (exception, non-success, non-VALID, or VALID-but-not-captured).
         using WitnessRequest request = rendezvous.RequestWitness(blockHash);
 
         using ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
@@ -58,16 +53,14 @@ public sealed class NewPayloadWithWitnessHandler(
         PayloadStatusV1 payloadStatus = statusResult.Data!;
         Witness? witness = null;
 
-        // engine_newPayloadV5 returns only after ProcessOne has run, so the witness processor has
-        // already completed the registration (happy path) — or it never will (the block took an
-        // early-return path, or the decorator is absent pre-Amsterdam). Either way the task is in its
-        // final state here, so a synchronous check suffices and the using-Dispose cleans up the rest.
+        // engine_newPayloadV5 returns only after ProcessOne has run, so the registration is already in
+        // its final state — a synchronous check suffices (the using-Dispose cancels it otherwise).
         if (request.Task.IsCompletedSuccessfully)
         {
             if (payloadStatus.Status == PayloadStatus.Valid)
                 witness = request.Task.Result;
             else
-                // Non-VALID but a witness was still produced: we won't return it, so dispose to avoid a leak.
+                // Non-VALID, so we won't return the witness; dispose it to avoid a leak.
                 request.Task.Result?.Dispose();
         }
 

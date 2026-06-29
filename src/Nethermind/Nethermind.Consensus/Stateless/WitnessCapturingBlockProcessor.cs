@@ -22,10 +22,8 @@ namespace Nethermind.Consensus.Stateless;
 /// <see cref="WitnessRendezvous"/>. Every other block flows straight through to the inner processor.
 /// </summary>
 /// <remarks>
-/// The witness processor shares the main pipeline's writable world state (through a transparent
-/// recorder), so the witnessed block is really imported — it is not re-executed. Selection happens once
-/// per block at this single point; the witness processor's world state, code repository and block-access
-/// -list manager are statically witness-configured, so there are no per-call predicates anywhere below.
+/// The witness processor shares the main pipeline's writable world state, so the witnessed block is
+/// really imported, not re-executed.
 /// </remarks>
 public sealed class WitnessCapturingBlockProcessor(
     IBlockProcessor inner,
@@ -67,16 +65,14 @@ public sealed class WitnessCapturingBlockProcessor(
 
         witness.ResetForBlock();
 
-        // If ProcessOne throws, the request slot is left pending; the handler's using-registration
-        // cancels it, so there is no cleanup to do here.
+        // If ProcessOne throws, the handler's using-registration cancels the pending slot — nothing to do here.
         (Block Block, TxReceipt[] Receipts) result = witness.Processor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
         if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
             return result; // request was declined or cancelled — nothing to publish.
 
-        // Witness building is a best-effort side-channel: the block has already been processed and its
-        // result stands regardless. Swallow every failure (publishing a null witness) so a witness-build
-        // bug can never fail an otherwise-valid block — the requester just gets VALID with no witness.
+        // Witness building is best-effort: the block is already processed, so swallow any failure (publish
+        // a null witness) rather than fail an otherwise-valid block.
         Witness? capturedWitness = null;
         try
         {
