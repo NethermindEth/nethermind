@@ -1,12 +1,11 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.TxPool;
 
 public static class TxPoolErrorMessages
 {
-    // Geth-canonical mempool rejection phrases. Client libraries (viem, ethers, web3.py, Chainlink, etc.)
-    // dispatch on these strings verbatim — do not change without verifying consumer compatibility.
+    // Geth-canonical mempool rejection phrases
     public const string AlreadyKnown = "already known";
     public const string TransactionUnderpriced = "transaction underpriced";
     public const string ReplacementTransactionUnderpriced = "replacement transaction underpriced";
@@ -16,6 +15,7 @@ public static class TxPoolErrorMessages
     public const string NonceTooLow = "nonce too low";
     public const string SenderNotEoa = "sender not an eoa";
 
+    // Nethermind-specific mempool rejection phrases
     public const string FailedToRecoverSender = "failed to recover sender";
     public const string TransactionOverflow = "transaction overflow";
     public const string TransactionInvalid = "transaction invalid";
