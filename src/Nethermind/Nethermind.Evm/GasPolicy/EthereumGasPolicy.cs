@@ -246,16 +246,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             accessTracker.WarmUp(address);
         }
 
-        // WarmUp first so the warm path skips IsPrecompile; charged gas matches (!IsPrecompile && WarmUp).
-        // Precompiles are pre-warmed at tx start, so WarmUp(precompile) is already-warm and the reorder is moot.
+        // Both operand orders are gas-equivalent (precompiles are pre-warmed at tx start, so a
+        // skipped WarmUp(precompile) is an idempotent already-warm Add); each build front-loads
+        // its cheaper test to short-circuit the other.
 #if ZK_EVM
-        // ZisK: evaluate the (cheap, bitmask) IsPrecompile first so a precompile access
-        // short-circuits BEFORE accessTracker.WarmUp -> AccessedAddresses.Add (a HashSet add =
-        // 20-byte Address hash + probe). Precompile-heavy workloads (sha256) hit this on every
-        // CALL; gas and warm-set state are identical to the mainline order (precompiles are
-        // pre-warmed, so the skipped Add is idempotent).
+        // Guest: IsPrecompile is a cheap bitmask, so test it first — a precompile access then skips
+        // the expensive WarmUp HashSet add. Precompile-heavy workloads (sha256) hit this every CALL.
         return (!spec.IsPrecompile(address) && accessTracker.WarmUp(address)) switch
 #else
+        // Mainline: IsPrecompile is a FrozenSet probe, so WarmUp first — the warm path (common
+        // case) short-circuits and skips IsPrecompile entirely.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
 #endif
         {
