@@ -10,9 +10,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
 
-// The implementing struct must hold only flat top-level scalar fields: a vector / [InlineArray] /
-// nested-struct field address-exposes it (dotnet/runtime#110968), defeats JIT enregistration, and
-// regresses every opcode. Multigas dimensions are added as flat scalars, never a live-budget vector.
 public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     static abstract TSelf FromULong(ulong value);
