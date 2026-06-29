@@ -777,8 +777,6 @@ public class FastHeadersSyncTests
     [Test]
     public async Task Resets_header_sync_after_restart_when_lowest_inserted_header_chain_level_is_missing()
     {
-        // Regression test for issue #8029: when the chain level of the lowest inserted header was lost in an
-        // unclean shutdown, the resume logic used to throw NullReferenceException instead of resetting the sync.
         IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
         BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
         BlockHeader lowestInserted = remoteBlockTree.FindHeader(900, BlockTreeLookupOptions.None)!;
