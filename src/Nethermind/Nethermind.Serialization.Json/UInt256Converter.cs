@@ -19,11 +19,21 @@ namespace Nethermind.Serialization.Json;
 
 public class UInt256Converter : JsonConverter<UInt256>
 {
-    public override UInt256 Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options) =>
-        ReadInternal(ref reader, JsonTokenType.String);
+    private readonly bool _strictQuantity;
+
+    public UInt256Converter() { }
+    public UInt256Converter(bool strictQuantity) => _strictQuantity = strictQuantity;
+
+    public override UInt256 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (_strictQuantity)
+        {
+            if (reader.TokenType != JsonTokenType.String) ThrowJsonException();
+            ReadOnlySpan<byte> s = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            QuantityValidator.AssertNoLeadingZero(s);
+        }
+        return ReadInternal(ref reader, JsonTokenType.String);
+    }
 
     // length of UIn256.MaxValue decimal string "115792089237316195423570985008687907853269984665640564039457584007913129639935"
     const int maxLength = 78;

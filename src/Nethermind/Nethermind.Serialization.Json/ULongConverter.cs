@@ -5,15 +5,16 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Globalization;
 
 namespace Nethermind.Serialization.Json;
 
-public class ULongConverter : JsonConverter<ulong>
+public class ULongConverter(bool strictQuantity = false) : JsonConverter<ulong>
 {
+    private readonly bool _strictQuantity = strictQuantity;
     public static ulong FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<ulong>(s);
 
     public static ulong FromString(string s)
@@ -47,18 +48,20 @@ public class ULongConverter : JsonConverter<ulong>
         ulong value,
         JsonSerializerOptions options) => NumericConverterHelper.Write(writer, value);
 
-    internal static ulong ReadCore(ref Utf8JsonReader reader)
+    internal static ulong ReadCore(ref Utf8JsonReader reader, bool strictQuantity = false)
     {
         if (reader.TokenType == JsonTokenType.Number)
         {
+            if (strictQuantity) ThrowJsonException();
             return reader.GetUInt64();
         }
 
         if (reader.TokenType == JsonTokenType.String)
         {
-            return !reader.HasValueSequence
-                ? FromString(reader.ValueSpan)
-                : FromString(reader.ValueSequence.ToArray());
+            ReadOnlySpan<byte> span = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            if (strictQuantity)
+                QuantityValidator.AssertNoLeadingZero(span);
+            return FromString(span);
         }
 
         ThrowJsonException();
@@ -71,7 +74,7 @@ public class ULongConverter : JsonConverter<ulong>
     public override ulong Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options) => ReadCore(ref reader);
+        JsonSerializerOptions options) => ReadCore(ref reader, _strictQuantity);
 
     public override ulong ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
