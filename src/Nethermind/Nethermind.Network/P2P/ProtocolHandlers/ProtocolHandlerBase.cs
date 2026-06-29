@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
         }
 
-        private void HandleRlpLimitException<T>(int dataLength, RlpLimitException e) where T : P2PMessage
+        protected virtual void HandleRlpLimitException<T>(int dataLength, RlpLimitException e) where T : P2PMessage
         {
             Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, e.Message);
             if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} on session {Session} due to rlp limits, with exception {e}");
