@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -14,12 +15,12 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
     IRoutingTable<TNode, TKadKey> routingTable,
     INodeHashProvider<TNode, TKadKey> nodeHashProvider,
     IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
-    ILogManager? logManager = null
+    ILoggerFactory? loggerFactory = null
 ) : INodeHealthTracker<TNode>, IDisposable, IAsyncDisposable
     where TNode : notnull
     where TKadKey : notnull
 {
-    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<NodeHealthTracker<TKey, TNode, TKadKey>>();
+    private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<NodeHealthTracker<TKey, TNode, TKadKey>>();
 
     private readonly ConcurrentDictionary<TKadKey, bool> _isRefreshing = new();
     private readonly ConcurrentDictionary<TKadKey, Task> _refreshTasks = new();
@@ -74,7 +75,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 OnRequestFailed(toRefresh);
-                if (_logger.IsDebug) _logger.Debug($"Error while refreshing node {toRefresh}: {e}");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Error while refreshing node {toRefresh}: {e}");
             }
 
             if (_isRefreshing.TryRemove(nodeHash, out _))
@@ -154,7 +155,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             completed = true;
             if (!HasOnlyCancellationExceptions(e))
             {
-                if (_logger.IsDebug) _logger.Debug($"Error while disposing node health tracker: {e}");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Error while disposing node health tracker: {e}");
             }
         }
 
@@ -185,7 +186,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         catch (Exception e)
         {
             completed = true;
-            if (_logger.IsDebug) _logger.Debug($"Error while disposing node health tracker: {e}");
+            if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Error while disposing node health tracker: {e}");
         }
 
         if (completed)

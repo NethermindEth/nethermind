@@ -5,7 +5,8 @@ using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -23,12 +24,12 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
     IKademliaDistance<TKadKey> distance,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager? logManager = null) : ILookupAlgo<TNode, TKadKey>
+    ILoggerFactory? loggerFactory = null) : ILookupAlgo<TNode, TKadKey>
     where TNode : notnull
     where TKadKey : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimeout;
-    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<LookupKNearestNeighbour<TKey, TNode, TKadKey>>();
+    private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<LookupKNearestNeighbour<TKey, TNode, TKadKey>>();
 
     public async Task<TNode[]> Lookup(
         TKadKey targetHash,
@@ -127,9 +128,9 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         CancellationToken token
     )
     {
-        if (_logger.IsDebug)
+        if (_logger.IsEnabled(LogLevel.Debug))
         {
-            _logger.Debug($"Initiate lookup for hash {targetHash}");
+            _logger.LogDebug($"Initiate lookup for hash {targetHash}");
         }
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -191,7 +192,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                         }
 
                         // No node to query and running query.
-                        if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
+                        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No node to query.");
                         break;
                     }
 
@@ -199,7 +200,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                     {
                         if (ShouldStopDueToNoBetterResult(out int round))
                         {
-                            if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
+                            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No better result.");
                             break;
                         }
 
@@ -271,11 +272,11 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 bool shouldWarn = e is not SocketException && e.InnerException is not SocketException;
                 if (shouldWarn)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Find neighbour op failed: {e}");
+                    if (_logger.IsEnabled(LogLevel.Warning)) _logger.LogWarning($"Find neighbour op failed: {e}");
                 }
-                else if (_logger.IsDebug)
+                else if (_logger.IsEnabled(LogLevel.Debug))
                 {
-                    _logger.Debug($"Find neighbour op failed: {e.Message}");
+                    _logger.LogDebug($"Find neighbour op failed: {e.Message}");
                 }
                 return null;
             }
@@ -372,7 +373,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                     // Why not just _alpha?
                     // Because there could be currently running work that may increase closestNodeRound.
                     // So including this worker, assume no more
-                    if (_logger.IsTrace) _logger.Trace($"No more closer node. Round: {round}, closestNodeRound {closestNodeRound}");
+                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"No more closer node. Round: {round}, closestNodeRound {closestNodeRound}");
                     return true;
                 }
 

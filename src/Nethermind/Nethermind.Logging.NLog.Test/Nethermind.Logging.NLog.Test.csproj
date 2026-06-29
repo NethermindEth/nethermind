@@ -6,6 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
   </ItemGroup>
 

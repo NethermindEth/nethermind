@@ -4,7 +4,8 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -16,14 +17,14 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     IKeyOperator<TKey, TNode, TKadKey> keyOperator,
     IKademliaDistance<TKadKey> distance,
     KademliaConfig<TNode> kademliaConfig,
-    ILogManager? logManager = null)
+    ILoggerFactory? loggerFactory = null)
     : IKademliaDiscovery<TKey, TNode>
     where TNode : notnull
     where TKadKey : notnull
 {
     private static readonly TimeSpan MinimumIterationDuration = TimeSpan.FromSeconds(1);
 
-    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>>();
+    private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>>();
     private readonly TKadKey _currentNodeHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
     private readonly int _maxDistance = distance.MaxDistance;
 
@@ -87,7 +88,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
             {
                 int targetDistance = Random.Shared.Next(_maxDistance) + 1;
                 TKey target = keyOperator.CreateRandomKeyAtDistance(_currentNodeHash, targetDistance);
-                if (_logger.IsDebug) _logger.Debug($"Looking up random Kademlia target at distance {targetDistance}.");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Looking up random Kademlia target at distance {targetDistance}.");
 
                 int count = 0;
                 await foreach (TNode node in kademlia.LookupNodes(target, token, lookupResultLimit).WithCancellation(token))
@@ -96,7 +97,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
                     await writer.WriteAsync(node, token);
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"Found {count} nodes from random Kademlia lookup.");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Found {count} nodes from random Kademlia lookup.");
 
                 if (iterationTime.Elapsed < MinimumIterationDuration)
                 {
@@ -109,7 +110,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
             }
             catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error("Random Kademlia discovery lookup failed.", ex);
+                _logger.LogError(ex, "Random Kademlia discovery lookup failed.");
             }
         }
     }
