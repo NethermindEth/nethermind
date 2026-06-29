@@ -57,6 +57,8 @@ namespace Nethermind.Blockchain.Synchronization
         public bool StaticSnapPivot { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool FixReceipts { get; set; } = false;
+        public ulong? FixReceiptsStartingBlock { get; set; } = null;
+        public ulong? FixReceiptsLastBlock { get; set; } = null;
         public bool FixTotalDifficulty { get; set; } = false;
         public ulong FixTotalDifficultyStartingBlock { get; set; } = 1;
         public ulong? FixTotalDifficultyLastBlock { get; set; } = null;

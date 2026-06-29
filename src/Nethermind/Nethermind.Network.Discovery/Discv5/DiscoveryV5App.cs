@@ -123,14 +123,13 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     public override void AddNodeToDiscovery(Node node)
     {
-        if (string.IsNullOrEmpty(node.Enr))
+        if (node.Enr is not { Signature: not null } record)
         {
             return;
         }
 
         try
         {
-            NodeRecord record = NodeRecord.FromEnrString(node.Enr);
             if (!TryGetAcceptableNodeFromEnr(record, out Node? enrNode))
             {
                 return;
@@ -176,7 +175,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
         node.IsBootnode = true;
         bootNodes.Add(node);
-        if (Logger.IsDebug) Logger.Debug($"Accepted discv5 bootnode {node:s}, has ENR: {!string.IsNullOrEmpty(node.Enr)}.");
+        if (Logger.IsDebug) Logger.Debug($"Accepted discv5 bootnode {node:s}, has ENR: {node.Enr is not null}.");
         return BootNodeAddResult.Added;
     }
 
