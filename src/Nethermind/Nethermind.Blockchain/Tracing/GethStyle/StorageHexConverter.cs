@@ -23,8 +23,7 @@ public sealed class StorageHexConverter : JsonConverter<Dictionary<UInt256, UInt
         writer.WriteStartObject();
         foreach (KeyValuePair<UInt256, UInt256> slot in value)
         {
-            HexWriter.WriteUInt256HexPropertyName(writer, slot.Key, zeroPadded: true, addHexPrefix: true);
-            HexWriter.WriteUInt256HexRawValue(writer, slot.Value, zeroPadded: true, addHexPrefix: true);
+            HexWriter.WriteUInt256StorageSlot(writer, slot.Key, slot.Value);
         }
         writer.WriteEndObject();
     }

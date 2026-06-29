@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 {
     private const int DefaultFlushIntervalEntries = 8192;
-    private const int EvmWordSize = 32;
+    private const int EvmWordSize = EvmPooledMemory.WordSize;
     private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode("0x" + new string('0', EvmWordSize * 2));
     private const int InitialStorageMapCapacity = 8;
 
@@ -351,8 +351,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _writer.WriteStartObject("storage"u8);
         foreach (KeyValuePair<UInt256, UInt256> kv in _pendingStorageMap!)
         {
-            HexWriter.WriteUInt256HexPropertyName(_writer, kv.Key, zeroPadded: true, addHexPrefix: true);
-            HexWriter.WriteUInt256HexRawValue(_writer, kv.Value, zeroPadded: true, addHexPrefix: true);
+            HexWriter.WriteUInt256StorageSlot(_writer, kv.Key, kv.Value);
         }
         _writer.WriteEndObject();
     }

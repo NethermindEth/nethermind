@@ -210,6 +210,17 @@ public static class HexWriter
             skipInputValidation: true);
     }
 
+    public static void WriteUlongHexStringValue(Utf8JsonWriter writer, ulong value)
+    {
+        if (value == 0)
+        {
+            writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
+            return;
+        }
+
+        WriteUlongHexRawValue(writer, value);
+    }
+
     /// <summary>Writes a <see cref="UInt256"/> as a JSON string of lowercase hex chars.</summary>
     /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
     [SkipLocalsInit]
@@ -253,6 +264,12 @@ public static class HexWriter
 
         writer.WritePropertyName(
             MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref buffer, spanStart), spanLength));
+    }
+
+    public static void WriteUInt256StorageSlot(Utf8JsonWriter writer, in UInt256 key, in UInt256 value)
+    {
+        WriteUInt256HexPropertyName(writer, key, zeroPadded: true, addHexPrefix: true);
+        WriteUInt256HexRawValue(writer, value, zeroPadded: true, addHexPrefix: true);
     }
 
     // Buffer layout (logical): [opening "?][0x?][64 hex chars][closing "?].
@@ -416,6 +433,26 @@ public static class HexWriter
         value.TryFormat(buffer[3..], out int bytesWritten, "x");
         buffer[bytesWritten + 3] = (byte)'"';
         writer.Advance(bytesWritten + 4);
+    }
+
+    [SkipLocalsInit]
+    public static void WriteHexStringValue(Utf8JsonWriter writer, ReadOnlySpan<byte> data)
+    {
+        int tokenLength = 4 + data.Length * 2;
+        byte[] rented = ArrayPool<byte>.Shared.Rent(tokenLength);
+        try
+        {
+            rented[0] = (byte)'"';
+            rented[1] = (byte)'0';
+            rented[2] = (byte)'x';
+            EncodeToHex(data, ref rented[3]);
+            rented[tokenLength - 1] = (byte)'"';
+            writer.WriteRawValue(rented.AsSpan(0, tokenLength), skipInputValidation: true);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
     private static void EncodeToHex(ReadOnlySpan<byte> src, ref byte dest)
