@@ -487,7 +487,7 @@ public class JsonRpcServiceTests
 
     [Test]
     public void IncorrectMethodNameTest() =>
-        AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound);
+        AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound, "the method incorrect_method does not exist/is not available");
 
     [Test]
     public void NetVersionTest()
