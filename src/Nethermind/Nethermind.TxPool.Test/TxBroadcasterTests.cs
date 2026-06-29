@@ -756,6 +756,7 @@ public class TxBroadcasterTests
             while (!cts.IsCancellationRequested)
             {
                 timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+                System.Threading.Thread.Yield();
             }
         });
 
