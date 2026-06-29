@@ -18,97 +18,97 @@ namespace Nethermind.TxPool
         /// <summary>
         /// A transaction with the same hash has already been added to the pool in the past.
         /// </summary>
-        public static readonly AcceptTxResult AlreadyKnown = new(1, "already known");
+        public static readonly AcceptTxResult AlreadyKnown = new(1, TxPoolErrorMessages.AlreadyKnown);
 
         /// <summary>
         /// Covers scenarios where sender recovery fails.
         /// </summary>
-        public static readonly AcceptTxResult FailedToResolveSender = new(2, nameof(FailedToResolveSender));
+        public static readonly AcceptTxResult FailedToResolveSender = new(2, TxPoolErrorMessages.FailedToRecoverSender);
 
         /// <summary>
         /// Fee paid by this transaction is not enough to be accepted in the mempool.
         /// </summary>
-        public static readonly AcceptTxResult FeeTooLow = new(3, "transaction underpriced");
+        public static readonly AcceptTxResult FeeTooLow = new(3, TxPoolErrorMessages.TransactionUnderpriced);
 
         /// <summary>
         /// Fee paid by this transaction is not enough to be accepted in the mempool.
         /// </summary>
-        public static readonly AcceptTxResult FeeTooLowToCompete = new(4, "replacement transaction underpriced");
+        public static readonly AcceptTxResult FeeTooLowToCompete = new(4, TxPoolErrorMessages.ReplacementTransactionUnderpriced);
 
         /// <summary>
         /// Transaction gas limit exceeds the block gas limit.
         /// </summary>
-        public static readonly AcceptTxResult GasLimitExceeded = new(5, "gas limit reached");
+        public static readonly AcceptTxResult GasLimitExceeded = new(5, TxPoolErrorMessages.GasLimitReached);
 
         /// <summary>
         /// Sender account has not enough balance to execute this transaction.
         /// </summary>
-        public static readonly AcceptTxResult InsufficientFunds = new(6, "insufficient funds for gas * price + value");
+        public static readonly AcceptTxResult InsufficientFunds = new(6, TxPoolErrorMessages.InsufficientFunds);
 
         /// <summary>
         /// Calculation of gas price * gas limit + value overflowed int256.
         /// </summary>
-        public static readonly AcceptTxResult Int256Overflow = new(7, nameof(Int256Overflow));
+        public static readonly AcceptTxResult Int256Overflow = new(7, TxPoolErrorMessages.TransactionOverflow);
 
         /// <summary>
         /// Transaction format is invalid.
         /// </summary>
-        public static readonly AcceptTxResult Invalid = new(8, nameof(Invalid));
+        public static readonly AcceptTxResult Invalid = new(8, TxPoolErrorMessages.TransactionInvalid);
 
         /// <summary>
         /// The nonce is not the next nonce after the last nonce of this sender present in TxPool.
         /// </summary>
-        public static readonly AcceptTxResult NonceGap = new(9, "nonce too high");
+        public static readonly AcceptTxResult NonceGap = new(9, TxPoolErrorMessages.NonceTooHigh);
 
         /// <summary>
         /// The EOA (externally owned account) that signed this transaction (sender) has already signed and executed a transaction with the same nonce.
         /// </summary>
-        public static readonly AcceptTxResult OldNonce = new(10, "nonce too low");
+        public static readonly AcceptTxResult OldNonce = new(10, TxPoolErrorMessages.NonceTooLow);
 
         /// <summary>
         /// Transaction is not allowed to replace the one already in the pool. Fee bump is too low or some requirements are not fulfilled
         /// </summary>
-        public static readonly AcceptTxResult ReplacementNotAllowed = new(11, "replacement transaction underpriced");
+        public static readonly AcceptTxResult ReplacementNotAllowed = new(11, TxPoolErrorMessages.ReplacementTransactionUnderpriced);
 
         /// <summary>
         /// Transaction sender has code hash that is not null.
         /// </summary>
-        public static readonly AcceptTxResult SenderIsContract = new(12, "sender not an eoa");
+        public static readonly AcceptTxResult SenderIsContract = new(12, TxPoolErrorMessages.SenderNotEoa);
 
         /// <summary>
         /// The nonce is too far in the future.
         /// </summary>
-        public static readonly AcceptTxResult NonceTooFarInFuture = new(13, nameof(NonceTooFarInFuture));
+        public static readonly AcceptTxResult NonceTooFarInFuture = new(13, TxPoolErrorMessages.NonceTooFarInFuture);
 
         /// <summary>
         /// Ignores blob transactions if sender already have pending transactions of other types; ignore other types if has already pending blobs
         /// </summary>
-        public static readonly AcceptTxResult PendingTxsOfConflictingType = new(14, nameof(PendingTxsOfConflictingType));
+        public static readonly AcceptTxResult PendingTxsOfConflictingType = new(14, TxPoolErrorMessages.PendingTransactionTypeConflict);
 
         /// <summary>
         /// Ignores transactions if tx type is not supported
         /// </summary>
-        public static readonly AcceptTxResult NotSupportedTxType = new(15, nameof(NotSupportedTxType));
+        public static readonly AcceptTxResult NotSupportedTxType = new(15, TxPoolErrorMessages.UnsupportedTransactionType);
 
         /// <summary>
         /// Transaction size exceeds configured max size.
         /// </summary>
-        public static readonly AcceptTxResult MaxTxSizeExceeded = new(16, nameof(MaxTxSizeExceeded));
+        public static readonly AcceptTxResult MaxTxSizeExceeded = new(16, TxPoolErrorMessages.TransactionTooLarge);
 
         /// <summary>
-        /// Only one tx with current state matching nonce is allowed per delegated account or pending delegation. 
+        /// Only one tx with current state matching nonce is allowed per delegated account or pending delegation.
         /// </summary>
-        public static readonly AcceptTxResult NotCurrentNonceForDelegation = new(17, nameof(NotCurrentNonceForDelegation));
+        public static readonly AcceptTxResult NotCurrentNonceForDelegation = new(17, TxPoolErrorMessages.DelegationNonceGap);
 
         /// <summary>
         /// There is a pending transaction from a delegation in the tx pool already.
         /// </summary>
-        public static readonly AcceptTxResult DelegatorHasPendingTx = new(18, nameof(DelegatorHasPendingTx));
+        public static readonly AcceptTxResult DelegatorHasPendingTx = new(18, TxPoolErrorMessages.DelegationAuthorityHasPendingTx);
 
         /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
-        public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));
+        public static readonly AcceptTxResult Syncing = new(503, TxPoolErrorMessages.NodeIsSyncing);
 
         /// <summary>
         /// The signer could not produce a signature for the transaction (locked account, missing key, remote signer rejection).

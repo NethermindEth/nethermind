@@ -461,22 +461,22 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [TestCase(4, 0, "transaction underpriced")]
-        [TestCase(4, 11, "transaction underpriced")]
-        [TestCase(4, 12, "transaction underpriced")]
-        [TestCase(5, 0, "transaction underpriced")]
-        [TestCase(5, 10, "transaction underpriced")]
-        [TestCase(5, 11, "transaction underpriced")]
+        [TestCase(4, 0, TxPoolErrorMessages.TransactionUnderpriced)]
+        [TestCase(4, 11, TxPoolErrorMessages.TransactionUnderpriced)]
+        [TestCase(4, 12, TxPoolErrorMessages.TransactionUnderpriced)]
+        [TestCase(5, 0, TxPoolErrorMessages.TransactionUnderpriced)]
+        [TestCase(5, 10, TxPoolErrorMessages.TransactionUnderpriced)]
+        [TestCase(5, 11, TxPoolErrorMessages.TransactionUnderpriced)]
         [TestCase(9, 0, nameof(AcceptTxResult.Accepted))]
         [TestCase(9, 6, nameof(AcceptTxResult.Accepted))]
-        [TestCase(9, 7, "insufficient funds for gas * price + value")]
-        [TestCase(9, 45, "insufficient funds for gas * price + value")]
+        [TestCase(9, 7, TxPoolErrorMessages.InsufficientFunds)]
+        [TestCase(9, 45, TxPoolErrorMessages.InsufficientFunds)]
         [TestCase(11, 0, nameof(AcceptTxResult.Accepted))]
         [TestCase(11, 4, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11, 5, "insufficient funds for gas * price + value")]
+        [TestCase(11, 5, TxPoolErrorMessages.InsufficientFunds)]
         [TestCase(15, 0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(16, 0, "insufficient funds for gas * price + value")]
-        [TestCase(16, 90, "insufficient funds for gas * price + value")]
+        [TestCase(16, 0, TxPoolErrorMessages.InsufficientFunds)]
+        [TestCase(16, 90, TxPoolErrorMessages.InsufficientFunds)]
         public void should_handle_adding_tx_to_full_txPool_properly(int gasPrice, int value, string expected)
         {
             _txPool = CreatePool(new TxPoolConfig() { Size = 30 });
@@ -509,19 +509,19 @@ namespace Nethermind.TxPool.Test
             Assert.That(result.ToString(), Does.Contain(expected));
         }
 
-        [TestCase(5, 10, "transaction underpriced")]
-        [TestCase(5, 11, "transaction underpriced")]
-        [TestCase(10, 0, "transaction underpriced")]
-        [TestCase(10, 5, "transaction underpriced")]
-        [TestCase(10, 6, "transaction underpriced")]
+        [TestCase(5, 10, TxPoolErrorMessages.TransactionUnderpriced)]
+        [TestCase(5, 11, TxPoolErrorMessages.TransactionUnderpriced)]
+        [TestCase(10, 0, TxPoolErrorMessages.TransactionUnderpriced)]
+        [TestCase(10, 5, TxPoolErrorMessages.TransactionUnderpriced)]
+        [TestCase(10, 6, TxPoolErrorMessages.TransactionUnderpriced)]
         [TestCase(11, 0, nameof(AcceptTxResult.Accepted))]
         [TestCase(11, 4, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11, 5, "insufficient funds for gas * price + value")]
+        [TestCase(11, 5, TxPoolErrorMessages.InsufficientFunds)]
         [TestCase(15, 0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(15, 1, "insufficient funds for gas * price + value")]
-        [TestCase(16, 0, nameof(AcceptTxResult.Invalid))]
-        [TestCase(16, 15, nameof(AcceptTxResult.Invalid))]
-        [TestCase(50, 16, nameof(AcceptTxResult.Invalid))]
+        [TestCase(15, 1, TxPoolErrorMessages.InsufficientFunds)]
+        [TestCase(16, 0, TxPoolErrorMessages.TransactionInvalid)]
+        [TestCase(16, 15, TxPoolErrorMessages.TransactionInvalid)]
+        [TestCase(50, 16, TxPoolErrorMessages.TransactionInvalid)]
         public void should_handle_adding_1559_tx_to_full_txPool_properly(int gasPremium, int value, string expected)
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
