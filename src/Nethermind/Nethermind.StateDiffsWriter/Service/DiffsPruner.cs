@@ -76,7 +76,7 @@ public sealed class DiffsPruner(
 
     internal int PruneOnce()
     {
-        long head = _blockTree.Head?.Number ?? 0;
+        long head = (long)(_blockTree.Head?.Number ?? 0);
         long anchor = Math.Max(head, _writer.LastWrittenBlock);
         long cutoff = anchor - _config.KeepLastNBlocks;
         if (cutoff <= 0) return 0;

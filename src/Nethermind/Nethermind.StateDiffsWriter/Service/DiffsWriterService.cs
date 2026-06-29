@@ -99,8 +99,8 @@ public sealed class DiffsWriterService : IDisposable
         {
             // No-op block — still publish an empty record so the sidecar's tailer
             // sees a contiguous block sequence and knows the chain advanced.
-            WriteRecord(new BlockDiffRecord(block.Number, block.Header.StateRoot, [], []));
-            UpdateHeadLag(block.Number);
+            WriteRecord(new BlockDiffRecord((long)block.Number, block.Header.StateRoot, [], []));
+            UpdateHeadLag((long)block.Number);
             return;
         }
 
@@ -111,7 +111,7 @@ public sealed class DiffsWriterService : IDisposable
             WriteRecord(record);
             double elapsedSeconds = Stopwatch.GetElapsedTime(startTicks).TotalSeconds;
             Metrics.StateDiffsWriterEncodeSeconds.Observe(elapsedSeconds);
-            UpdateHeadLag(block.Number);
+            UpdateHeadLag((long)block.Number);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -127,7 +127,7 @@ public sealed class DiffsWriterService : IDisposable
 
     private void UpdateHeadLag(long lastWrittenBlock)
     {
-        long head = _blockTree.Head?.Number ?? lastWrittenBlock;
+        long head = _blockTree.Head is { Number: var headNumber } ? (long)headNumber : lastWrittenBlock;
         long lag = head - lastWrittenBlock;
         Metrics.StateDiffsWriterHeadLagBlocks = lag < 0 ? 0 : lag;
     }
@@ -172,7 +172,7 @@ public sealed class DiffsWriterService : IDisposable
         }
 
         return new BlockDiffRecord(
-            block.Number,
+            (long)block.Number,
             newRoot,
             codeEntries,
             slotEntries,

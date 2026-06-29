@@ -20,14 +20,15 @@ public class BlockDiffRecordDecoderTests
     private static byte[] Encode(BlockDiffRecord record)
     {
         int length = BlockDiffRecordDecoder.Instance.GetLength(record);
-        RlpStream stream = new(length);
-        BlockDiffRecordDecoder.Instance.Encode(stream, record);
-        return stream.Data.AsSpan().ToArray();
+        byte[] buffer = new byte[length];
+        RlpWriter writer = new(buffer);
+        BlockDiffRecordDecoder.Instance.Encode(ref writer, record);
+        return buffer;
     }
 
     private static BlockDiffRecord Decode(byte[] bytes)
     {
-        Rlp.ValueDecoderContext ctx = new(bytes);
+        RlpReader ctx = new(bytes);
         return BlockDiffRecordDecoder.Instance.Decode(ref ctx);
     }
 
@@ -285,7 +286,7 @@ public class BlockDiffRecordDecoderTests
 
         int totalLength = Rlp.LengthOfSequence(outerContent);
         byte[] payload = new byte[totalLength];
-        RlpStream stream = new(payload);
+        RlpWriter stream = new(payload);
         stream.StartSequence(outerContent);
         stream.Encode(blockNumber);
         stream.Encode(stateRoot);
@@ -297,8 +298,8 @@ public class BlockDiffRecordDecoderTests
                 + LengthOfHashOrEmpty(e.NewHash)
                 + Rlp.LengthOf(e.NewCodeSize);
             stream.StartSequence(entryContent);
-            EncodeHashOrEmpty(stream, e.OldHash);
-            EncodeHashOrEmpty(stream, e.NewHash);
+            EncodeHashOrEmpty(ref stream, e.OldHash);
+            EncodeHashOrEmpty(ref stream, e.NewHash);
             stream.Encode(e.NewCodeSize);
         }
 
@@ -323,7 +324,7 @@ public class BlockDiffRecordDecoderTests
     /// </summary>
     private static (long, Hash256, List<CodeHashEntry>, List<SlotCountEntry>) DecodeLegacyPrefix(byte[] bytes)
     {
-        Rlp.ValueDecoderContext ctx = new(bytes);
+        RlpReader ctx = new(bytes);
         ctx.ReadSequenceLength();
 
         long blockNumber = ctx.DecodeLong();
@@ -358,15 +359,14 @@ public class BlockDiffRecordDecoderTests
         return (blockNumber, stateRoot, codeChanges, slotChanges);
     }
 
-    private static void EncodeHashOrEmpty(RlpStream stream, in ValueHash256 hash)
+    private static void EncodeHashOrEmpty(ref RlpWriter stream, in ValueHash256 hash)
     {
         if (hash == CodeHashChange.NoCode)
         {
             stream.EncodeEmptyByteArray();
             return;
         }
-        ValueHash256? nullable = hash;
-        stream.Encode(in nullable);
+        stream.Encode(in hash);
     }
 
     private static int LengthOfHashOrEmpty(in ValueHash256 hash)

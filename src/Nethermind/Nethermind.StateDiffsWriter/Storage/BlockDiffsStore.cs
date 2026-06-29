@@ -42,13 +42,13 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         BinaryPrimitives.WriteUInt64BigEndian(blockKey, (ulong)record.BlockNumber);
 
         // Encode into a caller-allocated buffer that we hand straight to RocksDB —
-        // avoids the previous double-allocation (one for the RlpStream, one for
-        // stream.Data.AsSpan().ToArray()). RlpStream(byte[]) wraps the provided
-        // array without copying, so the same buffer travels through the batch.
+        // avoids the previous double-allocation (one for the writer, one for
+        // the extracted byte[]). RlpWriter(byte[]) wraps the provided array
+        // without copying, so the same buffer travels through the batch.
         int length = BlockDiffRecordDecoder.Instance.GetLength(record);
         byte[] payload = new byte[length];
-        RlpStream stream = new(payload);
-        BlockDiffRecordDecoder.Instance.Encode(stream, record);
+        RlpWriter writer = new(payload);
+        BlockDiffRecordDecoder.Instance.Encode(ref writer, record);
 
         using IColumnsWriteBatch<BlockDiffsColumns> batch = _db.StartWriteBatch();
         IWriteBatch defaultBatch = batch.GetColumnBatch(BlockDiffsColumns.Default);
@@ -101,7 +101,7 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         BinaryPrimitives.WriteUInt64BigEndian(key, (ulong)blockNumber);
         byte[]? bytes = _blockDiffs.Get(key);
         if (bytes is null || bytes.Length == 0) return null;
-        Rlp.ValueDecoderContext ctx = new(bytes);
+        RlpReader ctx = new(bytes);
         return BlockDiffRecordDecoder.Instance.Decode(ref ctx);
     }
 

@@ -17,7 +17,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
 {
     public static BlockDiffRecordDecoder Instance { get; } = new();
 
-    public override void Encode(RlpStream stream, BlockDiffRecord item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter stream, BlockDiffRecord item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetContentLength(item);
         stream.StartSequence(contentLength);
@@ -31,8 +31,8 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         {
             int entryContent = GetCodeHashEntryContentLength(entry);
             stream.StartSequence(entryContent);
-            EncodeHashOrEmpty(stream, entry.OldHash);
-            EncodeHashOrEmpty(stream, entry.NewHash);
+            EncodeHashOrEmpty(ref stream, entry.OldHash);
+            EncodeHashOrEmpty(ref stream, entry.NewHash);
             stream.Encode(entry.NewCodeSize);
         }
 
@@ -62,7 +62,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
     public override int GetLength(BlockDiffRecord item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => Rlp.LengthOfSequence(GetContentLength(item));
 
-    protected override BlockDiffRecord DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockDiffRecord DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int outerLen = ctx.ReadSequenceLength();
         int outerEnd = ctx.Position + outerLen;
@@ -121,7 +121,8 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
     /// from the 32-byte case keeps the wire format unambiguous: every code-hash
     /// field is either a 32-byte payload or a single <c>0x80</c> byte.
     /// </summary>
-    private static void EncodeHashOrEmpty(RlpStream stream, in ValueHash256 hash)
+    private static void EncodeHashOrEmpty<TWriter>(ref TWriter stream, in ValueHash256 hash)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (hash == CodeHashChange.NoCode)
         {
@@ -129,8 +130,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
             return;
         }
 
-        ValueHash256? nullable = hash;
-        stream.Encode(in nullable);
+        stream.Encode(in hash);
     }
 
     private static int LengthOfHashOrEmpty(in ValueHash256 hash)
