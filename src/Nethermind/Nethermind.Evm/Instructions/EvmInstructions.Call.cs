@@ -271,11 +271,9 @@ public static partial class EvmInstructions
 
         return CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
 
-        // Mainline keeps this out-of-line (icache locality for the common path). The ZisK
-        // guest counts executed instructions and has no icache, so the NoInlining call +
-        // 13-arg marshalling is pure overhead on every CALL - and the hot inline-precompile
-        // path lives in here; force-inline it back into InstructionCall (restores the
-        // pre-merge structure where the precompile CALL was inline).
+        // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
+        // has no icache and counts instructions, so the NoInlining call and its wide argument
+        // marshalling are pure overhead on every CALL; inline it, pulling the hot precompile path in too.
 #if ZK_EVM
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #else

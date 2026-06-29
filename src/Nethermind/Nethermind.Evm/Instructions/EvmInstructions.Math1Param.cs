@@ -93,7 +93,7 @@ public static partial class EvmInstructions
     {
 #if ZK_EVM
         // The zkVM has no hardware SIMD, so Vector256<byte> == default falls back to an 8-iteration
-        // element loop. ISZERO is hot (every require/conditional), so compare as a flat 4×ulong OR
+        // element loop. ISZERO is hot (every require/conditional), so compare as a flat 4x ulong OR
         // (endianness-agnostic for a zero test).
         public static EvmWord Operation(EvmWord value)
         {
