@@ -15,7 +15,8 @@ public interface IStateDiffsWriterConfig : IConfig
     [ConfigItem(Description = "Number of most-recent blocks to retain in the BlockDiffs column family. " +
                               "Older entries are pruned by the background pruner. Sidecar bootstrap " +
                               "should never need a window larger than this; lower for tighter disk " +
-                              "budgets, raise if catch-up windows can exceed the default.",
+                              "budgets, raise if catch-up windows can exceed the default. Must be >= 0 " +
+                              "(0 keeps nothing); a negative value disables pruning entirely.",
         DefaultValue = "1000000")]
     long KeepLastNBlocks { get; set; }
 

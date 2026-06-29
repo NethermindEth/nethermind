@@ -51,6 +51,10 @@ public static class Metrics
     [CounterMetric]
     [Description("Total blocks for which a BlockDiffRecord was successfully written")]
     public static long StateDiffsWriterBlocksWrittenTotal { get; set; }
+
+    [CounterMetric]
+    [Description("New-head events that did not build on the last-written block (reorg or non-contiguous jump)")]
+    public static long StateDiffsWriterReorgsTotal { get; set; }
 }
 
 /// <summary>
@@ -64,4 +68,5 @@ public static class StateDiffsWriterEncodeErrorReasons
     public const string Compute = "compute";
     public const string Write = "write";
     public const string ParentMissing = "parent_missing";
+    public const string CodeMissing = "code_missing";
 }

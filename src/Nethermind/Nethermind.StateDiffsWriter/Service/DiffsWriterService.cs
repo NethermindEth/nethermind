@@ -18,35 +18,19 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.StateDiffsWriter.Service;
 
 /// <summary>
-/// Per-block diff producer: subscribes to <see cref="IBlockTree.NewHeadBlock"/>,
-/// computes <see cref="TrieDiff"/> between parent and new state root via
-/// <see cref="TrieDiffWalker"/>, normalises the slot-count deltas against the
-/// running <c>SlotCounts</c> CF, resolves code sizes from the global code DB,
-/// then atomically persists the <see cref="BlockDiffRecord"/> through
-/// <see cref="BlockDiffsStore"/>.
-///
-/// <para>
-/// Subscription point — the plugin attaches to <see cref="IBlockTree.NewHeadBlock"/>
-/// rather than <c>IBranchProcessor.BlockProcessed</c> because the parent state
-/// root MUST be readable when the diff runs. NewHeadBlock fires after the trie
-/// store has committed the block, which is the only signal that guarantees both
-/// (parent_root, new_root) resolve through the FlatDb backing store. The legacy
-/// StateComposition plugin uses the same subscription point for the same reason.
-/// </para>
-///
-/// <para>
-/// Concurrency — NewHeadBlock fires on a single thread (the block-tree's main
-/// loop). The handler runs synchronously per-block; no background task or queue.
-/// The <see cref="DiffsPruner"/> runs on its own task and shares
-/// <see cref="_writeLock"/> with this service to avoid interleaving writes that
-/// touch the BlockDiffs CF.
-/// </para>
+/// Per-block diff producer: on <see cref="IBlockTree.NewHeadBlock"/> it walks the parent→new
+/// state-root diff via <see cref="TrieDiffWalker"/>, normalises slot-count deltas against the
+/// running <c>SlotCounts</c> CF, resolves code sizes, and atomically persists a
+/// <see cref="BlockDiffRecord"/> through <see cref="BlockDiffsStore"/>.
 /// </summary>
+/// <remarks>
+/// NewHeadBlock (not <c>BlockProcessed</c>) is the subscription point because it fires only after
+/// the trie store commits — the one signal that guarantees both roots resolve through FlatDb. It is
+/// single-threaded; <see cref="DiffsPruner"/> runs separately and shares <see cref="WriteLock"/>.
+/// </remarks>
 public sealed class DiffsWriterService : IDisposable
 {
-    // Single-writer lock protecting both the per-block write batch and the
-    // pruner's bulk delete batch. NewHeadBlock is already single-threaded but
-    // the pruner runs on its own task, so the lock is non-decorative.
+    // Shared by NewHeadBlock writes and the pruner's bulk deletes (the pruner runs on its own task).
     internal readonly object WriteLock = new();
 
     private readonly IBlockTree _blockTree;
@@ -55,9 +39,10 @@ public sealed class DiffsWriterService : IDisposable
     private readonly BlockDiffsStore _store;
     private readonly ILogger _logger;
 
-    private readonly TrieDiffWalker _walker = new();
-
     private long _lastWrittenBlock = -1;
+    private Hash256? _lastWrittenBlockHash;
+    private long _reorgsObserved;
+    private bool _disposed;
 
     public DiffsWriterService(
         IBlockTree blockTree,
@@ -77,12 +62,21 @@ public sealed class DiffsWriterService : IDisposable
 
     public long LastWrittenBlock => System.Threading.Volatile.Read(ref _lastWrittenBlock);
 
-    public void Dispose() => _blockTree.NewHeadBlock -= OnNewHeadBlock;
+    internal long ReorgsObserved => _reorgsObserved;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _blockTree.NewHeadBlock -= OnNewHeadBlock;
+    }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         Block block = e.Block;
         if (block.Header.StateRoot is null) return;
+
+        DetectReorg(block);
 
         BlockHeader? parent = _blockTree.FindHeader(block.Number - 1, BlockTreeLookupOptions.RequireCanonical);
         if (parent?.StateRoot is null)
@@ -100,7 +94,7 @@ public sealed class DiffsWriterService : IDisposable
             // No-op block — still publish an empty record so the sidecar's tailer
             // sees a contiguous block sequence and knows the chain advanced.
             WriteRecord(new BlockDiffRecord((long)block.Number, block.Header.StateRoot, [], []));
-            UpdateHeadLag((long)block.Number);
+            MarkWritten(block);
             return;
         }
 
@@ -111,7 +105,7 @@ public sealed class DiffsWriterService : IDisposable
             WriteRecord(record);
             double elapsedSeconds = Stopwatch.GetElapsedTime(startTicks).TotalSeconds;
             Metrics.StateDiffsWriterEncodeSeconds.Observe(elapsedSeconds);
-            UpdateHeadLag((long)block.Number);
+            MarkWritten(block);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -123,6 +117,29 @@ public sealed class DiffsWriterService : IDisposable
                     $"(parentRoot={parent.StateRoot}, newRoot={block.Header.StateRoot})",
                     ex);
         }
+    }
+
+    // SlotCounts is not rolled back on reorg, so OldCount is advisory across one; surface
+    // it (metric + warn) instead of carrying a per-height snapshot the sidecar doesn't need.
+    private void DetectReorg(Block block)
+    {
+        Hash256? lastHash = _lastWrittenBlockHash;
+        if (lastHash is null || block.Header.ParentHash == lastHash) return;
+
+        _reorgsObserved++;
+        Metrics.StateDiffsWriterReorgsTotal = _reorgsObserved;
+
+        if (_logger.IsWarn)
+            _logger.Warn(
+                $"StateDiffsWriter: new head {block.Number} ({block.Hash}) does not build on " +
+                $"last-written block {LastWrittenBlock} ({lastHash}); SlotCounts OldCount is advisory " +
+                "across this reorg until the sidecar reconstructs running totals from the diff chain.");
+    }
+
+    private void MarkWritten(Block block)
+    {
+        _lastWrittenBlockHash = block.Hash;
+        UpdateHeadLag((long)block.Number);
     }
 
     private void UpdateHeadLag(long lastWrittenBlock)
@@ -137,10 +154,8 @@ public sealed class DiffsWriterService : IDisposable
         Hash256 parentRoot = parent.StateRoot!;
         Hash256 newRoot = block.Header.StateRoot!;
 
-        // FlatDb's BeginScope materialises the snapshot bundle for one block,
-        // so a diff across two roots needs one scope per side — otherwise the
-        // off-side nodes resolve as Unknown and the walker silently emits an
-        // empty diff.
+        // One scope per root: FlatDb scopes nodes per block, so a single scope leaves the
+        // off-side subtree Unknown and the walker emits an empty diff.
         using IReadOnlyTrieStore oldStore = _worldStateManager.CreateReadOnlyTrieStore();
         using IDisposable oldScope = oldStore.BeginScope(parent);
         using IReadOnlyTrieStore newStore = _worldStateManager.CreateReadOnlyTrieStore();
@@ -149,17 +164,13 @@ public sealed class DiffsWriterService : IDisposable
         IScopedTrieStore oldResolver = oldStore.GetTrieStore(null);
         IScopedTrieStore newResolver = newStore.GetTrieStore(null);
 
-        TrieDiff diff = _walker.ComputeDiff(parentRoot, newRoot, oldResolver, newResolver);
+        // Fresh walker per call drops the implicit single-thread invariant of a shared instance.
+        TrieDiff diff = new TrieDiffWalker().ComputeDiff(parentRoot, newRoot, oldResolver, newResolver);
 
         List<CodeHashEntry> codeEntries = new(diff.CodeHashChanges.Count);
         foreach (CodeHashChange change in diff.CodeHashChanges)
         {
-            uint newCodeSize = 0;
-            if (change.HasCode)
-            {
-                byte[]? code = _stateReader.GetCode(change.NewCodeHash);
-                newCodeSize = (uint)(code?.Length ?? 0);
-            }
+            uint newCodeSize = ResolveNewCodeSize(change, (long)block.Number);
             codeEntries.Add(new CodeHashEntry(change.OldCodeHash, change.NewCodeHash, newCodeSize));
         }
 
@@ -181,6 +192,25 @@ public sealed class DiffsWriterService : IDisposable
             AccountsAddedDelta: diff.AccountsAddedDelta);
     }
 
+    internal uint ResolveNewCodeSize(in CodeHashChange change, long blockNumber)
+    {
+        if (!change.HasCode) return 0;
+
+        byte[]? code = _stateReader.GetCode(change.NewCodeHash);
+        if (code is null)
+        {
+            Metrics.StateDiffsWriterEncodeErrorsTotal.AddOrUpdate(
+                StateDiffsWriterEncodeErrorReasons.CodeMissing, 1, static (_, v) => v + 1);
+            if (_logger.IsWarn)
+                _logger.Warn(
+                    $"StateDiffsWriter: code not found for hash {change.NewCodeHash} at block {blockNumber}; " +
+                    "recording NewCodeSize=0 (sidecar code-bytes total will undercount this entry).");
+            return 0;
+        }
+
+        return (uint)code.Length;
+    }
+
     internal void WriteRecord(BlockDiffRecord record)
     {
         int payloadBytes;
@@ -190,13 +220,7 @@ public sealed class DiffsWriterService : IDisposable
             {
                 payloadBytes = _store.WriteBlockDiff(record);
                 System.Threading.Volatile.Write(ref _lastWrittenBlock, record.BlockNumber);
-
-                // Flush the Default column family's memtable to disk so the
-                // sidecar (RocksDB secondary mode) sees this block via
-                // TryCatchUpWithPrimary. Without it the diff sits in the
-                // memtable indefinitely and the secondary's iterator can't
-                // read it, so the orchestrator's waitSensorForBlock times out.
-                _store.FlushDefault();
+                _store.FlushDefault(); // make the block visible to the sidecar's secondary iterator
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)

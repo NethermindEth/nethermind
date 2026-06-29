@@ -22,7 +22,7 @@ public sealed class DiffsPruner(
     BlockDiffsStore store,
     DiffsWriterService writer,
     IStateDiffsWriterConfig config,
-    ILogManager logManager) : IDisposable
+    ILogManager logManager) : IAsyncDisposable, IDisposable
 {
     private readonly IBlockTree _blockTree = blockTree;
     private readonly BlockDiffsStore _store = store;
@@ -44,10 +44,21 @@ public sealed class DiffsPruner(
         _loop = Task.Run(() => RunLoopAsync(_cts.Token));
     }
 
+    // Non-blocking: cancel and let the loop exit on its next await. Prefer DisposeAsync to join it.
     public void Dispose()
     {
         try { _cts.Cancel(); } catch (ObjectDisposedException) { }
-        try { _loop?.Wait(TimeSpan.FromSeconds(5)); } catch { /* shutdown best-effort */ }
+        _cts.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { }
+        if (_loop is not null)
+        {
+            try { await _loop.ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+        }
         _cts.Dispose();
     }
 
@@ -76,6 +87,16 @@ public sealed class DiffsPruner(
 
     internal int PruneOnce()
     {
+        if (_config.KeepLastNBlocks < 0)
+        {
+            // Negative window would wrap past the cutoff<=0 guard and prune everything.
+            if (_logger.IsWarn)
+                _logger.Warn(
+                    $"StateDiffsWriter: KeepLastNBlocks is negative ({_config.KeepLastNBlocks}); " +
+                    "pruning disabled to avoid deleting the whole BlockDiffs window.");
+            return 0;
+        }
+
         long head = (long)(_blockTree.Head?.Number ?? 0);
         long anchor = Math.Max(head, _writer.LastWrittenBlock);
         long cutoff = anchor - _config.KeepLastNBlocks;

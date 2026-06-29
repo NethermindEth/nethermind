@@ -4,10 +4,13 @@
 #nullable enable
 
 using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.StateDiff.Core.Data;
 using Nethermind.StateDiffsWriter.Data;
 using Nethermind.StateDiffsWriter.Service;
 using Nethermind.StateDiffsWriter.Storage;
@@ -30,6 +33,8 @@ public class DiffsWriterServiceTests
 {
     private MemColumnsDb<BlockDiffsColumns> _db = null!;
     private BlockDiffsStore _store = null!;
+    private IBlockTree _blockTree = null!;
+    private IStateReader _stateReader = null!;
     private DiffsWriterService _service = null!;
 
     [SetUp]
@@ -37,11 +42,14 @@ public class DiffsWriterServiceTests
     {
         _db = new MemColumnsDb<BlockDiffsColumns>();
         _store = new BlockDiffsStore(_db);
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
-        IStateReader stateReader = Substitute.For<IStateReader>();
-        _service = new DiffsWriterService(blockTree, worldStateManager, stateReader, _store, LimboLogs.Instance);
+        _blockTree = Substitute.For<IBlockTree>();
+        _stateReader = Substitute.For<IStateReader>();
+        _service = new DiffsWriterService(
+            _blockTree, Substitute.For<IWorldStateManager>(), _stateReader, _store, LimboLogs.Instance);
     }
+
+    private void RaiseNewHead(Block block) =>
+        _blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(block));
 
     [TearDown]
     public void TearDown()
@@ -89,5 +97,60 @@ public class DiffsWriterServiceTests
 
         _service.WriteRecord(new BlockDiffRecord(8, TestItem.KeccakA, [], []));
         Assert.That(_service.LastWrittenBlock, Is.EqualTo(8));
+    }
+
+    [Test]
+    public void OnNewHeadBlock_HeadNotBuildingOnLastWritten_CountsReorg()
+    {
+        // Parent always reports the block's own state root, so the service takes
+        // the no-op path (no trie scope needed) while still running reorg detection
+        // and the empty-record write that advances the last-written hash.
+        BlockHeader parent = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
+        _blockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(parent);
+
+        Block b10 = Build.A.Block.WithNumber(10).WithStateRoot(TestItem.KeccakA).TestObject;
+        RaiseNewHead(b10);
+        Assert.That(_service.ReorgsObserved, Is.Zero, "the first head cannot be a reorg");
+
+        Block b11 = Build.A.Block.WithNumber(11).WithParent(b10).WithStateRoot(TestItem.KeccakA).TestObject;
+        RaiseNewHead(b11);
+        Assert.That(_service.ReorgsObserved, Is.Zero, "a head building on the last-written block is contiguous");
+
+        // Reorg: a competing block at height 11 that builds on b10, not the now-stale b11.
+        Block b11Prime = Build.A.Block.WithNumber(11).WithParent(b10)
+            .WithExtraData([0x01]).WithStateRoot(TestItem.KeccakA).TestObject;
+        RaiseNewHead(b11Prime);
+        Assert.That(_service.ReorgsObserved, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ResolveNewCodeSize_NoCode_ReturnsZero()
+    {
+        CodeHashChange noCode = new(TestItem.KeccakA.ValueHash256, CodeHashChange.NoCode, CodeHashChange.NoCode);
+        Assert.That(_service.ResolveNewCodeSize(noCode, blockNumber: 1), Is.Zero);
+    }
+
+    [Test]
+    public void ResolveNewCodeSize_PresentCode_ReturnsLength()
+    {
+        _stateReader.GetCode(default(ValueHash256)).ReturnsForAnyArgs(new byte[24]);
+        CodeHashChange gained = new(TestItem.KeccakA.ValueHash256, CodeHashChange.NoCode, TestItem.KeccakB.ValueHash256);
+        Assert.That(_service.ResolveNewCodeSize(gained, blockNumber: 1), Is.EqualTo(24u));
+    }
+
+    [Test]
+    public void ResolveNewCodeSize_LiveHashButMissingCode_ReturnsZero()
+    {
+        // The substitute returns null for GetCode by default — simulates code-DB
+        // lag / pruned code where the account reports a hash but the bytes are gone.
+        CodeHashChange gained = new(TestItem.KeccakA.ValueHash256, CodeHashChange.NoCode, TestItem.KeccakB.ValueHash256);
+        Assert.That(_service.ResolveNewCodeSize(gained, blockNumber: 42), Is.Zero);
+    }
+
+    [Test]
+    public void Dispose_IsIdempotent()
+    {
+        _service.Dispose();
+        Assert.DoesNotThrow(() => _service.Dispose());
     }
 }

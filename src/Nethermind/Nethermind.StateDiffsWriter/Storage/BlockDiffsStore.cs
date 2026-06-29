@@ -41,10 +41,7 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         Span<byte> blockKey = stackalloc byte[BlockKeyLength];
         BinaryPrimitives.WriteUInt64BigEndian(blockKey, (ulong)record.BlockNumber);
 
-        // Encode into a caller-allocated buffer that we hand straight to RocksDB —
-        // avoids the previous double-allocation (one for the writer, one for
-        // the extracted byte[]). RlpWriter(byte[]) wraps the provided array
-        // without copying, so the same buffer travels through the batch.
+        // Encode straight into the buffer handed to RocksDB; RlpWriter wraps it without copying.
         int length = BlockDiffRecordDecoder.Instance.GetLength(record);
         byte[] payload = new byte[length];
         RlpWriter writer = new(payload);
@@ -65,16 +62,12 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
                 entry.AddressHash.Bytes.CopyTo(slotKey);
                 if (entry.NewCount == 0)
                 {
-                    // Drop the row instead of writing eight zero bytes: RocksDB tombstones
-                    // are cheap, and a missing key reads as zero in GetSlotCount below.
-                    // Keeps SlotCounts size proportional to live contracts only.
+                    // Zero count → drop the row; GetSlotCount reads a missing key as zero.
                     slotBatch.Remove(slotKey);
                 }
                 else
                 {
                     BinaryPrimitives.WriteUInt64BigEndian(slotValue, entry.NewCount);
-                    // PutSpan accepts a value span directly, so the 8-byte slot total
-                    // never travels through a per-row managed allocation.
                     slotBatch.PutSpan(slotKey, slotValue);
                 }
             }
@@ -84,14 +77,8 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
     }
 
     /// <summary>
-    /// Force the BlockDiffs Default column family's memtable to flush to disk so
-    /// the bloating sidecar (RocksDB secondary mode) sees the newest block via
-    /// <c>TryCatchUpWithPrimary</c>. Without an explicit flush the diff sits in
-    /// the memtable indefinitely and the secondary's iterator cannot read it,
-    /// so the orchestrator's <c>waitSensorForBlock</c> times out at 2 s per poll.
-    /// A WAL-only sync was tried (commit 2026-05-27) but did not help: catchup
-    /// got fast, consume got slow — same wall-clock per block — because the
-    /// secondary iterator still can't materialise memtable contents.
+    /// Flush the Default CF memtable so the sidecar (RocksDB secondary) can read the newest
+    /// block via <c>TryCatchUpWithPrimary</c> — the secondary iterator can't see memtable rows.
     /// </summary>
     public void FlushDefault() => _blockDiffs.Flush();
 
@@ -113,9 +100,11 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
     {
         Span<byte> key = stackalloc byte[AddressKeyLength];
         addressHash.Bytes.CopyTo(key);
-        byte[]? bytes = _slotCounts.Get(key);
-        if (bytes is null || bytes.Length != SlotCountValueLength) return 0;
-        return BinaryPrimitives.ReadUInt64BigEndian(bytes);
+        // Span Get avoids a per-lookup byte[]; CF values are invariantly 8 bytes, missing key → length 0.
+        Span<byte> value = stackalloc byte[SlotCountValueLength];
+        int length = _slotCounts.Get(key, value);
+        if (length != SlotCountValueLength) return 0;
+        return BinaryPrimitives.ReadUInt64BigEndian(value);
     }
 
     /// <summary>
