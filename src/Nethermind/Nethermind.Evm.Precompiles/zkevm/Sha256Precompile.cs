@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Zkvm.Abstractions;
@@ -10,10 +11,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
 {
-    // The 32-byte output is copied into the caller's return-data buffer before
-    // the next precompile call runs, so a single reused buffer is safe in the
-    // single-threaded guest and avoids a heap allocation per call.
-    private static readonly byte[] _output = new byte[32];
+    // Reused buffer: the zkVM guest is single-threaded and copies the result out before the next call.
+    private static readonly byte[] _output = new byte[SHA256.HashSizeInBytes];
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
