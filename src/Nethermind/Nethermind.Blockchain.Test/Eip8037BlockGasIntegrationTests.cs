@@ -46,7 +46,8 @@ public class Eip8037BlockGasIntegrationTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            CodeInfoRepositoryFactories.Caching);
     }
 
     private static (BlockAccessListManager, Block) BuildAmsterdamBlock(long blockGasLimit, params Transaction[] txs)
@@ -217,7 +218,8 @@ public class Eip8037BlockGasIntegrationTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            CodeInfoRepositoryFactories.Caching);
 
         long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)

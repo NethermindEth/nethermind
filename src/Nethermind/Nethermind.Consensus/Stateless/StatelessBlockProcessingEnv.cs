@@ -60,9 +60,7 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecutionBatchRead = false
             },
             new WithdrawalProcessorFactory(logManager),
-            // Stateless execution must resolve code only from the witness-backed state, never the
-            // shared cache — so it always runs in witness mode (non-caching code reads).
-            witnessMode: true
+            codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(

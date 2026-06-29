@@ -44,10 +44,10 @@ public partial class BlockAccessListManager(
     ILogManager logManager,
     IBlocksConfig blocksConfig,
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
+    CodeInfoRepositoryFactory codeInfoRepositoryFactory,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
-    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-    bool witnessMode = false)
+    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
     : IBlockAccessListManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
@@ -55,13 +55,20 @@ public partial class BlockAccessListManager(
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessMode));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, codeInfoRepositoryFactory));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, witnessMode));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, codeInfoRepositoryFactory));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
+
+    // Parallel execution depends on the pooled parent-reader snapshots that back each worker's
+    // parent-state fallback. That pool is built only when the right factories are supplied (mirrors
+    // CreateParentReaderEnvPool); witness-capturing and stateless registrations supply none.
+    private readonly bool _hasParentReaderPool =
+        (prewarmerEnvFactory is not null && preBlockCaches is not null)
+        || readOnlyTxProcessingEnvFactory is not null;
 
     // Snapshot point for parallel workers' parent-reader scopes. Set only when
     // ParallelExecutionEnabled; null on the sequential path so a stray scope opens fail fast.
@@ -122,19 +129,15 @@ public partial class BlockAccessListManager(
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-        // Parallel execution needs the decoded BAL body (RLP fixtures only carry the hash)
-        // and an active state scope (so we can capture the parent state root for workers).
-        //
-        // Witness-mode managers force sequential: parallel workers read pre-state through pooled
-        // parent-reader snapshots that bypass the recording world state, so their accesses would be
-        // missing from the witness. Only the witness-processing graph sets witnessMode, so regular
-        // blocks on EIP-7928 chains keep parallel execution.
+        // Parallel execution needs the decoded BAL body (RLP fixtures only carry the hash), an active
+        // state scope (to capture the parent state root for workers), and the parent-reader pool that
+        // backs each worker's parent-state fallback (see _hasParentReaderPool).
         ParallelExecutionEnabled = Enabled
             && blocksConfig.ParallelExecution
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope
-            && !witnessMode;
+            && _hasParentReaderPool;
 
         // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
         // HintBal honours the same opt-in config as the prewarmer path.

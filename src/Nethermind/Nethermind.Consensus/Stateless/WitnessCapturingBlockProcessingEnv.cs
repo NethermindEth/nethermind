@@ -100,8 +100,9 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             .AddScoped<IBlockhashCache, BlockhashCache>()
             // Non-caching code repo so every bytecode/code-hash lookup flows through the recorder.
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            // Witness-mode BAL: statically sequential + non-caching, no parallel parent-reader pool that
-            // would read pre-state outside the recorder.
+            // Witness BAL: non-caching code reads, and statically sequential — it supplies no parallel
+            // parent-reader pool factories, so ParallelExecutionEnabled stays false (no pre-state reads
+            // outside the recorder).
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),
                 ctx.Resolve<ISpecProvider>(),
@@ -109,7 +110,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
-                witnessMode: true))
+                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness))
             // The validation transaction executor; everything else (BlockProcessor, validators, beacon
             // root/blockhash/withdrawal/exec-requests processors, VM, tx processor) is inherited from the
             // root registrations and re-resolved here against the overridden world state.

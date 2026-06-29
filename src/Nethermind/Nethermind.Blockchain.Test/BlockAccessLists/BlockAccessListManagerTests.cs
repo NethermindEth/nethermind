@@ -35,7 +35,8 @@ public class BlockAccessListManagerTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig(), // ParallelExecutionBatchRead defaults to true
-            Substitute.For<IWithdrawalProcessorFactory>());
+            Substitute.For<IWithdrawalProcessorFactory>(),
+            CodeInfoRepositoryFactories.Caching);
 
         /// <summary>
         /// Stubs <see cref="IWorldState.HintBal"/> to return <paramref name="hint"/>, then runs

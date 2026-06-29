@@ -103,8 +103,8 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            // The whole sandbox re-execution records a witness, so its BlockAccessListManager runs in
-            // witness mode unconditionally (sequential + non-caching code reads).
+            // The whole sandbox re-execution records a witness, so its BlockAccessListManager uses a
+            // non-caching code repository and stays sequential (it supplies no parallel pool factories).
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),
                 ctx.Resolve<ISpecProvider>(),
@@ -112,7 +112,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
-                witnessMode: true))
+                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness))
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
 
