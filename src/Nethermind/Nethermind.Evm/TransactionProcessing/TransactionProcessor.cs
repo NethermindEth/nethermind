@@ -313,13 +313,14 @@ namespace Nethermind.Evm.TransactionProcessing
             // frame (e.g. a delegated STOP, or an empty recipient) wrongly succeed.
             bool topFrameOutOfGas = false;
 
-            // A value transfer materialising a new (dead, non-precompile) recipient pays NEW_ACCOUNT
-            // state gas, evaluated against pre-transfer state. This mirrors the ExecuteSimpleTransfer
-            // charge for the EVM path (transactions carrying code, calldata, or an authorization list,
-            // which bypass the simple-transfer fast path).
+            // A value transfer materialising a new (dead) recipient pays NEW_ACCOUNT state gas,
+            // evaluated against pre-transfer state. This mirrors the ExecuteSimpleTransfer charge for
+            // the EVM path (transactions carrying code, calldata, or an authorization list, which
+            // bypass the simple-transfer fast path). An empty precompile is materialised like any other
+            // account, so it is charged too.
             if (spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
                 && tx.To is not null && tx.SenderAddress != tx.To
-                && !spec.IsPrecompile(tx.To) && WorldState.IsDeadAccount(tx.To))
+                && WorldState.IsDeadAccount(tx.To))
             {
                 topFrameOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost(in gasAvailable));
             }
@@ -425,14 +426,15 @@ namespace Nethermind.Evm.TransactionProcessing
             bool senderIsRecipient = tx.SenderAddress == recipient;
             bool isTracingActions = tracer.IsTracingActions;
 
-            // EIP-8037 top-frame charge: a value transfer that materialises a new (dead, non-precompile)
-            // recipient pays NEW_ACCOUNT state gas, evaluated against pre-transfer state. If the (state)
-            // gas cannot be covered the frame is out of gas: no value moves and the sender forfeits all
-            // gas. Gated on EIP-8037 (the 2-D state-gas model); the standalone EIP-2780 model instead
-            // prices NEW_ACCOUNT in the intrinsic cost, so charging here would double-charge.
+            // EIP-8037 top-frame charge: a value transfer that materialises a new (dead) recipient pays
+            // NEW_ACCOUNT state gas, evaluated against pre-transfer state. If the (state) gas cannot be
+            // covered the frame is out of gas: no value moves and the sender forfeits all gas. Gated on
+            // EIP-8037 (the 2-D state-gas model); the standalone EIP-2780 model instead prices
+            // NEW_ACCOUNT in the intrinsic cost, so charging here would double-charge. An empty
+            // precompile is materialised like any other account, so it is charged too.
             bool newAccountOutOfGas = false;
             if (spec.IsEip8037Enabled && hasValueTransfer && !senderIsRecipient
-                && !spec.IsPrecompile(recipient) && WorldState.IsDeadAccount(recipient))
+                && WorldState.IsDeadAccount(recipient))
             {
                 newAccountOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost(in gasAvailable));
                 // Out of gas: consume the whole budget; the failed frame moves no value.

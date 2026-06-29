@@ -198,6 +198,40 @@ public partial class TransactionProcessorTests
         }
     }
 
+    // EIP-8037 (devnet-6 v6.1.0): a value transfer that funds an empty precompile materialises a new
+    // account, so it pays NEW_ACCOUNT state gas like any other dead recipient. Regression for the
+    // earlier `!IsPrecompile` exemption that under-charged value transfers to precompile addresses.
+    [Test]
+    public void Eip8037_value_transfer_to_dead_precompile_charges_new_account_state_gas()
+    {
+        Address precompile = Sha256Precompile.Address; // no stored account -> dead until funded
+
+        (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(_specProvider);
+
+        // First transfer materialises the (dead) precompile account; the second finds it already funded.
+        Transaction deadTx = Build.A.Transaction
+            .WithTo(precompile).WithValue(1.Wei).WithGasPrice(1).WithGasLimit(1_000_000).WithNonce(0)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).TestObject;
+        Transaction liveTx = Build.A.Transaction
+            .WithTo(precompile).WithValue(1.Wei).WithGasPrice(1).WithGasLimit(1_000_000).WithNonce(1)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).TestObject;
+
+        Block block = BuildAmsterdamBlock(deadTx, liveTx);
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        TransactionResult deadResult = transactionProcessor.Execute(deadTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+        TransactionResult liveResult = transactionProcessor.Execute(liveTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8037Enabled, Is.True);
+            Assert.That(deadResult.TransactionExecuted, Is.True);
+            Assert.That(liveResult.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(2)); // precompile recipient enters the VM
+            Assert.That(deadTx.SpentGas - liveTx.SpentGas, Is.EqualTo(GasCostOf.NewAccountState));
+        }
+    }
+
     private static Block BuildAmsterdamBlock(params Transaction[] txs) =>
         Build.A.Block
             .WithNumber(MainnetSpecProvider.ParisBlockNumber)
