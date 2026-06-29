@@ -16,14 +16,15 @@ internal static class StreamInterpreter
     // flipping it in-process is visible to frame-executing threads.
     public static volatile bool Enabled = true;
 
-    // The stream is a compute optimization with no payoff on storage-bound block processing, where it is
-    // pure overhead (build cost + retained StreamOp[]). Production engages it only in cancelable call
-    // contexts (eth_call/estimateGas/simulate). Differential tests set this to exercise the stream in any
-    // context regardless of that heuristic.
-    public static volatile bool ForceAllContexts;
+    // The stream is normally a compute optimization engaged only in cancelable call contexts
+    // (eth_call/estimateGas/simulate), since it is pure overhead (build cost + retained StreamOp[]) on
+    // storage-bound block processing. Forced on here so the stream runs in every context, block processing
+    // included, for testing. Differential tests still toggle it per case.
+    public static volatile bool ForceAllContexts = true;
 
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
-    public static int BuildThreshold = 4;
+    // Set to 1 so the stream is built and engaged on the first execution for testing.
+    public static int BuildThreshold = 1;
 
     // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the
     // stream engaged. [ThreadStatic] so each thread bumps its own slot with a plain write: no atomic and

@@ -66,9 +66,9 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public ValueHash256 CodeHash { get; set; }
 
     /// <summary>
-    /// Returns the built stream, or <c>null</c> until ready: past <see cref="StreamInterpreter.BuildThreshold"/>
-    /// the build is scheduled once on the thread pool and callers keep getting <c>null</c> until it publishes,
-    /// so no call blocks. Lock-free via two CASes (schedule, publish).
+    /// Returns the built stream, or <c>null</c> until ready. Once a CodeInfo reaches
+    /// <see cref="StreamInterpreter.BuildThreshold"/> executions, the calling thread builds the stream
+    /// synchronously and returns it; a CAS guards the build so only one thread does the work.
     /// </summary>
     internal InstructionStream? GetOrBuildStream()
     {
@@ -89,9 +89,9 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         }
 
         if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
-            ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
+            BuildStream();
 
-        return null;
+        return Volatile.Read(ref _stream);
     }
 
     private void BuildStream()
@@ -107,11 +107,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         {
             Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
         }
-    }
-
-    private sealed class StreamBuilder(CodeInfo codeInfo) : IThreadPoolWorkItem
-    {
-        public void Execute() => codeInfo.BuildStream();
     }
 
     /// <summary>
