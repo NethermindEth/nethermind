@@ -57,13 +57,17 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
     // Single-entry cache in front of _intraTxCache: the EVM accesses the same
     // account many times in a row. A cheap return when the address' change
     // stack is unchanged (stack.Count); a push for any *other* address leaves
-    // it valid. Invalidated when a restore/reset recycles the stacks (epoch).
-    private Address? _gtcAddress;
-    private StackList<int>? _gtcStack;
-    private Account? _gtcAccount;
-    private int _gtcStackCount;
-    private int _gtcEpoch = -1;
+    // it valid. Invalidated when a restore/commit/reset recycles the stacks (epoch).
+    private Address? _cachedAddress;
+    private StackList<int>? _cachedStack;
+    private Account? _cachedAccount;
+    private int _cachedStackCount;
+    private int _cachedEpoch = -1;
     private int _epoch;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsFrontCacheHit(Address address) =>
+        _cachedEpoch == _epoch && _cachedAddress is not null && _cachedAddress.Equals(address);
 #endif
 
     public void RecalculateStateRoot()
@@ -793,21 +797,24 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
     internal Account? GetThroughCache(Address address)
     {
 #if ZK_EVM
-        if (_gtcEpoch == _epoch && _gtcAddress is not null && _gtcAddress.Equals(address))
+        if (IsFrontCacheHit(address))
         {
-            StackList<int> s = _gtcStack!;
+            StackList<int> s = _cachedStack;
             int count = s.Count;
-            if (count == _gtcStackCount) return _gtcAccount;
-            _gtcStackCount = count;
-            return _gtcAccount = _changes[s.Peek()].Account;
+
+            if (count == _cachedStackCount)
+                return _cachedAccount;
+
+            _cachedStackCount = count;
+            return _cachedAccount = _changes[s.Peek()].Account;
         }
         if (_intraTxCache.TryGetValue(address, out StackList<int> value))
         {
-            _gtcAddress = address;
-            _gtcStack = value;
-            _gtcStackCount = value.Count;
-            _gtcEpoch = _epoch;
-            return _gtcAccount = _changes[value.Peek()].Account;
+            _cachedAddress = address;
+            _cachedStack = value;
+            _cachedStackCount = value.Count;
+            _cachedEpoch = _epoch;
+            return _cachedAccount = _changes[value.Peek()].Account;
         }
         return GetAndAddToCache(address);
 #else
@@ -863,10 +870,8 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 #if ZK_EVM
         // A push almost always follows a read of the same account; the front
         // cache already holds that account's (live) change stack.
-        if (_gtcEpoch == _epoch && _gtcAddress is not null && _gtcAddress.Equals(address))
-        {
-            return _gtcStack!;
-        }
+        if (IsFrontCacheHit(address))
+            return _cachedStack;
 #endif
         ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
         if (!exists)
