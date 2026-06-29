@@ -16,12 +16,11 @@ namespace Nethermind.Evm.GasPolicy;
 /// dispatches with zero overhead (devirtualized + const-folded) on the per-opcode hot path.
 /// </summary>
 /// <remarks>
-/// Design invariants (do not re-litigate — these were established empirically against the EVM Opcode
-/// Benchmark and are enforced by tests):
+/// Design invariants, established empirically against the EVM Opcode Benchmark and enforced by tests:
 /// <list type="bullet">
-/// <item>The implementing struct must hold ONLY flat top-level scalar fields. A vector / <c>[InlineArray]</c> /
+/// <item>The implementing struct must hold only flat top-level scalar fields. A vector / <c>[InlineArray]</c> /
 /// SIMD / nested-struct field address-exposes the struct (dotnet/runtime#110968) and defeats JIT
-/// enregistration, regressing every opcode. "Vector gas" is shelved; guarded by a layout test.</item>
+/// enregistration, regressing every opcode — vectorizing the live gas budget is not viable.</item>
 /// <item>Multidimensional ("multigas") accounting is modelled as additional flat scalar fields routed by
 /// compile-time cost/dimension tags, never an indexed runtime vector on the live budget. Any vector/SIMD
 /// representation belongs only on the cold per-tx/per-block accounting layer.</item>
@@ -120,7 +119,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // spec price book, fork/opcode flags, and opcode-extracted scalars. Selecting which charge applies
     // (e.g. the SSTORE net-metering decision, which reads world state) stays in the opcode.
 
-    // CREATE/CREATE2 base cost: fixed base + EIP-3860 per-init-word + (CREATE2 only) keccak-per-word.
     static virtual bool ConsumeCreateGas<TEip8037, TOpCreate>(ref TSelf gas, IReleaseSpec spec, ulong initCodeWords)
         where TEip8037 : struct, IFlag
         where TOpCreate : struct, EvmInstructions.IOpCreate

@@ -9,11 +9,9 @@ namespace Nethermind.Evm.Test;
 
 public class EthereumGasPolicyLayoutTests
 {
-    // The live consensus gas budget must stay FLAT top-level scalar fields so the JIT enregisters
-    // it on the per-opcode hot path. A vector / [InlineArray] / nested-struct field address-exposes
-    // the containing struct (dotnet/runtime#110968) and defeats physical promotion, regressing every
-    // opcode (measured: +15-18ns across 114 opcodes). New gas dimensions (multigas) must therefore be
-    // added as additional flat scalar fields, never as a vector. This guard fails fast if that breaks.
+    // The live gas budget must stay flat scalar fields so the JIT enregisters it on the hot path; a
+    // vector / [InlineArray] / nested-struct field address-exposes the struct (dotnet/runtime#110968)
+    // and regresses every opcode. Multigas dimensions are added as flat scalars, never a vector.
     [Test]
     public void Gas_policy_struct_contains_only_flat_scalar_fields()
     {
