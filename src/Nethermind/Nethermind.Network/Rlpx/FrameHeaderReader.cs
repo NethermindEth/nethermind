@@ -23,21 +23,34 @@ namespace Nethermind.Network.Rlpx
             frameSize = (frameSize << 8) + (HeaderBytes[1] & 0xFF);
             frameSize = (frameSize << 8) + (HeaderBytes[2] & 0xFF);
 
-            Rlp.ValueDecoderContext headerBodyItems = HeaderBytes.AsSpan(3, 13).AsRlpValueContext();
-            int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
-            int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
-            headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
-            int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
-            _currentContextId = contextId;
-            int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
+            try
+            {
+                Rlp.ValueDecoderContext headerBodyItems = HeaderBytes.AsSpan(3, 13).AsRlpValueContext();
+                int headerDataLength = headerBodyItems.ReadSequenceLength();
+                if ((uint)headerDataLength > (uint)(headerBodyItems.Length - headerBodyItems.Position))
+                {
+                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length exceeds {HeaderBytes.Length - 3} bytes");
+                }
 
-            ValidateTotalPacketSize(frameSize, totalPacketSize);
+                int headerDataEnd = headerDataLength + headerBodyItems.Position;
+                int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
+                headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
+                int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
+                _currentContextId = contextId;
+                int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
 
-            bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
-            bool isFirst = totalPacketSize.HasValue || !isChunked;
+                ValidateTotalPacketSize(frameSize, totalPacketSize);
 
-            headerBodyItems.Check(headerDataEnd);
-            return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
+                bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
+                bool isFirst = totalPacketSize.HasValue || !isChunked;
+
+                headerBodyItems.Check(headerDataEnd);
+                return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
+            }
+            catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            {
+                throw new CorruptedFrameException(exception);
+            }
         }
 
         private static void ValidateTotalPacketSize(int frameSize, int? totalPacketSize)

@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
@@ -79,14 +81,40 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame) => input.ReadBytes(_zeroPacket.Content, frame.Size);
+        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
+        {
+            if (frame.Size > _zeroPacket.Content.WritableBytes)
+            {
+                int remainingPacketSize = _zeroPacket.Content.WritableBytes;
+                _zeroPacket.Release();
+                _zeroPacket = null;
+                ThrowFrameSizeExceedsRemaining(frame.Size, remainingPacketSize);
+            }
+
+            input.ReadBytes(_zeroPacket.Content, frame.Size);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
-            Rlp.ValueDecoderContext rlpContext = new(input.AsSpan());
-            ulong rlpPacketType = rlpContext.DecodeULong();
-            int read = rlpContext.Position;
+            int read;
+            ulong rlpPacketType;
+            try
+            {
+                Rlp.ValueDecoderContext rlpContext = new(input.AsSpan());
+                rlpPacketType = rlpContext.DecodeULong();
+                read = rlpContext.Position;
+            }
+            catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            {
+                throw new CorruptedFrameException(exception);
+            }
+
+            if (read > frame.Size)
+            {
+                ThrowPacketTypeLengthExceedsFrameSize(read, frame.Size);
+            }
+
             input.SkipBytes(read);
             IByteBuffer content;
             if (frame.IsChunked)
@@ -111,5 +139,15 @@ namespace Nethermind.Network.Rlpx
                 // do not call Release since the input buffer is managed by
             }
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowFrameSizeExceedsRemaining(int frameSize, int remainingPacketSize)
+            => throw new CorruptedFrameException(
+                $"{nameof(ZeroFrameMerger)} frame size {frameSize} exceeds remaining packet size {remainingPacketSize}");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowPacketTypeLengthExceedsFrameSize(int packetTypeLength, int frameSize)
+            => throw new CorruptedFrameException(
+                $"{nameof(ZeroFrameMerger)} packet type length {packetTypeLength} exceeds frame size {frameSize}");
     }
 }

@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -563,6 +564,87 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
             Assert.That(taskScheduler.ScheduledTasks, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Cancelled_mid_processing_releases_transactions_unless_rescheduled([Values] bool rescheduleSucceeds)
+        {
+            Transaction[] txs = new Transaction[2];
+            for (int i = 0; i < txs.Length; i++)
+            {
+                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+                txs[i].SetPreHashNoLock([(byte)(i + 1)]);
+            }
+
+            ArrayPoolList<Transaction> list = new(txs.Length, txs);
+
+            using CancellationTokenSource cts = new();
+            bool triedToReschedule = false;
+
+            // process first transaction and reschedule
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(ctx =>
+            {
+                Transaction tx = ctx.Arg<Transaction>();
+                _ = tx.Hash;
+                cts.Cancel();
+                return AcceptTxResult.Accepted;
+            });
+
+            CallbackBackgroundTaskScheduler scheduler = new(() =>
+            {
+                triedToReschedule = true;
+                if (rescheduleSucceeds)
+                {
+                    // The new task now owns the remaining txs: process tx[1] and release the list.
+                    list[1].ClearPreHash();
+                    list.Dispose();
+                }
+                return rescheduleSucceeds;
+            });
+
+
+            using TestEth62ProtocolHandler handler = new(
+                _session,
+                _svc,
+                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager,
+                scheduler,
+                _transactionPool,
+                _gossipPolicy,
+                LimboLogs.Instance,
+                _txGossipPolicy);
+
+            handler.HandleSlowPublic(list, cts.Token);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(triedToReschedule, Is.True);
+                Assert.That(txs[0].Hash, Is.Not.Null);
+                Assert.That(txs[1].Hash, Is.Null);
+                Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
+            }
+        }
+
+        private sealed class TestEth62ProtocolHandler(
+            ISession session,
+            IMessageSerializationService serializer,
+            INodeStatsManager statsManager,
+            ISyncServer syncServer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
+            ITxPool txPool,
+            IGossipPolicy gossipPolicy,
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : Eth62ProtocolHandler(session, serializer, statsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
+        {
+            public void HandleSlowPublic(IOwnedReadOnlyList<Transaction> transactions, CancellationToken cancellationToken) =>
+                HandleSlow(new TransactionsRequest(transactions, 0), cancellationToken).GetAwaiter().GetResult();
+        }
+
+        private sealed class CallbackBackgroundTaskScheduler(Func<bool> onSchedule) : IBackgroundTaskScheduler
+        {
+            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
+                TimeSpan? timeout = null, string? source = null) => onSchedule();
         }
 
         [Test]
