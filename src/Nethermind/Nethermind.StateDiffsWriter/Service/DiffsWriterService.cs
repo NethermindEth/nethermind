@@ -18,19 +18,15 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.StateDiffsWriter.Service;
 
 /// <summary>
-/// Per-block diff producer: on <see cref="IBlockTree.NewHeadBlock"/> it walks the parent→new
-/// state-root diff via <see cref="TrieDiffWalker"/>, normalises slot-count deltas against the
-/// running <c>SlotCounts</c> CF, resolves code sizes, and atomically persists a
-/// <see cref="BlockDiffRecord"/> through <see cref="BlockDiffsStore"/>.
+/// Per-block diff producer: on each new head, walks the parent→new state-root diff and atomically
+/// persists a <see cref="BlockDiffRecord"/> through <see cref="BlockDiffsStore"/>.
 /// </summary>
 /// <remarks>
-/// NewHeadBlock (not <c>BlockProcessed</c>) is the subscription point because it fires only after
-/// the trie store commits — the one signal that guarantees both roots resolve through FlatDb. It is
-/// single-threaded; <see cref="DiffsPruner"/> runs separately and shares <see cref="WriteLock"/>.
+/// NewHeadBlock is the subscription point because it fires only after the trie store commits, the one
+/// signal that guarantees both roots resolve through FlatDb.
 /// </remarks>
 public sealed class DiffsWriterService : IDisposable
 {
-    // Shared by NewHeadBlock writes and the pruner's bulk deletes (the pruner runs on its own task).
     internal readonly object WriteLock = new();
 
     private readonly IBlockTree _blockTree;
@@ -81,9 +77,7 @@ public sealed class DiffsWriterService : IDisposable
         BlockHeader? parent = _blockTree.FindHeader(block.Number - 1, BlockTreeLookupOptions.RequireCanonical);
         if (parent?.StateRoot is null)
         {
-            // Parent header missing / non-canonical: still bump the labeled error
-            // counter so operators can alert on sustained gaps (e.g. during a
-            // reorg storm) instead of having to grep the log.
+            // Bump the labeled counter so operators can alert on sustained parent gaps without grepping logs.
             Metrics.StateDiffsWriterEncodeErrorsTotal.AddOrUpdate(
                 StateDiffsWriterEncodeErrorReasons.ParentMissing, 1, static (_, v) => v + 1);
             return;
@@ -91,8 +85,7 @@ public sealed class DiffsWriterService : IDisposable
 
         if (parent.StateRoot == block.Header.StateRoot)
         {
-            // No-op block — still publish an empty record so the sidecar's tailer
-            // sees a contiguous block sequence and knows the chain advanced.
+            // Publish an empty record so an external reader still sees a contiguous block sequence.
             WriteRecord(new BlockDiffRecord((long)block.Number, block.Header.StateRoot, [], []));
             MarkWritten(block);
             return;
@@ -119,8 +112,7 @@ public sealed class DiffsWriterService : IDisposable
         }
     }
 
-    // SlotCounts is not rolled back on reorg, so OldCount is advisory across one; surface
-    // it (metric + warn) instead of carrying a per-height snapshot the sidecar doesn't need.
+    // SlotCounts is not rolled back on reorg, so OldCount is advisory across one; surfaced via metric + warn.
     private void DetectReorg(Block block)
     {
         Hash256? lastHash = _lastWrittenBlockHash;
@@ -133,7 +125,7 @@ public sealed class DiffsWriterService : IDisposable
             _logger.Warn(
                 $"StateDiffsWriter: new head {block.Number} ({block.Hash}) does not build on " +
                 $"last-written block {LastWrittenBlock} ({lastHash}); SlotCounts OldCount is advisory " +
-                "across this reorg until the sidecar reconstructs running totals from the diff chain.");
+                "across this reorg until the consumer reconstructs running totals from the diff chain.");
     }
 
     private void MarkWritten(Block block)
@@ -154,8 +146,7 @@ public sealed class DiffsWriterService : IDisposable
         Hash256 parentRoot = parent.StateRoot!;
         Hash256 newRoot = block.Header.StateRoot!;
 
-        // One scope per root: FlatDb scopes nodes per block, so a single scope leaves the
-        // off-side subtree Unknown and the walker emits an empty diff.
+        // One scope per root: FlatDb scopes nodes per block, so a single scope leaves the off-side subtree Unknown.
         using IReadOnlyTrieStore oldStore = _worldStateManager.CreateReadOnlyTrieStore();
         using IDisposable oldScope = oldStore.BeginScope(parent);
         using IReadOnlyTrieStore newStore = _worldStateManager.CreateReadOnlyTrieStore();
@@ -204,7 +195,7 @@ public sealed class DiffsWriterService : IDisposable
             if (_logger.IsWarn)
                 _logger.Warn(
                     $"StateDiffsWriter: code not found for hash {change.NewCodeHash} at block {blockNumber}; " +
-                    "recording NewCodeSize=0 (sidecar code-bytes total will undercount this entry).");
+                    "recording NewCodeSize=0 (a downstream code-bytes total will undercount this entry).");
             return 0;
         }
 
@@ -220,13 +211,12 @@ public sealed class DiffsWriterService : IDisposable
             {
                 payloadBytes = _store.WriteBlockDiff(record);
                 System.Threading.Volatile.Write(ref _lastWrittenBlock, record.BlockNumber);
-                _store.FlushDefault(); // make the block visible to the sidecar's secondary iterator
+                _store.FlushDefault(); // make the block visible to an external secondary-mode reader
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // Bumping the labeled counter here (rather than at the call site)
-            // covers both NewHeadBlock writes and any external WriteRecord caller.
+            // Bumped here, not at the call site, to cover every WriteRecord caller.
             Metrics.StateDiffsWriterEncodeErrorsTotal.AddOrUpdate(
                 StateDiffsWriterEncodeErrorReasons.Write, 1, static (_, v) => v + 1);
             throw;

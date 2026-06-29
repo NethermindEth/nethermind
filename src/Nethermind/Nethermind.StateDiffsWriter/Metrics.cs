@@ -8,13 +8,7 @@ using Nethermind.Core.Metric;
 
 namespace Nethermind.StateDiffsWriter;
 
-/// <summary>
-/// Prometheus surface for the v19 sidecar feed plugin. Property names are
-/// transformed by <c>MetricsController.BuildGaugeName</c> into snake_case under
-/// the canonical <c>nethermind_</c> prefix, so e.g.
-/// <see cref="StateDiffsWriterLastBlock"/> becomes
-/// <c>nethermind_state_diffs_writer_last_block</c>.
-/// </summary>
+/// <summary>Prometheus metrics for the state-diff writer plugin.</summary>
 public static class Metrics
 {
     [GaugeMetric]
@@ -33,12 +27,7 @@ public static class Metrics
     [Description("Cumulative bytes of BlockDiffRecord payloads written to RocksDB")]
     public static long StateDiffsWriterPayloadBytesTotal { get; set; }
 
-    /// <summary>
-    /// Labeled counter for encode/write failures. The <c>reason</c> label replaces
-    /// the previous silent log-and-continue path so operators can alert on the
-    /// labeled breakdown rather than scraping logs. See
-    /// <c>StateDiffsWriterEncodeErrorReasons</c> for the canonical label values.
-    /// </summary>
+    /// <summary>Encode/write failures labeled by <c>reason</c> (see <see cref="StateDiffsWriterEncodeErrorReasons"/>).</summary>
     [CounterMetric]
     [KeyIsLabel("reason")]
     [Description("BlockDiffRecord encode/write failures, broken down by reason")]
@@ -57,12 +46,7 @@ public static class Metrics
     public static long StateDiffsWriterReorgsTotal { get; set; }
 }
 
-/// <summary>
-/// Canonical <c>reason</c> label values for
-/// <see cref="Metrics.StateDiffsWriterEncodeErrorsTotal"/>. Centralising the
-/// strings keeps the Prometheus label cardinality bounded and the dashboards
-/// stable across plugin revisions.
-/// </summary>
+/// <summary>Canonical <c>reason</c> label values for <see cref="Metrics.StateDiffsWriterEncodeErrorsTotal"/>.</summary>
 public static class StateDiffsWriterEncodeErrorReasons
 {
     public const string Compute = "compute";

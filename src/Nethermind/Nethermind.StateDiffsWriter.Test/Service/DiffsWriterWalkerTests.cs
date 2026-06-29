@@ -17,12 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.StateDiffsWriter.Test.Service;
 
-/// <summary>
-/// Walker behaviour tests pinned to the v19 slim API: only the two-list output
-/// matters. These mirror the corresponding cases in the legacy
-/// <c>Nethermind.StateComposition.Test.Diff.TrieDiffWalkerTests</c> so a future
-/// reviewer can spot any divergence between the two walker copies.
-/// </summary>
+/// <summary>Walker behaviour tests for the slim two-list output plus the byte / leaf deltas.</summary>
 [TestFixture]
 public class DiffsWriterWalkerTests
 {
@@ -157,13 +152,7 @@ public class DiffsWriterWalkerTests
         Assert.That(forward.SlotCountChanges[0].SlotDelta, Is.EqualTo(-reverse.SlotCountChanges[0].SlotDelta));
     }
 
-    /// <summary>
-    /// Pins the legacy two-list outputs to byte-identical results so future
-    /// changes to the byte-tracking path can't silently drift the
-    /// SlotCountChange / CodeHashChange semantics. Mirrors the
-    /// AddContractWithStorage fixture but cross-checks every assertion on the
-    /// new TrieDiff fields too.
-    /// </summary>
+    /// <summary>Pins the legacy two-list outputs so byte-tracking changes can't drift them, and checks the new fields.</summary>
     [Test]
     public void AddContractWithStorage_PreservesLegacyOutputsAndPopulatesNewDeltas()
     {
@@ -188,17 +177,12 @@ public class DiffsWriterWalkerTests
         TrieDiffWalker walker = new();
         TrieDiff diff = walker.ComputeDiff(root1, root2, resolver, resolver);
 
-        // Legacy outputs must remain bit-identical — same shape and content as
-        // the original AddContractWithStorage_EmitsSlotCountDelta fixture.
         Hash256 expectedAddressHash = TestItem.AddressB.ToAccountPath.ToCommitment();
         Assert.That(diff.SlotCountChanges, Has.Count.EqualTo(1));
         Assert.That(diff.SlotCountChanges[0].AddressHash, Is.EqualTo(expectedAddressHash.ValueHash256));
         Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(3));
         Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));
 
-        // New fields must report positive deltas: a new contract appeared
-        // (account-trie growth + storage-trie growth) and one fresh account
-        // leaf was added.
         Assert.That(diff.AccountTrieBytesDelta, Is.GreaterThan(0));
         Assert.That(diff.StorageTrieBytesDelta, Is.GreaterThan(0));
         Assert.That(diff.AccountsAddedDelta, Is.EqualTo(1));
@@ -230,9 +214,7 @@ public class DiffsWriterWalkerTests
 
         Assert.That(diff.AccountsAddedDelta, Is.EqualTo(-1));
         Assert.That(diff.StorageTrieBytesDelta, Is.LessThan(0));
-        // Account trie can shift either way when a leaf disappears (extension
-        // collapse, branch demotion). The contract test is that the legacy
-        // outputs stay intact — assert that here too.
+        // Account trie can shift either way when a leaf disappears (extension collapse, branch demotion).
         Assert.That(diff.SlotCountChanges, Has.Count.EqualTo(1));
         Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(-2));
         Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));

@@ -42,10 +42,6 @@ public sealed partial class TrieDiffWalker
     {
         ITrieNodeResolver side = resolvers.Pick(added);
 
-        // Every visited node contributes its full RLP length to the per-CF byte
-        // delta — matches the legacy StateComposition walker's RecordNode call
-        // site at the top of WalkStructure so the net (added - removed) numbers
-        // stay equal between the two walkers during the parallel-validation soak.
         RecordNodeBytes(node.FullRlp.Length, isStorage, added);
 
         switch (node.NodeType)
@@ -72,11 +68,8 @@ public sealed partial class TrieDiffWalker
                             TrieNode? child = node.GetChildWithChildPath(side, ref path, i);
                             if (child is null)
                             {
-                                // GetChildWithChildPath caches via _nodeData and can return null
-                                // asymmetrically between resolvers when an inline child's slot was
-                                // previously materialised on one side but wiped by UnresolveChild
-                                // on the other. Fall back to GetInlineNodeRlp, which decodes from
-                                // the parent's RLP directly and is identical across resolvers.
+                                // Inline child can resolve null asymmetrically across resolvers;
+                                // GetInlineNodeRlp decodes from parent RLP and is identical across sides.
                                 byte[]? inlineRlp = node.GetInlineNodeRlp(i);
                                 if (inlineRlp is not null)
                                 {
@@ -160,20 +153,13 @@ public sealed partial class TrieDiffWalker
             return;
         }
 
-        // Account-trie leaf entered or left the trie wholesale. Track net leaf
-        // count regardless of whether the payload decodes — a degenerate stub
-        // still occupies a leaf slot in the trie.
+        // Count the net leaf even for degenerate stubs that don't decode — they still occupy a slot.
         _accountsAddedDelta += added ? 1 : -1;
 
-        // Degenerate leaves (length-1 empty stubs) still entered/left the trie, but we cannot
-        // derive code-hash or storage classifications from them; skip without emitting.
         if (!TryDecodeAccount(leaf, out AccountStruct account)) return;
 
         if (!account.HasCode && !account.HasStorage) return;
 
-        // Whole-account create or delete: emit a code-hash transition between NoCode and the
-        // account's code hash so the sidecar tracker can refcount correctly.
-        // DecodeAndDiffAccountLeaves handles the matched-leaf path separately.
         Hash256? addressHash = GetAddressHash(leaf, ref path);
         if (addressHash is null) return;
 

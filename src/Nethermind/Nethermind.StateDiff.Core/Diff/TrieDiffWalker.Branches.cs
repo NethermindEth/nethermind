@@ -12,9 +12,6 @@ public sealed partial class TrieDiffWalker
 {
     private void DiffBranches(TrieNode oldBranch, TrieNode newBranch, ref TreePath path, ResolverPair resolvers, bool isStorage)
     {
-        // Both branches still exist at this path — count their RLP bytes on both
-        // sides so the net per-CF delta matches the legacy walker (which records
-        // an "added" entry for the new branch and a "removed" entry for the old).
         RecordNodeBytes(oldBranch.FullRlp.Length, isStorage, added: false);
         RecordNodeBytes(newBranch.FullRlp.Length, isStorage, added: true);
 
@@ -26,8 +23,7 @@ public sealed partial class TrieDiffWalker
             if (oldChildHash is not null && newChildHash is not null && oldChildHash == newChildHash)
                 continue;
 
-            // GetChildHash returns null for BOTH empty slots AND inline nodes.
-            // Use IsChildNull to distinguish.
+            // GetChildHash returns null for both empty slots and inline nodes; IsChildNull disambiguates.
             bool oldIsNull = oldChildHash is null && oldBranch.IsChildNull(i);
             bool newIsNull = newChildHash is null && newBranch.IsChildNull(i);
 
@@ -66,12 +62,8 @@ public sealed partial class TrieDiffWalker
         TrieNode? oldChild = oldBranch.GetChildWithChildPath(resolvers.Old, ref path, i);
         TrieNode? newChild = newBranch.GetChildWithChildPath(resolvers.New, ref path, i);
 
-        // Cache-induced null asymmetry on inline children: GetChildWithChildPath consults
-        // _nodeData[i] before re-parsing RLP, and that cache state can diverge between Old
-        // and New resolvers (UnresolveChild wipes persisted parents to null but leaves
-        // dirty inline TrieNode references intact). Re-derive from the parent's RLP via
-        // GetInlineNodeRlp, which is a pure function of the branch bytes and identical
-        // across resolvers — guarantees both sides see the same leaves.
+        // GetChildWithChildPath can return null asymmetrically across resolvers for inline children;
+        // re-derive from the parent RLP (GetInlineNodeRlp) so both sides see the same leaves.
         if (oldChild is null && !oldBranch.IsChildNull(i))
         {
             byte[]? inlineRlp = oldBranch.GetInlineNodeRlp(i);
@@ -142,9 +134,7 @@ public sealed partial class TrieDiffWalker
 
             if (oldLeaves.Remove(fullPath, out (TrieNode Leaf, TreePath Path) oldEntry))
             {
-                // Account leaves still need the semantic diff (code-hash transitions and
-                // storage-root recursion). Storage leaves at matching paths have nothing
-                // semantic to compare — slot presence is unchanged across both sides.
+                // Only account leaves need a semantic diff; matched storage leaves leave slot count unchanged.
                 if (!isStorage)
                 {
                     TreePath leafPath = oldEntry.Path;

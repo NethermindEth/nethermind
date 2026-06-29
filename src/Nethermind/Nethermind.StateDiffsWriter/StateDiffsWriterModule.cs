@@ -11,13 +11,7 @@ namespace Nethermind.StateDiffsWriter;
 
 public class StateDiffsWriterModule : Module
 {
-    /// <summary>
-    /// Name of the new RocksDB column-family database. Resolves to
-    /// <c>&lt;BaseDbPath&gt;/blockDiffs</c> when not overridden, with two CFs:
-    /// <see cref="BlockDiffsColumns.Default"/> for per-block RLP records and
-    /// <see cref="BlockDiffsColumns.SlotCounts"/> for the per-address running
-    /// slot count map.
-    /// </summary>
+    /// <summary>Name of the RocksDB column-family database for block diffs.</summary>
     public const string DbName = "blockDiffs";
 
     protected override void Load(ContainerBuilder builder)

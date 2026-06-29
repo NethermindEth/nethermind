@@ -5,15 +5,15 @@ using Nethermind.Config;
 
 namespace Nethermind.StateDiffsWriter;
 
-[ConfigCategory(Description = "State diffs writer plugin (v19 sidecar feed)")]
+[ConfigCategory(Description = "State diffs writer plugin")]
 public interface IStateDiffsWriterConfig : IConfig
 {
-    [ConfigItem(Description = "Enable the per-block diffs writer that feeds the v19 sidecar.",
+    [ConfigItem(Description = "Enable the per-block state-diff writer.",
         DefaultValue = "false")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "Number of most-recent blocks to retain in the BlockDiffs column family. " +
-                              "Older entries are pruned by the background pruner. Sidecar bootstrap " +
+                              "Older entries are pruned by the background pruner. A consumer's catch-up " +
                               "should never need a window larger than this; lower for tighter disk " +
                               "budgets, raise if catch-up windows can exceed the default. Must be >= 0 " +
                               "(0 keeps nothing); a negative value disables pruning entirely.",

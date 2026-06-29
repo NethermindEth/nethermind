@@ -13,11 +13,8 @@ using Nethermind.StateDiffsWriter.Data;
 namespace Nethermind.StateDiffsWriter.Storage;
 
 /// <summary>
-/// Thin wrapper over the two <see cref="BlockDiffsColumns"/> column families.
-/// All cross-CF mutations go through <see cref="WriteBlockDiff"/> so a single
-/// per-block <see cref="BlockDiffRecord"/> persist plus the per-address
-/// slot-count updates land as one atomic RocksDB write batch — RocksDB
-/// guarantees batch atomicity within a single DB even across column families.
+/// Thin wrapper over the two <see cref="BlockDiffsColumns"/> column families; cross-CF mutations go
+/// through <see cref="WriteBlockDiff"/> so each per-block persist lands as one atomic write batch.
 /// </summary>
 public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
 {
@@ -29,19 +26,13 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
     private readonly IDb _blockDiffs = db.GetColumnDb(BlockDiffsColumns.Default);
     private readonly IDb _slotCounts = db.GetColumnDb(BlockDiffsColumns.SlotCounts);
 
-    /// <summary>
-    /// Atomically persist the per-block record and the post-block slot-count
-    /// totals for every address that changed in this block. The write batch
-    /// covers both column families so a crash mid-call leaves the BlockDiffs
-    /// CF and the SlotCounts CF either both updated or both untouched.
-    /// </summary>
+    /// <summary>Atomically persist the per-block record and the changed addresses' post-block slot counts.</summary>
     /// <returns>Number of payload bytes written to the Default CF.</returns>
     public int WriteBlockDiff(BlockDiffRecord record)
     {
         Span<byte> blockKey = stackalloc byte[BlockKeyLength];
         BinaryPrimitives.WriteUInt64BigEndian(blockKey, (ulong)record.BlockNumber);
 
-        // Encode straight into the buffer handed to RocksDB; RlpWriter wraps it without copying.
         int length = BlockDiffRecordDecoder.Instance.GetLength(record);
         byte[] payload = new byte[length];
         RlpWriter writer = new(payload);
@@ -76,10 +67,7 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         return length;
     }
 
-    /// <summary>
-    /// Flush the Default CF memtable so the sidecar (RocksDB secondary) can read the newest
-    /// block via <c>TryCatchUpWithPrimary</c> — the secondary iterator can't see memtable rows.
-    /// </summary>
+    /// <summary>Flush the Default CF memtable so a secondary-mode reader can see the newest block.</summary>
     public void FlushDefault() => _blockDiffs.Flush();
 
     public BlockDiffRecord? ReadBlockDiff(long blockNumber)
@@ -92,25 +80,18 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         return BlockDiffRecordDecoder.Instance.Decode(ref ctx);
     }
 
-    /// <summary>
-    /// Read the running slot count for an address. Returns 0 when the address
-    /// has never had storage (or its count dropped to zero and was tombstoned).
-    /// </summary>
+    /// <summary>Running slot count for an address; 0 when never set or tombstoned.</summary>
     public ulong GetSlotCount(in ValueHash256 addressHash)
     {
         Span<byte> key = stackalloc byte[AddressKeyLength];
         addressHash.Bytes.CopyTo(key);
-        // Span Get avoids a per-lookup byte[]; CF values are invariantly 8 bytes, missing key → length 0.
         Span<byte> value = stackalloc byte[SlotCountValueLength];
         int length = _slotCounts.Get(key, value);
         if (length != SlotCountValueLength) return 0;
         return BinaryPrimitives.ReadUInt64BigEndian(value);
     }
 
-    /// <summary>
-    /// Direct slot-count override used by tests; production code should not call
-    /// this — the running map is maintained exclusively by <see cref="WriteBlockDiff"/>.
-    /// </summary>
+    /// <summary>Test-only direct slot-count override; production maintains the map via <see cref="WriteBlockDiff"/>.</summary>
     internal void SetSlotCountForTesting(in ValueHash256 addressHash, ulong count)
     {
         Span<byte> key = stackalloc byte[AddressKeyLength];
@@ -126,17 +107,8 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
     }
 
     /// <summary>
-    /// Best-effort delete of every <see cref="BlockDiffsColumns.Default"/> entry
-    /// whose key is strictly less than the supplied <paramref name="cutoffBlock"/>.
-    /// Used by <see cref="Service.DiffsPruner"/>; the slot-count CF is never pruned.
-    /// <para>
-    /// Backed by <see cref="ISortedKeyValueStore.GetViewBetween"/> when the
-    /// underlying column DB supports it (RocksDB and the snapshotable mem DB do)
-    /// so the scan terminates at the cutoff key instead of paging through every
-    /// surviving row. The legacy full-table scan path is kept as a fallback for
-    /// vanilla <see cref="MemDb"/>-backed tests, which do not implement the
-    /// sorted-view interface.
-    /// </para>
+    /// Delete every <see cref="BlockDiffsColumns.Default"/> entry with key strictly less than
+    /// <paramref name="cutoffBlock"/>. Uses a sorted-view seek when available, else a full-scan fallback.
     /// </summary>
     public int PruneOlderThan(long cutoffBlock)
     {
@@ -152,10 +124,7 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
 
     private int PruneOlderThanSeek(ISortedKeyValueStore sortedStore, ReadOnlySpan<byte> cutoffKey)
     {
-        // GetViewBetween treats lastKey as exclusive, which matches the "strictly
-        // less than cutoffBlock" contract above. lowerBound is empty so the
-        // iterator seeks from the first surviving key, and the view stops at the
-        // cutoff — no need to inspect a single row past the deletion window.
+        // GetViewBetween treats lastKey as exclusive, matching the "strictly less than cutoffBlock" contract.
         using ISortedView view = sortedStore.GetViewBetween([], cutoffKey);
 
         int removed = 0;

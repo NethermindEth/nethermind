@@ -16,10 +16,6 @@ public sealed partial class TrieDiffWalker
 
         if (oldKey is not null && newKey is not null && oldKey.AsSpan().SequenceEqual(newKey))
         {
-            // Prefix-matched extensions still exist on both sides; record both RLP
-            // contributions exactly as the legacy walker did. Mismatched prefixes
-            // hand off to DiffMismatchedNodes, which routes through CollectSubtree
-            // (and thus picks up byte tracking there).
             RecordNodeBytes(oldExt.FullRlp.Length, isStorage, added: false);
             RecordNodeBytes(newExt.FullRlp.Length, isStorage, added: true);
 
@@ -62,10 +58,8 @@ public sealed partial class TrieDiffWalker
         }
         else
         {
-            // Prefix mismatch means the trie restructured (e.g. extension split on insert).
-            // DiffMismatchedNodes matches shared leaves by full path instead of independently
-            // collecting both subtrees, which would emit spurious slot/code-hash changes for
-            // leaves that exist on both sides.
+            // Prefix mismatch means the trie restructured; match shared leaves by full path
+            // to avoid spurious add/remove for leaves present on both sides.
             DiffMismatchedNodes(oldExt, newExt, ref path, resolvers, isStorage);
         }
     }

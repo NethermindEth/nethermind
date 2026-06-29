@@ -20,13 +20,8 @@ using NUnit.Framework;
 namespace Nethermind.StateDiffsWriter.Test.Service;
 
 /// <summary>
-/// End-to-end persistence behaviour of <see cref="DiffsWriterService"/> driven
-/// through the public <see cref="DiffsWriterService.WriteRecord"/> seam:
-/// constructing 100 synthetic <see cref="BlockDiffRecord"/> instances, feeding
-/// them through the service, and verifying every record round-trips out of the
-/// underlying <see cref="MemColumnsDb{T}"/>. The Diff computation itself is
-/// covered by <see cref="DiffsWriterWalkerTests"/>; what we want to exercise
-/// here is the atomic CF write + slot-count carry forward + last-block tracking.
+/// Persistence behaviour of <see cref="DiffsWriterService"/> through the <see cref="DiffsWriterService.WriteRecord"/>
+/// seam; diff computation is covered by <see cref="DiffsWriterWalkerTests"/>.
 /// </summary>
 [TestFixture]
 public class DiffsWriterServiceTests
@@ -102,9 +97,7 @@ public class DiffsWriterServiceTests
     [Test]
     public void OnNewHeadBlock_HeadNotBuildingOnLastWritten_CountsReorg()
     {
-        // Parent always reports the block's own state root, so the service takes
-        // the no-op path (no trie scope needed) while still running reorg detection
-        // and the empty-record write that advances the last-written hash.
+        // Parent reports the block's own state root, so the service takes the no-op path but still runs reorg detection.
         BlockHeader parent = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
         _blockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(parent);
 
@@ -141,8 +134,7 @@ public class DiffsWriterServiceTests
     [Test]
     public void ResolveNewCodeSize_LiveHashButMissingCode_ReturnsZero()
     {
-        // The substitute returns null for GetCode by default — simulates code-DB
-        // lag / pruned code where the account reports a hash but the bytes are gone.
+        // GetCode returns null by default, simulating pruned/lagging code where the hash exists but bytes are gone.
         CodeHashChange gained = new(TestItem.KeccakA.ValueHash256, CodeHashChange.NoCode, TestItem.KeccakB.ValueHash256);
         Assert.That(_service.ResolveNewCodeSize(gained, blockNumber: 42), Is.Zero);
     }

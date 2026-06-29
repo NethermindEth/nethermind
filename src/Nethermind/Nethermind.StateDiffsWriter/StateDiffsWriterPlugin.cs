@@ -11,15 +11,13 @@ using Nethermind.StateDiffsWriter.Service;
 namespace Nethermind.StateDiffsWriter;
 
 /// <summary>
-/// v19 sidecar-feed plugin. Writes per-block <c>(CodeHashChange[], SlotCountChange[])</c>
-/// records to a dedicated <c>BlockDiffs</c> RocksDB column family that the external
-/// Go sidecar consumes via secondary-mode iteration. The plugin has no tracker, no
-/// metrics, no RPC and no bootstrap — every aggregation moves out of process.
+/// Writes per-block state-diff records to a dedicated <c>BlockDiffs</c> RocksDB column family read by
+/// an external consumer. No tracker, RPC or bootstrap; aggregation runs out of process.
 /// </summary>
 public class StateDiffsWriterPlugin(IStateDiffsWriterConfig config) : INethermindPlugin
 {
     public string Name => "StateDiffsWriter";
-    public string Description => "Per-block state-diff writer feeding the v19 external sidecar";
+    public string Description => "Per-block state-diff writer feeding an external consumer";
     public string Author => "Nethermind";
 
     public bool Enabled => config.Enabled;
@@ -28,10 +26,8 @@ public class StateDiffsWriterPlugin(IStateDiffsWriterConfig config) : INethermin
 
     public Task Init(INethermindApi nethermindApi)
     {
-        // Resolving the writer service eagerly forces the NewHeadBlock subscription
-        // to attach before the first head is produced. The DI container holds it as
-        // a singleton; container shutdown invokes IDisposable on both the writer and
-        // the pruner so we do not need an explicit teardown hook here.
+        // Resolve eagerly so the NewHeadBlock subscription attaches before the first head;
+        // container shutdown disposes both singletons, so no explicit teardown is needed.
         _ = nethermindApi.Context.Resolve<DiffsWriterService>();
         DiffsPruner pruner = nethermindApi.Context.Resolve<DiffsPruner>();
         pruner.Start();

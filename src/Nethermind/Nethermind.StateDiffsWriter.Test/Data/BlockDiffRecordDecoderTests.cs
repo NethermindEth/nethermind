@@ -194,13 +194,7 @@ public class BlockDiffRecordDecoderTests
         Assert.That(roundTripped.AccountsAddedDelta, Is.EqualTo(42L));
     }
 
-    /// <summary>
-    /// Pre-extension payloads (encoded by the v18 plugin before the trailing
-    /// delta trio existed) must continue to parse against the new decoder. We
-    /// synthesise an old-shape payload by writing the legacy four-field
-    /// sequence by hand, then assert the decoder treats the missing trailing
-    /// fields as zero.
-    /// </summary>
+    /// <summary>Pre-extension (legacy four-field) payloads must still parse, with missing trailing fields read as zero.</summary>
     [Test]
     public void OldEncoder_NewDecoder_TreatsMissingTrailingFieldsAsZero()
     {
@@ -221,12 +215,7 @@ public class BlockDiffRecordDecoderTests
         Assert.That(decoded.AccountsAddedDelta, Is.Zero);
     }
 
-    /// <summary>
-    /// New-encoder payloads must remain consumable by code that only knows the
-    /// legacy four-field schema. We emulate the legacy decoder by reading exactly
-    /// the first four positional fields out of the outer sequence and asserting
-    /// the prefix matches the values we encoded.
-    /// </summary>
+    /// <summary>New-encoder payloads must stay readable by a legacy four-field decoder reading only the prefix.</summary>
     [Test]
     public void NewEncoder_LegacyDecoder_IgnoresTrailingFields()
     {
@@ -251,13 +240,7 @@ public class BlockDiffRecordDecoderTests
         Assert.That(slotChanges, Is.EqualTo(original.SlotCountChanges));
     }
 
-    // ===== Helpers exercising the back-compat boundary =====
-
-    /// <summary>
-    /// Hand-rolled encoder that emits the pre-extension four-field layout.
-    /// Mirrors <see cref="BlockDiffRecordDecoder"/> position-for-position so the
-    /// resulting bytes are byte-identical to what the v18 plugin would emit.
-    /// </summary>
+    /// <summary>Hand-rolled encoder emitting the pre-extension four-field layout, byte-identical to the v18 plugin.</summary>
     private static byte[] EncodeLegacySchema(
         long blockNumber,
         Hash256 stateRoot,
@@ -316,12 +299,7 @@ public class BlockDiffRecordDecoderTests
         return payload;
     }
 
-    /// <summary>
-    /// Legacy-shape decoder that only reads the first four positional fields out
-    /// of the outer sequence. Stops at the end of the slot-count list, exactly
-    /// as the pre-extension code would have done — guarantees we can validate
-    /// that the new encoder keeps the legacy prefix bit-identical.
-    /// </summary>
+    /// <summary>Legacy-shape decoder reading only the first four positional fields, as the pre-extension code did.</summary>
     private static (long, Hash256, List<CodeHashEntry>, List<SlotCountEntry>) DecodeLegacyPrefix(byte[] bytes)
     {
         RlpReader ctx = new(bytes);

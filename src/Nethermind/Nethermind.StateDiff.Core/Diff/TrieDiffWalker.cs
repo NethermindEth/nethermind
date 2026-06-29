@@ -10,18 +10,8 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.StateDiff.Core.Diff;
 
 /// <summary>
-/// Walks two state roots in parallel and emits the two payloads the v19 sidecar
-/// needs to maintain global state-composition trackers:
-/// <list type="bullet">
-///   <item><see cref="SlotCountChange"/>: per-contract storage-slot net delta.</item>
-///   <item><see cref="CodeHashChange"/>: per-account code-hash transition.</item>
-/// </list>
-/// This is a slimmed copy of the original walker from
-/// <c>Nethermind.StateComposition.Diff.TrieDiffWalker</c>: trie-node counters,
-/// per-depth distribution and byte totals are intentionally dropped because the
-/// writer plugin does not consume them. The traversal logic remains bit-identical
-/// to the source so the sidecar's output stays equal to the legacy plugin during
-/// the Phase 3 parallel-validation soak.
+/// Walks two state roots in parallel and emits per-contract slot-count and per-account
+/// code-hash changes, plus net byte / leaf deltas.
 /// </summary>
 public sealed partial class TrieDiffWalker
 {
@@ -30,14 +20,11 @@ public sealed partial class TrieDiffWalker
     private readonly List<SlotCountChange> _slotCountChanges = [];
     private readonly List<CodeHashChange> _codeHashChanges = [];
 
-    // Byte-size / leaf-count deltas accumulated across the walk. These mirror the
-    // legacy StateComposition walker's added/removed pairs but expose only the net
-    // figure since the sidecar lifts the net deltas straight into Prometheus.
     private long _accountTrieBytesDelta;
     private long _storageTrieBytesDelta;
     private long _accountsAddedDelta;
 
-    // FlatDb scopes nodes per state, so old and new sides each need their own resolver;
+    // FlatDb scopes nodes per state, so each side needs its own resolver;
     // a single resolver on the new head makes the prev root's disjoint subtrees Unknown.
     private readonly record struct ResolverPair(ITrieNodeResolver Old, ITrieNodeResolver New)
     {
@@ -46,9 +33,6 @@ public sealed partial class TrieDiffWalker
             new(Old.GetStorageTrieNodeResolver(address), New.GetStorageTrieNodeResolver(address));
     }
 
-    // Active contract context for per-account slot tracking. Set by
-    // BeginContractStorage / cleared by EndContractStorage around every storage-subtree
-    // walk; emits exactly one SlotCountChange entry per contract whose slot total changed.
     private ValueHash256 _currentContract;
     private long _currentContractSlotDelta;
     private bool _inContractStorage;
@@ -142,9 +126,8 @@ public sealed partial class TrieDiffWalker
     {
         if (oldNode.NodeType != newNode.NodeType)
         {
-            // Type mismatch (e.g. leaf -> extension+branch on insert): enumerate leaves
-            // from both sides, match by full path, then diff semantically — otherwise we
-            // would double-count slots/codehashes for leaves that exist on both sides.
+            // Match leaves by full path across both sides; otherwise leaves present on
+            // both would be double-counted as add+remove.
             DiffMismatchedNodes(oldNode, newNode, ref path, resolvers, isStorage);
             return;
         }

@@ -13,18 +13,13 @@ public sealed partial class TrieDiffWalker
 {
     private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, ResolverPair resolvers, bool isStorage)
     {
-        // Both leaves exist at the same path — record their RLP contributions on
-        // each side. Leaf RLP includes the value payload, so a storage-slot value
-        // change still produces a non-zero net delta even though the slot count
-        // is unaffected.
+        // Leaf RLP carries the value, so a value change nets a non-zero byte delta even when slot count is unchanged.
         RecordNodeBytes(oldLeaf.FullRlp.Length, isStorage, added: false);
         RecordNodeBytes(newLeaf.FullRlp.Length, isStorage, added: true);
 
         if (isStorage)
         {
-            // Storage leaves at the same path on both sides describe the same slot —
-            // a value change does not affect the slot count, so there is nothing to
-            // emit. The walker only records slot count deltas, not slot-value diffs.
+            // Same storage slot on both sides; the walker records slot-count deltas, not slot-value diffs.
             return;
         }
 
@@ -42,9 +37,6 @@ public sealed partial class TrieDiffWalker
         Hash256? addressHash = GetAddressHash(oldLeaf, ref path);
         if (addressHash is null) return;
 
-        // Code-hash transition payload — captured once per account leaf and consumed by
-        // the sidecar tracker to refcount CodeBytesTotal. Whole-contract create/delete
-        // leaves go through CollectLeaf instead and emit their own transitions there.
         RecordCodeHashChange(addressHash.ValueHash256, oldAccount.CodeHash, newAccount.CodeHash);
 
         if (oldAccount.StorageRoot == newAccount.StorageRoot) return;
@@ -75,8 +67,7 @@ public sealed partial class TrieDiffWalker
 
     private static Hash256? GetAddressHash(TrieNode leaf, ref TreePath path)
     {
-        // Null Key means a corrupted leaf — hashing the partial path would drift trackers
-        // under a wrong address.
+        // Null Key = corrupted leaf; hashing the partial path would attribute to the wrong address.
         if (leaf.Key is null) return null;
 
         int prevLen = path.Length;

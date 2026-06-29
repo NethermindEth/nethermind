@@ -11,11 +11,8 @@ using Nethermind.StateDiffsWriter.Storage;
 namespace Nethermind.StateDiffsWriter.Service;
 
 /// <summary>
-/// Background pruner: every <see cref="IStateDiffsWriterConfig.PruneIntervalSeconds"/>
-/// seconds, delete <see cref="BlockDiffsColumns.Default"/> rows whose key is older
-/// than <c>head - KeepLastNBlocks</c>. The slot-counts CF is intentionally never
-/// pruned: it represents the current world-state slot map and must outlive any
-/// per-block window.
+/// Background pruner of <see cref="BlockDiffsColumns.Default"/> rows older than
+/// <c>head - KeepLastNBlocks</c>. The slot-counts CF is never pruned; it is the live world-state slot map.
 /// </summary>
 public sealed class DiffsPruner(
     IBlockTree blockTree,
@@ -44,7 +41,7 @@ public sealed class DiffsPruner(
         _loop = Task.Run(() => RunLoopAsync(_cts.Token));
     }
 
-    // Non-blocking: cancel and let the loop exit on its next await. Prefer DisposeAsync to join it.
+    // Non-blocking; use DisposeAsync to join the loop.
     public void Dispose()
     {
         try { _cts.Cancel(); } catch (ObjectDisposedException) { }

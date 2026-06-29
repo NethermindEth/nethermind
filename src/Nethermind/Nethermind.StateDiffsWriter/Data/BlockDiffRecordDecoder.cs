@@ -8,11 +8,7 @@ using Nethermind.StateDiff.Core.Data;
 
 namespace Nethermind.StateDiffsWriter.Data;
 
-/// <summary>
-/// RLP encoder/decoder for <see cref="BlockDiffRecord"/>. See the record's XML
-/// docs for the canonical wire format; positional layout MUST stay in lockstep
-/// with the v19 sidecar's Go decoder.
-/// </summary>
+/// <summary>RLP encoder/decoder for <see cref="BlockDiffRecord"/>; see the record for the wire format.</summary>
 public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
 {
     public static BlockDiffRecordDecoder Instance { get; } = new();
@@ -42,18 +38,13 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         {
             int entryContent = GetSlotCountEntryContentLength(entry);
             stream.StartSequence(entryContent);
-            // Spec wire format pins HashedAddress at 32 raw bytes — encode as the
-            // non-nullable Hash256 path to avoid the empty-string short-circuit
-            // that the no-code sentinel uses on code-hash fields.
+            // HashedAddress is pinned at 32 raw bytes; no empty-string short-circuit here unlike code-hash fields.
             stream.Encode(entry.AddressHash);
             stream.Encode(entry.OldCount);
             stream.Encode(entry.NewCount);
         }
 
-        // Trailing additive fields. Always emitted, even when zero, so the on-wire
-        // sequence length matches GetContentLength below — the sidecar (and the
-        // back-compat decoder path) treats missing trailing items as zero, so an
-        // all-zero suffix is safe to keep verbatim.
+        // Trailing additive fields, always emitted so the on-wire length matches GetContentLength.
         stream.Encode(item.AccountTrieBytesDelta);
         stream.Encode(item.StorageTrieBytesDelta);
         stream.Encode(item.AccountsAddedDelta);
@@ -96,10 +87,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
             slotChanges.Add(new SlotCountEntry(addressHash, oldCount, newCount));
         }
 
-        // Optional trailing fields: pre-extension payloads stop here, so any
-        // missing slot is treated as zero. Reading positionally against the
-        // outer sequence end keeps old-encoder → new-decoder round trips
-        // tolerant without a version byte.
+        // Optional trailing fields: pre-extension payloads stop early, so a missing slot reads as zero.
         long accountTrieBytesDelta = ctx.Position < outerEnd ? ctx.DecodeLong() : 0;
         long storageTrieBytesDelta = ctx.Position < outerEnd ? ctx.DecodeLong() : 0;
         long accountsAddedDelta = ctx.Position < outerEnd ? ctx.DecodeLong() : 0;
@@ -114,13 +102,6 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
             accountsAddedDelta);
     }
 
-    /// <summary>
-    /// Canonical sentinel for "no code" — RLP empty byte string (<c>0x80</c>).
-    /// The encoder emits this for <see cref="CodeHashChange.NoCode"/>; the decoder
-    /// turns it back into the same sentinel. Treating it as a separate code path
-    /// from the 32-byte case keeps the wire format unambiguous: every code-hash
-    /// field is either a 32-byte payload or a single <c>0x80</c> byte.
-    /// </summary>
     private static void EncodeHashOrEmpty<TWriter>(ref TWriter stream, in ValueHash256 hash)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {

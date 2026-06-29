@@ -62,7 +62,7 @@ public class DiffsPrunerTests
         };
         DiffsPruner pruner = new(_blockTree, _store, _writer, config, LimboLogs.Instance);
 
-        // cutoff = 50 - 10 = 40, so anything strictly below 40 is removed.
+        // cutoff = 50 - 10 = 40
         int removed = pruner.PruneOnce();
 
         Assert.That(removed, Is.EqualTo(39));
@@ -74,8 +74,7 @@ public class DiffsPrunerTests
     [Test]
     public void PruneOnce_HonoursLastWrittenWhenHeadLags()
     {
-        // BlockTree.Head can briefly lag the writer's LastWrittenBlock during startup;
-        // the pruner anchors to whichever is higher to keep the window stable.
+        // BlockTree.Head can lag LastWrittenBlock at startup; the pruner anchors to whichever is higher.
         Block staleHead = Build.A.Block.WithNumber(20).TestObject;
         _blockTree.Head.Returns(staleHead);
         IStateDiffsWriterConfig config = new StateDiffsWriterConfig
@@ -122,8 +121,7 @@ public class DiffsPrunerTests
         };
         DiffsPruner pruner = new(_blockTree, _store, _writer, config, LimboLogs.Instance);
 
-        // A negative window must NOT wrap into a huge positive cutoff that deletes
-        // every row (including the head); it disables pruning instead.
+        // A negative window must disable pruning, not wrap into a huge cutoff that deletes every row.
         Assert.That(pruner.PruneOnce(), Is.Zero);
         Assert.That(_store.ReadBlockDiff(1), Is.Not.Null);
         Assert.That(_store.ReadBlockDiff(50), Is.Not.Null);
@@ -142,8 +140,7 @@ public class DiffsPrunerTests
         pruner.Start();
 
         await pruner.DisposeAsync();
-        // A trailing synchronous Dispose (e.g. from a different teardown path) must
-        // be a harmless no-op, not a double-dispose throw.
+        // A trailing synchronous Dispose must be a harmless no-op, not a double-dispose throw.
         Assert.DoesNotThrow(pruner.Dispose);
     }
 }
