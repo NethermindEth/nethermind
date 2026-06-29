@@ -38,9 +38,9 @@ namespace Nethermind.Serialization.Rlp
             Hash256? receiptsRoot = decoderContext.DecodeKeccak();
             Bloom? bloom = decoderContext.DecodeBloom();
             UInt256 difficulty = decoderContext.DecodeUInt256();
-            long number = decoderContext.DecodeLong();
-            long gasLimit = decoderContext.DecodeLong();
-            long gasUsed = decoderContext.DecodeLong();
+            ulong number = decoderContext.DecodeULong();
+            ulong gasLimit = decoderContext.DecodeULong();
+            ulong gasUsed = decoderContext.DecodeULong();
             ulong timestamp = decoderContext.DecodeULong();
             byte[]? extraData = decoderContext.DecodeByteArray();
 
@@ -69,7 +69,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                blockHeader.AuRaStep = (long)decoderContext.DecodeUInt256();
+                blockHeader.AuRaStep = decoderContext.DecodeULong();
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
             }
 

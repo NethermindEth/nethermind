@@ -151,7 +151,7 @@ public class NodeSourceTests
             configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
         return new Node(privateKey.PublicKey, host, udpPort)
         {
-            Enr = enr.EnrString
+            Enr = enr
         };
     }
 

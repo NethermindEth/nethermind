@@ -95,7 +95,7 @@ public static class BlockErrorMessages
     public static string InvalidTxInBlock(int i) =>
         $"InvalidTxInBlock: Tx at index {i} in body.";
 
-    public static string HeaderGasUsedMismatch(long expected, long actual) =>
+    public static string HeaderGasUsedMismatch(ulong expected, ulong actual) =>
         $"HeaderGasUsedMismatch: Gas used in header does not match calculated. Expected {expected}, got {actual}";
 
     public static string BlobGasUsedAboveBlockLimit(ulong blockBlobGasLimit, int blobsCount, ulong blobGasUsed) =>
@@ -165,7 +165,7 @@ public static class BlockErrorMessages
     public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
         $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
 
-    public static string BlockAccessListGasLimitExceeded(long balItems, long maxBalItems) =>
+    public static string BlockAccessListGasLimitExceeded(ulong balItems, ulong maxBalItems) =>
         $"BlockAccessListGasLimitExceeded: BAL has {balItems} items, exceeds limit of {maxBalItems} (block_gas_limit / {Eip7928Constants.ItemCost}).";
 
     public static string BlockLevelAccessListIndexOutOfRange(uint index, uint maxAllowed) =>

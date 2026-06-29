@@ -18,20 +18,20 @@ public class XdcGasLimitCalculatorTests
     public void GetGasLimit_WhenDynamicGasLimitNotEnabled_ReturnsTargetBlockGasLimit()
     {
         // Arrange
-        const long targetGasLimit = 10_000_000L;
+        const ulong targetGasLimit = 10_000_000UL;
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
-        BlockHeader parentHeader = CreateParentHeader(1000);
+        BlockHeader parentHeader = CreateParentHeader(1000UL);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: false);
 
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
         // Act
-        long result = calculator.GetGasLimit(parentHeader);
+        ulong result = calculator.GetGasLimit(parentHeader);
 
         // Assert
         Assert.That(result, Is.EqualTo(targetGasLimit));
@@ -43,16 +43,16 @@ public class XdcGasLimitCalculatorTests
         // Arrange
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
-        blocksConfig.TargetBlockGasLimit.Returns((long?)null);
+        blocksConfig.TargetBlockGasLimit.Returns((ulong?)null);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
-        BlockHeader parentHeader = CreateParentHeader(1000);
+        BlockHeader parentHeader = CreateParentHeader(1000UL);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: false);
 
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
         // Act
-        long result = calculator.GetGasLimit(parentHeader);
+        ulong result = calculator.GetGasLimit(parentHeader);
 
         // Assert
         Assert.That(result, Is.EqualTo(XdcConstants.DefaultTargetGasLimit));
@@ -62,21 +62,21 @@ public class XdcGasLimitCalculatorTests
     public void GetGasLimit_WhenDynamicGasLimitEnabled_UsesTargetAdjustedCalculator()
     {
         // Arrange
-        const long parentGasLimit = 84_000_000L;
-        const long targetGasLimit = 100_000_000L;
+        const ulong parentGasLimit = 84_000_000UL;
+        const ulong targetGasLimit = 100_000_000UL;
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
-        BlockHeader parentHeader = CreateParentHeader(1000, parentGasLimit);
+        BlockHeader parentHeader = CreateParentHeader(1000UL, parentGasLimit);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: true);
 
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
         // Act
-        long result = calculator.GetGasLimit(parentHeader);
+        ulong result = calculator.GetGasLimit(parentHeader);
 
         // Assert
         // The TargetAdjustedGasLimitCalculator will adjust the gas limit toward the target
@@ -90,21 +90,21 @@ public class XdcGasLimitCalculatorTests
     public void GetGasLimit_WhenDynamicGasLimitEnabled_GasLimitAdjustsTowardTarget()
     {
         // Arrange
-        const long parentGasLimit = 50_000_000L;
-        const long targetGasLimit = 84_000_000L;
+        const ulong parentGasLimit = 50_000_000UL;
+        const ulong targetGasLimit = 84_000_000UL;
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
-        BlockHeader parentHeader = CreateParentHeader(1000, parentGasLimit);
+        BlockHeader parentHeader = CreateParentHeader(1000UL, parentGasLimit);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: true);
 
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
         // Act
-        long result = calculator.GetGasLimit(parentHeader);
+        ulong result = calculator.GetGasLimit(parentHeader);
 
         // Assert
         // Should increase toward target
@@ -117,21 +117,21 @@ public class XdcGasLimitCalculatorTests
     public void GetGasLimit_AtDynamicGasLimitBlockBoundary_TransitionsToTargetAdjusted(bool dynamicBlockActive)
     {
         // Arrange
-        const long targetGasLimit = 100_000_000L;
+        const ulong targetGasLimit = 100_000_000UL;
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
-        BlockHeader parentHeader = CreateParentHeader(1);
+        BlockHeader parentHeader = CreateParentHeader(1UL);
         IXdcReleaseSpec spec = CreateXdcSpec(isDynamicGasLimitBlock: dynamicBlockActive);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
-        long result = calculator.GetGasLimit(parentHeader);
+        ulong result = calculator.GetGasLimit(parentHeader);
 
         if (dynamicBlockActive)
         {
-            Assert.That(result, Is.InRange(parentHeader.GasLimit - 100000, parentHeader.GasLimit + 100000));
+            Assert.That(result, Is.InRange(parentHeader.GasLimit - 100000UL, parentHeader.GasLimit + 100000UL));
         }
         else
         {
@@ -143,51 +143,51 @@ public class XdcGasLimitCalculatorTests
     public void GetGasLimit_WhenParentGasLimitEqualsTarget_DynamicModeReturnsNearTarget()
     {
         // Arrange
-        const long targetGasLimit = 84_000_000L;
+        const ulong targetGasLimit = 84_000_000UL;
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
-        BlockHeader parentHeader = CreateParentHeader(1000, targetGasLimit);
+        BlockHeader parentHeader = CreateParentHeader(1000UL, targetGasLimit);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: true);
 
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
         // Act
-        long result = calculator.GetGasLimit(parentHeader);
+        ulong result = calculator.GetGasLimit(parentHeader);
 
         // Assert
         // When at target, should return close to target
-        Assert.That(result, Is.GreaterThanOrEqualTo(targetGasLimit - 100_000));
-        Assert.That(result, Is.LessThanOrEqualTo(targetGasLimit + 100_000));
+        Assert.That(result, Is.GreaterThanOrEqualTo(targetGasLimit - 100_000UL));
+        Assert.That(result, Is.LessThanOrEqualTo(targetGasLimit + 100_000UL));
     }
 
     [Test]
     public void GetGasLimit_WithGenesisBlock_HandlesCorrectly()
     {
         // Arrange
-        const long targetGasLimit = 84_000_000L;
+        const ulong targetGasLimit = 84_000_000UL;
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
-        BlockHeader genesisHeader = CreateParentHeader(0, 5_000_000L);
+        BlockHeader genesisHeader = CreateParentHeader(0UL, 5_000_000UL);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: false);
 
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
         // Act
-        long result = calculator.GetGasLimit(genesisHeader);
+        ulong result = calculator.GetGasLimit(genesisHeader);
 
         // Assert
         Assert.That(result, Is.EqualTo(targetGasLimit));
     }
 
-    private static BlockHeader CreateParentHeader(long number, long gasLimit = 84_000_000L) =>
+    private static BlockHeader CreateParentHeader(ulong number, ulong gasLimit = 84_000_000UL) =>
         Build.A.BlockHeader
             .WithNumber(number)
             .WithGasLimit(gasLimit)
@@ -198,9 +198,9 @@ public class XdcGasLimitCalculatorTests
     {
         IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
         spec.IsDynamicGasLimitBlock.Returns(isDynamicGasLimitBlock);
-        spec.Eip1559TransitionBlock.Returns(long.MaxValue); // Not relevant for these tests
+        spec.Eip1559TransitionBlock.Returns(ulong.MaxValue); // Not relevant for these tests
         spec.IsEip1559Enabled.Returns(false);
-        spec.GasLimitBoundDivisor.Returns(1024);
+        spec.GasLimitBoundDivisor.Returns(1024UL);
         return spec;
     }
 }

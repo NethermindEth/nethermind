@@ -3,10 +3,11 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
+using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -15,7 +16,7 @@ namespace Nethermind.Xdc.TxPool;
 
 internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IBlockTree blockTree, ISpecProvider specProvider) : IIncomingTxFilter
 {
-    private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
+    private AcceptTxResult ValidateSignTransaction(Transaction tx, ulong headerNumber, IXdcReleaseSpec xdcSpec)
     {
         if (tx.Data.Length < XdcConstants.SignTransactionDataLength)
         {
@@ -23,7 +24,11 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
         }
 
         UInt256 blkNumber = new(tx.Data.Span.Slice(4, 32), true);
-        if (blkNumber > headerNumber || blkNumber <= (headerNumber - (xdcSpec.EpochLength * 2)))
+
+        ulong epochWindow = xdcSpec.EpochLength * 2;
+        UInt256 lowerBound = headerNumber.SaturatingSub(epochWindow);
+
+        if (blkNumber > headerNumber || blkNumber <= lowerBound)
         {
             // Invalid block number in special transaction data
             return AcceptTxResult.Invalid.WithMessage("Sign transaction block number is out of range");
@@ -38,7 +43,7 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
             return AcceptTxResult.Syncing;
 
         XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
-        long headerNumber = header.Number + 1;
+        ulong headerNumber = header.Number + 1;
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(headerNumber);
 
         if (!tx.IsSpecialTransaction(spec))

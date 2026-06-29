@@ -7,6 +7,6 @@ namespace Nethermind.Consensus
 {
     public interface IGasLimitCalculator
     {
-        long GetGasLimit(BlockHeader parentHeader);
+        ulong GetGasLimit(BlockHeader parentHeader);
     }
 }

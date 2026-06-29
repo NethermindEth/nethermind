@@ -58,8 +58,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
 
-    private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
-
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
     public string Author => "Nethermind";
@@ -192,21 +190,10 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         if (MergeEnabled)
         {
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-            if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
-
-            _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
-            _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-            InitializeMergeFinalization();
         }
 
         return Task.CompletedTask;
     }
-
-    /// <summary>
-    /// Hook for derived plugins (e.g. AuRaMergePlugin) to set up merge-transition lifecycle
-    /// (e.g. disposing AuRa's finalization manager at terminal block). Default: no-op.
-    /// </summary>
-    protected virtual void InitializeMergeFinalization() { }
 
     public bool MustInitialize { get => true; }
 
@@ -233,6 +220,7 @@ public class MergePluginModule : Module
                     new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
             .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
+            .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
 
             .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
 

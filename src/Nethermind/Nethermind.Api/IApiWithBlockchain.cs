@@ -36,7 +36,6 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         ITxValidator? HeadTxValidator { get; }
 
-        IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
         ICensorshipDetector CensorshipDetector { get; set; }
     }

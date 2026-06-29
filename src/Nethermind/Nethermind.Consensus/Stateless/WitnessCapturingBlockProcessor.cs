@@ -59,7 +59,7 @@ public sealed class WitnessCapturingBlockProcessor(
         if (!shouldCapture)
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
-        long parentBlockNumber = suggestedBlock.Number - 1;
+        ulong parentBlockNumber = suggestedBlock.Number - 1;
         BlockHeader parent = headerFinder.Get(parentHash, parentBlockNumber)
             ?? throw new ArgumentException($"Unable to find parent for block {parentBlockNumber} with hash {parentHash}");
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Logging;
@@ -266,7 +267,16 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                if (_logger.IsWarn) _logger.Warn($"Find neighbour op failed: {e}");
+                // Transport failures (e.g. unreachable host) are expected during discovery, so log them quietly.
+                bool shouldWarn = e is not SocketException && e.InnerException is not SocketException;
+                if (shouldWarn)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Find neighbour op failed: {e}");
+                }
+                else if (_logger.IsDebug)
+                {
+                    _logger.Debug($"Find neighbour op failed: {e.Message}");
+                }
                 return null;
             }
         }

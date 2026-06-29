@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
             else
             {
-                message.StartBlockNumber = (long)new UInt256(startingBytes, true);
+                message.StartBlockNumber = (ulong)new UInt256(startingBytes, true);
             }
 
             message.MaxHeaders = ctx.DecodeUInt();

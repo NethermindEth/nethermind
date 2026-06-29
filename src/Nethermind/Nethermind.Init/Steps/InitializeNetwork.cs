@@ -30,7 +30,7 @@ public static class NettyMemoryEstimator
         // For some reason needs to be half page size to get page size
         Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
 
-    public static long Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1L << arenaOrder) * PageSize;
+    public static ulong Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1UL << arenaOrder) * PageSize;
 }
 
 [RunnerStepDependencies(

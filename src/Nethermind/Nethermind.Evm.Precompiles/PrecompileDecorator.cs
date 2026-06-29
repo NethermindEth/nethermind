@@ -20,9 +20,9 @@ public abstract class PrecompileDecorator(IPrecompile inner) : IPrecompile
 
     public virtual ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) => Inner.NormalizeInput(inputData);
 
-    public virtual long BaseGasCost(IReleaseSpec releaseSpec) => Inner.BaseGasCost(releaseSpec);
+    public virtual ulong BaseGasCost(IReleaseSpec releaseSpec) => Inner.BaseGasCost(releaseSpec);
 
-    public virtual long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => Inner.DataGasCost(inputData, releaseSpec);
+    public virtual ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => Inner.DataGasCost(inputData, releaseSpec);
 
     public virtual Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => Inner.Run(inputData, releaseSpec);
 }

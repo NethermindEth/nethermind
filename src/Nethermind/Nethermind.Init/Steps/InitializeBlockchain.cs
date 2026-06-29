@@ -9,11 +9,9 @@ using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.TxPool;
@@ -57,7 +55,6 @@ namespace Nethermind.Init.Steps
             TxSealer nonceReservingTxSealer =
                 new(txSigner, getApi.Timestamper);
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, _api.NonceManager!, getApi.EthereumEcdsa!);
-            setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
             IBranchProcessor mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
 
@@ -78,9 +75,6 @@ namespace Nethermind.Init.Steps
 
             return Task.CompletedTask;
         }
-
-        protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
-            new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
         protected virtual ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
         {

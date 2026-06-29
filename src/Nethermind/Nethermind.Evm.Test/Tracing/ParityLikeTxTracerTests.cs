@@ -45,7 +45,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             Assert.That(trace.BlockNumber, Is.EqualTo(block.Number), "number");
             Assert.That(trace.TransactionPosition, Is.EqualTo(0), "tx index");
             Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
-            Assert.That(trace.Action.Gas, Is.EqualTo((long)tx.GasLimit - 21000), "gas");
+            Assert.That(trace.Action.Gas, Is.EqualTo(tx.GasLimit - 21000), "gas");
             Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
             Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(tx.Data.AsArray()), "input");
             Assert.That(trace.Action.TraceAddress.ToArray(), Is.EqualTo(Array.Empty<int>()), "trace address");

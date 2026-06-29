@@ -25,10 +25,10 @@ namespace Nethermind.Consensus.Stateless;
 public sealed class WitnessHeaderRecorder
 {
     private static readonly HeaderDecoder _decoder = new();
-    private long _lowestRequestedHeader = long.MaxValue;
+    private ulong _lowestRequestedHeader = ulong.MaxValue;
 
     /// <summary>Resets the low-water mark so the recorder can be reused across pooled env rents.</summary>
-    public void Reset() => _lowestRequestedHeader = long.MaxValue;
+    public void Reset() => _lowestRequestedHeader = ulong.MaxValue;
 
     public void OnHeaderRead(BlockHeader header)
     {
@@ -42,16 +42,14 @@ public sealed class WitnessHeaderRecorder
 
         // BLOCKHASH can only reach below the executed block, so a recorded header above the parent
         // means the bookkeeping is broken — fail loudly instead of computing a non-positive count.
-        if (_lowestRequestedHeader < long.MaxValue && _lowestRequestedHeader > parentHeader.Number)
+        if (_lowestRequestedHeader < ulong.MaxValue && _lowestRequestedHeader > parentHeader.Number)
         {
             throw new InvalidOperationException(
                 $"Recorded header {_lowestRequestedHeader} is above the executed-against parent {parentHeader.Number}");
         }
 
-        // Headers in ascending block-number order — any BLOCKHASH-touched ancestor first, block being
-        // recorded last — so the chain is contiguous and replayable. _lowestRequestedHeader stays at
-        // long.MaxValue unless BLOCKHASH reached further back during processing.
-        int count = _lowestRequestedHeader < long.MaxValue
+        // Headers in ascending block-number order — any BLOCKHASH-touched ancestor first, recorded block last.
+        int count = _lowestRequestedHeader < ulong.MaxValue
             ? (int)(parentHeader.Number - _lowestRequestedHeader + 1)
             : 1;
         int index = count - 1;
@@ -60,15 +58,13 @@ public sealed class WitnessHeaderRecorder
         {
             headers[index--] = _decoder.Encode(parentHeader).Bytes;
 
-            if (index >= 0)
+            for (ulong i = parentHeader.Number - 1; index >= 0; i--)
             {
-                for (long i = parentHeader.Number - 1; i >= _lowestRequestedHeader; i--)
-                {
-                    currentHash = parentHeader.ParentHash!;
-                    parentHeader = finder.Get(currentHash, i)
-                        ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
-                    headers[index--] = _decoder.Encode(parentHeader).Bytes;
-                }
+                currentHash = parentHeader.ParentHash!;
+                parentHeader = finder.Get(currentHash, i)
+                    ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
+                headers[index--] = _decoder.Encode(parentHeader).Bytes;
+                if (i == 0) break;
             }
 
             return headers;

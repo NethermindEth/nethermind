@@ -80,10 +80,10 @@ internal class EraReaderTests
         Assert.That(() => sut.ReadAccumulator(), Throws.Nothing);
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public async Task GetBlockByNumber_DifferentNumber_ReturnsBlockWithCorrectNumber(int number)
+    [TestCase(0UL)]
+    [TestCase(1UL)]
+    [TestCase(2UL)]
+    public async Task GetBlockByNumber_DifferentNumber_ReturnsBlockWithCorrectNumber(ulong number)
     {
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
 

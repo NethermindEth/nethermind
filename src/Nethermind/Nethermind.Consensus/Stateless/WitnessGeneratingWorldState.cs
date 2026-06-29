@@ -168,7 +168,7 @@ public class WitnessGeneratingWorldState(
         return base.TryGetAccount(address, out account);
     }
 
-    public override UInt256 GetNonce(Address address)
+    public override ulong GetNonce(Address address)
     {
         RecordEmptySlots(address);
         return base.GetNonce(address);
@@ -259,13 +259,13 @@ public class WitnessGeneratingWorldState(
         base.DeleteAccount(address);
     }
 
-    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordEmptySlots(address);
         base.CreateAccount(address, in balance, in nonce);
     }
 
-    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordEmptySlots(address);
         base.CreateAccountIfNotExists(address, in balance, in nonce);
@@ -297,19 +297,19 @@ public class WitnessGeneratingWorldState(
         base.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
         RecordEmptySlots(address);
         base.IncrementNonce(address, delta, out oldNonce);
     }
 
-    public override void DecrementNonce(Address address, UInt256 delta)
+    public override void DecrementNonce(Address address, ulong delta)
     {
         RecordEmptySlots(address);
         base.DecrementNonce(address, delta);
     }
 
-    public override void SetNonce(Address address, in UInt256 nonce)
+    public override void SetNonce(Address address, in ulong nonce)
     {
         RecordEmptySlots(address);
         base.SetNonce(address, in nonce);

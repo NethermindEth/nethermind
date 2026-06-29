@@ -8,7 +8,6 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -47,12 +46,8 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig, IModule? mergeModule) :
             .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
             .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
 
-            .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
-
             // Block production related.
-            .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddScoped<PostMergeBlockProducerFactory>()
-            .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
 
             // Engine rpc
             .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()

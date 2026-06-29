@@ -383,7 +383,7 @@ public partial class EngineModuleTests
             ]);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.LogsBloom, bloom);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.Transactions, [[1]]);
-            yield return GetNewBlockRequestBadDataTestCase(static r => r.GasUsed, 1);
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.GasUsed, 1UL);
         }
     }
 
@@ -478,7 +478,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload payload = await BuildAndGetPayloadResult(chain, rpc);
-        long blockNumber = payload.BlockNumber;
+        ulong blockNumber = payload.BlockNumber;
 
         // Detach from any known parent so `NewPayloadHandler` enters the orphaned-block validation
         // branch, then break a header-level invariant (`GasUsed > GasLimit`) so
@@ -522,7 +522,7 @@ public partial class EngineModuleTests
         {
             childPayload.BlockHash = childHash;
         }
-        long childNumber = childPayload.BlockNumber;
+        ulong childNumber = childPayload.BlockNumber;
 
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(childPayload);
 

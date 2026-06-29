@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Stateless;
 /// </remarks>
 public sealed class WitnessCapturingHeaderFinder(IHeaderFinder inner, WitnessHeaderRecorder recorder) : IHeaderFinder
 {
-    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null)
     {
         BlockHeader? header = inner.Get(blockHash, blockNumber);
         if (header is not null) recorder.OnHeaderRead(header);
