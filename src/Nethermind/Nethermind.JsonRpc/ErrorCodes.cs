@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc
         /// <summary>
         /// EVM execution error (out of gas, insufficient funds during execution, etc.)
         /// </summary>
-        public const int ExecutionError = -32003;
+        public const int ExecutionError = -32000;
 
         /// <summary>
         /// Requested resource not found
