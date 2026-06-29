@@ -134,7 +134,7 @@ public class PersistenceManager(
 
         Snapshot? snapshotToPersist;
 
-        ulong nextCompactedBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+        ulong nextCompactedBoundary = _schedule.NextFullCompactionAfter(in currentPersistedState);
         if (nextCompactedBoundary > finalizedBlockNumber)
         {
             if (inMemoryStateDepth <= _maxReorgDepth)
@@ -202,7 +202,7 @@ public class PersistenceManager(
         // Persist all snapshots from current persisted state to latest
         while (currentPersistedState == StateId.PreGenesis || currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
         {
-            ulong nextCompactedBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+            ulong nextCompactedBoundary = _schedule.NextFullCompactionAfter(in currentPersistedState);
 
             // Try finalized snapshots first (compacted, then non-compacted)
             Snapshot? snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(

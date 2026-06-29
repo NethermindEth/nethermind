@@ -18,5 +18,5 @@ public interface ICompactionSchedule
     /// compaction (and hence a persistence boundary) will occur. Returns <see cref="long.MaxValue"/>
     /// when compaction is disabled.
     /// </summary>
-    ulong NextFullCompactionAfter(ulong from);
+    ulong NextFullCompactionAfter(in StateId from);
 }

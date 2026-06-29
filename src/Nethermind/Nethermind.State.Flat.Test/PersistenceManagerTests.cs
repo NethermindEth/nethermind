@@ -138,6 +138,40 @@ public class PersistenceManagerTests
 
     #endregion
 
+    #region Fresh DB (nothing persisted) Tests
+
+    [Test]
+    public void DetermineSnapshotToPersist_FreshDbBelowForceLimit_PersistsFinalizedBoundary()
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(StateId.PreGenesis);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        ICompactionSchedule scheduler = ScheduleHelper.CreateWithOffset(_config, 0);
+        PersistenceManager pm = new(_config, scheduler, _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+
+        // Depth 101 is past MinReorgDepth + CompactSize (80) but below the MaxReorgDepth force limit (256),
+        // so only the finalized branch can produce a snapshot here.
+        StateId target = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(StateId.PreGenesis, target, compacted: true);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.From, Is.EqualTo(StateId.PreGenesis));
+        Assert.That(result.To, Is.EqualTo(target));
+
+        result.Dispose();
+    }
+
+    #endregion
+
     #region Unfinalized State Tests
 
     [Test]

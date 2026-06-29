@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -167,9 +168,10 @@ public class CompactionScheduleTests
 
         for (ulong block = 1UL; block <= 64UL; block++)
         {
+            StateId state = new(block, Hash256.Zero);
             Assert.That(large.GetCompactSize(block), Is.EqualTo(small.GetCompactSize(block)),
                 $"Tier mismatch at block {block} between offset {smallOffset} and {largeOffset}");
-            Assert.That(large.NextFullCompactionAfter(block), Is.EqualTo(small.NextFullCompactionAfter(block)),
+            Assert.That(large.NextFullCompactionAfter(state), Is.EqualTo(small.NextFullCompactionAfter(state)),
                 $"Next boundary mismatch from block {block} between offset {smallOffset} and {largeOffset}");
         }
     }
@@ -185,7 +187,7 @@ public class CompactionScheduleTests
         FlatDbConfig config = new() { CompactSize = 16 };
         CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
 
-        Assert.That(schedule.NextFullCompactionAfter(from), Is.EqualTo(expected));
+        Assert.That(schedule.NextFullCompactionAfter(new StateId(from, Hash256.Zero)), Is.EqualTo(expected));
     }
 
     [Test]
@@ -194,7 +196,7 @@ public class CompactionScheduleTests
         FlatDbConfig config = new() { CompactSize = 1 };
         CompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
 
-        Assert.That(schedule.NextFullCompactionAfter(0), Is.EqualTo(ulong.MaxValue));
+        Assert.That(schedule.NextFullCompactionAfter(new StateId(0, Hash256.Zero)), Is.EqualTo(ulong.MaxValue));
     }
 
     [Test]
