@@ -165,6 +165,24 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     public void Lenient_accepts_leading_zero(string json) =>
         Assert.That(() => JsonSerializer.Deserialize<UInt256>(json, options), Throws.Nothing);
 
+    // "0x" with no hex digits is not a valid QUANTITY in any mode
+    [Test]
+    public void Rejects_bare_0x_prefix() =>
+        Assert.That(() => JsonSerializer.Deserialize<UInt256>("\"0x\"", options), Throws.InstanceOf<JsonException>());
+
+    // hex values wider than 256 bits must be rejected cleanly, not crash with ArgumentOutOfRangeException
+    [Test]
+    public void Rejects_hex_wider_than_256_bits()
+    {
+        // 65 hex chars after "0x" → 33 bytes > 32; total length 67 is under ReadInternal's 78-char guard
+        string json65 = "\"0x" + new string('f', 65) + "\"";
+        Assert.That(() => JsonSerializer.Deserialize<UInt256>(json65, options), Throws.InstanceOf<JsonException>());
+
+        // 76 hex chars after "0x" → 38 bytes > 32; total length 78 is exactly at ReadInternal's limit
+        string json76 = "\"0x" + new string('f', 76) + "\"";
+        Assert.That(() => JsonSerializer.Deserialize<UInt256>(json76, options), Throws.InstanceOf<JsonException>());
+    }
+
     [TestCase(0ul, 0ul, 0ul, 0ul, "\"0x0\"")]
     [TestCase(1ul, 0ul, 0ul, 0ul, "\"0x1\"")]
     [TestCase(0xful, 0ul, 0ul, 0ul, "\"0xf\"")]

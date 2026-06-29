@@ -93,6 +93,8 @@ public class UInt256Converter : JsonConverter<UInt256>
         if (hex.StartsWith("0x"u8))
         {
             hex = hex[2..];
+            if (hex.IsEmpty) ThrowJsonException();     // bare "0x" is not a valid QUANTITY
+            if (hex.Length > 64) ThrowJsonException(); // more than 256 bits
         }
         else if (hex[0] != (byte)'0')
         {
