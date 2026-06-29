@@ -1,0 +1,399 @@
+syntax = "proto3";
+
+package vm;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "io/prometheus/client/metrics.proto";
+
+option go_package = "github.com/ava-labs/avalanchego/proto/pb/vm";
+
+// ref. https://pkg.go.dev/github.com/ava-labs/avalanchego/snow/engine/snowman/block
+// ref. https://pkg.go.dev/github.com/ava-labs/avalanchego/snow/consensus/snowman#Block
+service VM {
+  // ChainVM
+  //
+  // Initialize this VM.
+  rpc Initialize(InitializeRequest) returns (InitializeResponse);
+  // SetState communicates to VM its next state it starts
+  rpc SetState(SetStateRequest) returns (SetStateResponse);
+  // Shutdown is called when the node is shutting down.
+  rpc Shutdown(google.protobuf.Empty) returns (google.protobuf.Empty);
+  // Creates the HTTP handlers for custom chain network calls. Requests are routed based on the specified path.
+  rpc CreateHandlers(google.protobuf.Empty) returns (CreateHandlersResponse);
+  // Creates the HTTP handler for custom chain network calls. Requests are routed based on the route header.
+  rpc NewHTTPHandler(google.protobuf.Empty) returns (NewHTTPHandlerResponse);
+  // WaitForEvent blocks until receiving the next event from the VM.
+  rpc WaitForEvent(google.protobuf.Empty) returns (WaitForEventResponse);
+  rpc Connected(ConnectedRequest) returns (google.protobuf.Empty);
+  rpc Disconnected(DisconnectedRequest) returns (google.protobuf.Empty);
+  // Attempt to create a new block from data contained in the VM.
+  rpc BuildBlock(BuildBlockRequest) returns (BuildBlockResponse);
+  // Attempt to create a block from a stream of bytes.
+  rpc ParseBlock(ParseBlockRequest) returns (ParseBlockResponse);
+  // Attempt to load a block.
+  rpc GetBlock(GetBlockRequest) returns (GetBlockResponse);
+  // Notify the VM of the currently preferred block.
+  rpc SetPreference(SetPreferenceRequest) returns (google.protobuf.Empty);
+  // Attempt to verify the health of the VM.
+  rpc Health(google.protobuf.Empty) returns (HealthResponse);
+  // Version returns the version of the VM.
+  rpc Version(google.protobuf.Empty) returns (VersionResponse);
+  // Notify this engine of a request for data from [nodeID].
+  rpc AppRequest(AppRequestMsg) returns (google.protobuf.Empty);
+  // Notify this engine that an AppRequest message it sent to [nodeID] with
+  // request ID [requestID] failed.
+  rpc AppRequestFailed(AppRequestFailedMsg) returns (google.protobuf.Empty);
+  // Notify this engine of a response to the AppRequest message it sent to
+  // [nodeID] with request ID [requestID].
+  rpc AppResponse(AppResponseMsg) returns (google.protobuf.Empty);
+  // Notify this engine of a gossip message from [nodeID].
+  rpc AppGossip(AppGossipMsg) returns (google.protobuf.Empty);
+  // Attempts to gather metrics from a VM.
+  rpc Gather(google.protobuf.Empty) returns (GatherResponse);
+  // BatchedChainVM
+  rpc GetAncestors(GetAncestorsRequest) returns (GetAncestorsResponse);
+  rpc BatchedParseBlock(BatchedParseBlockRequest) returns (BatchedParseBlockResponse);
+
+  // HeightIndexedChainVM
+  rpc GetBlockIDAtHeight(GetBlockIDAtHeightRequest) returns (GetBlockIDAtHeightResponse);
+
+  // StateSyncableVM
+  //
+  // StateSyncEnabled indicates whether the state sync is enabled for this VM.
+  rpc StateSyncEnabled(google.protobuf.Empty) returns (StateSyncEnabledResponse);
+  // GetOngoingSyncStateSummary returns an in-progress state summary if it exists.
+  rpc GetOngoingSyncStateSummary(google.protobuf.Empty) returns (GetOngoingSyncStateSummaryResponse);
+  // GetLastStateSummary returns the latest state summary.
+  rpc GetLastStateSummary(google.protobuf.Empty) returns (GetLastStateSummaryResponse);
+  // ParseStateSummary parses a state summary out of [summaryBytes].
+  rpc ParseStateSummary(ParseStateSummaryRequest) returns (ParseStateSummaryResponse);
+  // GetStateSummary retrieves the state summary that was generated at height
+  // [summaryHeight].
+  rpc GetStateSummary(GetStateSummaryRequest) returns (GetStateSummaryResponse);
+
+  // Block
+  rpc BlockVerify(BlockVerifyRequest) returns (BlockVerifyResponse);
+  rpc BlockAccept(BlockAcceptRequest) returns (google.protobuf.Empty);
+  rpc BlockReject(BlockRejectRequest) returns (google.protobuf.Empty);
+
+  // StateSummary
+  rpc StateSummaryAccept(StateSummaryAcceptRequest) returns (StateSummaryAcceptResponse);
+}
+
+enum State {
+  STATE_UNSPECIFIED = 0;
+  STATE_STATE_SYNCING = 1;
+  STATE_BOOTSTRAPPING = 2;
+  STATE_NORMAL_OP = 3;
+}
+
+enum Error {
+  // ERROR_UNSPECIFIED is used to indicate that no error occurred.
+  ERROR_UNSPECIFIED = 0;
+  ERROR_CLOSED = 1;
+  ERROR_NOT_FOUND = 2;
+  ERROR_STATE_SYNC_NOT_IMPLEMENTED = 3;
+}
+
+message InitializeRequest {
+  uint32 network_id = 1;
+  bytes subnet_id = 2;
+  bytes chain_id = 3;
+  bytes node_id = 4;
+  // public_key is the BLS public key that would correspond with any signatures
+  // produced by the warp messaging signer
+  bytes public_key = 5;
+  bytes x_chain_id = 6;
+  bytes c_chain_id = 7;
+  bytes avax_asset_id = 8;
+  string chain_data_dir = 9;
+  bytes genesis_bytes = 10;
+  bytes upgrade_bytes = 11;
+  bytes config_bytes = 12;
+  string db_server_addr = 13;
+  // server_addr is the address of the gRPC server which serves the shared
+  // memory, blockchain alias, subnet alias, and appSender services
+  string server_addr = 14;
+  // network_upgrades_bytes is the json encoded network upgrades
+  NetworkUpgrades network_upgrades = 15;
+}
+
+message NetworkUpgrades {
+  google.protobuf.Timestamp apricot_phase_1_time = 1;
+  google.protobuf.Timestamp apricot_phase_2_time = 2;
+  google.protobuf.Timestamp apricot_phase_3_time = 3;
+  google.protobuf.Timestamp apricot_phase_4_time = 4;
+  uint64 apricot_phase_4_min_p_chain_height = 5;
+  google.protobuf.Timestamp apricot_phase_5_time = 6;
+  google.protobuf.Timestamp apricot_phase_pre_6_time = 7;
+  google.protobuf.Timestamp apricot_phase_6_time = 8;
+  google.protobuf.Timestamp apricot_phase_post_6_time = 9;
+  google.protobuf.Timestamp banff_time = 10;
+  google.protobuf.Timestamp cortina_time = 11;
+  bytes cortina_x_chain_stop_vertex_id = 12;
+  google.protobuf.Timestamp durango_time = 13;
+  google.protobuf.Timestamp etna_time = 14;
+  google.protobuf.Timestamp fortuna_time = 15;
+  google.protobuf.Timestamp granite_time = 16;
+  google.protobuf.Duration granite_epoch_duration = 17;
+  google.protobuf.Timestamp helicon_time = 18;
+}
+
+message InitializeResponse {
+  bytes last_accepted_id = 1;
+  bytes last_accepted_parent_id = 2;
+  uint64 height = 3;
+  bytes bytes = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+message SetStateRequest {
+  State state = 1;
+}
+
+message SetStateResponse {
+  bytes last_accepted_id = 1;
+  bytes last_accepted_parent_id = 2;
+  uint64 height = 3;
+  bytes bytes = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+message CreateHandlersResponse {
+  repeated Handler handlers = 1;
+}
+
+message Handler {
+  string prefix = 1;
+  // server_addr is the address of the gRPC server which serves the
+  // HTTP service
+  string server_addr = 2;
+}
+
+message NewHTTPHandlerResponse {
+  // server_addr is the address of the gRPC server which serves the
+  // HTTP service
+  string server_addr = 1;
+}
+
+message WaitForEventResponse {
+  Message message = 1;
+}
+
+enum Message {
+  MESSAGE_UNSPECIFIED = 0;
+  MESSAGE_BUILD_BLOCK = 1;
+  MESSAGE_STATE_SYNC_FINISHED = 2;
+}
+
+message BuildBlockRequest {
+  optional uint64 p_chain_height = 1;
+}
+
+// Note: The status of a freshly built block is assumed to be Processing.
+message BuildBlockResponse {
+  bytes id = 1;
+  bytes parent_id = 2;
+  bytes bytes = 3;
+  uint64 height = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  bool verify_with_context = 6;
+}
+
+message ParseBlockRequest {
+  bytes bytes = 1;
+}
+
+message ParseBlockResponse {
+  bytes id = 1;
+  bytes parent_id = 2;
+  uint64 height = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  bool verify_with_context = 6;
+}
+
+message GetBlockRequest {
+  bytes id = 1;
+}
+
+message GetBlockResponse {
+  bytes parent_id = 1;
+  bytes bytes = 2;
+  uint64 height = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  // used to propagate database.ErrNotFound through RPC
+  Error err = 6;
+  bool verify_with_context = 7;
+}
+
+message SetPreferenceRequest {
+  bytes id = 1;
+}
+
+message BlockVerifyRequest {
+  bytes bytes = 1;
+
+  // If set, the VM server casts the block to a [block.WithVerifyContext] and
+  // calls [VerifyWithContext] instead of [Verify].
+  optional uint64 p_chain_height = 2;
+}
+
+message BlockVerifyResponse {
+  google.protobuf.Timestamp timestamp = 1;
+}
+
+message BlockAcceptRequest {
+  bytes id = 1;
+}
+
+message BlockRejectRequest {
+  bytes id = 1;
+}
+
+message HealthResponse {
+  bytes details = 1;
+}
+
+message VersionResponse {
+  string version = 1;
+}
+
+message AppRequestMsg {
+  // The node that sent us this request
+  bytes node_id = 1;
+  // The ID of this request
+  uint32 request_id = 2;
+  // deadline for this request
+  google.protobuf.Timestamp deadline = 3;
+  // The request body
+  bytes request = 4;
+}
+
+message AppRequestFailedMsg {
+  // The node that we failed to get a response from
+  bytes node_id = 1;
+  // The ID of the request we sent and didn't get a response to
+  uint32 request_id = 2;
+  // Application-defined error code
+  sint32 error_code = 3;
+  // Application-defined error message
+  string error_message = 4;
+}
+
+message AppResponseMsg {
+  // The node that we got a response from
+  bytes node_id = 1;
+  // Request ID of request that this is in response to
+  uint32 request_id = 2;
+  // The response body
+  bytes response = 3;
+}
+
+message AppGossipMsg {
+  // The node that sent us a gossip message
+  bytes node_id = 1;
+  // The message body
+  bytes msg = 2;
+}
+
+message ConnectedRequest {
+  bytes node_id = 1;
+  // Client name (e.g avalanchego)
+  string name = 2;
+  // Client semantic version
+  uint32 major = 3;
+  uint32 minor = 4;
+  uint32 patch = 5;
+}
+
+message DisconnectedRequest {
+  bytes node_id = 1;
+}
+
+message GetAncestorsRequest {
+  bytes blk_id = 1;
+  int32 max_blocks_num = 2;
+  int32 max_blocks_size = 3;
+  int64 max_blocks_retrival_time = 4;
+}
+
+message GetAncestorsResponse {
+  repeated bytes blks_bytes = 1;
+}
+
+message BatchedParseBlockRequest {
+  repeated bytes request = 1;
+}
+
+message BatchedParseBlockResponse {
+  repeated ParseBlockResponse response = 1;
+}
+
+message GetBlockIDAtHeightRequest {
+  uint64 height = 1;
+}
+
+message GetBlockIDAtHeightResponse {
+  bytes blk_id = 1;
+  Error err = 2;
+}
+
+message GatherResponse {
+  repeated io.prometheus.client.MetricFamily metric_families = 1;
+}
+
+message StateSyncEnabledResponse {
+  bool enabled = 1;
+  Error err = 2;
+}
+
+message GetOngoingSyncStateSummaryResponse {
+  bytes id = 1;
+  uint64 height = 2;
+  bytes bytes = 3;
+  Error err = 4;
+}
+
+message GetLastStateSummaryResponse {
+  bytes id = 1;
+  uint64 height = 2;
+  bytes bytes = 3;
+  Error err = 4;
+}
+
+message ParseStateSummaryRequest {
+  bytes bytes = 1;
+}
+
+message ParseStateSummaryResponse {
+  bytes id = 1;
+  uint64 height = 2;
+  Error err = 3;
+}
+
+message GetStateSummaryRequest {
+  uint64 height = 1;
+}
+
+message GetStateSummaryResponse {
+  bytes id = 1;
+  bytes bytes = 2;
+  Error err = 3;
+}
+
+message StateSummaryAcceptRequest {
+  bytes bytes = 1;
+}
+
+message StateSummaryAcceptResponse {
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_SKIPPED = 1;
+    MODE_STATIC = 2;
+    MODE_DYNAMIC = 3;
+  }
+  Mode mode = 1;
+  Error err = 2;
+}

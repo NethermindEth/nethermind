@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Nethermind.Avalanche.Vm</RootNamespace>
+    <!-- Generated gRPC/protobuf code lacks XML docs and trips a few analyzer/style rules.
+         The repo builds with TreatWarningsAsErrors, so silence the well-known generated-code noise. -->
+    <NoWarn>$(NoWarn);CS1591;CS0612;CS0618;CS8981;CS8669;IDE0005;IDE1006</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Server hosting + health service -->
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Grpc.HealthCheck" />
+    <!-- Outbound gRPC clients (Runtime handshake, rpcdb, appsender) -->
+    <PackageReference Include="Grpc.Net.Client" />
+    <!-- Protobuf runtime + codegen toolchain -->
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Protobuf code generation. ProtoRoot=proto so that imports such as
+       "io/prometheus/client/metrics.proto" and "vm/runtime/runtime.proto" resolve relative to it.
+       The google/protobuf/*.proto well-known types are supplied automatically by Grpc.Tools. -->
+  <ItemGroup>
+    <!-- Services we implement (server) -->
+    <Protobuf Include="proto\vm\vm.proto" ProtoRoot="proto" GrpcServices="Server" />
+    <Protobuf Include="proto\http\http.proto" ProtoRoot="proto" GrpcServices="Server" />
+
+    <!-- Services we consume (client) -->
+    <Protobuf Include="proto\vm\runtime\runtime.proto" ProtoRoot="proto" GrpcServices="Client" />
+    <Protobuf Include="proto\rpcdb\rpcdb.proto" ProtoRoot="proto" GrpcServices="Client" />
+    <Protobuf Include="proto\appsender\appsender.proto" ProtoRoot="proto" GrpcServices="Client" />
+    <Protobuf Include="proto\http\responsewriter\responsewriter.proto" ProtoRoot="proto" GrpcServices="Client" />
+
+    <!-- Message-only dependency pulled in by vm.proto (io.prometheus.client.MetricFamily) -->
+    <Protobuf Include="proto\io\prometheus\client\metrics.proto" ProtoRoot="proto" GrpcServices="None" />
+  </ItemGroup>
+
+</Project>
