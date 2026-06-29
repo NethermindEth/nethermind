@@ -190,6 +190,19 @@ public class CompactionScheduleTests
         Assert.That(schedule.NextFullCompactionAfter(new StateId(from, Hash256.Zero)), Is.EqualTo(expected));
     }
 
+    [TestCase(0)]
+    [TestCase(3)]
+    [TestCase(7)]
+    public void NextFullCompactionAfter_PreGenesis_AnchorsAtGenesis(int offset)
+    {
+        FlatDbConfig config = new() { CompactSize = 16 };
+        CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
+
+        Assert.That(
+            schedule.NextFullCompactionAfter(StateId.PreGenesis),
+            Is.EqualTo(schedule.NextFullCompactionAfter(new StateId(0, Hash256.Zero))));
+    }
+
     [Test]
     public void NextFullCompactionAfter_CompactSizeDisabled_ReturnsLongMaxValue()
     {
