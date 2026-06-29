@@ -19,9 +19,9 @@ and remain AvalancheGo's responsibility.
 | # | Subsystem | What Coreth/AvalancheGo provides | Nethermind status | Effort |
 |---|-----------|----------------------------------|-------------------|--------|
 | 1 | EVM execution | Geth EVM | ✅ Nethermind EVM (mature) | reuse |
-| 2 | Account/state model + MPT | Geth state + snapshot | ✅ Nethermind state/trie | reuse, but commitment must match Coreth exactly |
-| 3 | Fork schedule → EIP mapping | Apricot 1–6, Banff, Cortina, Durango, Etna, Fortuna, Granite | 🟡 timestamps modelled in `AvalancheChainSpecEngineParameters`; **EIP activation mapping is TODO** in `ApplyToReleaseSpec` | medium |
-| 4 | `rpcchainvm` gRPC VM server | `Initialize/BuildBlock/ParseBlock/GetBlock/SetState/Verify/Accept/Reject/SetPreference/Health/Version/...` | ❌ | **large** |
+| 2 | Account/state model + MPT | Geth state + snapshot | ✅ Nethermind state/trie + **Coreth state-root parity primitives implemented, 22/22 byte-exact tests pass** (5-field `isMultiCoin` account RLP, storage-key bit0 transform, `ExtDataHash`) | parity layer done |
+| 3 | Fork schedule → EIP mapping | Apricot 1–6, Banff, Cortina, Durango, Etna, Fortuna, Granite | ✅ **implemented + builds clean**: Berlin/London by block; Durango=Shanghai, Etna=Cancun-subset, Granite=P256VERIFY by timestamp; divergences encoded (no blobs/withdrawals/beacon-root) | done |
+| 4 | `rpcchainvm` gRPC VM server | `Initialize/BuildBlock/ParseBlock/GetBlock/SetState/Verify/Accept/Reject/SetPreference/Health/Version/...` | 🟡 **`Nethermind.Avalanche.Vm` builds clean**: reverse-gRPC handshake (proto 45), full `vm.VM` service + rpcdb client; block-lifecycle RPCs stubbed | block lifecycle remaining |
 | 5 | Externally-driven block lifecycle | Snowman decides acceptance; VM has no fork choice | ❌ (Nethermind drives its own fork choice today) | large |
 | 6 | C-Chain block format | Coreth block wrapping under proposervm/Snowman++ | ❌ | medium |
 | 7 | Dynamic fees | AP3 dynamic base fee, AP4/AP5 changes, Etna fee config, ACP-176 gas target | ❌ | medium |
