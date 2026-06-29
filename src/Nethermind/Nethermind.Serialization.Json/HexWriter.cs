@@ -438,20 +438,23 @@ public static class HexWriter
     [SkipLocalsInit]
     public static void WriteHexStringValue(Utf8JsonWriter writer, ReadOnlySpan<byte> data)
     {
+        const int StackThreshold = 512;
         int tokenLength = 4 + data.Length * 2;
-        byte[] rented = ArrayPool<byte>.Shared.Rent(tokenLength);
+        // data is unbounded (e.g. a whole memory snapshot), so only stay on the stack while small.
+        byte[] rented = tokenLength > StackThreshold ? ArrayPool<byte>.Shared.Rent(tokenLength) : null;
+        Span<byte> token = rented is not null ? rented : stackalloc byte[StackThreshold];
         try
         {
-            rented[0] = (byte)'"';
-            rented[1] = (byte)'0';
-            rented[2] = (byte)'x';
-            EncodeToHex(data, ref rented[3]);
-            rented[tokenLength - 1] = (byte)'"';
-            writer.WriteRawValue(rented.AsSpan(0, tokenLength), skipInputValidation: true);
+            token[0] = (byte)'"';
+            token[1] = (byte)'0';
+            token[2] = (byte)'x';
+            EncodeToHex(data, ref token[3]);
+            token[tokenLength - 1] = (byte)'"';
+            writer.WriteRawValue(token[..tokenLength], skipInputValidation: true);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(rented);
+            if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
         }
     }
 
