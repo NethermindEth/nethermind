@@ -1619,7 +1619,6 @@ namespace Nethermind.Blockchain
 
                 if (requiresCanonical)
                 {
-                    // A missing level (e.g. after an unclean shutdown between block and level writes) means the block is not canonical.
                     bool isMain = level?.MainChainBlock?.BlockHash.Equals(blockHash) == true;
                     block = isMain ? block : null;
                 }
