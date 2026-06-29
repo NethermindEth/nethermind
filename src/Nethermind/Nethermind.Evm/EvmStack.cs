@@ -1594,19 +1594,11 @@ public ref struct EvmStack
         return true;
     }
 
-    /// <summary>
-    /// Pops an Uint256 written in big endian.
-    /// </summary>
-    /// <remarks>
-    /// This method does its own calculations to create the <paramref name="result"/>. It knows that 32 bytes were popped with <see cref="PopBytesByRef"/>. It doesn't have to check the size of span or slice it.
-    /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
-    /// </remarks>
-    /// <param name="result">The returned value.</param>
 #if ZK_EVM
-    // Reads one big-endian 32-byte stack word into a UInt256. RISC-V has no
-    // byte-swap instruction, so ReverseEndianness is a software shuffle; stack
-    // words produced by PUSH0/PUSH1/PUSH2 etc. have a zero high 24 bytes, so
-    // the common case only swaps the low limb instead of all four.
+    // Reads one big-endian 32-byte stack word into a UInt256. RISC-V has no byte-swap
+    // instruction, so reversing endianness is a software shuffle. Words produced by
+    // PUSH0/PUSH1/PUSH2 and the like have their high 24 bytes zero, so the common case
+    // swaps only the low limb instead of all four.
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static UInt256 ReadBeWord(ref byte bytes)
@@ -1627,6 +1619,14 @@ public ref struct EvmStack
     }
 #endif
 
+    /// <summary>
+    /// Pops an UInt256 written in big endian.
+    /// </summary>
+    /// <remarks>
+    /// This method does its own calculations to create the <paramref name="result"/>. It knows that 32 bytes were popped with <see cref="PopBytesByRef"/>. It doesn't have to check the size of span or slice it.
+    /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
+    /// </remarks>
+    /// <param name="result">The returned value.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopUInt256(out UInt256 result)
