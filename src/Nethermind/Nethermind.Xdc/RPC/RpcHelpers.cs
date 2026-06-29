@@ -17,7 +17,7 @@ internal static class RpcHelpers
 {
     public static PublicApiSnapshot BuildRpcSnapshot(this Snapshot snapshot, XdcBlockHeader header) => new()
     {
-        Number = (ulong)header.Number,
+        Number = header.Number,
         Hash = header.Hash,
         Signers = snapshot.NextEpochCandidates.ToHashSet(),
     };

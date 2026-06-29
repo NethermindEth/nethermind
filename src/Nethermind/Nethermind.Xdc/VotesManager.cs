@@ -5,12 +5,13 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.P2P;
+using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -54,22 +55,33 @@ internal class VotesManager(
     private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly ConcurrentDictionary<ulong, byte> _qcBuildStartedByRound = new();
     private const int _maxBlockDistance = 7; // Maximum allowed backward distance from the chain head
-    private long _highestVotedRound = -1;
+
+    // null means "never voted"; ulong.MaxValue is a valid round so null is the correct sentinel.
+    private ulong? _highestVotedRound = null;
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(blockInfo.Hash) ??
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(blockInfo));
-        //Optimize this by fetching with block number and round only
 
         if (_blockTree.FindHeader(blockInfo.Hash) is not XdcBlockHeader header)
             throw new ArgumentException($"Cannot find block header for block {blockInfo.Hash}");
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-        long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
+        ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
 
-        Vote vote = new(blockInfo, (ulong)gapNumber, isMyVote: true);
+        ulong gapNumber;
+        if (epochSwitchNumber == 0)
+        {
+            gapNumber = 0;
+        }
+        else
+        {
+            ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
+            gapNumber = epochSwitchNumber.SaturatingSub(offset);
+        }
+
+        Vote vote = new(blockInfo, gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
         if (!TrySign(vote))
         {
@@ -77,7 +89,7 @@ internal class VotesManager(
             return Task.CompletedTask;
         }
 
-        _highestVotedRound = (long)blockInfo.Round;
+        _highestVotedRound = blockInfo.Round;
 
         HandleVote(vote);
         return Task.CompletedTask;
@@ -157,11 +169,12 @@ internal class VotesManager(
     public bool VerifyVotingRules(XdcBlockHeader header, [NotNullWhen(false)] out string? error) =>
         VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert, out error);
 
-    public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc, out string? error)
+    public bool VerifyVotingRules(Hash256 blockHash, ulong blockNumber, ulong roundNumber, QuorumCertificate qc, out string? error)
     {
-        if ((long)_ctx.CurrentRound <= _highestVotedRound)
+        // _highestVotedRound is null until a vote is cast; once set, any round <= it is rejected.
+        if (_highestVotedRound.HasValue && _ctx.CurrentRound <= _highestVotedRound.Value)
         {
-            error = $"Already voted at round {_highestVotedRound}, current round {_ctx.CurrentRound}";
+            error = $"Already voted at round {_highestVotedRound.Value}, current round {_ctx.CurrentRound}";
             return false;
         }
 
@@ -198,9 +211,14 @@ internal class VotesManager(
 
     public Task OnReceiveVote(Vote vote)
     {
-        long voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
-        long currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
-        if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
+        ulong voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
+        ulong currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
+
+        ulong blockDiff = voteBlockNumber > currentBlockNumber
+            ? voteBlockNumber - currentBlockNumber
+            : currentBlockNumber - voteBlockNumber;
+
+        if (blockDiff > _maxBlockDistance)
         {
             // Discarded propagated vote, too far away
             return Task.CompletedTask;
@@ -208,7 +226,6 @@ internal class VotesManager(
 
         if (FilterVote(vote))
         {
-
             return HandleVote(vote);
         }
         return Task.CompletedTask;
@@ -218,7 +235,7 @@ internal class VotesManager(
     {
         if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)vote.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(vote.GapNumber);
         if (snapshot is null) return false;
         // Verify message signature
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
@@ -241,12 +258,15 @@ internal class VotesManager(
         CleanupVotes(currVote.ProposedBlockInfo.Round);
     }
 
-    private bool IsExtendingFromAncestor(Hash256 blockHash, long blockNumber, BlockRoundInfo ancestorBlockInfo)
+    private bool IsExtendingFromAncestor(Hash256 blockHash, ulong blockNumber, BlockRoundInfo ancestorBlockInfo)
     {
-        long blockNumDiff = blockNumber - ancestorBlockInfo.BlockNumber;
+        if (blockNumber < ancestorBlockInfo.BlockNumber)
+            return false;
+
+        ulong blockNumDiff = blockNumber - ancestorBlockInfo.BlockNumber;
         Hash256 nextBlockHash = blockHash;
 
-        for (int i = 0; i < blockNumDiff; i++)
+        for (ulong i = 0; i < blockNumDiff; i++)
         {
             if (_blockTree.FindHeader(nextBlockHash) is not XdcBlockHeader parentHeader)
                 return false;
@@ -322,9 +342,9 @@ internal class VotesManager(
 
     private bool TrySign(Vote vote)
     {
-        KeccakRlpStream stream = new();
-        _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        ValueHash256 hash = stream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
+        ValueHash256 hash = writer.GetValueHash();
         if (!_signer.TrySign(in hash, out Signature signature))
             return false;
         vote.Signature = signature;

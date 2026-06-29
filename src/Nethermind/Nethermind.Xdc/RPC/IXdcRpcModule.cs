@@ -75,13 +75,13 @@ public interface IXdcRpcModule : IRpcModule
     /// Gets reward information for a specific account between block numbers
     /// </summary>
     [JsonRpcMethod(Description = "Gets reward information for a specific account between block numbers")]
-    ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, long begin, long end);
+    ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, ulong begin, ulong end);
 
     /// <summary>
     /// Gets epoch numbers between two block numbers
     /// </summary>
     [JsonRpcMethod(Description = "Gets epoch numbers between two block numbers")]
-    ResultWrapper<ulong[]> GetEpochNumbersBetween(long begin, long end);
+    ResultWrapper<ulong[]> GetEpochNumbersBetween(ulong begin, ulong end);
 
     /// <summary>
     /// Gets block information by V2 epoch number

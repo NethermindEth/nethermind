@@ -13,7 +13,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using System;
 using Nethermind.Core.Messages;
 
@@ -24,28 +23,28 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    private const long GasLimit = Eip8037Constants.SystemCallGasLimit;
+    private const ulong GasLimit = Eip8037Constants.SystemCallGasLimit;
 
     private readonly ITransactionProcessor _transactionProcessor;
 
     private readonly SystemCall _withdrawalTransaction = new()
     {
-        Value = UInt256.Zero,
+        Value = 0,
         Data = Array.Empty<byte>(),
         To = Eip7002Constants.WithdrawalRequestPredeployAddress,
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
-        GasPrice = UInt256.Zero,
+        GasPrice = 0,
     };
 
     private readonly SystemCall _consolidationTransaction = new()
     {
-        Value = UInt256.Zero,
+        Value = 0,
         Data = Array.Empty<byte>(),
         To = Eip7251Constants.ConsolidationRequestPredeployAddress,
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
-        GasPrice = UInt256.Zero,
+        GasPrice = 0,
     };
 
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)

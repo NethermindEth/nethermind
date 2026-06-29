@@ -20,7 +20,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing the bitwise operation.
         /// </summary>
-        static virtual long GasCost => GasCostOf.VeryLow;
+        static virtual ulong GasCost => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the bitwise operation.
         /// </summary>

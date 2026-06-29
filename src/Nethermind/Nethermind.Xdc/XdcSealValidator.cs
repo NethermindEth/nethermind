@@ -72,7 +72,7 @@ internal class XdcSealValidator(
                 throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader}");
         }
 
-        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.BlockRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);
+        ulong currentLeaderIndex = xdcHeader.ExtraConsensusData.BlockRound % xdcSpec.EpochLength % (ulong)masternodes.Length;
         if (masternodes[(int)currentLeaderIndex] != header.Author)
         {
             error = $"Block proposer {header.Author} is not the current leader.";
@@ -141,7 +141,10 @@ internal class XdcSealValidator(
                  || xdcHeader.Validator[64] >= 4)
                 return false;
 
-            Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), Keccak.Compute(_headerDecoder.Encode(xdcHeader, RlpBehaviors.ForSealing).Bytes));
+            KeccakRlpWriter writer = new();
+            _headerDecoder.Encode(ref writer, xdcHeader, RlpBehaviors.ForSealing);
+            ValueHash256 hash = writer.GetValueHash();
+            Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), in hash);
 
             header.Author = signer;
         }

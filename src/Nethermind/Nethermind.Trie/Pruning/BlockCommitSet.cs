@@ -7,9 +7,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class BlockCommitSet(long blockNumber) : IComparable<BlockCommitSet>
+    public class BlockCommitSet(ulong blockNumber) : IComparable<BlockCommitSet>
     {
-        public long BlockNumber { get; } = blockNumber;
+        public ulong BlockNumber { get; } = blockNumber;
 
         public TrieNode? Root { get; private set; }
         public Hash256 StateRoot => Root?.Keccak ?? Keccak.EmptyTreeHash;

@@ -15,7 +15,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static CompactLogEntryDecoder Instance { get; } = new();
 
-        protected override LogEntry? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -44,7 +44,7 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics.ToArray());
         }
 
-        public static void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
+        public static void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -68,43 +68,43 @@ namespace Nethermind.Serialization.Rlp
             item = new LogEntryStructRef(address, data, topics);
         }
 
-        public static Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public static Hash256[] DecodeTopics(RlpReader reader)
         {
-            int sequenceLength = valueDecoderContext.ReadSequenceLength();
-            int untilPosition = valueDecoderContext.Position + sequenceLength;
+            int sequenceLength = reader.ReadSequenceLength();
+            int untilPosition = reader.Position + sequenceLength;
             using ArrayPoolListRef<Hash256> topics = new(sequenceLength * 2 / Rlp.LengthOfKeccakRlp);
-            while (valueDecoderContext.Position < untilPosition)
+            while (reader.Position < untilPosition)
             {
-                topics.Add(valueDecoderContext.DecodeZeroPrefixKeccak());
+                topics.Add(reader.DecodeZeroPrefixKeccak());
             }
-            valueDecoderContext.Check(untilPosition);
+            reader.Check(untilPosition);
 
             return topics.ToArray();
         }
 
-        public override void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                rlpStream.EncodeNullObject();
+                writer.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
             (int total, int topics) = GetContentLength(item);
-            rlpStream.StartSequence(total);
+            writer.StartSequence(total);
 
-            rlpStream.Encode(item.Address);
-            rlpStream.StartSequence(topics);
+            writer.Encode(item.Address);
+            writer.StartSequence(topics);
 
             for (int i = 0; i < item.Topics.Length; i++)
             {
-                rlpStream.Encode(item.Topics[i].Bytes.WithoutLeadingZerosOrEmpty());
+                writer.Encode(item.Topics[i].Bytes.WithoutLeadingZerosOrEmpty());
             }
 
             ReadOnlySpan<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();
             int dataZeroPrefix = item.Data.Length - withoutLeadingZero.Length;
-            rlpStream.Encode(dataZeroPrefix);
-            rlpStream.Encode(withoutLeadingZero);
+            writer.Encode(dataZeroPrefix);
+            writer.Encode(withoutLeadingZero);
         }
 
         public override int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -117,7 +117,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
 
-        private static byte[] DecodeCompactData(scoped ref Rlp.ValueDecoderContext decoderContext)
+        private static byte[] DecodeCompactData(scoped ref RlpReader decoderContext)
         {
             int zeroPrefix = decoderContext.DecodePositiveInt();
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();

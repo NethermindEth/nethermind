@@ -17,18 +17,18 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, GetReceiptsMessage70 message)
     {
-        NettyRlpStream stream = new(byteBuffer);
-        stream.Encode(message.FirstBlockReceiptIndex);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.Encode(message.FirstBlockReceiptIndex);
         int hashesContentLength = GetHashesContentLength(message.Hashes);
-        stream.StartSequence(hashesContentLength);
+        writer.StartSequence(hashesContentLength);
 
         foreach (Hash256 hash in message.Hashes.AsSpan())
         {
-            stream.Encode(hash);
+            writer.Encode(hash);
         }
     }
 
-    protected override GetReceiptsMessage70 DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId)
+    protected override GetReceiptsMessage70 DeserializeInternal(ref RlpReader ctx, long requestId)
     {
         long firstIndex = ctx.DecodeLong();
 
@@ -38,7 +38,7 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
         }
 
         ArrayPoolList<Hash256> hashes =
-            ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext nestedContext) => nestedContext.DecodeKeccak(), limit: RlpLimit);
+            ctx.DecodeArrayPoolList(static (ref RlpReader nestedContext) => nestedContext.DecodeKeccak(), limit: RlpLimit);
 
         return new GetReceiptsMessage70(requestId, firstIndex, hashes);
     }

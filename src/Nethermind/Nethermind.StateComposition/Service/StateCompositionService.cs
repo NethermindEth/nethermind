@@ -301,7 +301,7 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     /// for every snapshot write — interval writes, scan completion, and the
     /// graceful-shutdown flush all go through here so behavior cannot drift.
     /// </summary>
-    private void WriteSnapshotForHead(CumulativeTrieStats stats, long blockNumber, Hash256 stateRoot)
+    private void WriteSnapshotForHead(CumulativeTrieStats stats, ulong blockNumber, Hash256 stateRoot)
     {
         if (!_config.PersistSnapshots) return;
         _snapshotStore.WriteSnapshot(_stateHolder.BuildSnapshot(stats, blockNumber, stateRoot));
@@ -340,7 +340,7 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         {
             lock (_diffLock)
             {
-                if (!_stateHolder.TryGetShutdownSnapshot(out Hash256 stateRoot, out long blockNumber, out CumulativeTrieStats stats))
+                if (!_stateHolder.TryGetShutdownSnapshot(out Hash256 stateRoot, out ulong blockNumber, out CumulativeTrieStats stats))
                     return;
 
                 if (_logger.IsInfo)

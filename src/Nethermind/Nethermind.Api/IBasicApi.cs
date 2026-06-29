@@ -27,7 +27,6 @@ namespace Nethermind.Api
 
         [SkipServiceCollection]
         IConfigProvider ConfigProvider { get; }
-        ICryptoRandom CryptoRandom { get; }
         IDbProvider DbProvider { get; }
         IEthereumEcdsa EthereumEcdsa { get; }
         [SkipServiceCollection]

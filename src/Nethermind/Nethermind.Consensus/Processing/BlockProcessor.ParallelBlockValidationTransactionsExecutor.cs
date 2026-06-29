@@ -54,9 +54,16 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            return !block.IsGenesis && balManager.ParallelExecutionEnabled
+            TxReceipt[] receipts = !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
+
+            // Seed empty/system-only blocks with the base fee, then publish gauges once - after workers
+            // join - from the final aggregates so a stale worker view cannot overwrite them.
+            Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
+            Metrics.PublishBlockGasPriceGauges();
+
+            return receipts;
         }
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
@@ -68,8 +75,8 @@ public partial class BlockProcessor
             // makes the building intent explicit on this hot path.
             bool shouldValidateBal = shouldValidate && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            long totalRegularGas = 0;
-            long totalStateGas = 0;
+            ulong totalRegularGas = 0;
+            ulong totalStateGas = 0;
 
             balManager.NextTransaction();
             if (shouldValidateBal) balManager.ValidateBlockAccessList(block, 0);
@@ -337,7 +344,7 @@ public partial class BlockProcessor
             // exactly which tx caused the rejection. Recompute GasUsedTotal across the harvested
             // sequence: each per-tx tracer's _cumulativeReceiptGas only tracks that single tx
             // (resets to 0 per tracer), so the dump would otherwise show GasUsedTotal = GasUsed.
-            long cumulativeGas = 0;
+            ulong cumulativeGas = 0;
             for (int i = 0; i < length; i++)
             {
                 ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
@@ -352,7 +359,7 @@ public partial class BlockProcessor
         private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)
         {
             TxReceipt[] result = new TxReceipt[len];
-            long cumulativeGas = 0;
+            ulong cumulativeGas = 0;
             Bloom blockBloom = new();
             for (int i = 0; i < len; i++)
             {
@@ -399,7 +406,7 @@ public partial class BlockProcessor
         /// schedule is deterministic.</summary>
         private readonly struct TxExecutionSortKey(Transaction tx, int index) : IComparable<TxExecutionSortKey>
         {
-            private readonly long _gasLimit = tx.GasLimit;
+            private readonly ulong _gasLimit = tx.GasLimit;
             private readonly int _dataLength = tx.DataLength;
             private readonly int _authorizationCount = tx.AuthorizationList?.Length ?? 0;
             private readonly int _accessListItems = GetAccessListItemCount(tx.AccessList);
