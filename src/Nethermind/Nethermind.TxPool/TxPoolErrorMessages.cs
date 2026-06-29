@@ -17,7 +17,7 @@ public static class TxPoolErrorMessages
 
     // Nethermind-specific mempool rejection phrases
     public const string FailedToRecoverSender = "failed to recover sender";
-    public const string TransactionOverflow = "transaction overflow";
+    public const string TransactionOverflow = "transaction cost overflow";
     public const string TransactionInvalid = "transaction invalid";
     public const string NonceTooFarInFuture = "nonce too far in future";
     public const string PendingTransactionTypeConflict = "pending transaction type conflict";
