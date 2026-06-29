@@ -175,8 +175,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             if (historyInfo is null)
             {
-                return ResultWrapper<FeeHistoryResults>.Fail("upstream does not have the requested block yet",
-                    ErrorCodes.InternalError);
+                BlockHeader? header = _blockTree.FindHeader(newestBlock);
+                return header is null
+                    ? ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound)
+                    : ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
             }
 
             BlockFeeHistorySearchInfo info = historyInfo.Value;
