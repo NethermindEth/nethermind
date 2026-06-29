@@ -201,8 +201,8 @@ public partial class EngineModuleTests
 
     [TestCase("0x0981253ff1b66ee40650f7fa7efe53f772bc11bd4fef3a3574cf91495a1533dd", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0x42a80ba6d5783c392ffcc6b3c15d7ef06be8ae71c2ff5f42377acdec67a5766c", false, false)]
     [TestCase(null, null, null, false, true)]
-    [TestCase("0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae", "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2", "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29", true, false)]
-    [TestCase("0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae", "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2", "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29", true, true)]
+    [TestCase("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, false)]
+    [TestCase("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, true)]
     public virtual Task NewPayloadV5_accepts_valid_BAL(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline) =>
         !eip8037Enabled && !useEnginePipeline
             ? NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot)
@@ -316,8 +316,8 @@ public partial class EngineModuleTests
         {
             yield return new TestCaseData(blockHash, "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, errorKind);
             yield return new TestCaseData(null, null, null, false, true, errorKind);
-            yield return new TestCaseData("0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae", "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2", "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29", true, false, errorKind);
-            yield return new TestCaseData("0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae", "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2", "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29", true, true, errorKind);
+            yield return new TestCaseData("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, false, errorKind);
+            yield return new TestCaseData("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, true, errorKind);
         }
     }
 
