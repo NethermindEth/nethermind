@@ -53,27 +53,28 @@ internal static class FusedOpcode
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
     {
-        switch (instruction)
+        fused = instruction switch
         {
-            case Instruction.ADD: fused = Add; return true;
-            case Instruction.SUB: fused = Sub; return true;
-            case Instruction.MUL: fused = Mul; return true;
-            case Instruction.DIV: fused = Div; return true;
-            case Instruction.SDIV: fused = SDiv; return true;
-            case Instruction.MOD: fused = Mod; return true;
-            case Instruction.SMOD: fused = SMod; return true;
-            case Instruction.LT: fused = Lt; return true;
-            case Instruction.GT: fused = Gt; return true;
-            case Instruction.SLT: fused = SLt; return true;
-            case Instruction.SGT: fused = SGt; return true;
-            case Instruction.EQ: fused = Eq; return true;
-            case Instruction.AND: fused = And; return true;
-            case Instruction.OR: fused = Or; return true;
-            case Instruction.XOR: fused = Xor; return true;
-            case Instruction.SHL: fused = Shl; return true;
-            case Instruction.SHR: fused = Shr; return true;
-            default: fused = 0; return false;
-        }
+            Instruction.ADD => Add,
+            Instruction.SUB => Sub,
+            Instruction.MUL => Mul,
+            Instruction.DIV => Div,
+            Instruction.SDIV => SDiv,
+            Instruction.MOD => Mod,
+            Instruction.SMOD => SMod,
+            Instruction.LT => Lt,
+            Instruction.GT => Gt,
+            Instruction.SLT => SLt,
+            Instruction.SGT => SGt,
+            Instruction.EQ => Eq,
+            Instruction.AND => And,
+            Instruction.OR => Or,
+            Instruction.XOR => Xor,
+            Instruction.SHL => Shl,
+            Instruction.SHR => Shr,
+            _ => 0,
+        };
+        return fused != 0;
     }
 }
 
@@ -176,7 +177,7 @@ internal sealed class InstructionStream
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
             }
-            else if (TryGetInBlockCost(instruction, out ulong cost) && pc + immediates < code.Length)
+            else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
@@ -284,46 +285,21 @@ internal sealed class InstructionStream
     /// PUSH2 excluded (keeps fused PUSH2+JUMP); PUSH1 and PUSH3..PUSH32 are included. DUP9+/SWAP9+
     /// excluded to keep the switch within the size the JIT inlines.
     /// </summary>
-    public static bool TryGetInBlockCost(Instruction instruction, out ulong cost)
+    public const ulong NotInBlock = ulong.MaxValue;
+
+    public static ulong GetInBlockCost(Instruction instruction) => instruction switch
     {
-        switch (instruction)
-        {
-            case Instruction.ADD:
-            case Instruction.SUB:
-            case Instruction.LT:
-            case Instruction.GT:
-            case Instruction.SLT:
-            case Instruction.SGT:
-            case Instruction.EQ:
-            case Instruction.AND:
-            case Instruction.OR:
-            case Instruction.XOR:
-            case Instruction.ISZERO:
-            case Instruction.NOT:
-            case Instruction.SHL:
-            case Instruction.SHR:
-            case Instruction.PUSH1:
-            case >= Instruction.PUSH3 and <= Instruction.PUSH32:
-            case >= Instruction.DUP1 and <= Instruction.DUP8:
-            case >= Instruction.SWAP1 and <= Instruction.SWAP8:
-                cost = GasCostOf.VeryLow;
-                return true;
-            case Instruction.MUL:
-            case Instruction.DIV:
-            case Instruction.SDIV:
-            case Instruction.MOD:
-            case Instruction.SMOD:
-                cost = GasCostOf.Low;
-                return true;
-            case Instruction.POP:
-            case Instruction.PUSH0:
-                cost = GasCostOf.Base;
-                return true;
-            default:
-                cost = 0;
-                return false;
-        }
-    }
+        Instruction.ADD or Instruction.SUB or Instruction.LT or Instruction.GT or Instruction.SLT
+            or Instruction.SGT or Instruction.EQ or Instruction.AND or Instruction.OR or Instruction.XOR
+            or Instruction.ISZERO or Instruction.NOT or Instruction.SHL or Instruction.SHR
+            or Instruction.PUSH1
+            or (>= Instruction.PUSH3 and <= Instruction.PUSH32)
+            or (>= Instruction.DUP1 and <= Instruction.DUP8)
+            or (>= Instruction.SWAP1 and <= Instruction.SWAP8) => GasCostOf.VeryLow,
+        Instruction.MUL or Instruction.DIV or Instruction.SDIV or Instruction.MOD or Instruction.SMOD => GasCostOf.Low,
+        Instruction.POP or Instruction.PUSH0 => GasCostOf.Base,
+        _ => NotInBlock,
+    };
 
     /// <summary>Returns the PUSH2 immediate at <paramref name="pc"/> when it points at a JUMPDEST; -1 otherwise.</summary>
     private static int TryReadStaticJumpTarget(ReadOnlySpan<byte> code, int pc)

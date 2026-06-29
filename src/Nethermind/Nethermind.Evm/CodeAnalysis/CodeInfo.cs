@@ -24,13 +24,25 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     // Empty
     private CodeInfo() { }
-    private CodeInfo(JumpDestinationAnalyzer analyzer) => _analyzer = analyzer;
+    private CodeInfo(JumpDestinationAnalyzer analyzer)
+    {
+        _analyzer = analyzer;
+        _streamBuildState = StreamBuildUnavailable;
+    }
 
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
         Code = code;
-        _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(this);
+        if (code.Length == 0)
+        {
+            _analyzer = _emptyAnalyzer;
+            _streamBuildState = StreamBuildUnavailable;
+        }
+        else
+        {
+            _analyzer = new JumpDestinationAnalyzer(this);
+        }
     }
 
     // Precompile
@@ -38,6 +50,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         Precompile = precompile;
         _analyzer = null;
+        _streamBuildState = StreamBuildUnavailable;
     }
 
     protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
@@ -45,6 +58,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         Precompile = precompile;
         Code = code;
         _analyzer = null;
+        _streamBuildState = StreamBuildUnavailable;
     }
 
     public ReadOnlyMemory<byte> Code { get; }
@@ -76,8 +90,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         if (stream is not null)
             return stream;
         if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
-            return null;
-        if (IsEmpty || IsPrecompile)
             return null;
         if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
             return null;

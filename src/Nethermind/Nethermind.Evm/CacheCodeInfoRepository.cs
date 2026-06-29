@@ -75,19 +75,6 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         InstructionStreamCache.Clear();
     }
 
-    /// <summary>
-    /// Lightweight service for DI auto-discovery of code cache clearing.
-    /// Nested to access the private static cache without changing visibility.
-    /// </summary>
-    public sealed class CacheClearService : IClearableCache
-    {
-        public void ClearCache()
-        {
-            _codeCache.Clear();
-            InstructionStreamCache.Clear();
-        }
-    }
-
     private sealed class CodeLruCache
     {
         private readonly AssociativeCache<ValueHash256, CodeInfo> _cache = new(MemoryAllowance.CodeCacheSize);

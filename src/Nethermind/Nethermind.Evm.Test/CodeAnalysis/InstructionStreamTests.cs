@@ -161,14 +161,9 @@ public class InstructionStreamTests
     [TestCase(Instruction.DUP8, GasCostOf.VeryLow, TestName = "Dup8")]
     [TestCase(Instruction.SWAP8, GasCostOf.VeryLow, TestName = "Swap8")]
     [TestCase(Instruction.PUSH32, GasCostOf.VeryLow, TestName = "Push32_ViaConstantPool")]
-    public void TryGetInBlockCost_ForStaticCostOp_MatchesGasCostOf(Instruction instruction, ulong expectedCost)
-    {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(InstructionStream.TryGetInBlockCost(instruction, out ulong cost), Is.True);
-            Assert.That(cost, Is.EqualTo(expectedCost), "block sums diverging from GasCostOf is a consensus bug");
-        }
-    }
+    public void GetInBlockCost_ForStaticCostOp_MatchesGasCostOf(Instruction instruction, ulong expectedCost)
+        => Assert.That(InstructionStream.GetInBlockCost(instruction), Is.EqualTo(expectedCost),
+            "block sums diverging from GasCostOf is a consensus bug");
 
     [TestCase(Instruction.PUSH2, TestName = "Push2_KeepsFusedTableHandler")]
     [TestCase(Instruction.DUP9, TestName = "Dup9_OutsideExecutorSwitch")]
@@ -177,8 +172,8 @@ public class InstructionStreamTests
     [TestCase(Instruction.SLOAD, TestName = "SLoad_DynamicAccessGas")]
     [TestCase(Instruction.GAS, TestName = "Gas_MustObserveExactRemaining")]
     [TestCase(Instruction.EXP, TestName = "Exp_DynamicGas")]
-    public void TryGetInBlockCost_ForExcludedOp_ReturnsFalse(Instruction instruction)
-        => Assert.That(InstructionStream.TryGetInBlockCost(instruction, out _), Is.False);
+    public void GetInBlockCost_ForExcludedOp_ReturnsNotInBlock(Instruction instruction)
+        => Assert.That(InstructionStream.GetInBlockCost(instruction), Is.EqualTo(InstructionStream.NotInBlock));
 }
 
 // Mutates process-wide StreamInterpreter statics, so it must not run alongside other EVM tests.
@@ -404,7 +399,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private static IEnumerable<Instruction> InBlockOpcodes()
     {
         for (int op = 0; op <= byte.MaxValue; op++)
-            if (InstructionStream.TryGetInBlockCost((Instruction)op, out _))
+            if (InstructionStream.GetInBlockCost((Instruction)op) != InstructionStream.NotInBlock)
                 yield return (Instruction)op;
     }
 
