@@ -42,7 +42,7 @@ public static partial class EvmInstructions
                 goto OutOfGas;
 
             ZeroPaddedSpan slice = source.SliceWithZeroPadding(in b, (int)result);
-            if (!vm.VmState.Memory.TrySave(in a, in slice)) goto OutOfGas;
+            vm.VmState.Memory.SaveAfterGas(in a, in slice);
 
             if (TTracingInst.IsActive)
             {
@@ -114,7 +114,7 @@ public static partial class EvmInstructions
                 goto OutOfGas;
 
             ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(sourceOffset, (int)size);
-            if (!vm.VmState.Memory.TrySave(in destOffset, in slice)) goto OutOfGas;
+            vm.VmState.Memory.SaveAfterGas(in destOffset, in slice);
 
             if (TTracingInst.IsActive)
             {
@@ -187,8 +187,7 @@ public static partial class EvmInstructions
 
             // Slice the external code starting at the source offset with appropriate zero-padding.
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
-            // Save the slice into memory at the destination offset.
-            if (!vm.VmState.Memory.TrySave(in a, in slice)) goto OutOfGas;
+            vm.VmState.Memory.SaveAfterGas(in a, in slice);
 
             // Report memory changes if tracing is enabled.
             if (TTracingInst.IsActive)

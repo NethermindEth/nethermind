@@ -277,6 +277,35 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Not.Null);
         }
 
+        [Test]
+        public void Estimate_uses_next_block_spec_for_execution_across_fork_boundary()
+        {
+            BlocksConfig blocksConfig = new();
+            BlockHeader header = Build.A.BlockHeader
+                .WithNumber(MainnetSpecProvider.ParisBlockNumber + 100)
+                .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp - blocksConfig.SecondsPerSlot)
+                .TestObject;
+
+            BlockExecutionContext? captured = null;
+            ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+            processor.When(p => p.SetBlockExecutionContext(Arg.Any<BlockExecutionContext>()))
+                .Do(ci => captured = ci.Arg<BlockExecutionContext>());
+
+            IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue);
+
+            GasEstimator sut = new(processor, stateProvider, MainnetSpecProvider.Instance, blocksConfig);
+
+            Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
+            EstimateGasTracer tracer = new();
+            tracer.MarkAsSuccess(Address.Zero, 21000, [], []);
+
+            sut.Estimate(tx, header, tracer, out string? _);
+
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(captured!.Value.Spec.IsEip4844Enabled, Is.True);
+        }
+
         [TestCase(Transaction.BaseTxGasCost, (ulong)GasEstimator.DefaultErrorMargin, false)]
         [TestCase(Transaction.BaseTxGasCost, 100UL, false)]
         [TestCase(Transaction.BaseTxGasCost, 1000UL, false)]
