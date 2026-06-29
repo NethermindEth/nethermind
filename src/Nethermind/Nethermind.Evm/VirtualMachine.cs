@@ -77,17 +77,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(MaxCallDepth + 1);
 
-    // Per-spec opcode dispatch tables, cached in this per-TGasPolicy generic static (correctly typed)
-    // rather than on the IReleaseSpec consensus contract (which forced an untyped System.Array — a latent
-    // cross-policy type-confusion). ConditionalWeakTable lets the entry die with its (per-fork) spec.
-    private sealed unsafe class OpcodeTable
-    {
-        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? NoTrace;
-        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? Traced;
-    }
-
-    private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
-
     protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
 
