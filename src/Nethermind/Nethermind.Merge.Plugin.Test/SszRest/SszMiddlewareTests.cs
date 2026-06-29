@@ -25,7 +25,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs.Forks;
 using System.Linq;
 using NSubstitute;
@@ -117,7 +116,7 @@ public class SszMiddlewareTests
             new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
             new CapabilitiesSszHandler(_specProvider),
 
-            // Witness endpoint is a normal handler now (declares FixedPath + JSON RequestContentType).
+            // Witness endpoint: a fork-routed sub-resource of payloads (/engine/v2/{fork}/payloads/witness).
             new NewPayloadWithWitnessSszHandler(_engineModule),
         ];
 
@@ -145,15 +144,6 @@ public class SszMiddlewareTests
     {
         DefaultHttpContext ctx = MakeBaseContext("POST", path, port);
         ctx.Request.ContentType = OctetStream;
-        ctx.Request.ContentLength = body.Length;
-        ctx.Request.Body = new MemoryStream(body);
-        return ctx;
-    }
-
-    private static DefaultHttpContext MakeJsonPostContext(string path, byte[] body, int port = AuthenticatedPort)
-    {
-        DefaultHttpContext ctx = MakeBaseContext("POST", path, port);
-        ctx.Request.ContentType = "application/json";
         ctx.Request.ContentLength = body.Length;
         ctx.Request.Body = new MemoryStream(body);
         return ctx;
@@ -1059,9 +1049,11 @@ public class SszMiddlewareTests
         Assert.That(root.EnumerateObject().Count(), Is.EqualTo(2), "error body must have exactly two keys: type + detail");
     }
 
-    // The witness endpoint (EIP-7928) is served by SszMiddleware's dedicated fast-path on its own
-    // version-less /new-payload-with-witness path. It speaks application/json (request) and emits
-    // application/octet-stream SSZ on success, RFC 7807 application/problem+json on error.
+    // The witness endpoint (EIP-7928) is a fork-routed sub-resource of payloads:
+    // POST /engine/v2/{fork}/payloads/witness, gated to Amsterdam+. The SSZ request is the same
+    // shape as the standard payloads endpoint; the SSZ response is PayloadStatusWithWitness.
+
+    private static string WitnessPath => $"/engine/v2/{AmsterdamUrl}/payloads/witness";
 
     [Test]
     public async Task NewPayloadWithWitness_returns_200_with_octet_stream_and_decodable_ssz_for_valid_status()
@@ -1083,7 +1075,7 @@ public class SszMiddlewareTests
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
         byte[] body = BuildMinimalWitnessRequestBody();
-        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, body);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -1117,7 +1109,7 @@ public class SszMiddlewareTests
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
         byte[] body = BuildMinimalWitnessRequestBody();
-        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, body);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -1136,14 +1128,14 @@ public class SszMiddlewareTests
     [Test]
     public async Task NewPayloadWithWitness_wrong_content_type_post_returns_415()
     {
-        DefaultHttpContext ctx = MakeBaseContext("POST", "/new-payload-with-witness", AuthenticatedPort);
+        DefaultHttpContext ctx = MakeBaseContext("POST", WitnessPath, AuthenticatedPort);
         ctx.Request.ContentType = "text/plain";
         ctx.Request.Body = Stream.Null;
 
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status415UnsupportedMediaType),
-            "a POST with wrong Content-Type must receive 415, not fall through to 404");
+            "a POST with wrong Content-Type must receive 415, like every other SSZ POST endpoint");
         Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
     }
 
@@ -1158,7 +1150,7 @@ public class SszMiddlewareTests
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
         byte[] body = BuildMinimalWitnessRequestBody();
-        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, body);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -1169,46 +1161,43 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task NewPayloadWithWitness_malformed_json_returns_400_problem_json()
+    public async Task NewPayloadWithWitness_malformed_ssz_returns_400()
     {
-        byte[] badBody = System.Text.Encoding.UTF8.GetBytes("not json at all");
-        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", badBody);
+        byte[] garbage = new byte[64];
+        new Random(42).NextBytes(garbage);
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, garbage);
 
-        await _middleware.InvokeAsync(ctx);
+        Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
+        Assert.That(async () => await act(), Throws.Nothing);
+        // Per execution-apis #793: malformed SSZ encoding maps to 400 Bad Request.
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"),
-            "error responses must be RFC 7807 application/problem+json");
-        string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-        Assert.That(responseBody, Does.Contain("\"type\""));
     }
 
     [Test]
-    public async Task NewPayloadWithWitness_malformed_hex_returns_400_not_500()
+    public async Task NewPayloadWithWitness_non_post_method_returns_404()
     {
-        // Structurally valid JSON, but a hex field carries invalid hex. Nethermind's hex
-        // converters surface this as FormatException/InvalidOperationException rather than
-        // JsonException, so the handler must still map it to 400 instead of leaking a 500.
-        byte[] body = BuildMinimalWitnessRequestBody(blobHashes: new[] { "0xnothex" });
-        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+        DefaultHttpContext ctx = MakeGetContext(WitnessPath);
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound),
+            "the witness resource is POST-only; a GET resolves no handler, like every other POST endpoint");
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_on_pre_Amsterdam_fork_returns_404()
+    {
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{CancunUrl}/payloads/witness", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound),
+            "the witness endpoint is gated to Amsterdam+; a pre-EIP-7928 fork must resolve no handler");
         await _engineModule.DidNotReceive().engine_newPayloadWithWitness(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-    }
-
-    [Test]
-    public async Task NewPayloadWithWitness_non_post_method_returns_405()
-    {
-        DefaultHttpContext ctx = MakeGetContext("/new-payload-with-witness");
-
-        await _middleware.InvokeAsync(ctx);
-
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status405MethodNotAllowed),
-            "spec mandates 405 for any method other than POST on this endpoint");
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
     }
 
     [Test]
@@ -1219,7 +1208,7 @@ public class SszMiddlewareTests
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail("Unsupported fork", MergeErrorCodes.UnsupportedFork));
 
         byte[] body = BuildMinimalWitnessRequestBody();
-        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, body);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -1231,20 +1220,6 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task NewPayloadWithWitness_via_versioned_engine_path_returns_404()
-    {
-        byte[] body = BuildMinimalWitnessRequestBody();
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/new-payload-with-witness", body);
-
-        await _middleware.InvokeAsync(ctx);
-
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound),
-            "the witness endpoint has no versioned /engine/vN/ path; the versioned URL must return 404");
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"),
-            "error responses must always be RFC 7807 application/problem+json");
-    }
-
-    [Test]
     public async Task NewPayloadWithWitness_non_UnsupportedFork_engine_error_returns_500()
     {
         _engineModule.engine_newPayloadWithWitness(
@@ -1252,7 +1227,7 @@ public class SszMiddlewareTests
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail("Something exploded", ErrorCodes.InternalError));
 
         byte[] body = BuildMinimalWitnessRequestBody();
-        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, body);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -1263,42 +1238,10 @@ public class SszMiddlewareTests
         Assert.That(responseBody, Does.Contain("/engine-api/errors/internal"));
     }
 
-    private static byte[] BuildMinimalWitnessRequestBody(object? blobHashes = null)
-    {
-        ExecutionPayloadV4 payload = new()
+    private static byte[] BuildMinimalWitnessRequestBody() =>
+        NewPayloadV5RequestWire.Encode(new NewPayloadV5RequestWire
         {
-            ParentHash = TestItem.KeccakA,
-            FeeRecipient = TestItem.AddressA,
-            StateRoot = TestItem.KeccakB,
-            ReceiptsRoot = TestItem.KeccakC,
-            LogsBloom = Bloom.Empty,
-            PrevRandao = TestItem.KeccakD,
-            BlockNumber = 1,
-            GasLimit = 1_000_000,
-            GasUsed = 0,
-            Timestamp = 1_700_000_000,
-            ExtraData = [],
-            BaseFeePerGas = 1,
-            BlockHash = TestItem.KeccakE,
-            Transactions = [],
-            Withdrawals = [],
-            BlobGasUsed = 0,
-            ExcessBlobGas = 0,
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 0)),
             ParentBeaconBlockRoot = TestItem.KeccakA,
-            ExecutionRequests = [],
-            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(new BlockAccessListBuilder().TestObject)
-        };
-
-        string json = System.Text.Json.JsonSerializer.Serialize(
-            new object?[]
-            {
-                payload,
-                blobHashes ?? Array.Empty<string>(),
-                TestItem.KeccakA,
-                Array.Empty<string>()
-            },
-            Serialization.Json.EthereumJsonSerializer.JsonOptions);
-
-        return System.Text.Encoding.UTF8.GetBytes(json);
-    }
+        });
 }

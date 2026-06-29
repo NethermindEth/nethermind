@@ -2203,7 +2203,7 @@ public partial class EngineModuleTests
         SszRestPaths.PostV4Forkchoice,
         SszRestPaths.PostV2PayloadBodiesByHash,
         SszRestPaths.GetV2PayloadBodiesByRange,
-        SszRestCapabilities.NewPayloadWithWitness,
+        SszRestPaths.PostV5PayloadsWitness,
     ];
 
     public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()

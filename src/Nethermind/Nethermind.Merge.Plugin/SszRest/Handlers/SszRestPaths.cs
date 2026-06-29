@@ -75,12 +75,9 @@ public static class SszRestPaths
 
     public const string Blobs = "blobs";
 
-    // Witness endpoint resource segment (EIP-7928). The handler declares its own version-less
-    // FixedPath, so SszMiddleware routes it by exact path rather than the fork-segment router.
-    public const string NewPayloadWithWitness = "new-payload-with-witness";
-
-    // Absolute request path the witness endpoint binds to (ISszEndpointHandler.FixedPath).
-    public const string NewPayloadWithWitnessPath = "/" + NewPayloadWithWitness;
+    // Witness endpoint resource segment (EIP-7928): a fork-scoped sub-resource of `payloads`, routed
+    // like every other endpoint via /engine/v2/{fork}/payloads/witness (execution-apis#773/#793).
+    public const string PayloadsWitness = "payloads/witness";
 
     // Documentation strings for the SSZ-REST routes — used by EngineRpcCapabilitiesProvider
     // (registration) and EngineModuleTests (coverage assertions). Built at static-init time from
@@ -110,6 +107,7 @@ public static class SszRestPaths
     public const string PostV3Blobs = "POST /engine/v2/blobs/v3";
 
     public static readonly string PostV5Payloads = $"POST /engine/v2/{_amsterdam}/payloads";
+    public static readonly string PostV5PayloadsWitness = $"POST /engine/v2/{_amsterdam}/payloads/witness";
     public static readonly string GetV6Payloads = $"GET /engine/v2/{_amsterdam}/payloads/{{payload_id}}";
     public static readonly string PostV4Forkchoice = $"POST /engine/v2/{_amsterdam}/forkchoice";
     public static readonly string PostV2PayloadBodiesByHash = $"POST /engine/v2/{_amsterdam}/bodies/hash";
@@ -133,6 +131,9 @@ public static class SszRestPaths
             if (Eq(resource, Payloads)) return spec.EngineApiNewPayloadVersion;
             if (Eq(resource, Forkchoice)) return spec.EngineApiForkchoiceVersion;
             if (Eq(resource, PayloadBodiesByHash)) return spec.EngineApiPayloadBodiesByHashVersion;
+            // EIP-7928 witness endpoint: version-less, gated on fork support so pre-Amsterdam forks
+            // resolve to null (404). Tracks the newPayload wire version it shares.
+            if (Eq(resource, PayloadsWitness)) return spec.IsEip7928Enabled ? spec.EngineApiNewPayloadVersion : null;
         }
         else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
         {
@@ -158,14 +159,4 @@ public static class SszRestPaths
         }
         return null;
     }
-}
-
-/// <summary>
-/// Engine API capability names that are advertised by <c>engine_exchangeCapabilities</c> but are
-/// not part of the standard <c>POST /engine/v2/{fork}/{resource}</c> path scheme. The EIP-7928
-/// witness endpoint has its own dedicated, version-less path and is advertised under this name.
-/// </summary>
-public static class SszRestCapabilities
-{
-    public const string NewPayloadWithWitness = "rest_engine_newPayloadWithWitness";
 }

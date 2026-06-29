@@ -29,10 +29,6 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 
     public virtual bool AcceptsPathExtra => false;
 
-    public virtual string? FixedPath => null;
-
-    public virtual string RequestContentType => OctetStream;
-
     /// <inheritdoc/>
     public abstract Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body);
 
