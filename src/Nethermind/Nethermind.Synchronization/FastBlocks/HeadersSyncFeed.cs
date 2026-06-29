@@ -239,9 +239,6 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_pivotNumber == _syncConfig.PivotNumber)
                 return _syncConfig.PivotTotalDifficultyParsed; // Pivot is the same as in config
 
-            // Got from header. DoNotCreateLevelIfMissing prevents an orphaned-block exception when the header
-            // is reachable from sync metadata but its chain level was lost (e.g. unclean shutdown) — a missing
-            // level then simply yields a null header and the PoS fallback below is used.
             BlockHeader? pivotHeader = _blockTree.FindHeader(headerHash, BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (pivotHeader?.TotalDifficulty is not null) return pivotHeader.TotalDifficulty.Value;
 
