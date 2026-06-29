@@ -125,7 +125,7 @@ public class PersistenceManager(
             "Latest snapshot must be at or ahead of the last persisted block.");
         ulong inMemoryStateDepth = currentPersistedState == StateId.PreGenesis
             ? lastSnapshotNumber + 1
-            : lastSnapshotNumber - currentPersistedState.BlockNumber;
+            : lastSnapshotNumber.SaturatingSub(currentPersistedState.BlockNumber);
 
         if (inMemoryStateDepth.SaturatingSub(_compactSize) < _minReorgDepth)
         {
