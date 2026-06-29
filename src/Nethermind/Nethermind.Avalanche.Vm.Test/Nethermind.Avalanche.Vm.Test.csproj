@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../tests.props" />
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <!-- Generated gRPC/protobuf code lacks XML docs and trips a few analyzer/style rules.
+         The repo builds with TreatWarningsAsErrors, so silence the well-known generated-code noise. -->
+    <NoWarn>$(NoWarn);CS1591;CS0612;CS0618;CS8981;CS8669;IDE0005;IDE1006</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The test stands up an in-process Kestrel h2c gRPC server (the fake AvalancheGo "Runtime" engine)
+         and dials the VM with a gRPC client, so it needs both the ASP.NET Core gRPC server stack and the
+         client stack plus the protobuf codegen toolchain. All versions come from Central Package Management. -->
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference the VM under test so it is built before this test runs and its dll is on disk.
+         ReferenceOutputAssembly=false: the test launches that dll as a subprocess and talks to it over
+         gRPC, so it must NOT link the VM's assembly. Linking it would pull in the VM's own generated
+         "Vm.*" / "Vm.Runtime.*" protobuf types, which would collide with the copies this test generates
+         from the same protos. -->
+    <ProjectReference Include="..\Nethermind.Avalanche.Vm\Nethermind.Avalanche.Vm.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Compile the same protos the VM uses, but from the test's perspective:
+       - runtime.proto as Server: the test hosts the "Runtime" engine the VM calls back into.
+       - vm.proto as Client: the test dials the VM's vm.VM service.
+       ProtoRoot points at the VM project's proto/ directory so imports such as
+       "google/protobuf/empty.proto" and "vm/runtime/runtime.proto" resolve the same way they do there. -->
+  <ItemGroup>
+    <Protobuf Include="..\Nethermind.Avalanche.Vm\proto\vm\runtime\runtime.proto"
+              ProtoRoot="..\Nethermind.Avalanche.Vm\proto"
+              GrpcServices="Server"
+              Link="proto\vm\runtime\runtime.proto" />
+    <Protobuf Include="..\Nethermind.Avalanche.Vm\proto\vm\vm.proto"
+              ProtoRoot="..\Nethermind.Avalanche.Vm\proto"
+              GrpcServices="Client"
+              Link="proto\vm\vm.proto" />
+
+    <!-- Message-only dependency pulled in by vm.proto (io.prometheus.client.MetricFamily). -->
+    <Protobuf Include="..\Nethermind.Avalanche.Vm\proto\io\prometheus\client\metrics.proto"
+              ProtoRoot="..\Nethermind.Avalanche.Vm\proto"
+              GrpcServices="None"
+              Link="proto\io\prometheus\client\metrics.proto" />
+  </ItemGroup>
+
+</Project>
