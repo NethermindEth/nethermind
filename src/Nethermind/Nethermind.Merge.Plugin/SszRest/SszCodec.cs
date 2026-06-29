@@ -13,7 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Ssz;
-using System.Buffers.Binary;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
@@ -36,108 +35,24 @@ public static class SszCodec
 
     public static int EncodeNewPayloadWithWitnessResponse(PayloadStatusV1 ps, Witness? witness, IBufferWriter<byte> writer)
     {
-        const int FixedHeaderBytes = 1 + 4 + 4 + 4;
-
-        bool hasLvh = ps.LatestValidHash is not null;
-        int lvhLen = hasLvh ? 33 : 1;
-
-        byte[] errorBytes = ps.ValidationError is not null
-            ? Encoding.UTF8.GetBytes(ps.ValidationError)
-            : [];
-        if (errorBytes.Length > ValidationErrorMaxBytes)
-            errorBytes = TruncateUtf8(errorBytes, ValidationErrorMaxBytes);
-        bool hasError = ps.ValidationError is not null;
-        int errorLen = hasError ? 1 + errorBytes.Length : 1;
-
+        // PayloadStatusWithWitness reuses the regular PayloadStatus encoding plus the witness as an
+        // Optional (List[ExecutionWitness, 1]) — present only when the status is VALID.
         bool hasWitness = witness is not null && ps.Status == PayloadStatus.Valid;
-        ExecutionWitnessV1Wire witnessWire = hasWitness ? BuildExecutionWitnessV1Wire(witness!) : default;
-        int witnessBodyLen = hasWitness ? ExecutionWitnessV1Wire.GetLength(witnessWire) : 0;
-        int witnessLen = hasWitness ? 1 + witnessBodyLen : 1;
-
-        int totalLen = FixedHeaderBytes + lvhLen + errorLen + witnessLen;
-
-        // No dst.Clear() — every byte in [0, totalLen) is overwritten below.
-        Span<byte> dst = writer.GetSpan(totalLen)[..totalLen];
-
-        int pos = 0;
-
-        dst[pos++] = EngineStatusToSsz(ps.Status);
-
-        // SSZ offsets are uint32; all three are bounded by MaxBodySize (16 MiB) << 2^31.
-        uint off1 = (uint)FixedHeaderBytes;
-        BinaryPrimitives.WriteUInt32LittleEndian(dst.Slice(pos, 4), off1);
-        pos += 4;
-
-        uint off2 = off1 + (uint)lvhLen;
-        BinaryPrimitives.WriteUInt32LittleEndian(dst.Slice(pos, 4), off2);
-        pos += 4;
-
-        uint off3 = off2 + (uint)errorLen;
-        BinaryPrimitives.WriteUInt32LittleEndian(dst.Slice(pos, 4), off3);
-        pos += 4;
-
-        if (hasLvh)
+        return EncodeToWriter(new PayloadStatusWithWitnessWire
         {
-            dst[pos++] = 0x01;
-            ps.LatestValidHash!.Bytes.CopyTo(dst.Slice(pos, 32));
-            pos += 32;
-        }
-        else
-        {
-            dst[pos++] = 0x00;
-        }
-
-        if (hasError)
-        {
-            dst[pos++] = 0x01;
-            errorBytes.CopyTo(dst.Slice(pos, errorBytes.Length));
-            pos += errorBytes.Length;
-        }
-        else
-        {
-            dst[pos++] = 0x00;
-        }
-
-        if (hasWitness)
-        {
-            dst[pos++] = 0x01;
-            ExecutionWitnessV1Wire.Encode(dst.Slice(pos, witnessBodyLen), witnessWire);
-            pos += witnessBodyLen;
-        }
-        else
-        {
-            dst[pos++] = 0x00;
-        }
-
-        if (pos != totalLen)
-            throw new InvalidOperationException($"NewPayloadWithWitnessResponseV1 encode length mismatch: wrote {pos} bytes but expected {totalLen}");
-        writer.Advance(totalLen);
-        return totalLen;
+            PayloadStatus = BuildPayloadStatusWire(ps),
+            Witness = hasWitness ? [BuildExecutionWitnessV1Wire(witness!)] : []
+        }, writer);
     }
 
-    /// <summary>Test helper: round-trip decode of NewPayloadWithWitnessResponseV1 SSZ output.</summary>
+    /// <summary>Test helper: round-trip decode of PayloadStatusWithWitness SSZ output.</summary>
     public static (byte Status, Hash256? LatestValidHash, bool WitnessPresent)
         DecodeNewPayloadWithWitnessResponse(ReadOnlySpan<byte> data)
     {
-        const int FixedHeaderBytes = 1 + 4 + 4 + 4;
-        if (data.Length < FixedHeaderBytes)
-            throw new ArgumentException("Response too short to be a valid NewPayloadWithWitnessResponseV1");
-
-        byte status = data[0];
-        // Spec offsets are uint32; cast to int for slicing (we're well within int range).
-        int off1 = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(1, 4));
-        int off2 = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(5, 4));
-        int off3 = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(9, 4));
-
-        ReadOnlySpan<byte> lvhSlice = data.Slice(off1, off2 - off1);
-        Hash256? latestValidHash = null;
-        if (lvhSlice.Length >= 1 && lvhSlice[0] == 0x01)
-            latestValidHash = new Hash256(lvhSlice.Slice(1, 32));
-
-        ReadOnlySpan<byte> witnessSlice = data.Slice(off3);
-        bool witnessPresent = witnessSlice.Length >= 1 && witnessSlice[0] == 0x01;
-
-        return (status, latestValidHash, witnessPresent);
+        PayloadStatusWithWitnessWire.Decode(data, out PayloadStatusWithWitnessWire wire);
+        Hash256? latestValidHash = wire.PayloadStatus.LatestValidHash is { Length: > 0 } lvh ? lvh[0] : null;
+        bool witnessPresent = wire.Witness is { Length: > 0 };
+        return (wire.PayloadStatus.Status, latestValidHash, witnessPresent);
     }
 
     private static ExecutionWitnessV1Wire BuildExecutionWitnessV1Wire(Witness witness)
@@ -156,14 +71,6 @@ public static class SszCodec
                 result[i] = new SszWitnessItem { Bytes = items[i] };
             return result;
         }
-    }
-
-    private static byte[] TruncateUtf8(byte[] utf8, int maxBytes)
-    {
-        int i = maxBytes;
-        while (i > 0 && (utf8[i] & 0xC0) == 0x80)
-            i--;
-        return utf8[..i];
     }
 
     public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)

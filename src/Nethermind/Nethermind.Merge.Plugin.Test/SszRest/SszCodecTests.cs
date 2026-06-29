@@ -742,7 +742,7 @@ public class SszCodecTests
             Assert.That(decoded.Commitments![i].AsSpan().ToArray(), Is.EqualTo(proofs[i]), $"commitment {i} bytes must round-trip exactly");
     }
 
-    // Witness Union is Some iff status is VALID AND witness is non-null; otherwise None.
+    // Witness is present (length-1 list) iff status is VALID AND witness is non-null; otherwise empty.
     [TestCase(PayloadStatus.Valid, true, true)]
     [TestCase(PayloadStatus.Valid, false, false)]
     [TestCase(PayloadStatus.Invalid, true, false)]
@@ -762,38 +762,32 @@ public class SszCodecTests
     }
 
     [Test]
-    public void EncodeNewPayloadWithWitnessResponse_container_header_is_13_bytes_and_offsets_are_correct()
+    public void EncodeNewPayloadWithWitnessResponse_embeds_regular_payload_status_encoding()
     {
         PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
 
-        byte[] encoded = Encode(
+        byte[] withWitness = Encode(
             (ps, (Witness?)null),
             static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+        byte[] standalone = Encode(ps, static (p, w) => SszCodec.EncodePayloadStatus(p, w));
 
-        ReadOnlySpan<byte> buf = encoded;
+        // The outer container has two variable fields (payload_status, witness) → an 8-byte two-offset header.
+        ReadOnlySpan<byte> buf = withWitness;
+        int offStatus = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(0, 4));
+        int offWitness = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(4, 4));
+        Assert.That(offStatus, Is.EqualTo(8), "two-offset container header is 8 bytes");
 
-        Assert.That(buf[0], Is.EqualTo(0), "VALID encodes as status byte 0x00");
-
-        int off1 = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(1, 4));
-        Assert.That(off1, Is.EqualTo(13), "latest_valid_hash Union starts immediately after the 13-byte fixed header");
-
-        Assert.That(buf[off1], Is.EqualTo(0x01), "latest_valid_hash Union selector must be 0x01 (Some) when hash is present");
-        Assert.That(buf.Slice(off1 + 1, 32).ToArray(), Is.EqualTo(TestItem.KeccakA.Bytes.ToArray()),
-            "latest_valid_hash bytes must follow immediately after the 0x01 selector");
-
-        int off2 = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(5, 4));
-        Assert.That(off2, Is.EqualTo(46), "validation_error Union starts after latest_valid_hash (13 header + 33 lvh bytes)");
-        Assert.That(buf[off2], Is.EqualTo(0x00), "validation_error Union selector must be 0x00 (None) when no error");
-
-        int off3 = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(9, 4));
-        Assert.That(off3, Is.EqualTo(47), "witness Union starts after validation_error (46 + 1 None byte)");
-        Assert.That(buf[off3], Is.EqualTo(0x00), "witness Union selector must be 0x00 (None) when no witness was generated");
+        // The nested payload_status must encode byte-for-byte like the standalone PayloadStatus response.
+        Assert.That(buf.Slice(offStatus, offWitness - offStatus).ToArray(), Is.EqualTo(standalone),
+            "the witness response must reuse the regular PayloadStatus encoding");
+        Assert.That(offWitness, Is.EqualTo(buf.Length),
+            "the witness Optional is an empty List[_, 1] (no bytes) when no witness was produced");
     }
 
     [Test]
-    public void EncodeNewPayloadWithWitnessResponse_ssz_golden_byte_roundtrip()
+    public void EncodeNewPayloadWithWitnessResponse_roundtrips_status_lvh_and_witness_items()
     {
-        // Fixture-representative witness data: two trie nodes, one code item, one header.
+        // Witness items travel as opaque ByteLists — the EL must not re-encode them as structured SSZ.
         byte[] stateNode1 = [0xf8, 0x44, 0x01, 0x02, 0x03];
         byte[] stateNode2 = [0xe2, 0x80, 0xa0, 0xaa, 0xbb];
         byte[] codeItem = [0x60, 0x01, 0x60, 0x00, 0x52];
@@ -806,43 +800,27 @@ public class SszCodecTests
             Headers = new Core.Collections.ArrayPoolList<byte[]>(1) { headerBlob },
             Keys = new Core.Collections.ArrayPoolList<byte[]>(0),
         };
-
-        Hash256 latestValidHash = TestItem.KeccakB;
-        PayloadStatusV1 ps = new()
-        {
-            Status = PayloadStatus.Valid,
-            LatestValidHash = latestValidHash,
-        };
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB };
 
         byte[] encoded = Encode(
             (ps, witness),
             static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
 
-        ReadOnlySpan<byte> buf = encoded;
+        PayloadStatusWithWitnessWire.Decode(encoded, out PayloadStatusWithWitnessWire wire);
 
-        Assert.That(buf[0], Is.EqualTo(0x00), "VALID encodes as status byte 0x00");
+        Assert.That(wire.PayloadStatus.Status, Is.EqualTo((byte)0x00), "VALID encodes as status byte 0x00");
+        Assert.That(wire.PayloadStatus.LatestValidHash, Is.Not.Null.And.Length.EqualTo(1));
+        Assert.That(wire.PayloadStatus.LatestValidHash![0], Is.EqualTo(TestItem.KeccakB));
+        Assert.That(wire.Witness, Is.Not.Null.And.Length.EqualTo(1), "VALID + witness => present as a length-1 list");
 
-        int offLvh = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(1, 4));
-        Assert.That(offLvh, Is.EqualTo(13), "latest_valid_hash offset must be 13 (right after the fixed header)");
-        Assert.That(buf[offLvh], Is.EqualTo(0x01), "latest_valid_hash selector must be 0x01 (Some)");
-        Assert.That(buf.Slice(offLvh + 1, 32).ToArray(), Is.EqualTo(latestValidHash.Bytes.ToArray()),
-            "latest_valid_hash bytes must match");
-
-        int offVe = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(5, 4));
-        Assert.That(offVe, Is.EqualTo(46), "validation_error offset must be 46 (13 header + 33 Some-hash bytes)");
-        Assert.That(buf[offVe], Is.EqualTo(0x00), "validation_error selector must be 0x00 (None) when absent");
-
-        int offW = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(9, 4));
-        Assert.That(offW, Is.EqualTo(47), "witness offset must be 47 (46 + 1 None byte for validation_error)");
-
-        (byte decodedStatusByte, Hash256? decodedLvh, bool witnessPresent) =
-            SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
-
-        Assert.That(decodedStatusByte, Is.EqualTo(0x00), "decoded status byte must be 0x00 (VALID)");
-        Assert.That(decodedLvh, Is.Not.Null, "decoded latest_valid_hash must be present");
-        Assert.That(decodedLvh!.Bytes.ToArray(), Is.EqualTo(latestValidHash.Bytes.ToArray()),
-            "decoded hash must match the original");
-        Assert.That(witnessPresent, Is.True, "VALID + witness bytes => witness union must be Some");
+        ExecutionWitnessV1Wire w = wire.Witness![0];
+        Assert.That(w.State!.Length, Is.EqualTo(2));
+        Assert.That(w.State[0].Bytes, Is.EqualTo(stateNode1));
+        Assert.That(w.State[1].Bytes, Is.EqualTo(stateNode2));
+        Assert.That(w.Codes!.Length, Is.EqualTo(1));
+        Assert.That(w.Codes[0].Bytes, Is.EqualTo(codeItem));
+        Assert.That(w.Headers!.Length, Is.EqualTo(1));
+        Assert.That(w.Headers[0].Bytes, Is.EqualTo(headerBlob));
     }
 
     [Test]
