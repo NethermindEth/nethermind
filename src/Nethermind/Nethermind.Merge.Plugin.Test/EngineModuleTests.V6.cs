@@ -199,7 +199,7 @@ public partial class EngineModuleTests
     }
 
 
-    [TestCase("0xad1c0dbe29929c33c50381a5a5b023ebe4705f60254b5528ad4e6dd0c7c5cdf4", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x8dc51d96c73b47dc7ff8e1d9ad2a31af0353da03d501842b2378bb7825de86bf", false, false)]
+    [TestCase("0x84c83e92f2371447eda6b51eb468c73bee71856e8dcb091e485cf2013accd206", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x8dc51d96c73b47dc7ff8e1d9ad2a31af0353da03d501842b2378bb7825de86bf", false, false)]
     [TestCase(null, null, null, false, true)]
     [TestCase("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, false)]
     [TestCase("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, true)]
@@ -235,10 +235,10 @@ public partial class EngineModuleTests
     }
 
     [TestCase(
-        "0x43b3722358b0a8b570fdfd846a5b836ad2fae3f7f58b3ac3519858472a997214",
+        "0x6630d687c81f6598232481490d2aba430cfa816f7a9db23417985bfa63a08bfb",
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
-        "0xf33cd1904c18109e882bfa965997ba802d408bd834a61920aba651fbaeb78dd3",
-        "0x4de7e37b17928203599e876a1f226dce8512f61f5672e67d4964bbc26ddc1ed4",
+        "0x67b5f79a0e90f1556f7ae999e1eff579b52d7a91a776928bd3612c2e754a2862",
+        "0xe1063f68d3ec957490f73e8c96b499be23912355d081d904e1eb51400f2d5c24",
         null)]
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? customWithdrawalContractAddress)
     {
@@ -306,10 +306,10 @@ public partial class EngineModuleTests
     {
         (string blockHash, BalErrorKind errorKind)[] perKindCases =
         [
-            ("0xcb125e58db01d3b9831c0f9aa39e4fb1c24e3bae48912b403f8d5c526d92302b", BalErrorKind.IncorrectChange),
-            ("0x533022eca57de230aff49eecc878f075329c7a4b93a351d220238a1445fdadf9", BalErrorKind.MissingChange),
-            ("0x1adac254ef1c3aad4c5cf44fa77af42e525a111978c63e29934830144b2e08ea", BalErrorKind.SurplusChange),
-            ("0x2391a6d9cb82b5957d9c43af02b089b2a9a6136434e3fdf2f12e8ff2b2de8760", BalErrorKind.SurplusReads),
+            ("0x369faa043546e569c349c3188e58104235fe34c03464a2e773c77f5794228a54", BalErrorKind.IncorrectChange),
+            ("0x2942f19ee2060543fd2fe78a05972a62f10909e556ebf0f14a87dbb2486c5798", BalErrorKind.MissingChange),
+            ("0xcc482860b5e9ebd75e2ae25c89e1c03b2f4a5eb11e1b26c2b1e08bcd596b5b81", BalErrorKind.SurplusChange),
+            ("0x8468677394d659a226a4bc5daf290f65fb3526ad21580550c1eb0b9295afc8e5", BalErrorKind.SurplusReads),
         ];
 
         foreach ((string blockHash, BalErrorKind errorKind) in perKindCases)
@@ -551,8 +551,10 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.NoEip8037Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        const long gasUsed = 167340;
-        const long gasUsedBeforeFinal = 92100;
+        // Devnet-6 gas reprice: cumulative gas used after tx1 (transfer), tx1+tx2 (create), and all three txs.
+        const long gasUsedTx1 = 15000;
+        const long gasUsed = 102240;
+        const long gasUsedBeforeFinal = 56100;
         const ulong gasPrice = 2;
         const long gasLimit = 100000;
         const ulong timestamp = 1000000;
@@ -564,7 +566,7 @@ public partial class EngineModuleTests
         Address newContractAddress2 = ContractAddress.From(TestItem.AddressA, 2);
 
         UInt256 accountBalance = chain.StateReader.GetBalance(chain.BlockTree.Head!.Header, TestItem.AddressA);
-        UInt256 addressABalance = accountBalance - gasPrice * GasCostOf.Transaction;
+        UInt256 addressABalance = accountBalance - gasPrice * gasUsedTx1;
         UInt256 addressABalance2 = accountBalance - gasPrice * gasUsedBeforeFinal;
         UInt256 addressABalance3 = accountBalance - gasPrice * gasUsed;
 
@@ -663,7 +665,7 @@ public partial class EngineModuleTests
                     new(TestItem.AddressB),
                     Build.An.AccountChanges
                         .WithAddress(TestItem.AddressE)
-                        .WithBalanceChanges([new(1, new UInt256(GasCostOf.Transaction * gasPrice)), new(2, new UInt256(gasUsedBeforeFinal * gasPrice)), new(3, new UInt256(gasUsed * gasPrice))])
+                        .WithBalanceChanges([new(1, new UInt256(gasUsedTx1 * gasPrice)), new(2, new UInt256(gasUsedBeforeFinal * gasPrice)), new(3, new UInt256(gasUsed * gasPrice))])
                         .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(newContractAddress2)
