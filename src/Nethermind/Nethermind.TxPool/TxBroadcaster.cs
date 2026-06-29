@@ -53,6 +53,14 @@ namespace Nethermind.TxPool
         /// </summary>
         private ResettableList<Transaction> _txsToSend;
 
+        /// <summary>
+        /// Guards both appending to <see cref="_accumulatedTemporaryTxs"/> and swapping it with
+        /// <see cref="_txsToSend"/>. A dedicated lock is required because the two lists are swapped by
+        /// reference: locking on the list instance itself would not serialise an <see cref="ResettableList{T}.Add"/>
+        /// against a concurrent swap, letting two threads mutate the same <see cref="List{T}"/> at once and leave a
+        /// null hole in it (later dereferenced while gossiping).
+        /// </summary>
+        private readonly Lock _accumulatedTxsLock = new();
 
         /// <summary>
         /// Minimal value of MaxFeePerGas of local tx to be broadcasted immediately after receiving it
@@ -131,7 +139,7 @@ namespace Nethermind.TxPool
 
         private void BroadcastOnce(Transaction tx)
         {
-            lock (_accumulatedTemporaryTxs)
+            lock (_accumulatedTxsLock)
             {
                 _accumulatedTemporaryTxs.Add(tx);
             }
@@ -296,7 +304,13 @@ namespace Nethermind.TxPool
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             void NotifyPeers()
             {
-                _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
+                // Swap under the same lock used by BroadcastOnce so an in-flight Add can never target the list we are
+                // about to enumerate/Reset. After the swap, BroadcastOnce only ever touches _accumulatedTemporaryTxs
+                // (now the empty buffer), while we exclusively own _txsToSend here.
+                lock (_accumulatedTxsLock)
+                {
+                    (_accumulatedTemporaryTxs, _txsToSend) = (_txsToSend, _accumulatedTemporaryTxs);
+                }
 
                 if (_logger.IsTrace) _logger.Trace($"Broadcasting transactions to all peers");
 
