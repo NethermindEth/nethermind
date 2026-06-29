@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -221,10 +222,18 @@ public abstract partial class BaseEngineModuleTests
             return configs;
         }
 
+        /// <summary>
+        /// The core merge module installed by <see cref="TestMergeModule"/>. AuRa-merge blockchains
+        /// return <c>null</c> here and install <c>AuRaMergeModule</c> themselves, so the shared
+        /// <c>BaseMergePluginModule</c> loads exactly once — mirroring production, where the
+        /// <c>MergePlugin</c> and <c>AuRaMergePlugin</c> module trees are mutually exclusive.
+        /// </summary>
+        protected virtual IModule? MergeModule => new MergePluginModule();
+
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-                .AddModule(new TestMergeModule(configProvider))
+                .AddModule(new TestMergeModule(configProvider, MergeModule))
                 .AddDecorator<IBranchProcessor>((_, branchProcessor) => new TestBranchProcessorInterceptor(branchProcessor, _blockProcessingThrottle))
                 .AddDecorator<IBlockImprovementContextFactory>((_, factory) =>
                 {

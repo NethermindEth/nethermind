@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -47,14 +46,9 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
             builder
                 // These are main block processing specific
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
-                // Dedupe by type: a module's Load runs once per instance, and re-running a module that
-                // registers a decorator (e.g. WitnessCapturingMainProcessingModule's IBlockProcessor
-                // selector) would install it twice. Duplicate instances arise when more than one module
-                // tree transitively pulls in the same module (e.g. both MergePluginModule and
-                // AuRaMergeModule add BaseMergePluginModule in aura tests).
-                .AddModule([.. blockValidationModules.DistinctBy(static m => m.GetType())])
+                .AddModule(blockValidationModules)
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
-                .AddModule([.. mainProcessingModules.DistinctBy(static m => m.GetType())])
+                .AddModule(mainProcessingModules)
 
                 .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
                     new BlockchainProcessor(

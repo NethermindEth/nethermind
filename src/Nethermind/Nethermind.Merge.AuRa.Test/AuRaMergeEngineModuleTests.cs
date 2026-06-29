@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -149,6 +150,12 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null)
             : base(mergeConfig) =>
             SealEngineType = Core.SealEngineType.AuRa;
+
+        // Don't let TestMergeModule install MergePluginModule: AuRa installs AuRaMergeModule below
+        // (after AuRaModule, so its last-wins registrations such as IBlockProcessor take effect).
+        // This keeps the shared BaseMergePluginModule loading exactly once — matching production,
+        // where MergePlugin and AuRaMergePlugin are mutually exclusive.
+        protected override IModule? MergeModule => null;
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
