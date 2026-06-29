@@ -10,25 +10,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
 
-/// <summary>
-/// Per-chain EVM gas accounting strategy. Implemented by a <c>struct</c> and monomorphized into
-/// <see cref="VirtualMachine{TGasPolicy}"/>/<c>TransactionProcessor&lt;TGasPolicy&gt;</c> so every charge
-/// dispatches with zero overhead (devirtualized + const-folded) on the per-opcode hot path.
-/// </summary>
-/// <remarks>
-/// Design invariants, established empirically against the EVM Opcode Benchmark and enforced by tests:
-/// <list type="bullet">
-/// <item>The implementing struct must hold only flat top-level scalar fields. A vector / <c>[InlineArray]</c> /
-/// SIMD / nested-struct field address-exposes the struct (dotnet/runtime#110968) and defeats JIT
-/// enregistration, regressing every opcode — vectorizing the live gas budget is not viable.</item>
-/// <item>Multidimensional ("multigas") accounting is modelled as additional flat scalar fields routed by
-/// compile-time cost/dimension tags, never an indexed runtime vector on the live budget. Any vector/SIMD
-/// representation belongs only on the cold per-tx/per-block accounting layer.</item>
-/// <item>Charges carry no precomputed number from the opcode: fixed costs use the compile-time
-/// <see cref="IGasCost"/>/<see cref="ISpecGasCost"/> tags, dynamic costs use named policy methods.</item>
-/// <item>The policy is WorldState/VmState/refund/tracer-free; those concerns stay in the VM/processor.</item>
-/// </list>
-/// </remarks>
+// The implementing struct must hold only flat top-level scalar fields: a vector / [InlineArray] /
+// nested-struct field address-exposes it (dotnet/runtime#110968), defeats JIT enregistration, and
+// regresses every opcode. Multigas dimensions are added as flat scalars, never a live-budget vector.
 public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     static abstract TSelf FromULong(ulong value);
@@ -40,14 +24,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static abstract ulong GetRemainingGas(in TSelf gas);
 
-    // Block-gas combination rule. The two-dimensional regular/state gas is reduced to the single
-    // header GasUsed by taking the per-dimension max — a block is full when its bottleneck resource
-    // is full (EIP-8037). Summing/instrumentation policies (e.g. Arbitrum multigas) override to add.
-    // For single-dimensional policies blockStateGas is 0, so max(regular, 0) == regular.
     static virtual ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) => Math.Max(blockRegularGas, blockStateGas);
 
-    // EIP-8037 regular-dimension block gas at tx end. Computed inside the policy so its spill
-    // bookkeeping stays private; the default models a single-dimensional policy (no spill).
     static virtual ulong ComputeBlockRegularGas(in TSelf gas, in TSelf intrinsic, ulong txGasLimit, ulong floorGas, ulong remainingRegularGas)
     {
         ulong intrinsicRegularGas = TSelf.GetRemainingGas(in intrinsic);
@@ -60,20 +38,15 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             intrinsicRegularGas, initialRegularGas, remainingRegularGas, TSelf.GetStateGasSpill(in gas), floorGas);
     }
 
-    // EIP-8037 top-level-halt spill reattribution: whole CREATE-state units whose spill was refunded
-    // are restored to the state dimension. Default 0 — single-dimensional policies have no spill.
     static virtual ulong ComputeRefundedCreateStateSpillForHalt(in TSelf gas) => 0;
 
-    // EIP-8037 top-level-halt gas finalization: (user spent gas, block regular gas, block state gas).
-    // Default models a single-dimensional policy (no reservoir / state gas).
     static virtual (ulong spentGas, ulong blockGas, ulong blockStateGas) ComputeHaltGas(in TSelf gas, ulong txGasLimit, ulong floorGas, ulong refundedCreateStateSpillForHalt)
     {
         ulong spentGas = Math.Max(txGasLimit, floorGas);
         return (spentGas, spentGas, 0);
     }
 
-    // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback;
-    // a repricing policy overrides these to charge chain-specific state costs.
+    // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
     static virtual ulong GetStorageSetStateCost() => GasCostOf.SSetState;
     static virtual ulong GetCreateStateCost() => GasCostOf.CreateState;
     static virtual ulong GetNewAccountStateCost() => GasCostOf.NewAccountState;
@@ -94,30 +67,20 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return true;
     }
 
-    // Charge a fixed opcode cost via a compile-time tag: TCost.GasCost const-folds (monomorphized),
-    // so the caller passes no precomputed number.
     static virtual void Consume<TCost>(ref TSelf gas) where TCost : struct, IGasCost =>
         TSelf.Consume(ref gas, TCost.GasCost);
 
-    // Spec-dependent fixed charge: the cost is read from the price book (spec) inside the policy.
     static virtual void Consume<TCost>(ref TSelf gas, IReleaseSpec spec) where TCost : struct, ISpecGasCost =>
         TSelf.Consume(ref gas, TCost.GasCost(spec));
 
-    // Dynamic per-word charges — the caller passes the word count (the data), the policy owns the
-    // base + per-word cost formula.
     static virtual void ConsumeKeccak(ref TSelf gas, ulong words) =>
         TSelf.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * words);
 
     static virtual void ConsumeMemoryCopy(ref TSelf gas, ulong words) =>
         TSelf.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * words);
 
-    // EXP per-byte charge: caller passes the exponent's significant byte length; cost from the spec.
     static virtual void ConsumeExpBytes(ref TSelf gas, IReleaseSpec spec, ulong exponentByteSize) =>
         TSelf.Consume(ref gas, spec.GasCosts.ExpByteCost * exponentByteSize);
-
-    // Opcode base-cost charges (return false on OOG). The amount is produced inside the policy from the
-    // spec price book, fork/opcode flags, and opcode-extracted scalars. Selecting which charge applies
-    // (e.g. the SSTORE net-metering decision, which reads world state) stays in the opcode.
 
     static virtual bool ConsumeCreateGas<TEip8037, TOpCreate>(ref TSelf gas, IReleaseSpec spec, ulong initCodeWords)
         where TEip8037 : struct, IFlag
@@ -138,13 +101,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual bool ConsumeNetMeteredSStoreGas(ref TSelf gas, IReleaseSpec spec) =>
         TSelf.UpdateGas(ref gas, spec.GasCosts.NetMeteredSStoreCost);
 
-    // SSTORE first non-zero write over a clean zero slot: the SSet/SReset delta on top of the reset already charged.
     static virtual bool ConsumeSSetFromCleanGas(ref TSelf gas) =>
         TSelf.UpdateGas(ref gas, GasCostOf.SSet - GasCostOf.SReset);
 
-    // Precompile charge: the caller passes the precompile + input + spec (the data needed to price it);
-    // the policy reads the precompile's own base/data cost formulas. Returns false on OOG (incl. the
-    // overflow guard before summing), without charging on overflow.
     static virtual bool ConsumePrecompileGas(ref TSelf gas, IPrecompile precompile, ReadOnlyMemory<byte> inputData, IReleaseSpec spec)
     {
         ulong baseGasCost = precompile.BaseGasCost(spec);
@@ -154,7 +113,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
 
-    // CREATE state-gas charge (EIP-8037): the policy reads its own CreateState cost, no number passed.
     static virtual bool ConsumeCreateStateGas(ref TSelf gas) =>
         TSelf.ConsumeStateGas(ref gas, TSelf.GetCreateStateCost());
 
@@ -249,10 +207,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childRegularGas) => TSelf.FromULong(childRegularGas);
 
-    // EIP-150: gas forwarded to a child frame is capped at 63/64 of the parent's remaining gas
-    // (no cap pre-EIP-150). These charge the forwarded amount from the parent and return it.
-
-    // CALL-style: forward the requested amount, capped to 63/64. Pre-EIP-150 the request must fit ulong.
     static virtual bool TryReserveChildGas(ref TSelf gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
     {
         ulong gasAvailable = TSelf.GetRemainingGas(in gas);
@@ -280,8 +234,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return TSelf.UpdateGas(ref gas, childGas);
     }
 
-    // The policy computes the full data-copy cost (base access cost + per-word copy cost) from the
-    // spec and word count; EXTCODECOPY (isExternalCode) may categorize the base as state-trie access.
+    // EXTCODECOPY may need different categorization (state trie access) for some policies.
     static abstract void ConsumeDataCopyGas(ref TSelf gas, IReleaseSpec spec, bool isExternalCode, ulong words);
 
     static abstract void OnBeforeInstructionTrace(in TSelf gas, int pc, Instruction instruction, int depth);
