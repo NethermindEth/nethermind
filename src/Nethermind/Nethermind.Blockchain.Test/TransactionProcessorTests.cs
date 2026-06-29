@@ -286,7 +286,7 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         else if (txValue + (UInt256)gasLimit > AccountBalance)
         {
             Assert.That(err, Is.Not.Null); // Should have error
-            Assert.That(err, Is.EqualTo("insufficient sender balance for transfer"));
+            Assert.That(err, Is.EqualTo("insufficient funds for transfer"));
         }
         else
         {

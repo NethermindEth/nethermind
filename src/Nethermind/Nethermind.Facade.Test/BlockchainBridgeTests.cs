@@ -429,7 +429,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance for transfer"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
     }
 
     [Test]
@@ -443,7 +443,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance for transfer"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
     }
 
     [Test]
