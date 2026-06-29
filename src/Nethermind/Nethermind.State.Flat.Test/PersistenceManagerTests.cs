@@ -337,6 +337,37 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void DetermineSnapshotToPersist_LatestSnapshotBelowPersistedBlock_ReturnsNullWithoutUnderflow()
+    {
+        // A deep reorg below a force-persisted unfinalized block can leave the latest snapshot
+        // behind the last persisted block. The in-memory depth must saturate to 0 (not underflow to ~2^64),
+        // so the keep-in-memory guard returns null early instead of force-persisting a stale head ancestor.
+        StateId persisted = CreateStateId(100);
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persisted);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        PersistenceManager pm = new(_config, ScheduleHelper.CreateWithOffset(_config, 0), _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+
+        // Latest snapshot (50) is below the persisted block (100); finalized far behind so the force-persist
+        // branch would be taken on underflow. Stage a head-ancestor snapshot the buggy path would return.
+        StateId latest = CreateStateId(50);
+        StateId headAncestor = CreateStateId(101);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+
+        using Snapshot staged = CreateSnapshot(persisted, headAncestor, compacted: false);
+        _snapshotRepository.SetLastCommittedStateId(headAncestor);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+        using Snapshot? _ = result; // dispose if the buggy underflow path returned a snapshot
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
     public void DetermineSnapshotToPersist_ExactlyAtMinimumBoundary_ReturnsNull()
     {
         // Setup: persisted at Block0 (0), latest at 79

@@ -121,8 +121,12 @@ public class PersistenceManager(
         StateId currentPersistedState = GetCurrentPersistedStateId();
         ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
 
-        Debug.Assert(currentPersistedState == StateId.PreGenesis || lastSnapshotNumber >= currentPersistedState.BlockNumber,
-            "Latest snapshot must be at or ahead of the last persisted block.");
+        // Latest below the persisted block means a deep reorg stranded the persisted base on an orphaned
+        // fork; persistence can only stall until the chain climbs back. Saturate the depth to 0 to avoid a
+        // ulong underflow so the keep-in-memory guard returns early.
+        if (currentPersistedState != StateId.PreGenesis && lastSnapshotNumber < currentPersistedState.BlockNumber && _logger.IsWarn)
+            _logger.Warn($"Latest snapshot {latestSnapshot} is below persisted state {currentPersistedState}; persisted base may be on an orphaned fork. Skipping persistence.");
+
         ulong inMemoryStateDepth = currentPersistedState == StateId.PreGenesis
             ? lastSnapshotNumber + 1
             : lastSnapshotNumber.SaturatingSub(currentPersistedState.BlockNumber);

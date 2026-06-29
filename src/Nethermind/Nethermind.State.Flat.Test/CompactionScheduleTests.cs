@@ -190,17 +190,15 @@ public class CompactionScheduleTests
         Assert.That(schedule.NextFullCompactionAfter(new StateId(from, Hash256.Zero)), Is.EqualTo(expected));
     }
 
-    [TestCase(0)]
-    [TestCase(3)]
-    [TestCase(7)]
-    public void NextFullCompactionAfter_PreGenesis_AnchorsAtGenesis(int offset)
+    [TestCase(0, 16UL)] // offset 0 -> next full at 16
+    [TestCase(3, 13UL)] // offset 3 -> 0+(16-3) = 13
+    [TestCase(7, 9UL)]  // offset 7 -> 0+(16-7) = 9
+    public void NextFullCompactionAfter_PreGenesis_AnchorsAtGenesis(int offset, ulong expected)
     {
         FlatDbConfig config = new() { CompactSize = 16 };
         CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
 
-        Assert.That(
-            schedule.NextFullCompactionAfter(StateId.PreGenesis),
-            Is.EqualTo(schedule.NextFullCompactionAfter(new StateId(0, Hash256.Zero))));
+        Assert.That(schedule.NextFullCompactionAfter(StateId.PreGenesis), Is.EqualTo(expected));
     }
 
     [Test]
