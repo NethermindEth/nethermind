@@ -741,9 +741,6 @@ public class FastHeadersSyncTests
     [Test]
     public async Task Can_initialize_feed_after_restart_when_pivot_chain_level_is_missing()
     {
-        // Regression test for issue #8029: an unclean shutdown between the pivot header write (headers db)
-        // and its chain level write (block infos db) leaves the updated pivot without a level. On restart,
-        // resolving the pivot total difficulty used to throw "An orphaned block on the chain".
         IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
         BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
         TestSyncConfig syncConfig = new() { FastSync = true };
