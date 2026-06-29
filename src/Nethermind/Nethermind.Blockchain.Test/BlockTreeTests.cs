@@ -507,6 +507,39 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_header_with_require_canonical_returns_null_when_chain_level_is_missing()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree blockTree = builder.TestObject;
+
+        BlockHeader headerWithoutLevel = Build.A.BlockHeader.WithNumber(2).WithTotalDifficulty(3_000_000).TestObject;
+        Assert.That(blockTree.Insert(headerWithoutLevel, BlockTreeInsertHeaderOptions.BeaconHeaderMetadata), Is.EqualTo(AddBlockResult.Added));
+        builder.ChainLevelInfoRepository.Delete(headerWithoutLevel.Number);
+
+        Assert.That(blockTree.BestKnownBeaconNumber, Is.GreaterThan(blockTree.BestKnownNumber),
+            "test setup must take the path where the level-creation guard skips creating the missing level");
+        Assert.That(blockTree.FindHeader(headerWithoutLevel.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_block_with_require_canonical_returns_null_when_chain_level_is_missing()
+    {
+        // Regression test for issue #8029: an unclean shutdown between the block write and the chain level
+        // write leaves a block without a level. When the beacon search guard skips level creation,
+        // FindBlock with RequireCanonical used to throw NullReferenceException on the missing level.
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree blockTree = builder.TestObject;
+
+        Block blockWithoutLevel = Build.A.Block.WithNumber(2).WithTotalDifficulty(3_000_000L).TestObject;
+        Assert.That(blockTree.Insert(blockWithoutLevel, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconHeaderMetadata), Is.EqualTo(AddBlockResult.Added));
+        builder.ChainLevelInfoRepository.Delete(blockWithoutLevel.Number);
+
+        Assert.That(blockTree.BestKnownBeaconNumber, Is.GreaterThan(blockTree.BestKnownNumber),
+            "test setup must take the path where the level-creation guard skips creating the missing level");
+        Assert.That(blockTree.FindBlock(blockWithoutLevel.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_by_number_basic()
     {
         BlockTree blockTree = BuildBlockTree();
