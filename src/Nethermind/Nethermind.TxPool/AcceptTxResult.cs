@@ -13,6 +13,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// The transaction has been accepted. This is the only 'success' outcome.
         /// </summary>
+        // Code intentionally kept as nameof(): the success path returns the tx hash, not this Code string.
         public static readonly AcceptTxResult Accepted = new(0, nameof(Accepted));
 
         /// <summary>
@@ -113,6 +114,8 @@ namespace Nethermind.TxPool
         /// <summary>
         /// The signer could not produce a signature for the transaction (locked account, missing key, remote signer rejection).
         /// </summary>
+        // Code intentionally kept as nameof(): EthRpcModule.SendTx intercepts this result and surfaces only the
+        // Message field with ErrorCodes.AccountLocked (-32020), so the Code string never reaches RPC callers.
         public static readonly AcceptTxResult SignFailed = new(19, nameof(SignFailed), "authentication needed: password or unlock");
 
         private int Id { get; } = id;
