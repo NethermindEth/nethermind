@@ -7,6 +7,7 @@ namespace Nethermind.Avalanche;
 
 public class AvalancheReleaseSpec : ReleaseSpec, IAvalancheReleaseSpec
 {
+    public bool IsApricotPhase2Enabled { get; set; }
     public bool IsApricotPhase3Enabled { get; set; }
     public bool IsDurangoEnabled { get; set; }
     public bool IsEtnaEnabled { get; set; }
