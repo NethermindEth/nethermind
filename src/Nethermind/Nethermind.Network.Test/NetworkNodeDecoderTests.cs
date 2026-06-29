@@ -62,7 +62,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder networkNodeDecoder = new();
             NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304);
-            NetworkNode node = new(enr.EnrString)
+            NetworkNode node = new(enr.ToString())
             {
                 Reputation = 100L
             };
@@ -76,7 +76,7 @@ namespace Nethermind.Network.Test
                 NodeRecord? decodedEnr = decoded.Enr;
                 Assert.That(decoded.IsEnr, Is.True);
                 Assert.That(decodedEnr, Is.Not.Null);
-                Assert.That(decodedEnr!.EnrString, Is.EqualTo(enr.EnrString));
+                Assert.That(decodedEnr!.ToString(), Is.EqualTo(enr.ToString()));
                 Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
                 Assert.That(decoded.Host, Is.EqualTo("8.8.8.8"));
                 Assert.That(decoded.Port, Is.EqualTo(30304));

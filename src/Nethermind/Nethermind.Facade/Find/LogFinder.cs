@@ -21,8 +21,7 @@ namespace Nethermind.Facade.Find
         IReceiptFinder? receiptFinder,
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
-        IReceiptsRecovery? receiptsRecovery,
-        int maxBlockDepth = 1000)
+        IReceiptsRecovery? receiptsRecovery)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;
@@ -141,7 +140,7 @@ namespace Nethermind.Facade.Find
                 for (ulong i = 0; i < count; i++) yield return from + i;
             }
 
-            ulong rangeSize = Math.Min((ulong)maxBlockDepth, toBlock.Number - fromBlock.Number + 1);
+            ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
             bool tryParallel = rangeSize >= (ulong)_rpcConfigGetLogsThreads;
             return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
         }

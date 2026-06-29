@@ -517,7 +517,7 @@ public class DebugRpcModule(
         Transaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
-            return ResultWrapper<ArrayPoolList<byte>>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<ArrayPoolList<byte>>.Success(null);
         }
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
