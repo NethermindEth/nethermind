@@ -23,7 +23,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public async ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            UInt256 gasPriceEstimated = await _gasPriceOracle.GetGasPriceEstimate() * _percentDelta / 100;
+            UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
+            UInt256 gasPriceEstimated = gasPrice * _percentDelta / 100;
             tx.DecodedMaxFeePerGas = gasPriceEstimated;
             tx.GasPrice = gasPriceEstimated;
             return await _txSender.SendTransaction(tx, txHandlingOptions);

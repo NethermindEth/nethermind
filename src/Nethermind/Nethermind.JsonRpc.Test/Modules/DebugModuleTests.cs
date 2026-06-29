@@ -114,7 +114,7 @@ public class DebugModuleTests
     public async Task DebugGetRawHeader_WhenBlockExists_ReturnsHeaderRlp()
     {
         Block block = Build.A.Block.WithNumber(0).TestObject;
-        _debugBridge.GetBlock(new BlockParameter(0L)).Returns(block);
+        _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(block);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
         Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan().ToArray(), Is.EqualTo(new HeaderDecoder().Encode(block.Header).Bytes));
@@ -139,6 +139,15 @@ public class DebugModuleTests
 
         string serialized = await SerializedRequest("debug_getRawTransaction", transaction.Hash!);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task DebugGetRawTransaction_WhenTransactionNotFound_ReturnsNull()
+    {
+        _debugBridge.GetTransactionFromHash(Keccak.Zero).ReturnsNull();
+
+        string serialized = await SerializedRequest("debug_getRawTransaction", Keccak.Zero);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
     [Test]
@@ -200,7 +209,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         _debugBridge
-            .GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<long?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<ulong?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(static c => StreamBundles(c.ArgAt<CancellationToken>(3)));
 
         DebugRpcModule rpcModule = CreateModule();
@@ -440,7 +449,7 @@ public class DebugModuleTests
     [Test]
     public async Task DebugMigrateReceipts_WhenInvoked_ReturnsResponse()
     {
-        _debugBridge.MigrateReceipts(Arg.Any<long>(), Arg.Any<long>()).Returns(true);
+        _debugBridge.MigrateReceipts(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
 
         string response = await SerializedRequest("debug_migrateReceipts", 100);
         Assert.That(response, Is.Not.Null);
@@ -484,10 +493,6 @@ public class DebugModuleTests
             (Action<IDebugBridge>)(b => b.GetBlock(new BlockParameter(Keccak.Zero)).ReturnsNull()),
             "debug_getRawBlock", (object)Keccak.Zero)
         { TestName = "RawBlock_ByHash" };
-        yield return new TestCaseData(
-            (Action<IDebugBridge>)(b => b.GetTransactionFromHash(Keccak.Zero).ReturnsNull()),
-            "debug_getRawTransaction", (object)Keccak.Zero)
-        { TestName = "RawTransaction" };
     }
 
     private static IEnumerable<TestCaseData> RawBlockAccessListErrorCases()

@@ -27,13 +27,13 @@ namespace Nethermind.Synchronization.FastBlocks;
 
 public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatch?>
 {
-    protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
+    protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
     protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
-    protected override long SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
+    protected override ulong SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
     protected override Func<bool> HasPivot =>
         () =>
         {
-            BlockHeader? pivotHeader = FindPivotHeader(out long pivotNumber, out Hash256 pivotHash);
+            BlockHeader? pivotHeader = FindPivotHeader(out ulong pivotNumber, out Hash256 pivotHash);
             return pivotHeader is not null &&
                    (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotNumber, pivotHash));
         };
@@ -52,7 +52,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private SyncStatusList _syncStatusList;
 
     private bool ShouldFinish => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded;
-    private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? long.MaxValue) <= _barrier;
+    private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? ulong.MaxValue) <= _barrier;
     private bool PivotHasNoBlockAccessLists => FindPivotHeader(out _, out _) is { BlockAccessListHash: null };
 
     public override bool IsFinished => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded || PivotHasNoBlockAccessLists;
@@ -84,7 +84,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
         }
 
-        _pivotNumber = -1; // First reset in `InitializeFeed`.
+        _pivotNumber = 0; // First reset in `InitializeFeed`.
     }
 
     public override void InitializeFeed()
@@ -140,7 +140,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncReport.FastBlockAccessLists.MarkEnd();
     }
 
-    private BlockHeader? FindPivotHeader(out long pivotNumber, out Hash256 pivotHash)
+    private BlockHeader? FindPivotHeader(out ulong pivotNumber, out Hash256 pivotHash)
     {
         (pivotNumber, pivotHash) = _blockTree.SyncPivot;
         return _blockTree.FindHeader(pivotHash, blockNumber: pivotNumber);
@@ -304,7 +304,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     private class BlockAccessListDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport) : IBlockDownloadStrategy
     {
-        private long _lowestQueriedBlockWithAccessLists = long.MaxValue;
+        private ulong _lowestQueriedBlockWithAccessLists = ulong.MaxValue;
 
         public bool ShouldDownloadBlock(BlockInfo info)
         {
@@ -321,10 +321,10 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
             if (header.BlockAccessListHash is not null)
             {
-                long currentLowest = Interlocked.Read(ref _lowestQueriedBlockWithAccessLists);
+                ulong currentLowest = Interlocked.Read(ref _lowestQueriedBlockWithAccessLists);
                 while (info.BlockNumber < currentLowest)
                 {
-                    long previousLowest = Interlocked.CompareExchange(ref _lowestQueriedBlockWithAccessLists, info.BlockNumber, currentLowest);
+                    ulong previousLowest = Interlocked.CompareExchange(ref _lowestQueriedBlockWithAccessLists, info.BlockNumber, currentLowest);
                     if (previousLowest == currentLowest)
                     {
                         break;

@@ -38,13 +38,13 @@ public class EraStore : IEraStore
     private readonly ConcurrentDictionary<int, (long, EraReader)> _openedReader = new();
 
     private bool _disposed = false;
-    private readonly int _maxEraFile;
+    private readonly ulong _maxEraFile;
 
     private int LastEpoch { get; set; }
     private int FirstEpoch { get; set; } = int.MaxValue;
 
-    private long? _firstBlock = null;
-    public long FirstBlock
+    private ulong? _firstBlock = null;
+    public ulong FirstBlock
     {
         get
         {
@@ -57,10 +57,10 @@ public class EraStore : IEraStore
         }
     }
 
-    private long? _lastBlock = null;
+    private ulong? _lastBlock = null;
     private readonly int _verifyConcurrency;
 
-    public long LastBlock
+    public ulong LastBlock
     {
         get
         {
@@ -78,7 +78,7 @@ public class EraStore : IEraStore
         IBlockValidator blockValidator,
         IFileSystem fileSystem,
         string networkName,
-        int maxEraSize,
+        ulong maxEraSize,
         ISet<ValueHash256>? trustedAccumulators,
         string directory,
         int verifyConcurrency = 0
@@ -118,10 +118,11 @@ public class EraStore : IEraStore
         }
     }
 
-    private long GetEpochNumber(long blockNumber)
+    private long GetEpochNumber(ulong blockNumber)
     {
-        // This seems to be the geth way of encoding blocks.
-        long epochOffset = (blockNumber - FirstBlock) / _maxEraFile;
+        if (blockNumber < FirstBlock)
+            throw new EraException($"Block number {blockNumber} is below era store's first block {FirstBlock}.");
+        long epochOffset = (long)((blockNumber - FirstBlock) / _maxEraFile);
         return FirstEpoch + epochOffset;
     }
 
@@ -163,17 +164,15 @@ public class EraStore : IEraStore
         }
     }
 
-    public long NextEraStart(long blockNumber)
+    public ulong NextEraStart(ulong blockNumber)
     {
         long epoch = GetEpochNumber(blockNumber);
         using EraRenter _ = RentReader(epoch, out EraReader reader);
         return reader.LastBlock + 1;
     }
 
-    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default)
+    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
     {
-        ThrowIfNegative(number);
-
         long partOfEpoch = GetEpochNumber(number);
         if (!_epochs.ContainsKey(partOfEpoch))
             return (null, null);
@@ -226,14 +225,6 @@ public class EraStore : IEraStore
         // Still failed, so we just dispose ourself
         reader.Dispose();
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowIfNegative(long number)
-    {
-        if (number < 0)
-            throw new ArgumentOutOfRangeException(nameof(number), number, "Cannot be negative.");
-    }
-
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void GuardMissingEpoch(long epoch)

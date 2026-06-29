@@ -1075,14 +1075,17 @@ namespace Nethermind.Network
 
         private void AttachSession(Peer peer, ISession session, ConnectionDirection sessionDirection, bool disconnectOpposite)
         {
-            if (sessionDirection == ConnectionDirection.In)
+            lock (peer.SessionLock)
             {
-                peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
-                peer.InSession = session;
-            }
-            else
-            {
-                peer.OutSession = session;
+                if (sessionDirection == ConnectionDirection.In)
+                {
+                    peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
+                    peer.InSession = session;
+                }
+                else
+                {
+                    peer.OutSession = session;
+                }
             }
 
             if (disconnectOpposite)

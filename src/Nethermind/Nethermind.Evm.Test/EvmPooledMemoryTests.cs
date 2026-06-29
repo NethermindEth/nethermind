@@ -24,36 +24,36 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
-    [TestCase(32, 1)]
-    [TestCase(0, 0)]
-    [TestCase(33, 2)]
-    [TestCase(64, 2)]
-    [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
-    public void Div32Ceiling(int input, int expectedResult)
+    [TestCase(32UL, 1UL)]
+    [TestCase(0UL, 0UL)]
+    [TestCase(33UL, 2UL)]
+    [TestCase(64UL, 2UL)]
+    [TestCase((ulong)int.MaxValue, (ulong)(int.MaxValue / 32 + 1))]
+    public void Div32Ceiling(ulong input, ulong expectedResult)
     {
-        long result = EvmCalculations.Div32Ceiling((ulong)input);
+        ulong result = EvmCalculations.Div32Ceiling(input);
         TestContext.Out.WriteLine($"Memory cost (gas): {result}");
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    private const int MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
+    private const ulong MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
 
-    [TestCase(0, 0)]
-    [TestCase(0, 32)]
-    [TestCase(0, 256)]
-    [TestCase(0, 2048)]
-    [TestCase(0, MaxCodeSize)]
-    [TestCase(10 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(100 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(1000 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(0, MemorySizes.MiB)]
+    [TestCase(0UL, 0UL)]
+    [TestCase(0UL, 32UL)]
+    [TestCase(0UL, 256UL)]
+    [TestCase(0UL, 2048UL)]
+    [TestCase(0UL, MaxCodeSize)]
+    [TestCase(10UL * MaxCodeSize, MaxCodeSize)]
+    [TestCase(100UL * MaxCodeSize, MaxCodeSize)]
+    [TestCase(1000UL * MaxCodeSize, MaxCodeSize)]
+    [TestCase(0UL, (ulong)MemorySizes.MiB)]
     // Note: Int32.MaxValue was removed as a test case because after word alignment
     // it exceeds the maximum allowed memory size and correctly returns out-of-gas.
-    public void MemoryCost(int destination, int memoryAllocation)
+    public void MemoryCost(ulong destination, ulong memoryAllocation)
     {
         EvmPooledMemory memory = new();
-        UInt256 dest = (UInt256)destination;
-        long result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation, out bool outOfGas);
+        UInt256 dest = destination;
+        ulong result = memory.CalculateMemoryCost(in dest, memoryAllocation, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
         TestContext.Out.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");
     }
@@ -63,9 +63,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 location = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
-        long result = memory.CalculateMemoryCost(in location, 32, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(in location, 32, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -73,9 +73,28 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 length = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
-        long result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
+    }
+
+    [TestCase(70 * 1024)]
+    [TestCase(2 * 1024 * 1024)]
+    public void Large_pooled_buffer_is_zeroed_on_reuse(int size)
+    {
+        EvmPooledMemory dirty = new();
+        UInt256 zero = UInt256.Zero;
+        Span<byte> pattern = new byte[size];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(in zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory clean = new();
+        UInt256 length = (UInt256)size;
+        Assert.That(clean.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
+        Assert.That(data.Length, Is.EqualTo(size));
+        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
+        clean.Dispose();
     }
 
     [Test]
@@ -83,9 +102,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 length = (UInt256)long.MaxValue + 1; // just over long.MaxValue
-        long result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -93,9 +112,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 location = ulong.MaxValue;
-        long result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -103,9 +122,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 location = (UInt256)long.MaxValue;
-        long result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -118,32 +137,32 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         // Request exactly at the limit should succeed
         UInt256 maxAllowedSize = (UInt256)(int.MaxValue - EvmPooledMemory.WordSize + 1);
-        long result = memory.CalculateMemoryCost(0, in maxAllowedSize, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(0, in maxAllowedSize, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false), "Size at limit should be allowed");
 
         // Request one byte over the limit should fail
         UInt256 overLimitSize = maxAllowedSize + 1;
         result = memory.CalculateMemoryCost(0, in overLimitSize, out outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true), "Size over limit should return out of gas");
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
     public void CalculateMemoryCost_MaxAllowedSize_ShouldReturnExpectedCostForBothLengthOverloads()
     {
         decimal maxWords = EvmPooledMemory.MaxMemoryWords;
-        long expectedCost = decimal.ToInt64(
+        ulong expectedCost = decimal.ToUInt64(
             maxWords * GasCostOf.Memory +
             decimal.Floor((maxWords * maxWords) / 512m));
 
         EvmPooledMemory ulongMemory = new();
-        long ulongResult = ulongMemory.CalculateMemoryCost(0, EvmPooledMemory.MaxMemorySize, out bool ulongOutOfGas);
+        ulong ulongResult = ulongMemory.CalculateMemoryCost(0, EvmPooledMemory.MaxMemorySize, out bool ulongOutOfGas);
         Assert.That(ulongOutOfGas, Is.EqualTo(false));
         Assert.That(ulongResult, Is.EqualTo(expectedCost));
 
         EvmPooledMemory uint256Memory = new();
         UInt256 maxAllowedSize = (UInt256)EvmPooledMemory.MaxMemorySize;
-        long uint256Result = uint256Memory.CalculateMemoryCost(0, in maxAllowedSize, out bool uint256OutOfGas);
+        ulong uint256Result = uint256Memory.CalculateMemoryCost(0, in maxAllowedSize, out bool uint256OutOfGas);
         Assert.That(uint256OutOfGas, Is.EqualTo(false));
         Assert.That(uint256Result, Is.EqualTo(expectedCost));
     }
@@ -155,9 +174,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         // instead of causing integer overflow crash in array operations.
         EvmPooledMemory memory = new();
         UInt256 size4GB = 0xffffffffUL;
-        long result = memory.CalculateMemoryCost(0, in size4GB, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(0, in size4GB, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true), "4GB memory request should return out of gas");
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -167,9 +186,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 location = (UInt256)(int.MaxValue / 2);
         UInt256 length = (UInt256)(int.MaxValue / 2 + 100); // Sum exceeds limit
-        long result = memory.CalculateMemoryCost(in location, in length, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(in location, in length, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true), "Location + length exceeding limit should return out of gas");
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -282,6 +301,28 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
     }
 
+    [TestCase(32)]
+    [TestCase(64)]
+    [TestCase(1024)]
+    [TestCase(4096)]
+    public void IncrementalGrowth_preserves_written_data_and_zeroes_new_regions(int step)
+    {
+        EvmPooledMemory memory = new();
+        byte[] word = TestItem.KeccakA.BytesToArray();
+
+        Assert.That(memory.TrySaveWord(0, word), Is.True);
+
+        for (int offset = step; offset <= 64 * 1024; offset += step)
+        {
+            Assert.That(memory.TryLoadSpan((UInt256)offset, (UInt256)EvmPooledMemory.WordSize, out Span<byte> read), Is.True);
+            Assert.That(read.ToArray(), Is.EqualTo(new byte[EvmPooledMemory.WordSize]),
+                $"memory at offset {offset} must read as zero after growth to {memory.Size}");
+        }
+
+        Assert.That(memory.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> first), Is.True);
+        Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive re-rent");
+    }
+
     [Test]
     public void GetTrace_should_not_throw_on_not_initialized_memory()
     {
@@ -326,8 +367,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.GenericNonRealNetwork);
     private static string Run(byte[] input)
     {
-        long blocknr = 12965000;
-        long gas = 34218;
+        ulong blocknr = 12965000;
+        ulong gas = 34218;
         ulong ts = 123456;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
@@ -390,6 +431,7 @@ public class MyTracer : ITxTracer, IDisposable
     public bool IsTracingDetailedMemory { get; set; } = true;
     public bool IsTracingInstructions => true;
     public bool IsTracingRefunds { get; } = false;
+    public bool IsTracingReturnData { get; } = false;
     public bool IsTracingCode => true;
     public bool IsTracingStack { get; set; } = true;
     public bool IsTracingState => false;
@@ -421,7 +463,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
     }
 
@@ -429,7 +471,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
     {
     }
 
@@ -444,6 +486,10 @@ public class MyTracer : ITxTracer, IDisposable
     public void SetOperationMemory(TraceMemory memoryTrace) => lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
 
     public void SetOperationMemorySize(ulong newSize)
+    {
+    }
+
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
     {
     }
 
@@ -477,21 +523,21 @@ public class MyTracer : ITxTracer, IDisposable
 
     public void ReportStorageRead(in StorageCell storageCell) => throw new NotImplementedException();
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new NotSupportedException();
+    public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new NotSupportedException();
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
 
     public void ReportActionError(EvmExceptionType exceptionType) => throw new NotSupportedException();
 
-    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
+    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new NotSupportedException();
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new NotSupportedException();
 
     public void ReportBlockHash(Hash256 blockHash) => throw new NotImplementedException();
 
     public void ReportByteCode(ReadOnlyMemory<byte> byteCode) => throw new NotSupportedException();
 
-    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
     }
 
@@ -503,7 +549,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportExtraGasPressure(long extraGasPressure) => throw new NotImplementedException();
+    public void ReportExtraGasPressure(ulong extraGasPressure) => throw new NotImplementedException();
 
     public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) => throw new NotImplementedException();
 

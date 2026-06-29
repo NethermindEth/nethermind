@@ -14,15 +14,15 @@ namespace Nethermind.EraE.Test.Archive;
 
 internal class EraReaderTests
 {
-    [TestCase(3, 0)]
-    [TestCase(0, 3)]
-    public async Task GetBlockByNumber_ReturnsCorrectBlockNumbers(int preMergeCount, int postMergeCount)
+    [TestCase(3U, 0U)]
+    [TestCase(0U, 3U)]
+    public async Task GetBlockByNumber_ReturnsCorrectBlockNumbers(uint preMergeCount, uint postMergeCount)
     {
-        int totalCount = preMergeCount + postMergeCount;
+        ulong totalCount = preMergeCount + postMergeCount;
         using TestEraFile file = await TestEraFile.Create(preMergeCount: preMergeCount, postMergeCount: postMergeCount);
         using EraReader sut = new(file.FilePath);
 
-        for (int i = 0; i < totalCount; i++)
+        for (ulong i = 0; i < totalCount; i++)
         {
             (Block block, _) = await sut.GetBlockByNumber(i);
             Assert.That(block.Number, Is.EqualTo(i));
@@ -35,7 +35,7 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        (Block block, _) = await sut.GetBlockByNumber(2);
+        (Block block, _) = await sut.GetBlockByNumber(2UL);
         Assert.That(block.TotalDifficulty, Is.EqualTo(file.Contents[2].Block.TotalDifficulty));
     }
 
@@ -118,7 +118,7 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 2);
         using EraReader sut = new(file.FilePath);
 
-        (Block postMergeBlock, _) = await sut.GetBlockByNumber(2);
+        (Block postMergeBlock, _) = await sut.GetBlockByNumber(2UL);
         Assert.That(postMergeBlock.Header.IsPostMerge, Is.True);
     }
 
@@ -128,7 +128,7 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        Assert.That(async () => await sut.GetBlockByNumber(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(async () => await sut.GetBlockByNumber(ulong.MaxValue), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [Test]
@@ -137,7 +137,7 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        Assert.That(async () => await sut.GetBlockByNumber(999), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(async () => await sut.GetBlockByNumber(999UL), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [Test]
@@ -146,7 +146,7 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 1, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        (_, TxReceipt[] receipts) = await sut.GetBlockByNumber(0);
+        (_, TxReceipt[] receipts) = await sut.GetBlockByNumber(0UL);
 
         Assert.That(receipts, Is.Not.Empty);
         Assert.That(receipts[0].Bloom, Is.Not.Null, "bloom must be auto-computed from logs");

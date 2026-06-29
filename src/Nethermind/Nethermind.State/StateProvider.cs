@@ -20,15 +20,16 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Metrics = Nethermind.Db.Metrics;
-using EvmMetrics = Nethermind.Evm.Metrics;
 using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
 
-internal class StateProvider(ILogManager logManager) : IJournal<int>
+internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
 {
     private static readonly UInt256 _zero = UInt256.Zero;
+
+    private readonly LocalMetrics _metrics = metrics;
+
 
     private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = [];
     private readonly HashSet<AddressAsKey> _committedThisRound = [];
@@ -94,10 +95,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         return account?.IsEmpty ?? true;
     }
 
-    public UInt256 GetNonce(Address address)
+    public ulong GetNonce(Address address)
     {
         Account? account = GetThroughCache(address);
-        return account?.Nonce ?? UInt256.Zero;
+        return account?.Nonce ?? 0;
     }
 
     public ref readonly UInt256 GetBalance(Address address)
@@ -135,8 +136,8 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             _blockCodeInsertFilter.Set(codeHash);
             inserted = true;
 
-            EvmMetrics.IncrementCodeWrites();
-            EvmMetrics.IncrementCodeBytesWritten(code.Length);
+            _metrics.IncrementCodeWrites();
+            _metrics.IncrementCodeBytesWritten(code.Length);
         }
 
         Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
@@ -249,10 +250,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, out UInt256 oldBalance)
         => SetNewBalance(address, balanceChange, releaseSpec, false, out oldBalance);
 
-    public void IncrementNonce(Address address, UInt256 delta)
+    public void IncrementNonce(Address address, ulong delta)
         => IncrementNonce(address, delta, out _);
 
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
         _needsStateRootUpdate = true;
         Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
@@ -271,7 +272,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
     }
 
-    public void DecrementNonce(Address address, UInt256 delta)
+    public void DecrementNonce(Address address, ulong delta)
     {
         _needsStateRootUpdate = true;
         Account? account = GetThroughCache(address) ?? ThrowNullAccount(address);
@@ -419,16 +420,16 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             => throw new InvalidOperationException($"Expected actual position {actual} to be equal to {current} - {step}");
     }
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         _needsStateRootUpdate = true;
         if (_logger.IsTrace) Trace(address, balance, nonce);
 
-        Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
+        Account account = (balance.IsZero && nonce == 0) ? Account.TotallyEmpty : new Account(nonce, balance);
         PushNew(address, account);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(Address address, in UInt256 balance, in UInt256 nonce)
+        void Trace(Address address, in UInt256 balance, in ulong nonce)
             => _logger.Trace($"Creating account: {address} with balance {balance.ToHexString(skipLeadingZeros: true)} and nonce {nonce.ToHexString(skipLeadingZeros: true)}");
     }
 
@@ -456,7 +457,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             => _logger.Trace($"Creating zombie account: {address}");
     }
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         if (!AccountExists(address))
         {
@@ -711,9 +712,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         }
 
         if (writes > 0)
-            Metrics.IncrementStateTreeWrites(writes);
+            _metrics.IncrementStateTreeWrites(writes);
         if (skipped > 0)
-            Metrics.IncrementStateSkippedWrites(skipped);
+            _metrics.IncrementStateSkippedWrites(skipped);
     }
 
     public bool WarmUp(Address address)
@@ -725,24 +726,24 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
         if (!exists)
         {
-            Metrics.IncrementStateTreeReads();
+            _metrics.IncrementStateTreeReads();
             Account? account = _tree.Get(address);
 
             accountChanges = new(account, account);
         }
         else
         {
-            Metrics.IncrementStateTreeCacheHits();
+            _metrics.IncrementStateTreeCacheHits();
         }
         return accountChanges.After;
     }
 
     internal void SetState(Address address, Account? account)
     {
-        EvmMetrics.IncrementAccountWrites();
+        _metrics.IncrementAccountWrites();
         if (account is null)
         {
-            EvmMetrics.IncrementAccountDeleted();
+            _metrics.IncrementAccountDeleted();
         }
 
         ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
@@ -871,7 +872,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     }
 
     // used in EthereumTests
-    internal void SetNonce(Address address, in UInt256 nonce)
+    internal void SetNonce(Address address, in ulong nonce)
     {
         _needsStateRootUpdate = true;
         Account account = GetThroughCache(address) ?? ThrowNullAccount(address);

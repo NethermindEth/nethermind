@@ -516,9 +516,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
     {
         public bool SupportsCaching => supportsCaching;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -534,9 +534,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
         public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
             inputData.Length > effectiveLength ? inputData[..effectiveLength] : inputData;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -551,9 +551,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
     {
         public bool SupportsCaching => true;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {

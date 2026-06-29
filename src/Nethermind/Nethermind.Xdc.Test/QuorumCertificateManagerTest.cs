@@ -108,8 +108,8 @@ public class QuorumCertificateManagerTest
             .Returns(new EpochSwitchInfo(masternodes.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 1, 10)));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.EpochLength.Returns(900);
-        xdcReleaseSpec.Gap.Returns(450);
+        xdcReleaseSpec.EpochLength.Returns(900UL);
+        xdcReleaseSpec.Gap.Returns(450UL);
         xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         QuorumCertificateManager quorumCertificateManager = new(
@@ -128,8 +128,8 @@ public class QuorumCertificateManagerTest
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.SwitchBlock.Returns(900L);
-        xdcReleaseSpec.Gap.Returns(450);
+        xdcReleaseSpec.SwitchBlock.Returns(900UL);
+        xdcReleaseSpec.Gap.Returns(450UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         XdcConsensusContext context = new();
         QuorumCertificateManager quorumCertificateManager = new(
@@ -323,7 +323,7 @@ public class QuorumCertificateManagerTest
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.SwitchBlock.Returns(900L);
+        xdcReleaseSpec.SwitchBlock.Returns(900UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         _ = new QuorumCertificateManager(
             context,
@@ -348,7 +348,7 @@ public class QuorumCertificateManagerTest
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.SwitchBlock.Returns(100L);
+        xdcReleaseSpec.SwitchBlock.Returns(100UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         blockTree.FindHeader(Arg.Any<Hash256>()).Returns(Build.A.XdcBlockHeader().WithNumber(1).TestObject);
         context.HighestQC = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 0, 0)).TestObject;

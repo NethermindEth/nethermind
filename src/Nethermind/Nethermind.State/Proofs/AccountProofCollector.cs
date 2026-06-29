@@ -156,7 +156,7 @@ namespace Nethermind.State.Proofs
             for (int i = 0; i < _fullStoragePaths.Length; i++)
             {
                 if (IsFullPathMatch(_fullStoragePaths[i], ctx.Path, node.Key))
-                    _accountProof.StorageProofs[i].Value = new Rlp.ValueDecoderContext(node.Value.AsSpan()).DecodeByteArray();
+                    _accountProof.StorageProofs[i].Value = new RlpReader(node.Value.AsSpan()).DecodeByteArray();
             }
         }
 
