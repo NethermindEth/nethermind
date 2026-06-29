@@ -104,7 +104,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         TSelf.Consume(ref gas, TCost.GasCost(spec));
 
     // Dynamic per-word charges — the caller passes the word count (the data), the policy owns the
-    // base + per-word cost formula. Mirrors ConsumeDataCopyGas.
+    // base + per-word cost formula.
     static virtual void ConsumeKeccak(ref TSelf gas, ulong words) =>
         TSelf.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * words);
 
@@ -144,7 +144,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     // Precompile charge: the caller passes the precompile + input + spec (the data needed to price it);
     // the policy reads the precompile's own base/data cost formulas. Returns false on OOG (incl. the
-    // overflow guard before summing), without charging on overflow — matching the prior inline guard.
+    // overflow guard before summing), without charging on overflow.
     static virtual bool ConsumePrecompileGas(ref TSelf gas, IPrecompile precompile, ReadOnlyMemory<byte> inputData, IReleaseSpec spec)
     {
         ulong baseGasCost = precompile.BaseGasCost(spec);
@@ -250,8 +250,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childRegularGas) => TSelf.FromULong(childRegularGas);
 
     // EIP-150: gas forwarded to a child frame is capped at 63/64 of the parent's remaining gas
-    // (no cap pre-EIP-150). These charge the forwarded amount from the parent and return it, so the
-    // 63/64 rule lives in the policy rather than being recomputed at each call/create site.
+    // (no cap pre-EIP-150). These charge the forwarded amount from the parent and return it.
 
     // CALL-style: forward the requested amount, capped to 63/64. Pre-EIP-150 the request must fit ulong.
     static virtual bool TryReserveChildGas(ref TSelf gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
@@ -274,7 +273,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return TSelf.UpdateGas(ref gas, childGas);
     }
 
-    // CREATE-style: forward all remaining gas (capped to 63/64 under EIP-150).
     static virtual bool TryReserveChildGas(ref TSelf gas, IReleaseSpec spec, out ulong childGas)
     {
         ulong gasAvailable = TSelf.GetRemainingGas(in gas);

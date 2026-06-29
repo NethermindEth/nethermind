@@ -11,9 +11,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 {
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
 
-    // Select and lazily build the opcode dispatch table for the active tracing mode, caching each
-    // mode separately on the spec. Mirrors the std build minus its periodic PGO-driven cache refresh,
-    // which is moot for the AOT-compiled guest.
+    // Lazily build and cache the opcode dispatch table per tracing mode, without the std build's
+    // periodic PGO-driven refresh (moot for the AOT-compiled guest).
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
         OpcodeTable table = _opcodeTablesBySpec.GetValue(spec, static _ => new OpcodeTable());
