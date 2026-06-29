@@ -175,9 +175,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             if (historyInfo is null)
             {
-                // Distinguish "block doesn't exist" from "block body pruned on snap-sync".
-                // FindHeader succeeds for any block whose header was downloaded (all of them on
-                // snap-sync); FindBlock requires the body which is absent for pre-pivot blocks.
                 BlockHeader? header = _blockTree.FindHeader(newestBlock);
                 return header is null
                     ? ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound)
