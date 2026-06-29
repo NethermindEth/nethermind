@@ -83,6 +83,11 @@ public static class EnrTreeParser
                 throw new FormatException($"Malformed enrtree-root: '{key}' field is missing or too short.");
             }
 
+            if (text.IndexOf(key, index + key.Length, StringComparison.Ordinal) >= 0)
+            {
+                throw new FormatException($"Malformed enrtree-root: '{key}' field appears more than once.");
+            }
+
             return text.Substring(index + key.Length, length);
         }
 
@@ -92,6 +97,11 @@ public static class EnrTreeParser
             if (index < 0)
             {
                 throw new FormatException("Malformed enrtree-root: 'seq=' field is missing.");
+            }
+
+            if (text.IndexOf("seq=", index + "seq=".Length, StringComparison.Ordinal) >= 0)
+            {
+                throw new FormatException("Malformed enrtree-root: 'seq=' field appears more than once.");
             }
 
             int start = index + "seq=".Length;
