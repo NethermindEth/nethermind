@@ -3,6 +3,9 @@
 
 namespace Nethermind.TxPool;
 
+/// <summary>
+/// User-facing rejection phrases for <see cref="AcceptTxResult"/> codes surfaced through the RPC layer.
+/// </summary>
 public static class TxPoolErrorMessages
 {
     // Geth-canonical mempool rejection phrases
