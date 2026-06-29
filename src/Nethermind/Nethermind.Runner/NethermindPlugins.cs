@@ -10,6 +10,7 @@ public static class NethermindPlugins
 {
     public static readonly IReadOnlyList<Type> EmbeddedPlugins =
     [
+        typeof(Nethermind.Avalanche.AvalanchePlugin),
         typeof(Nethermind.BalRecorder.BalRecorderPlugin),
         typeof(Nethermind.Consensus.AuRa.AuRaPlugin),
         typeof(Nethermind.Consensus.Clique.CliquePlugin),

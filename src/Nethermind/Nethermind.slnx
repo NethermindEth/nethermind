@@ -96,6 +96,7 @@
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.BalRecorder.Test/Nethermind.BalRecorder.Test.csproj" />
+  <Project Path="Nethermind.Avalanche/Nethermind.Avalanche.csproj" />
   <Project Path="Nethermind.BalRecorder/Nethermind.BalRecorder.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
   <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
