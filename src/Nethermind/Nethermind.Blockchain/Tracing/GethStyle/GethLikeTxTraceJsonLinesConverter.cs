@@ -5,7 +5,7 @@ using System;
 using System.Buffers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -49,10 +49,10 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WriteNumberValue((byte)value.OpcodeRaw);
 
         writer.WritePropertyName("gas");
-        WriteHexLong(writer, value.Gas);
+        HexWriter.WriteUlongHexStringValue(writer, value.Gas);
 
         writer.WritePropertyName("gasCost");
-        WriteHexLong(writer, value.GasCost);
+        HexWriter.WriteUlongHexStringValue(writer, value.GasCost);
 
         writer.WritePropertyName("memSize");
         writer.WriteNumberValue(value.MemorySize ?? 0UL);
@@ -102,40 +102,22 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.Reset();
     }
 
-    private static void WriteHexLong(Utf8JsonWriter writer, ulong v)
-    {
-        Span<char> buf = stackalloc char[18]; // "0x" + up to 16 hex digits
-        buf[0] = '0';
-        buf[1] = 'x';
-        v.TryFormat(buf[2..], out int written, "x");
-        writer.WriteStringValue(buf[..(2 + written)]);
-    }
-
-    private const int WordSize = 32;
-
-    // The file format renders memory as a single contiguous 0x-prefixed hex blob (not a per-word array),
-    // so the words are encoded straight into a UTF-8 buffer and written as one JSON string.
+    // The file format renders memory as a single contiguous 0x-prefixed hex blob, not a per-word array.
     private static void WriteMemoryBlob(Utf8JsonWriter writer, UInt256[] words)
     {
-        int rawLength = words.Length * WordSize;
+        int rawLength = words.Length * EvmPooledMemory.WordSize;
         byte[] raw = ArrayPool<byte>.Shared.Rent(rawLength);
-        byte[] hex = ArrayPool<byte>.Shared.Rent(2 + rawLength * 2);
         try
         {
             Span<byte> rawSpan = raw.AsSpan(0, rawLength);
             for (int i = 0; i < words.Length; i++)
-                words[i].ToBigEndian(rawSpan.Slice(i * WordSize, WordSize));
+                words[i].ToBigEndian(rawSpan.Slice(i * EvmPooledMemory.WordSize, EvmPooledMemory.WordSize));
 
-            hex[0] = (byte)'0';
-            hex[1] = (byte)'x';
-            ((ReadOnlySpan<byte>)rawSpan).OutputBytesToByteHex(hex.AsSpan(2, rawLength * 2), extraNibble: false);
-
-            writer.WriteStringValue(hex.AsSpan(0, 2 + rawLength * 2));
+            HexWriter.WriteHexStringValue(writer, rawSpan);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(raw);
-            ArrayPool<byte>.Shared.Return(hex);
         }
     }
 }
