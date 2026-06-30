@@ -307,7 +307,7 @@ public class VotesManagerTests
         BlockRoundInfo info = new(header.Hash!, currentRound, header.Number);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>()).Returns((XdcBlockHeader?)null);
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong>()).Returns((XdcBlockHeader?)null);
 
         IEpochSwitchManager esm = Substitute.For<IEpochSwitchManager>();
         esm.GetEpochSwitchInfo(header).Returns(new EpochSwitchInfo(masternodes, [], [], info));
@@ -353,7 +353,7 @@ public class VotesManagerTests
         BlockRoundInfo info = new(header.Hash!, currentRound, header.Number);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>()).Returns(header);
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong>()).Returns(header);
 
         IEpochSwitchManager esm = Substitute.For<IEpochSwitchManager>();
         esm.GetEpochSwitchInfo(header).Returns(new EpochSwitchInfo(masternodes, [], [], info));
@@ -410,11 +410,11 @@ public class VotesManagerTests
 
     // headNumber=100, currentRound=14, _maxBlockDistance=7, _maxRoundDistance=7
     // Round must be >= currentRound for accepted cases so HandleVote adds to pool
-    [TestCase(107L, 14UL, 1L, TestName = "BlockDistanceSeven_Accepted")]
-    [TestCase(108L, 14UL, 0L, TestName = "BlockDistanceEight_Rejected")]
-    [TestCase(100L, 21UL, 1L, TestName = "RoundDistanceSeven_Accepted")]
-    [TestCase(100L, 22UL, 0L, TestName = "RoundDistanceEight_Rejected")]
-    public async Task OnReceiveVote_DistanceGuards_AcceptsOrRejectsVote(long voteBlockNumber, ulong voteRound, long expectedCount)
+    [TestCase(107UL, 14UL, 1L, TestName = "BlockDistanceSeven_Accepted")]
+    [TestCase(108UL, 14UL, 0L, TestName = "BlockDistanceEight_Rejected")]
+    [TestCase(100UL, 21UL, 1L, TestName = "RoundDistanceSeven_Accepted")]
+    [TestCase(100UL, 22UL, 0L, TestName = "RoundDistanceEight_Rejected")]
+    public async Task OnReceiveVote_DistanceGuards_AcceptsOrRejectsVote(ulong voteBlockNumber, ulong voteRound, long expectedCount)
     {
         const ulong currentRound = 14;
         const long headNumber = 100;
