@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using NUnit.Framework;
 
