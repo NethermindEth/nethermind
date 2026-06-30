@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,9 +14,7 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 /// <summary>
-/// Serializes a per-opcode stack snapshot stored as raw bytes into the Geth-style array of
-/// <c>0x</c>-prefixed minimal (no zero-padding) hex words, and vice versa. Hex encoding is
-/// deferred to write time — no per-word string allocations occur during tracing.
+/// Converts a stack snapshot to and from Geth-style hex words.
 /// </summary>
 public sealed class StackHexConverter : JsonConverter<ReadOnlyMemory<byte>>
 {

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -12,9 +12,8 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 /// <summary>
-/// Serializes a struct-log storage snapshot kept as <see cref="UInt256"/> domain objects into the
-/// Geth-style <c>{ "0x..key..": "0x..value.." }</c> shape (0x-prefixed 32-byte words) without allocating
-/// per-entry hex strings during tracing — values are formatted only here, at write time.
+/// Serializes a storage snapshot of <see cref="UInt256"/> values into the Geth-style
+/// <c>{ "0x..key..": "0x..value.." }</c> shape.
 /// </summary>
 public sealed class StorageHexConverter : JsonConverter<IDictionary<UInt256, UInt256>>
 {
