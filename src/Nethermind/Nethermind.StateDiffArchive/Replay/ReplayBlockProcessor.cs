@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Cpu;
@@ -34,6 +35,11 @@ public sealed class ReplayBlockProcessor(
     private readonly ILogger _logger = logManager.GetClassLogger<ReplayBlockProcessor>();
     private int _exhaustedLogged;
 
+    // One-block-ahead prefetch: read+decompress the next diff while the current block is being applied.
+    // Touched only on the (single) main processing thread; the background read itself touches only the store.
+    private Task<StateDiffRecord?>? _prefetch;
+    private ulong _prefetchBlock;
+
     public event Action? TransactionsExecuted
     {
         add => inner.TransactionsExecuted += value;
@@ -42,11 +48,18 @@ public sealed class ReplayBlockProcessor(
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
     {
-        if (suggestedBlock.IsGenesis || !store.TryRead(suggestedBlock.Number, out StateDiffRecord? record))
+        if (suggestedBlock.IsGenesis)
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+
+        StateDiffRecord? record = TakePrefetched(suggestedBlock.Number) ?? ReadRecord(suggestedBlock.Number);
+        if (record is null)
         {
-            if (!suggestedBlock.IsGenesis) LogReplayExhausted(suggestedBlock.Number);
+            LogReplayExhausted(suggestedBlock.Number);
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
+
+        // Start loading the next block's diff while we apply this one.
+        StartPrefetch(suggestedBlock.Number + 1);
 
         using (record)
         {
@@ -68,6 +81,30 @@ public sealed class ReplayBlockProcessor(
 
             return (suggestedBlock, EmptyReceipts);
         }
+    }
+
+    private StateDiffRecord? ReadRecord(ulong blockNumber)
+        => store.TryRead(blockNumber, out StateDiffRecord? record) ? record : null;
+
+    private void StartPrefetch(ulong blockNumber)
+    {
+        _prefetchBlock = blockNumber;
+        _prefetch = Task.Run(() => ReadRecord(blockNumber));
+    }
+
+    // Wait for the in-flight prefetch (so the store is never read from two threads at once) and return its
+    // record if it is for the requested block; otherwise discard it (e.g. after a reorg changed the next block).
+    private StateDiffRecord? TakePrefetched(ulong blockNumber)
+    {
+        Task<StateDiffRecord?>? prefetch = _prefetch;
+        _prefetch = null;
+        if (prefetch is null) return null;
+
+        StateDiffRecord? record = prefetch.GetAwaiter().GetResult();
+        if (_prefetchBlock == blockNumber) return record;
+
+        record?.Dispose();
+        return null;
     }
 
     // Logs once when replay first runs out of recorded diffs and the node continues with normal processing.
