@@ -67,7 +67,11 @@
 
         "DynamicGasLimitBlock": 99999999999999,
         "tip2019Block": 1,
+        "TipTrc21Fee": 38383838,
+        "TipXDCX": 38383838,
         "BlackListHFNumber": 38383838,
+        "TIPXDCXMinerDisable": 80370000,
+        "TIPXDCXReceiverDisable": 80370900,
         "blackListedAddresses": [
           "0x5248bfb72fd4f234e062d3e9bb76f08643004fcd",
           "0x5ac26105b35ea8935be382863a70281ec7a985e9",
@@ -194,8 +198,7 @@
     "eip7516Transition": 98802000,
 
     "MaxCodeSizeTransition": 3,
-    "MaxCodeSize": 24576,
-    "TipTrc21Fee": 38383838
+    "MaxCodeSize": 24576
   },
   "genesis": {
     "nonce": "0x0",
