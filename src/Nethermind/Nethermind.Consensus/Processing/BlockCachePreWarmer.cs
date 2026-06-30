@@ -49,6 +49,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // abandoned the instant the main thread cancels (end of block). See BlockState.WarmupTracer.
     private readonly bool _cancelInflightWarming;
 
+    // When true (default), eagerly load every slot/address declared in a tx's EIP-2930 access list. A tx can
+    // over-declare a huge access list (e.g. 12.5k slots) while actually touching a handful; the speculative
+    // warmup execution already warms the slots actually accessed, so the eager load is largely redundant and,
+    // on the trie-backed (HalfPath) store, dominates the prewarm task. Off skips it.
+    private readonly bool _warmupAccessList = true;
+
     // Tracks the block currently being prewarmed so the main processing thread (via PrewarmerTxAdapter)
     // can report its transaction progress, letting the prewarmer skip already-started transactions.
     private BlockState? _currentBlockState;
@@ -73,6 +79,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _skipStartedTxs = blocksConfig.PreWarmSkipStartedTxs;
         _adaptiveAbortMinGas = blocksConfig.PreWarmAdaptiveAbortMinGas;
         _cancelInflightWarming = blocksConfig.PreWarmCancelInflightWarming;
+        _warmupAccessList = blocksConfig.PreWarmWarmupAccessList;
     }
 
     internal BlockCachePreWarmer(
@@ -187,7 +194,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 (long cnt, long totTicks, long maxTicks, long maxIdx) = blockState.WarmStats();
                 static double toMs(long t) => t * 1000.0 / Stopwatch.Frequency;
                 if (toMs(blockState.DiagWarmTxTicks) + toMs(_addrTicks) > 60.0)
-                    _logger.Warn($"[PWDIAG] block={suggestedBlock.Number} txs={suggestedBlock.Transactions.Length} warmTxMs={toMs(blockState.DiagWarmTxTicks):F1} addrWaitMs={toMs(_addrTicks):F1} warmedTxs={cnt} sumWarmMs={toMs(totTicks):F1} maxTxMs={toMs(maxTicks):F1}@idx{maxIdx}");
+                    _logger.Warn($"[PWDIAG] block={suggestedBlock.Number} txs={suggestedBlock.Transactions.Length} warmTxMs={toMs(blockState.DiagWarmTxTicks):F1} addrWaitMs={toMs(_addrTicks):F1} accListMs={toMs(blockState.AccessListTicks):F1} warmedTxs={cnt} sumWarmMs={toMs(totTicks):F1} maxTxMs={toMs(maxTicks):F1}@idx{maxIdx}");
             }
             addressWarmer.Dispose();
         }
@@ -344,7 +351,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                     if (nonceDelta != 0) worldState.IncrementNonce(senderAddress, nonceDelta, out _);
 
-                    if (bs.Spec.UseTxAccessLists) worldState.WarmUp(tx.AccessList); // eip-2930
+                    if (bs.Spec.UseTxAccessLists && bs.PreWarmer._warmupAccessList)
+                    {
+                        long _at = Stopwatch.GetTimestamp();
+                        worldState.WarmUp(tx.AccessList); // eip-2930
+                        bs.RecordAccessList(Stopwatch.GetTimestamp() - _at);
+                    }
                     if (bs.PreWarmer.SkipExecWarmup(tx, i)) return state;
                     scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(bs.Block.Header, bs.Spec));
                     scope.TransactionProcessor.Warmup(tx, bs.WarmupTracer);
@@ -418,9 +430,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
             }
 
-            if (blockState.Spec.UseTxAccessLists)
+            if (blockState.Spec.UseTxAccessLists && blockState.PreWarmer._warmupAccessList)
             {
+                long _at = Stopwatch.GetTimestamp();
                 worldState.WarmUp(tx.AccessList); // eip-2930
+                blockState.RecordAccessList(Stopwatch.GetTimestamp() - _at);
             }
 
             if (blockState.PreWarmer.SkipExecWarmup(tx, txIndex)) return;
@@ -634,6 +648,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         // Diagnostic accumulators for attributing prewarm-task time (see [PWDIAG] log).
         public long DiagWarmTxTicks;
+        private long _accessListTicks;
+        public void RecordAccessList(long ticks) => Interlocked.Add(ref _accessListTicks, ticks);
+        public long AccessListTicks => Volatile.Read(ref _accessListTicks);
         private long _warmedCount;
         private long _totalWarmTicks;
         private long _maxWarmTicks;

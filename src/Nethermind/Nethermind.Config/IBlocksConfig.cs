@@ -58,6 +58,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether speculative warming observes the prewarmer cancellation token at EVM granularity, abandoning in-flight warming the instant the main thread finishes the block. Diagnostic toggle.", DefaultValue = "False", HiddenFromDocs = true)]
     bool PreWarmCancelInflightWarming { get; set; }
 
+    [ConfigItem(Description = "Whether the prewarmer eagerly loads every slot/address in each transaction's EIP-2930 access list. Disabling relies on the speculative warmup execution to warm actually-accessed state, avoiding wasted loads when a transaction over-declares its access list. Diagnostic toggle.", DefaultValue = "True", HiddenFromDocs = true)]
+    bool PreWarmWarmupAccessList { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

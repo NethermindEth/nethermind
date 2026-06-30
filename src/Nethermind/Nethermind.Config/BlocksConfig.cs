@@ -67,6 +67,7 @@ namespace Nethermind.Config
         public bool PreWarmSkipStartedTxs { get; set; } = false;
         public long PreWarmAdaptiveAbortMinGas { get; set; } = 0;
         public bool PreWarmCancelInflightWarming { get; set; } = false;
+        public bool PreWarmWarmupAccessList { get; set; } = true;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
