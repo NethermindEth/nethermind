@@ -77,9 +77,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         {
             ConfigureBondCallback();
             await _adapter.Ping(_receiver, token);
-            // Ping returns once the pong's response handler completes, but OnIncomingMsg records the
-            // health-tracker call afterwards. Await the full pong processing before clearing recorded
-            // calls so the bonding pong does not leak into later DidNotReceive assertions.
             await _bondPongProcessing;
             _msgSender.ClearReceivedCalls();
             _nodeHealthTracker.ClearReceivedCalls();
