@@ -1100,7 +1100,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
-        Hash256[] topics = new Hash256[topicsCount];
+        Hash256[] topics = topicsCount == 0 ? [] : new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)
         {
             if (!stack.PopWord256(out Span<byte> topic)) goto StackUnderflow;
@@ -1110,7 +1110,7 @@ public static partial class EvmInstructions
         // Create a new log entry with the executing account, log data, and topics.
         LogEntry logEntry = new(
             vmState.Env.ExecutingAccount,
-            data.ToArray(),
+            data.Length == 0 ? [] : data.ToArray(),
             topics);
 
         vm.AddLog(logEntry);
