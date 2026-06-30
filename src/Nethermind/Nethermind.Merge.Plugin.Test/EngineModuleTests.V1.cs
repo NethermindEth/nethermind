@@ -2170,7 +2170,6 @@ public partial class EngineModuleTests
                 .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Prague.Instance))
                 .AddSingleton<ILogManager>(loggerManager));
 
-        // The CL advertises every enabled JSON-RPC method but no SSZ-REST paths (as a real CL does).
         EngineRpcCapabilitiesProvider provider = new(new TestSingleReleaseSpecProvider(Prague.Instance));
         string[] list = [.. provider.GetJsonRpcCapabilities().Where(kv => kv.Value.IsEnabled()).Select(kv => kv.Key)];
 

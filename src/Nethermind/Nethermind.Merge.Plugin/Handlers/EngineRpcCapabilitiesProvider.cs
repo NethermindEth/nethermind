@@ -79,11 +79,6 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Dictionary<string, RpcCapabilityOptions> jsonLocal = [];
         Dictionary<string, RpcCapabilityOptions> sszLocal = [];
 
-        // Configure adds the same options under both the JSON-RPC method name and the
-        // SSZ-REST path — so updates to the gate stay in sync by construction.
-        // WarnIfMissing is stripped from the SSZ-REST entry: engine_exchangeCapabilities
-        // only exchanges JSON-RPC method names, so the CL never advertises REST paths and
-        // they must not be reported as missing.
         void Configure(string method, string path, RpcCapabilityOptions options)
         {
             jsonLocal[method] = options;
