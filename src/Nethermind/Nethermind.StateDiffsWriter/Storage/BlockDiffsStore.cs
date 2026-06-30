@@ -67,7 +67,10 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         return length;
     }
 
-    /// <summary>Flush the Default CF memtable so a secondary-mode reader can see the newest block.</summary>
+    /// <summary>
+    /// Flush the Default CF memtable so a secondary-mode reader sees the newest block. A full flush is
+    /// required (not <c>Flush(onlyWal: true)</c>): the secondary's iterator surfaces SSTs, not WAL/memtable rows.
+    /// </summary>
     public void FlushDefault() => _blockDiffs.Flush();
 
     public BlockDiffRecord? ReadBlockDiff(long blockNumber)
