@@ -646,6 +646,17 @@ jobs:
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
 
+          # Honor the full image reference (repo + tag) when provided, rather than only the
+          # <<DOCKER_TAG>> tag substituted into the template's fixed repo. This lets a run point
+          # at images hosted on a different repo than the template default (e.g. official release
+          # tags on nethermind/nethermind), enabling comparison of an old release against
+          # nethermindeth/nethermind:master-* dev builds. No-op for the single-image path, where
+          # NETHERMIND_IMAGE already equals the rendered nethermindeth/nethermind:<branch>.
+          if [[ -n "${NETHERMIND_IMAGE:-}" ]]; then
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".image = \"${NETHERMIND_IMAGE}\"" "${RENDERED_CONFIG_FILE}"
+            echo "Set scenario image to full reference: ${NETHERMIND_IMAGE}"
+          fi
+
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
@@ -1663,6 +1674,7 @@ jobs:
           AMOUNT: ${{ needs.resolve.outputs.amount }}
           SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          NETHERMIND_IMAGE: ${{ matrix.image }}
         run: |
           set -euo pipefail
           flags_file="$(mktemp)"
@@ -1727,6 +1739,17 @@ jobs:
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
+
+          # Honor the full image reference (repo + tag) when provided, rather than only the
+          # <<DOCKER_TAG>> tag substituted into the template's fixed repo. This lets a run point
+          # at images hosted on a different repo than the template default (e.g. official release
+          # tags on nethermind/nethermind), enabling comparison of an old release against
+          # nethermindeth/nethermind:master-* dev builds. No-op for the single-image path, where
+          # NETHERMIND_IMAGE already equals the rendered nethermindeth/nethermind:<branch>.
+          if [[ -n "${NETHERMIND_IMAGE:-}" ]]; then
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".image = \"${NETHERMIND_IMAGE}\"" "${RENDERED_CONFIG_FILE}"
+            echo "Set scenario image to full reference: ${NETHERMIND_IMAGE}"
+          fi
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
