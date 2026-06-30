@@ -8,6 +8,9 @@
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <!-- Genesis state-root construction (Coreth-encoded accounts in a raw Patricia trie). -->
+    <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
   </ItemGroup>
 
 </Project>

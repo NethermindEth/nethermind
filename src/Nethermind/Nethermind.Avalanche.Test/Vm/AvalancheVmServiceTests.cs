@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.Linq;
+using System.Reflection;
 using Google.Protobuf;
 using Grpc.Core;
 using Nethermind.Avalanche.Blocks;
@@ -179,5 +182,44 @@ public sealed class AvalancheVmServiceTests
                 new VmPb.BlockVerifyRequest { Bytes = ByteString.CopyFrom([0x01, 0x02, 0x03]) }, context: null!))!;
 
         Assert.That(ex.StatusCode, Is.EqualTo(StatusCode.InvalidArgument));
+    }
+
+    [Test]
+    public void Initialize_returns_mainnet_genesis_as_last_accepted()
+    {
+        AvalancheVmService service = new();
+        VmPb.InitializeResponse response = service.Initialize(
+            new VmPb.InitializeRequest { GenesisBytes = ByteString.CopyFrom(LoadMainnetGenesisBytes()) }, context: null!).Result;
+
+        Hash256 genesisHash = new("0x31ced5b9beb7f8782b014660da0cb18cc409f121f408186886e1ca3e8eeca96b");
+        Assert.That(new Hash256(response.LastAcceptedId.ToByteArray()), Is.EqualTo(genesisHash));
+        Assert.That(response.Height, Is.EqualTo(0UL));
+        Assert.That(service.Genesis!.ChainId, Is.EqualTo(43114));
+
+        // The returned block bytes must parse back to a block whose header hashes to the genesis id.
+        AvalancheBlock parsed = AvalancheBlockDecoder.Instance.Decode(response.Bytes.ToByteArray())!;
+        Assert.That(AvalancheHeaderDecoder.Instance.ComputeHash(parsed.Header), Is.EqualTo(genesisHash));
+    }
+
+    [Test]
+    public void Initialize_without_genesis_bytes_is_invalid()
+    {
+        AvalancheVmService service = new();
+
+        RpcException ex = Assert.ThrowsAsync<RpcException>(async () =>
+            await service.Initialize(new VmPb.InitializeRequest { GenesisBytes = ByteString.Empty }, context: null!))!;
+
+        Assert.That(ex.StatusCode, Is.EqualTo(StatusCode.InvalidArgument));
+    }
+
+    private static byte[] LoadMainnetGenesisBytes()
+    {
+        Assembly assembly = typeof(AvalancheVmServiceTests).Assembly;
+        string resource = assembly.GetManifestResourceNames()
+            .Single(n => n.Contains("cchain-genesis", StringComparison.OrdinalIgnoreCase));
+        using Stream stream = assembly.GetManifestResourceStream(resource)!;
+        using MemoryStream buffer = new();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
     }
 }

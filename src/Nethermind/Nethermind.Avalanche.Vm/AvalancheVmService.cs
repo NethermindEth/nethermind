@@ -9,6 +9,7 @@ using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Nethermind.Avalanche.Blocks;
+using Nethermind.Avalanche.Genesis;
 using Nethermind.Avalanche.Parity;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -47,6 +48,13 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
     // The rpcdb adapter is created on Initialize from InitializeRequest.db_server_addr.
     private RpcDatabase? _database;
 
+    // The C-Chain genesis parsed from InitializeRequest.genesis_bytes, and its serialized extblock.
+    private AvalancheCChainGenesis? _genesis;
+    private byte[]? _genesisBytes;
+
+    /// <summary>The parsed C-Chain genesis, available once <c>Initialize</c> has run with genesis bytes.</summary>
+    public AvalancheCChainGenesis? Genesis => _genesis;
+
     /// <summary>Triggered when AvalancheGo invokes the <c>Shutdown</c> RPC. The host waits on this to stop.</summary>
     public CancellationToken ShutdownRequested => _shutdownCts.Token;
 
@@ -64,15 +72,27 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
             _database = RpcDatabase.Connect(request.DbServerAddr);
         }
 
-        // TODO: bootstrap Nethermind (genesis from request.GenesisBytes, chain config from request.ConfigBytes,
-        // data dir from request.ChainDataDir) and return the last-accepted block instead of the genesis stub.
+        // Reconstruct the genesis (block 0) from the C-Chain genesis JSON and return it as the last-accepted
+        // block. TODO: once block execution + persistence land, on restart return the persisted last-accepted
+        // (and stand up the executing world state) instead of always re-deriving genesis.
+        if (request.GenesisBytes is null || request.GenesisBytes.IsEmpty)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Initialize requires genesis_bytes."));
+        }
+
+        AvalancheCChainGenesis genesis = AvalancheCChainGenesis.FromJson(request.GenesisBytes.Memory);
+        _genesis = genesis;
+
+        AvalancheBlock genesisBlock = new(genesis.Header, new AvalancheBlockBody([], [], version: 0, extData: []));
+        _genesisBytes = AvalancheBlockDecoder.Instance.Encode(genesisBlock);
+
         return Task.FromResult(new VmPb.InitializeResponse
         {
-            LastAcceptedId = ByteString.Empty,
-            LastAcceptedParentId = ByteString.Empty,
+            LastAcceptedId = ByteString.CopyFrom(genesis.Hash.Bytes),
+            LastAcceptedParentId = ByteString.CopyFrom(genesis.Header.ParentHash!.Bytes),
             Height = 0,
-            Bytes = ByteString.Empty,
-            Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UnixEpoch),
+            Bytes = ByteString.CopyFrom(_genesisBytes),
+            Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds((long)genesis.Header.Timestamp)),
         });
     }
 

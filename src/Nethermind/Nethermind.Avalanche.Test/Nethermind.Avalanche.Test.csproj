@@ -9,6 +9,8 @@
   <ItemGroup>
     <!-- Real mainnet C-Chain block fixtures (one per fork era) for byte-exact header-hash validation. -->
     <EmbeddedResource Include="Blocks/RealBlocks/*.json" />
+    <!-- Real mainnet C-Chain genesis (cChainGenesis) for genesis-parity validation. -->
+    <EmbeddedResource Include="Genesis/*.json" />
   </ItemGroup>
 
   <ItemGroup>
