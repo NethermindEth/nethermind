@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Core.Specs;
 
 public static partial class IReleaseSpecExtensions
@@ -14,18 +16,30 @@ public static partial class IReleaseSpecExtensions
 
     private static void BuildPrecompileMask(IReleaseSpec spec)
     {
-        ulong low = 0;
+        ulong low = 0UL;
         bool p256 = false;
+
         foreach (AddressAsKey p in spec.Precompiles)
         {
             int idx = ((Address)p).PrecompileIndexOrNegative();
-            if ((uint)idx < 64) low |= 1UL << idx;
-            else if (idx == 0x100) p256 = true;
-            // An out-of-range index is a new precompile the mask cannot hold; IsPrecompile
-            // would then wrongly return false. If this fires, extend the mask and IsPrecompile.
-            else System.Diagnostics.Debug.Assert(false,
-                $"Precompile index 0x{idx:X} is outside the ZK precompile-mask range [0,64) or 0x100; extend BuildPrecompileMask and IsPrecompile.");
+
+            if ((uint)idx < 64)
+            {
+                low |= 1UL << idx;
+            }
+            else if (idx == 0x100)
+            {
+                p256 = true;
+            }
+            // An out-of-range index is a new precompile the mask cannot hold; IsPrecompile would then
+            // wrongly return false and the guest would skip it, mis-validating the block.
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Precompile index 0x{idx:x} is outside the precompile-mask range [0,64) or 0x100; extend BuildPrecompileMask and IsPrecompile.");
+            }
         }
+
         _precompileMaskLow = low;
         _precompileMaskP256 = p256;
         _precompileMaskSpec = spec;
