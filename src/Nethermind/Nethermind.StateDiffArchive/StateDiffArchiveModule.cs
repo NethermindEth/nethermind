@@ -35,7 +35,9 @@ public class StateDiffArchiveModule(IStateDiffArchiveConfig config) : Module
 
         if (replay)
         {
-            builder.AddSingleton<ReplayScopeTracker>();
+            // Scoped, not singleton: each processing env (main, prewarmer, ...) gets its own tracker so a
+            // prewarmer scope cannot clobber the scope the main env is replaying into.
+            builder.AddScoped<ReplayScopeTracker>();
             builder.AddDecorator<IBlockProcessor, ReplayBlockProcessor>();
         }
     }
