@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Test.Runner;
 
