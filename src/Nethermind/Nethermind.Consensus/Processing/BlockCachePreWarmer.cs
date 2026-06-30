@@ -39,10 +39,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly bool _senderGrouping = true;
     private readonly bool _skipStartedTxs;
 
-    // Adaptive warming abort: transactions above _adaptiveAbortMinGas are warmed only while they keep
-    // discovering new cold storage cells (see WarmupBudgetTracer). 0 disables the feature.
+    // Warmup gas cap: a transaction whose gas limit exceeds this is speculatively warmed via a gas-capped
+    // clone (see CapForWarmup), so the trailing compute of a heavy transaction is not re-executed against
+    // the main thread. 0 disables the feature.
     private readonly long _adaptiveAbortMinGas;
-    private readonly int _adaptiveWindowPolls = 64;
 
     // Tracks the block currently being prewarmed so the main processing thread (via PrewarmerTxAdapter)
     // can report its transaction progress, letting the prewarmer skip already-started transactions.
@@ -67,7 +67,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _senderGrouping = blocksConfig.PreWarmSenderGrouping;
         _skipStartedTxs = blocksConfig.PreWarmSkipStartedTxs;
         _adaptiveAbortMinGas = blocksConfig.PreWarmAdaptiveAbortMinGas;
-        _adaptiveWindowPolls = blocksConfig.PreWarmAdaptiveWindowPolls;
     }
 
     internal BlockCachePreWarmer(
@@ -330,7 +329,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                     if (bs.Spec.UseTxAccessLists) worldState.WarmUp(tx.AccessList); // eip-2930
                     scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(bs.Block.Header, bs.Spec));
-                    scope.TransactionProcessor.Warmup(tx, bs.PreWarmer.GetWarmupTracer(tx));
+                    scope.TransactionProcessor.Warmup(bs.PreWarmer.CapForWarmup(tx), NullTxTracer.Instance);
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException or OperationCanceledException)
                 {
@@ -367,14 +366,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <summary>
-    /// Selects the tracer for speculatively warming <paramref name="tx"/>: a <see cref="WarmupBudgetTracer"/>
-    /// that aborts once warming stops discovering cold state for sufficiently large transactions (when the
-    /// adaptive abort is enabled), otherwise the no-op tracer (warm to completion).
+    /// Returns the transaction to speculatively warm: for transactions whose gas limit exceeds the
+    /// configured warmup gas cap, a gas-capped clone so warming OOG-reverts after the cap (across all call
+    /// frames). This bounds speculative execution of a heavy transaction the main thread runs concurrently:
+    /// its cold-state reads (front-loaded) are still warmed, but the trailing compute — which warms nothing
+    /// and only contends with the main thread — is not executed. 0 disables (warm the original).
     /// </summary>
-    private ITxTracer GetWarmupTracer(Transaction tx)
-        => _adaptiveAbortMinGas > 0 && tx.GasLimit > (ulong)_adaptiveAbortMinGas
-            ? new WarmupBudgetTracer(_adaptiveWindowPolls)
-            : NullTxTracer.Instance;
+    private Transaction CapForWarmup(Transaction tx)
+    {
+        long cap = _adaptiveAbortMinGas;
+        if (cap <= 0 || tx.GasLimit <= (ulong)cap) return tx;
+
+        Transaction capped = new();
+        tx.CopyTo(capped);
+        capped.GasLimit = (ulong)cap;
+        return capped;
+    }
 
     private static void WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
@@ -401,8 +408,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList); // eip-2930
             }
 
-            ITxTracer tracer = blockState.PreWarmer.GetWarmupTracer(tx);
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, tracer);
+            TransactionResult result = scope.TransactionProcessor.Warmup(blockState.PreWarmer.CapForWarmup(tx), NullTxTracer.Instance);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
