@@ -39,6 +39,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly bool _senderGrouping = true;
     private readonly bool _skipStartedTxs;
 
+    // Adaptive warming abort: transactions above _adaptiveAbortMinGas are warmed only while they keep
+    // discovering new cold storage cells (see WarmupBudgetTracer). 0 disables the feature.
+    private readonly long _adaptiveAbortMinGas;
+    private readonly int _adaptiveWindowPolls = 64;
+
     // Tracks the block currently being prewarmed so the main processing thread (via PrewarmerTxAdapter)
     // can report its transaction progress, letting the prewarmer skip already-started transactions.
     private BlockState? _currentBlockState;
@@ -61,6 +66,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
         _senderGrouping = blocksConfig.PreWarmSenderGrouping;
         _skipStartedTxs = blocksConfig.PreWarmSkipStartedTxs;
+        _adaptiveAbortMinGas = blocksConfig.PreWarmAdaptiveAbortMinGas;
+        _adaptiveWindowPolls = blocksConfig.PreWarmAdaptiveWindowPolls;
     }
 
     internal BlockCachePreWarmer(
@@ -323,11 +330,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                     if (bs.Spec.UseTxAccessLists) worldState.WarmUp(tx.AccessList); // eip-2930
                     scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(bs.Block.Header, bs.Spec));
-                    scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                    scope.TransactionProcessor.Warmup(tx, bs.PreWarmer.GetWarmupTracer(tx));
                 }
-                catch (Exception ex) when (ex is EvmException or OverflowException)
+                catch (Exception ex) when (ex is EvmException or OverflowException or OperationCanceledException)
                 {
-                    // Ignore, regular tx processing exceptions
+                    // Ignore: regular tx processing exceptions and adaptive-warming aborts.
                 }
                 catch (Exception ex)
                 {
@@ -359,6 +366,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return groups;
     }
 
+    /// <summary>
+    /// Selects the tracer for speculatively warming <paramref name="tx"/>: a <see cref="WarmupBudgetTracer"/>
+    /// that aborts once warming stops discovering cold state for sufficiently large transactions (when the
+    /// adaptive abort is enabled), otherwise the no-op tracer (warm to completion).
+    /// </summary>
+    private ITxTracer GetWarmupTracer(Transaction tx)
+        => _adaptiveAbortMinGas > 0 && tx.GasLimit > (ulong)_adaptiveAbortMinGas
+            ? new WarmupBudgetTracer(_adaptiveWindowPolls)
+            : NullTxTracer.Instance;
+
     private static void WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
@@ -384,13 +401,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList); // eip-2930
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            ITxTracer tracer = blockState.PreWarmer.GetWarmupTracer(tx);
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, tracer);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
-        catch (Exception ex) when (ex is EvmException or OverflowException)
+        catch (Exception ex) when (ex is EvmException or OverflowException or OperationCanceledException)
         {
-            // Ignore, regular tx processing exceptions
+            // Ignore: regular tx processing exceptions and adaptive-warming aborts.
         }
         catch (Exception ex)
         {

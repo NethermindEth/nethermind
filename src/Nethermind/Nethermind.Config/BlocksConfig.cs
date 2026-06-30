@@ -65,6 +65,8 @@ namespace Nethermind.Config
 
         public bool PreWarmSenderGrouping { get; set; } = true;
         public bool PreWarmSkipStartedTxs { get; set; } = false;
+        public long PreWarmAdaptiveAbortMinGas { get; set; } = 0;
+        public int PreWarmAdaptiveWindowPolls { get; set; } = 64;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;

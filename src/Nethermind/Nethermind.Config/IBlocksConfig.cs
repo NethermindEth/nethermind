@@ -52,6 +52,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether the prewarmer skips speculatively executing transactions the main thread has already started, avoiding redundant co-execution.", DefaultValue = "False", HiddenFromDocs = true)]
     bool PreWarmSkipStartedTxs { get; set; }
 
+    [ConfigItem(Description = "Minimum transaction gas limit for adaptive warming abort. Transactions above this are speculatively warmed only while they keep discovering new cold storage, then cancelled (so compute-bound transactions no longer contend with the main thread). 0 disables the feature.", DefaultValue = "0", HiddenFromDocs = true)]
+    long PreWarmAdaptiveAbortMinGas { get; set; }
+
+    [ConfigItem(Description = "Adaptive warming abort window, in EVM cancellation polls (~1024 opcodes each): cancel warming a transaction after this many polls without reading a previously-unseen storage cell.", DefaultValue = "64", HiddenFromDocs = true)]
+    int PreWarmAdaptiveWindowPolls { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
