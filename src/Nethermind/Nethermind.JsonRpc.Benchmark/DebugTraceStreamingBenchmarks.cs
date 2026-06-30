@@ -228,11 +228,19 @@ public class DebugTraceStreamingBenchmarks
         Depth = 1,
         Gas = (ulong)(1_000_000 - pc),
         GasCost = 3,
-        Memory = [UInt256.Zero],
-        Stack = [UInt256.One, new UInt256(2)],
+        Memory = new byte[EvmPooledMemory.WordSize],
+        Stack = BuildStackBytes(),
         Error = null,
-        Storage = [],
+        Storage = new Dictionary<UInt256, UInt256>(),
     };
+
+    private static byte[] BuildStackBytes()
+    {
+        byte[] bytes = new byte[EvmStack.WordSize * 2];
+        bytes[EvmStack.WordSize - 1] = 1;
+        bytes[^1] = 2;
+        return bytes;
+    }
 
     [Params(50, 500, 5000)]
     public int TxCountPerBlock { get; set; }
