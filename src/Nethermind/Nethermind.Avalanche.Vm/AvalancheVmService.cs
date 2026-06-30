@@ -9,6 +9,7 @@ using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Nethermind.Avalanche.Blocks;
+using Nethermind.Avalanche.Parity;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -19,10 +20,13 @@ using VmPb = global::Vm;
 namespace Nethermind.Avalanche.Vm;
 
 /// <summary>
-/// Implements the AvalancheGo <c>vm.VM</c> gRPC service (rpcchainvm protocol 45). Every RPC is stubbed
-/// with a sane default so the VM completes the AvalancheGo handshake and bootstrap state machine; the
-/// block-lifecycle RPCs (<c>BuildBlock</c>/<c>ParseBlock</c>/<c>BlockVerify</c>/<c>BlockAccept</c>/
-/// <c>BlockReject</c>) carry explicit TODOs where Nethermind block processing must be wired in.
+/// Implements the AvalancheGo <c>vm.VM</c> gRPC service (rpcchainvm protocol 45). Lifecycle and control RPCs
+/// return sane defaults so the VM completes the AvalancheGo handshake and bootstrap state machine.
+/// <c>ParseBlock</c> decodes the Coreth <c>extblock</c> and derives the block id via the
+/// <see cref="AvalancheBlockDecoder"/>/<see cref="AvalancheHeaderDecoder"/> codec; <c>BlockVerify</c> additionally
+/// enforces the state-free <c>ExtDataHash</c> consensus invariant. <c>BuildBlock</c>/<c>BlockAccept</c>/
+/// <c>BlockReject</c> (and full execution-based verification) carry explicit TODOs where the bootstrapped
+/// Nethermind block-processing pipeline must be wired in.
 /// </summary>
 /// <remarks>
 /// State sync is reported as unsupported (<c>StateSyncEnabled.enabled = false</c>). <c>WaitForEvent</c>
@@ -240,9 +244,36 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
     public override Task<VmPb.GetStateSummaryResponse> GetStateSummary(VmPb.GetStateSummaryRequest request, ServerCallContext context) =>
         Task.FromResult(new VmPb.GetStateSummaryResponse { Err = VmPb.Error.StateSyncNotImplemented });
 
-    public override Task<VmPb.BlockVerifyResponse> BlockVerify(VmPb.BlockVerifyRequest request, ServerCallContext context) =>
-        // TODO: run Nethermind block validation/execution over request.Bytes and return the block timestamp.
-        throw new RpcException(new Status(StatusCode.Unimplemented, "BlockVerify is not implemented yet"));
+    public override Task<VmPb.BlockVerifyResponse> BlockVerify(VmPb.BlockVerifyRequest request, ServerCallContext context)
+    {
+        AvalancheBlock block;
+        try
+        {
+            block = AvalancheBlockDecoder.Instance.Decode(request.Bytes.Span)
+                    ?? throw new RlpException("BlockVerify received an empty (null) block.");
+        }
+        catch (RlpException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+
+        // State-free consensus invariant Coreth enforces on every block: the header commits to the atomic-tx
+        // bytes via ExtDataHash = keccak256(RLP(extData)). This is checkable without parent state.
+        Hash256 expectedExtDataHash = (Hash256)AvalancheExtData.CalcExtDataHash(block.ExtData);
+        if (block.Header.ExtDataHash != expectedExtDataHash)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument,
+                $"ExtDataHash mismatch: header={block.Header.ExtDataHash}, computed={expectedExtDataHash}"));
+        }
+
+        // TODO: full semantic verification — execute the block against the parent world state via Nethermind's
+        // block processor and validate the resulting state root, receipts, gas usage and dynamic-fee window —
+        // requires the bootstrapped pipeline stood up in Initialize.
+        return Task.FromResult(new VmPb.BlockVerifyResponse
+        {
+            Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds((long)block.Header.Timestamp)),
+        });
+    }
 
     public override Task<Empty> BlockAccept(VmPb.BlockAcceptRequest request, ServerCallContext context) =>
         // TODO: commit the block identified by request.Id (advance head, flush state to rpcdb via WriteBatch).

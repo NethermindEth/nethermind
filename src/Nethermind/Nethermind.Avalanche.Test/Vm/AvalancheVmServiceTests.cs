@@ -18,19 +18,18 @@ using VmPb = global::Vm;
 namespace Nethermind.Avalanche.Test.Vm;
 
 /// <summary>
-/// In-process unit tests for <see cref="AvalancheVmService.ParseBlock"/>: encode a Coreth <c>extblock</c> with the
-/// real <see cref="AvalancheBlockDecoder"/>, feed the bytes through the gRPC service, and assert the response maps
-/// the decoded header onto the <c>ParseBlockResponse</c> fields. No subprocess and no gRPC channel are involved —
-/// the service is invoked directly, which is valid because <see cref="AvalancheVmService.ParseBlock"/> does not use
-/// its <see cref="ServerCallContext"/>.
+/// In-process unit tests for the wired <see cref="AvalancheVmService"/> block RPCs (<c>ParseBlock</c> and
+/// <c>BlockVerify</c>): encode a Coreth <c>extblock</c> with the real codec, feed the bytes through the gRPC
+/// service, and assert the response. No subprocess and no gRPC channel are involved — the service is invoked
+/// directly, which is valid because these RPCs do not use their <see cref="ServerCallContext"/>.
 /// </summary>
 /// <remarks>
 /// This lives in <c>Nethermind.Avalanche.Test</c> rather than <c>Nethermind.Avalanche.Vm.Test</c> on purpose:
-/// the Vm.Test project generates its own client-side <c>Vm.*</c> protobuf types and deliberately links the VM as a
-/// subprocess (<c>ReferenceOutputAssembly="false"</c>) for the handshake test, so it cannot also link the VM
-/// assembly. This project generates no protos, so the VM assembly's server-side <c>Vm.*</c> types resolve uniquely.
+/// the Vm.Test project generates its own client-side <c>Vm.*</c> protobuf types and links the VM as a subprocess
+/// (<c>ReferenceOutputAssembly="false"</c>) for the handshake test, so it cannot also link the VM assembly. This
+/// project generates no protos, so the VM assembly's server-side <c>Vm.*</c> types resolve uniquely.
 /// </remarks>
-public sealed class AvalancheVmParseBlockTests
+public sealed class AvalancheVmServiceTests
 {
     private static readonly Address AddressA = new("0x0000000000000000000000000000000000000aaa");
     private static readonly Address AddressB = new("0x0000000000000000000000000000000000000bbb");
@@ -86,11 +85,23 @@ public sealed class AvalancheVmParseBlockTests
         return new AvalancheBlock(BuildHeader(), body);
     }
 
+    /// <summary>Builds a block whose body carries <paramref name="extData"/> and whose header commits to
+    /// <paramref name="extDataHash"/>, so the caller can construct both consistent and tampered blocks.</summary>
+    private static AvalancheBlock BuildBlockWithExtData(byte[] extData, Hash256 extDataHash)
+    {
+        AvalancheBlockHeader header = BuildHeader();
+        header.ExtDataHash = extDataHash;
+        AvalancheBlockBody body = new([], uncles: [], version: 0, extData);
+        return new AvalancheBlock(header, body);
+    }
+
+    private static byte[] Encode(AvalancheBlock block) => AvalancheBlockDecoder.Instance.Encode(block);
+
     [Test]
     public void ParseBlock_maps_decoded_header_onto_the_response()
     {
         AvalancheBlock block = BuildBlock();
-        byte[] encoded = AvalancheBlockDecoder.Instance.Encode(block);
+        byte[] encoded = Encode(block);
         Hash256 expectedId = AvalancheHeaderDecoder.Instance.ComputeHash(block.Header);
 
         AvalancheVmService service = new();
@@ -115,6 +126,57 @@ public sealed class AvalancheVmParseBlockTests
         RpcException ex = Assert.ThrowsAsync<RpcException>(async () =>
             await service.ParseBlock(
                 new VmPb.ParseBlockRequest { Bytes = ByteString.CopyFrom([0x01, 0x02, 0x03]) }, context: null!))!;
+
+        Assert.That(ex.StatusCode, Is.EqualTo(StatusCode.InvalidArgument));
+    }
+
+    [Test]
+    public void BlockVerify_accepts_empty_ext_data_committed_by_empty_hash()
+    {
+        AvalancheBlock block = BuildBlockWithExtData([], (Hash256)AvalancheExtData.EmptyExtDataHash);
+        AvalancheVmService service = new();
+
+        VmPb.BlockVerifyResponse response =
+            service.BlockVerify(new VmPb.BlockVerifyRequest { Bytes = ByteString.CopyFrom(Encode(block)) }, context: null!).Result;
+
+        Assert.That(response.Timestamp.Seconds, Is.EqualTo((long)BlockTimestamp));
+    }
+
+    [Test]
+    public void BlockVerify_accepts_consistent_non_empty_ext_data_hash()
+    {
+        byte[] extData = [0xde, 0xad, 0xbe, 0xef];
+        AvalancheBlock block = BuildBlockWithExtData(extData, (Hash256)AvalancheExtData.CalcExtDataHash(extData));
+        AvalancheVmService service = new();
+
+        VmPb.BlockVerifyResponse response =
+            service.BlockVerify(new VmPb.BlockVerifyRequest { Bytes = ByteString.CopyFrom(Encode(block)) }, context: null!).Result;
+
+        Assert.That(response.Timestamp.Seconds, Is.EqualTo((long)BlockTimestamp));
+    }
+
+    [Test]
+    public void BlockVerify_rejects_inconsistent_ext_data_hash()
+    {
+        // Body carries real atomic data but the header still commits to the empty-extData hash: a tampered block.
+        AvalancheBlock block = BuildBlockWithExtData([0xde, 0xad, 0xbe, 0xef], (Hash256)AvalancheExtData.EmptyExtDataHash);
+        AvalancheVmService service = new();
+
+        RpcException ex = Assert.ThrowsAsync<RpcException>(async () =>
+            await service.BlockVerify(
+                new VmPb.BlockVerifyRequest { Bytes = ByteString.CopyFrom(Encode(block)) }, context: null!))!;
+
+        Assert.That(ex.StatusCode, Is.EqualTo(StatusCode.InvalidArgument));
+    }
+
+    [Test]
+    public void BlockVerify_throws_InvalidArgument_on_malformed_bytes()
+    {
+        AvalancheVmService service = new();
+
+        RpcException ex = Assert.ThrowsAsync<RpcException>(async () =>
+            await service.BlockVerify(
+                new VmPb.BlockVerifyRequest { Bytes = ByteString.CopyFrom([0x01, 0x02, 0x03]) }, context: null!))!;
 
         Assert.That(ex.StatusCode, Is.EqualTo(StatusCode.InvalidArgument));
     }
