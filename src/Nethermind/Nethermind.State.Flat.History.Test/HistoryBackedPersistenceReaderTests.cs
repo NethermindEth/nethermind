@@ -21,6 +21,7 @@ public class HistoryBackedPersistenceReaderTests
     private static readonly UInt256 Slot = 7;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
+    private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private HistoryStore _accountStore = null!;
     private HistoryStore _storageStore = null!;
 
@@ -28,19 +29,24 @@ public class HistoryBackedPersistenceReaderTests
     public void SetUp()
     {
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _accountStore = new HistoryStore(
-            _db.GetColumnDb(FlatDbColumns.AccountHistory),
-            _db.GetColumnDb(FlatDbColumns.AccountChangeSets));
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
         _storageStore = new HistoryStore(
-            _db.GetColumnDb(FlatDbColumns.StorageHistory),
-            _db.GetColumnDb(FlatDbColumns.StorageChangeSets));
+            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory),
+            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
 
         RecordAccount(5, new Account(5, 500));
         RecordStorage(5, [0xAA]);
     }
 
     [TearDown]
-    public void TearDown() => _db.Dispose();
+    public void TearDown()
+    {
+        _db.Dispose();
+        _historyColumns.Dispose();
+    }
 
     [Test]
     public void Resolves_account_as_of_pinned_block()
@@ -96,7 +102,7 @@ public class HistoryBackedPersistenceReaderTests
     }
 
     private HistoryBackedPersistenceReader Reader(ulong block) =>
-        new(new HistoryReader(_db, LimboLogs.Instance), new StateId(block, Keccak.EmptyTreeHash));
+        new(new HistoryReader(_db, _historyColumns, LimboLogs.Instance), new StateId(block, Keccak.EmptyTreeHash));
 
     private void RecordAccount(ulong block, Account account)
     {
@@ -105,11 +111,11 @@ public class HistoryBackedPersistenceReaderTests
 
         using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
 
-        using IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         _accountStore.RecordChange(
             block, flatKey, rlp,
-            batch.GetColumnBatch(FlatDbColumns.AccountHistory),
-            batch.GetColumnBatch(FlatDbColumns.AccountChangeSets));
+            batch.GetColumnBatch(FlatHistoryColumns.AccountHistory),
+            batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets));
     }
 
     private void RecordStorage(ulong block, ReadOnlySpan<byte> rawValue)
@@ -122,10 +128,10 @@ public class HistoryBackedPersistenceReaderTests
         Span<byte> value = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         int written = BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
 
-        using IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         _storageStore.RecordChange(
             block, flatKey, value[..written],
-            batch.GetColumnBatch(FlatDbColumns.StorageHistory),
-            batch.GetColumnBatch(FlatDbColumns.StorageChangeSets));
+            batch.GetColumnBatch(FlatHistoryColumns.StorageHistory),
+            batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets));
     }
 }

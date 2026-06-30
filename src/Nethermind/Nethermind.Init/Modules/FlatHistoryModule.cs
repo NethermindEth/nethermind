@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
@@ -17,6 +18,7 @@ public class FlatHistoryModule : Module
 {
     protected override void Load(ContainerBuilder builder) =>
         builder
+            .AddColumnDatabase<FlatHistoryColumns>(DbNames.FlatHistory)
             .AddSingleton<HistoryReader>()
             .AddSingleton<HistoryWriter>()
             .AddSingleton<IFlatPersistenceCaptureHook>(ctx => ctx.Resolve<HistoryWriter>())

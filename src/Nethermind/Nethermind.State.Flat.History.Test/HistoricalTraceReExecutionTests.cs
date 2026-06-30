@@ -54,6 +54,7 @@ public class HistoricalTraceReExecutionTests
     private CancellationTokenSource _cts = null!;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _historyDb = null!;
+    private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private HistoryReader _historyReader = null!;
     private HistoryStore _accountStore = null!;
     private HistoryStore _storageStore = null!;
@@ -73,13 +74,14 @@ public class HistoricalTraceReExecutionTests
         _blocksConfig.SecondsPerSlot.Returns(12UL);
 
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _historyReader = new HistoryReader(_historyDb, LimboLogs.Instance);
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
+        _historyReader = new HistoryReader(_historyDb, _historyColumns, LimboLogs.Instance);
         _accountStore = new HistoryStore(
-            _historyDb.GetColumnDb(FlatDbColumns.AccountHistory),
-            _historyDb.GetColumnDb(FlatDbColumns.AccountChangeSets));
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
         _storageStore = new HistoryStore(
-            _historyDb.GetColumnDb(FlatDbColumns.StorageHistory),
-            _historyDb.GetColumnDb(FlatDbColumns.StorageChangeSets));
+            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory),
+            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
 
         _persistenceManager.GetCurrentPersistedStateId().Returns(new StateId(HistoryBarrier, TestItem.KeccakA));
     }
@@ -90,6 +92,7 @@ public class HistoricalTraceReExecutionTests
         _cts.Cancel();
         _cts.Dispose();
         _historyDb.Dispose();
+        _historyColumns.Dispose();
     }
 
     [Test]
@@ -99,6 +102,7 @@ public class HistoricalTraceReExecutionTests
         Account existing = new(nonce: 3, balance: 300);
         RecordAccount(5, existing);
         RecordStorage(5, [0xAA]);
+        MarkBlockAvailable(HistoricalBlock);
 
         IReleaseSpec spec = MuirGlacier.Instance;
         Address freshAddr = TestItem.AddressB;
@@ -186,14 +190,22 @@ public class HistoricalTraceReExecutionTests
         LimboLogs.Instance,
         isReadOnly: false);
 
+    private void MarkBlockAvailable(ulong block)
+    {
+        Span<byte> key = stackalloc byte[sizeof(ulong)];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
+        batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks).Set(key, Array.Empty<byte>());
+    }
+
     private void RecordAccount(ulong block, Account? account)
     {
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], ExistingAddr.ToAccountPath);
 
-        using IColumnsWriteBatch<FlatDbColumns> batch = _historyDb.StartWriteBatch();
-        IWriteBatch history = batch.GetColumnBatch(FlatDbColumns.AccountHistory);
-        IWriteBatch changeMarkers = batch.GetColumnBatch(FlatDbColumns.AccountChangeSets);
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
+        IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
+        IWriteBatch changeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
 
         if (account is null)
         {
@@ -217,10 +229,10 @@ public class HistoricalTraceReExecutionTests
             ? 0
             : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
 
-        using IColumnsWriteBatch<FlatDbColumns> batch = _historyDb.StartWriteBatch();
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         _storageStore.RecordChange(
             block, flatKey, value[..written],
-            batch.GetColumnBatch(FlatDbColumns.StorageHistory),
-            batch.GetColumnBatch(FlatDbColumns.StorageChangeSets));
+            batch.GetColumnBatch(FlatHistoryColumns.StorageHistory),
+            batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets));
     }
 }

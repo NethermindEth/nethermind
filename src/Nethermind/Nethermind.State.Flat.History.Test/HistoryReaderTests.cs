@@ -21,6 +21,7 @@ public class HistoryReaderTests
     private static readonly UInt256 Slot = 7;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
+    private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private HistoryReader _reader = null!;
     private HistoryStore _accountStore = null!;
     private HistoryStore _storageStore = null!;
@@ -29,17 +30,22 @@ public class HistoryReaderTests
     public void SetUp()
     {
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _reader = new HistoryReader(_db, LimboLogs.Instance);
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
+        _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
         _accountStore = new HistoryStore(
-            _db.GetColumnDb(FlatDbColumns.AccountHistory),
-            _db.GetColumnDb(FlatDbColumns.AccountChangeSets));
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
         _storageStore = new HistoryStore(
-            _db.GetColumnDb(FlatDbColumns.StorageHistory),
-            _db.GetColumnDb(FlatDbColumns.StorageChangeSets));
+            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory),
+            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
     }
 
     [TearDown]
-    public void TearDown() => _db.Dispose();
+    public void TearDown()
+    {
+        _db.Dispose();
+        _historyColumns.Dispose();
+    }
 
     // Account: nonce/balance set at block 5, overwritten at 20, deleted at 30. -1 == absent.
     [TestCase(3ul, -1)]
@@ -105,9 +111,9 @@ public class HistoryReaderTests
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], Address.ToAccountPath);
 
-        using IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
-        IWriteBatch history = batch.GetColumnBatch(FlatDbColumns.AccountHistory);
-        IWriteBatch changeMarkers = batch.GetColumnBatch(FlatDbColumns.AccountChangeSets);
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
+        IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
+        IWriteBatch changeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
 
         if (account is null)
         {
@@ -131,10 +137,10 @@ public class HistoryReaderTests
             ? 0
             : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
 
-        using IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         _storageStore.RecordChange(
             block, flatKey, value[..written],
-            batch.GetColumnBatch(FlatDbColumns.StorageHistory),
-            batch.GetColumnBatch(FlatDbColumns.StorageChangeSets));
+            batch.GetColumnBatch(FlatHistoryColumns.StorageHistory),
+            batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets));
     }
 }

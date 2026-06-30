@@ -721,7 +721,8 @@ public class PersistenceManagerTests
     public void AddToPersistence_CapturesHistoryUpToPersistedBlock()
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> historyDb = new();
-        HistoryWriter historyWriter = new(historyDb, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
+        HistoryWriter historyWriter = new(historyDb, historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
 
         IPersistence persistence = Substitute.For<IPersistence>();
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();

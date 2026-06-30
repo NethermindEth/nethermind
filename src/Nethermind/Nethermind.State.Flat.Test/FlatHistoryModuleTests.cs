@@ -19,12 +19,14 @@ public class FlatHistoryModuleTests
     public void Decorates_flat_db_manager_and_registers_capture_hook()
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> columns = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
         IFlatDbManager inner = Substitute.For<IFlatDbManager>();
 
         using IContainer container = new ContainerBuilder()
             .AddModule(new FlatHistoryModule())
             .AddSingleton<IFlatDbManager>(_ => inner)
             .AddSingleton<IColumnsDb<FlatDbColumns>>(columns)
+            .AddSingleton<IColumnsDb<FlatHistoryColumns>>(historyColumns)
             .AddSingleton<IFlatDbConfig>(new FlatDbConfig { HistoryEnabled = true })
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IPersistenceManager>(_ => Substitute.For<IPersistenceManager>())

@@ -25,26 +25,36 @@ public sealed class HistoryReader
 
     private readonly HistoryStore _accountHistory;
     private readonly HistoryStore _storageHistory;
+    private readonly IDb _availableBlocks;
     private readonly bool _rlpWrapSlots;
 
-    public HistoryReader(IColumnsDb<FlatDbColumns> db, ILogManager logManager)
-        : this(db, BasePersistence.ResolveSlotEncoding(
+    public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, ILogManager logManager)
+        : this(history, BasePersistence.ResolveSlotEncoding(
             db,
             (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
             logManager.GetClassLogger<HistoryReader>()))
     {
     }
 
-    private HistoryReader(IColumnsDb<FlatDbColumns> db, bool rlpWrapSlots)
+    private HistoryReader(IColumnsDb<FlatHistoryColumns> history, bool rlpWrapSlots)
     {
-        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(history);
         _rlpWrapSlots = rlpWrapSlots;
         _accountHistory = new HistoryStore(
-            db.GetColumnDb(FlatDbColumns.AccountHistory),
-            db.GetColumnDb(FlatDbColumns.AccountChangeSets));
+            history.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            history.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
         _storageHistory = new HistoryStore(
-            db.GetColumnDb(FlatDbColumns.StorageHistory),
-            db.GetColumnDb(FlatDbColumns.StorageChangeSets));
+            history.GetColumnDb(FlatHistoryColumns.StorageHistory),
+            history.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
+        _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+    }
+
+    [SkipLocalsInit]
+    public bool HasHistoryForBlock(ulong block)
+    {
+        Span<byte> key = stackalloc byte[sizeof(ulong)];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        return _availableBlocks.KeyExists(key);
     }
 
     /// <summary>

@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 {
-    private readonly IColumnsDb<FlatDbColumns> _db;
+    private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly HistoryStore _accountHistory;
     private readonly HistoryStore _storageHistory;
     private readonly bool _rlpWrapSlots;
@@ -31,26 +31,26 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     private ulong _lastCapturedBlock;
     private bool _anyCaptured;
 
-    public HistoryWriter(IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
-        : this(db, BasePersistence.ResolveSlotEncoding(
+    public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
+        : this(history, BasePersistence.ResolveSlotEncoding(
             db,
             (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
             logManager.GetClassLogger<HistoryWriter>()), config.HistoryEnabled)
     {
     }
 
-    private HistoryWriter(IColumnsDb<FlatDbColumns> db, bool rlpWrapSlots, bool enabled)
+    private HistoryWriter(IColumnsDb<FlatHistoryColumns> history, bool rlpWrapSlots, bool enabled)
     {
-        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(history);
         _enabled = enabled;
-        _db = db;
+        _history = history;
         _rlpWrapSlots = rlpWrapSlots;
         _accountHistory = new HistoryStore(
-            db.GetColumnDb(FlatDbColumns.AccountHistory),
-            db.GetColumnDb(FlatDbColumns.AccountChangeSets));
+            history.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            history.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
         _storageHistory = new HistoryStore(
-            db.GetColumnDb(FlatDbColumns.StorageHistory),
-            db.GetColumnDb(FlatDbColumns.StorageChangeSets));
+            history.GetColumnDb(FlatHistoryColumns.StorageHistory),
+            history.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
     }
 
     public ulong LastCapturedBlock => _lastCapturedBlock;
@@ -100,12 +100,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     [SkipLocalsInit]
     private void CaptureBlock(ulong block, Snapshot snapshot)
     {
-        using IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
 
-        IWriteBatch accountHistory = batch.GetColumnBatch(FlatDbColumns.AccountHistory);
-        IWriteBatch accountChangeMarkers = batch.GetColumnBatch(FlatDbColumns.AccountChangeSets);
-        IWriteBatch storageHistory = batch.GetColumnBatch(FlatDbColumns.StorageHistory);
-        IWriteBatch storageChangeMarkers = batch.GetColumnBatch(FlatDbColumns.StorageChangeSets);
+        IWriteBatch accountHistory = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
+        IWriteBatch accountChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
+        IWriteBatch storageHistory = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
+        IWriteBatch storageChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets);
+
+        Span<byte> blockKey = stackalloc byte[sizeof(ulong)];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(blockKey, block);
+        batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks).Set(blockKey, Array.Empty<byte>());
 
         Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         foreach (KeyValuePair<HashedKey<Address>, Account?> change in snapshot.Accounts)

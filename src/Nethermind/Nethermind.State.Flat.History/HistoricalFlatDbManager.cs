@@ -57,12 +57,12 @@ public sealed class HistoricalFlatDbManager(
         }
     }
 
-    // Assumes history covers from genesis (the capture-from-genesis model); a partial-archive lower bound is a
-    // follow-up.
     private bool IsBelowBarrier(in StateId baseBlock)
     {
         StateId persisted = persistenceManager.GetCurrentPersistedStateId();
-        return persisted != StateId.PreGenesis && baseBlock.BlockNumber < persisted.BlockNumber;
+        return persisted != StateId.PreGenesis
+            && baseBlock.BlockNumber < persisted.BlockNumber
+            && historyReader.HasHistoryForBlock(baseBlock.BlockNumber);
     }
 
     // Trie-less bundle: empty snapshot list over a history-backed reader. The reader serves account/storage values

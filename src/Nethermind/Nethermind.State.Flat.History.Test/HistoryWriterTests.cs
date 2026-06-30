@@ -27,6 +27,7 @@ public class HistoryWriterTests
     private static readonly UInt256 Slot2 = 2;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
+    private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private ResourcePool _resourcePool = null!;
     private SnapshotRepository _repository = null!;
     private HistoryWriter _writer = null!;
@@ -38,20 +39,25 @@ public class HistoryWriterTests
     public void SetUp()
     {
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _resourcePool = new ResourcePool(new FlatDbConfig { CompactSize = 16 });
         _repository = new SnapshotRepository(LimboLogs.Instance);
-        _writer = new HistoryWriter(_db, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
-        _reader = new HistoryReader(_db, LimboLogs.Instance);
+        _writer = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
+        _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
         _accountHistory = new HistoryStore(
-            _db.GetColumnDb(FlatDbColumns.AccountHistory),
-            _db.GetColumnDb(FlatDbColumns.AccountChangeSets));
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
         _storageHistory = new HistoryStore(
-            _db.GetColumnDb(FlatDbColumns.StorageHistory),
-            _db.GetColumnDb(FlatDbColumns.StorageChangeSets));
+            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory),
+            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
     }
 
     [TearDown]
-    public void TearDown() => _db.Dispose();
+    public void TearDown()
+    {
+        _db.Dispose();
+        _historyColumns.Dispose();
+    }
 
     // AddrA: (nonce 1, balance 100) @ b1, overwritten to (nonce 2, balance 200) @ b2, deleted @ b3.
     // Nonce == block number for the committed values, so the expected account is reconstructible from readBlock.

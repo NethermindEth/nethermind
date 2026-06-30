@@ -12,16 +12,16 @@ public class HistoryStoreTests
     private static readonly byte[] KeyA = [1, 2, 3, 4];
     private static readonly byte[] KeyB = [9, 9, 9, 9];
 
-    private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
+    private SnapshotableMemColumnsDb<FlatHistoryColumns> _columnsDb = null!;
     private HistoryStore _store = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        _columnsDb = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _store = new HistoryStore(
-            _columnsDb.GetColumnDb(FlatDbColumns.AccountHistory),
-            _columnsDb.GetColumnDb(FlatDbColumns.AccountChangeSets));
+            _columnsDb.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            _columnsDb.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
     }
 
     [TearDown]
@@ -72,10 +72,10 @@ public class HistoryStoreTests
 
     private void Record(ulong block, ReadOnlySpan<byte> flatKey, ReadOnlySpan<byte> value)
     {
-        using IColumnsWriteBatch<FlatDbColumns> batch = _columnsDb.StartWriteBatch();
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _columnsDb.StartWriteBatch();
         _store.RecordChange(
             block, flatKey, value,
-            batch.GetColumnBatch(FlatDbColumns.AccountHistory),
-            batch.GetColumnBatch(FlatDbColumns.AccountChangeSets));
+            batch.GetColumnBatch(FlatHistoryColumns.AccountHistory),
+            batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets));
     }
 }
