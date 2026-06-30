@@ -100,6 +100,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         try
         {
             ulong responseReceiptsContentSize = 0;
+            bool hasNonEmptyReceiptBlock = false;
             for (int blockIndex = 0; blockIndex < hashes.Length; blockIndex++)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -143,7 +144,23 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                     continue;
                 }
 
-                if (startIndex >= receipts.Length)
+                if (startIndex == receipts.Length)
+                {
+                    ulong emptyBlockSize = GetBlockReceiptsSize(0);
+                    ulong responseSize = GetEth70ReceiptsResponseSize(
+                        responseReceiptsContentSize + emptyBlockSize,
+                        getReceiptsMessage.RequestId);
+                    if (responseSize > SoftOutgoingMessageSizeLimit && responseReceiptsContentSize > 0)
+                    {
+                        break;
+                    }
+
+                    txReceipts.Add([]);
+                    responseReceiptsContentSize += emptyBlockSize;
+                    continue;
+                }
+
+                if (startIndex > receipts.Length)
                 {
                     throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for block receipts length {receipts.Length}");
                 }
@@ -155,17 +172,19 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 {
                     txReceipts.Add(CopyReceipts(receipts, startIndex, receipts.Length - startIndex));
                     responseReceiptsContentSize += remainingBlockSize;
+                    hasNonEmptyReceiptBlock = true;
                     continue;
                 }
 
-                if (responseReceiptsContentSize > 0)
+                if (hasNonEmptyReceiptBlock)
                 {
                     break;
                 }
 
-                if (GetEth70ReceiptsResponseSize(remainingBlockSize, getReceiptsMessage.RequestId) <= HardOutgoingReceiptsMessageSizeLimit)
+                if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + remainingBlockSize, getReceiptsMessage.RequestId) <= HardOutgoingReceiptsMessageSizeLimit)
                 {
                     txReceipts.Add(CopyReceipts(receipts, startIndex, receipts.Length - startIndex));
+                    hasNonEmptyReceiptBlock = true;
                     break;
                 }
 
@@ -178,7 +197,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                     ulong receiptSize = GetReceiptSize(receipts[receiptIndex], ref lastBlockNumber, ref behaviors);
                     ulong nextBlockReceiptsContentSize = blockReceiptsContentSize + receiptSize;
                     ulong nextBlockSize = GetBlockReceiptsSize(nextBlockReceiptsContentSize);
-                    if (GetEth70ReceiptsResponseSize(nextBlockSize, getReceiptsMessage.RequestId) > HardOutgoingReceiptsMessageSizeLimit)
+                    if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + nextBlockSize, getReceiptsMessage.RequestId) > HardOutgoingReceiptsMessageSizeLimit)
                     {
                         break;
                     }
@@ -199,6 +218,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                 lastBlockIncomplete = startIndex + taken < receipts.Length;
                 txReceipts.Add(CopyReceipts(receipts, startIndex, taken));
+                hasNonEmptyReceiptBlock = true;
                 break;
             }
 
@@ -516,6 +536,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             ValidateEmptyReceiptsSegment(firstReceiptIndex, isCompleteSegment);
             ValidateReceiptCount(firstReceiptIndex, blockReceipts.Length, transactions, isCompleteSegment);
             ValidateTotalReceiptsSizeAgainstBlockGasLimit(previousReceiptsContentSize, blockGasLimit);
+            ValidateSegmentGasAgainstHeader(previousGasUsed, previousLogsGas, expectedGasUsed, isCompleteSegment,
+                validateReceiptGasUpperBoundAgainstHeader, validateReceiptGasEqualToHeader);
             return new ReceiptsValidationResult(previousGasUsed, previousLogsGas, previousReceiptsContentSize);
         }
 
@@ -544,7 +566,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private static void ValidateEmptyReceiptsSegment(int firstReceiptIndex, bool isCompleteSegment)
     {
-        if (firstReceiptIndex != 0 || !isCompleteSegment)
+        if (!isCompleteSegment)
         {
             throw new SubprotocolException("Unexpected empty receipt block payload");
         }

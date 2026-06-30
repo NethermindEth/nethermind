@@ -142,18 +142,19 @@ public class Eth68ProtocolHandler(ISession session,
             if (txSize > maxTxSize)
                 continue;
 
-            if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
-            {
-                Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
-                hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
-                packetSizeLeft = TransactionsMessage.MaxPacketSize;
-                toRequestCount = 0;
-            }
-
             if (_blobSupportEnabled || txType != TxType.Blob)
             {
+                if ((txSize <= TransactionsMessage.MaxPacketSize && txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
+                {
+                    SendHashesToRequest();
+                }
+
                 hashesToRequest.Add(hash);
-                packetSizeLeft -= txSize;
+                _txPool.NotifyAboutTx(hash, this);
+                if (txSize <= TransactionsMessage.MaxPacketSize)
+                {
+                    packetSizeLeft -= txSize;
+                }
                 toRequestCount++;
             }
         }
@@ -165,6 +166,14 @@ public class Eth68ProtocolHandler(ISession session,
         else
         {
             hashesToRequest.Dispose();
+        }
+
+        void SendHashesToRequest()
+        {
+            Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
+            hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
+            packetSizeLeft = TransactionsMessage.MaxPacketSize;
+            toRequestCount = 0;
         }
     }
 

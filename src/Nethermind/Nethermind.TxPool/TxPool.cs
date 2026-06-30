@@ -551,7 +551,11 @@ namespace Nethermind.TxPool
                 TraceTx(tx, handlingOptions, startBroadcast);
             }
 
-            TryConvertProofVersion(tx);
+            if (!TryConvertProofVersion(tx))
+            {
+                Metrics.PendingTransactionsDiscarded++;
+                return AcceptTxResult.Invalid;
+            }
 
             TxFilteringState state = new(tx, _accounts);
             AcceptTxResult accepted = AcceptTxResult.Invalid;
@@ -599,24 +603,93 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void TryConvertProofVersion(Transaction tx)
+        private bool TryConvertProofVersion(Transaction tx)
         {
-            if (_txPoolConfig.ProofsTranslationEnabled
-                && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
-                && _headInfo.CurrentProofVersion is ProofVersion.V1)
+            if (!_txPoolConfig.ProofsTranslationEnabled
+                || tx is not { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper wrapper }
+                || wrapper.Version == _headInfo.CurrentProofVersion)
             {
+                return true;
+            }
+
+            if (wrapper.Version is ProofVersion.V0 && _headInfo.CurrentProofVersion is ProofVersion.V1)
+            {
+                if (!ValidateSourceBlobWrapper(tx, wrapper))
+                {
+                    return false;
+                }
+
                 using ArrayPoolListRef<byte[]> cellProofs = new(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
 
-                foreach (byte[] blob in wrapper.Blobs)
+                try
                 {
-                    using ArrayPoolSpan<byte> cellProofsOfOneBlob = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
-                    KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob);
-                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.BytesPerProof).ToArray();
-                    cellProofs.AddRange(cellProofsSeparated);
+                    foreach (byte[] blob in wrapper.Blobs)
+                    {
+                        using ArrayPoolSpan<byte> cellProofsOfOneBlob = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
+                        KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob);
+                        byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.BytesPerProof).ToArray();
+                        cellProofs.AddRange(cellProofsSeparated);
+                    }
+                }
+                catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+                {
+                    return false;
                 }
 
                 tx.NetworkWrapper = wrapper with { Proofs = [.. cellProofs], Version = ProofVersion.V1 };
+                return true;
             }
+
+            if (wrapper.Version is ProofVersion.V1 && _headInfo.CurrentProofVersion is ProofVersion.V0)
+            {
+                if (!ValidateSourceBlobWrapper(tx, wrapper))
+                {
+                    return false;
+                }
+
+                byte[][] proofs = new byte[wrapper.Blobs.Length][];
+                try
+                {
+                    for (int i = 0; i < wrapper.Blobs.Length; i++)
+                    {
+                        proofs[i] = new byte[Ckzg.BytesPerProof];
+                        KzgPolynomialCommitments.ComputeBlobProof(wrapper.Blobs[i], wrapper.Commitments[i], proofs[i]);
+                    }
+                }
+                catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+                {
+                    return false;
+                }
+
+                tx.NetworkWrapper = wrapper with { Proofs = proofs, Version = ProofVersion.V0 };
+                return true;
+            }
+
+            return true;
+        }
+
+        private static bool ValidateSourceBlobWrapper(Transaction tx, ShardBlobNetworkWrapper wrapper)
+        {
+            if (tx.BlobVersionedHashes is null)
+            {
+                return false;
+            }
+
+            byte[][] blobVersionedHashes = new byte[tx.BlobVersionedHashes.Length][];
+            for (int i = 0; i < blobVersionedHashes.Length; i++)
+            {
+                if (tx.BlobVersionedHashes[i] is not byte[] blobVersionedHash)
+                {
+                    return false;
+                }
+
+                blobVersionedHashes[i] = blobVersionedHash;
+            }
+
+            IBlobProofsVerifier proofVerifier = IBlobProofsManager.For(wrapper.Version);
+            return proofVerifier.ValidateLengths(wrapper)
+                && proofVerifier.ValidateHashes(wrapper, blobVersionedHashes)
+                && proofVerifier.ValidateProofs(wrapper);
         }
 
         public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
@@ -1167,4 +1240,3 @@ Db usage:
         private static void DisposeBlockAccountChanges(Block block) => block.DisposeAccountChanges();
     }
 }
-
