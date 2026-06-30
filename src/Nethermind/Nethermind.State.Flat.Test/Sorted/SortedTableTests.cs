@@ -88,6 +88,28 @@ public class SortedTableTests
         Assert.That(Seek(bytes, Bytes.FromHexString("ffff"), out _), Is.False);
     }
 
+    // A torn/corrupt data record whose common-prefix-length byte exceeds the reader's 256-byte key buffer
+    // must degrade to a clean miss, not throw out of a normal lookup. Regression for the previously
+    // unguarded keyBuf.Slice(cp, suffixLen) in DataBlockReader.SeekCeiling, which would have thrown
+    // ArgumentOutOfRangeException when cp + suffixLen > keyBuf.Length on a power-loss-torn table.
+    [Test]
+    public void Corrupt_common_prefix_length_byte_returns_miss_not_throw()
+    {
+        (byte[] Key, byte[] Value)[] entries = [(Bytes.FromHexString("abcdef"), Bytes.FromHexString("1234"))];
+        byte[] bytes = BuildTable(entries);
+        Assert.That(Seek(bytes, entries[0].Key, out _), Is.True, "sanity: well-formed table resolves the key");
+
+        // Data block 0 starts at offset 0: [flag u8][recordsEnd u16][numRestarts u16][restart u16 × n], then
+        // the first record [cp u8][suffixLen u8][valueLen u8]... Corrupt the first record's cp byte to 0xFF so
+        // cp + suffixLen (255 + 3) overruns the reader's 256-byte key buffer.
+        int numRestarts = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(1 + sizeof(ushort)));
+        int firstRecord = 1 + 2 * sizeof(ushort) + numRestarts * sizeof(ushort);
+        bytes[firstRecord] = 0xFF; // cp
+
+        // Before the guard this threw ArgumentOutOfRangeException out of the read; now it is a clean miss.
+        Assert.That(Seek(bytes, entries[0].Key, out _), Is.False);
+    }
+
     [Test]
     public void Add_rejects_non_ascending_and_duplicate_keys()
     {

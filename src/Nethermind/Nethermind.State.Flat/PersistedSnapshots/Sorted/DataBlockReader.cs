@@ -134,6 +134,7 @@ internal static class DataBlockReader
             if (!reader.TryRead(pos, MemoryMarshal.AsBytes(new Span<Block.DataRecordHeader>(ref rec)))) return false;
             int cp = rec.CommonPrefix;
             int suffixLen = rec.SuffixLength;
+            if (cp + suffixLen > keyBuf.Length) return false; // corrupt/torn record: key longer than the search buffer ⇒ miss
             long keyStart = pos + Unsafe.SizeOf<Block.DataRecordHeader>();
             if (!reader.TryRead(keyStart, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
             int kLen = cp + suffixLen;

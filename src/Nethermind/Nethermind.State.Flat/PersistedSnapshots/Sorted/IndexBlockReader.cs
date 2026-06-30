@@ -113,6 +113,7 @@ internal static class IndexBlockReader
             int suffixLen = rec.SuffixLength;
             int valChangedLen = rec.ValueChangedLength;
             if (valChangedLen > 6) return false; // > u48 ⇒ corrupt
+            if (cp + suffixLen > keyBuf.Length) return false; // corrupt/torn record: key longer than the search buffer ⇒ miss
 
             long keyStart = pos + Unsafe.SizeOf<Block.IndexRecordHeader>();
             if (!reader.TryRead(keyStart, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
