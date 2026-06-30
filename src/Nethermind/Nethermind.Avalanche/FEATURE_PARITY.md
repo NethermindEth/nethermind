@@ -21,14 +21,14 @@ and remain AvalancheGo's responsibility.
 | 1 | EVM execution | Geth EVM | ✅ Nethermind EVM (mature) | reuse |
 | 2 | Account/state model + MPT | Geth state + snapshot | ✅ Nethermind state/trie + **Coreth state-root parity primitives implemented, 22/22 byte-exact tests pass** (5-field `isMultiCoin` account RLP, storage-key bit0 transform, `ExtDataHash`) | parity layer done |
 | 3 | Fork schedule → EIP mapping | Apricot 1–6, Banff, Cortina, Durango, Etna, Fortuna, Granite | ✅ **implemented + builds clean**: Berlin/London by block; Durango=Shanghai, Etna=Cancun-subset, Granite=P256VERIFY by timestamp; divergences encoded (no blobs/withdrawals/beacon-root) | done |
-| 4 | `rpcchainvm` gRPC VM server | `Initialize/BuildBlock/ParseBlock/GetBlock/SetState/Verify/Accept/Reject/SetPreference/Health/Version/...` | 🟡 **`Nethermind.Avalanche.Vm` builds clean + handshake e2e test passes**: reverse-gRPC handshake (proto 45), full `vm.VM` service + rpcdb client. `ParseBlock` decodes via the codec; `BlockVerify` enforces the `ExtDataHash` invariant. `BuildBlock`/`BlockAccept`/`BlockReject` + execution-based verify remain stubbed | block lifecycle remaining |
+| 4 | `rpcchainvm` gRPC VM server | `Initialize/BuildBlock/ParseBlock/GetBlock/SetState/Verify/Accept/Reject/SetPreference/Health/Version/...` | 🟡 **`Nethermind.Avalanche.Vm` builds clean + handshake e2e test passes**: reverse-gRPC handshake (proto 45), full `vm.VM` service + rpcdb client. `Initialize` reconstructs genesis from `genesis_bytes` and returns the correct last-accepted; `ParseBlock` decodes via the codec; `BlockVerify` enforces the `ExtDataHash` invariant. Executing world state, `BuildBlock`/`BlockAccept`/`BlockReject` + execution-based verify remain | block lifecycle remaining |
 | 5 | Externally-driven block lifecycle | Snowman decides acceptance; VM has no fork choice | ❌ (Nethermind drives its own fork choice today) | large |
 | 6 | C-Chain block format | Coreth `extblock` + header (incl. `ExtDataHash`, AP4 + Granite optionals) | ✅ **RLP codec implemented + VALIDATED byte-exact against 3 real mainnet blocks** (AP4/Cancun/Granite eras): `ComputeHash` = `keccak256(RLP(header))` reproduces each network block hash | done |
 | 7 | Dynamic fees | AP3 dynamic base fee, AP4/AP5 changes, Etna fee config, ACP-176 gas target | ❌ | medium |
 | 8 | Atomic transactions | C↔X/P import/export via shared-memory atomic UTXOs | ❌ | large |
 | 9 | Coreth precompiles & stateful contracts | native-asset-call/balance (legacy), warp messaging | ❌ | medium |
 | 10 | State sync (`StateSyncableVM`) | snapshot served/consumed every 4000 blocks, 256-block backfill for `BLOCKHASH` | ❌ (Nethermind snap/fast-sync does NOT transfer) | **large** |
-| 11 | Genesis | Avalanche C-Chain genesis + allocations | ❌ | small |
+| 11 | Genesis | Avalanche C-Chain genesis + allocations | ✅ **`AvalancheCChainGenesis` parses `cChainGenesis`, reproduces mainnet block 0 byte-exact**: state root `0xd65eb1b8…29cc` + block hash `0x31ced5b9…96b` (5-field accounts) | done |
 | 12 | `eth_*` JSON-RPC via `/ext/bc/C/rpc` | full eth API surface | 🟡 Nethermind has `eth_*`; needs routing through the VM host, not its own server | medium |
 | 13 | DB layout / acceptance semantics | versioned/atomic commit keyed to Snowman accept | ❌ | medium |
 
@@ -41,17 +41,37 @@ and remain AvalancheGo's responsibility.
 - **Coreth `extblock` + header RLP codec** — `AvalancheBlockHeader`/`AvalancheHeaderDecoder`/`AvalancheBlockDecoder`,
   Granite-complete (all 8 trailing optionals incl. `TimeMilliseconds`/`MinDelayExcess`), block hash = `keccak256(RLP(header))`.
   **Validated byte-exact against 3 real mainnet C-Chain blocks** (AP4 5,000,000 / Cancun 70,000,000 / Granite 89,117,142).
-- **`Nethermind.Avalanche.Vm`** rpcchainvm server — reverse handshake (proto 45, e2e test), `ParseBlock` decodes via the
-  codec, `BlockVerify` enforces the `ExtDataHash` consensus invariant, rpcdb client adapter.
+- **`AvalancheCChainGenesis`** — parses the `cChainGenesis` JSON and reproduces mainnet block 0 byte-exact
+  (state root `0xd65eb1b8…29cc`, block hash `0x31ced5b9…96b`).
+- **`Nethermind.Avalanche.Vm`** rpcchainvm server — reverse handshake (proto 45, e2e test), `Initialize` returns the
+  reconstructed genesis as last-accepted, `ParseBlock` decodes via the codec, `BlockVerify` enforces the `ExtDataHash`
+  consensus invariant, rpcdb client adapter.
 - `SealEngineType.Avalanche`; wired into `NethermindPlugins`, `Nethermind.Runner`, `Nethermind.slnx`.
-- **Compiles cleanly** (.NET SDK 10.0.300, `0 warnings / 0 errors`); `Nethermind.Avalanche.Test` 61/61 + handshake 1/1 pass.
+- **Compiles cleanly** (.NET SDK 10.0.300, `0 warnings / 0 errors`); `Nethermind.Avalanche.Test` 66/66 + handshake 1/1 pass.
+
+### Target: standalone sync of the mainnet C-Chain
+The standalone, "the-way-they-do-it" architecture is **Nethermind as the rpcchainvm VM, driven by AvalancheGo**
+(one node = AvalancheGo + the VM plugin, exactly like AvalancheGo + Coreth — AvalancheGo owns networking/Snowman/bootstrap
+and feeds blocks via `ParseBlock → Verify → Accept`). AvalancheGo hardwires the mainnet C-Chain to in-process Coreth, so
+the real C-Chain additionally requires a **small AvalancheGo patch** registering the Nethermind plugin under the EVM VM ID.
+
+### The gating hard problem: executing-state parity
+Genesis parity uses a raw trie with the Avalanche encoder. For *sync*, every executed block's post-state root must match
+Coreth, which means Nethermind's **live world state** must encode accounts the 5-field way and apply the storage-key bit0
+transform. `StateTree` uses a `static` non-virtual `AccountDecoder` (4-field) and the hot read path uses `AccountStruct` +
+the flat-state DB — so this is a **fork-level state-layer change**, not a subclass: an `isMultiCoin`-aware account
+encode/decode wired through `StateTree`, the storage tries, and the flat-state read path (`isMultiCoin` is always `false`
+on the post-Apricot C-Chain, so in practice a deterministic `+0x80` on every account leaf). This is the single largest
+remaining piece and gates execution-based `BlockVerify`/`BlockAccept`.
 
 ### Bottom line
-The chain-recognition, fork/spec framework, **state-root parity, block/header codec (real-mainnet-validated), and the
-rpcchainvm server with `ParseBlock`/`BlockVerify` wired** are in place. **Remaining for a working C-Chain validator:
-items #5, #7, #8, #10, #11 plus the rest of the block lifecycle** (`Initialize` bootstrap of the Nethermind world state +
-genesis, `BuildBlock`, `BlockAccept`/`BlockReject`, and execution-based `BlockVerify`). Realistic order:
-`Initialize` bootstrap → BuildBlock/Accept/Reject + execution verify → fee mapping → state sync → atomic txs → precompiles.
+Done: chain/fork/spec framework, **state-root parity primitives, block/header codec (real-mainnet-validated), genesis
+parity, and the rpcchainvm server with `Initialize`/`ParseBlock`/`BlockVerify` wired**. Remaining for a working C-Chain
+sync, in order: **(1) executing-state parity** (above) → **(2) execution-based `BlockVerify` + `BlockAccept`/`Reject` +
+persistence + `GetBlock`/`SetPreference`** → **(3) AvalancheGo patch** (EVM-ID → plugin) → **(4) per-fork dynamic fees**
+→ **(5) atomic transactions** (C↔X/P imports change C balances) → **(6) state-sync** (else a from-genesis replay of ~89M
+blocks). Items 1, 5, 6 are individually large; a full mainnet sync is a multi-month effort. Each lands as a verifiable
+milestone — genesis (block 0) is the first, and the foundation through `Initialize` is in place.
 
 ## Sync-speed comparison
 
