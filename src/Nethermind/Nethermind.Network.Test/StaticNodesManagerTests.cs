@@ -60,6 +60,17 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task init_loaded_nodes_are_emitted_with_static_flag()
+        {
+            await _staticNodesManager.InitAsync();
+
+            List<Node> nodes = await _staticNodesManager.DiscoverNodes(default).Take(2).ToListAsync();
+
+            Assert.That(nodes, Has.Count.EqualTo(2));
+            Assert.That(nodes.All(static n => n.IsStatic), Is.True);
+        }
+
+        [Test]
         public async Task add_should_emit_node_with_static_flag()
         {
             ValueTask<List<Node>> listTask = _staticNodesManager.DiscoverNodes(default).Take(1).ToListAsync();

@@ -184,6 +184,32 @@ public class PeerPoolTests
         }
     }
 
+    [Test]
+    public async Task PeerPool_ShouldNotThrottleStaticNode_WhenFull()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 1, maxCandidatePeerCount: 1);
+
+        Peer activePeer = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234));
+        pool.ActivePeers[TestItem.PublicKeyA] = activePeer;
+        pool.Start();
+
+        Node staticNode = new(TestItem.PublicKeyB, "1.2.3.5", 1234) { IsStatic = true };
+        nodeSource.AddNode(staticNode);
+
+        try
+        {
+            // Static node bypasses throttling: consumed and registered even though the pool is full.
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(0).After(100, 10));
+            Assert.That(pool.TryGet(staticNode.Id, out _), Is.True);
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
     [TestCase(true, true)]   // active session → peer kept
     [TestCase(false, false)] // no session → peer evicted
     public void PeerPool_DiscoveryEviction(bool hasSession, bool expectPresent)
@@ -219,6 +245,27 @@ public class PeerPoolTests
         Peer replacedPeer = pool.Replace(session);
 
         Assert.That(replacedPeer.Node.IsStatic, Is.False);
+        Assert.That(pool.StaticPeerCount, Is.EqualTo(0), "replacing a static node decrements the static count");
+    }
+
+    [Test]
+    public void StaticPeerCount_tracks_add_and_remove()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        Assert.That(pool.StaticPeerCount, Is.EqualTo(0));
+
+        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234, isStatic: true));
+        pool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1234)); // non-static
+        Assert.That(pool.StaticPeerCount, Is.EqualTo(1), "only the static node counts");
+
+        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234, isStatic: true)); // same id
+        Assert.That(pool.StaticPeerCount, Is.EqualTo(1), "re-adding the same id does not double-count");
+
+        pool.TryRemove(TestItem.PublicKeyA, out _);
+        Assert.That(pool.StaticPeerCount, Is.EqualTo(0), "removal decrements");
     }
 
     private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(

@@ -72,7 +72,28 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null)
+    [Test]
+    public async Task ShouldContact_AlwaysAcceptsPrivilegedIp()
+    {
+        IPAddress privilegedIp = IPAddress.Parse("203.0.113.1");
+        IPrivilegedIpProvider privilegedIpProvider = Substitute.For<IPrivilegedIpProvider>();
+        privilegedIpProvider.IsPrivileged(privilegedIp).Returns(true);
+
+        // Exact-match filtering would otherwise block the second attempt from the same IP.
+        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: false, privilegedIpProvider: privilegedIpProvider);
+        try
+        {
+            Assert.That(host.ShouldContact(privilegedIp), Is.True, "first attempt accepted");
+            Assert.That(host.ShouldContact(privilegedIp), Is.True, "privileged IP is never rate-limited");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
+        IPrivilegedIpProvider? privilegedIpProvider = null)
     {
         NetworkConfig networkConfig = new()
         {
@@ -95,6 +116,7 @@ public class RlpxHostIntegrationTests
             NullDisconnectsAnalyzer.Instance,
             networkConfig,
             ipResolver,
+            privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>(),
             LimboLogs.Instance);
     }
 
