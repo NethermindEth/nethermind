@@ -1140,12 +1140,23 @@
           "System.IO.Hashing": "[10.0.9, )"
         }
       },
-      "nethermind.statecomposition": {
+      "nethermind.statediff.core": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.39.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.39.0-unstable, )",
+          "Nethermind.Trie": "[1.39.0-unstable, )"
+        }
+      },
+      "nethermind.statediffswriter": {
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[1.39.0-unstable, )",
           "Nethermind.Db": "[1.39.0-unstable, )",
+          "Nethermind.Db.Rocks": "[1.39.0-unstable, )",
           "Nethermind.Init": "[1.39.0-unstable, )",
+          "Nethermind.State.Flat": "[1.39.0-unstable, )",
+          "Nethermind.StateDiff.Core": "[1.39.0-unstable, )",
           "Nethermind.Trie": "[1.39.0-unstable, )"
         }
       },
