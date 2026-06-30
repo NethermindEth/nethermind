@@ -46,7 +46,8 @@ public sealed class RpcDatabase : IAsyncDisposable
             EnsureScheme(address),
             new GrpcChannelOptions
             {
-                Credentials = Grpc.Core.ChannelCredentials.Insecure,
+                // global:: — the transitively referenced Nethermind.Grpc project shadows the gRPC "Grpc" root here.
+                Credentials = global::Grpc.Core.ChannelCredentials.Insecure,
                 MaxReceiveMessageSize = null,
                 MaxSendMessageSize = null,
             });

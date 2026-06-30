@@ -33,7 +33,9 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
 {
     private const string VmVersion = "nethermind-avalanche-vm/0.1.0";
 
-    private readonly Channel<VmPb.Message> _events = Channel.CreateUnbounded<VmPb.Message>(
+    // Fully qualified: "using Grpc.Core" (legacy package, pulled in transitively via Nethermind.Avalanche) also
+    // defines a non-generic Channel, so the bare static Channel.CreateUnbounded is ambiguous.
+    private readonly Channel<VmPb.Message> _events = System.Threading.Channels.Channel.CreateUnbounded<VmPb.Message>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
     private readonly CancellationTokenSource _shutdownCts = new();
