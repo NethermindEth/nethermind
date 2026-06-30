@@ -174,7 +174,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
             writer.WriteStartArray();
             ReadOnlySpan<byte> sp = stack.Span;
             for (int i = 0; i < sp.Length; i += EvmStack.WordSize)
-                HexWriter.WriteUInt256HexStringValue(writer, new UInt256(sp.Slice(i, EvmStack.WordSize), isBigEndian: true), zeroPadded: false);
+                HexWriter.WriteUInt256HexRawValue(writer, new UInt256(sp.Slice(i, EvmStack.WordSize), isBigEndian: true), zeroPadded: false);
             writer.WriteEndArray();
         }
 
