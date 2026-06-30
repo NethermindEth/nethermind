@@ -1,0 +1,638 @@
+name: Run RPC Benchmarks
+
+# Benchmark a Nethermind node's JSON-RPC (state-reading calls) on the self-hosted
+# `reproducible-benchmarks` runner, reusing the DB snapshot that the EXPB
+# reproducible-benchmarks workflow already uses there. Supports two load tools
+# (flood/Vegeta and EthCallChaos) and optional dotTrace profiling with automatic
+# XML post-processing.
+#
+# The pristine DB snapshot is NEVER mounted writable: the node runs against an
+# isolated overlay/copy of it (same overlay mechanism as expb's
+# snapshot_backend: overlay), and the snapshot is fingerprinted before and after
+# the run — the job FAILS if it changed. See scripts/rpc-bench/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark_tool:
+        description: Load-testing tool to use
+        required: true
+        type: choice
+        options:
+          - flood
+          - ethcallchaos
+        default: flood
+      docker_image:
+        description: >-
+          Use a specific Docker image instead of building/reusing one
+          (e.g. nethermindeth/nethermind:master-21f1dca). Leave empty to
+          auto-resolve from the branch.
+        required: false
+        default: ""
+      dottrace:
+        description: Capture a JetBrains dotTrace timeline snapshot of the node and post-process it to XML (works with any image)
+        required: false
+        type: boolean
+        default: false
+      state_layout:
+        description: State layout — picks the DB snapshot and layout flags (expb convention)
+        required: true
+        type: choice
+        options:
+          - flat
+          - halfpath
+        default: flat
+      additional_nethermind_flags:
+        description: "Extra Nethermind flags appended to the node command (e.g. --Pruning.CacheMb=4000)"
+        required: false
+        default: ""
+      tool_config:
+        description: >-
+          Tool-specific config as JSON. flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30,"deep_check":false,"label":"nethermind","extra_args":""}.
+          ethcallchaos: {"ref":"master","corpus_db":"","rate":50,"parallel":8,"duration":300,"leaderboard_top":50,"api_port":5000}.
+          Leave empty for defaults.
+        required: false
+        default: ""
+      node_config:
+        description: >-
+          Advanced node/runner overrides as JSON:
+          {"db_source":"","db_isolation":"overlay","scratch_root":"/mnt/sda/expb-data/rpc-bench-scratch",
+          "network":"mainnet","jsonrpc_modules":"Eth,...","health_timeout_minutes":30,"cpuset":"2-7,10-15","memory":"64g"}.
+          Leave empty for defaults (db_source resolved from state_layout).
+        required: false
+        default: ""
+  pull_request:
+    types: [labeled]
+
+# No concurrency group: with cancel-in-progress=false GitHub keeps only the
+# newest PENDING run per group, silently cancelling queued benchmark requests.
+# The self-hosted runner serializes benchmark jobs naturally.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Normalize inputs and decide how the Docker image is obtained.
+  # ---------------------------------------------------------------------------
+  resolve:
+    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'rpc-benchmark' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.resolve.outputs.should_run }}
+      branch: ${{ steps.resolve.outputs.branch }}
+      clean_branch: ${{ steps.resolve.outputs.clean_branch }}
+      benchmark_tool: ${{ steps.resolve.outputs.benchmark_tool }}
+      dottrace: ${{ steps.resolve.outputs.dottrace }}
+      image_mode: ${{ steps.resolve.outputs.image_mode }}
+      image_ref: ${{ steps.resolve.outputs.image_ref }}
+      db_source: ${{ steps.resolve.outputs.db_source }}
+      db_isolation: ${{ steps.resolve.outputs.db_isolation }}
+      scratch_root: ${{ steps.resolve.outputs.scratch_root }}
+      network: ${{ steps.resolve.outputs.network }}
+      jsonrpc_modules: ${{ steps.resolve.outputs.jsonrpc_modules }}
+      layout_flags: ${{ steps.resolve.outputs.layout_flags }}
+      additional_flags: ${{ steps.resolve.outputs.additional_flags }}
+      health_timeout: ${{ steps.resolve.outputs.health_timeout }}
+      node_cpuset: ${{ steps.resolve.outputs.node_cpuset }}
+      node_memory: ${{ steps.resolve.outputs.node_memory }}
+      tool_config: ${{ steps.resolve.outputs.tool_config }}
+    steps:
+      - name: Resolve configuration
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PUSH_BRANCH: ${{ github.ref_name }}
+          IN_TOOL: ${{ inputs.benchmark_tool }}
+          IN_DOCKER_IMAGE: ${{ inputs.docker_image }}
+          IN_DOTTRACE: ${{ inputs.dottrace }}
+          IN_STATE_LAYOUT: ${{ inputs.state_layout }}
+          IN_FLAGS: ${{ inputs.additional_nethermind_flags }}
+          IN_TOOL_CONFIG: ${{ inputs.tool_config }}
+          IN_NODE_CONFIG: ${{ inputs.node_config }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            branch="${PUSH_BRANCH}"
+            benchmark_tool="${IN_TOOL:-flood}"
+            docker_image="${IN_DOCKER_IMAGE:-}"
+            dottrace="${IN_DOTTRACE:-false}"
+            state_layout="${IN_STATE_LAYOUT:-flat}"
+            additional_flags="${IN_FLAGS:-}"
+            tool_config="${IN_TOOL_CONFIG:-}"
+            node_config="${IN_NODE_CONFIG:-}"
+          else
+            # PR labeled with 'rpc-benchmark': run flood on common read methods.
+            branch="${PR_HEAD_BRANCH}"
+            benchmark_tool="flood"
+            docker_image=""
+            dottrace="false"
+            state_layout="flat"
+            additional_flags=""
+            tool_config='{"tests":"eth_call eth_getBalance eth_getCode eth_getStorageAt eth_getTransactionCount eth_getBlockByNumber","rates":"10 100 500","duration":30}'
+            node_config=""
+          fi
+
+          branch="${branch#refs/heads/}"
+          [[ -n "${branch}" ]] || { echo "Failed to resolve branch."; exit 1; }
+          clean_branch="$(echo "${branch}" | sed 's/[^a-zA-Z0-9._-]/-/g')"
+
+          [[ -z "${tool_config}" ]] && tool_config="{}"
+          if ! echo "${tool_config}" | jq -e . >/dev/null 2>&1; then
+            echo "tool_config is not valid JSON: ${tool_config}"
+            exit 1
+          fi
+          [[ -z "${node_config}" ]] && node_config="{}"
+          if ! echo "${node_config}" | jq -e . >/dev/null 2>&1; then
+            echo "node_config is not valid JSON: ${node_config}"
+            exit 1
+          fi
+
+          nc() { echo "${node_config}" | jq -r "$1 // empty"; }
+
+          # Snapshot paths follow the expb data layout on the runner
+          # (snapshot_source in /mnt/sda/expb-data/github-action-mainnet*.yaml).
+          case "${state_layout}" in
+            flat)
+              default_db_source="/mnt/sda/nethermind-flat-snapshot"
+              layout_flags="--FlatDb.Enabled=true"
+              ;;
+            halfpath)
+              default_db_source="/mnt/sda/nethermind-snapshot"
+              layout_flags=""
+              ;;
+            *)
+              echo "Unknown state_layout '${state_layout}'."; exit 1;;
+          esac
+
+          db_source="$(nc '.db_source')";           [[ -z "${db_source}" ]] && db_source="${default_db_source}"
+          db_isolation="$(nc '.db_isolation')";     [[ -z "${db_isolation}" ]] && db_isolation="overlay"
+          scratch_root="$(nc '.scratch_root')";     [[ -z "${scratch_root}" ]] && scratch_root="/mnt/sda/expb-data/rpc-bench-scratch"
+          network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
+          jsonrpc_modules="$(nc '.jsonrpc_modules')"
+          [[ -z "${jsonrpc_modules}" ]] && jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin"
+          health_min="$(nc '.health_timeout_minutes')"; [[ -z "${health_min}" ]] && health_min="30"
+          node_cpuset="$(nc '.cpuset')"
+          node_memory="$(nc '.memory')"
+
+          if ! [[ "${health_min}" =~ ^[0-9]+$ ]] || [[ "${health_min}" -lt 1 ]]; then
+            echo "node_config.health_timeout_minutes must be a positive integer, got '${health_min}'."
+            exit 1
+          fi
+          health_timeout=$(( health_min * 60 ))
+
+          case "${db_isolation}" in
+            overlay|copy|readonly-bind) ;;
+            *) echo "node_config.db_isolation must be overlay | copy | readonly-bind, got '${db_isolation}'."; exit 1;;
+          esac
+
+          # These paths reach root-privileged mount/rm on the runner — enforce a
+          # strict shape here (the scripts canonicalize and guard again).
+          validate_runner_path() {
+            local label="$1" p="$2"
+            if ! [[ "${p}" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "${p}" == *..* ]]; then
+              echo "${label} '${p}' must be an absolute path of [A-Za-z0-9._/-] without '..'."
+              exit 1
+            fi
+            local trimmed="${p#/}"; trimmed="${trimmed%/}"
+            if [[ -z "${trimmed}" || "${trimmed}" != */* ]]; then
+              echo "${label} '${p}' is too shallow (need at least two path components)."
+              exit 1
+            fi
+          }
+          validate_runner_path "node_config.db_source" "${db_source}"
+          validate_runner_path "node_config.scratch_root" "${scratch_root}"
+          if [[ "${db_source}/" == "${scratch_root}"/* || "${scratch_root}/" == "${db_source}"/* ]]; then
+            echo "db_source and scratch_root must be disjoint (scratch is wiped on teardown)."
+            exit 1
+          fi
+
+          # Decide how to get the Docker image (dotTrace works with any image —
+          # the host dottrace CLI is mounted in, expb-style).
+          #   provided -> use docker_image verbatim
+          #   reuse    -> pull the prebuilt Docker Hub image for master/release/etc.
+          #   build    -> build locally on the runner from Dockerfile
+          if [[ -n "${docker_image}" ]]; then
+            image_mode="provided"
+            image_ref="${docker_image}"
+          elif [[ "${branch}" == "master" || "${branch}" == "performance" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
+            image_mode="reuse"
+            image_ref="nethermindeth/nethermind:${clean_branch}"
+          else
+            image_mode="build"
+            image_ref="nethermind-rpcbench:${clean_branch}"
+          fi
+
+          {
+            echo "should_run=true"
+            echo "branch=${branch}"
+            echo "clean_branch=${clean_branch}"
+            echo "benchmark_tool=${benchmark_tool}"
+            echo "dottrace=${dottrace}"
+            echo "image_mode=${image_mode}"
+            echo "image_ref=${image_ref}"
+            echo "db_source=${db_source}"
+            echo "db_isolation=${db_isolation}"
+            echo "scratch_root=${scratch_root}"
+            echo "network=${network}"
+            echo "jsonrpc_modules=${jsonrpc_modules}"
+            echo "layout_flags=${layout_flags}"
+            echo "additional_flags=${additional_flags}"
+            echo "health_timeout=${health_timeout}"
+            echo "node_cpuset=${node_cpuset}"
+            echo "node_memory=${node_memory}"
+            echo "tool_config<<TOOLCFG"
+            echo "${tool_config}"
+            echo "TOOLCFG"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "Resolved: tool=${benchmark_tool} branch=${branch} layout=${state_layout} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace}"
+
+  # ---------------------------------------------------------------------------
+  # Run the benchmark on the self-hosted runner that holds the DB snapshot.
+  # ---------------------------------------------------------------------------
+  benchmark:
+    needs: [resolve]
+    if: needs.resolve.outputs.should_run == 'true'
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 360
+    env:
+      # NB: the `runner` context is not available in job-level env, so OUT_DIR /
+      # STATE_DIR are exported from $RUNNER_TEMP in the "Set up run paths" step.
+      DIAG_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag
+      CONTAINER_NAME: nethermind-rpcbench-${{ github.run_id }}
+      ECC_CONTAINER_NAME: ethcallchaos-bench-${{ github.run_id }}
+      RPC_PORT: "8545"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up run paths
+        run: |
+          echo "OUT_DIR=$RUNNER_TEMP/rpcbench-out" >> "$GITHUB_ENV"
+          echo "STATE_DIR=$RUNNER_TEMP/rpcbench-state" >> "$GITHUB_ENV"
+
+      - name: Print resolved configuration
+        run: |
+          echo "Tool:        ${{ needs.resolve.outputs.benchmark_tool }}"
+          echo "Branch:      ${{ needs.resolve.outputs.branch }}"
+          echo "Image mode:  ${{ needs.resolve.outputs.image_mode }}"
+          echo "Image ref:   ${{ needs.resolve.outputs.image_ref }}"
+          echo "dotTrace:    ${{ needs.resolve.outputs.dottrace }}"
+          echo "DB source:   ${{ needs.resolve.outputs.db_source }}"
+          echo "Isolation:   ${{ needs.resolve.outputs.db_isolation }}"
+          echo "Scratch:     ${{ needs.resolve.outputs.scratch_root }}"
+          echo "Layout flags: ${{ needs.resolve.outputs.layout_flags }}"
+
+      - name: Prepare scratch and output dirs
+        run: mkdir -p "${OUT_DIR}" "${STATE_DIR}"
+
+      - name: Make scripts executable
+        run: chmod +x scripts/rpc-bench/*.sh
+
+      - name: Prepare Docker image
+        env:
+          IMAGE_MODE: ${{ needs.resolve.outputs.image_mode }}
+          IMAGE_REF: ${{ needs.resolve.outputs.image_ref }}
+          COMMIT_HASH: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${IMAGE_MODE}" in
+            provided)
+              echo "Using provided image ${IMAGE_REF} (pulling if remote)..."
+              docker pull "${IMAGE_REF}" || echo "Pull failed — assuming ${IMAGE_REF} is a local image."
+              ;;
+            reuse)
+              echo "Reusing prebuilt image ${IMAGE_REF}..."
+              docker pull "${IMAGE_REF}"
+              ;;
+            build)
+              echo "Building ${IMAGE_REF} from Dockerfile..."
+              docker build . \
+                -f Dockerfile \
+                -t "${IMAGE_REF}" \
+                --build-arg BUILD_CONFIG=release \
+                --build-arg CI=true \
+                --build-arg COMMIT_HASH="${COMMIT_HASH}" \
+                --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+              ;;
+            *)
+              echo "Unknown image mode '${IMAGE_MODE}'."; exit 1;;
+          esac
+
+      - name: Start Nethermind node
+        env:
+          NETHERMIND_IMAGE: ${{ needs.resolve.outputs.image_ref }}
+          DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
+          DB_ISOLATION: ${{ needs.resolve.outputs.db_isolation }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          NETWORK: ${{ needs.resolve.outputs.network }}
+          JSONRPC_MODULES: ${{ needs.resolve.outputs.jsonrpc_modules }}
+          LAYOUT_FLAGS: ${{ needs.resolve.outputs.layout_flags }}
+          ADDITIONAL_FLAGS: ${{ needs.resolve.outputs.additional_flags }}
+          HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          NODE_CPUSET: ${{ needs.resolve.outputs.node_cpuset }}
+          NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
+        run: ./scripts/rpc-bench/start-node.sh
+
+      - name: Run flood benchmark
+        id: run-flood
+        if: needs.resolve.outputs.benchmark_tool == 'flood'
+        continue-on-error: true
+        env:
+          RPC_URL: http://localhost:8545
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfg="${TOOL_CONFIG}"; [[ -z "${cfg}" ]] && cfg='{}'
+          get() { echo "${cfg}" | jq -r "$1 // empty"; }
+          export RATES="$(get '.rates')";        [[ -z "${RATES}" ]] && export RATES="10 100 500"
+          export DURATION="$(get '.duration')";   [[ -z "${DURATION}" ]] && export DURATION="30"
+          export DEEP_CHECK="$(get '.deep_check')";[[ -z "${DEEP_CHECK}" ]] && export DEEP_CHECK="false"
+          export TESTS="$(get '.tests')"
+          export LABEL="$(get '.label')";          [[ -z "${LABEL}" ]] && export LABEL="nethermind"
+          export EXTRA_ARGS="$(get '.extra_args')"
+          ./scripts/rpc-bench/run-flood.sh
+
+      - name: Run EthCallChaos benchmark
+        id: run-ecc
+        if: needs.resolve.outputs.benchmark_tool == 'ethcallchaos'
+        continue-on-error: true
+        env:
+          RPC_URL: http://localhost:8545
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfg="${TOOL_CONFIG}"; [[ -z "${cfg}" ]] && cfg='{}'
+          get() { echo "${cfg}" | jq -r "$1 // empty"; }
+          export ECC_REF="$(get '.ref')";                     [[ -z "${ECC_REF}" ]] && export ECC_REF="master"
+          export ECC_CORPUS_DB="$(get '.corpus_db')"
+          corpus_url="$(get '.corpus_url')"; [[ -n "${corpus_url}" ]] && export ECC_CORPUS_URL="${corpus_url}"
+          export ECC_RATE="$(get '.rate')";                   [[ -z "${ECC_RATE}" ]] && export ECC_RATE="50"
+          export ECC_PARALLEL="$(get '.parallel')";           [[ -z "${ECC_PARALLEL}" ]] && export ECC_PARALLEL="8"
+          export ECC_DURATION="$(get '.duration')";           [[ -z "${ECC_DURATION}" ]] && export ECC_DURATION="300"
+          export ECC_LEADERBOARD_TOP="$(get '.leaderboard_top')"; [[ -z "${ECC_LEADERBOARD_TOP}" ]] && export ECC_LEADERBOARD_TOP="50"
+          export ECC_API_PORT="$(get '.api_port')";           [[ -z "${ECC_API_PORT}" ]] && export ECC_API_PORT="5000"
+          export ECC_MIN_MEAN_MS="$(get '.min_mean_ms')";     [[ -z "${ECC_MIN_MEAN_MS}" ]] && export ECC_MIN_MEAN_MS="1"
+          export ECC_MAX_CV="$(get '.max_cv')";               [[ -z "${ECC_MAX_CV}" ]] && export ECC_MAX_CV="10"
+          ./scripts/rpc-bench/run-ethcallchaos.sh
+
+      - name: Stop node and verify DB integrity
+        if: always()
+        env:
+          STOP_GRACE: "180"
+        run: ./scripts/rpc-bench/stop-node.sh
+
+      - name: Collect dotTrace snapshots
+        if: always() && needs.resolve.outputs.dottrace == 'true'
+        shell: bash
+        env:
+          ARCHIVE: ${{ runner.temp }}/dottrace-rpcbench.zip
+        run: |
+          set -euo pipefail
+          if [[ -d "${DIAG_DIR}/dottrace" ]] && [[ -n "$(find "${DIAG_DIR}/dottrace" -type f 2>/dev/null)" ]]; then
+            ( cd "${DIAG_DIR}" && zip -9r "${ARCHIVE}" dottrace )
+            echo "Archived dotTrace snapshots to ${ARCHIVE}"
+          else
+            echo "No dotTrace snapshots found under ${DIAG_DIR}/dottrace."
+          fi
+
+      - name: Scan node logs for errors
+        id: scan
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node_log="${STATE_DIR}/node.log"
+          if [[ ! -f "${node_log}" ]]; then
+            echo "No node log captured."
+            echo "exception_found=false" >> "${GITHUB_OUTPUT}"
+            echo "invalid_block_found=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          clean="${RUNNER_TEMP}/node.clean.log"
+          sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${node_log}" > "${clean}"
+
+          exception_found="false"
+          if grep -in "Exception" "${clean}" | head -n 40 | grep -q .; then
+            exception_found="true"
+            echo "::warning::Exception lines detected in node log:"
+            grep -in "Exception" "${clean}" | head -n 40 || true
+          fi
+
+          invalid_block_found="false"
+          if grep -Ein "invalid[[:space:]_-]*block" "${clean}" | head -n 40 | grep -q .; then
+            invalid_block_found="true"
+            echo "::warning::Invalid block lines detected in node log:"
+            grep -Ein "invalid[[:space:]_-]*block" "${clean}" | head -n 40 || true
+          fi
+
+          for pattern in "Unhandled" "Fatal"; do
+            if grep -in "${pattern}" "${clean}" | head -n 10 | grep -q .; then
+              echo "::warning::Severe log pattern '${pattern}' detected in node log"
+            fi
+          done
+
+          echo "exception_found=${exception_found}" >> "${GITHUB_OUTPUT}"
+          echo "invalid_block_found=${invalid_block_found}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish step summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "# RPC Benchmark — ${{ needs.resolve.outputs.benchmark_tool }}"
+            echo ""
+            echo "Branch: \`${{ needs.resolve.outputs.branch }}\` | image: \`${{ needs.resolve.outputs.image_ref }}\` | dotTrace: \`${{ needs.resolve.outputs.dottrace }}\`"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
+          shopt -s nullglob
+          for md in "${OUT_DIR}"/*-summary.md; do
+            cat "${md}" >> "${GITHUB_STEP_SUMMARY}"
+            echo "" >> "${GITHUB_STEP_SUMMARY}"
+          done
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpcbench-results-${{ needs.resolve.outputs.benchmark_tool }}
+          path: |
+            ${{ runner.temp }}/rpcbench-out/
+            ${{ runner.temp }}/rpcbench-state/node.log
+            ${{ runner.temp }}/rpcbench-state/db-baseline.txt
+            ${{ runner.temp }}/rpcbench-state/db-final.txt
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload dotTrace snapshot
+        if: always() && needs.resolve.outputs.dottrace == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dottrace-rpcbench
+          path: ${{ runner.temp }}/dottrace-rpcbench.zip
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Defensive cleanup
+        if: always()
+        shell: bash
+        env:
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
+        # Belt-and-suspenders: reaps stale containers (any run id), unmounts
+        # everything under scratch, wipes scratch subtrees — with the same
+        # canonical-path guards as start-node.sh, so it can never reach the
+        # snapshot. Never fails the job.
+        run: ./scripts/rpc-bench/cleanup.sh || true
+
+      - name: Enforce quality gates
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The tool steps use continue-on-error so teardown and the integrity
+          # check always run — their real outcome is enforced here instead.
+          if [[ "${{ steps.run-flood.outcome }}" == "failure" || "${{ steps.run-ecc.outcome }}" == "failure" ]]; then
+            echo "The benchmark tool step failed — failing the job."
+            exit 1
+          fi
+          if [[ "${{ steps.scan.outputs.exception_found }}" == "true" ]]; then
+            echo "Exceptions detected in node log — failing."
+            exit 1
+          fi
+          if [[ "${{ steps.scan.outputs.invalid_block_found }}" == "true" ]]; then
+            echo "Invalid block lines detected in node log — failing."
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # dotTrace XML report generation (Windows-only Reporter.exe). Mirrors the EXPB
+  # reproducible-benchmarks workflow.
+  # ---------------------------------------------------------------------------
+  generate-dottrace-reports:
+    needs: [resolve, benchmark]
+    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.benchmark.result == 'success'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download snapshot artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dottrace-*
+          path: snapshots/
+          merge-multiple: true
+
+      - name: Install dotTrace Reporter
+        shell: pwsh
+        run: |
+          $url = 'https://www.nuget.org/api/v2/package/JetBrains.dotTrace.CommandLineTools.windows-x64/2026.1.0.1'
+          Write-Host "Downloading dotTrace CommandLineTools from NuGet..."
+          Invoke-WebRequest -Uri $url -OutFile dottrace-clt.zip
+          Expand-Archive -Path dottrace-clt.zip -DestinationPath dottrace-clt
+          $reporter = Get-ChildItem -Path dottrace-clt -Recurse -Filter 'Reporter.exe' | Select-Object -First 1
+          if (-not $reporter) {
+            Write-Error "Reporter.exe not found in package"
+            exit 1
+          }
+          Write-Host "Found Reporter.exe at $($reporter.FullName)"
+          echo "REPORTER=$($reporter.FullName)" >> $env:GITHUB_ENV
+
+      - name: Generate XML reports
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
+
+          $patternFile = 'pattern.xml'
+          @'
+          <Patterns>
+            <Pattern PrintCallstacks="Full">.*</Pattern>
+          </Patterns>
+          '@ | Set-Content -Path $patternFile
+
+          Get-ChildItem -Path snapshots -Filter '*.zip' | ForEach-Object {
+            $dest = Join-Path extracted $_.BaseName
+            Write-Host "Extracting $($_.Name) -> $dest"
+            Expand-Archive -Path $_.FullName -DestinationPath $dest
+          }
+
+          $snapshots = Get-ChildItem -Path extracted -Recurse | Where-Object { $_.Extension -eq '.dtp' }
+          if ($snapshots.Count -eq 0) {
+            Write-Host "No .dtp snapshot files found after extraction."
+            exit 0
+          }
+
+          foreach ($dtp in $snapshots) {
+            $name = $dtp.BaseName
+            $outFile = "reports/${name}-report.xml"
+            Write-Host "::group::Generating report for $name"
+            Write-Host "  $($dtp.FullName) -> $outFile"
+            & $env:REPORTER report $dtp.FullName --pattern=$patternFile --save-to=$outFile
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Reporter failed for $name with exit code $LASTEXITCODE"
+            }
+            Write-Host "::endgroup::"
+          }
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dottrace-reports
+          path: reports/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Surface the dotTrace hot spots in the job summary for quick iteration.
+  # ---------------------------------------------------------------------------
+  dottrace-summary:
+    needs: [resolve, generate-dottrace-reports]
+    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.generate-dottrace-reports.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download dotTrace reports
+        uses: actions/download-artifact@v8
+        with:
+          name: dottrace-reports
+          path: reports/
+
+      - name: Summarize hot spots
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/dottrace-report.sh
+          shopt -s nullglob
+          xmls=(reports/*.xml)
+          if [[ "${#xmls[@]}" -eq 0 ]]; then
+            echo "No XML reports found." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+          {
+            echo "## dotTrace hot spots (top 40 by OwnTime)"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
+          for xml in "${xmls[@]}"; do
+            {
+              echo "<details><summary>$(basename "${xml}")</summary>"
+              echo ""
+              echo '```'
+              ./scripts/dottrace-report.sh top "${xml}" 40 || true
+              echo '```'
+              echo ""
+              echo "</details>"
+              echo ""
+            } >> "${GITHUB_STEP_SUMMARY}"
+          done
