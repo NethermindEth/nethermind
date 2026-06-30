@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock(Arg.Any<ulong>()).Returns((Block?)null);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
-            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("upstream does not have the requested block yet", ErrorCodes.InternalError);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(0UL), []);
             Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
@@ -65,10 +65,24 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindPendingBlock().Returns(Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
-            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("upstream does not have the requested block yet", ErrorCodes.InternalError);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(lastBlockNumber), []);
 
+            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
+        }
+
+        [Test]
+        public void GetFeeHistory_IfBlockBodyPrunedButHeaderExists_ReturnsPrunedHistoryUnavailable()
+        {
+            // On snap-synced nodes, pre-pivot blocks have headers but no bodies.
+            // FindBlock returns null; FindHeader returns the header.
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.FindHeader(Arg.Any<BlockParameter>()).Returns(Build.A.BlockHeader.TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(0UL), []);
             Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -399,6 +400,16 @@ public class BlockhashProviderTests
             Assert.That(result, Is.EqualTo(expectedHeader!.Hash),
                 $"Block {blockNum} should be retrievable within custom ring buffer of size {customRingBufferSize}");
         }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Throws_when_in_window_hash_cannot_be_resolved()
+    {
+        IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
+        BlockhashProvider provider = CreateBlockHashProvider(headerFinder, Frontier.Instance);
+        BlockHeader current = Build.A.BlockHeader.WithNumber(300).WithParentHash(TestItem.KeccakA).TestObject;
+
+        Assert.Throws<InvalidDataException>(() => provider.GetBlockhash(current, 100, Frontier.Instance));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -139,6 +139,40 @@ public class PersistenceManagerTests
 
     #endregion
 
+    #region Fresh DB (nothing persisted) Tests
+
+    [Test]
+    public void DetermineSnapshotToPersist_FreshDbBelowForceLimit_PersistsFinalizedBoundary()
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(StateId.PreGenesis);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        ICompactionSchedule scheduler = ScheduleHelper.CreateWithOffset(_config, 0);
+        PersistenceManager pm = new(_config, scheduler, _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+
+        // Depth 101 is past MinReorgDepth + CompactSize (80) but below the MaxReorgDepth force limit (256),
+        // so only the finalized branch can produce a snapshot here.
+        StateId target = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(StateId.PreGenesis, target, compacted: true);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.From, Is.EqualTo(StateId.PreGenesis));
+        Assert.That(result.To, Is.EqualTo(target));
+
+        result.Dispose();
+    }
+
+    #endregion
+
     #region Unfinalized State Tests
 
     [Test]
@@ -301,6 +335,37 @@ public class PersistenceManagerTests
         Assert.That(result!.To.StateRoot.Bytes.ToArray(), Is.EqualTo(target2.StateRoot.Bytes.ToArray())); // Should select finalized one
 
         result.Dispose();
+    }
+
+    [Test]
+    public void DetermineSnapshotToPersist_LatestSnapshotBelowPersistedBlock_ReturnsNullWithoutUnderflow()
+    {
+        // A deep reorg below a force-persisted unfinalized block can leave the latest snapshot
+        // behind the last persisted block. The in-memory depth must saturate to 0 (not underflow to ~2^64),
+        // so the keep-in-memory guard returns null early instead of force-persisting a stale head ancestor.
+        StateId persisted = CreateStateId(100);
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persisted);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        PersistenceManager pm = new(_config, ScheduleHelper.CreateWithOffset(_config, 0), _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+
+        // Latest snapshot (50) is below the persisted block (100); finalized far behind so the force-persist
+        // branch would be taken on underflow. Stage a head-ancestor snapshot the buggy path would return.
+        StateId latest = CreateStateId(50);
+        StateId headAncestor = CreateStateId(101);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+
+        using Snapshot staged = CreateSnapshot(persisted, headAncestor, compacted: false);
+        _snapshotRepository.SetLastCommittedStateId(headAncestor);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+        using Snapshot? _ = result; // dispose if the buggy underflow path returned a snapshot
+
+        Assert.That(result, Is.Null);
     }
 
     [Test]
