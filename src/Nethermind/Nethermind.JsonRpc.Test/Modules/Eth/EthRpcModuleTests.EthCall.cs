@@ -919,7 +919,7 @@ public partial class EthRpcModuleTests
     [TestCase(
         """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000"}""",
         """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""",
-        """{"blobBaseFee":"0x02"}""",
+        """{"blobBaseFee":"0x2"}""",
         "0x0000000000000000000000000000000000000000000000000000000000000002",
         null,
         TestName = "BLOBBASEFEE opcode returns overridden value")]
@@ -1133,4 +1133,44 @@ public partial class EthRpcModuleTests
             "required balance exceeds 256 bits")
         { TestName = "Blob: blob base fee overflow reports 256-bit limit" };
     }
+
+    // EIP-1474: QUANTITY fields in BlockOverrides must not have leading zero digits.
+    [TestCase("""{"number":"0x0b"}""", TestName = "leading zero in number")]
+    [TestCase("""{"time":"0x0b"}""", TestName = "leading zero in time")]
+    [TestCase("""{"gasLimit":"0x0b"}""", TestName = "leading zero in gasLimit")]
+    [TestCase("""{"baseFeePerGas":"0x0b"}""", TestName = "leading zero in baseFeePerGas")]
+    [TestCase("""{"blobBaseFee":"0x0b"}""", TestName = "leading zero in blobBaseFee")]
+    public async Task Eth_call_block_override_leading_zero_quantity_is_rejected(string blockOverrideJson)
+    {
+        using Context ctx = await Context.Create();
+        object transaction = JsonSerializer.Deserialize<object>("""{"to":"0xc200000000000000000000000000000000000000"}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+
+        JToken parsed = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("leading zero"));
+        }
+    }
+
+    [TestCase("""{"number":"0x0"}""", TestName = "zero is valid in number")]
+    [TestCase("""{"number":"0xb"}""", TestName = "no leading zero in number")]
+    [TestCase("""{"time":"0xb"}""", TestName = "no leading zero in time")]
+    [TestCase("""{"gasLimit":"0xb"}""", TestName = "no leading zero in gasLimit")]
+    [TestCase("""{"baseFeePerGas":"0xb"}""", TestName = "no leading zero in baseFeePerGas")]
+    [TestCase("""{"blobBaseFee":"0xb"}""", TestName = "no leading zero in blobBaseFee")]
+    public async Task Eth_call_block_override_valid_quantity_is_accepted(string blockOverrideJson)
+    {
+        using Context ctx = await Context.Create();
+        object transaction = JsonSerializer.Deserialize<object>("""{"to":"0xc200000000000000000000000000000000000000"}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null);
+    }
+
 }
