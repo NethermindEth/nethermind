@@ -133,11 +133,12 @@ public class VmState<TGasPolicy> : IDisposable
         _env = env;
         _snapshot = snapshot;
         _accessTracker = stateForAccessLists;
-        // This VmState is pooled and reused across transactions. Its EVM memory buffer lives on the
-        // per-tx scratch arena (reclaimed at the per-tx reset), so any buffer reference left over
-        // from a previous transaction is now dangling. Reset it here so the first memory growth
-        // allocates a fresh buffer instead of reading the reclaimed one in the resize path.
+#if ZK_EVM
+        // Guest only: the EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a
+        // handle left from a prior transaction dangles — reset it so the next growth allocates fresh.
+        // Mainline doesn't need this: Dispose() clears _memory before the VmState returns to the pool.
         _memory = default;
+#endif
         if (executionType.IsAnyCreate())
         {
             _accessTracker.WasCreated(env.ExecutingAccount);
