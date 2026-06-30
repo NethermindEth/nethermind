@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Evm.Test.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
