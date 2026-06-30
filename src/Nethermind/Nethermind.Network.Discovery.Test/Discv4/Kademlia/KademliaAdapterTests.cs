@@ -55,12 +55,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private IMessageSerializationService _receiverSerializationManager;
         private Node _receiver;
 
-        private Task _bondPongProcessing = Task.CompletedTask;
-
         private void ConfigureBondCallback() =>
             _msgSender
-                .When(x => x.SendMsg(Arg.Any<PingMsg>()))
-                .Do(ci =>
+                .SendMsg(Arg.Any<PingMsg>())
+                .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
                     using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
@@ -69,15 +67,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                         msg.FarPublicKey!,
                         _timestamper.UnixTime.SecondsLong + 1,
                         sent.Mdc!.Value);
-                    pong.FarAddress = _receiver.Address;
-                    _bondPongProcessing = Task.Run(() => _adapter.OnIncomingMsg(pong));
+                    pong.FarAddress = sent.FarAddress;
+                    return _adapter.OnIncomingMsg(pong);
                 });
 
         private async Task BondReceiver(CancellationToken token)
         {
             ConfigureBondCallback();
             await _adapter.Ping(_receiver, token);
-            await _bondPongProcessing;
             _msgSender.ClearReceivedCalls();
             _nodeHealthTracker.ClearReceivedCalls();
         }
@@ -190,8 +187,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 enrSequence: responseSequence);
 
             _msgSender
-                .When(x => x.SendMsg(Arg.Any<PingMsg>()))
-                .Do(ci =>
+                .SendMsg(Arg.Any<PingMsg>())
+                .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
                     using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
@@ -201,19 +198,19 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                         _timestamper.UnixTime.SecondsLong + 1,
                         sent.Mdc!.Value,
                         advertisedSequence);
-                    pong.FarAddress = _receiver.Address;
-                    Task.Run(() => _adapter.OnIncomingMsg(pong));
+                    pong.FarAddress = sent.FarAddress;
+                    return _adapter.OnIncomingMsg(pong);
                 });
 
             _msgSender
-                .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
-                .Do(ci =>
+                .SendMsg(Arg.Any<EnrRequestMsg>())
+                .Returns(ci =>
                 {
                     EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
                     ValueHash256 requestHash = TestItem.KeccakA.ValueHash256;
                     sent.Hash = requestHash;
                     EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(_receiver.Address, remoteRecord, new Hash256(requestHash)));
-                    Task.Run(() => _adapter.OnIncomingMsg(response));
+                    return _adapter.OnIncomingMsg(response);
                 });
 
             return remoteRecord;
