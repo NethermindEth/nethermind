@@ -27,13 +27,8 @@ namespace Nethermind.Avalanche.Blocks;
 /// to <c>null</c>. Coreth always writes <c>MixDigest</c> and <c>Nonce</c> (it has no AuRa-style alternative), so
 /// those are unconditional here. The 16-field shape (genesis / Apricot Phase 2) carries only <c>ExtDataHash</c>;
 /// AP3 adds <c>BaseFee</c>; AP4 adds <c>ExtDataGasUsed</c> + <c>BlockGasCost</c>; Cancun-era blocks add the
-/// blob/beacon tail.
-/// <para>
-/// NOTE: current Coreth master appends two further <c>rlp:"optional"</c> Granite-era fields after
-/// <c>ParentBeaconRoot</c> — <c>TimeMilliseconds</c> (<c>*uint64</c>) and <c>MinDelayExcess</c>. They are not
-/// implemented here (this codec targets the pre-Granite shape up to and including <c>ParentBeaconRoot</c>). To
-/// support Granite-era headers, add the two fields to the cascade after index 5, preserving order.
-/// </para>
+/// blob/beacon tail; Granite (ACP-226) appends <c>TimeMilliseconds</c> (<c>*uint64</c>) and <c>MinDelayExcess</c>
+/// (an <c>acp226.DelayExcess</c>, wire-encoded as a <c>*uint64</c>) as the seventh and eighth optionals.
 /// </remarks>
 public sealed class AvalancheHeaderDecoder
 {
@@ -41,7 +36,7 @@ public sealed class AvalancheHeaderDecoder
     public const int NonceLength = HeaderDecoder.NonceLength;
 
     /// <summary>Number of trailing <c>rlp:"optional"</c> fields after the always-present prefix.</summary>
-    private const int OptionalCount = 6;
+    private const int OptionalCount = 8;
 
     public static AvalancheHeaderDecoder Instance { get; } = new();
 
@@ -108,6 +103,8 @@ public sealed class AvalancheHeaderDecoder
         if (reader.Position != headerCheck) header.BlobGasUsed = reader.DecodeULong();
         if (reader.Position != headerCheck) header.ExcessBlobGas = reader.DecodeULong();
         if (reader.Position != headerCheck) header.ParentBeaconBlockRoot = reader.DecodeKeccak();
+        if (reader.Position != headerCheck) header.TimeMilliseconds = reader.DecodeULong();
+        if (reader.Position != headerCheck) header.MinDelayExcess = reader.DecodeULong();
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
@@ -169,6 +166,8 @@ public sealed class AvalancheHeaderDecoder
         if (required[3]) writer.Encode(header.BlobGasUsed.GetValueOrDefault());
         if (required[4]) writer.Encode(header.ExcessBlobGas.GetValueOrDefault());
         if (required[5]) writer.Encode(header.ParentBeaconBlockRoot);
+        if (required[6]) writer.Encode(header.TimeMilliseconds.GetValueOrDefault());
+        if (required[7]) writer.Encode(header.MinDelayExcess.GetValueOrDefault());
     }
 
     /// <summary>The total encoded length of <paramref name="header"/>, including the list header.</summary>
@@ -213,14 +212,16 @@ public sealed class AvalancheHeaderDecoder
         if (required[3]) contentLength += Rlp.LengthOf(header.BlobGasUsed.GetValueOrDefault());
         if (required[4]) contentLength += Rlp.LengthOf(header.ExcessBlobGas.GetValueOrDefault());
         if (required[5]) contentLength += Rlp.LengthOf(header.ParentBeaconBlockRoot);
+        if (required[6]) contentLength += Rlp.LengthOf(header.TimeMilliseconds.GetValueOrDefault());
+        if (required[7]) contentLength += Rlp.LengthOf(header.MinDelayExcess.GetValueOrDefault());
 
         return contentLength;
     }
 
     /// <summary>
-    /// Fills <paramref name="required"/> with the Go <c>rlp:"optional"</c> presence flags for the six trailing
+    /// Fills <paramref name="required"/> with the Go <c>rlp:"optional"</c> presence flags for the eight trailing
     /// optionals, in field order <c>[BaseFee, ExtDataGasUsed, BlockGasCost, BlobGasUsed, ExcessBlobGas,
-    /// ParentBeaconRoot]</c>.
+    /// ParentBeaconRoot, TimeMilliseconds, MinDelayExcess]</c>.
     /// </summary>
     /// <remarks>
     /// A trailing optional is serialized only when it — or any later optional — carries a value. The presence of
@@ -236,6 +237,8 @@ public sealed class AvalancheHeaderDecoder
         required[3] = header.BlobGasUsed is not null;
         required[4] = header.ExcessBlobGas is not null;
         required[5] = header.ParentBeaconBlockRoot is not null;
+        required[6] = header.TimeMilliseconds is not null;
+        required[7] = header.MinDelayExcess is not null;
 
         for (int i = OptionalCount - 2; i >= 0; i--)
         {

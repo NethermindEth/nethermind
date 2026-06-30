@@ -63,4 +63,17 @@ public class AvalancheBlockHeader(
     /// <c>null</c> for pre-AP4 headers where the field is absent from the RLP.
     /// </summary>
     public UInt256? BlockGasCost { get; set; }
+
+    /// <summary>
+    /// The Coreth <c>TimeMilliseconds</c>: the block timestamp in milliseconds. Introduced in Granite
+    /// (ACP-226); <c>null</c> for pre-Granite headers where the field is absent from the RLP.
+    /// </summary>
+    public ulong? TimeMilliseconds { get; set; }
+
+    /// <summary>
+    /// The Coreth <c>MinDelayExcess</c> (an <c>acp226.DelayExcess</c>): the minimum block-delay excess used by
+    /// ACP-226 delay verification. Introduced in Granite; <c>null</c> for pre-Granite headers where the field is
+    /// absent from the RLP.
+    /// </summary>
+    public ulong? MinDelayExcess { get; set; }
 }

@@ -45,7 +45,10 @@ public class AvalancheHeaderDecoderTests
         ApricotPhase4,
 
         /// <summary>Cancun-era: + BlobGasUsed + ExcessBlobGas + ParentBeaconRoot = 22 items.</summary>
-        Cancun
+        Cancun,
+
+        /// <summary>Granite (ACP-226): + TimeMilliseconds + MinDelayExcess = 24 items.</summary>
+        Granite
     }
 
     private static AvalancheBlockHeader BuildHeader(Shape shape)
@@ -88,6 +91,12 @@ public class AvalancheHeaderDecoderTests
             header.ParentBeaconBlockRoot = BeaconRoot;
         }
 
+        if (shape >= Shape.Granite)
+        {
+            header.TimeMilliseconds = 1_700_000_000_123;
+            header.MinDelayExcess = 5_000;
+        }
+
         return header;
     }
 
@@ -95,6 +104,7 @@ public class AvalancheHeaderDecoderTests
     [TestCase(Shape.ApricotPhase3, 17)]
     [TestCase(Shape.ApricotPhase4, 19)]
     [TestCase(Shape.Cancun, 22)]
+    [TestCase(Shape.Granite, 24)]
     public void Header_rlp_list_length_matches_shape(Shape shape, int expectedItemCount)
     {
         AvalancheBlockHeader header = BuildHeader(shape);
@@ -111,6 +121,7 @@ public class AvalancheHeaderDecoderTests
     [TestCase(Shape.ApricotPhase3)]
     [TestCase(Shape.ApricotPhase4)]
     [TestCase(Shape.Cancun)]
+    [TestCase(Shape.Granite)]
     public void Header_round_trips(Shape shape)
     {
         AvalancheBlockHeader original = BuildHeader(shape);
@@ -139,12 +150,15 @@ public class AvalancheHeaderDecoderTests
         Assert.That(decoded.BlobGasUsed, Is.EqualTo(original.BlobGasUsed));
         Assert.That(decoded.ExcessBlobGas, Is.EqualTo(original.ExcessBlobGas));
         Assert.That(decoded.ParentBeaconBlockRoot, Is.EqualTo(original.ParentBeaconBlockRoot));
+        Assert.That(decoded.TimeMilliseconds, Is.EqualTo(original.TimeMilliseconds));
+        Assert.That(decoded.MinDelayExcess, Is.EqualTo(original.MinDelayExcess));
     }
 
     [TestCase(Shape.Genesis)]
     [TestCase(Shape.ApricotPhase3)]
     [TestCase(Shape.ApricotPhase4)]
     [TestCase(Shape.Cancun)]
+    [TestCase(Shape.Granite)]
     public void Optional_tail_fields_default_to_null_when_absent(Shape shape)
     {
         AvalancheBlockHeader decoded = AvalancheHeaderDecoder.Instance.Decode(
@@ -162,6 +176,11 @@ public class AvalancheHeaderDecoderTests
             Assert.That(decoded.BlobGasUsed, Is.Null);
             Assert.That(decoded.ExcessBlobGas, Is.Null);
             Assert.That(decoded.ParentBeaconBlockRoot, Is.Null);
+        }
+        if (shape < Shape.Granite)
+        {
+            Assert.That(decoded.TimeMilliseconds, Is.Null);
+            Assert.That(decoded.MinDelayExcess, Is.Null);
         }
     }
 
