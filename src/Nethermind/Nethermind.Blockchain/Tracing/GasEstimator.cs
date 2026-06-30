@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -28,7 +29,7 @@ public class GasEstimator(
     public const string GasExceedsAllowanceMsgPrefix = "gas required exceeds allowance";
 
     /// <summary>Message emitted when the sender has insufficient balance.</summary>
-    public const string InsufficientBalance = "insufficient sender balance for transfer";
+    public const string InsufficientBalance = TxErrorMessages.InsufficientFundsForTransfer;
 
     /// <summary>Message emitted when the sender cannot cover gas * price + value.</summary>
     public const string InsufficientFundsForGas = "insufficient funds for gas * price + value";

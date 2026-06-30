@@ -57,6 +57,16 @@ public static partial class EvmInstructions
         // Deduct the gas cost for the specific math operation.
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
+        return Math2ParamCore<TOpMath, TTracingInst>(ref stack);
+    }
+
+    /// <summary>Gas-free body of <see cref="InstructionMath2Param{TGasPolicy, TOpMath, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType Math2ParamCore<TOpMath, TTracingInst>(ref EvmStack stack)
+        where TOpMath : struct, IOpMath2Param
+        where TTracingInst : struct, IFlag
+    {
         // Pop a and peek the new top slot for in-place write; skips the push's overflow check
         // since the net stack delta (-1) cannot overflow a previously non-overflowing stack.
         ref byte topRef = ref stack.Pop1Peek32Bytes(out UInt256 a, out bool ok);
