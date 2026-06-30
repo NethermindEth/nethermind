@@ -278,9 +278,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             ReturnParameters(parameters, returnParametersToPool);
             if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
-            string message = e is IExceptionWithSafePublicMessage ? e.Message
-                : e.InnerException is IExceptionWithSafePublicMessage ? e.InnerException.Message
-                : "Invalid params";
+            string message = GetSafePublicMessage(e) ?? "Invalid params";
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
     }
@@ -870,6 +868,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMissingParameterBytes() =>
             throw new JsonException("Missing JSON-RPC parameter bytes.");
+    }
+
+    private static string? GetSafePublicMessage(Exception e)
+    {
+        for (Exception? ex = e; ex is not null; ex = ex.InnerException)
+        {
+            if (ex is IExceptionWithSafePublicMessage)
+                return ex.Message;
+        }
+        return null;
     }
 
     private static void FillDefaultParameters(ExpectedParameter[] expected, object?[] actual, int start, int count)
