@@ -156,10 +156,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             }
         });
 
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            _logger.LogDebug($"Online bootnodes: {onlineBootNodes}");
-        }
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Online bootnodes: {onlineBootNodes}");
 
         TKey currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
         await LookupNodesClosest(currentNodeIdAsKey, token);
@@ -180,11 +177,8 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
 
         PruneLastBucketRefreshTicks(activeBucketPrefixes);
 
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            _logger.LogDebug($"Bootstrap completed. Took {sw.Elapsed}.");
-            _routingTable.LogDebugInfo();
-        }
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Bootstrap completed. Took {sw.Elapsed}.");
+        if (_logger.IsEnabled(LogLevel.Debug)) _routingTable.LogDebugInfo();
     }
 
     private bool ShouldRefreshBucket(TKadKey prefix, int bucketCount)

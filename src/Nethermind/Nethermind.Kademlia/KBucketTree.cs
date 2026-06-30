@@ -52,10 +52,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _root = new TreeNode(config.KSize, distance.Zero);
         _logger = loggerFactory.CreateLogger<KBucketTree<TNode, TKadKey>>();
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            _logger.LogDebug($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
-        }
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
     }
 
     public BucketAddResult TryAddOrRefresh(in TKadKey nodeHash, TNode node, out TNode? toRefresh)
@@ -64,10 +61,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         bool fireAdded;
         lock (_lock)
         {
-            if (_logger.IsEnabled(LogLevel.Debug))
-            {
-                _logger.LogDebug($"Adding node {node} with XOR distance {_distance.CalculateLogDistance(_currentNodeHash, nodeHash)}");
-            }
+            if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Adding node {node} with XOR distance {_distance.CalculateLogDistance(_currentNodeHash, nodeHash)}");
 
             TreeNode current = _root;
             // As in, what would be the depth of the node assuming all branch on the traversal is populated.

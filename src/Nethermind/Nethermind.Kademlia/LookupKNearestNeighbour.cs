@@ -138,10 +138,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         CancellationToken token
     )
     {
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            _logger.LogDebug($"Initiate lookup for hash {targetHash}");
-        }
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Initiate lookup for hash {targetHash}");
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
@@ -284,10 +281,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 {
                     if (_logger.IsEnabled(LogLevel.Warning)) _logger.LogWarning($"Find neighbour op failed: {e}");
                 }
-                else if (_logger.IsEnabled(LogLevel.Debug))
-                {
-                    _logger.LogDebug($"Find neighbour op failed: {e.Message}");
-                }
+                else if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Find neighbour op failed: {e.Message}");
                 return null;
             }
         }
