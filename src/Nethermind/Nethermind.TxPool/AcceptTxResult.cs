@@ -34,7 +34,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Fee paid by this transaction is not enough to be accepted in the mempool.
         /// </summary>
-        public static readonly AcceptTxResult FeeTooLowToCompete = new(4, TxPoolErrorMessages.ReplacementTransactionUnderpriced);
+        public static readonly AcceptTxResult FeeTooLowToCompete = new(4, TxPoolErrorMessages.TransactionUnderpriced);
 
         /// <summary>
         /// Transaction gas limit exceeds the block gas limit.
