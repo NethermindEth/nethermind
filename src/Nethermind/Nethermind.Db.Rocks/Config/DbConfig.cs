@@ -410,12 +410,12 @@ public class DbConfig : IDbConfig
         "";
     public string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
-    // History columns (archival queries). Conservative defaults reusing options already proven on the other flat
-    // columns; revisit after measuring the from-genesis archive. ChangeSets hold empty per-block markers; History
-    // holds the block-versioned values read by point-seek, so keep the last-level bloom filter.
+    // History columns (archival queries). As-of-block reads are iterator floor-seeks, which don't consult the point
+    // bloom filter, so optimize_filters_for_hits drops the last-level bloom — its memory cost is linear in key count
+    // and prohibitive on a full archive. A large write buffer cuts flushes during the from-genesis replay.
     const string FlatHistoryCommonOptions =
-        "optimize_filters_for_hits=false;" +
-        "write_buffer_size=32000000;" +
+        "optimize_filters_for_hits=true;" +
+        "write_buffer_size=256000000;" +
         "max_write_buffer_number=4;" +
         "";
 
