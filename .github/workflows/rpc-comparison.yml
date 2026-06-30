@@ -49,7 +49,7 @@ on:
         required: false
       ignore_error_messages:
         type: boolean
-        description: "Compare only error codes, ignoring error messages (rpc_int -E). Avoids failures on error.message text differences vs Geth."
+        description: "When comparing against a reference node, compare only error codes and ignore error messages (rpc_int -E) — avoids failures on error.message wording differences. Has no effect in regression mode (no reference), where code AND message are always checked against the fixtures."
         default: true
         required: false
       allowed_ips:
@@ -83,6 +83,9 @@ jobs:
           NODE_TYPE: ${{ inputs.node_type }}
           NETHERMIND_IP: ${{ inputs.nethermind_ip }}
           CONVERT_TO_PAPRIKA: ${{ inputs.convert_to_paprika }}
+          SPAWN_GETH: ${{ inputs.spawn_geth }}
+          REFERENCE_REF: ${{ inputs.reference_ref }}
+          REFERENCE_URL: ${{ inputs.reference_url }}
         run: |
           set -euo pipefail
           # Map node_type to the rpc_int flag and decide whether to spawn a node.
@@ -116,6 +119,17 @@ jobs:
 
           if [ "$CONVERT_TO_PAPRIKA" == "true" ] && [ "$NODE_TYPE" != "pruned" ]; then
             echo "Error: 'convert_to_paprika' only applies when node_type is 'pruned' (a node is spawned)."
+            exit 1
+          fi
+
+          # At most one reference source: spawned Geth, spawned reference Nethermind, or a provided URL.
+          # (Leaving all three empty runs rpc_int in regression mode against the committed fixtures.)
+          reference_sources=0
+          [ "$SPAWN_GETH" == "true" ] && reference_sources=$((reference_sources + 1))
+          [ -n "$REFERENCE_REF" ] && reference_sources=$((reference_sources + 1))
+          [ -n "$REFERENCE_URL" ] && reference_sources=$((reference_sources + 1))
+          if [ "$reference_sources" -gt 1 ]; then
+            echo "Error: set at most one reference source — 'spawn_geth', 'reference_ref', or 'reference_url'."
             exit 1
           fi
 
@@ -612,9 +626,11 @@ jobs:
           exclude=()
           [ -n "$EXCLUDE_APIS" ] && exclude=(-x "$EXCLUDE_APIS")
 
-          # Compare error codes only (ignore error.message) when requested.
+          # Ignore error-message text only when comparing against a live reference node.
+          # Regression mode (no reference, comparing against the committed fixtures) always
+          # checks code AND message, since we authored both — so -E never applies there.
           err_opt=()
-          [ "$IGNORE_ERROR_MESSAGES" == "true" ] && err_opt=(-E)
+          [ -n "$REFERENCE_URL" ] && [ "$IGNORE_ERROR_MESSAGES" == "true" ] && err_opt=(-E)
 
           set +e
           ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
