@@ -46,6 +46,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
+    [ConfigItem(Description = "Whether the prewarmer groups transactions by sender and warms a sender's transactions sequentially in a shared scope. Disabling falls back to per-transaction warming.", DefaultValue = "True", HiddenFromDocs = true)]
+    bool PreWarmSenderGrouping { get; set; }
+
+    [ConfigItem(Description = "Whether the prewarmer skips speculatively executing transactions the main thread has already started, avoiding redundant co-execution.", DefaultValue = "False", HiddenFromDocs = true)]
+    bool PreWarmSkipStartedTxs { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

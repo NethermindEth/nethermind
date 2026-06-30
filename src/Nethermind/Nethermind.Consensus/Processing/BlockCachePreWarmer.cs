@@ -35,6 +35,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
 
+    // Isolation flags (see IBlocksConfig). Default to current behavior (group by sender, no skip).
+    private readonly bool _senderGrouping = true;
+    private readonly bool _skipStartedTxs;
+
     // Tracks the block currently being prewarmed so the main processing thread (via PrewarmerTxAdapter)
     // can report its transaction progress, letting the prewarmer skip already-started transactions.
     private BlockState? _currentBlockState;
@@ -52,7 +56,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _senderGrouping = blocksConfig.PreWarmSenderGrouping;
+        _skipStartedTxs = blocksConfig.PreWarmSkipStartedTxs;
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -209,6 +218,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Block block = blockState.Block;
             if (block.Transactions.Length == 0) return;
 
+            if (!_senderGrouping)
+            {
+                WarmupTransactionsPerTx(blockState, parallelOptions);
+                return;
+            }
+
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
             Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
@@ -268,6 +283,62 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
+    /// <summary>
+    /// Per-transaction warming path (pre-#10330 behavior): one parallel work item per transaction, each
+    /// warmed in a per-thread scope built from the parent. Used when sender grouping is disabled
+    /// (<see cref="IBlocksConfig.PreWarmSenderGrouping"/>) — for isolating the effect of sender grouping.
+    /// </summary>
+    private void WarmupTransactionsPerTx(BlockState blockState, ParallelOptions parallelOptions)
+    {
+        Block block = blockState.Block;
+        ParallelUnbalancedWork.For(
+            0,
+            block.Transactions.Length,
+            parallelOptions,
+            new WarmingState<BlockState>(_envPool, blockState, blockState.Parent).InitThreadState,
+            static (i, state) =>
+            {
+                BlockState bs = state.Payload;
+                Transaction? tx = null;
+                try
+                {
+                    if (bs.PreWarmer._skipStartedTxs && bs.LastExecutedTransaction >= i) return state;
+
+                    tx = bs.Block.Transactions[i];
+                    Address senderAddress = tx.SenderAddress!;
+                    IReadOnlyTxProcessingScope scope = state.Scope!;
+                    IWorldState worldState = scope.WorldState;
+                    if (!worldState.AccountExists(senderAddress))
+                    {
+                        worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                    }
+
+                    // Advance the sender nonce by the count of preceding same-sender txs so warming uses the right nonce.
+                    ulong nonceDelta = 0;
+                    for (int prev = 0; prev < i; prev++)
+                    {
+                        if (senderAddress == bs.Block.Transactions[prev].SenderAddress) nonceDelta++;
+                    }
+                    if (nonceDelta != 0) worldState.IncrementNonce(senderAddress, nonceDelta, out _);
+
+                    if (bs.Spec.UseTxAccessLists) worldState.WarmUp(tx.AccessList); // eip-2930
+                    scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(bs.Block.Header, bs.Spec));
+                    scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                }
+                catch (Exception ex) when (ex is EvmException or OverflowException)
+                {
+                    // Ignore, regular tx processing exceptions
+                }
+                catch (Exception ex)
+                {
+                    bs.PreWarmer._logger.DebugError($"Error pre-warming cache {tx?.Hash}", ex);
+                }
+
+                return state;
+            },
+            WarmingState<BlockState>.FinallyAction);
+    }
+
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
@@ -298,7 +369,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             // Skip transactions the main thread has already started: re-executing them speculatively is
             // wasted work and contends with the main thread (severe for a heavy tx at a low index).
-            if (blockState.LastExecutedTransaction >= txIndex) return;
+            if (blockState.PreWarmer._skipStartedTxs && blockState.LastExecutedTransaction >= txIndex) return;
 
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
