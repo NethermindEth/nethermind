@@ -55,6 +55,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Speculative-warming gas cap. A transaction whose gas limit exceeds this is warmed via a gas-capped clone, so its trailing compute (which warms nothing and only contends with the main thread executing the same transaction) is not re-executed. Its front-loaded cold-state reads are still warmed. 0 disables the cap.", DefaultValue = "0", HiddenFromDocs = true)]
     long PreWarmAdaptiveAbortMinGas { get; set; }
 
+    [ConfigItem(Description = "Whether speculative warming observes the prewarmer cancellation token at EVM granularity, abandoning in-flight warming the instant the main thread finishes the block. Diagnostic toggle.", DefaultValue = "False", HiddenFromDocs = true)]
+    bool PreWarmCancelInflightWarming { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

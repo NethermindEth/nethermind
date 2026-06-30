@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -130,7 +131,9 @@ public class BranchProcessor(
                     }
                 }
 
+                long _diagProcStart = Stopwatch.GetTimestamp();
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                TimeSpan _diagProcTime = Stopwatch.GetElapsedTime(_diagProcStart);
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
@@ -162,7 +165,11 @@ public class BranchProcessor(
 
                 preBlockBaseBlock = processedBlock.Header;
                 // Make sure the prewarm task is finished before we reset the state
+                long _diagWaitStart = Stopwatch.GetTimestamp();
                 WaitAndClear(ref preWarmTask);
+                TimeSpan _diagWaitTime = Stopwatch.GetElapsedTime(_diagWaitStart);
+                if (_logger.IsWarn && (_diagProcTime.TotalMilliseconds + _diagWaitTime.TotalMilliseconds) > 80.0)
+                    _logger.Warn($"[DIAG] block={suggestedBlock.Number} txs={suggestedBlock.Transactions.Length} procMs={_diagProcTime.TotalMilliseconds:F1} waitMs={_diagWaitTime.TotalMilliseconds:F1}");
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();

@@ -44,6 +44,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // the main thread. 0 disables the feature.
     private readonly long _adaptiveAbortMinGas;
 
+    // When true, warm each tx through a cancellation-observing tracer so in-flight speculative warming is
+    // abandoned the instant the main thread cancels (end of block). See BlockState.WarmupTracer.
+    private readonly bool _cancelInflightWarming;
+
     // Tracks the block currently being prewarmed so the main processing thread (via PrewarmerTxAdapter)
     // can report its transaction progress, letting the prewarmer skip already-started transactions.
     private BlockState? _currentBlockState;
@@ -67,6 +71,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _senderGrouping = blocksConfig.PreWarmSenderGrouping;
         _skipStartedTxs = blocksConfig.PreWarmSkipStartedTxs;
         _adaptiveAbortMinGas = blocksConfig.PreWarmAdaptiveAbortMinGas;
+        _cancelInflightWarming = blocksConfig.PreWarmCancelInflightWarming;
     }
 
     internal BlockCachePreWarmer(
@@ -599,13 +604,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public BlockHeader Parent { get; } = parent;
         public IReleaseSpec Spec { get; } = spec;
 
-        // Cancellation-observing tracer reused for every speculatively-warmed transaction in this block.
-        // When the main thread finishes executing the block it cancels this token (BranchProcessor.CancelBackgroundWork);
-        // because IsCancelable is true the EVM polls IsCancelled (every 1024 opcodes per frame) and abandons any
-        // in-flight warming. Without it, warming a single dominating compute-bound tx (e.g. block 22360451) keeps the
-        // ~16 prewarmer workers busy past end-of-block, starving the main thread's parallel commit/merkleization work
-        // and blocking the BranchProcessor.WaitAndClear join (~10x slowdown). Stateless w.r.t. the tx, so shared.
-        public ITxTracer WarmupTracer { get; } = new CancellationTxTracer(NullTxTracer.Instance, cancellationToken);
+        // Tracer reused for every speculatively-warmed transaction in this block. When _cancelInflightWarming is on
+        // it is a CancellationTxTracer bound to the prewarmer token: IsCancelable makes the EVM poll IsCancelled
+        // (every 1024 opcodes per frame) so warming abandons the in-flight tx the instant the main thread cancels
+        // (BranchProcessor.CancelBackgroundWork). Off (default) keeps the stock non-cancelable NullTxTracer.
+        public ITxTracer WarmupTracer { get; } = preWarmer._cancelInflightWarming
+            ? new CancellationTxTracer(NullTxTracer.Instance, cancellationToken)
+            : NullTxTracer.Instance;
 
         // Highest transaction index the main processing thread has started executing (-1 = none yet).
         // Written only by the single main thread (in order) via IncrementTransactionCounter; read by prewarmer threads.
