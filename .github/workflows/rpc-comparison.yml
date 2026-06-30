@@ -206,13 +206,14 @@ jobs:
     steps:
       - name: Prepare clean refs
         id: prepare_refs
+        env:
+          GITHUB_REF_RAW: ${{ github.ref }}
+          REFERENCE_REF: ${{ inputs.reference_ref }}
         run: |
-          REF_NAME=${{ github.ref }}
-          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          CLEAN_REF=$(echo "${GITHUB_REF_RAW/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_MAIN_REF=$CLEAN_REF" >> $GITHUB_ENV
           echo "CLEAN_GETH_REF=geth-$CLEAN_REF" >> $GITHUB_ENV
-          REFERENCE_REF_NAME="${{ inputs.reference_ref }}"
-          CLEAN_REFERENCE_REF=$(echo "${REFERENCE_REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          CLEAN_REFERENCE_REF=$(echo "${REFERENCE_REF/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_REFERENCE_REF=$CLEAN_REFERENCE_REF" >> $GITHUB_ENV
 
       - name: Download RPC Artifact for current branch
