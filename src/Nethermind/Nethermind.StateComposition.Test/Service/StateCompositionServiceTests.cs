@@ -23,6 +23,7 @@ using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Snapshots;
 using Nethermind.StateComposition.Test.Helpers;
 using Nethermind.StateComposition.Visitors;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -102,6 +103,86 @@ public class StateCompositionServiceTests
             Assert.That(result.IsSuccess, Is.True);
             Assert.That(harness.StateHolder.HasScanBaseline, Is.True);
             Assert.That(harness.StateHolder.LastScanMetadata.IsComplete, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task AnalyzeAsync_PartialScan_DoesNotPublishBaseline()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+
+        stateReader.WhenForAnyArgs(x =>
+            x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            .Do(call =>
+            {
+                ITreeVisitor<StateCompositionContext> visitor =
+                    call.Arg<ITreeVisitor<StateCompositionContext>>();
+                visitor.VisitMissingNode(
+                    new StateCompositionContext(TreePath.Empty, 0, false, null),
+                    new ValueHash256(new byte[32]));
+            });
+
+        await using Harness harness = CreateHarness(stateReader);
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        Result<StateCompositionStats> result = await harness.Service.AnalyzeAsync(header, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.True, "scan still returns its (partial) stats to the caller");
+            Assert.That(harness.StateHolder.HasScanBaseline, Is.False,
+                "partial scan must not seed the baseline");
+            Assert.That(harness.StateHolder.LastScanMetadata.IsComplete, Is.False,
+                "scan metadata must not record completion");
+        }
+    }
+
+    [Test]
+    public async Task AnalyzeAsync_PartialScan_PreservesPriorBaseline()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+
+        int callCount = 0;
+        stateReader.WhenForAnyArgs(x =>
+            x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            .Do(call =>
+            {
+                if (Interlocked.Increment(ref callCount) > 1)
+                {
+                    ITreeVisitor<StateCompositionContext> visitor =
+                        call.Arg<ITreeVisitor<StateCompositionContext>>();
+                    visitor.VisitMissingNode(
+                        new StateCompositionContext(TreePath.Empty, 0, false, null),
+                        new ValueHash256(new byte[32]));
+                }
+            });
+
+        await using Harness harness = CreateHarness(stateReader);
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        Result<StateCompositionStats> firstScan = await harness.Service.AnalyzeAsync(header, CancellationToken.None);
+        Assert.That(firstScan.IsSuccess, Is.True);
+        Assert.That(harness.StateHolder.HasScanBaseline, Is.True,
+            "complete scan must seed the baseline");
+        Hash256 priorRoot = harness.StateHolder.LastProcessedStateRoot;
+        ulong priorBlock = harness.StateHolder.IncrementalBlock;
+        TimeSpan priorDuration = harness.StateHolder.LastScanMetadata.Duration;
+
+        Result<StateCompositionStats> partialScan = await harness.Service.AnalyzeAsync(header, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(partialScan.IsSuccess, Is.True, "scan still returns its (partial) stats");
+            Assert.That(harness.StateHolder.HasScanBaseline, Is.True,
+                "partial scan must NOT clear the prior complete baseline");
+            Assert.That(harness.StateHolder.LastScanMetadata.IsComplete, Is.True,
+                "prior complete scan's metadata must be retained");
+            Assert.That(harness.StateHolder.LastProcessedStateRoot, Is.EqualTo(priorRoot),
+                "prior baseline state root must be untouched");
+            Assert.That(harness.StateHolder.IncrementalBlock, Is.EqualTo(priorBlock),
+                "prior baseline block must be untouched");
+            Assert.That(harness.StateHolder.LastScanMetadata.Duration, Is.EqualTo(priorDuration),
+                "prior baseline duration must be untouched");
         }
     }
 

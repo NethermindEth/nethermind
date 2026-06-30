@@ -15,7 +15,6 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -55,6 +54,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddModule(validationModules)
+            .AddSingleton<IUnresolvedBlockhashPolicy, NullUnresolvedBlockhashPolicy>()
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
@@ -92,7 +92,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             tmpBalStore,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
-            NullBloomStorage.Instance,
             new SyncConfig(),
             new BlockTreeLogHider(logManager));
     }

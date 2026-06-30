@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
@@ -38,10 +37,10 @@ internal class PenaltyTests
         await chain.AddBlocks(spec.EpochLength * 3);
 
         spec = chain.SpecProvider.GetXdcSpec((XdcBlockHeader)chain.BlockTree.Head!.Header);
-        long epoch = spec.EpochLength;
-        long targetHeight = spec.SwitchBlock + epoch * 3;
+        ulong epoch = spec.EpochLength;
+        ulong targetHeight = spec.SwitchBlock + epoch * 3;
 
-        XdcBlockHeader firstEpochHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch + 1)!;
+        XdcBlockHeader firstEpochHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch + 1UL)!;
         EpochSwitchInfo? epochInfo = chain.EpochSwitchManager.GetEpochSwitchInfo(firstEpochHeader);
         Assert.That(epochInfo, Is.Not.Null);
         Address[] masternodes = epochInfo.Masternodes;
@@ -53,6 +52,7 @@ internal class PenaltyTests
 
         XdcBlockHeader signedHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(targetHeader.Number - spec.MergeSignRange)!;
         Transaction tx = BuildSigningTx(spec, signedHeader.Number, signedHeader.Hash!, penaltyHistorySigner);
+        tx.SenderAddress = null; // to test sender recovery
         signingTxCache.SetSigningTransactions(signedHeader.Hash!, [tx]);
 
         penalties = penaltyHandler.HandlePenalties(targetHeader.Number, targetHeader.ParentHash!, masternodes);
@@ -70,10 +70,10 @@ internal class PenaltyTests
         await chain.AddBlocks(spec.EpochLength * 3);
 
         spec = chain.SpecProvider.GetXdcSpec((XdcBlockHeader)chain.BlockTree.Head!.Header);
-        long epoch = spec.EpochLength;
-        long targetHeight = spec.SwitchBlock + epoch * 3 - spec.MergeSignRange;
+        ulong epoch = spec.EpochLength;
+        ulong targetHeight = spec.SwitchBlock + epoch * 3 - spec.MergeSignRange;
 
-        XdcBlockHeader firstEpochHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch + 1)!;
+        XdcBlockHeader firstEpochHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch + 1UL)!;
         Address[] masternodes = chain.EpochSwitchManager.GetEpochSwitchInfo(firstEpochHeader)!.Masternodes;
 
         XdcBlockHeader targetHeader = (XdcBlockHeader)chain.BlockTree.FindHeader(targetHeight)!;
@@ -92,10 +92,10 @@ internal class PenaltyTests
         await chain.AddBlocks(spec.EpochLength * 3);
 
         spec = chain.SpecProvider.GetXdcSpec((XdcBlockHeader)chain.BlockTree.Head!.Header);
-        long epoch = spec.EpochLength;
+        ulong epoch = spec.EpochLength;
 
-        XdcBlockHeader headerBeforeThirdEpochSwitch = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch * 3 - 1)!;
-        XdcBlockHeader headerAfterSecondEpochSwitch = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch * 2 + 1)!;
+        XdcBlockHeader headerBeforeThirdEpochSwitch = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch * 3 - 1UL)!;
+        XdcBlockHeader headerAfterSecondEpochSwitch = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch * 2 + 1UL)!;
 
         Assert.That(penaltyHandler.GetPenalties(headerBeforeThirdEpochSwitch), Has.Length.EqualTo(1));
         Assert.That(penaltyHandler.GetPenalties(headerAfterSecondEpochSwitch), Has.Length.EqualTo(1));
@@ -105,11 +105,11 @@ internal class PenaltyTests
     public void TestHookPenaltyParolee()
     {
         MockedPenaltyContext context = CreateMockedPenaltyContext(
-            targetEpoch: EpochLength * 3L,
+            targetEpoch: EpochLength * 3UL,
             limitPenaltyEpoch: 2,
             shouldPenalizeAtSwitch: _ => true);
-        long secondEpoch = EpochLength * 2L;
-        long thirdEpoch = EpochLength * 3L;
+        ulong secondEpoch = EpochLength * 2UL;
+        ulong thirdEpoch = EpochLength * 3UL;
 
         // Parole logic is not yet active, only the "not mining enough" penalty applies
         Address[] penaltiesAtSecondEpoch = context.PenaltyHandler.HandlePenalties(secondEpoch, context.BlockHeaders[(int)(secondEpoch - 1)].Hash!, context.MasternodesAddress);
@@ -139,10 +139,10 @@ internal class PenaltyTests
     public void TestHookPenaltyParoleeCustomized()
     {
         MockedPenaltyContext context = CreateMockedPenaltyContext(
-            targetEpoch: EpochLength * 7L,
+            targetEpoch: EpochLength * 7UL,
             limitPenaltyEpoch: 4,
-            shouldPenalizeAtSwitch: switchBlock => switchBlock != EpochLength * 4L);
-        long targetEpoch = EpochLength * 7L;
+            shouldPenalizeAtSwitch: switchBlock => switchBlock != EpochLength * 4UL);
+        ulong targetEpoch = EpochLength * 7UL;
 
         CacheSigningTxAt(context, targetEpoch - MergeSignRange);
         CacheSigningTxAt(context, targetEpoch - MergeSignRange * 2, nonce: 1);
@@ -170,10 +170,10 @@ internal class PenaltyTests
     private static PrivateKey GetPenaltyHistorySigner(XdcTestBlockchain chain, Address penaltyAddress) =>
         chain.MasterNodeCandidates.First(k => k.Address == penaltyAddress);
 
-    private static Transaction BuildSigningTx(IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0) =>
+    private static Transaction BuildSigningTx(IXdcReleaseSpec spec, ulong blockNumber, Hash256 blockHash, PrivateKey signer, ulong nonce = 0) =>
         Build.A.Transaction
             .WithChainId(0)
-            .WithNonce((UInt256)nonce)
+            .WithNonce(nonce)
             .WithGasLimit(200000)
             .WithXdcSigningData(blockNumber, blockHash)
             .ToBlockSignerContract(spec)
@@ -181,9 +181,9 @@ internal class PenaltyTests
             .TestObject;
 
     private static MockedPenaltyContext CreateMockedPenaltyContext(
-        long targetEpoch,
+        ulong targetEpoch,
         int limitPenaltyEpoch,
-        System.Func<long, bool> shouldPenalizeAtSwitch)
+        System.Func<ulong, bool> shouldPenalizeAtSwitch)
     {
         PrivateKey[] masternodes = XdcTestHelper.GeneratePrivateKeys(TestMasternodeCount);
         Address[] masternodesAddress = masternodes.Select(privateKey => privateKey.Address).ToArray();
@@ -201,7 +201,7 @@ internal class PenaltyTests
         {
             Hash256 parentHash = i == 0 ? Hash256.Zero : blockHeaders[i - 1].Hash!;
             blockHeaders[i] = Build.A.XdcBlockHeader()
-                .WithNumber(i)
+                .WithNumber((ulong)i)
                 .WithParentHash(parentHash)
                 .WithValidators(masternodesAddress)
                 .WithExtraConsensusData(new ExtraFieldsV2((ulong)i, Build.A.QuorumCertificate().TestObject))
@@ -209,25 +209,25 @@ internal class PenaltyTests
                 .TestObject;
 
             blockHeaders[i].Beneficiary = masternodes[i % (masternodes.Length - 1)].Address;
-            if (!shouldPenalizeAtSwitch(i)) blockHeaders[i].Penalties = [];
+            if (!shouldPenalizeAtSwitch((ulong)i)) blockHeaders[i].Penalties = [];
             Hash256 hash = blockHeaders[i].Hash ?? blockHeaders[i].CalculateHash().ToHash256();
             hashToHeader[hash] = blockHeaders[i];
             blocks[i] = new Block(blockHeaders[i]);
             hashToBlock[hash] = blocks[i];
         }
 
-        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong?>())
             .Returns(ci => hashToHeader[ci.ArgAt<Hash256>(0)]);
-        blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<long>())
+        blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<ulong?>())
             .Returns(ci => hashToBlock.TryGetValue(ci.ArgAt<Hash256>(0), out Block? block) ? block : null);
         blockTree.Head.Returns(blocks.Last());
 
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcSpec.EpochLength.Returns(EpochLength);
-        xdcSpec.SwitchBlock.Returns(0);
-        xdcSpec.MergeSignRange.Returns(MergeSignRange);
+        xdcSpec.EpochLength.Returns((ulong)EpochLength);
+        xdcSpec.SwitchBlock.Returns(0UL);
+        xdcSpec.MergeSignRange.Returns((ulong)MergeSignRange);
         xdcSpec.IsTipUpgradePenaltyEnabled.Returns(true);
-        xdcSpec.LimitPenaltyEpoch.Returns(limitPenaltyEpoch);
+        xdcSpec.LimitPenaltyEpoch.Returns((ulong)limitPenaltyEpoch);
         xdcSpec.MinimumSigningTx.Returns(2);
         xdcSpec.MinimumMinerBlockPerEpoch.Returns(1);
 
@@ -240,18 +240,18 @@ internal class PenaltyTests
         epochSwitchManager.GetEpochSwitchInfo(Arg.Any<Hash256>()).Returns(ci =>
         {
             XdcBlockHeader header = hashToHeader[(Hash256)ci.Args()[0]];
-            long switchEpoch = header.Number / EpochLength * EpochLength;
+            ulong switchEpoch = header.Number / EpochLength * EpochLength;
             return new EpochSwitchInfo(
                 masternodesAddress,
                 [],
                 blockHeaders[(int)switchEpoch].PenaltiesAddress?.ToArray() ?? [],
-                new BlockRoundInfo(blockHeaders[(int)switchEpoch].Hash!, (ulong)switchEpoch, switchEpoch));
+                new BlockRoundInfo(blockHeaders[(int)switchEpoch].Hash!, switchEpoch, switchEpoch));
         });
         epochSwitchManager.GetBlockByEpochNumber(Arg.Any<ulong>()).Returns(ci =>
         {
-            long blockNumber = EpochLength * (long)(ulong)ci.Args()[0];
+            ulong blockNumber = EpochLength * (ulong)ci.Args()[0];
             XdcBlockHeader header = blockHeaders[(int)blockNumber];
-            return new BlockRoundInfo(header.Hash!, (ulong)blockNumber, blockNumber);
+            return new BlockRoundInfo(header.Hash!, blockNumber, blockNumber);
         });
 
         ISigningTxCache signingTxCache = new SigningTxCache(blockTree, specProvider);
@@ -259,7 +259,7 @@ internal class PenaltyTests
         return new MockedPenaltyContext(blockHeaders, masternodesAddress, penaltySigner, xdcSpec, signingTxCache, penaltyHandler);
     }
 
-    private static void CacheSigningTxAt(MockedPenaltyContext context, long signedBlockNumber, long nonce = 0)
+    private static void CacheSigningTxAt(MockedPenaltyContext context, ulong signedBlockNumber, ulong nonce = 0)
     {
         XdcBlockHeader signedHeader = context.BlockHeaders[(int)signedBlockNumber];
         context.SigningTxCache.SetSigningTransactions(

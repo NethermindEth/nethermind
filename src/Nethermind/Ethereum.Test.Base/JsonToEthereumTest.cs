@@ -24,13 +24,19 @@ namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
+        private static ulong ParseULong(string? hex) =>
+            Bytes.FromHexString(hex).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+
+        private static ulong? ParseULongNullable(string? hex) =>
+            hex is null ? null : (ulong?)Bytes.FromHexString(hex).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+
         private static ForkActivation TransitionForkActivation(string transitionInfo)
         {
             const string timestampPrefix = "Time";
             const char kSuffix = 'k';
             if (!transitionInfo.StartsWith(timestampPrefix))
             {
-                return new ForkActivation(int.Parse(transitionInfo));
+                return new ForkActivation(ulong.Parse(transitionInfo));
             }
 
             transitionInfo = transitionInfo.Remove(0, timestampPrefix.Length);
@@ -55,22 +61,22 @@ namespace Ethereum.Test.Base
                 new Hash256(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
-                (ulong)Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
+                ParseULong(headerJson.Number),
+                ParseULong(headerJson.GasLimit),
+                ParseULong(headerJson.Timestamp),
                 Bytes.FromHexString(headerJson.ExtraData),
-                headerJson.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(headerJson.BlobGasUsed).ToUnsignedBigInteger(),
-                headerJson.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(headerJson.ExcessBlobGas).ToUnsignedBigInteger(),
+                ParseULongNullable(headerJson.BlobGasUsed),
+                ParseULongNullable(headerJson.ExcessBlobGas),
                 headerJson.ParentBeaconBlockRoot is null ? null : new Hash256(headerJson.ParentBeaconBlockRoot),
                 headerJson.RequestsHash is null ? null : new Hash256(headerJson.RequestsHash),
-                headerJson.SlotNumber is null ? null : (ulong)Bytes.FromHexString(headerJson.SlotNumber).ToUnsignedBigInteger()
+                headerJson.SlotNumber is null ? null : ParseULong(headerJson.SlotNumber)
             )
             {
                 Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom)),
-                GasUsed = (long)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger(),
+                GasUsed = ParseULong(headerJson.GasUsed),
                 Hash = new Hash256(headerJson.Hash),
                 MixHash = new Hash256(headerJson.MixHash),
-                Nonce = (ulong)Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger(),
+                Nonce = ParseULong(headerJson.Nonce),
                 ReceiptsRoot = new Hash256(headerJson.ReceiptTrie),
                 StateRoot = new Hash256(headerJson.StateRoot),
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
@@ -80,7 +86,7 @@ namespace Ethereum.Test.Base
 
             if (headerJson.BaseFeePerGas is not null)
             {
-                header.BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger();
+                header.BaseFeePerGas = ParseULong(headerJson.BaseFeePerGas);
             }
 
             return header;
@@ -110,8 +116,9 @@ namespace Ethereum.Test.Base
         }
 
 
-        public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
+        public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson, ulong chainId = BlockchainIds.Mainnet)
         {
+            PrivateKey privateKey = new(transactionJson.SecretKey);
             Transaction transaction = new()
             {
                 Type = transactionJson.Type,
@@ -122,7 +129,7 @@ namespace Ethereum.Test.Base
                 Nonce = transactionJson.Nonce,
                 To = transactionJson.To,
                 Data = transactionJson.Data[postStateJson.Indexes.Data],
-                SenderAddress = new PrivateKey(transactionJson.SecretKey).Address,
+                SenderAddress = privateKey.Address,
                 Signature = new Signature(1, 1, 27),
                 BlobVersionedHashes = transactionJson.BlobVersionedHashes,
                 MaxFeePerBlobGas = transactionJson.MaxFeePerBlobGas
@@ -206,6 +213,17 @@ namespace Ethereum.Test.Base
                 }
             }
 
+            // State tests identify the sender via `secretKey`, so sign with that key for the
+            // signature to recover to the same sender; otherwise, whenever the sender account is
+            // absent from the pre-state, TransactionProcessor.RecoverSenderIfNeeded re-recovers a
+            // bogus sender from the placeholder signature and then crashes incrementing its nonce.
+            // Address.Zero marks an intentionally-invalid transaction, so leave those as-is.
+            if (transaction.SenderAddress != Address.Zero)
+            {
+                new EthereumEcdsa(chainId).Sign(privateKey, transaction, isEip155Enabled: false);
+                transaction.Hash = transaction.CalculateHash();
+            }
+
             return transaction;
         }
 
@@ -275,7 +293,7 @@ namespace Ethereum.Test.Base
                         PostReceiptsRoot = stateJson.Logs,
                         PostHash = stateJson.Hash,
                         Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value),
-                        Transaction = Convert(stateJson, testJson.Transaction)
+                        Transaction = Convert(stateJson, testJson.Transaction, chainId)
                     };
 
                     if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)

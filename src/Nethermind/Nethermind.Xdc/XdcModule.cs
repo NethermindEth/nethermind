@@ -19,9 +19,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Network;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -30,6 +31,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Discovery;
@@ -56,6 +58,9 @@ public class XdcModule : Module
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
 
             .Add<StartXdcBlockProducer>()
+            .AddSingleton<XdcBlockProducerFactory>()
+            .Bind<IBlockProducerFactory, XdcBlockProducerFactory>()
+            .Bind<IBlockProducerRunnerFactory, XdcBlockProducerFactory>()
 
 
             // stores
@@ -102,7 +107,9 @@ public class XdcModule : Module
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
+            .AddDatabase(XdcRocksDbConfigFactory.XdcRewardsDbName)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
+            .AddSingleton<IRewardsStore, RewardsStore>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
@@ -124,13 +131,17 @@ public class XdcModule : Module
             .AddMessageSerializer<PingMsg, XdcPingMsgSerializer>()
 
             .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
+            .AddLast<IP2PCapabilityResolver, XdcP2PCapabilityResolver>()
+            .RemoveOrderedComponents<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
-            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
+
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>();
 
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();

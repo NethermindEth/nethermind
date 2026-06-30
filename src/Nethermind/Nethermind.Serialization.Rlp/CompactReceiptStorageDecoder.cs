@@ -18,7 +18,7 @@ namespace Nethermind.Serialization.Rlp
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
-        protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
+        protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
@@ -41,7 +41,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             txReceipt.Sender = decoderContext.DecodeAddress();
-            txReceipt.GasUsedTotal = decoderContext.DecodePositiveLong();
+            txReceipt.GasUsedTotal = decoderContext.DecodeULong();
 
             int sequenceLength = decoderContext.ReadSequenceLength();
             int lastCheck = sequenceLength + decoderContext.Position;
@@ -72,7 +72,7 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        public void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors,
+        public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors,
             out TxReceiptStructRef item)
         {
             // Note: This method runs at 2.5 million times/sec on my machine
@@ -100,7 +100,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             decoderContext.DecodeAddressStructRef(out item.Sender);
-            item.GasUsedTotal = decoderContext.DecodePositiveLong();
+            item.GasUsedTotal = decoderContext.DecodeULong();
 
             (int PrefixLength, int ContentLength) =
                 decoderContext.PeekPrefixAndContentLength();
@@ -116,19 +116,19 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors none,
+        public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none,
             out LogEntryStructRef current) => CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
-        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) => CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
+        public Hash256[] DecodeTopics(RlpReader reader) => CompactLogEntryDecoder.DecodeTopics(reader);
 
         // Refstruct decode does not generate bloom
         public bool CanDecodeBloom => false;
 
-        public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                rlpStream.EncodeNullObject();
+                writer.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
@@ -137,25 +137,25 @@ namespace Nethermind.Serialization.Rlp
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
             // Note: Any byte saved here is about 3GB on mainnet.
-            rlpStream.StartSequence(totalContentLength);
+            writer.StartSequence(totalContentLength);
             if (isEip658receipts)
             {
-                rlpStream.Encode(item.StatusCode);
+                writer.Encode(item.StatusCode);
             }
             else
             {
-                rlpStream.Encode(item.PostTransactionState);
+                writer.Encode(item.PostTransactionState);
             }
 
-            rlpStream.Encode(item.Sender);
-            rlpStream.Encode(item.GasUsedTotal);
+            writer.Encode(item.Sender);
+            writer.Encode(item.GasUsedTotal);
 
-            rlpStream.StartSequence(logsLength);
+            writer.StartSequence(logsLength);
 
             LogEntry[] logs = item.Logs ?? [];
             for (int i = 0; i < logs.Length; i++)
             {
-                CompactLogEntryDecoder.Instance.Encode(rlpStream, logs[i]);
+                CompactLogEntryDecoder.Instance.Encode(ref writer, logs[i]);
             }
         }
 

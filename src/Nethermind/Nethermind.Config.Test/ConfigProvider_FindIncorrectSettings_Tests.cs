@@ -159,8 +159,8 @@ public class ConfigProvider_FindIncorrectSettings_Tests
     {
         Dictionary<string, string> envVars = new()
         {
-            { "NETHERMIND_BLOOMCONFIG_INDEX", " " },
-            { "NETHERMIND_BLOOMCONFIG_MIGRATION", "" }
+            { "NETHERMIND_SYNCCONFIG_FASTSYNC", " " },
+            { "NETHERMIND_SYNCCONFIG_SNAPSYNC", "" }
         };
 
         _env.GetEnvironmentVariables().Returns(envVars);
@@ -171,7 +171,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         Assert.DoesNotThrow(configProvider.Initialize);
 
-        (bool isSet, object? value) = envSource.GetValue(typeof(bool), "BloomConfig", "Index");
+        (bool isSet, object? value) = envSource.GetValue(typeof(bool), "SyncConfig", "FastSync");
 
         Assert.Multiple(() =>
         {
@@ -179,7 +179,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
             Assert.That(value, Is.False);
         });
 
-        (isSet, value) = envSource.GetValue(typeof(bool), "BloomConfig", "Migration");
+        (isSet, value) = envSource.GetValue(typeof(bool), "SyncConfig", "SnapSync");
 
         Assert.Multiple(() =>
         {

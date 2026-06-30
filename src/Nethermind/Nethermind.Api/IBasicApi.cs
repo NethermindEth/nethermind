@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Linq;
 using Autofac;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -28,7 +27,6 @@ namespace Nethermind.Api
 
         [SkipServiceCollection]
         IConfigProvider ConfigProvider { get; }
-        ICryptoRandom CryptoRandom { get; }
         IDbProvider DbProvider { get; }
         IEthereumEcdsa EthereumEcdsa { get; }
         [SkipServiceCollection]
@@ -50,13 +48,5 @@ namespace Nethermind.Api
 
         [SkipServiceCollection]
         ILifetimeScope Context { get; }
-
-        public IConsensusPlugin? GetConsensusPlugin() =>
-            Plugins
-                .OfType<IConsensusPlugin>()
-                .SingleOrDefault();
-
-        public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
-            Plugins.OfType<IConsensusWrapperPlugin>().Where(static p => p.Enabled);
     }
 }

@@ -21,6 +21,8 @@ public class XdcSubnetModule : XdcModule
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcSubnetChainSpecEngineParameters>())
             .Add<StartXdcSubnetBlockProducer>()
+            .AddSingleton<XdcSubnetBlockProducerFactory>()
+            .Bind<IBlockProducerFactory, XdcSubnetBlockProducerFactory>() // overrides the base producer binding; runner stays XdcBlockProducerFactory
             .AddSingleton(new BlockDecoder(new XdcSubnetHeaderDecoder()))
             .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
             .AddSingleton<ISubnetMasternodesCalculator, SubnetMasternodesCalculator>()

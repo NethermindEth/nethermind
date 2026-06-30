@@ -54,8 +54,11 @@ public partial class Bls12381G1MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        using ArrayPoolList<long> rawPoints = new(nItems * G1.Sz, nItems * G1.Sz);
-        using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
+        // Scratch buffers rented without zero-init (ArrayPoolSpan does not clear on rent): MultiMult
+        // only reads the first npoints*G1.Sz longs and npoints*32 scalar bytes, and every one of those
+        // slots is fully written by TryDecodeG1ToBuffer before MultiMult runs, so a clear is wasted.
+        using ArrayPoolSpan<long> rawPoints = new(nItems * G1.Sz);
+        using ArrayPoolSpan<byte> rawScalars = new(nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
         // calculate where in rawPoints buffer decoded points should go
@@ -90,10 +93,11 @@ public partial class Bls12381G1MsmPrecompile
         }
         else
         {
-            Parallel.ForEach(pointDestinations, (dest, state, i) =>
+            Memory<long> rawPointsMemory = rawPoints.AsMemory();
+            Memory<byte> rawScalarsMemory = rawScalars.AsMemory();
+            Parallel.For(0, pointDestinations.Count, (index, state) =>
             {
-                int index = (int)i;
-                Result local = Eip2537.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index);
+                Result local = Eip2537.TryDecodeG1ToBuffer(inputData, rawPointsMemory, rawScalarsMemory, pointDestinations[index], index);
                 if (!local)
                 {
                     result = local;
@@ -107,7 +111,7 @@ public partial class Bls12381G1MsmPrecompile
             return result.Error!;
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
-        G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
+        G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints, rawScalars, npoints);
         return res.EncodeRaw();
     }
 }

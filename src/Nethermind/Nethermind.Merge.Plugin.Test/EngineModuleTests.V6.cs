@@ -367,7 +367,7 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = Address.Zero,
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = [],
-            SlotNumber = 1
+            SlotNumber = 1,
         };
 
         Transaction tx = Build.A.Transaction
@@ -510,7 +510,7 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = [],
             ParentBeaconBlockRoot = TestItem.KeccakE,
-            SlotNumber = chain.BlockTree.Head!.SlotNumber + 1
+            SlotNumber = chain.BlockTree.Head!.SlotNumber + 1,
         };
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
@@ -763,7 +763,7 @@ public partial class EngineModuleTests
         }
     }
 
-    private static (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) BuildTestTransactionsAndWithdrawal(ulong gasPrice, long gasLimit)
+    private static (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) BuildTestTransactionsAndWithdrawal(ulong gasPrice, ulong gasLimit)
     {
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
@@ -849,7 +849,7 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = TestItem.AddressE,
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = [withdrawal],
-            SlotNumber = slotNumber
+            SlotNumber = slotNumber,
         };
 
         ForkchoiceStateV1 fcuState = new(parentHash, parentHash, parentHash);
@@ -921,7 +921,7 @@ public partial class EngineModuleTests
                 UInt256[] extraReads = new UInt256[100];
                 for (int i = 0; i < extraReads.Length; i++)
                 {
-                    extraReads[i] = new UInt256((ulong)(1_000_000 + i));
+                    extraReads[i] = 1_000_000UL + (ulong)i;
                 }
                 modifiedAccounts[senderAddress] = CloneAccountChanges(entry, storageReadsOverride: [.. entry.StorageReads, .. extraReads]);
             }

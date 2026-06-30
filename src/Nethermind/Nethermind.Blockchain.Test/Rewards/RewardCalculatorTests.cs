@@ -14,10 +14,10 @@ namespace Nethermind.Blockchain.Test.Rewards;
 public class RewardCalculatorTests
 {
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(3L, 1L, 2, 5312500000000000000L, 3750000000000000000L, TestName = "Two_uncles_from_the_same_coinbase")]
-    [TestCase(3L, 1L, 1, 5156250000000000000L, 3750000000000000000L, TestName = "One_uncle")]
-    [TestCase(3L, 0L, 0, 5000000000000000000L, 0L, TestName = "No_uncles")]
-    public void Frontier_era_rewards(long blockNumber, long uncleNumber, int uncleCount,
+    [TestCase(3UL, 1UL, 2, 5312500000000000000L, 3750000000000000000L, TestName = "Two_uncles_from_the_same_coinbase")]
+    [TestCase(3UL, 1UL, 1, 5156250000000000000L, 3750000000000000000L, TestName = "One_uncle")]
+    [TestCase(3UL, 0UL, 0, 5000000000000000000L, 0L, TestName = "No_uncles")]
+    public void Frontier_era_rewards(ulong blockNumber, ulong uncleNumber, int uncleCount,
         long expectedMinerReward, long expectedUncleReward)
     {
         Block[] uncles = Enumerable.Range(0, uncleCount)
@@ -38,7 +38,7 @@ public class RewardCalculatorTests
     [TestCase("ConstantinopleFix", 2125000000000000000L, 1500000000000000000L, TestName = "Constantinople_reward_two_uncles")]
     public void Post_frontier_two_uncle_rewards(string fork, long expectedMinerReward, long expectedUncleReward)
     {
-        long blockNumber = fork == "Byzantium"
+        ulong blockNumber = fork == "Byzantium"
             ? MainnetSpecProvider.ByzantiumBlockNumber
             : MainnetSpecProvider.ConstantinopleFixBlockNumber;
         Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;

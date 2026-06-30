@@ -37,7 +37,7 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             : transaction.MaxFeePerGas;
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         if (validateUserInput)
         {

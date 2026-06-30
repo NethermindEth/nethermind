@@ -34,7 +34,7 @@ internal sealed class SnapshotManager(
         new SnapshotDecoder(),
         cacheName: "XDC Snapshot cache")
 {
-    public override Snapshot CreateInitialSnapshot(long number, Hash256 hash, Address[] genesisMasterNodes) =>
+    public override Snapshot CreateInitialSnapshot(ulong number, Hash256 hash, Address[] genesisMasterNodes) =>
         new(number, hash, genesisMasterNodes);
 
     protected override Snapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)

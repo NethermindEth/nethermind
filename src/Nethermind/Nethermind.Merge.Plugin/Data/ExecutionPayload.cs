@@ -30,15 +30,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public Hash256 BlockHash { get; set; } = Keccak.Zero;
 
-    public long BlockNumber { get; set; }
+    public ulong BlockNumber { get; set; }
 
     public byte[] ExtraData { get; set; } = [];
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 
-    public long GasLimit { get; set; }
+    public ulong GasLimit { get; set; }
 
-    public long GasUsed { get; set; }
+    public ulong GasUsed { get; set; }
 
     public Bloom LogsBloom { get; set; } = Bloom.Empty;
 
@@ -215,7 +215,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
             for (i = 0; i < transactions.Length; i++)
             {
-                Rlp.ValueDecoderContext ctx = new(txData[i]);
+                RlpReader ctx = new(txData[i]);
                 transactions[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 

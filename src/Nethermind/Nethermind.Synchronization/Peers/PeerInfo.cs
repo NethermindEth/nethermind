@@ -26,8 +26,8 @@ namespace Nethermind.Synchronization.Peers
         private uint _weaknesses;
         private uint _sleepingContexts;
 
-        private long _lastNotifiedEarliestNumber;
-        private long _lastNotifiedLatestNumber;
+        private ulong _lastNotifiedEarliestNumber;
+        private ulong _lastNotifiedLatestNumber;
 
         public NodeClientType PeerClientType => SyncPeer?.ClientType ?? NodeClientType.Unknown;
 
@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>See <see cref="ISyncPeer.TotalDifficulty"/>.</summary>
         public UInt256? TotalDifficulty => SyncPeer.TotalDifficulty;
 
-        public long HeadNumber => SyncPeer.HeadNumber;
+        public ulong HeadNumber => SyncPeer.HeadNumber;
         public Hash256 HeadHash => SyncPeer.HeadHash;
 
         public AllocationContexts SleepingContexts => (AllocationContexts)Volatile.Read(ref _sleepingContexts);
@@ -139,7 +139,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool ShouldNotifyNewRange(long earliestNumber, long latestNumber)
+        public bool ShouldNotifyNewRange(ulong earliestNumber, ulong latestNumber)
         {
             // Also notify if same header as could be reorg with different hash
             if (latestNumber < _lastNotifiedLatestNumber && earliestNumber < _lastNotifiedEarliestNumber)

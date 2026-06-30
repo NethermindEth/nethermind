@@ -29,7 +29,7 @@ public class TransactionJsonTest : GeneralStateTestBase
         TransactionJson txJson = serializer.Deserialize<TransactionJson>(lists);
         txJson.SecretKey = TestItem.PrivateKeyA.KeyBytes;
         txJson.Value = new UInt256[1];
-        txJson.GasLimit = new long[1];
+        txJson.GasLimit = new ulong[1];
         txJson.Data = new byte[1][];
         Assert.That(txJson.AccessLists, Is.Not.Null);
         Assert.That(txJson.AccessLists[0][0].Address, Is.EqualTo(new Address("0x0001020304050607080900010203040506070809")));
@@ -62,7 +62,7 @@ public class TransactionJsonTest : GeneralStateTestBase
             .WithChainId(1)
             .WithGasPrice(0x10)
             .WithGasLimit(0x100000)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .To(contract)
             .WithValue(0)
             .SignedAndResolved(senderKey)
@@ -122,7 +122,7 @@ public class TransactionJsonTest : GeneralStateTestBase
             .WithAccessList(AccessList.Empty)
             .WithGasLimit(100_000)
             .WithGasPrice(10)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .To(recipient)
             .WithValue(0)
             .SignedAndResolved(TestItem.PrivateKeyA)
@@ -146,14 +146,14 @@ public class TransactionJsonTest : GeneralStateTestBase
             {
                 [recipient] = new()
                 {
-                    Nonce = UInt256.One,
+                    Nonce = 1UL,
                     Balance = UInt256.Zero,
                     Code = [0x60, 0x01, 0x60, 0x00, 0x55],  // PUSH1 1 PUSH1 0 SSTORE
                     Storage = new() { [UInt256.Zero] = new UInt256(0xdeadbeef).ToBigEndian() }
                 },
                 [sender] = new()
                 {
-                    Nonce = UInt256.Zero,
+                    Nonce = 0UL,
                     Balance = UInt256.Parse("1000000000000000000000"),
                     Code = [],
                     Storage = []

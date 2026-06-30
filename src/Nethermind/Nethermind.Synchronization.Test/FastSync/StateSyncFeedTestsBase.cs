@@ -110,10 +110,12 @@ public abstract class StateSyncFeedTestsBase(
     protected ContainerBuilder BuildTestContainerBuilder(RemoteDbContext remote, int syncDispatcherAllocateTimeoutMs = 10)
     {
         ContainerBuilder containerBuilder = new ContainerBuilder()
+            // These tests exercise the patricia state-sync feed (trie-node download) directly and verify via
+            // PatriciaSnapTrieFactory/LocalDbContext, so they pin the patricia backend.
             .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
             {
                 FastSync = true
-            })))
+            }, new FlatDbConfig { Enabled = false })))
             .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
             {
                 syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout
@@ -153,14 +155,14 @@ public abstract class StateSyncFeedTestsBase(
             .AddSingleton<ISyncProgressResolver>(static _ =>
             {
                 ISyncProgressResolver resolver = Substitute.For<ISyncProgressResolver>();
-                resolver.FindBestHeader().Returns(0L);
-                resolver.FindBestFullState().Returns(0L);
+                resolver.FindBestHeader().Returns(0UL);
+                resolver.FindBestFullState().Returns(0UL);
                 return resolver;
             })
             .AddSingleton<IBeaconSyncStrategy>(static _ =>
             {
                 IBeaconSyncStrategy strategy = Substitute.For<IBeaconSyncStrategy>();
-                strategy.GetTargetBlockHeight().Returns((long?)0L);
+                strategy.GetTargetBlockHeight().Returns((ulong?)0UL);
                 return strategy;
             });
 
@@ -215,7 +217,7 @@ public abstract class StateSyncFeedTestsBase(
                 .TestObject;
 
             Assert.That((await blockTree.SuggestBlockAsync(newBlock)), Is.EqualTo(AddBlockResult.Added));
-            blockTree.UpdateMainChain([newBlock], false, true);
+            blockTree.TryUpdateMainChain(newBlock.Header, false, true, preloadedBlocks: new[] { newBlock });
         }
 
         public void ResetFeed()

@@ -13,20 +13,20 @@ public class LegacyTxDecoder<T>(Func<T>? transactionFactory = null) : BaseTxDeco
 
     protected override ulong GetSignatureFirstElement(Signature signature) => signature.V;
 
-    protected override void EncodeSignature(Signature? signature, RlpStream stream, bool forSigning, bool isEip155Enabled, ulong chainId)
+    protected override void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning, bool isEip155Enabled, ulong chainId)
     {
         if (forSigning)
         {
             if (IncludeSigChainIdHack(isEip155Enabled, chainId))
             {
-                stream.Encode(chainId);
-                stream.Encode(Rlp.OfEmptyByteArray);
-                stream.Encode(Rlp.OfEmptyByteArray);
+                writer.Encode(chainId);
+                writer.Encode(Rlp.OfEmptyByteArray);
+                writer.Encode(Rlp.OfEmptyByteArray);
             }
         }
         else
         {
-            base.EncodeSignature(signature, stream, false, isEip155Enabled, chainId);
+            base.EncodeSignature(signature, ref writer, false, isEip155Enabled, chainId);
         }
     }
 

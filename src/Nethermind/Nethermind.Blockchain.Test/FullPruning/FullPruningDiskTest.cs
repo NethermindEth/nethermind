@@ -16,7 +16,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.IO;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
@@ -45,7 +44,12 @@ public class FullPruningDiskTest
         public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
         public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
-        public PruningTestBlockchain() => TempDirectory = TempPath.GetTempDirectory();
+        // Full pruning operates on the patricia trie state DB (FullPruningDb); it has no flat equivalent.
+        public PruningTestBlockchain()
+        {
+            TempDirectory = TempPath.GetTempDirectory();
+            UseFlatDb = false;
+        }
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {
@@ -135,12 +139,6 @@ public class FullPruningDiskTest
         }
     }
 
-    [SetUp]
-    public void Setup()
-    {
-        if (PseudoNethermindModule.TestUseFlat) Assert.Ignore("Disabled in flat");
-    }
-
     [Test, MaxTime(Timeout.LongTestTime)]
     public async Task prune_on_disk_multiple_times()
     {
@@ -181,7 +179,7 @@ public class FullPruningDiskTest
         PruningTriggerEventArgs args = new();
         chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
         if (args.Status != PruningStatus.Starting) return;
-        for (int i = 0; i < Reorganization.MaxDepth + 2; i++)
+        for (ulong i = 0ul; i < Reorganization.MaxDepth + 2ul; i++)
         {
             await chain.AddBlock();
         }

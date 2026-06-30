@@ -18,7 +18,7 @@ namespace Nethermind.HealthChecks
         {
             _description = description;
             _hostname = hostname;
-            IPAddress externalIp = ipResolver.ExternalIp;
+            IPAddress externalIp = ipResolver.Resolve().GetAwaiter().GetResult().ExternalIp;
             _ip = externalIp.ToString();
             _nodeName = metricsConfig.NodeName;
         }

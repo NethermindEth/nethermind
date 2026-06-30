@@ -79,7 +79,7 @@ namespace Nethermind.TxPool
         private readonly ITimer? _timer;
         private volatile Transaction[]? _transactionSnapshot;
         private volatile Transaction[]? _blobTransactionSnapshot;
-        private long _lastBlockNumber = -1;
+        private ulong _lastBlockNumber = ulong.MaxValue;
         private Hash256? _lastBlockHash;
 
         private bool _isDisposed;
@@ -229,7 +229,7 @@ namespace Nethermind.TxPool
             => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs)
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
             => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args) => RemovePendingDelegations(args.Value);
@@ -391,7 +391,7 @@ namespace Nethermind.TxPool
                 if (blockTx.SupportsBlobs)
                 {
                     blobTxs++;
-                    blobs += blockTx.GetBlobCount();
+                    blobs += (long)blockTx.GetBlobCount();
 
                     if (_blobReorgsSupportEnabled)
                     {
@@ -743,7 +743,7 @@ namespace Nethermind.TxPool
             if (transactions.Count != 0)
             {
                 UInt256 balance = account.Balance;
-                long currentNonce = (long)(account.Nonce);
+                ulong currentNonce = account.Nonce;
 
                 UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx);
             }
@@ -751,7 +751,7 @@ namespace Nethermind.TxPool
 
         private void UpdateGasBottleneckAndMarkForEviction(
             EnhancedSortedSet<Transaction> transactions,
-            long currentNonce,
+            ulong currentNonce,
             UInt256 balance,
             Transaction? lastElement,
             UpdateTransactionDelegate updateTx)
@@ -791,7 +791,7 @@ namespace Nethermind.TxPool
                     {
                         gasBottleneck = UInt256.Zero;
                     }
-                    else if (tx.Nonce == currentNonce + i)
+                    else if (tx.Nonce == currentNonce + (ulong)i)
                     {
                         UInt256 effectiveGasPrice =
                             tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
@@ -845,7 +845,7 @@ namespace Nethermind.TxPool
             if (transactions.Count != 0)
             {
                 UInt256 balance = account.Balance;
-                long currentNonce = (long)(account.Nonce);
+                ulong currentNonce = account.Nonce;
                 Transaction? tx = null;
                 foreach (Transaction txn in transactions)
                 {
@@ -868,8 +868,8 @@ namespace Nethermind.TxPool
                 }
                 else if (!tx.Supports1559)
                 {
-                    shouldBeDumped = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
-                    shouldBeDumped |= UInt256.AddOverflow(in cost, in tx.ValueRef, out cost);
+                    shouldBeDumped = UInt256.MultiplyOverflow((UInt256)tx.GasPrice, tx.GasLimit, out UInt256 cost);
+                    shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);
                     shouldBeDumped |= balance < cost;
                 }
 
@@ -935,9 +935,9 @@ namespace Nethermind.TxPool
 
         // should own transactions (in broadcaster) be also checked here?
         // maybe it should use NonceManager, as it already has info about local txs?
-        public UInt256 GetLatestPendingNonce(Address address)
+        public ulong GetLatestPendingNonce(Address address)
         {
-            UInt256 maxPendingNonce = _accounts.GetNonce(address);
+            ulong maxPendingNonce = _accounts.GetNonce(address);
 
             bool hasPendingTxs = _transactions.GetBucketCount(address) > 0;
             if (!hasPendingTxs && !(_blobTransactions.GetBucketCount(address) > 0))
@@ -955,7 +955,8 @@ namespace Nethermind.TxPool
                 {
                     // if we don't have any gaps we can easily calculate the nonce
                     Transaction lastTransaction = transactions.Max!;
-                    if (maxPendingNonce + (UInt256)transactions.Count - 1 == lastTransaction.Nonce)
+                    ulong pendingCount = (ulong)transactions.Count;
+                    if (maxPendingNonce + pendingCount - 1 == lastTransaction.Nonce)
                     {
                         maxPendingNonce = lastTransaction.Nonce + 1;
                     }
@@ -1056,7 +1057,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    Db.Metrics.IncrementStateTreeCacheHits();
+                    Db.Metrics.AddStateTreeCacheHits(1);
                 }
 
                 return true;

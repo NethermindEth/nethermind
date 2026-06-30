@@ -1,16 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Consensus;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Logging;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Specs.ChainSpecStyle;
 using System.Threading.Tasks;
 
@@ -31,36 +24,5 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         _nethermindApi = nethermindApi;
         return Task.CompletedTask;
-    }
-
-    public Task InitNetworkProtocol()
-    {
-        // Remove default ETH 68 capability (XDC uses 62-63 and 100)
-        _nethermindApi.ProtocolsManager!.RemoveSupportedCapability(new(Protocol.Eth, 68));
-
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 62));
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 63));
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 100));
-        return Task.CompletedTask;
-    }
-
-    // IConsensusPlugin
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new XdcHotStuff(
-            _nethermindApi.Context.Resolve<IBlockTree>(),
-            _nethermindApi.Context.Resolve<IXdcConsensusContext>(),
-            _nethermindApi.Context.Resolve<ISpecProvider>(),
-            blockProducer,
-            _nethermindApi.Context.Resolve<IEpochSwitchManager>(),
-            _nethermindApi.Context.Resolve<IMasternodesCalculator>(),
-            _nethermindApi.Context.Resolve<IVotesManager>(),
-            _nethermindApi.Context.Resolve<ISigner>(),
-            _nethermindApi.Context.Resolve<ITimeoutTimer>(),
-            _nethermindApi.Context.Resolve<ITimestamper>(),
-            _nethermindApi.Context.Resolve<ILogManager>()
-            );
-    public IBlockProducer InitBlockProducer()
-    {
-        StartXdcBlockProducer start = _nethermindApi.Context.Resolve<StartXdcBlockProducer>();
-        return start.BuildProducer();
     }
 }

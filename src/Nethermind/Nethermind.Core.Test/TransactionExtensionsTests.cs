@@ -21,9 +21,12 @@ public class TransactionExtensionsTests
         transaction.Type = test.Type;
         UInt256 actualResult = transaction.CalculateTransactionPotentialCost(test.IsEip1559Enabled, test.BaseFee);
         UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(test.IsEip1559Enabled, test.BaseFee);
-        Assert.That(actualResult, Is.EqualTo(test.ExpectedPotentialCostResult));
-        Assert.That(effectiveGasPrice, Is.EqualTo(test.ExpectedEffectiveGasPriceResult));
-        Assert.That(test.ExpectedPotentialCostResult, Is.EqualTo(test.ExpectedEffectiveGasPriceResult * (UInt256)test.GasLimit + test.Value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualResult, Is.EqualTo(test.ExpectedPotentialCostResult));
+            Assert.That(effectiveGasPrice, Is.EqualTo(test.ExpectedEffectiveGasPriceResult));
+            Assert.That(test.ExpectedPotentialCostResult, Is.EqualTo(test.ExpectedEffectiveGasPriceResult * (UInt256)test.GasLimit + test.Value));
+        }
     }
 
     [Test]
@@ -34,8 +37,11 @@ public class TransactionExtensionsTests
         transaction.GasPrice = 30;
         transaction.Type = TxType.EIP1559;
         bool tryResult = transaction.TryCalculatePremiumPerGas(100, out UInt256 premiumPerGas);
-        Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
-        Assert.That(tryResult, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
+            Assert.That(tryResult, Is.True);
+        }
     }
 
     [Test]
@@ -69,8 +75,11 @@ public class TransactionExtensionsTests
         transaction.GasPrice = 30;
         transaction.Type = TxType.EIP1559;
         bool tryResult = transaction.TryCalculatePremiumPerGas(100, out UInt256 premiumPerGas);
-        Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
-        Assert.That(tryResult, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
+            Assert.That(tryResult, Is.False);
+        }
     }
 
     public class TransactionPotentialCostsAndEffectiveGasPrice
@@ -80,8 +89,8 @@ public class TransactionExtensionsTests
         public UInt256 FeeCap { get; set; }
         public UInt256 GasPrice { get; set; }
         public TxType Type { get; set; }
-        public long GasLimit { get; set; }
-        public UInt256 Value { get; set; }
+        public ulong GasLimit { get; set; }
+        public ulong Value { get; set; }
         public bool IsEip1559Enabled { get; set; }
         public UInt256 ExpectedPotentialCostResult { get; set; }
 

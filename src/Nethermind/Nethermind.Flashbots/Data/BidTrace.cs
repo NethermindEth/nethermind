@@ -17,8 +17,8 @@ public class BidTrace(
     PublicKey builderPublicKey,
     PublicKey proposerPublicKey,
     Address proposerFeeRecipient,
-    long gasLimit,
-    long gasUsed,
+    ulong gasLimit,
+    ulong gasUsed,
     UInt256 value)
 {
     [JsonPropertyName("slot")]
@@ -42,10 +42,10 @@ public class BidTrace(
     public Address ProposerFeeRecipient { get; set; } = proposerFeeRecipient;
 
     [JsonPropertyName("gas_limit")]
-    public long GasLimit { get; set; } = gasLimit;
+    public ulong GasLimit { get; set; } = gasLimit;
 
     [JsonPropertyName("gas_used")]
-    public long GasUsed { get; set; } = gasUsed;
+    public ulong GasUsed { get; set; } = gasUsed;
 
     [JsonPropertyName("value")]
     public UInt256 Value { get; set; } = value;

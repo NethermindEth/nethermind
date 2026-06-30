@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
-using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 

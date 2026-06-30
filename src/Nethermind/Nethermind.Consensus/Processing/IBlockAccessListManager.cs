@@ -24,8 +24,19 @@ public interface IBlockAccessListManager
     bool ForceConstructGeneratedBlockAccessList { get; set; }
 
     void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options);
+
+    /// <summary>
+    /// Blocks until the BAL read-warming task started by <see cref="PrepareForProcessing"/>
+    /// (if any) completes, then forgets it.
+    /// </summary>
+    /// <remarks>
+    /// Warming is best-effort: cancellation is expected and faults must never fail the block
+    /// — they only mean fewer pre-block cache hits.
+    /// </remarks>
+    void WaitForBalWarmup();
+
     void Setup(Block block);
-    void SpendGas(long gas);
+    void SpendGas(ulong gas);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
     ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null);
     void NextTransaction();

@@ -24,9 +24,9 @@ namespace Nethermind.Consensus.Ethash
         private readonly ILogger _logger;
 
         private readonly LruCache<ValueHash256, bool> _sealCache = new(2048, 2048, "ethash seals");
-        private const int SealValidationIntervalConstantComponent = 1024;
+        private const uint SealValidationIntervalConstantComponent = 1024;
         private const long AllowedFutureBlockTimeSeconds = 15;
-        private int _sealValidationInterval = SealValidationIntervalConstantComponent;
+        private uint _sealValidationInterval = SealValidationIntervalConstantComponent;
 
         public EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, ICryptoRandom cryptoRandom, IEthash ethash, ITimestamper timestamper)
         {
@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Ethash
         private void ResetValidationInterval() =>
             // more or less at the constant component
             // prevents attack on all Nethermind nodes at once
-            _sealValidationInterval = SealValidationIntervalConstantComponent - 8 + _cryptoRandom.NextInt(16);
+            _sealValidationInterval = SealValidationIntervalConstantComponent - 8 + (uint)_cryptoRandom.NextInt(16);
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Ethash
             return result;
         }
 
-        public void HintValidationRange(Guid guid, long start, long end) => _ethash.HintRange(guid, start, end);
+        public void HintValidationRange(Guid guid, ulong start, ulong end) => _ethash.HintRange(guid, start, end);
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {

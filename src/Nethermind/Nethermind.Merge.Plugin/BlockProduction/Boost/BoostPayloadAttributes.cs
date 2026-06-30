@@ -7,7 +7,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
 
 public class BoostPayloadAttributes : PayloadAttributes
 {
-    public long? GasLimit { get; set; }
+    public ulong? GasLimit { get; set; }
 
-    public override long? GetGasLimit() => GasLimit;
+    public override ulong? GetGasLimit() => GasLimit;
 }

@@ -114,10 +114,10 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_syncReport.FullSyncBlocksDownloaded.TargetValue, e.Block.Number);
-            _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+            _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0UL);
         }
 
-        public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
+        public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, ulong fastSyncLag, CancellationToken cancellation)
         {
             await _requestLock.WaitAsync(cancellation);
             try
@@ -135,14 +135,14 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private async Task<BlocksRequest?> DoPrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
+        private async Task<BlocksRequest?> DoPrepareRequest(DownloaderOptions options, ulong fastSyncLag, CancellationToken cancellation)
         {
             bool originalDownloadReceiptOpts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
             bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
-            long bestProcessedBlock = 0;
-            long previousStartingHeaderNumber = -1;
+            ulong bestProcessedBlock = 0;
+            ulong? previousStartingHeaderNumber = null;
 
             while (true)
             {
@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.Blocks
                     return null;
                 }
 
-                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, HeaderLookupSize + 1, cancellation);
+                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, (ulong)HeaderLookupSize + 1, cancellation);
                 if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
                 bool shouldProcess;
                 bool downloadReceipts;
@@ -198,7 +198,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Processing {satisfiedEntry.Count} entries from {satisfiedEntry[0]?.Header.Number ?? -1} to {satisfiedEntry[^1]?.Header.Number ?? -1}");
+                    if (_logger.IsDebug) _logger.Debug($"Processing {satisfiedEntry.Count} entries from {satisfiedEntry[0]?.Header.Number ?? ulong.MaxValue} to {satisfiedEntry[^1]?.Header.Number ?? ulong.MaxValue}");
                 }
 
                 for (int blockIndex = 0; blockIndex < satisfiedEntry.Count; blockIndex++)
@@ -247,7 +247,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (blocksSynced > 0)
                 {
-                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0UL);
                 }
 
                 _syncReport.FullSyncBlocksDownloaded.CurrentQueued = _downloadRequests.Count;
@@ -418,7 +418,7 @@ namespace Nethermind.Synchronization.Blocks
             using BlocksRequest _ = response;
             BlockBody[]? bodies = response.OwnedBodies?.Bodies;
             response.OwnedBodies?.Disown();
-            IByteArrayList? blockAccessLists = response.BlockAccessLists;
+            IOwnedReadOnlyList<byte[]?>? blockAccessLists = response.BlockAccessLists;
             bool unsupportedBlockAccessListsPeer = response.BlockAccessListsRequests.Count > 0 &&
                                                    peer is not null &&
                                                    !peer.SyncPeer.SupportsBlockAccessLists();
@@ -572,7 +572,7 @@ namespace Nethermind.Synchronization.Blocks
         private bool TryHandleBlockAccessListResponse(
             BlockHeader header,
             BlockEntry entry,
-            IByteArrayList? blockAccessLists,
+            IOwnedReadOnlyList<byte[]?>? blockAccessLists,
             int index,
             bool unsupportedBlockAccessListsPeer,
             PeerInfo? peer,
@@ -589,8 +589,8 @@ namespace Nethermind.Synchronization.Blocks
                 return false;
             }
 
-            ReadOnlySpan<byte> encodedAccessList = blockAccessLists[index];
-            if (encodedAccessList.IsEmpty)
+            byte[]? encodedAccessList = blockAccessLists[index];
+            if (encodedAccessList is null)
             {
                 entry.RetryAccessListRequest();
                 return false;
@@ -606,11 +606,10 @@ namespace Nethermind.Synchronization.Blocks
                 return false;
             }
 
-            byte[] ownedEncodedAccessList = encodedAccessList.ToArray();
-            entry.EncodedAccessList = ownedEncodedAccessList;
+            entry.EncodedAccessList = encodedAccessList;
             if (entry.Block is not null)
             {
-                entry.Block.EncodedBlockAccessList = ownedEncodedAccessList;
+                entry.Block.EncodedBlockAccessList = encodedAccessList;
             }
 
             entry.PeerInfo = peer;
@@ -666,7 +665,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (!shouldProcess)
             {
-                _blockTree.UpdateMainChain([currentBlock], false);
+                _blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]);
             }
 
             _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);
@@ -675,14 +674,14 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         private (bool shouldProcess, bool shouldDownloadReceipt) ReceiptEdgeCase(
-            long bestProcessedBlock,
-            long firstBlockNumber,
+            ulong bestProcessedBlock,
+            ulong firstBlockNumber,
             bool shouldProcess,
             bool shouldDownloadReceipt)
         {
             if (shouldProcess && !shouldDownloadReceipt)
             {
-                long firstBlock = firstBlockNumber;
+                ulong firstBlock = firstBlockNumber;
                 // TODO: Double check this condition
                 // An edge case where we already have the state but are still downloading preceding blocks.
                 // We cannot process such blocks, but we are still requested to process them via blocksRequest.Options.
@@ -692,7 +691,7 @@ namespace Nethermind.Synchronization.Blocks
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
                 if (isFastSyncTransition)
                 {
-                    long bestFullState = _fullStateFinder.FindBestFullState();
+                    ulong bestFullState = _fullStateFinder.FindBestFullState();
                     shouldProcess = firstBlock > bestFullState && bestFullState != 0;
                     if (!shouldProcess)
                     {

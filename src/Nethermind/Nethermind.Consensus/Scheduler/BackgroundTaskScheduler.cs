@@ -92,10 +92,11 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
     private void BranchProcessorOnBranchProcessed(object? sender, BlockProcessedEventArgs e)
     {
-        // Once the block is processed, we replace the cancellation token with a fresh uncanceled one
-        using CancellationTokenSource oldTokenSource = Interlocked.Exchange(
-            ref _blockProcessorCancellationTokenSource,
-            new CancellationTokenSource());
+        // Once the block is processed, we replace the cancellation token with a fresh uncanceled one.
+        // The previous source is intentionally not disposed: StartChannel reads it lock-free, so disposing
+        // here would race that read (ObjectDisposedException on .Token). A source with no timer or wait
+        // handle is safe to let the GC reclaim.
+        Interlocked.Exchange(ref _blockProcessorCancellationTokenSource, new CancellationTokenSource());
 
         // Signal that block processing is done so the paused consumers can resume
         Interlocked.Exchange(ref _blockProcessingDoneSignal, null)?.TrySetResult();

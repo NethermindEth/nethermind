@@ -16,7 +16,7 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(
         Description = "The block gas limit that the block producer should try to reach in the fastest possible way based on the protocol rules. If not specified, then the block producer should follow others.",
         DefaultValue = "null")]
-    long? TargetBlockGasLimit { get; set; }
+    ulong? TargetBlockGasLimit { get; set; }
 
     [ConfigItem(
         Description = "The minimum gas premium (or the gas price before the London hard fork) for transactions accepted by the block producer.",
@@ -89,4 +89,11 @@ public interface IBlocksConfig : IConfig
                       "Set to `0` to log all transactions. Set to `-1` to disable per-transaction logging.",
         DefaultValue = "-1")]
     long SlowBlockPerTxThresholdMs { get; set; }
+
+    [ConfigItem(
+        Description = "The maximum block gas assumed to be supported. " +
+                      "Used to inherit some RLP limits. ",
+        DefaultValue = "1000000000",
+        HiddenFromDocs = true)]
+    ulong MaxGasLimit { get; set; }
 }

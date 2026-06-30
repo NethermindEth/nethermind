@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -130,11 +129,6 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         _bytesBuffered += bytes;
         _tailMemory = _tailMemory[bytes..];
         WrittenCount += bytes;
-
-        if (_bytesBuffered > _minimumBufferSize)
-        {
-            FlushInternal(writeToStream: true);
-        }
     }
 
     /// <inheritdoc />
@@ -198,10 +192,24 @@ public sealed class CountingStreamPipeWriter : CountingWriter
                     _tailBytesBuffered = 0;
                 }
 
+                // Threshold flush happens here, never in Advance: a consumer may still hold a buffer
+                // obtained earlier and Advance into it across the flush.
+                if (_bytesBuffered > _minimumBufferSize)
+                {
+                    FlushInternal(writeToStream: true);
+                }
+
                 BufferSegment newSegment = AllocateSegment(sizeHint);
 
-                _tail.SetNext(newSegment);
-                _tail = newSegment;
+                if (_head is null)
+                {
+                    _head = _tail = newSegment;
+                }
+                else
+                {
+                    _tail!.SetNext(newSegment);
+                    _tail = newSegment;
+                }
             }
         }
     }
@@ -338,7 +346,6 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
     private void Cancel() => InternalTokenSource.Cancel();
 
-    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<FlushResult> FlushAsyncInternal(bool writeToStream, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
         // Write all completed segments and whatever remains in the current segment

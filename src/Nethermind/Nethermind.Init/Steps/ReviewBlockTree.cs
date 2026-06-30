@@ -57,7 +57,7 @@ namespace Nethermind.Init.Steps
         {
             if (!syncConfig.FastSync)
             {
-                using DbBlocksLoader loader = new(blockTree, _logger);
+                using DbBlocksLoader loader = new(blockTree, logManager);
                 await blockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
@@ -72,7 +72,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, _logger!);
+                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, logManager);
                 await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)

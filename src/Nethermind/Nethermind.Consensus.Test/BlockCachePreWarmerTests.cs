@@ -175,9 +175,12 @@ public class BlockCachePreWarmerTests
 
         await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _), Is.True, "slot 1 (changed) should be pre-warmed via BAL");
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _), Is.True, "slot 2 (read-only) should be pre-warmed via BAL");
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out _), Is.True, "slot 10 on AddressB should be pre-warmed via BAL");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _), Is.True, "slot 1 (changed) should be pre-warmed via BAL");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _), Is.True, "slot 2 (read-only) should be pre-warmed via BAL");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out _), Is.True, "slot 10 on AddressB should be pre-warmed via BAL");
+        }
     }
 
     /// <summary>
@@ -342,7 +345,7 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StateCache.TryGetValue(in warmedAddress, out _), Is.True);
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _), Is.True);
 
-        preBlockCaches.StateCache.Set(in warmedAddress, new Account((UInt256)777));
+        preBlockCaches.StateCache.Set(in warmedAddress, new Account(777UL));
         preBlockCaches.StorageCache.Set(in warmedCell, [0x24]);
 
         AddressAsKey missedAddress = TestItem.AddressB;
