@@ -294,7 +294,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
         if (IsTracingStack) WriteStackArrayIfPresent();
         if (IsTracingFullMemory) WriteMemoryArrayIfPresent();
-        if (IsTracingOpLevelStorage && _pendingStorageToucheWriteStorageObjectIfPresent();
+        if (IsTracingOpLevelStorage && _pendingStorageTouched) WriteStorageObjectIfPresent();
         if (IsTracingReturnData && _returnDataByteCount > 0) WriteReturnDataValue();
 
         _writer.WriteEndObject();
