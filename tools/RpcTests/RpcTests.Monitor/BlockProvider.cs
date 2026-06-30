@@ -34,7 +34,7 @@ internal class BlockProvider(RpcClient client, int capacity = 128)
         {
             // don't clobber a fresher block the subscription may have stored meanwhile
             ref BlockInfo? slot = ref _blocks[Index(number)];
-            if (slot is null || slot.Number <= number)
+            if (slot is null || slot.Number < number)
                 slot = fetched;
         }
 

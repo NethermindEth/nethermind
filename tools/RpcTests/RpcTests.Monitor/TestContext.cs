@@ -18,7 +18,7 @@ internal readonly record struct TestContext(TestDefinition Definition, BlockInfo
     /// <summary>
     /// Shift behind the head of a block close to the latest, but old enough to assume to be available in all nodes.
     /// </summary>
-    internal long RecentNumber => Head.Number - 7;
+    internal long RecentNumber => Math.Max(0, Head.Number - 7);
 
     public RequestContext Request { get; init; }
     public BlockInfo Recent { get; init; } = null!;

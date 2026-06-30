@@ -28,7 +28,7 @@ internal sealed class RpcClient(Uri url) : IDisposable
         {
             response = await _client.SendAsync(request, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!(ex is OperationCanceledException opEx && opEx.CancellationToken == ct))
         {
             throw WithDetails(new HttpRequestException(GetErrorMessage(request, null), ex), requestData);
         }
@@ -40,7 +40,7 @@ internal sealed class RpcClient(Uri url) : IDisposable
         {
             responseContent = await response.Content.ReadAsStringAsync(ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!(ex is OperationCanceledException opEx && opEx.CancellationToken == ct))
         {
             throw WithDetails(new HttpRequestException(GetErrorMessage(request, response), ex), requestData);
         }
@@ -67,7 +67,7 @@ internal sealed class RpcClient(Uri url) : IDisposable
     {
         // strip url to host only to hide API key, if any
         Uri? uri = request.RequestUri;
-        string host = uri is null ? "<no url>" : uri.Port == 80 ? uri.Host : $"{uri.Host}:{uri.Port}";
+        string host = uri is null ? "<no url>" : uri.IsDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}";
 
         return
             $"""
