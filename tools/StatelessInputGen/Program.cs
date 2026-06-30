@@ -32,21 +32,6 @@ Option<string> outputOption = new("--output", "-o")
     HelpName = "path",
     DefaultValueFactory = r => Environment.CurrentDirectory
 };
-Option<string?> fixtureOption = new("--from-fixture", "-f")
-{
-    Description = "Path to a StatelessValidationFixture JSON (as produced by zkevm-benchmark-test/witness-generator-cli). " +
-                  "When set, the RPC fetch is skipped and the input is built directly from the fixture. " +
-                  "Mutually exclusive with --rpc-url / --block.",
-    HelpName = "path",
-    DefaultValueFactory = r => null
-};
-Option<bool> chainConfigEnvelopeOption = new("--chain-config-envelope")
-{
-    Description = "Append a trailing `{\"config\": <chain_config>}` JSON section after the witness, " +
-                  "so the patched Nethermind guest can build a SpecProvider from it and validate blocks " +
-                  "on chains it doesn't have hardcoded support for. Only meaningful with --from-fixture.",
-    DefaultValueFactory = r => false
-};
 
 blockOption.Validators.Add(optionResult =>
 {
@@ -74,41 +59,20 @@ RootCommand rootCommand =
     hostOption,
     blockOption,
     noZiskOption,
-    outputOption,
-    fixtureOption,
-    chainConfigEnvelopeOption
+    outputOption
 ];
 rootCommand.SetAction(async parseResult =>
 {
-    string? fixturePath = parseResult.GetValue(fixtureOption);
-    bool forZisk = !parseResult.GetValue(noZiskOption);
-    bool chainConfigEnvelope = parseResult.GetValue(chainConfigEnvelopeOption);
-    string output = parseResult.GetValue(outputOption)!;
+    if (!Uri.TryCreate(parseResult.GetValue(hostOption), UriKind.Absolute, out Uri? host))
+        AnsiConsole.MarkupLine("[red]Invalid host URL[/]");
 
     try
     {
-        if (!string.IsNullOrEmpty(fixturePath))
-            return InputGenerator.GenerateFromFixture(fixturePath, output, forZisk, chainConfigEnvelope);
-
-        if (chainConfigEnvelope)
-        {
-            AnsiConsole.MarkupLine(
-                $"[red]{chainConfigEnvelopeOption.Name} requires {fixtureOption.Name}; " +
-                "the RPC path does not provide a chain_config section.[/]");
-            return 1;
-        }
-
-        if (!Uri.TryCreate(parseResult.GetValue(hostOption), UriKind.Absolute, out Uri? host))
-        {
-            AnsiConsole.MarkupLine("[red]Invalid host URL[/]");
-            return 1;
-        }
-
         return await InputGenerator.Generate(
             parseResult.GetValue(blockOption)!,
-            host,
-            output,
-            forZisk
+            host!,
+            parseResult.GetValue(outputOption)!,
+            !parseResult.GetValue(noZiskOption)
         );
     }
     catch (Exception ex)
