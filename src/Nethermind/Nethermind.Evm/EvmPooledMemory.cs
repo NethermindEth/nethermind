@@ -153,6 +153,38 @@ public struct EvmPooledMemory
             => memory.AsSpan(offset, length).Clear();
     }
 
+    /// <summary>
+    /// Variant of <see cref="TrySave"/> requiring the caller to have already invoked
+    /// <see cref="IGasPolicy{TSelf}.UpdateMemoryCost"/> for (<paramref name="location"/>,
+    /// <paramref name="value"/>.Length) — which both bounds-checks and grows/rents the buffer —
+    /// so this skips re-validation. Mirrors <see cref="CopyAfterGas"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void SaveAfterGas(in UInt256 location, in ZeroPaddedSpan value)
+    {
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        Debug.Assert(location.IsUint64);
+        Debug.Assert(location.u0 + (ulong)value.Length <= Size);
+        PrepareAccessAfterGas(location.u0 + (ulong)value.Length);
+
+        int intLocation = TruncateToInt32(location.u0);
+        int spanLength = value.Span.Length;
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+
+        if (spanLength > 0)
+        {
+            value.Span.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref memory, intLocation), spanLength));
+        }
+        if (value.PaddingLength > 0)
+        {
+            MemoryMarshal.CreateSpan(ref Unsafe.Add(ref memory, intLocation + spanLength), value.PaddingLength).Clear();
+        }
+    }
+
     public bool TryLoadSpan(scoped in UInt256 location, out Span<byte> data)
     {
         CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool isViolation);
@@ -372,7 +404,7 @@ public struct EvmPooledMemory
 
     public void Dispose()
     {
-        byte[] memory = _memory;
+        byte[]? memory = _memory;
 
         if (memory is not null)
         {
