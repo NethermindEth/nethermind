@@ -65,7 +65,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
-        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient funds for gas * price + value"));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(TxErrorMessages.InsufficientFundsForGas));
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
@@ -335,7 +335,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
-        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient funds for gas * price + value"));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(TxErrorMessages.InsufficientFundsForGas));
     }
 
     [Test]
@@ -1068,7 +1068,7 @@ public partial class EthRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
-            Assert.That(message, Does.Contain("insufficient funds for gas * price + value"));
+            Assert.That(message, Does.Contain(TxErrorMessages.InsufficientFundsForGas));
             Assert.That(message, Does.Contain(expectedDetailSubstring));
         }
     }

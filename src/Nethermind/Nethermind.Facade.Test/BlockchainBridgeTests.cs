@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core.Messages;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -429,7 +431,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance for transfer"));
+        Assert.That(callOutput.Error, Is.EqualTo(GasEstimator.InsufficientBalance));
     }
 
     [Test]
@@ -443,7 +445,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance for transfer"));
+        Assert.That(callOutput.Error, Is.EqualTo(GasEstimator.InsufficientBalance));
     }
 
     [Test]
@@ -838,7 +840,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for gas * price + value"));
+        Assert.That(callOutput.Error, Is.EqualTo(TxErrorMessages.InsufficientFundsForGas));
     }
 
     [Test]

@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
@@ -191,10 +192,39 @@ public class EraExporterTests
         string[] eraFiles = Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
         Assert.That(eraFiles, Has.Length.EqualTo(1), "one epoch for blocks 1-15");
 
-        List<ushort> types = EraFileFormatComplianceTests.ReadAllEntries(eraFiles[0]).Select(e => e.Type).ToList();
-        Assert.That(types, Does.Not.Contain(EntryTypes.Proof), "post-merge epochs have no Proof entries");
-        Assert.That(types, Does.Not.Contain(EntryTypes.TotalDifficulty), "post-merge epochs have no TotalDifficulty entries");
-        Assert.That(types, Does.Not.Contain(EntryTypes.AccumulatorRoot), "post-merge epochs have no AccumulatorRoot entry");
+        AssertNoPreMergeEntries(eraFiles[0]);
+    }
+
+    [Test]
+    public async Task Export_WhenPoSSwitcherMarksGenesisPostMerge_ProducesEpochWithNoTdProofOrAccumulatorEntries()
+    {
+        Block genesis = Build.A.Block.Genesis
+            .WithTimestamp(1_742_212_800)
+            .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty)
+            .TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(genesis);
+        blockTree.FindBlock(0UL, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(genesis);
+
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        receiptStorage.Get(genesis, true, false).Returns([]);
+
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.IsPostMerge(genesis.Header).Returns(true);
+
+        await using IContainer container = EraETestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton<IReceiptStorage>(receiptStorage)
+            .AddSingleton<IPoSSwitcher>(poSSwitcher)
+            .AddSingleton<IEraEConfig>(new EraEConfig { MaxEraSize = 16, NetworkName = EraETestModule.TestNetwork })
+            .Build();
+
+        string tmpDirectory = container.ResolveTempDirPath();
+        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0UL, 0UL);
+
+        string eraFile = Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}").Single();
+        AssertNoPreMergeEntries(eraFile);
+        poSSwitcher.Received(1).IsPostMerge(genesis.Header);
     }
 
     [Test]
@@ -227,5 +257,18 @@ public class EraExporterTests
 
         string[] eraFiles = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
         Assert.That(eraFiles.Length, Is.EqualTo(1), "only one epoch covers blocks 16-31");
+    }
+
+    private static void AssertNoPreMergeEntries(string eraFile)
+    {
+        List<ushort> types = [];
+        foreach (EraFileFormatComplianceTests.EntryRecord entry in EraFileFormatComplianceTests.ReadAllEntries(eraFile))
+        {
+            types.Add(entry.Type);
+        }
+
+        Assert.That(types, Does.Not.Contain(EntryTypes.Proof), "post-merge epochs have no Proof entries");
+        Assert.That(types, Does.Not.Contain(EntryTypes.TotalDifficulty), "post-merge epochs have no TotalDifficulty entries");
+        Assert.That(types, Does.Not.Contain(EntryTypes.AccumulatorRoot), "post-merge epochs have no AccumulatorRoot entry");
     }
 }
