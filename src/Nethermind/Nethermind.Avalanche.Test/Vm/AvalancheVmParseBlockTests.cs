@@ -97,9 +97,9 @@ public sealed class AvalancheVmParseBlockTests
         VmPb.ParseBlockResponse response =
             service.ParseBlock(new VmPb.ParseBlockRequest { Bytes = ByteString.CopyFrom(encoded) }, context: null!).Result;
 
-        Assert.That(response.Id.ToByteArray(), Is.EqualTo(expectedId.ToByteArray()),
+        Assert.That(new Hash256(response.Id.ToByteArray()), Is.EqualTo(expectedId),
             "block id must be keccak256(RLP(header)).");
-        Assert.That(response.ParentId.ToByteArray(), Is.EqualTo(block.Header.ParentHash!.ToByteArray()),
+        Assert.That(new Hash256(response.ParentId.ToByteArray()), Is.EqualTo(block.Header.ParentHash),
             "parent_id must be the header ParentHash.");
         Assert.That(response.Height, Is.EqualTo(BlockNumber), "height must be the header Number.");
         Assert.That(response.Timestamp.Seconds, Is.EqualTo((long)BlockTimestamp),
