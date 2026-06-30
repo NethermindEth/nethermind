@@ -3,9 +3,9 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Data;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -14,13 +14,12 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy, IChainLevelInfoRepository chainLevelInfoRepository)
+public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
     : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     protected AuRaNethermindApi Api => api;
@@ -28,14 +27,6 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
 
     protected override async Task InitBlockchain()
     {
-        AuRaChainSpecEngineParameters chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        api.AuRaFinalizationManager = new AuRaBlockFinalizationManager(
-            api.BlockTree!,
-            chainLevelInfoRepository,
-            api.ValidatorStore!,
-            api.LogManager,
-            chainSpecAuRa.TwoThirdsMajorityTransition);
-
         await base.InitBlockchain();
 
         WireFinalizationBranchProcessor();
@@ -50,7 +41,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
     /// Got cyclic dependency. AuRaBlockFinalizationManager -> IAuraValidator -> AuraBlockProcessor -> AuraBlockFinalizationManager.
     /// </remarks>
     protected virtual void WireFinalizationBranchProcessor() =>
-        api.AuRaFinalizationManager!.SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
+        api.Context.Resolve<IAuRaBlockFinalizationManager>().SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {

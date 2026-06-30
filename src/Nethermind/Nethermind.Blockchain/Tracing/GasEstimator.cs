@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -28,7 +29,7 @@ public class GasEstimator(
     public const string GasExceedsAllowanceMsgPrefix = "gas required exceeds allowance";
 
     /// <summary>Message emitted when the sender has insufficient balance.</summary>
-    public const string InsufficientBalance = "insufficient sender balance for transfer";
+    public const string InsufficientBalance = TxErrorMessages.InsufficientFundsForTransfer;
 
     /// <summary>Message emitted when the sender cannot cover gas * price + value.</summary>
     public const string InsufficientFundsForGas = "insufficient funds for gas * price + value";
@@ -89,7 +90,7 @@ public class GasEstimator(
         UInt256 feeCap = tx.CalculateFeeCap();
         EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), available, feeCap);
 
-        return BinarySearchEstimate(tx, header, gasTracer, bounds, errorMargin, token);
+        return BinarySearchEstimate(tx, header, spec, gasTracer, bounds, errorMargin, token);
     }
 
     private static EstimationResult? ValidateErrorMargin(ulong errorMargin) =>
@@ -131,15 +132,15 @@ public class GasEstimator(
     }
 
     private EstimationResult BinarySearchEstimate(
-        Transaction tx, BlockHeader header, EstimateGasTracer gasTracer,
+        Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer,
         EstimationBounds bounds, ulong errorMargin, CancellationToken token)
     {
         // Short-circuit: simple ETH transfers need exactly the intrinsic gas.
-        if (IsSimpleTransfer(tx) && TryExecute(tx, header, bounds.IntrinsicGas, gasTracer, token, out _))
+        if (IsSimpleTransfer(tx) && TryExecute(tx, header, spec, bounds.IntrinsicGas, gasTracer, token, out _))
             return EstimationResult.Success(bounds.IntrinsicGas);
 
         // Execute at maximum gas first (Geth parity): gas-related failure → allowance error; other → surface directly.
-        if (!TryExecute(tx, header, bounds.RightBound, gasTracer, token, out bool isGasRelatedFailure))
+        if (!TryExecute(tx, header, spec, bounds.RightBound, gasTracer, token, out bool isGasRelatedFailure))
         {
             string error = (gasTracer.OutOfGas || isGasRelatedFailure)
                 ? $"{GasExceedsAllowanceMsgPrefix} ({bounds.RightBound})"
@@ -149,26 +150,26 @@ public class GasEstimator(
 
         double marginMultiplier = errorMargin == 0 ? 1d : errorMargin / BasisPointsDivisor + 1d;
         ulong cap = bounds.RightBound;
-        (ulong leftBound, ulong rightBound) = TryOptimisticEstimate(tx, header, gasTracer, bounds, OptimisticMultiplier, token);
+        (ulong leftBound, ulong rightBound) = TryOptimisticEstimate(tx, header, spec, gasTracer, bounds, OptimisticMultiplier, token);
 
         // Narrow bounds until within the error margin (Geth approach).
         while (ShouldContinueSearch(leftBound, rightBound, marginMultiplier - 1d))
         {
             ulong mid = leftBound + (rightBound - leftBound) / 2;
-            if (TryExecute(tx, header, mid, gasTracer, token, out _))
+            if (TryExecute(tx, header, spec, mid, gasTracer, token, out _))
                 rightBound = mid;
             else
                 leftBound = mid;
         }
 
-        if (rightBound == cap && !TryExecute(tx, header, rightBound, gasTracer, token, out _))
+        if (rightBound == cap && !TryExecute(tx, header, spec, rightBound, gasTracer, token, out _))
             return EstimationResult.Failure(GetError(gasTracer));
 
         return EstimationResult.Success(rightBound);
     }
 
     private (ulong Left, ulong Right) TryOptimisticEstimate(
-        Transaction tx, BlockHeader header, EstimateGasTracer gasTracer,
+        Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer,
         EstimationBounds bounds, double optimisticMultiplier, CancellationToken token)
     {
         ulong leftBound = bounds.LeftBound;
@@ -178,7 +179,7 @@ public class GasEstimator(
         ulong optimistic = (ulong)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * optimisticMultiplier);
         if (optimistic > leftBound && optimistic < rightBound)
         {
-            if (TryExecute(tx, header, optimistic, gasTracer, token, out _))
+            if (TryExecute(tx, header, spec, optimistic, gasTracer, token, out _))
                 rightBound = optimistic;
             else
                 leftBound = optimistic;
@@ -187,14 +188,14 @@ public class GasEstimator(
         return (leftBound, rightBound);
     }
 
-    private bool TryExecute(Transaction transaction, BlockHeader header, ulong gasLimit,
+    private bool TryExecute(Transaction transaction, BlockHeader header, IReleaseSpec spec, ulong gasLimit,
                              EstimateGasTracer gasTracer, CancellationToken token, out bool isGasRelatedFailure)
     {
         Transaction txClone = new();
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
 
-        transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, specProvider.GetSpec(header)));
+        transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         TransactionResult callResult = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
         if (IsGasRelatedFailure(callResult))

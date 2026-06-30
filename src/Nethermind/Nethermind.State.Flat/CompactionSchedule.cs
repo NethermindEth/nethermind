@@ -39,18 +39,19 @@ public sealed class CompactionSchedule : ICompactionSchedule
         return Math.Min(ShiftedAlignment(blockNumber), _compactSize);
     }
 
-    public ulong NextFullCompactionAfter(ulong from)
+    public ulong NextFullCompactionAfter(in StateId from)
     {
         if (_compactSize <= 1) return ulong.MaxValue;
-        // Treat PreGenesis (ulong.MaxValue, "nothing persisted") as block 0 so the next boundary
-        // is the first compaction boundary after genesis — keeping the finalized-persistence
-        // trigger engaged at the start of sync instead of deferring to the force-persist backstop.
-        if (from == ulong.MaxValue) from = 0;
-        ulong mod = (from + _offset) % _compactSize;
+
+        // Treat PreGenesis ("nothing persisted") as block 0 so the next boundary is the first
+        // compaction boundary after genesis — keeping the finalized-persistence trigger engaged at
+        // the start of sync instead of deferring to the force-persist backstop.
+        ulong blockNumber = from == StateId.PreGenesis ? 0UL : from.BlockNumber;
+        ulong mod = (blockNumber + _offset) % _compactSize;
         ulong distance = mod == 0 ? _compactSize : _compactSize - mod;
-        // Overflow guard: a from near ulong.MaxValue is unreachable by a real chain, but keep the
-        // addition from wrapping rather than returning a small bogus boundary.
-        return from > ulong.MaxValue - distance ? ulong.MaxValue : from + distance;
+        // Overflow guard: a blockNumber near ulong.MaxValue is unreachable by a real chain, but keep
+        // the addition from wrapping rather than returning a small bogus boundary.
+        return blockNumber > ulong.MaxValue - distance ? ulong.MaxValue : blockNumber + distance;
     }
 
     // The methods below do NOT short-circuit on `_compactSize <= 1` (the "compaction

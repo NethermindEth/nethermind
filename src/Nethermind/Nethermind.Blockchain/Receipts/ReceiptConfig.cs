@@ -12,5 +12,5 @@ public class ReceiptConfig : IReceiptConfig
     public bool CompactReceiptStore { get; set; } = true;
     public bool CompactTxIndex { get; set; } = true;
     public ulong? TxLookupLimit { get; set; } = 2350000ul;
-    public int MaxBlockDepth { get; set; } = 10000;
+    public int MaxBlockDepth { get; set; } = 1000;
 }

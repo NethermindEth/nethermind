@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -99,17 +100,21 @@ public class PersistenceManager(
     internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, ConversionCandidate? ToConvert) DetermineSnapshotAction(StateId latestSnapshot)
     {
         StateId currentPersistedState = GetCurrentPersistedStateId();
-        // PreGenesis (nothing persisted) carries the ulong.MaxValue sentinel, so subtracting it
-        // would wrap; the in-memory depth from genesis is then latestSnapshot.BlockNumber + 1.
-        Debug.Assert(currentPersistedState == StateId.PreGenesis || latestSnapshot.BlockNumber >= currentPersistedState.BlockNumber,
-            "Latest snapshot must be at or ahead of the last persisted block.");
+        // PreGenesis (nothing persisted) carries the ulong.MaxValue sentinel, so subtracting it would
+        // wrap; the in-memory depth from genesis is then latestSnapshot.BlockNumber + 1. A latest below
+        // the persisted block means a deep reorg stranded the persisted base on an orphaned fork;
+        // persistence stalls until the chain climbs back. SaturatingSub keeps the depth at 0 rather than
+        // underflowing, so the keep-in-memory guard returns early.
+        if (currentPersistedState != StateId.PreGenesis && latestSnapshot.BlockNumber < currentPersistedState.BlockNumber && _logger.IsWarn)
+            _logger.Warn($"Latest snapshot {latestSnapshot} is below persisted state {currentPersistedState}; persisted base may be on an orphaned fork. Skipping persistence.");
+
         ulong snapshotsDepth = currentPersistedState == StateId.PreGenesis
             ? latestSnapshot.BlockNumber + 1
-            : latestSnapshot.BlockNumber - currentPersistedState.BlockNumber;
+            : latestSnapshot.BlockNumber.SaturatingSub(currentPersistedState.BlockNumber);
 
         // ---- Phase 1: persistence to RocksDB ----
         ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
-        ulong nextBoundary = schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+        ulong nextBoundary = schedule.NextFullCompactionAfter(in currentPersistedState);
 
         // Normal finalized-driven persistence. Anchor at the next boundary block, not at the
         // CL-reported finalized tip. The outer gate guarantees boundary <= finalizedBlockNumber, so

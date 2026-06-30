@@ -749,6 +749,94 @@ public class FastHeadersSyncTests
     }
 
     [Test]
+    public async Task Can_initialize_feed_after_restart_when_pivot_chain_level_is_missing()
+    {
+        IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
+        BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = new() { FastSync = true };
+
+        Func<BlockTreeBuilder> createBuilderOverSharedDbs = SharedDbsBlockTreeBuilderFactory(syncConfig);
+        BlockTreeBuilder builderBeforeRestart = createBuilderOverSharedDbs();
+        BlockTree treeBeforeRestart = builderBeforeRestart.TestObject;
+        Assert.That(treeBeforeRestart.Insert(pivot), Is.EqualTo(AddBlockResult.Added));
+        treeBeforeRestart.SyncPivot = (pivot.Number, pivot.Hash!); // Persisted to the metadata db
+        builderBeforeRestart.ChainLevelInfoRepository.Delete(pivot.Number); // The chain level write that was lost
+
+        BlockTreeBuilder builderAfterRestart = createBuilderOverSharedDbs();
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.FinalTotalDifficulty.Returns(pivot.TotalDifficulty);
+        using HeadersSyncFeed feed = CreateFeed(builderAfterRestart, syncConfig, poSSwitcher);
+
+        feed.InitializeFeed();
+
+        using HeadersSyncBatch? batch = await feed.PrepareRequest();
+        Assert.That(batch, Is.Not.Null);
+        Assert.That(batch!.EndNumber, Is.EqualTo(pivot.Number));
+    }
+
+    [Test]
+    public async Task Resets_header_sync_after_restart_when_lowest_inserted_header_chain_level_is_missing()
+    {
+        IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
+        BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+        BlockHeader lowestInserted = remoteBlockTree.FindHeader(900, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = pivot.Number,
+            PivotHash = pivot.Hash!.ToString(),
+            PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
+        };
+
+        Func<BlockTreeBuilder> createBuilderOverSharedDbs = SharedDbsBlockTreeBuilderFactory(syncConfig);
+        BlockTreeBuilder builderBeforeRestart = createBuilderOverSharedDbs();
+        BlockTree treeBeforeRestart = builderBeforeRestart.TestObject;
+        Assert.That(treeBeforeRestart.Insert(lowestInserted), Is.EqualTo(AddBlockResult.Added));
+        treeBeforeRestart.LowestInsertedHeader = lowestInserted; // Persisted to the metadata db
+        builderBeforeRestart.ChainLevelInfoRepository.Delete(lowestInserted.Number); // The chain level write that was lost
+
+        BlockTreeBuilder builderAfterRestart = createBuilderOverSharedDbs();
+        BlockTree treeAfterRestart = builderAfterRestart.TestObject;
+        Assert.That(treeAfterRestart.LowestInsertedHeader?.Number, Is.EqualTo(lowestInserted.Number),
+            "the level-less lowest inserted header must be loaded back on restart for the test to be meaningful");
+        using HeadersSyncFeed feed = CreateFeed(builderAfterRestart, syncConfig, Substitute.For<IPoSSwitcher>());
+
+        feed.InitializeFeed();
+
+        Assert.That(treeAfterRestart.LowestInsertedHeader, Is.Null);
+        using HeadersSyncBatch? batch = await feed.PrepareRequest();
+        Assert.That(batch, Is.Not.Null);
+        Assert.That(batch!.EndNumber, Is.EqualTo(pivot.Number));
+    }
+
+    private static Func<BlockTreeBuilder> SharedDbsBlockTreeBuilderFactory(TestSyncConfig syncConfig)
+    {
+        TestMemDb blocksDb = new();
+        TestMemDb headersDb = new();
+        TestMemDb blockNumbersDb = new();
+        TestMemDb blockInfoDb = new();
+        TestMemDb metadataDb = new();
+        return () => Build.A.BlockTree()
+            .WithoutSettingHead
+            .WithBlocksDb(blocksDb)
+            .WithHeadersDb(headersDb)
+            .WithBlocksNumberDb(blockNumbersDb)
+            .WithBlockInfoDb(blockInfoDb)
+            .WithMetadataDb(metadataDb)
+            .WithSyncConfig(syncConfig);
+    }
+
+    private static HeadersSyncFeed CreateFeed(BlockTreeBuilder builder, TestSyncConfig syncConfig, IPoSSwitcher poSSwitcher) => new(
+        blockTree: builder.TestObject,
+        syncPeerPool: Substitute.For<ISyncPeerPool>(),
+        syncConfig: syncConfig,
+        syncReport: new NullSyncReport(),
+        poSSwitcher: poSSwitcher,
+        logManager: LimboLogs.Instance,
+        chainLevelInfoRepository: builder.ChainLevelInfoRepository,
+        headerStore: builder.HeaderStore);
+
+    [Test]
     public async Task Will_never_lose_batch_on_invalid_batch()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();

@@ -165,6 +165,51 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void DetermineSnapshotAction_FreshDb_PersistsGenesisBaseFirst()
+    {
+        // Nothing persisted yet (PreGenesis). The schedule anchors the next compaction boundary at
+        // genesis (block 16) instead of the ulong.MaxValue "no further boundary" sentinel, so the
+        // finalized trigger engages from a fresh DB. The genesis base (PreGenesis -> Block0) is the
+        // first persistable chunk: a single PreGenesis -> 16 span would be 17 (> CompactSize), so the
+        // walk persists the genesis base before the wider Block0 -> 16 chunk.
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(StateId.PreGenesis);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        using PersistenceManager pm = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            persistence,
+            _snapshotRepository,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+
+        // Depth 101 is past MinReorgDepth + CompactSize (80) but far below the force-persist backstop
+        // (90000), so only the finalized branch can produce a snapshot here.
+        StateId boundary = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(boundary.StateRoot.Bytes));
+
+        using Snapshot genesis = CreateSnapshot(StateId.PreGenesis, Block0, compacted: false);
+        using Snapshot boundaryChunk = CreateSnapshot(Block0, boundary, compacted: true);
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(latest);
+
+        Assert.That(persistedToPersist, Is.Null);
+        Assert.That(toPersist, Is.Not.Null);
+        Assert.That(toPersist!.From, Is.EqualTo(StateId.PreGenesis));
+        Assert.That(toPersist.To, Is.EqualTo(Block0));
+
+        toPersist.Dispose();
+    }
+
+    [Test]
     public void DetermineSnapshotAction_UnfinalizedButBelowForceLimit_ReturnsNull()
     {
         // Depth (150) is below LongFinalityMaxReorgDepth (90000), so the backstop doesn't fire.
@@ -636,6 +681,46 @@ public class PersistenceManagerTests
         Assert.That(toPersist!.To.StateRoot.Bytes.ToArray(), Is.EqualTo(target2.StateRoot.Bytes.ToArray()));
 
         toPersist.Dispose();
+    }
+
+    public void DetermineSnapshotAction_LatestSnapshotBelowPersistedBlock_ReturnsNullWithoutUnderflow()
+    {
+        // A deep reorg below a force-persisted unfinalized block can leave the latest snapshot behind the
+        // last persisted block. The in-memory depth must saturate to 0 (not underflow to ~2^64) so the
+        // backstop does not fire and force-persist a stale head ancestor.
+        StateId persisted = CreateStateId(100);
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persisted);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        using PersistenceManager pm = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            persistence,
+            _snapshotRepository,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+
+        // Latest snapshot (50) is below the persisted block (100); finalized far behind so the buggy
+        // underflow path would take the backstop branch. Stage a head-ancestor snapshot it would return.
+        StateId latest = CreateStateId(50);
+        StateId headAncestor = CreateStateId(101);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+
+        using Snapshot staged = CreateSnapshot(persisted, headAncestor, compacted: false);
+        _snapshotRepository.SetLastCommittedStateId(headAncestor);
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(latest);
+        using Snapshot? toDispose = toPersist; // dispose if the buggy underflow path returned a snapshot
+
+        Assert.That(persistedToPersist, Is.Null);
+        Assert.That(toPersist, Is.Null);
     }
 
     [Test]
