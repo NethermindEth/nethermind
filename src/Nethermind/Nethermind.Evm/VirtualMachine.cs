@@ -80,22 +80,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
-    // Pre-sized to the EVM max call depth (1024, EIP-150) so this never resizes during a
-    // transaction. The VirtualMachine is reused across transactions; if the backing grew inside a
-    // per-tx scratch scope it would be reclaimed at the reset, dangling the persistent VM.
-    protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(1025);
+    // One past the max call depth so it never resizes mid-tx. The guest pools per-tx allocations,
+    // so a mid-tx grow would be reclaimed at reset, dangling this persistent cross-tx stack.
+    protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(MaxCallDepth + 1);
 
     protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
 
     protected ITxTracer _txTracer = NullTxTracer.Instance;
-#if ZK_EVM
-    // ITxTracer.IsTracingActions is read per CALL / per precompile-call (9 hot sites). The
-    // tracer is fixed per execution and its tracing flags are constant, so cache the bool once
-    // (set in ExecuteTransaction) to drop the per-call interface dispatch. Same pattern as the
-    // cached IReleaseSpec flags.
-    private bool _isTracingActionsCached;
-#endif
 
     private ICodeInfoRepository _codeInfoRepository;
 
@@ -108,17 +100,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public IReleaseSpec Spec => _blockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
-#if ZK_EVM
-    private bool IsTracingActionsFast => _isTracingActionsCached;
-#else
-    private bool IsTracingActionsFast => _txTracer.IsTracingActions;
-#endif
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
+    // IsTracingActions is read at ~9 hot CALL / precompile sites. The tracer is fixed per execution,
+    // so the guest flavor caches the flag (set in ExecuteTransaction) to drop the interface dispatch;
+    // the std flavor forwards directly.
+    private partial bool IsTracingActionsFast { get; }
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -1092,99 +1083,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected static string GetErrorString(IPrecompile precompile, string? error)
         => $"Precompile {precompile.GetStaticName()} failed with error: {error}";
-
-#if ZK_EVM
-    /// <summary>
-    /// Inline handling of a CALL whose target is a precompile. Precompiles run
-    /// no bytecode, so instead of handing a child frame to the ExecuteTransaction
-    /// dispatch loop we run the precompile and resume the calling frame here.
-    /// Mirrors the loop's frame-finished handling for the (non-create) case.
-    /// </summary>
-    internal EvmExceptionType InlinePrecompileCall<TTracingInst>(
-        ExecutionEnvironment callEnv,
-        TGasPolicy childGas,
-        long outputDestination,
-        long outputLength,
-        ExecutionType executionType,
-        bool isStatic,
-        scoped in Snapshot snapshot,
-        scoped ref EvmStack stack)
-        where TTracingInst : struct, IFlag
-    {
-        VmState<TGasPolicy> parent = _currentState;
-        VmState<TGasPolicy> child = VmState<TGasPolicy>.RentFrame(
-            gas: childGas,
-            outputDestination: outputDestination,
-            outputLength: outputLength,
-            executionType: executionType,
-            isStatic: isStatic,
-            isCreateOnPreExistingAccount: false,
-            env: callEnv,
-            stateForAccessLists: in parent.AccessTracker,
-            snapshot: in snapshot);
-
-        CallResult callResult = ExecutePrecompile(child, IsTracingActionsFast, out Exception? failure, out _);
-
-        if (failure is not null)
-        {
-            // Precompile hard failure (out of gas): mirror HandleFailure + PopAndRestoreParentState.
-            _worldState.Restore(child.Snapshot);
-            RevertParityTouchBugAccount();
-            RemoveAdvancedStateGasRefund(child, ref child.Gas);
-            TGasPolicy.RestoreChildStateGasOnHalt(ref parent.Gas, in child.Gas);
-            child.Dispose();
-            ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
-        }
-
-        bool reverted = callResult.ShouldRevert;
-        if (!reverted)
-        {
-            IncorporateChildStateGasRefunds(child);
-            TGasPolicy.Refund(ref parent.Gas, in child.Gas);
-        }
-        else
-        {
-            TGasPolicy.UpdateGasUp(ref parent.Gas, TGasPolicy.GetRemainingGas(in child.Gas));
-            RemoveAdvancedStateGasRefund(child, ref child.Gas);
-            TGasPolicy.RestoreChildStateGas(ref parent.Gas, in child.Gas);
-        }
-
-        ReturnDataBuffer = callResult.Output;
-        EvmExceptionType push = stack.PushBytes<TTracingInst>(
-            (reverted ? StatusCode.FailureBytes : StatusCode.SuccessBytes).Span);
-
-        if (push == EvmExceptionType.None && outputLength > 0 && callResult.Output.Length > 0)
-        {
-            ZeroPaddedSpan outSlice = callResult.Output.Span
-                .SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)outputLength));
-            UInt256 dest = (ulong)outputDestination;
-            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)outSlice.Length, parent))
-            {
-                push = EvmExceptionType.OutOfGas;
-            }
-            else
-            {
-                parent.Memory.TrySave(in dest, outSlice);
-            }
-        }
-
-        if (reverted)
-        {
-            _worldState.Restore(child.Snapshot);
-        }
-        else
-        {
-            // The precompile succeeded, so its state is committed even when `push` was just set to
-            // OutOfGas by the output-copy memory expansion above. Per EIP-2929 the warm/cold access
-            // set is not reverted on call failure, and any account-state changes are still guarded by
-            // the enclosing transaction snapshot, which unwinds them if the parent frame later halts.
-            child.CommitToParent(parent);
-        }
-        child.Dispose();
-        return push;
-    }
-#endif
 
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,

@@ -13,6 +13,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private static long _txCount;
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
 
+    private partial bool IsTracingActionsFast => _txTracer.IsTracingActions;
+
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
         // Check if tracing instructions are inactive.
