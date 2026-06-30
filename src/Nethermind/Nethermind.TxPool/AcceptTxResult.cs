@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Messages;
 
 namespace Nethermind.TxPool
 {
@@ -44,7 +45,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Sender account has not enough balance to execute this transaction.
         /// </summary>
-        public static readonly AcceptTxResult InsufficientFunds = new(6, TxPoolErrorMessages.InsufficientFunds);
+        public static readonly AcceptTxResult InsufficientFunds = new(6, TxErrorMessages.InsufficientFundsForGas);
 
         /// <summary>
         /// Calculation of gas price * gas limit + value overflowed int256.

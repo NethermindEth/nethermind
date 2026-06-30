@@ -13,7 +13,6 @@ public static class TxPoolErrorMessages
     public const string TransactionUnderpriced = "transaction underpriced";
     public const string ReplacementTransactionUnderpriced = "replacement transaction underpriced";
     public const string GasLimitReached = "gas limit reached";
-    public const string InsufficientFunds = "insufficient funds for gas * price + value";
     public const string NonceTooHigh = "nonce too high";
     public const string NonceTooLow = "nonce too low";
     public const string SenderNotEoa = "sender not an eoa";
