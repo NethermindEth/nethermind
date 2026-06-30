@@ -13,27 +13,32 @@ namespace Nethermind.Core.Test.Threading;
 [Parallelizable(ParallelScope.None)]
 public class StripedLongCounterTests
 {
-    [Test]
-    public void Starts_at_zero()
+    // 1 forces the unstriped (single-field) path, 8 forces the striped (array) path — both must be correct
+    // regardless of the host's core count.
+    [TestCase(1)]
+    [TestCase(8)]
+    public void Starts_at_zero(int slots)
     {
-        StripedLongCounter counter = new();
+        StripedLongCounter counter = new(slots);
         Assert.That(counter.Value, Is.Zero);
     }
 
-    [Test]
-    public void Accumulates_positive_and_negative_deltas()
+    [TestCase(1)]
+    [TestCase(8)]
+    public void Accumulates_positive_and_negative_deltas(int slots)
     {
-        StripedLongCounter counter = new();
+        StripedLongCounter counter = new(slots);
         counter.Add(10);
         counter.Add(5);
         counter.Add(-3);
         Assert.That(counter.Value, Is.EqualTo(12));
     }
 
-    [Test]
-    public void Reset_replaces_the_total()
+    [TestCase(1)]
+    [TestCase(8)]
+    public void Reset_replaces_the_total(int slots)
     {
-        StripedLongCounter counter = new();
+        StripedLongCounter counter = new(slots);
         counter.Add(100);
         counter.Reset(42);
         Assert.That(counter.Value, Is.EqualTo(42));
@@ -42,12 +47,13 @@ public class StripedLongCounterTests
         Assert.That(counter.Value, Is.EqualTo(50));
     }
 
-    [Test]
-    public void Concurrent_adds_sum_exactly()
+    [TestCase(1)]
+    [TestCase(8)]
+    public void Concurrent_adds_sum_exactly(int slots)
     {
         const int perThread = 100_000;
         int threads = Math.Max(2, Environment.ProcessorCount);
-        StripedLongCounter counter = new();
+        StripedLongCounter counter = new(slots);
 
         Parallel.For(0, threads, _ =>
         {
@@ -60,12 +66,13 @@ public class StripedLongCounterTests
         Assert.That(counter.Value, Is.EqualTo((long)threads * perThread));
     }
 
-    [Test]
-    public void Concurrent_increment_and_decrement_net_to_zero()
+    [TestCase(1)]
+    [TestCase(8)]
+    public void Concurrent_increment_and_decrement_net_to_zero(int slots)
     {
         const int perThread = 200_000;
         int pairs = Math.Max(1, Environment.ProcessorCount / 2);
-        StripedLongCounter counter = new();
+        StripedLongCounter counter = new(slots);
 
         Parallel.For(0, pairs * 2, t =>
         {
@@ -79,13 +86,49 @@ public class StripedLongCounterTests
         Assert.That(counter.Value, Is.Zero);
     }
 
-    // Local-only: demonstrates the contention win over a single shared Interlocked target.
-    // Excluded from CI (timing-dependent); run with --filter to reproduce the speedup number.
+    // Striping is skipped at or below the threshold (no array allocated) and capped above it.
+    [TestCase(1, 1)]
+    [TestCase(4, 1)]
+    [TestCase(StripedLongCounter.StripeThreshold, 1)]
+    [TestCase(9, 16)]
+    [TestCase(16, 16)]
+    [TestCase(64, 64)]
+    [TestCase(128, StripedLongCounter.MaxSlots)]
+    [TestCase(1000, StripedLongCounter.MaxSlots)]
+    public void SlotsForProcessorCount_skips_striping_below_threshold_and_caps_above(int cores, int expectedSlots) =>
+        Assert.That(StripedLongCounter.SlotsForProcessorCount(cores), Is.EqualTo(expectedSlots));
+
+    [Test]
+    public void Unstriped_counter_allocates_less_than_striped()
+    {
+        // Warm up jit/type init so it doesn't pollute the measurement.
+        GC.KeepAlive(new StripedLongCounter(1));
+        GC.KeepAlive(new StripedLongCounter(MaxStripeForTest));
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        StripedLongCounter plain = new(1);
+        long plainAlloc = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        StripedLongCounter striped = new(MaxStripeForTest);
+        long stripedAlloc = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        GC.KeepAlive(plain);
+        GC.KeepAlive(striped);
+        Assert.That(plainAlloc, Is.LessThan(stripedAlloc), "unstriped path must not allocate the per-slot array");
+    }
+
+    private const int MaxStripeForTest = 64;
+
+    // Local-only: demonstrates the contention win of the striped path over a single shared Interlocked
+    // target. Excluded from CI (timing-dependent; the win scales with core count and only engages above
+    // the StripeThreshold). Set STRIPED_BENCH_OUT to capture the result line.
     [Test, Explicit]
     public void Benchmark_striped_vs_shared_under_contention()
     {
+        int lanes = Math.Max(2, Environment.ProcessorCount);
         const int perThread = 20_000_000;
-        int threads = Math.Max(2, Environment.ProcessorCount);
+        int threads = lanes;
 
         long shared = 0;
         double sharedMs = Measure(threads, () =>
