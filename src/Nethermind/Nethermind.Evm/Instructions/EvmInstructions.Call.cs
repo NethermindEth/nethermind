@@ -281,6 +281,8 @@ public static partial class EvmInstructions
 #endif
         static EvmExceptionType CreateFullCallFrame(
             VirtualMachine<TGasPolicy> vm,
+            // Consumed only by the guest's inline precompile branch below; unused on mainline. EvmStack is
+            // a ref struct, so this static local fn can't capture it — it has to come through by ref.
             ref EvmStack stack,
             ref TGasPolicy gas,
             in UInt256 dataOffset,
