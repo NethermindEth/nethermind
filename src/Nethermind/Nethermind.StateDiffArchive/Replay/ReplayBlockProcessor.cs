@@ -32,6 +32,7 @@ public sealed class ReplayBlockProcessor(
 {
     private static readonly TxReceipt[] EmptyReceipts = [];
     private readonly ILogger _logger = logManager.GetClassLogger<ReplayBlockProcessor>();
+    private int _exhaustedLogged;
 
     public event Action? TransactionsExecuted
     {
@@ -42,7 +43,10 @@ public sealed class ReplayBlockProcessor(
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
     {
         if (suggestedBlock.IsGenesis || !store.TryRead(suggestedBlock.Number, out StateDiffRecord? record))
+        {
+            if (!suggestedBlock.IsGenesis) LogReplayExhausted(suggestedBlock.Number);
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        }
 
         using (record)
         {
@@ -64,6 +68,13 @@ public sealed class ReplayBlockProcessor(
 
             return (suggestedBlock, EmptyReceipts);
         }
+    }
+
+    // Logs once when replay first runs out of recorded diffs and the node continues with normal processing.
+    private void LogReplayExhausted(ulong blockNumber)
+    {
+        if (_logger.IsInfo && Interlocked.Exchange(ref _exhaustedLogged, 1) == 0)
+            _logger.Info($"StateDiffArchive: no more diffs to replay at block {blockNumber}; continuing with normal block processing.");
     }
 
     // Matches PersistentStorageProvider.UpdateRootHashes: below this many contracts the parallel overhead isn't worth it.
