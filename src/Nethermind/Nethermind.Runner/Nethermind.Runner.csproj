@@ -47,6 +47,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.BalRecorder\Nethermind.BalRecorder.csproj" />
+    <ProjectReference Include="..\Nethermind.StateDiffArchive\Nethermind.StateDiffArchive.csproj" />
     <ProjectReference Include="..\Nethermind.Flashbots\Nethermind.Flashbots.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />

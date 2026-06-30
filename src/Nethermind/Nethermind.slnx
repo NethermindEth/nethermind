@@ -98,6 +98,8 @@
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.BalRecorder.Test/Nethermind.BalRecorder.Test.csproj" />
   <Project Path="Nethermind.BalRecorder/Nethermind.BalRecorder.csproj" />
+  <Project Path="Nethermind.StateDiffArchive.Test/Nethermind.StateDiffArchive.Test.csproj" />
+  <Project Path="Nethermind.StateDiffArchive/Nethermind.StateDiffArchive.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
   <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
