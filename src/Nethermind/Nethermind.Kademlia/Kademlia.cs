@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using Collections.Pooled;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -42,7 +41,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         ILookupAlgo<TNode, TKadKey> lookupAlgo,
         INodeHealthTracker<TNode> nodeHealthTracker,
         KademliaConfig<TNode> config,
-        ILoggerFactory? loggerFactory = null,
+        ILoggerFactory loggerFactory,
         TimeProvider? timeProvider = null)
     {
         _keyOperator = keyOperator;
@@ -50,7 +49,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         _routingTable = routingTable;
         _lookupAlgo = lookupAlgo;
         _nodeHealthTracker = nodeHealthTracker;
-        _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<Kademlia<TKey, TNode, TKadKey>>();
+        _logger = loggerFactory.CreateLogger<Kademlia<TKey, TNode, TKadKey>>();
 
         _currentNodeId = config.CurrentNodeId;
         _currentNodeIdAsHash = _keyOperator.GetNodeHash(_currentNodeId);

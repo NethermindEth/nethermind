@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Kademlia;
 using NSubstitute;
 using NUnit.Framework;
@@ -39,7 +40,8 @@ public class LookupKNearestNeighbourTests
                 Alpha = alpha,
                 KSize = 8,
                 LookupFindNeighbourHardTimeout = hardTimeout,
-            });
+            },
+            NullLoggerFactory.Instance);
 
         return (lookup, routing, health);
     }

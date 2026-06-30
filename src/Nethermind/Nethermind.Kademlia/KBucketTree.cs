@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Collections.Pooled;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -36,14 +35,14 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         KademliaConfig<TNode> config,
         INodeHashProvider<TNode, TKadKey> nodeHashProvider,
         IKademliaDistance<TKadKey> distance,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory loggerFactory)
     {
         _k = config.KSize;
         _b = config.Beta;
         _distance = distance;
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _root = new TreeNode(config.KSize, distance.Zero);
-        _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<KBucketTree<TNode, TKadKey>>();
+        _logger = loggerFactory.CreateLogger<KBucketTree<TNode, TKadKey>>();
         if (_logger.IsEnabled(LogLevel.Debug))
         {
             _logger.LogDebug($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");

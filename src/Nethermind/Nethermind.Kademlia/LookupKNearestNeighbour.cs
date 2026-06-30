@@ -6,7 +6,6 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -24,12 +23,12 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
     IKademliaDistance<TKadKey> distance,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILoggerFactory? loggerFactory = null) : ILookupAlgo<TNode, TKadKey>
+    ILoggerFactory loggerFactory) : ILookupAlgo<TNode, TKadKey>
     where TNode : notnull
     where TKadKey : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimeout;
-    private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<LookupKNearestNeighbour<TKey, TNode, TKadKey>>();
+    private readonly ILogger _logger = loggerFactory.CreateLogger<LookupKNearestNeighbour<TKey, TNode, TKadKey>>();
 
     public async Task<TNode[]> Lookup(
         TKadKey targetHash,

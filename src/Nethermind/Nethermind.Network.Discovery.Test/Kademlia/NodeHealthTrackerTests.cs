@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Kademlia;
 using NSubstitute;
 using NUnit.Framework;
@@ -36,7 +37,8 @@ public class NodeHealthTrackerTests
             config,
             routing,
             IntNodeHashProvider.Instance,
-            sender);
+            sender,
+            NullLoggerFactory.Instance);
         return (tracker, routing, sender);
     }
 

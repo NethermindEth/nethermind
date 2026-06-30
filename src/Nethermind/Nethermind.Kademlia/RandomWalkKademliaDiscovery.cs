@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -17,14 +16,14 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     IKeyOperator<TKey, TNode, TKadKey> keyOperator,
     IKademliaDistance<TKadKey> distance,
     KademliaConfig<TNode> kademliaConfig,
-    ILoggerFactory? loggerFactory = null)
+    ILoggerFactory loggerFactory)
     : IKademliaDiscovery<TKey, TNode>
     where TNode : notnull
     where TKadKey : notnull
 {
     private static readonly TimeSpan MinimumIterationDuration = TimeSpan.FromSeconds(1);
 
-    private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>>();
+    private readonly ILogger _logger = loggerFactory.CreateLogger<RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>>();
     private readonly TKadKey _currentNodeHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
     private readonly int _maxDistance = distance.MaxDistance;
 
