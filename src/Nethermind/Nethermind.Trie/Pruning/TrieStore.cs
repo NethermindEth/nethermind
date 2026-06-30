@@ -136,46 +136,58 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public long MemoryUsedByDirtyCache
     {
-        get => _memoryUsedByDirtyCache;
+        get => _memoryUsedByDirtyCache.Value;
         set
         {
             Metrics.MemoryUsedByCache = value;
-            _memoryUsedByDirtyCache = value;
+            _memoryUsedByDirtyCache.Reset(value);
         }
     }
 
     public long DirtyMemoryUsedByDirtyCache
     {
-        get => _dirtyMemoryUsedByDirtyCache;
+        get => _dirtyMemoryUsedByDirtyCache.Value;
         set
         {
             Metrics.DirtyMemoryUsedByCache = value;
-            _dirtyMemoryUsedByDirtyCache = value;
+            _dirtyMemoryUsedByDirtyCache.Reset(value);
         }
     }
 
     public long PersistedMemoryUsedByDirtyCache => MemoryUsedByDirtyCache - DirtyMemoryUsedByDirtyCache;
 
+    // Memory/count accounting is updated on every node insert and evict from all parallel commit and
+    // read workers. The totals are striped per-core (LongAdder pattern) so these hot writes do not
+    // ping-pong a shared cache line; the matching Metrics gauges are refreshed once per block from
+    // PublishDirtyCacheMetrics (called in Prune) rather than on every update.
     public void IncrementMemoryUsedByDirtyCache(long nodeMemoryUsage, bool persisted)
     {
-        Metrics.CachedNodesCount = Interlocked.Increment(ref _totalCachedNodesCount);
-        Metrics.MemoryUsedByCache = Interlocked.Add(ref _memoryUsedByDirtyCache, nodeMemoryUsage);
+        _totalCachedNodesCount.Add(1);
+        _memoryUsedByDirtyCache.Add(nodeMemoryUsage);
         if (!persisted)
         {
-            Metrics.DirtyNodesCount = Interlocked.Increment(ref _dirtyNodesCount);
-            Metrics.DirtyMemoryUsedByCache = Interlocked.Add(ref _dirtyMemoryUsedByDirtyCache, nodeMemoryUsage);
+            _dirtyNodesCount.Add(1);
+            _dirtyMemoryUsedByDirtyCache.Add(nodeMemoryUsage);
         }
     }
 
     public void DecreaseMemoryUsedByDirtyCache(long nodeMemoryUsage, bool persisted)
     {
-        Metrics.CachedNodesCount = Interlocked.Decrement(ref _totalCachedNodesCount);
-        Metrics.MemoryUsedByCache = Interlocked.Add(ref _memoryUsedByDirtyCache, -nodeMemoryUsage);
+        _totalCachedNodesCount.Add(-1);
+        _memoryUsedByDirtyCache.Add(-nodeMemoryUsage);
         if (!persisted)
         {
-            Metrics.DirtyNodesCount = Interlocked.Decrement(ref _dirtyNodesCount);
-            Metrics.DirtyMemoryUsedByCache = Interlocked.Add(ref _dirtyMemoryUsedByDirtyCache, -nodeMemoryUsage);
+            _dirtyNodesCount.Add(-1);
+            _dirtyMemoryUsedByDirtyCache.Add(-nodeMemoryUsage);
         }
+    }
+
+    private void PublishDirtyCacheMetrics()
+    {
+        Metrics.MemoryUsedByCache = _memoryUsedByDirtyCache.Value;
+        Metrics.DirtyMemoryUsedByCache = _dirtyMemoryUsedByDirtyCache.Value;
+        Metrics.CachedNodesCount = _totalCachedNodesCount.Value;
+        Metrics.DirtyNodesCount = _dirtyNodesCount.Value;
     }
 
     public int CommittedNodesCount
@@ -551,6 +563,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public void Prune()
     {
+        PublishDirtyCacheMetrics();
         TrieStoreState state = CaptureCurrentState();
         if ((_pruningStrategy.ShouldPruneDirtyNode(state) || _pruningStrategy.ShouldPrunePersistedNode(state)) && _pruningTask.IsCompleted)
         {
@@ -1000,9 +1013,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         MemoryUsedByDirtyCache = memory;
         DirtyMemoryUsedByDirtyCache = dirtyMemory;
-        _totalCachedNodesCount = totalNodes;
+        _totalCachedNodesCount.Reset(totalNodes);
         Metrics.CachedNodesCount = totalNodes;
-        _dirtyNodesCount = totalDirtyNodes;
+        _dirtyNodesCount.Reset(totalDirtyNodes);
         Metrics.DirtyNodesCount = totalDirtyNodes;
     }
 
@@ -1042,10 +1055,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private BlockCommitSet? _lastCommitSet = null;
 
-    private long _memoryUsedByDirtyCache;
-    private long _dirtyMemoryUsedByDirtyCache;
-    private long _totalCachedNodesCount;
-    private long _dirtyNodesCount;
+    private readonly StripedLongCounter _memoryUsedByDirtyCache = new();
+    private readonly StripedLongCounter _dirtyMemoryUsedByDirtyCache = new();
+    private readonly StripedLongCounter _totalCachedNodesCount = new();
+    private readonly StripedLongCounter _dirtyNodesCount = new();
 
     private int _committedNodesCount;
 
