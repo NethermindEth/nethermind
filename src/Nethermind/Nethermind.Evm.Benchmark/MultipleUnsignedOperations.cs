@@ -31,6 +31,7 @@ public class MultipleUnsignedOperations
     private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
     private VmState<EthereumGasPolicy> _evmState;
     private IWorldState _stateProvider;
+    private IDisposable _stateScope;
 
     private readonly byte[] _bytecode = Prepare.EvmCode
         .PushData(2)
@@ -70,6 +71,7 @@ public class MultipleUnsignedOperations
     public void GlobalSetup()
     {
         _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
         _stateProvider.Commit(_spec);
 
@@ -97,6 +99,7 @@ public class MultipleUnsignedOperations
     {
         _evmState.Dispose();
         _environment.Dispose();
+        _stateScope.Dispose();
     }
 
     [Benchmark]
