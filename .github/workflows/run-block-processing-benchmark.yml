@@ -77,7 +77,7 @@ jobs:
     needs: resolve-inputs
     if: needs.resolve-inputs.outputs.should_run == 'true'
     runs-on: benchmark
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Check out base branch (master)
         uses: actions/checkout@v6
@@ -108,9 +108,12 @@ jobs:
             FILTER_ARG="*${FILTER}*"
           fi
 
+          # BenchmarkDotNet rebuilds an auto-generated host project per run; its default 120s build
+          # timeout is too short for this project's dependency graph and silently yields zero results.
           dotnet run -c Release --no-build \
             --project ${{ env.BENCHMARK_PROJECT }} \
             -- --filter "${FILTER_ARG}" \
+               --buildTimeout 600 \
                --exporters json \
                --artifacts "${RUNNER_TEMP}/bdn-base"
 
@@ -138,9 +141,11 @@ jobs:
             FILTER_ARG="*${FILTER}*"
           fi
 
+          # See base-branch step: raise BenchmarkDotNet's host-build timeout above the 120s default.
           dotnet run -c Release --no-build \
             --project ${{ env.BENCHMARK_PROJECT }} \
             -- --filter "${FILTER_ARG}" \
+               --buildTimeout 600 \
                --exporters json \
                --artifacts "${RUNNER_TEMP}/bdn-pr"
 
@@ -171,10 +176,13 @@ jobs:
                   data = json.load(f)
               results = {}
               for bm in data["Benchmarks"]:
+                  stats = bm.get("Statistics")
+                  if not stats:
+                      # Benchmark errored (e.g. host build failed) — skip rather than crash on None.
+                      continue
                   method = bm["Method"]
-                  stats = bm["Statistics"]
-                  mem = bm.get("Memory", {})
-                  pcts = stats.get("Percentiles", {})
+                  mem = bm.get("Memory") or {}
+                  pcts = stats.get("Percentiles") or {}
                   results[method] = {
                       "mean": stats["Mean"],
                       "median": stats["Median"],
