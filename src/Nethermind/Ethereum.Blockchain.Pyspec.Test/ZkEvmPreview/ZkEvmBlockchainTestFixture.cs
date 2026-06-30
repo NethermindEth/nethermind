@@ -35,7 +35,7 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
             new LoadPyspecTestsStrategy
             {
                 ArchiveName = "fixtures_zkevm.tar.gz",
-                ArchiveVersion = "tests-zkevm@v0.4.1"
+                ArchiveVersion = "tests-zkevm@v0.5.0"
             },
             "fixtures/blockchain_tests"
         )
