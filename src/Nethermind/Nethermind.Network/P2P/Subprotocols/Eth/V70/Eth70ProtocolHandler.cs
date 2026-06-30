@@ -160,11 +160,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                     continue;
                 }
 
-                if (startIndex > receipts.Length)
-                {
-                    throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for block receipts length {receipts.Length}");
-                }
-
                 ulong remainingBlockSize = GetBlockReceiptsSize(receipts, startIndex);
                 if (GetEth70ReceiptsResponseSize(
                     responseReceiptsContentSize + remainingBlockSize,
