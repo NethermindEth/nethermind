@@ -35,6 +35,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
 
+    // Tracks the block currently being prewarmed so the main processing thread (via PrewarmerTxAdapter)
+    // can report its transaction progress, letting the prewarmer skip already-started transactions.
+    private BlockState? _currentBlockState;
+
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
@@ -82,6 +86,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
+                _currentBlockState = blockState;
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
@@ -106,6 +111,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
+
+    /// <summary>
+    /// Called by the main processing thread (via <see cref="PrewarmerTxAdapter"/>) immediately before it
+    /// executes each transaction, advancing the prewarmer's view of main-thread progress.
+    /// </summary>
+    /// <remarks>
+    /// Lets the prewarmer skip transactions the main thread has already started, avoiding redundant
+    /// speculative re-execution (and the cache/CPU contention it causes) of in-flight transactions.
+    /// </remarks>
+    public void OnBeforeTxExecution(Transaction transaction) => _currentBlockState?.IncrementTransactionCounter();
 
     public CacheType ClearCaches()
     {
@@ -281,6 +296,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         try
         {
+            // Skip transactions the main thread has already started: re-executing them speculatively is
+            // wasted work and contends with the main thread (severe for a heavy tx at a low index).
+            if (blockState.LastExecutedTransaction >= txIndex) return;
+
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 
@@ -478,5 +497,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec);
+    private sealed class BlockState(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec)
+    {
+        public BlockCachePreWarmer PreWarmer { get; } = preWarmer;
+        public Block Block { get; } = block;
+        public BlockHeader Parent { get; } = parent;
+        public IReleaseSpec Spec { get; } = spec;
+
+        // Highest transaction index the main processing thread has started executing (-1 = none yet).
+        // Written only by the single main thread (in order) via IncrementTransactionCounter; read by prewarmer threads.
+        private int _lastExecutedTransaction = -1;
+        public int LastExecutedTransaction => Volatile.Read(ref _lastExecutedTransaction);
+        public void IncrementTransactionCounter() => Interlocked.Increment(ref _lastExecutedTransaction);
+    }
 }
