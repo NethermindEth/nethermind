@@ -73,9 +73,9 @@ public static class StateDiffMerger
         return eraSources;
     }
 
-    // Unions the slots of one era's file across the sources into a single output era file. Disjoint ranges
-    // (plus the first-wins dedup below) mean the result holds at most one full era — the same 8192 blocks a
-    // single recorder would produce — and SlotFile's 64-bit offsets give that ample range.
+    // Unions one era's slots across the sources into that era's output file. Disjoint ranges (plus the
+    // first-wins dedup below) mean the result holds at most one full era — the same 8192 blocks a single
+    // recorder would produce — so it stays within a normal era file's bounds.
     private static void MergeEra(ulong era, List<string> dirs, string outputPath, ILogger logger)
     {
         using SlotFile target = new(outputPath);

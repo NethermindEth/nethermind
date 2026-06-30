@@ -7,6 +7,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core;
 
 namespace Nethermind.StateDiffArchive.Storage;
 
@@ -16,20 +17,17 @@ namespace Nethermind.StateDiffArchive.Storage;
 /// in memory.
 /// </summary>
 /// <remarks>
-/// Layout: a fixed <see cref="SlotsPerFile"/>×<see cref="SlotEntrySize"/>-byte header (per slot: 8-byte
-/// big-endian offset, 4-byte big-endian size) followed by appended blobs. The 64-bit offset means a single
-/// era file can hold the full 8192-block range regardless of per-block diff size (no 4 GB ceiling); a single
-/// blob is still capped at <see cref="MaxBlobSize"/>. Reads use <c>RandomAccess</c> positioned I/O (no
-/// locking required); writes are serialized by a per-instance lock. Overwriting an existing slot appends a
-/// fresh blob and repoints the header; the superseded bytes become dead space (cheap, since reorgs over
-/// recorded history are rare).
+/// Reads use <c>RandomAccess</c> positioned I/O (no locking required); writes are serialized by a
+/// per-instance lock. The layout mirrors the BAL recorder's era files: a fixed
+/// <see cref="SlotsPerFile"/>×8-byte header (per slot: 4-byte big-endian offset, 4-byte big-endian
+/// size) followed by appended blobs. Overwriting an existing slot appends a fresh blob and repoints
+/// the header; the superseded bytes become dead space (cheap, since reorgs over recorded history are
+/// rare).
 /// </remarks>
 public sealed class SlotFile : IDisposable
 {
     public const int SlotsPerFile = 8192;
-    private const int SlotEntrySize = 12;                       // 8-byte offset + 4-byte size
-    private const int HeaderSize = SlotsPerFile * SlotEntrySize; // 98304 bytes
-    private const uint MaxBlobSize = 1u << 30;                    // 1 GiB per-block blob sanity cap
+    private const int HeaderSize = SlotsPerFile * 8; // 65536 bytes
 
     private readonly SafeFileHandle _handle;
     private readonly byte[] _header = new byte[HeaderSize];
@@ -55,27 +53,26 @@ public sealed class SlotFile : IDisposable
     {
         lock (_writeLock)
         {
-            return BinaryPrimitives.ReadUInt64BigEndian(_header.AsSpan(slot * SlotEntrySize, SlotEntrySize)) != 0;
+            return BinaryPrimitives.ReadUInt32BigEndian(_header.AsSpan(slot * 8, 8)) != 0;
         }
     }
 
     public bool TryRead<TArg>(int slot, ReadOnlySpanAction<byte, TArg> action, TArg arg)
     {
-        ulong offset;
-        uint size;
+        uint offset, size;
         lock (_writeLock)
         {
-            ReadOnlySpan<byte> entry = _header.AsSpan(slot * SlotEntrySize, SlotEntrySize);
-            offset = BinaryPrimitives.ReadUInt64BigEndian(entry);
+            ReadOnlySpan<byte> entry = _header.AsSpan(slot * 8, 8);
+            offset = BinaryPrimitives.ReadUInt32BigEndian(entry);
             if (offset == 0) return false;
-            size = BinaryPrimitives.ReadUInt32BigEndian(entry[8..]);
+            size = BinaryPrimitives.ReadUInt32BigEndian(entry[4..]);
         }
-        if (size == 0 || size > MaxBlobSize) return false;
+        if (size == 0 || size > 64 * MemorySizes.MiB) return false;
 
         byte[] rented = ArrayPool<byte>.Shared.Rent((int)size);
         try
         {
-            RandomAccess.Read(_handle, rented.AsSpan(0, (int)size), (long)offset);
+            RandomAccess.Read(_handle, rented.AsSpan(0, (int)size), offset);
             action(new ReadOnlySpan<byte>(rented, 0, (int)size), arg);
             return true;
         }
@@ -86,21 +83,20 @@ public sealed class SlotFile : IDisposable
     /// <returns>True when the blob was written (or rewritten); false when the slot was occupied and overwrite was disallowed.</returns>
     public bool TryWrite(int slot, ReadOnlySpan<byte> data, bool allowOverwrite = false)
     {
-        if (data.Length > MaxBlobSize)
-            throw new InvalidOperationException($"State-diff blob of {data.Length} bytes exceeds the {MaxBlobSize}-byte per-block limit.");
-
         lock (_writeLock)
         {
-            if (!allowOverwrite && BinaryPrimitives.ReadUInt64BigEndian(_header.AsSpan(slot * SlotEntrySize, SlotEntrySize)) != 0) return false;
+            if (!allowOverwrite && BinaryPrimitives.ReadUInt32BigEndian(_header.AsSpan(slot * 8, 8)) != 0) return false;
 
-            long offset = _length;
+            if (_length > uint.MaxValue)
+                throw new InvalidOperationException($"Era file exceeded 4 GB limit at offset {_length}.");
+            uint offset = (uint)_length;
             RandomAccess.Write(_handle, data, offset);
             _length += data.Length;
 
-            Span<byte> entry = _header.AsSpan(slot * SlotEntrySize, SlotEntrySize);
-            BinaryPrimitives.WriteUInt64BigEndian(entry, (ulong)offset);
-            BinaryPrimitives.WriteUInt32BigEndian(entry[8..], (uint)data.Length);
-            RandomAccess.Write(_handle, entry, slot * SlotEntrySize);
+            Span<byte> entry = _header.AsSpan(slot * 8, 8);
+            BinaryPrimitives.WriteUInt32BigEndian(entry, offset);
+            BinaryPrimitives.WriteUInt32BigEndian(entry[4..], (uint)data.Length);
+            RandomAccess.Write(_handle, entry, slot * 8);
             return true;
         }
     }
