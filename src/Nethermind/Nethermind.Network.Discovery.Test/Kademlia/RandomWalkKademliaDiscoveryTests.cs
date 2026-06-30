@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Kademlia;
 using NUnit.Framework;
 
@@ -23,8 +22,7 @@ public class RandomWalkKademliaDiscoveryTests
             kademlia,
             IntKeyOperator.Instance,
             Int32KademliaDistance.Instance,
-            new KademliaConfig<int> { CurrentNodeId = 0 },
-            NullLoggerFactory.Instance);
+            new KademliaConfig<int> { CurrentNodeId = 0 });
 
         List<int> nodes = await discovery.DiscoverNodes(1, 2, token).Take(2).ToListAsync(token);
 

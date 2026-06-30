@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -19,6 +20,15 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
     where TNode : notnull
     where TKadKey : notnull
 {
+    public NodeHealthTracker(
+        KademliaConfig<TNode> config,
+        IRoutingTable<TNode, TKadKey> routingTable,
+        INodeHashProvider<TNode, TKadKey> nodeHashProvider,
+        IKademliaMessageSender<TKey, TNode> kademliaMessageSender)
+        : this(config, routingTable, nodeHashProvider, kademliaMessageSender, NullLoggerFactory.Instance)
+    {
+    }
+
     private readonly ILogger _logger = loggerFactory.CreateLogger<NodeHealthTracker<TKey, TNode, TKadKey>>();
 
     private readonly ConcurrentDictionary<TKadKey, bool> _isRefreshing = new();

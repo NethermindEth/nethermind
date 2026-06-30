@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Kademlia;
 using NUnit.Framework;
 
@@ -16,8 +15,7 @@ public class KBucketTreeTests
     private static KBucketTree<int, int> CreateTree(int k = 4, int beta = 0) => new(
         new KademliaConfig<int> { CurrentNodeId = SelfHash, KSize = k, Beta = beta },
         IntNodeHashProvider.Instance,
-        Int32KademliaDistance.Instance,
-        NullLoggerFactory.Instance);
+        Int32KademliaDistance.Instance);
 
     private static void Add(KBucketTree<int, int> tree, int hash) =>
         tree.TryAddOrRefresh(hash, hash, out _);
