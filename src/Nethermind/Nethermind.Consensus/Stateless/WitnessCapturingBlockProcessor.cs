@@ -15,11 +15,10 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// <see cref="IBlockProcessor"/> decorator on the main pipeline that, when a witness has been requested
-/// for the block being processed, routes that single <see cref="ProcessOne"/> to the dedicated
-/// witness-wired processor (<see cref="WitnessCapturingBlockProcessingEnv"/>) instead of the main inner
-/// processor, then projects the recorded accesses into a <see cref="Witness"/> and publishes it via
-/// <see cref="WitnessRendezvous"/>. Every other block flows straight through to the inner processor.
+/// <see cref="IBlockProcessor"/> decorator that, when a witness has been requested for the block being
+/// processed, routes that single <see cref="ProcessOne"/> to the witness-wired processor
+/// (<see cref="WitnessCapturingBlockProcessingEnv"/>), then publishes the resulting <see cref="Witness"/>
+/// via <see cref="WitnessRendezvous"/>. Every other block flows straight through to the inner processor.
 /// </summary>
 /// <remarks>
 /// The witness processor shares the main pipeline's writable world state, so the witnessed block is

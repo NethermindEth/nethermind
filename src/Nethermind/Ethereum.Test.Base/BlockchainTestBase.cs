@@ -39,6 +39,8 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
 using System.Text.Json;
+using Nethermind.Consensus.Stateless;
+using Nethermind.Core.Collections;
 
 namespace Ethereum.Test.Base;
 
@@ -135,7 +137,8 @@ public abstract class BlockchainTestBase
             // Replace NullSealEngine with a validator that enforces pre-Merge Ethash difficulty
             // matching, so legacy invalid-block fixtures (wrongDifficulty_*) are actually rejected.
             .AddSingleton<ISealValidator>(new DifficultyOnlySealValidator(difficultyCalculator))
-            .AddSingleton<ITxPool>(NullTxPool.Instance);
+            .AddSingleton<ITxPool>(NullTxPool.Instance)
+            .AddSingleton<IWitnessGeneratingBlockProcessingEnvFactory, WitnessGeneratingBlockProcessingEnvFactory>();
 
         // Wire in the merge module for any post-Merge test (engine API flow OR post-Paris
         // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
@@ -212,6 +215,7 @@ public abstract class BlockchainTestBase
                 genesisBlock.DisposeAccountChanges();
             }
 
+            List<string> engineWitnessDifferences = [];
             if (test.Blocks is not null)
             {
                 // blockchain test
@@ -223,7 +227,7 @@ public abstract class BlockchainTestBase
                 IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
                 JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
                 JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
-                await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!);
+                engineWitnessDifferences = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!);
             }
             else
             {
@@ -252,6 +256,16 @@ public abstract class BlockchainTestBase
             using (stateProvider.BeginScope(headBlock.Header))
             {
                 differences = RunAssertions(test, headBlock, stateProvider);
+            }
+
+            // zkEVM witness assertions. Engine-path diffs were gathered while driving
+            // engine_newPayloadWithWitness; the RLP path regenerates the witness post-hoc here.
+            differences.AddRange(engineWitnessDifferences);
+            if (test.Blocks is not null && HasAnyExecutionWitness(test))
+            {
+                IWitnessGeneratingBlockProcessingEnvFactory witnessFactory =
+                    container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>();
+                VerifyWitnesses(test, blockTree, witnessFactory, differences);
             }
 
             bool testPassed = differences.Count == 0;
@@ -335,9 +349,10 @@ public abstract class BlockchainTestBase
         .ToDictionary(v => v, v => (typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")
             ?? throw new NotSupportedException($"engine_newPayloadV{v} not found on IEngineRpcModule")).GetParameters().Length);
 
-    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
+    private async static Task<List<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
-        if (newPayloads is null || newPayloads.Length == 0) return;
+        List<string> witnessDifferences = [];
+        if (newPayloads is null || newPayloads.Length == 0) return witnessDifferences;
 
         int initialFcuVersion = int.Parse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
         AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString()));
@@ -348,15 +363,44 @@ public abstract class BlockchainTestBase
             int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
+            // zkEVM: only an unmutated, expected-VALID reference witness exercises the witness endpoint.
+            // EIP-8025 mutated-witness payloads still validate statefully (the witness is not a newPayload
+            // input), so import them via the plain path and skip the equality compare.
+            bool expectWitness = enginePayload.ExecutionWitness is not null
+                && enginePayload.ExecutionWitnessMutated != true
+                && validationError is null;
+
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
-            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
+            string npMethod = expectWitness ? "engine_newPayloadWithWitness" : "engine_newPayloadV" + newPayloadVersion;
+            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, npMethod, paramsJson);
 
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
             if (TryGetRpcError(npResponse, out int errorCode, out string? errorMessage))
             {
                 AssertExpectedRpcError(errorCode, errorMessage, validationError, newPayloadVersion);
+            }
+            else if (expectWitness)
+            {
+                using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
+                PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
+                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
+
+                if (payloadStatus.Status == PayloadStatus.Valid)
+                {
+                    Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
+                    if (witnessResult.ExecutionWitness is null)
+                    {
+                        witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitness returned VALID but no witness");
+                    }
+                    else
+                    {
+                        CompareWitnessSets(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
+                    }
+
+                    AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
+                }
             }
             else
             {
@@ -370,7 +414,17 @@ public abstract class BlockchainTestBase
                 }
             }
         }
+
+        return witnessDifferences;
     }
+
+    private static NewPayloadWithWitnessV1Result GetWitnessResult(JsonRpcResponse response, int payloadVersion) =>
+        response switch
+        {
+            ResultWrapper<NewPayloadWithWitnessV1Result> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
+            JsonRpcSuccessResponse { Result: NewPayloadWithWitnessV1Result result } => result,
+            _ => throw new AssertionException($"engine_newPayloadWithWitness (V{payloadVersion}) returned unexpected response type {response.GetType().FullName}")
+        };
 
     private static bool TryGetRpcError(JsonRpcResponse response, out int errorCode, out string? errorMessage)
     {
@@ -744,5 +798,110 @@ public abstract class BlockchainTestBase
         }
 
         return differences;
+    }
+
+    /// <summary>Returns true when any test block carries an EELS-produced executionWitness.</summary>
+    private static bool HasAnyExecutionWitness(BlockchainTest test)
+    {
+        if (test.Blocks is null) return false;
+        foreach (TestBlockJson b in test.Blocks)
+        {
+            if (b.ExecutionWitness is not null) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// For each test block that publishes a reference executionWitness, regenerate the client's
+    /// witness by re-executing the imported block in the witness-generating sandbox and compare
+    /// codes/state/headers as sets. Mismatches are appended to <paramref name="differences"/>.
+    /// </summary>
+    private static void VerifyWitnesses(
+        BlockchainTest test,
+        IBlockTree blockTree,
+        IWitnessGeneratingBlockProcessingEnvFactory factory,
+        List<string> differences)
+    {
+        if (test.Blocks is null) return;
+        foreach (TestBlockJson testBlockJson in test.Blocks)
+        {
+            ExecutionWitnessJson? expected = testBlockJson.ExecutionWitness;
+            if (expected is null) continue;
+            // EIP-8025 mutated-witness blocks carry a deliberately-corrupted reference, so comparison
+            // is meaningless (flag is stamped at load time from the engine tree; RLP has no marker).
+            if (testBlockJson.ExecutionWitnessMutated == true) continue;
+            // Invalid-block fixtures never reach a successfully imported block; nothing to compare.
+            if (testBlockJson.ExpectException is not null) continue;
+            if (testBlockJson.BlockHeader is null) continue;
+
+            Hash256 blockHash = new(testBlockJson.BlockHeader.Hash);
+            Block? block = blockTree.FindBlock(blockHash);
+            if (block is null)
+            {
+                differences.Add($"witness: block {blockHash} missing from tree");
+                continue;
+            }
+            BlockHeader? parent = blockTree.FindHeader(block.ParentHash!);
+            if (parent is null)
+            {
+                differences.Add($"witness: parent of {blockHash} missing from tree");
+                continue;
+            }
+
+            // The witness collector re-processes the block directly, bypassing the pipeline's sender-recovery
+            // step, so recover senders here first (as BlockchainBridge.GenerateExecutionWitness does): a block
+            // reloaded from the DB after cache eviction has RLP-decoded txs with no recovered sender.
+            if (block.Transactions.Length > 0)
+            {
+                EthereumEcdsa ecdsa = new(test.ChainId);
+                foreach (Transaction tx in block.Transactions)
+                    tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
+            }
+
+            using IWitnessGeneratingBlockProcessingEnvScope scope = factory.CreateScope();
+            IExistingBlockWitnessCollector collector = scope.Env.CreateExistingBlockWitnessCollector();
+            using Witness actual = collector.GetWitnessForExistingBlock(parent, block);
+
+            CompareWitnessSets(blockHash, expected, actual, differences);
+        }
+    }
+
+    private static void CompareWitnessSets(
+        Hash256 blockHash,
+        ExecutionWitnessJson expected,
+        Witness actual,
+        List<string> differences)
+    {
+        DiffSet(blockHash, "state", ToByteSet(expected.State), ToByteSet(actual.State), differences);
+        DiffSet(blockHash, "codes", ToByteSet(expected.Codes), ToByteSet(actual.Codes), differences);
+        DiffSet(blockHash, "headers", ToByteSet(expected.Headers), ToByteSet(actual.Headers), differences);
+    }
+
+    private static HashSet<byte[]> ToByteSet(string[]? hex)
+    {
+        HashSet<byte[]> set = new(Bytes.EqualityComparer);
+        if (hex is null) return set;
+        foreach (string h in hex) set.Add(Bytes.FromHexString(h));
+        return set;
+    }
+
+    private static HashSet<byte[]> ToByteSet(IOwnedReadOnlyList<byte[]> list)
+    {
+        HashSet<byte[]> set = new(Bytes.EqualityComparer);
+        for (int i = 0; i < list.Count; i++) set.Add(list[i]);
+        return set;
+    }
+
+    private static void DiffSet(
+        Hash256 blockHash,
+        string section,
+        HashSet<byte[]> expected,
+        HashSet<byte[]> actual,
+        List<string> differences)
+    {
+        foreach (byte[] e in expected.Except(actual, Bytes.EqualityComparer))
+            differences.Add($"witness {section} (block {blockHash}): expected element not produced: 0x{e.ToHexString()}");
+        foreach (byte[] a in actual.Except(expected, Bytes.EqualityComparer))
+            differences.Add($"witness {section} (block {blockHash}): produced element not in expected: 0x{a.ToHexString()}");
     }
 }

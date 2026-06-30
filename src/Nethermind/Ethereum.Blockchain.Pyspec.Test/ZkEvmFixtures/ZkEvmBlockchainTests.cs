@@ -4,16 +4,32 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core.Extensions;
 using Nethermind.Stateless.Execution;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Pyspec.Test.ZkEvmPreview;
+namespace Ethereum.Blockchain.Pyspec.Test.ZkEvmFixtures;
+
+public class ZkEvmBlockchainTests : ZkEvmBlockchainTestFixture;
 
 public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixture
 {
     protected ZkEvmBlockchainTestFixture() : base(parallel: false, batchRead: false) { }
+
+    // blockchain_tests is loaded once and shared by both checks below. ExecutionWitnessMutated is stamped from
+    // the engine tree here (the RLP format has no marker) so the witness comparison can skip mutated blocks; the
+    // stateless executor check ignores that field.
+    private static readonly Lazy<IReadOnlyList<BlockchainTest>> _tests = new(() =>
+        ZkEvmMutatedWitnessIndex.StampMutatedBlocks(
+            new TestsSourceLoader(
+                new LoadPyspecTestsStrategy { ArchiveVersion = Constants.ArchiveVersion, ArchiveName = Constants.ArchiveName },
+                "fixtures/blockchain_tests").LoadTests<BlockchainTest>()).ToList());
+
+    [TestCaseSource(nameof(LoadWitnessTests))]
+    public async Task WitnessMatchesFixture(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     [TestCaseSource(nameof(LoadStatelessTests))]
     public void StatelessExecutorOutputMatchesFixture(string inputBytes, string expectedOutputBytes)
@@ -31,21 +47,11 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
             $"Expected {expectedOutput.ToHexString(true)}, got {actualOutput.ToHexString(true)}");
     }
 
-    private static IEnumerable<BlockchainTest> LoadTests() => new TestsSourceLoader(
-            new LoadPyspecTestsStrategy
-            {
-                ArchiveName = "fixtures_zkevm.tar.gz",
-                ArchiveVersion = "tests-zkevm@v0.4.1"
-            },
-            "fixtures/blockchain_tests"
-        )
-        .LoadTests<BlockchainTest>();
+    private static IEnumerable<TestCaseData> LoadWitnessTests() => PyspecLoader.ToTestCases(_tests.Value);
 
-    private static IEnumerable<TestCaseData> LoadStatelessTests() => CreateStatelessTestCases(LoadTests());
-
-    private static IEnumerable<TestCaseData> CreateStatelessTestCases(IEnumerable<BlockchainTest> tests)
+    private static IEnumerable<TestCaseData> LoadStatelessTests()
     {
-        foreach (BlockchainTest test in tests)
+        foreach (BlockchainTest test in _tests.Value)
         {
             if (test.Blocks is not { Length: > 0 } blocks)
                 continue;

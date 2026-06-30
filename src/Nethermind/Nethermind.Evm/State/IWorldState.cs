@@ -149,6 +149,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public void AddAccountRead(Address address) { }
 
+    /// <summary>
+    /// Signals that <paramref name="address"/>'s account is being logically read at this call site,
+    /// for witness generation. Distinct from <see cref="AddAccountRead"/> (which only feeds the BAL
+    /// generator): this records the account so its trie path lands in the stateless witness.
+    /// </summary>
+    /// <remarks>No-op default; only witness-generating world states record it.</remarks>
+    public void RecordAccountAccess(Address address) { }
+
     public void RecordBytecodeAccess(Address address) { }
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;

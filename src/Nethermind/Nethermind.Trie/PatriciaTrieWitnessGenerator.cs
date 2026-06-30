@@ -26,13 +26,15 @@ namespace Nethermind.Trie;
 /// child the branch collapses into an extension, so the verifier needs that surviving sibling even though it was
 /// never on a touched path.
 /// <para>
-/// The witness is just a set of node RLPs that a verifier rehashes to rebuild the (partial) trie and re-apply the
-/// block's changes. For wide compatibility nothing is assumed about the order in which the verifier applies those
-/// changes, so the witness must cover every node that <em>any</em> ordering could touch. A recursion therefore
-/// returns <c>true</c> ("treat this subtree as deleted", which drives the parent's lone-child check) whenever
-/// <em>some</em> permutation of the entries could empty the subtree — not only when the net result deletes it. In
-/// particular a keyed node whose key is deleted is treated as deleted even if another entry inserts a sibling that
-/// would refill the slot, because the verifier may apply the delete first and transiently collapse the parent.
+/// The witness is the set of node RLPs a verifier rehashes to rebuild the (partial) trie and re-apply the block's
+/// changes. It models the canonical <em>upsert-before-delete</em> replay order — the stateless verifier applies all
+/// inserts/updates first and deletions last (EELS <c>_apply_storage_writes</c>) — so the witness is the exact minimal
+/// set that order touches, not a superset over every possible order. Concretely: an <see cref="AccessType.Upsert"/>
+/// occupies its branch slot in the post-state, so a sibling <see cref="AccessType.Delete"/> in the same branch sees
+/// that slot still filled and does <em>not</em> collapse the branch (no collapse-sibling capture). A
+/// <see cref="AccessType.Read"/> is path-only: it captures its lookup path but never occupies a slot, so it can never
+/// keep a sibling deletion from collapsing a branch. A recursion returns <c>true</c> ("treat this subtree as deleted",
+/// which drives the parent's lone-child check) when the upsert-before-delete order could empty the subtree.
 /// </para>
 /// </remarks>
 public static class PatriciaTrieWitnessGenerator
@@ -41,29 +43,39 @@ public static class PatriciaTrieWitnessGenerator
     private const int MinEntriesToParallelizeThreshold = 128;
     private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
 
-    // Per-child verdict. MaybeEmptied: some apply order could empty the child, which arms the parent's
-    // collapse-sibling capture. Survived / Untraversed: it cannot be emptied under any order.
+    // Per-child verdict under the upsert-before-delete order. MaybeEmptied: the child can be emptied, which arms the
+    // parent's collapse-sibling capture. Survived (occupied post-state) / Untraversed (absent, no upsert): cannot.
     private const byte Untraversed = 0;
     private const byte Survived = 1;
     private const byte MaybeEmptied = 2;
 
-    // Deletion is the only structurally significant access, so it is encoded as a null entry value (BulkSet's own
-    // "null == removal" convention) and everything non-deleting shares this non-null sentinel.
-    private static readonly byte[] NonDeleteMarker = [];
+    // The entry value encodes the touch kind, reusing BulkSet's "null == removal" convention for Delete. Read and
+    // Upsert each carry a non-null sentinel so the collapse check can tell them apart by reference (UpsertMarker must
+    // not be the Array.Empty singleton ReadMarker resolves to, hence non-empty).
+    private static readonly byte[] ReadMarker = [];
+    private static readonly byte[] UpsertMarker = [0];
 
     /// <summary>How a key path was touched in this block.</summary>
     /// <remarks>
-    /// Only <see cref="Delete"/> is structurally significant — it can empty a slot and collapse a branch, pulling a
-    /// sibling into the witness. Any non-removing access — a read, an update, or an insert — only needs its path
-    /// captured and cannot delete a node under any apply order, so they all map to the single <see cref="Read"/>.
+    /// The generator models the canonical upsert-before-delete replay order (see the type remarks). <see cref="Read"/>
+    /// is path-only: it captures its lookup path but never occupies a slot. <see cref="Upsert"/> (an insert or update)
+    /// is occupied in the post-state and, replayed before deletions, keeps its branch slot filled — so a sibling
+    /// <see cref="Delete"/> does not collapse the branch. <see cref="Delete"/> removes a key and can collapse a branch,
+    /// pulling its lone surviving sibling into the witness.
     /// </remarks>
     public enum AccessType : byte
     {
-        /// <summary>The key was read or written without being removed; only its path is needed.</summary>
+        /// <summary>The key was read; only its lookup path is captured and it never keeps a sibling deletion from collapsing a branch.</summary>
         Read,
 
         /// <summary>The key was removed.</summary>
         Delete,
+
+        /// <summary>
+        /// The key was inserted or updated and is occupied in the post-state. Replayed before deletions, it keeps its
+        /// branch slot occupied, so a sibling deletion in the same branch does not collapse it (no sibling capture).
+        /// </summary>
+        Upsert,
     }
 
     /// <summary>A touched key path and how it was accessed in this block.</summary>
@@ -123,7 +135,12 @@ public static class PatriciaTrieWitnessGenerator
         {
             for (int i = 0; i < paths.Length; i++)
             {
-                byte[]? value = paths[i].Access == AccessType.Delete ? null : NonDeleteMarker;
+                byte[]? value = paths[i].Access switch
+                {
+                    AccessType.Delete => null,
+                    AccessType.Upsert => UpsertMarker,
+                    _ => ReadMarker,
+                };
                 entriesArr[i] = new PatriciaTree.BulkSetEntry(paths[i].Path, value);
             }
 
@@ -145,7 +162,7 @@ public static class PatriciaTrieWitnessGenerator
 
     /// <summary>
     /// The single recursive traversal (mirrors <c>PatriciaTree.BulkSet</c>). Reports every real node it visits and
-    /// returns <c>true</c> iff some permutation of the entries could empty the subtree below <paramref name="node"/>
+    /// returns <c>true</c> iff the upsert-before-delete order could empty the subtree below <paramref name="node"/>
     /// (see the type remarks).
     /// </summary>
     private static bool Walk(
@@ -214,12 +231,22 @@ public static class PatriciaTrieWitnessGenerator
                 int start = indexes[nib];
                 int end = mask != 0 ? indexes[BitOperations.TrailingZeroCount(mask)] : entries.Length;
 
+                // An upsert in this bucket occupies the slot in the post-state, so under upsert-before-delete it
+                // survives regardless of what a sibling deletion does to the pre-state child here.
+                bool slotOccupiedByUpsert = BucketHasUpsert(entries[start..end]);
+
                 path.SetLast(nib);
                 TrieNode? child = childIterator.GetChildWithChildPath(resolver, ref path, nib);
-                if (child is null) continue; // absent child: the divergence is already covered by reporting this branch
+                if (child is null)
+                {
+                    // Absent pre-state child: its divergence is already covered by reporting this branch. An upsert
+                    // fills the slot and makes it a survivor; a read leaves it empty (Untraversed, no collapse effect).
+                    if (slotOccupiedByUpsert) childState[nib] = Survived;
+                    continue;
+                }
 
                 bool childMaybeEmptied = Walk(in ctx, resolver, child, ref path, entries[start..end], sortBuffer[start..end], flipCount, parallelize, sink);
-                childState[nib] = childMaybeEmptied ? MaybeEmptied : Survived;
+                childState[nib] = slotOccupiedByUpsert || !childMaybeEmptied ? Survived : MaybeEmptied;
             }
             path.TruncateOne();
         }
@@ -229,8 +256,8 @@ public static class PatriciaTrieWitnessGenerator
 
     /// <summary>
     /// Decides the "treat-as-deleted" answer for a node that carries a key (a leaf or an extension), already resolved
-    /// and reported. Per the order-independence rule (see the type remarks) it is <c>true</c> if any permutation of
-    /// the entries could empty the subtree; off-key entries cannot, so only deletions on this node's path matter.
+    /// and reported. It is <c>true</c> iff a deletion on this node's own key path empties it; an off-key upsert that
+    /// would refill the parent's slot is accounted for there (the branch's occupancy check), not here.
     /// </summary>
     private static bool WalkKeyedNode(
         in Context ctx,
@@ -248,7 +275,8 @@ public static class PatriciaTrieWitnessGenerator
 
         if (node.IsLeaf)
         {
-            // An off-key insert cannot save the leaf: the delete may be applied first.
+            // The leaf node itself is emptied only by a delete of its own key; an off-key upsert that keeps the
+            // parent's slot occupied is handled by the parent branch's occupancy check, not here.
             ValueHash256 leafKey = keyedPath.Path;
             for (int i = 0; i < entries.Length; i++)
             {
@@ -307,7 +335,7 @@ public static class PatriciaTrieWitnessGenerator
 
             TreePath childPath = path.Append(nib);
             TrieNode? child = childIterator.GetChildWithChildPath(resolver, ref childPath, nib);
-            jobs[nib] = new Job(GetSpanOffset(originalEntries, jobEntries), jobEntries.Length, childPath, child);
+            jobs[nib] = new Job(GetSpanOffset(originalEntries, jobEntries), jobEntries.Length, childPath, child, BucketHasUpsert(jobEntries));
         }
 
         Context closureCtx = ctx;
@@ -325,19 +353,32 @@ public static class PatriciaTrieWitnessGenerator
 
         for (int nib = 0; nib < TrieNode.BranchesCount; nib++)
         {
+            // An upsert occupies the slot in the post-state, so it survives even if no pre-state child was walked.
+            if (jobs[nib].HasUpsert) { childState[nib] = Survived; continue; }
             childState[nib] = jobs[nib].Child is not null && jobs[nib].Count > 0
                 ? (jobs[nib].MaybeEmptied ? MaybeEmptied : Survived)
                 : Untraversed;
         }
     }
 
-    private struct Job(int start, int count, TreePath childPath, TrieNode? child)
+    private struct Job(int start, int count, TreePath childPath, TrieNode? child, bool hasUpsert)
     {
         public readonly int Start = start;
         public readonly int Count = count;
         public readonly TreePath ChildPath = childPath;
         public readonly TrieNode? Child = child;
+        public readonly bool HasUpsert = hasUpsert;
         public bool MaybeEmptied;
+    }
+
+    /// <summary>True iff any entry in <paramref name="bucket"/> is an <see cref="AccessType.Upsert"/>.</summary>
+    private static bool BucketHasUpsert(ReadOnlySpan<PatriciaTree.BulkSetEntry> bucket)
+    {
+        for (int i = 0; i < bucket.Length; i++)
+        {
+            if (ReferenceEquals(bucket[i].Value, UpsertMarker)) return true;
+        }
+        return false;
     }
 
     /// <summary>
