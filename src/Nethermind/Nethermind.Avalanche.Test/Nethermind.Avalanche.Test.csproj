@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Real mainnet C-Chain block fixtures (one per fork era) for byte-exact header-hash validation. -->
+    <EmbeddedResource Include="Blocks/RealBlocks/*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Avalanche\Nethermind.Avalanche.csproj" />
     <!-- The VM-service tests invoke AvalancheVmService in-process. Linking the VM assembly here (rather than in
          Nethermind.Avalanche.Vm.Test) is safe because this project generates no protobuf code of its own, so the
