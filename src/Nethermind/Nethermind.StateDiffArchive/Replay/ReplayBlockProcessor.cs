@@ -40,47 +40,50 @@ public sealed class ReplayBlockProcessor(
         if (suggestedBlock.IsGenesis || !store.TryRead(suggestedBlock.Number, out StateDiffRecord? record))
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
-        if (record.StateRoot != suggestedBlock.Header.StateRoot)
-            throw new StateDiffReplayException(suggestedBlock.Number, suggestedBlock.Header.StateRoot!, record.StateRoot);
+        using (record)
+        {
+            if (record.StateRoot != suggestedBlock.Header.StateRoot)
+                throw new StateDiffReplayException(suggestedBlock.Number, suggestedBlock.Header.StateRoot!, record.StateRoot);
 
-        IWorldStateScopeProvider.IScope scope = tracker.Current
-            ?? throw new InvalidOperationException(
-                $"No active world-state scope to replay block {suggestedBlock.Number}; the replay scope provider is not registered.");
+            IWorldStateScopeProvider.IScope scope = tracker.Current
+                ?? throw new InvalidOperationException(
+                    $"No active world-state scope to replay block {suggestedBlock.Number}; the replay scope provider is not registered.");
 
-        ApplyRecord(scope, record);
+            ApplyRecord(scope, record);
 
-        // The scope provider verifies the recomputed root against this on commit.
-        tracker.ExpectedRoot = suggestedBlock.Header.StateRoot;
+            // The scope provider verifies the recomputed root against this on commit.
+            tracker.ExpectedRoot = suggestedBlock.Header.StateRoot;
 
-        Metrics.BlocksReplayed++;
-        Metrics.LastReplayedBlock = (long)suggestedBlock.Number;
-        if (_logger.IsTrace) _logger.Trace($"Replayed state diff for block {suggestedBlock.Number}");
+            Metrics.BlocksReplayed++;
+            Metrics.LastReplayedBlock = (long)suggestedBlock.Number;
+            if (_logger.IsTrace) _logger.Trace($"Replayed state diff for block {suggestedBlock.Number}");
 
-        return (suggestedBlock, EmptyReceipts);
+            return (suggestedBlock, EmptyReceipts);
+        }
     }
 
     private static void ApplyRecord(IWorldStateScopeProvider.IScope scope, StateDiffRecord record)
     {
-        if (record.Codes.Count > 0)
+        if (record.HasCodes)
         {
             using IWorldStateScopeProvider.ICodeSetter codeSetter = scope.CodeDb.BeginCodeWrite();
-            foreach (CodeDiff code in record.Codes) codeSetter.Set(code.CodeHash, code.Code);
+            foreach (StateDiffRecord.CodeView code in record.Codes) codeSetter.Set(code.CodeHash, code.Code);
         }
 
-        using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(record.Accounts.Count);
+        using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(0);
 
         // Storage first: disposing each storage batch commits its tree and marks the dirty storage root,
         // which the account flush (writeBatch.Dispose) folds back into the account's storage root.
-        foreach (AccountDiff account in record.Accounts)
+        foreach (StateDiffRecord.AccountView account in record.Accounts)
         {
-            if (!account.StorageCleared && account.Slots.Count == 0) continue;
+            if (!account.StorageCleared && !account.HasSlots) continue;
 
-            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(account.Address, account.Slots.Count);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(account.Address, 0);
             if (account.StorageCleared) storageBatch.Clear();
-            foreach (SlotDiff slot in account.Slots) storageBatch.Set(slot.Index, slot.Value);
+            foreach (StateDiffRecord.SlotView slot in account.Slots) storageBatch.Set(slot.Index, slot.Value.ToArray());
         }
 
-        foreach (AccountDiff account in record.Accounts)
+        foreach (StateDiffRecord.AccountView account in record.Accounts)
         {
             switch (account.Change)
             {

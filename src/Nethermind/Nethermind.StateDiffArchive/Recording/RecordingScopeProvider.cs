@@ -36,7 +36,7 @@ public sealed class RecordingScopeProvider(
         StateDiffStore store,
         ILogger logger) : IWorldStateScopeProvider.IScope
     {
-        private readonly StateDiffBuilder _builder = new();
+        private readonly StateDiffRecordBuilder _builder = new();
         private RecordingCodeDb? _codeDb;
 
         public Hash256 RootHash => inner.RootHash;
@@ -56,7 +56,7 @@ public sealed class RecordingScopeProvider(
             inner.Commit(blockNumber);
             try
             {
-                store.Write(_builder.Build(blockNumber, RootHash));
+                store.Write(_builder, blockNumber, RootHash);
                 Metrics.LastRecordedBlock = (long)blockNumber;
                 Metrics.BlocksRecorded++;
             }
@@ -75,7 +75,7 @@ public sealed class RecordingScopeProvider(
 
     private sealed class RecordingWriteBatch(
         IWorldStateScopeProvider.IWorldStateWriteBatch inner,
-        StateDiffBuilder builder) : IWorldStateScopeProvider.IWorldStateWriteBatch
+        StateDiffRecordBuilder builder) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
         {
@@ -97,7 +97,7 @@ public sealed class RecordingScopeProvider(
 
     private sealed class RecordingStorageWriteBatch(
         IWorldStateScopeProvider.IStorageWriteBatch inner,
-        StateDiffBuilder builder,
+        StateDiffRecordBuilder builder,
         Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, byte[] value)
@@ -117,7 +117,7 @@ public sealed class RecordingScopeProvider(
 
     private sealed class RecordingCodeDb(
         IWorldStateScopeProvider.ICodeDb inner,
-        StateDiffBuilder builder) : IWorldStateScopeProvider.ICodeDb
+        StateDiffRecordBuilder builder) : IWorldStateScopeProvider.ICodeDb
     {
         public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
         public bool ContainsCode(in ValueHash256 codeHash) => inner.ContainsCode(in codeHash);
@@ -127,7 +127,7 @@ public sealed class RecordingScopeProvider(
 
     private sealed class RecordingCodeSetter(
         IWorldStateScopeProvider.ICodeSetter inner,
-        StateDiffBuilder builder) : IWorldStateScopeProvider.ICodeSetter
+        StateDiffRecordBuilder builder) : IWorldStateScopeProvider.ICodeSetter
     {
         public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
         {
