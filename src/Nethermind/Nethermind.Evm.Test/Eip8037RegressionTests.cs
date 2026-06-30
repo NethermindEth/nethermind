@@ -72,6 +72,39 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Eip8037_soft_failed_call_refunds_spilled_new_account_state_gas_to_gas_left()
+    {
+        byte[] code = Prepare.EvmCode
+            .CallWithValue(TestItem.AddressF, long.MaxValue, 101.Ether)
+            .Op(Instruction.POP)
+            .Call(Address.FromNumber(6), long.MaxValue)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        long precompileCallGas = 0;
+        bool foundPrecompileCall = false;
+        foreach (TestAllTracerWithOutput.ActionTrace action in tracer.Actions)
+        {
+            if (action.IsPrecompileCall && action.To == Address.FromNumber(6))
+            {
+                precompileCallGas = action.Gas;
+                foundPrecompileCall = true;
+                break;
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(foundPrecompileCall, Is.True);
+            Assert.That(precompileCallGas, Is.EqualTo(955_588));
+        }
+    }
+
     /// <summary>
     /// When a nested CREATE/CREATE2 child frame has too little regular gas to cover both
     /// the regular code deposit cost AND the state-gas spill, the create operation must fail.
@@ -445,6 +478,105 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
             Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+        }
+    }
+
+    private static TestCaseData[] GlamsterdamFailedCreateCases =>
+    [
+        new TestCaseData(
+            "block 957 failed CREATE",
+            "7f7c76141f109a1bbb8998d25ee84ca60784fba5d5138673919b039ef3abb417c07f" +
+            "00000000000000000000000000000000000000000000000000000000000088485b" +
+            "364875973d492183f04aa70fa45a31fcd5e822735914c6e0416202ffff16816202" +
+            "ffff1691508261ffff169250376202ffff1654435b11907f0000000000000000000" +
+            "00000000000001a0111ea397fe69a4b1ba7b6434bacd76000527f64774b84f385" +
+            "12bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaac6020527f0000" +
+            "0000000000000000000000000000000000000000000000000000000000006040" +
+            "527f000000000000000000000000000000000000000000000000000000000000" +
+            "0000606052610100608060806000600060115af160805160a05160c05160e051" +
+            "610100516101205161014051610160515b315f6161cb5b5b6202ffff165430676" +
+            "83726a51be8d52d586941f5185409169aacafa861dfdbe6005b166202ffff168" +
+            "161ffff169150fd5f7847d784f8797a8859a8703f11135305c3f72598a7419c" +
+            "6ac0af4997603f161a5836045b826202ffff1692508361ffff169350846202ff" +
+            "ff1694508561ffff169550fa030365037b3d3c3e236202ffff16534aff826202" +
+            "ffff1692508361ffff169350846202ffff1694508561ffff169550fa00",
+            1_000_000L,
+            0,
+            0xc7510L)
+            .SetName("Eip8037_glamsterdam_block_957_failed_create_must_not_double_refund_top_level_create_state_gas"),
+        new TestCaseData(
+            "block 1194 failed CREATE",
+            "7f7c76141f109a1bbb8998d25ee84ca60784fba5d5138673919b039ef3abb417c07f" +
+            "000000000000000000000000000000000000000000000000000000000000b249601" +
+            "03d38805f5f397f630000007e5679aa6e40f2063e1e64192a97465b9fa65ab5ef" +
+            "4222c8a501e8e25f52637c909564905f5ff55f5f5f5f5f855af15b60546108e860" +
+            "8038805f5f397f63000000be5679f7a4cd19fbdf54ce586f2dfb4022e28b7f018" +
+            "99f12f35156d15f526394d66496905f5ff55f5f5f5f845af45b367f30644e72e13" +
+            "1a029b85045b68181585d97816a916871ca8d3c208c16d87d00186000527f30644e" +
+            "72e131a029b85045b68181585d97816a916871ca8d3c208c16d87d00256020527fa" +
+            "f9cf1dbaf297ea537d2d3ec9e4e87703525e0770dc0da799b77e6b9862bee5860" +
+            "40526040606060606000600060075af160605160805171f586bae9c5708294d29a" +
+            "066ff262c19b732c5b7f0000000000000000000000000000000000000000000000" +
+            "000000000000000000016000527f000000000000000000000000000000000000000" +
+            "00000000000000000000000026020527f0000000000000000000000000000000000" +
+            "0000000000000000000000000000016040527f0000000000000000000000000000" +
+            "00000000000000000000000000000000026060526040608060806000600060065a" +
+            "f160805160a05100",
+            1_000_000L,
+            0xe7f2,
+            1_000_000L - GasCostOf.CreateState)
+            .SetName("Eip8037_glamsterdam_block_1194_failed_create_must_exclude_top_level_create_state_gas"),
+        new TestCaseData(
+            "block 2367 failed CREATE",
+            "7f7c76141f109a1bbb8998d25ee84ca60784fba5d5138673919b039ef3abb417c07f" +
+            "000000000000000000000000000000000000000000000000000000000001a76560" +
+            "c65b7ab2d270ff19a070ac1de11ed3230b711ee2f82bea9fb1a928d70b7c5b5b327" +
+            "e3605c632cb571258a2c6f0ae825be0bb90e6981313b37839d039db929193e7651" +
+            "15aa34aa8df345b875b045b6202ffff1655156cb838efd91cf623a4f97ab7258b3" +
+            "8805f5f397f63000000d8567912a8aa684c0bd1cef4b986362820f58ea59ccabfa" +
+            "2fca786285f525f5ff05f5f5f5f845af45b5b7f000000000000000000000000000" +
+            "00000000000000000000000000000000000016000527f0000000000000000000000" +
+            "0000000000000000000000000000000000000000026020527ffd9b0e805792c921" +
+            "421d5124bb834e7182882bed5dd078181d157944ed9cfeea604052604060606060" +
+            "6000600060075af1606051608051615f23604c61461b5a438744471b5b5b97437f" +
+            "e4d40ebec943bbf48d2dba0d8b2b8d31ade38f680cb6bc9bf20a5225c1305db2" +
+            "0b61006257816202ffff169150826202ffff1692508361ffff1693503c826202ff" +
+            "ff1692508361ffff169350846202ffff1694508561ffff169550fa3b3261b5bd60" +
+            "df6202ffff168161ffff169150a260a35900",
+            1_000_000L,
+            0xf8cc,
+            0xc7510L)
+            .SetName("Eip8037_glamsterdam_block_2367_failed_create_must_preserve_inner_reservoir_and_refund_top_level_create_state_gas"),
+    ];
+
+    [TestCaseSource(nameof(GlamsterdamFailedCreateCases))]
+    public void Eip8037_glamsterdam_failed_create_must_exclude_top_level_create_state_gas(
+        string scenario,
+        string initCodeHex,
+        long gasLimit,
+        int value,
+        long expectedGasUsed)
+    {
+        byte[] initCode = Bytes.FromHexString(initCodeHex);
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            initCode,
+            value: value,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure), scenario);
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedGasUsed), scenario);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero, scenario);
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(expectedGasUsed), scenario);
         }
     }
 
