@@ -22,7 +22,6 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
 
     [TestCase("\"0xa00000\"", 10485760UL)]
     [TestCase("\"0x0\"", 0UL)]
-    [TestCase("\"0x000\"", 0UL)]
     [TestCase("0", 0UL)]
     [TestCase("1", 1UL)]
     public void Can_read_value(string json, ulong expected)

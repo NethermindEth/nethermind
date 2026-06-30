@@ -77,9 +77,6 @@ public partial class BlockProcessor(
 
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
 
-        if (_balManager.BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
-            _ = _stateProvider.HintBal(suggestedBlock.BlockAccessList);
-
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
@@ -96,6 +93,7 @@ public partial class BlockProcessor(
     {
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
+            block.DisposeAccountChanges();
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             throw new InvalidBlockException(suggestedBlock, error);
         }
@@ -376,7 +374,7 @@ public partial class BlockProcessor(
 
     private void ApplyDaoTransition(Block block)
     {
-        long? daoBlockNumber = _specProvider.DaoBlockNumber;
+        ulong? daoBlockNumber = _specProvider.DaoBlockNumber;
         if (daoBlockNumber.HasValue && daoBlockNumber.Value == block.Header.Number)
         {
             ApplyTransition();

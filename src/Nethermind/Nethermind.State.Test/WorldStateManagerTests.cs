@@ -76,11 +76,13 @@ public class WorldStateManagerTests
     [Test]
     public void ShouldAnnounceReorgOnDispose()
     {
-        int lastBlock = 256;
+        ulong lastBlock = 256;
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IConfigProvider configProvider = new ConfigProvider();
-        int reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
+        // Asserts the pruning trie store's BestPersistedState reorg announcement; a patricia-only concept.
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
+        ulong reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
         IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
         manualFinalizedStateProvider.FinalizedBlockNumber.Returns(lastBlock - reorgDepth);
         manualFinalizedStateProvider.GetFinalizedStateRootAt(lastBlock - reorgDepth)
@@ -105,7 +107,7 @@ public class WorldStateManagerTests
                 stateRoot = worldState.StateRoot;
             }
 
-            for (int i = 2; i <= lastBlock; i++)
+            for (ulong i = 2; i <= lastBlock; i++)
             {
                 BlockHeader baseBlock = Build.A.BlockHeader
                     .WithStateRoot(stateRoot)

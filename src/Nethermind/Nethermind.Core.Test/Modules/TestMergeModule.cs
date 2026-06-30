@@ -7,8 +7,9 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.TxPool;
@@ -28,20 +29,14 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
         builder
             .AddModule(new MergePluginModule())
 
-            .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
             // Validators
             .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
             .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
 
-            .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
-            .AddDecorator<IBlockFinalizationManager, MergeFinalizationManager>()
-
             // Block production related.
-            .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddScoped<PostMergeBlockProducerFactory>()
-            .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
 
             // Engine rpc
             .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
@@ -49,9 +44,11 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
 
         if (txPoolConfig.BlobsSupport.SupportsReorgs())
         {
-            builder
-                .AddSingleton<ProcessedTransactionsDbCleaner>()
-                .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockFinalizationManager>();
+            builder.AddSingleton<ProcessedTransactionsDbCleaner, IBlockTree, IDbProvider, ILogManager>(
+                static (blockTree, dbProvider, logManager) => new ProcessedTransactionsDbCleaner(
+                    blockTree,
+                    dbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs),
+                    logManager));
         }
     }
 }

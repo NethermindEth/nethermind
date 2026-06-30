@@ -26,7 +26,7 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
             return new Hash256(bytes);
         }
 
-        byte[]? bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
+        byte[]? bytesArray = ByteArrayConverter.ConvertData(ref reader, _strictHexFormat);
         return bytesArray is null ? null : new Hash256(bytesArray);
     }
 
@@ -45,7 +45,7 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
             return new Hash256(bytes);
         }
 
-        byte[]? bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
+        byte[]? bytesArray = ByteArrayConverter.ConvertData(ref reader, _strictHexFormat);
         return bytesArray is null ? null! : new Hash256(bytesArray);
     }
 

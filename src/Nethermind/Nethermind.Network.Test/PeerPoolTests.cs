@@ -184,6 +184,23 @@ public class PeerPoolTests
         }
     }
 
+    [TestCase(true, true)]   // active session → peer kept
+    [TestCase(false, false)] // no session → peer evicted
+    public void PeerPool_DiscoveryEviction(bool hasSession, bool expectPresent)
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        Node node = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
+        Peer peer = pool.GetOrAdd(node);
+        if (hasSession) peer.InSession = Substitute.For<ISession>();
+
+        nodeSource.RemoveNode(node);
+
+        Assert.That(pool.TryGet(node.Id, out _), Is.EqualTo(expectPresent));
+    }
+
     [Test]
     public void PeerPool_Replace_DoesNotInheritStaticFlag()
     {

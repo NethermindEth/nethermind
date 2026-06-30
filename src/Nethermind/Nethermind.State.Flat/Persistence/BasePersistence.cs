@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -31,19 +34,29 @@ public static class BasePersistence
 
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
+    private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
+
+    /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
+    internal const byte SlotEncodingRaw = 0;
+
+    /// <summary>RLP storage slot encoding: the stripped value is stored as an RLP byte string.</summary>
+    internal const byte SlotEncodingRlp = 1;
+
+    private const string RawSlotDeprecationMessage =
+        "Flat DB uses the legacy raw storage slot encoding, which is deprecated and will be removed in a future release. Please resync to adopt the RLP slot encoding.";
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
         return bytes is null || bytes.Length == 0
-            ? new StateId(-1, ValueKeccak.EmptyTreeHash)
-            : new StateId(BinaryPrimitives.ReadInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
+            ? new StateId(ulong.MaxValue, ValueKeccak.EmptyTreeHash)
+            : new StateId(BinaryPrimitives.ReadUInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
     }
 
     internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
     {
         Span<byte> bytes = stackalloc byte[8 + 32];
-        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
     }
@@ -59,11 +72,16 @@ public static class BasePersistence
         return (FlatLayout)bytes[0];
     }
 
+    /// <summary>
+    /// Records the flat DB's on-disk format markers: the <see cref="FlatLayout"/> and the RLP slot encoding.
+    /// Only for DBs on the current (RLP-wrapped) format; legacy raw DBs are never re-stamped.
+    /// </summary>
     internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
     {
         Span<byte> bytes = stackalloc byte[1];
         bytes[0] = (byte)layout;
         kv.PutSpan(LayoutKey, bytes);
+        SetSlotEncoding(kv, SlotEncodingRlp);
     }
 
     /// <summary>
@@ -96,9 +114,9 @@ public static class BasePersistence
     }
 
     /// <summary>
-    /// On the first call, records the persistence's <see cref="FlatLayout"/> in the supplied batch's
-    /// metadata column. Subsequent calls are no-ops. The write goes through the batch, so it is
-    /// committed atomically with the rest of the batch's contents.
+    /// On the first call, records the persistence's <see cref="FlatLayout"/> and slot encoding in the supplied
+    /// batch's metadata column via <see cref="SetLayout"/>. Subsequent calls are no-ops. The write goes through
+    /// the batch, so it is committed atomically with the rest of the batch's contents.
     /// </summary>
     internal static void RecordLayoutOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, FlatLayout layout)
     {
@@ -108,16 +126,90 @@ public static class BasePersistence
         }
     }
 
+    internal static byte? ReadSlotEncoding(IReadOnlyKeyValueStore kv)
+    {
+        byte[]? bytes = kv.Get(SlotEncodingKey);
+        return bytes is null || bytes.Length == 0 ? null : bytes[0];
+    }
+
+    [SkipLocalsInit]
+    internal static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version)
+    {
+        Span<byte> bytes = stackalloc byte[1];
+        bytes[0] = version;
+        kv.PutSpan(SlotEncodingKey, bytes);
+    }
+
+    /// <summary>
+    /// Decides whether storage slot values are RLP-wrapped for this DB. Brand-new DBs always wrap; the recorded
+    /// version of an existing DB always wins so its on-disk format is read back correctly.
+    /// </summary>
+    /// <remarks>
+    /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a pre-feature DB both lack it.
+    /// A non-empty <paramref name="slotStore"/> pins the DB to raw (with a deprecation warning), as its slots
+    /// are raw-encoded and would be misread as RLP. The <see cref="LayoutKey"/> is no discriminator: it
+    /// postdates flat sync and tooling can bypass the metadata column, so legacy raw DBs may lack it too.
+    /// </remarks>
+    /// <param name="slotStore">The column that holds storage slot values for this layout.</param>
+    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ISortedKeyValueStore slotStore, ILogger logger)
+    {
+        IReadOnlyKeyValueStore meta = db.GetColumnDb(FlatDbColumns.Metadata);
+        bool rlpWrap = ReadSlotEncoding(meta) switch
+        {
+            SlotEncodingRlp => true,
+            SlotEncodingRaw => false,
+            // No recorded version: brand-new (no slots) wraps; existing slots are legacy raw.
+            null => slotStore.FirstKey is null,
+            byte version => throw new InvalidConfigurationException(
+                $"Flat DB metadata contains an unrecognized slot encoding version '{version}'. The DB may be corrupt or was written by a newer version.",
+                -1),
+        };
+
+        if (!rlpWrap) WarnRawDeprecated(logger);
+        return rlpWrap;
+    }
+
+    /// <summary>Warns that the DB is on the deprecated raw slot encoding and should be resynced.</summary>
+    private static void WarnRawDeprecated(ILogger logger)
+    {
+        if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
+    }
+
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
-        using IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
-        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
+        // partially-synced DB on restart. #11442
+        const int batchSize = 10_000;
+
+        IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
+        try
         {
-            IWriteBatch columnBatch = batch.GetColumnBatch(column);
-            foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+            int count = 0;
+            foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
             {
-                columnBatch.Remove(key);
+                if (column == FlatDbColumns.Metadata)
+                {
+                    // Preserve the format markers; wiping them makes a re-synced RLP DB read back as raw. #11996
+                    batch.GetColumnBatch(column).Remove(CurrentStateKey);
+                    continue;
+                }
+
+                foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+                {
+                    batch.GetColumnBatch(column).Remove(key);
+                    if (++count == batchSize)
+                    {
+                        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
+                        batch.Dispose(); // commit the chunk
+                        batch = next;
+                        count = 0;
+                    }
+                }
             }
+        }
+        finally
+        {
+            batch.Dispose();
         }
     }
 
@@ -189,6 +281,9 @@ public static class BasePersistence
 
         public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value);
 
+        /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
+        public void SetStorageEncoded(in ValueHash256 address, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
+
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
@@ -213,7 +308,8 @@ public static class BasePersistence
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
+        /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account);
 
@@ -256,8 +352,8 @@ public static class BasePersistence
                 return;
             }
 
-            using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(addr.ToAccountPath, stream.AsSpan());
+            using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
+            _flatWriteBatch.SetAccount(addr.ToAccountPath, rlp);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
@@ -267,13 +363,13 @@ public static class BasePersistence
             _flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
         }
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
-            _flatWriteBatch.SetStorage(addrHash, slotHash, value);
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
+            _flatWriteBatch.SetStorageEncoded(addrHash, slotHash, rlpValue);
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account)
         {
-            using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
+            using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
+            _flatWriteBatch.SetAccount(addrHash, rlp);
         }
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
@@ -302,7 +398,7 @@ public static class BasePersistence
                 return null;
             }
 
-            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
+            RlpReader ctx = new(valueBuffer[..responseSize]);
             return _accountDecoder.Decode(ref ctx);
         }
 
@@ -407,8 +503,8 @@ public static class BasePersistence
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
             _trieWriteBatch.SetStorageTrieNode(address, path, rlp);
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
-            _flatWriter.SetStorageRaw(addrHash, slotHash, value);
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
+            _flatWriter.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
             _flatWriter.SetAccountRaw(addrHash, account);

@@ -52,7 +52,11 @@
       BuildInParallel="false"
       Condition="!Exists('$(_RpcJsonContextGeneratorPath)')" />
 
-    <Exec Command="dotnet &quot;$(_RpcJsonContextGeneratorPath)&quot; --output &quot;$(_RpcJsonContextOutputFile)&quot; --sources &quot;$(_RpcJsonContextSourcesFile)&quot; --references &quot;$(_RpcJsonContextReferencesFile)&quot; --assembly-name &quot;$(AssemblyName)&quot; --define-constants &quot;$(DefineConstants)&quot;" />
+    <PropertyGroup>
+      <_DotnetHost Condition="'$(_DotnetHost)' == '' and '$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</_DotnetHost>
+      <_DotnetHost Condition="'$(_DotnetHost)' == ''">dotnet</_DotnetHost>
+    </PropertyGroup>
+    <Exec Command="&quot;$(_DotnetHost)&quot; &quot;$(_RpcJsonContextGeneratorPath)&quot; --output &quot;$(_RpcJsonContextOutputFile)&quot; --sources &quot;$(_RpcJsonContextSourcesFile)&quot; --references &quot;$(_RpcJsonContextReferencesFile)&quot; --assembly-name &quot;$(AssemblyName)&quot; --define-constants &quot;$(DefineConstants)&quot;" />
 
     <ItemGroup>
       <FileWrites Include="$(_RpcJsonContextSourcesFile)" />

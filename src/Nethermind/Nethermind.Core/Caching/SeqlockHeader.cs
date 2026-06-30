@@ -86,6 +86,23 @@ internal static class SeqlockHeader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long ReadEpoch(ref long epochAndCount) => Volatile.Read(ref epochAndCount) & EpochMask;
 
+    /// <summary>Half of the epoch range, in EpochMask bit positions (2^25 &lt;&lt; EpochShift).</summary>
+    private const long EpochHalfRangeShifted = 1L << 62;
+
+    /// <summary>
+    /// True if <paramref name="headerEpoch"/> is strictly older than <paramref name="currentEpoch"/>,
+    /// comparing modularly over the 26-bit epoch field. Used to distinguish stale slots from
+    /// future-epoch slots a concurrent <see cref="ClearEpochAndCount"/> has published mid-walk.
+    /// </summary>
+    /// <param name="headerEpoch">Epoch bits as stored in a header — i.e. <c>h &amp; EpochMask</c>.</param>
+    /// <param name="currentEpoch">Epoch tag as returned by <see cref="ClearEpochAndCount"/> or <see cref="ReadEpoch"/>.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsEpochOlderThan(long headerEpoch, long currentEpoch)
+    {
+        long diff = (currentEpoch - headerEpoch) & EpochMask;
+        return diff != 0 && diff <= EpochHalfRangeShifted;
+    }
+
     /// <summary>
     /// Reads the count from the combined field (bits 0-36).
     /// </summary>

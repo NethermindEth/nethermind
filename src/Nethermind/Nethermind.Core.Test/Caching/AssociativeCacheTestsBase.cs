@@ -135,8 +135,11 @@ public abstract class AssociativeCacheTestsBase
 
         if (capacity == 0)
         {
-            Assert.That(Get(in _keys[0]), Is.False);
-            Assert.That(GetCount(), Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Get(in _keys[0]), Is.False);
+                Assert.That(GetCount(), Is.EqualTo(0));
+            }
         }
         else
         {
@@ -169,19 +172,22 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Concurrent_clear_does_not_corrupt_count()
     {
-        // Catches count/Clear race: concurrent Set + Clear should not produce
-        // negative counts or counts wildly exceeding capacity.
-        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+        // 50 rounds so a probabilistic Set/Clear race is caught reliably.
+        for (int round = 0; round < 50; round++)
         {
-            for (int i = 0; i < Capacity; i++)
-                Set(in _keys[i], i);
-            if (iter % 3 == 0)
-                Clear();
-        });
+            CreateCache(Capacity);
+            Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+            {
+                for (int i = 0; i < Capacity; i++)
+                    Set(in _keys[i], i);
+                if (iter % 3 == 0)
+                    Clear();
+            });
 
-        int count = GetCount();
-        Assert.That(count, Is.GreaterThanOrEqualTo(0));
-        Assert.That(count, Is.LessThanOrEqualTo(Capacity));
+            int count = GetCount();
+            Assert.That(count, Is.GreaterThanOrEqualTo(0), $"round {round}");
+            Assert.That(count, Is.LessThanOrEqualTo(Capacity), $"round {round}");
+        }
     }
 
     [Test]
@@ -264,18 +270,27 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Contains_works()
     {
-        Assert.That(Contains(in _keys[0]), Is.False);
-        Assert.That(Get(in _keys[0]), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.False);
+            Assert.That(Get(in _keys[0]), Is.False);
+        }
 
         Set(in _keys[0], 0);
 
-        Assert.That(Contains(in _keys[0]), Is.True);
-        Assert.That(Get(in _keys[0]), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.True);
+            Assert.That(Get(in _keys[0]), Is.True);
+        }
 
         Delete(in _keys[0]);
 
-        Assert.That(Contains(in _keys[0]), Is.False);
-        Assert.That(Get(in _keys[0]), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.False);
+            Assert.That(Get(in _keys[0]), Is.False);
+        }
     }
 
     [Test]

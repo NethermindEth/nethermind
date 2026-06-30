@@ -35,7 +35,7 @@ public class AuRaContractGasLimitOverrideTests
     public async Task can_read_block_gas_limit_from_contract()
     {
         using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
-        long gasLimit = chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
+        ulong gasLimit = chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
         Assert.That(gasLimit, Is.EqualTo(CorrectHeadGasLimit));
     }
 
@@ -44,7 +44,7 @@ public class AuRaContractGasLimitOverrideTests
     {
         using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
         chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
-        long? gasLimit = chain.GasLimitOverrideCache.GasLimitCache.Get(chain.BlockTree.Head.Hash);
+        ulong? gasLimit = chain.GasLimitOverrideCache.GasLimitCache.Get(chain.BlockTree.Head.Hash);
         Assert.That(gasLimit, Is.EqualTo(CorrectHeadGasLimit));
     }
 
@@ -60,7 +60,7 @@ public class AuRaContractGasLimitOverrideTests
     public async Task can_validate_gas_limit_incorrect()
     {
         using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
-        bool isValid = ((AuRaContractGasLimitOverride)chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, 100000001, out long? expectedGasLimit);
+        bool isValid = ((AuRaContractGasLimitOverride)chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, 100000001, out ulong? expectedGasLimit);
         Assert.That(isValid, Is.False);
         Assert.That(expectedGasLimit, Is.EqualTo(CorrectHeadGasLimit));
     }
@@ -85,7 +85,7 @@ public class AuRaContractGasLimitOverrideTests
             IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory
         )
         {
-            KeyValuePair<long, Address> blockGasLimitContractTransition = chainSpec.EngineChainSpecParametersProvider
+            KeyValuePair<ulong, Address> blockGasLimitContractTransition = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions
                 .First();
             BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
@@ -111,8 +111,8 @@ public class AuRaContractGasLimitOverrideTests
             ChainSpec chainSpec = base.CreateChainSpec();
             AuRaChainSpecEngineParameters parameters = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-            KeyValuePair<long, Address> blockGasLimitContractTransition = parameters.BlockGasLimitContractTransitions.First();
-            parameters.BlockGasLimitContractTransitions = new Dictionary<long, Address>() { { 10, blockGasLimitContractTransition.Value } };
+            KeyValuePair<ulong, Address> blockGasLimitContractTransition = parameters.BlockGasLimitContractTransitions.First();
+            parameters.BlockGasLimitContractTransitions = new Dictionary<ulong, Address>() { { 10, blockGasLimitContractTransition.Value } };
             return chainSpec;
         }
     }

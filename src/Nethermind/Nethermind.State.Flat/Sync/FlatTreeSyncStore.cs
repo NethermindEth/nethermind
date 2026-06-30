@@ -241,6 +241,10 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         StateId from = reader.CurrentState;
         StateId to = new(pivotHeader);
 
+        // Snap/heal writes use DisableWAL and are only crash-durable once flushed. Flush before advancing the
+        // WAL-durable pointer, so a crash can't leave CurrentState pointing past unflushed (holed) data. #11457
+        persistence.Flush();
+
         // Create and immediately dispose to increment state ID
         // This pattern is used by Importer - the from->to transition updates the current state pointer
         using (persistence.CreateWriteBatch(from, to))
@@ -277,7 +281,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
                 return null;
             }
 
-            Rlp.ValueDecoderContext context = new(bytes);
+            RlpReader context = new(bytes);
             return _accountDecoder.Decode(ref context);
         }
 

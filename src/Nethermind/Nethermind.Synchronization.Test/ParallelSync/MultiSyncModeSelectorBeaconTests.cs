@@ -116,15 +116,6 @@ public class MultiSyncModeSelectorBeaconTests(bool needToWaitForHeaders, MultiSy
             .TheSyncModeShouldBe(SyncMode.Disconnected);
 
     [Test]
-    public void Load_from_db() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-            .WhenInBeaconSyncMode(_mode)
-            .WhateverTheSyncProgressIs()
-            .WhateverThePeerPoolLooks()
-            .WhenThisNodeIsLoadingBlocksFromDb()
-            .ThenInAnySyncConfiguration()
-            .TheSyncModeShouldBe(SyncMode.DbLoad);
-
-    [Test]
     public void Simple_archive() => Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeHasNeverSyncedBefore()

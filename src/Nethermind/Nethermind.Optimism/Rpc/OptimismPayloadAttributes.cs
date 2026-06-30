@@ -29,8 +29,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
     }
     public bool NoTxPool { get; set; }
-    public long GasLimit { get; set; }
-    public override long? GetGasLimit() => GasLimit;
+    public ulong GasLimit { get; set; }
+    public override ulong? GetGasLimit() => GasLimit;
 
     /// <remarks>
     /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>
@@ -94,8 +94,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
             }
         }
 
-        BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), GasLimit);
-        offset += sizeof(long);
+        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(offset, sizeof(ulong)), GasLimit);
+        offset += sizeof(ulong);
 
         if (EIP1559Params is not null)
         {
@@ -115,7 +115,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        IReleaseSpec releaseSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
+        IOptimismReleaseSpec releaseSpec = (IOptimismReleaseSpec)specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
         if (!releaseSpec.IsOpHoloceneEnabled && EIP1559Params is not null)
         {
             error = $"{nameof(EIP1559Params)} should be null before Holocene";

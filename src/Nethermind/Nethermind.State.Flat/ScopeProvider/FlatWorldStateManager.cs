@@ -24,7 +24,7 @@ public class FlatWorldStateManager(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
     ILogManager logManager)
-    : IWorldStateManager
+    : IWorldStateManager, IDisposable
 {
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
@@ -48,14 +48,14 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public long? RetentionWindowBlocks => null;
+    public ulong? RetentionWindowBlocks => null;
 
-    public long? OldestStateBlock
+    public ulong? OldestStateBlock
     {
         get
         {
-            long blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
-            return blockNumber >= 0 ? blockNumber : null;
+            ulong blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
+            return blockNumber != ulong.MaxValue ? blockNumber : null;
         }
     }
 
@@ -84,4 +84,6 @@ public class FlatWorldStateManager(
         _trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
+
+    public void Dispose() => _mainWorldState.Dispose();
 }

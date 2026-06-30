@@ -39,6 +39,11 @@ internal static class XdcConstants
 
     public const int PeriodicJobPeriod = 60;
     public const int PoolHygieneRound = 10;
+    /// <summary>
+    /// Number of epoch switch entries to retain in rewards history.
+    /// This is an epoch count, not a block-number distance.
+    /// </summary>
+    public const int RewardHistoryEpochRetention = 20_000;
     public const int InMemorySignatures = 4096;
 
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
@@ -55,4 +60,7 @@ internal static class XdcConstants
 
     // 4-byte selector + 32-byte block number + 32-byte block hash
     public const int SignTransactionDataLength = 68;
+
+    // Only sign recent head blocks.
+    public const ulong MaxSignableBlockPeriods = 2;
 }

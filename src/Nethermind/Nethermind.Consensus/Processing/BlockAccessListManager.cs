@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Withdrawals;
@@ -45,17 +46,20 @@ public partial class BlockAccessListManager(
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
-    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
+    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
+    bool witnessMode = false)
     : IBlockAccessListManager, IDisposable
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
+    private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, witnessMode));
     private const int GasValidationChunkSize = 8;
-    private long? _gasRemaining;
+    private ulong? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
 
@@ -74,8 +78,8 @@ public partial class BlockAccessListManager(
     // generated is incremented as each per-tx slice merges in. ValidateBlockAccessList's
     // fast path checks (suggestedReads - generatedReads) * Eip7928Constants.ItemCost against
     // _gasRemaining instead of re-walking the whole BAL.
-    private int _suggestedChargeableStorageReads;
-    private int _generatedChargeableStorageReads;
+    private ulong _suggestedChargeableStorageReads;
+    private ulong _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
     // for tests
     internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
@@ -143,16 +147,57 @@ public partial class BlockAccessListManager(
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
                 _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
-                int suggestedReads = 0;
+                ulong suggestedReads = 0;
                 foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
                 {
-                    if (!IsSystemContract(ac.Address)) suggestedReads += ac.StorageReads.Length;
+                    if (!IsSystemContract(ac.Address)) suggestedReads += (ulong)ac.StorageReads.Length;
                 }
                 _suggestedChargeableStorageReads = suggestedReads;
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+        }
+
+        _balWarmupTask = StartBalReadWarmup(suggestedBlock);
+    }
+
+    // Only the parallel executor drains the hint; sequential execution contends with the warming reads.
+    private Task? StartBalReadWarmup(Block suggestedBlock)
+    {
+        if (!BatchReadEnabled || !ParallelExecutionEnabled || suggestedBlock.BlockAccessList is null)
+            return null;
+
+        try
+        {
+            return stateProvider.HintBal(suggestedBlock.BlockAccessList);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsDebug) _logger.Debug($"BAL read warming hint failed to start: {ex}");
+            return null;
+        }
+    }
+
+    public void WaitForBalWarmup()
+    {
+        Task? task = _balWarmupTask;
+        if (task is null) return;
+        _balWarmupTask = null;
+
+        try
+        {
+            task.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when warming was already cancelled, e.g. by an earlier write batch.
+        }
+        catch (Exception ex)
+        {
+            // Warming is best-effort: a faulted task only means fewer pre-block cache hits and
+            // must never fail the block. Log so a slow block can be correlated with the failure.
+            if (_logger.IsDebug) _logger.Debug($"BAL read warming faulted: {ex}");
         }
     }
 
@@ -166,7 +211,7 @@ public partial class BlockAccessListManager(
         }
     }
 
-    public void SpendGas(long gas)
+    public void SpendGas(ulong gas)
     {
         CheckInitialized();
         _gasRemaining -= gas;
@@ -255,8 +300,8 @@ public partial class BlockAccessListManager(
         GeneratedBlockAccessList.Reset();
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
-        _suggestedChargeableStorageReads = 0;
-        _generatedChargeableStorageReads = 0;
+        _suggestedChargeableStorageReads = 0ul;
+        _generatedChargeableStorageReads = 0ul;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
         _currentGeneratedBlockAccessList = null;

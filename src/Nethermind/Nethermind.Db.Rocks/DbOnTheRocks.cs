@@ -668,7 +668,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (dbConfig.ReadAheadSize != 0)
         {
             _readAheadReadOptions = CreateReadOptions();
-            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB);
+            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? 256UL.KiB);
             _readAheadReadOptions.SetTailing(true);
         }
         #endregion
@@ -1500,7 +1500,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         _reader.Dispose();
 
-        if (_perTableDbConfig.FlushOnExit) InnerFlush(false);
+        if (_perTableDbConfig.FlushOnExit != FlushOnExitMode.None)
+            InnerFlush(onlyWal: _perTableDbConfig.FlushOnExit == FlushOnExitMode.WalOnly);
         ReleaseUnmanagedResources();
 
         _dbsByPath.Remove(_fullPath!, out _);
@@ -1562,14 +1563,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestations performance.
                 // It's unclear if it improves or slows down sync time. Seems to be the sweet spot.
-                ApplyOptions(GetHeavyWriteOptions((ulong)2.GiB));
+                ApplyOptions(GetHeavyWriteOptions(2UL.GiB));
                 break;
             case ITunableDb.TuneType.AggressiveHeavyWrite:
                 // For when you are desperate, but don't wanna disable compaction completely, because you don't want
                 // peers to drop. Tend to be faster than disabling compaction completely, except if your ratelimit
                 // is a bit low and your compaction is lagging behind, which will trigger slowdown, so sync will hang
                 // intermittently, but at least peer count is stable.
-                ApplyOptions(GetHeavyWriteOptions((ulong)16.GiB));
+                ApplyOptions(GetHeavyWriteOptions(16UL.GiB));
                 break;
             case ITunableDb.TuneType.DisableCompaction:
                 // Completely disable compaction. On mainnet, the max num of l0 files for state seems to be about 10800.
@@ -1665,7 +1666,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // bufferSize*maxBufferNumber = 16MB*Core count, which is the max memory used, which tends to be the case as it's now
         // stalled by compaction instead of a flush.
         // The buffer is not compressed unlike l0File, so to account for it, its size needs to be slightly larger.
-        ulong targetFileSize = (ulong)16.MiB;
+        ulong targetFileSize = 16UL.MiB;
         ulong bufferSize = (ulong)(targetFileSize / _perTableDbConfig.CompressibilityHint);
         ulong l0FileSize = targetFileSize * (ulong)_minWriteBufferToMerge;
         ulong maxBufferNumber = (ulong)Environment.ProcessorCount;
@@ -1697,7 +1698,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private IDictionary<string, string> GetDisableCompactionOptions()
     {
-        IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions((ulong)32.GiB);
+        IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(32UL.GiB);
 
         heavyWriteOption["disable_auto_compactions"] = "true";
         // Increase the size of the write buffer, which reduces the number of l0 files by 4x. This does slow down

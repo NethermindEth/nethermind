@@ -9,30 +9,30 @@ namespace Nethermind.Xdc.RLP;
 
 internal static class XdcRlpHelpers
 {
-    internal static Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
+    internal static Address[] DecodeAddressArray(ref RlpReader reader)
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (reader.IsNextItemEmptyList())
         {
-            _ = decoderContext.ReadByte();
+            _ = reader.ReadByte();
             return [];
         }
 
-        int length = decoderContext.ReadSequenceLength();
+        int length = reader.ReadSequenceLength();
         Address[] addresses = new Address[length / Rlp.LengthOfAddressRlp];
 
         int index = 0;
         while (length > 0)
         {
-            addresses[index++] = decoderContext.DecodeAddress();
+            addresses[index++] = reader.DecodeAddress();
             length -= Rlp.LengthOfAddressRlp;
         }
 
         return addresses;
     }
 
-    internal static byte[] DecodeAddressBytes(ref Rlp.ValueDecoderContext decoderContext)
+    internal static byte[] DecodeAddressBytes(ref RlpReader reader)
     {
-        Address[] addresses = DecodeAddressArray(ref decoderContext);
+        Address[] addresses = DecodeAddressArray(ref reader);
         if (addresses.Length == 0)
         {
             return [];
@@ -47,13 +47,14 @@ internal static class XdcRlpHelpers
         return result;
     }
 
-    internal static void EncodeAddressSequence(RlpStream stream, Address[] addresses)
+    internal static void EncodeAddressSequence<TWriter>(ref TWriter writer, Address[] addresses)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int length = addresses.Length;
-        stream.StartSequence(Rlp.LengthOfAddressRlp * length);
+        writer.StartSequence(Rlp.LengthOfAddressRlp * length);
         for (int i = 0; i < length; i++)
         {
-            stream.Encode(addresses[i]);
+            writer.Encode(addresses[i]);
         }
     }
 

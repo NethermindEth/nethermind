@@ -19,7 +19,7 @@ internal sealed class XdcSubnetSealValidator(
     IEpochSwitchManager epochSwitchManager,
     ISpecProvider specProvider) : XdcSealValidator(masternodesCalculator, epochSwitchManager, specProvider)
 {
-    private readonly XdcSubnetHeaderDecoder _headerDecoder = new();
+    protected override RlpDecoder<BlockHeader> HeaderDecoder { get; } = new XdcSubnetHeaderDecoder();
 
     public override bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {
@@ -64,16 +64,6 @@ internal sealed class XdcSubnetSealValidator(
 
         error = null;
         return true;
-    }
-
-    protected override Rlp EncodeHeaderForSeal(XdcBlockHeader header)
-    {
-        if (header is not XdcSubnetBlockHeader subnetHeader)
-        {
-            throw new ArgumentException($"Only type of {nameof(XdcSubnetBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
-        }
-
-        return _headerDecoder.Encode(subnetHeader, RlpBehaviors.ForSealing);
     }
 
     protected override bool ValidateEpochFields(XdcBlockHeader xdcHeader, Address[] masternodes, Address[] penalties, out string? error)

@@ -67,5 +67,18 @@ public static class IReleaseSpecExtensions
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
+        /// <summary>
+        /// Returns a spec with EIP-158 disabled, preventing empty-account deletion on commit.
+        /// Used when applying state overrides to preserve EIP-7610 CREATE collision detection.
+        /// </summary>
+        public IReleaseSpec WithoutEip158() =>
+            spec.IsEip158Enabled ? new NoEip158Spec(spec) : spec;
+
+        /// <summary>
+        /// Returns a spec with EIP-3607 disabled, allowing contract addresses to act as transaction senders.
+        /// Used in <c>eth_simulateV1</c> where state-overridden contracts may be the <c>from</c> address.
+        /// </summary>
+        public IReleaseSpec WithoutEip3607() =>
+            spec.IsEip3607Enabled ? new NoEip3607Spec(spec) : spec;
     }
 }

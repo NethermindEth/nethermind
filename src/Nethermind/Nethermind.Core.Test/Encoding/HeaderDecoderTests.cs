@@ -27,7 +27,7 @@ public class HeaderDecoderTests
 
         HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
-        Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
+        RlpReader decoderContext = new(rlp.Bytes);
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
@@ -45,7 +45,7 @@ public class HeaderDecoderTests
 
         HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
-        Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
+        RlpReader decoderContext = new(rlp.Bytes);
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
@@ -102,38 +102,44 @@ public class HeaderDecoderTests
         Assert.That(Convert.ToHexString(rlp.Bytes).ToLower(), Is.EqualTo("f901f7a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e288000000000000000001"));
     }
 
-    [TestCase(-1)]
-    [TestCase(long.MinValue)]
-    public void Can_encode_decode_with_negative_long_fields(long negativeLong)
+    [TestCase(ulong.MaxValue)]
+    [TestCase(ulong.MaxValue / 2)]
+    public void Can_encode_decode_with_large_ulong_fields(ulong largeValue)
     {
         BlockHeader header = Build.A.BlockHeader.
-            WithNumber(negativeLong).
-            WithGasUsed(negativeLong).
-            WithGasLimit(negativeLong).TestObject;
+            WithNumber(largeValue).
+            WithGasUsed(largeValue).
+            WithGasLimit(largeValue).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
 
-        Assert.That(blockHeader.GasUsed, Is.EqualTo(negativeLong));
-        Assert.That(blockHeader.Number, Is.EqualTo(negativeLong));
-        Assert.That(blockHeader.GasLimit, Is.EqualTo(negativeLong));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.GasUsed, Is.EqualTo(largeValue));
+            Assert.That(blockHeader.Number, Is.EqualTo(largeValue));
+            Assert.That(blockHeader.GasLimit, Is.EqualTo(largeValue));
+        }
     }
 
-    [TestCase(-1)]
-    [TestCase(long.MinValue)]
-    public void Can_encode_decode_with_negative_long_when_using_span(long negativeLong)
+    [TestCase(ulong.MaxValue)]
+    [TestCase(ulong.MaxValue / 2)]
+    public void Can_encode_decode_with_large_ulong_when_using_span(ulong largeValue)
     {
         BlockHeader header = Build.A.BlockHeader.
-            WithNumber(negativeLong).
-            WithGasUsed(negativeLong).
-            WithGasLimit(negativeLong).TestObject;
+            WithNumber(largeValue).
+            WithGasUsed(largeValue).
+            WithGasLimit(largeValue).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        Assert.That(blockHeader.GasUsed, Is.EqualTo(negativeLong));
-        Assert.That(blockHeader.Number, Is.EqualTo(negativeLong));
-        Assert.That(blockHeader.GasLimit, Is.EqualTo(negativeLong));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.GasUsed, Is.EqualTo(largeValue));
+            Assert.That(blockHeader.Number, Is.EqualTo(largeValue));
+            Assert.That(blockHeader.GasLimit, Is.EqualTo(largeValue));
+        }
     }
 
     [TestCaseSource(nameof(CancunFieldsSource))]
@@ -150,8 +156,11 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        Assert.That(blockHeader.BlobGasUsed, Is.EqualTo(blobGasUsed));
-        Assert.That(blockHeader.ExcessBlobGas, Is.EqualTo(excessBlobGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.BlobGasUsed, Is.EqualTo(blobGasUsed));
+            Assert.That(blockHeader.ExcessBlobGas, Is.EqualTo(excessBlobGas));
+        }
     }
 
     [Test]

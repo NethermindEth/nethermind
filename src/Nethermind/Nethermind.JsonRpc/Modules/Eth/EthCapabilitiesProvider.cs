@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.History;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -31,21 +32,21 @@ public sealed class EthCapabilitiesProvider(
         }
 
         bool fastSyncing = syncConfig.FastSync;
-        long pivot = syncConfig.PivotNumber;
-        long bodiesBarrier = pivot == 0 ? 0 : Math.Min(pivot, syncConfig.AncientBodiesBarrier);
-        long receiptsBarrier = pivot == 0 ? 0 : Math.Min(pivot, Math.Max(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier));
+        ulong pivot = syncConfig.PivotNumber;
+        ulong bodiesBarrier = pivot == 0ul ? 0ul : Math.Min(pivot, syncConfig.AncientBodiesBarrier);
+        ulong receiptsBarrier = pivot == 0ul ? 0ul : Math.Min(pivot, Math.Max(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier));
 
         // Barriers are the eventual floor; before the descending pointer is set we have nothing.
         bool bodiesDownloaded = IsDescendingResourceDownloaded(fastSyncing, pivot, syncConfig.DownloadBodiesInFastSync, syncPointers.LowestInsertedBodyNumber);
         bool receiptsDownloaded = bodiesDownloaded && IsDescendingResourceDownloaded(fastSyncing, pivot, syncConfig.DownloadReceiptsInFastSync, syncPointers.LowestInsertedReceiptBlockNumber);
 
-        long historyFloor = historyPruner.OldestBlockHeader?.Number ?? 0;
+        ulong historyFloor = historyPruner.OldestBlockHeader?.Number ?? 0ul;
         DeleteStrategy? historyWindow = BuildWindow(
-            historyConfig.Pruning == PruningModes.Rolling ? historyPruner.GetRetentionBlocks(historyConfig.RetentionEpochs) : 0);
+            historyConfig.Pruning == PruningModes.Rolling ? historyPruner.GetRetentionBlocks(historyConfig.RetentionEpochs) : 0UL);
 
-        long lowestReceipt = Math.Max(syncPointers.LowestInsertedReceiptBlockNumber ?? 0L, receiptsBarrier);
-        long lowestBody = Math.Max(syncPointers.LowestInsertedBodyNumber ?? 0L, bodiesBarrier);
-        long lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0L, lowestBody);
+        ulong lowestReceipt = Math.Max(syncPointers.LowestInsertedReceiptBlockNumber ?? 0ul, receiptsBarrier);
+        ulong lowestBody = Math.Max(syncPointers.LowestInsertedBodyNumber ?? 0ul, bodiesBarrier);
+        ulong lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0ul, lowestBody);
 
         ResourceAvailability state = BuildState(head, fastSyncing);
 
@@ -59,28 +60,28 @@ public sealed class EthCapabilitiesProvider(
 
     private ResourceAvailability BuildState(BlockHeader head, bool fastSyncing)
     {
-        long? oldestStateBlock = stateBoundary.OldestStateBlock;
+        ulong? oldestStateBlock = stateBoundary.OldestStateBlock;
         // During fast sync, state isn't queryable until StateSyncRunner writes the pivot floor.
         if (fastSyncing && oldestStateBlock is null) return Disabled;
 
-        long stateFloor = oldestStateBlock ?? 0L;
+        ulong stateFloor = oldestStateBlock ?? 0UL;
         if (stateBoundary.RetentionWindowBlocks is not { } retention)
             return new ResourceAvailability(Disabled: false, OldestBlock: stateFloor, DeleteStrategy: null);
 
-        long windowOldest = Math.Max(0L, head.Number - retention);
-        long stateOldest = Math.Max(stateFloor, windowOldest);
+        ulong windowOldest = head.Number.SaturatingSub(retention);
+        ulong stateOldest = Math.Max(stateFloor, windowOldest);
         // Emit the window only when it's the binding constraint, and report the configured
         // retention so the value stays accurate before head reaches it.
         DeleteStrategy? window = windowOldest >= stateFloor ? BuildWindow(retention) : null;
         return new ResourceAvailability(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: window);
     }
 
-    private static bool IsDescendingResourceDownloaded(bool fastSyncing, long pivot, bool downloadInFastSync, long? pointer) =>
-        !fastSyncing || (downloadInFastSync && (pivot == 0 || pointer is not null));
+    private static bool IsDescendingResourceDownloaded(bool fastSyncing, ulong pivot, bool downloadInFastSync, ulong? pointer) =>
+        !fastSyncing || (downloadInFastSync && (pivot == 0ul || pointer is not null));
 
-    private static ResourceAvailability BuildResource(bool enabled, long oldestBlock, DeleteStrategy? deleteStrategy) =>
+    private static ResourceAvailability BuildResource(bool enabled, ulong oldestBlock, DeleteStrategy? deleteStrategy) =>
         enabled ? new ResourceAvailability(false, oldestBlock, deleteStrategy) : Disabled;
 
-    private static DeleteStrategy? BuildWindow(long retentionBlocks) =>
+    private static DeleteStrategy? BuildWindow(ulong retentionBlocks) =>
         retentionBlocks > 0 ? new DeleteStrategy("window", retentionBlocks) : null;
 }
