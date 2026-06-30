@@ -211,6 +211,29 @@ public class SyncPeerPoolTests
         Assert.That(peers.Any(static p => p.DisconnectRequested), Is.True);
     }
 
+    // geth parity: trusted peers are never dropped; static peers are no longer immune.
+    [TestCase((byte)0)]
+    [TestCase((byte)24)]
+    public async Task Will_not_disconnect_trusted_peer_but_drops_static(byte number)
+    {
+        const int peersMaxCount = 25;
+        await using Context ctx = new();
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, 0, 50);
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, peersMaxCount);
+
+        for (int i = 0; i < peersMaxCount; i++)
+        {
+            peers[i].Node.IsTrusted = i != number;
+        }
+        peers[number].Node.IsStatic = true; // the only non-trusted peer is static -> still droppable
+
+        await WaitForPeersInitialization(ctx);
+        ctx.Pool.DropUselessPeers(true);
+
+        Assert.That(peers[number].DisconnectRequested, Is.True, "a static (non-trusted) peer is droppable");
+        Assert.That(peers.Where((p, i) => i != number).Any(static p => p.DisconnectRequested), Is.False, "trusted peers are never dropped");
+    }
+
     [Test]
     public async Task Should_increment_PriorityPeerCount_when_added_priority_peer_and_decrement_after_removal()
     {

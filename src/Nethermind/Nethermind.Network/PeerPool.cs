@@ -37,6 +37,7 @@ namespace Nethermind.Network
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
         private int _staticPeerCount;
+        private int _trustedPeerCount;
 
         public IEnumerable<Peer> NonStaticPeers => Peers.Select(static kvp => kvp.Value).Where(static p => !p.Node.IsStatic);
         public IEnumerable<Peer> StaticPeers => Peers.Select(static kvp => kvp.Value).Where(static p => p.Node.IsStatic);
@@ -44,10 +45,9 @@ namespace Nethermind.Network
         public int PeerCount => Peers.Count;
         public int ActivePeerCount => ActivePeers.Count;
         public int StaticPeerCount => Volatile.Read(ref _staticPeerCount);
+        public int TrustedPeerCount => Volatile.Read(ref _trustedPeerCount);
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-
-        readonly Func<PublicKeyAsKey, NetworkNode, Peer> _createNewNetworkNodePeer;
 
         public PeerPool(
             INodeSource nodeSource,
@@ -65,9 +65,6 @@ namespace Nethermind.Network
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger<PeerPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
-
-            // Early explicit closure
-            _createNewNetworkNodePeer = CreateNew;
 
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
@@ -89,6 +86,7 @@ namespace Nethermind.Network
                     removed = peer.InSession is null && peer.OutSession is null && !peer.IsAwaitingConnection
                               && Peers.TryRemove(e.Node.Id, out _);
                     if (removed && peer.Node.IsStatic) Interlocked.Decrement(ref _staticPeerCount);
+                    if (removed && peer.Node.IsTrusted) Interlocked.Decrement(ref _trustedPeerCount);
                 }
                 if (removed) PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
                 return;
@@ -108,6 +106,7 @@ namespace Nethermind.Network
             if (ReferenceEquals(peer, created))
             {
                 if (node.IsStatic) Interlocked.Increment(ref _staticPeerCount);
+                if (node.IsTrusted) Interlocked.Increment(ref _trustedPeerCount);
                 if ((node.IsBootnode || node.IsStatic) && _logger.IsDebug) DebugAddingCandidatePeer(node);
                 PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             }
@@ -118,15 +117,18 @@ namespace Nethermind.Network
                 => _logger.Debug($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
         }
 
-        public Peer GetOrAdd(NetworkNode node) => Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, node);
-
-        private Peer CreateNew(PublicKeyAsKey key, NetworkNode networkNode)
+        public Peer GetOrAdd(NetworkNode networkNode)
         {
+            if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing)) return existing;
+
             Node node = new(networkNode) { IsTrusted = _trustedNodesManager.IsTrusted(networkNode.Enode) };
-
-            Peer peer = new(node, _stats.GetOrAdd(node));
-
-            PeerAdded?.Invoke(this, new PeerEventArgs(peer));
+            Peer created = new(node, _stats.GetOrAdd(node));
+            Peer peer = Peers.GetOrAdd(node.Id, created);
+            if (ReferenceEquals(peer, created))
+            {
+                if (node.IsTrusted) Interlocked.Increment(ref _trustedPeerCount);
+                PeerAdded?.Invoke(this, new PeerEventArgs(peer));
+            }
             return peer;
         }
 
@@ -138,6 +140,7 @@ namespace Nethermind.Network
                 return false;
 
             if (peer.Node.IsStatic) Interlocked.Decrement(ref _staticPeerCount);
+            if (peer.Node.IsTrusted) Interlocked.Decrement(ref _trustedPeerCount);
             lock (peer.SessionLock)
             {
                 peer.InSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
@@ -159,6 +162,7 @@ namespace Nethermind.Network
                     // (what with the other session?)
 
                     if (previousPeer.Node.IsStatic) Interlocked.Decrement(ref _staticPeerCount);
+                    if (previousPeer.Node.IsTrusted) Interlocked.Decrement(ref _trustedPeerCount);
 
                     if (previousPeer is not null)
                     {
@@ -295,8 +299,9 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
-                // Static nodes bypass throttling so they are always registered (and thus always allowed to connect).
-                while (!node.IsStatic && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
+                // Static and trusted nodes bypass throttling so they are always registered (static to stay
+                // dialable, trusted so inbound connections are recognized and counted even at capacity).
+                while (!node.IsStatic && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
                 {
                     if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
                     await Task.Delay(1000, token);

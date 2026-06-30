@@ -349,14 +349,31 @@ public class SessionTests
         Assert.That(session.IsClosing, Is.True);
     }
 
-    // Static nodes are kept connected through capacity/transient reasons, but chain-identity and protocol
-    // mismatches must still disconnect them.
+    // Trusted nodes are kept connected through capacity/transient reasons, but chain-identity and protocol
+    // mismatches must still disconnect them (geth trustedConn semantics).
     [TestCase(DisconnectReason.TooManyPeers, false)]
     [TestCase(DisconnectReason.UselessPeer, false)]
     [TestCase(DisconnectReason.InvalidNetworkId, true)]
     [TestCase(DisconnectReason.InvalidForkId, true)]
     [TestCase(DisconnectReason.IncompatibleP2PVersion, true)]
-    public void Static_node_disconnect_depends_on_reason(DisconnectReason reason, bool shouldDisconnect)
+    public void Trusted_node_disconnect_depends_on_reason(DisconnectReason reason, bool shouldDisconnect)
+    {
+        bool wasCalled = false;
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545) { IsTrusted = true };
+        Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Disconnecting += (s, e) => wasCalled = true;
+
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        session.InitiateDisconnect(reason);
+        Assert.That(wasCalled, Is.EqualTo(shouldDisconnect));
+        Assert.That(session.IsClosing, Is.EqualTo(shouldDisconnect));
+    }
+
+    // Static peers count against the limit (geth), so they are NOT exempt from capacity disconnects.
+    [TestCase(DisconnectReason.TooManyPeers)]
+    [TestCase(DisconnectReason.UselessPeer)]
+    public void Static_node_is_disconnected_for_capacity_reasons(DisconnectReason reason)
     {
         bool wasCalled = false;
         Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545) { IsStatic = true };
@@ -366,8 +383,8 @@ public class SessionTests
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
         session.InitiateDisconnect(reason);
-        Assert.That(wasCalled, Is.EqualTo(shouldDisconnect));
-        Assert.That(session.IsClosing, Is.EqualTo(shouldDisconnect));
+        Assert.That(wasCalled, Is.True);
+        Assert.That(session.IsClosing, Is.True);
     }
 
     [Test]

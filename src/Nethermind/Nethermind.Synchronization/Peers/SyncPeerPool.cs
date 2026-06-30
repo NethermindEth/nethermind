@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Peers
             INetworkConfig networkConfig,
             ISyncConfig syncConfig,
             ILogManager logManager)
-        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.ActivePeersMaxCount, networkConfig.PriorityPeersMaxCount, syncConfig.AllocationSlots)
+        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.MaxActivePeers, networkConfig.PriorityPeersMaxCount, syncConfig.AllocationSlots)
         {
 
         }
@@ -193,13 +193,13 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public IEnumerable<PeerInfo> NonStaticPeers
+        public IEnumerable<PeerInfo> NonTrustedPeers
         {
             get
             {
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
-                    if (!peerInfo.SyncPeer.Node.IsStatic)
+                    if (!peerInfo.SyncPeer.Node.IsTrusted)
                     {
                         yield return peerInfo;
                     }
@@ -492,7 +492,7 @@ namespace Nethermind.Synchronization.Peers
             int peersDropped = 0;
             _lastUselessPeersDropTime = DateTime.UtcNow;
 
-            if (PeerCount == PeerMaxCount)
+            if (PeerCount >= PeerMaxCount)
             {
                 peersDropped += DropWorstPeer();
             }
@@ -530,7 +530,7 @@ namespace Nethermind.Synchronization.Peers
             PeerInfo? worstPeer = null;
             string? worstReason = "DEFAULT";
 
-            foreach (PeerInfo peerInfo in NonStaticPeers)
+            foreach (PeerInfo peerInfo in NonTrustedPeers)
             {
                 if (peerInfo.SyncPeer.IsPriority && !canDropPriorityPeer)
                 {

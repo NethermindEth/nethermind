@@ -54,7 +54,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // Rlpxhost
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
             .AddSingleton<ISessionMonitor, SessionMonitor>()
-            .AddSingleton<IPrivilegedIpProvider, StaticNodesPrivilegedIpProvider>()
+            .AddSingleton<IPrivilegedIpProvider, TrustedNodesPrivilegedIpProvider>()
             .AddSingleton<IRlpxHost, RlpxHost>()
             .AddSingleton<Handshake.IHandshakeService, Handshake.HandshakeService>()
 

@@ -291,6 +291,19 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(2));
         }
 
+        [Test]
+        public async Task MaxActivePeers_is_inflated_by_trusted_not_static()
+        {
+            await using Context ctx = new(maxActivePeers: 20);
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20));
+
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1) { IsStatic = true });
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20), "static peers count against the limit (geth)");
+
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1) { IsTrusted = true });
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(21), "trusted peers are additive on top of the limit (geth)");
+        }
+
         [TestCase(true, ConnectionDirection.In)]
         [TestCase(false, ConnectionDirection.In)]
         // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test

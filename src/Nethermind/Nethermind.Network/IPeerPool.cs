@@ -23,6 +23,7 @@ public interface IPeerPool : IStoppableService
     int PeerCount { get; }
     int ActivePeerCount { get; }
     int StaticPeerCount { get; }
+    int TrustedPeerCount { get; }
 
     public Peer GetOrAdd(NetworkNode networkNode)
     {

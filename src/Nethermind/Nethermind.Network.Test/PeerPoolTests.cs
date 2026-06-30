@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -266,6 +267,44 @@ public class PeerPoolTests
 
         pool.TryRemove(TestItem.PublicKeyA, out _);
         Assert.That(pool.StaticPeerCount, Is.EqualTo(0), "removal decrements");
+    }
+
+    [Test]
+    public void TrustedPeerCount_tracks_add_and_remove()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        Assert.That(pool.TrustedPeerCount, Is.EqualTo(0));
+
+        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234) { IsTrusted = true });
+        pool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1234)); // not trusted
+        Assert.That(pool.TrustedPeerCount, Is.EqualTo(1), "only the trusted node counts");
+
+        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234) { IsTrusted = true }); // same id
+        Assert.That(pool.TrustedPeerCount, Is.EqualTo(1), "re-adding the same id does not double-count");
+
+        pool.TryRemove(TestItem.PublicKeyA, out _);
+        Assert.That(pool.TrustedPeerCount, Is.EqualTo(0), "removal decrements");
+    }
+
+    [Test]
+    public void TrustedPeerCount_counts_through_NetworkNode_path()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(true);
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        string enode = new Enode(TestItem.PublicKeyA, IPAddress.Parse("1.2.3.4"), 30303).ToString();
+        Peer peer = pool.GetOrAdd(new NetworkNode(enode));
+
+        Assert.That(peer.Node.IsTrusted, Is.True);
+        Assert.That(pool.TrustedPeerCount, Is.EqualTo(1), "GetOrAdd(NetworkNode) counts trusted via the manager");
+
+        pool.TryRemove(TestItem.PublicKeyA, out _);
+        Assert.That(pool.TrustedPeerCount, Is.EqualTo(0));
     }
 
     private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
