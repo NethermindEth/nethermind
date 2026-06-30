@@ -8,6 +8,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Avalanche\Nethermind.Avalanche.csproj" />
+    <!-- The VM-service tests invoke AvalancheVmService in-process. Linking the VM assembly here (rather than in
+         Nethermind.Avalanche.Vm.Test) is safe because this project generates no protobuf code of its own, so the
+         VM's generated "Vm.*" types resolve uniquely. Google.Protobuf / Grpc.Core.Api flow in transitively. -->
+    <ProjectReference Include="..\Nethermind.Avalanche.Vm\Nethermind.Avalanche.Vm.csproj" />
   </ItemGroup>
 
 </Project>

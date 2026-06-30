@@ -8,6 +8,9 @@ using System.Threading.Tasks;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
+using Nethermind.Avalanche.Blocks;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 // Generated from proto/vm/vm.proto (package "vm" => C# namespace "Vm").
 // Aliased to avoid clashing with this assembly's "Nethermind.Avalanche.Vm" namespace.
@@ -137,9 +140,35 @@ public sealed class AvalancheVmService : VmPb.VM.VMBase
         // id/parent_id/bytes/height/timestamp. Until implemented, fail rather than return a bogus block.
         throw new RpcException(new Status(StatusCode.Unimplemented, "BuildBlock is not implemented yet"));
 
-    public override Task<VmPb.ParseBlockResponse> ParseBlock(VmPb.ParseBlockRequest request, ServerCallContext context) =>
-        // TODO: decode request.Bytes into a Nethermind block and return its header fields.
-        throw new RpcException(new Status(StatusCode.Unimplemented, "ParseBlock is not implemented yet"));
+    public override Task<VmPb.ParseBlockResponse> ParseBlock(VmPb.ParseBlockRequest request, ServerCallContext context)
+    {
+        AvalancheBlock block;
+        try
+        {
+            block = AvalancheBlockDecoder.Instance.Decode(request.Bytes.Span)
+                    ?? throw new RlpException("ParseBlock received an empty (null) block.");
+        }
+        catch (RlpException ex)
+        {
+            // AvalancheGo feeds raw bytes off the wire; surface a malformed block as a typed gRPC error
+            // (InvalidArgument) rather than letting the RLP decoder fault the call with an opaque status.
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+
+        AvalancheBlockHeader header = block.Header;
+        // The C-Chain block id is keccak256(RLP(header)). Decode already computes header.Hash, but recompute
+        // here to be independent of that cache and to match AvalancheHeaderDecoder.ComputeHash exactly.
+        Hash256 id = AvalancheHeaderDecoder.Instance.ComputeHash(header);
+
+        return Task.FromResult(new VmPb.ParseBlockResponse
+        {
+            Id = ByteString.CopyFrom(id.Bytes),
+            ParentId = ByteString.CopyFrom(header.ParentHash!.Bytes),
+            Height = header.Number,
+            Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds((long)header.Timestamp)),
+            VerifyWithContext = false,
+        });
+    }
 
     public override Task<VmPb.GetBlockResponse> GetBlock(VmPb.GetBlockRequest request, ServerCallContext context) =>
         // TODO: look up the block by id (via rpcdb / Nethermind block store). On a miss, AvalancheGo expects
