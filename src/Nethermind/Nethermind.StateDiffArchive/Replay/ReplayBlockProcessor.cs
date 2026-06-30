@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.StateDiffArchive.Data;
 using Nethermind.StateDiffArchive.Storage;
@@ -62,6 +66,9 @@ public sealed class ReplayBlockProcessor(
         }
     }
 
+    // Matches PersistentStorageProvider.UpdateRootHashes: below this many contracts the parallel overhead isn't worth it.
+    private const int MultiThreadThreshold = 3;
+
     private static void ApplyRecord(IWorldStateScopeProvider.IScope scope, StateDiffRecord record)
     {
         if (record.HasCodes)
@@ -72,16 +79,9 @@ public sealed class ReplayBlockProcessor(
 
         using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(0);
 
-        // Storage first: disposing each storage batch commits its tree and marks the dirty storage root,
-        // which the account flush (writeBatch.Dispose) folds back into the account's storage root.
-        foreach (StateDiffRecord.AccountView account in record.Accounts)
-        {
-            if (!account.StorageCleared && !account.HasSlots) continue;
-
-            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(account.Address, 0);
-            if (account.StorageCleared) storageBatch.Clear();
-            foreach (StateDiffRecord.SlotView slot in account.Slots) storageBatch.Set(slot.Index, slot.Value.ToArray());
-        }
+        // Storage first: each contract's storage is an independent trie, so it commits before the account
+        // flush (writeBatch.Dispose) folds the recomputed storage root back into the account.
+        ApplyStorage(record, writeBatch);
 
         foreach (StateDiffRecord.AccountView account in record.Accounts)
         {
@@ -96,4 +96,44 @@ public sealed class ReplayBlockProcessor(
             }
         }
     }
+
+    private static void ApplyStorage(StateDiffRecord record, IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+    {
+        // Opening a storage write batch mutates the scope's per-address tree map and must stay single-threaded,
+        // so collect the per-contract work serially first.
+        List<StorageWork> work = [];
+        foreach (StateDiffRecord.AccountView account in record.Accounts)
+        {
+            if (!account.StorageCleared && !account.HasSlots) continue;
+
+            List<(UInt256 Index, byte[] Value)> slots = [];
+            foreach (StateDiffRecord.SlotView slot in account.Slots) slots.Add((slot.Index, slot.Value.ToArray()));
+            work.Add(new StorageWork(writeBatch.CreateStorageWriteBatch(account.Address, slots.Count), account.StorageCleared, slots));
+        }
+
+        if (work.Count == 0) return;
+
+        // The opened batches operate on independent tries, so process them concurrently (largest first to balance).
+        if (work.Count >= MultiThreadThreshold)
+        {
+            work.Sort(static (a, b) => b.Slots.Count.CompareTo(a.Slots.Count));
+            ParallelUnbalancedWork.For(0, work.Count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, i => ApplyOneStorage(work[i]));
+        }
+        else
+        {
+            foreach (StorageWork w in work) ApplyOneStorage(w);
+        }
+    }
+
+    private static void ApplyOneStorage(StorageWork work)
+    {
+        using IWorldStateScopeProvider.IStorageWriteBatch batch = work.Batch;
+        if (work.Cleared) batch.Clear();
+        foreach ((UInt256 index, byte[] value) in work.Slots) batch.Set(index, value);
+    }
+
+    private readonly record struct StorageWork(
+        IWorldStateScopeProvider.IStorageWriteBatch Batch,
+        bool Cleared,
+        List<(UInt256 Index, byte[] Value)> Slots);
 }

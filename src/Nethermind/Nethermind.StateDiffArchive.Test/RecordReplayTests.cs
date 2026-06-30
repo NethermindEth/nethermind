@@ -67,7 +67,8 @@ public class RecordReplayTests
         {
             WorldState ws = new(new RecordingScopeProvider(flatScope, store, LimboLogs.Instance), LimboLogs.Instance);
 
-            // Block 1: fund A, deploy contract B with code and two storage slots.
+            // Block 1: fund A, deploy contract B with code; give three contracts (B, E, F) storage so the
+            // replay exercises its multi-threaded storage path (>= 3 contracts).
             using (ws.BeginScope(null))
             {
                 ws.CreateAccount(TestItem.AddressA, 100.Ether);
@@ -75,6 +76,11 @@ public class RecordReplayTests
                 ws.InsertCode(TestItem.AddressB, codeHash, code, spec);
                 ws.Set(new StorageCell(TestItem.AddressB, 1), Bytes.FromHexString("0x1234"));
                 ws.Set(new StorageCell(TestItem.AddressB, 2), Bytes.FromHexString("0x5678"));
+                ws.CreateAccount(TestItem.AddressE, 2, 1);
+                ws.Set(new StorageCell(TestItem.AddressE, 7), Bytes.FromHexString("0xaa"));
+                ws.Set(new StorageCell(TestItem.AddressE, 8), Bytes.FromHexString("0xbb"));
+                ws.CreateAccount(TestItem.AddressF, 3, 1);
+                ws.Set(new StorageCell(TestItem.AddressF, 9), Bytes.FromHexString("0xcccc"));
                 ws.Commit(spec);
                 ws.CommitTree(1);
                 blocks.Add((1, ws.StateRoot));

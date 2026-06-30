@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
+using System.Buffers.Binary;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -112,6 +115,40 @@ public class StateDiffRecordTests
             Assert.That(bSlots, Is.EqualTo(3));
             Assert.That(codeCount, Is.EqualTo(1));
         });
+    }
+
+    [Test]
+    public void Concurrent_storage_writes_are_recorded_safely()
+    {
+        // Mirrors the world state's parallel per-contract storage flush: many addresses written concurrently.
+        StateDiffRecordBuilder builder = new();
+        const int contracts = 256;
+
+        Parallel.For(0, contracts, i =>
+        {
+            Address address = AddressFromIndex(i);
+            builder.ClearStorage(address);
+            builder.SetSlot(address, (UInt256)i, Bytes.FromHexString("0x01"));
+        });
+
+        using StateDiffRecord record = Build(builder, 1, TestItem.KeccakA);
+
+        int recorded = 0;
+        foreach (StateDiffRecord.AccountView account in record.Accounts)
+        {
+            recorded++;
+            Assert.That(account.StorageCleared, Is.True);
+            Assert.That(account.HasSlots, Is.True);
+        }
+
+        Assert.That(recorded, Is.EqualTo(contracts));
+    }
+
+    private static Address AddressFromIndex(int i)
+    {
+        byte[] bytes = new byte[Address.Size];
+        BinaryPrimitives.WriteInt32BigEndian(new Span<byte>(bytes, Address.Size - 4, 4), i);
+        return new Address(bytes);
     }
 
     [Test]

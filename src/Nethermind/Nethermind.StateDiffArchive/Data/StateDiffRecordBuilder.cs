@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -13,6 +14,12 @@ namespace Nethermind.StateDiffArchive.Data;
 /// Accumulates one block's account/storage/code writes (teed from the world-state write batch), grouped by
 /// address, and serializes them to the RLP wire format consumed by <see cref="StateDiffRecord"/>.
 /// </summary>
+/// <remarks>
+/// The world state flushes per-contract storage in parallel (<c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>),
+/// so the address map is a <see cref="ConcurrentDictionary{TKey,TValue}"/>. Each address is touched by a single
+/// thread within a phase (one storage write batch per contract; the account/code phases run after the storage
+/// join), so a per-entry lock is unnecessary.
+/// </remarks>
 /// <remarks>
 /// Wire format (positional; the leading version byte allows forward-compatible additions):
 /// <code>
@@ -33,7 +40,7 @@ public sealed class StateDiffRecordBuilder
 {
     private static readonly AccountDecoder AccountRlp = AccountDecoder.Instance;
 
-    private readonly Dictionary<Address, Entry> _accounts = [];
+    private readonly ConcurrentDictionary<Address, Entry> _accounts = new();
     private readonly List<(ValueHash256 Hash, byte[] Code)> _codes = [];
 
     public void SetAccount(Address address, Account? account)
@@ -106,7 +113,7 @@ public sealed class StateDiffRecordBuilder
     private int GetAccountsContentLength()
     {
         int total = 0;
-        foreach (Entry entry in _accounts.Values) total += Rlp.LengthOfSequence(GetAccountDiffContentLength(entry));
+        foreach ((Address _, Entry entry) in _accounts) total += Rlp.LengthOfSequence(GetAccountDiffContentLength(entry));
         return total;
     }
 
@@ -139,15 +146,7 @@ public sealed class StateDiffRecordBuilder
 
     private static int GetCodeContentLength(byte[] code) => Rlp.LengthOfKeccakRlp + Rlp.LengthOf(code);
 
-    private Entry GetOrAdd(Address address)
-    {
-        if (!_accounts.TryGetValue(address, out Entry? entry))
-        {
-            entry = new Entry();
-            _accounts[address] = entry;
-        }
-        return entry;
-    }
+    private Entry GetOrAdd(Address address) => _accounts.GetOrAdd(address, static _ => new Entry());
 
     private sealed class Entry
     {
