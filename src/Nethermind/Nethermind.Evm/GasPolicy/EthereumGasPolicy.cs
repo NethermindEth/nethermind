@@ -121,6 +121,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryConsume(ref EthereumGasPolicy gas, ulong cost)
+    {
+        ulong v = gas.Value;
+        if (v < cost) return false;
+        gas.Value = v - cost;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeStateGas(ref EthereumGasPolicy gas, ulong stateGasCost)
     {
         if (gas.StateReservoir >= stateGasCost)
@@ -131,12 +140,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
 
         ulong spillAmount = stateGasCost - gas.StateReservoir;
-        if (GetRemainingGas(in gas) < spillAmount)
+        if (!TryConsume(ref gas, spillAmount))
         {
             return false;
         }
 
-        Consume(ref gas, spillAmount);
         gas.StateReservoir = 0;
         gas.StateGasUsed += stateGasCost;
         gas.StateGasSpill += spillAmount;

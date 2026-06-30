@@ -4,6 +4,7 @@
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -26,6 +27,7 @@ public sealed class EraExporter(
     ISpecProvider specProvider,
     IEraEConfig eraConfig,
     ILogManager logManager,
+    IPoSSwitcher poSSwitcher,
     IBeaconRootsProvider? beaconRootsProvider = null)
     : IEraExporter
 {
@@ -135,9 +137,7 @@ public sealed class EraExporter(
                     Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
 
-                    // IsPostMerge is not part of the RLP encoding and defaults to false when read from
-                    // the block store. Restore it from Difficulty (EIP-3675: post-merge Difficulty == 0).
-                    block.Header.IsPostMerge = block.Header.Difficulty == 0;
+                    block.Header.IsPostMerge = poSSwitcher.IsPostMerge(block.Header);
 
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
