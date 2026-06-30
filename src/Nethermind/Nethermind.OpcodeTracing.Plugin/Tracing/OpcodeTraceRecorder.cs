@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
@@ -46,34 +45,13 @@ public sealed class OpcodeTraceRecorder(
     private bool _waitingForBlockLogged;
 
     /// <summary>
-    /// Non-throwing synchronous wrapper around <see cref="PrepareAsync"/> for the DI wiring, which has no
-    /// <see cref="INethermindApi"/> to pass and must not abort startup on a bad configuration.
-    /// </summary>
-    /// <returns><see langword="true"/> when preparation succeeded and tracing can start; otherwise <see langword="false"/>.</returns>
-    public bool Prepare()
-    {
-        try
-        {
-            PrepareAsync(api).GetAwaiter().GetResult();
-            return true;
-        }
-        catch (Exception)
-        {
-            // PrepareAsync already logged the failure; disable tracing instead of crashing the node on bad config.
-            return false;
-        }
-    }
-
-    /// <summary>
     /// Prepares the tracer for operation by validating configuration and initializing resources.
     /// </summary>
-    /// <param name="api">The Nethermind API.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public Task PrepareAsync(INethermindApi api, CancellationToken cancellationToken = default)
+    /// <exception cref="InvalidOperationException">Thrown when the tracing configuration is invalid; this aborts node startup by design.</exception>
+    public Task PrepareAsync(CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(api);
-
         try
         {
             // Get current chain tip
@@ -143,15 +121,16 @@ public sealed class OpcodeTraceRecorder(
     }
 
     /// <summary>
-    /// Attaches the tracer to the block processing pipeline for real-time mode and returns it so the caller can
-    /// add it to the main processor's tracer bag.
+    /// Attaches the tracer to the block processing pipeline for real-time mode and returns the live block tracer
+    /// to be contributed to the main processor.
     /// </summary>
-    /// <returns>The RealTime tracer, or <see cref="NullBlockTracer.Instance"/> when not prepared or on failure.</returns>
+    /// <returns>The RealTime block tracer.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when called before <see cref="PrepareAsync"/> succeeded, or when attachment fails.</exception>
     public IBlockTracer AttachRealTime()
     {
         if (_traceConfig is null)
         {
-            return NullBlockTracer.Instance;
+            throw new InvalidOperationException($"{nameof(AttachRealTime)} called before {nameof(PrepareAsync)} succeeded.");
         }
 
         try
@@ -215,7 +194,7 @@ public sealed class OpcodeTraceRecorder(
             {
                 _logger.Error($"Failed to attach tracer: {ex.Message}", ex);
             }
-            return NullBlockTracer.Instance;
+            throw;
         }
     }
 

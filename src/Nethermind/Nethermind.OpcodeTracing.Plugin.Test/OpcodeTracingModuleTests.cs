@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -50,7 +51,7 @@ public class OpcodeTracingModuleTests
     }
 
     [Test]
-    public void RealTime_mode_with_invalid_config_disables_tracing_without_crashing()
+    public void RealTime_mode_with_invalid_config_throws()
     {
         using IContainer container = BuildContainer(new OpcodeTracingConfig
         {
@@ -61,8 +62,9 @@ public class OpcodeTracingModuleTests
             OutputDirectory = _tempDir
         });
 
-        // Invalid config makes Prepare throw; the DI factory catches it and contributes no live tracer instead of crashing.
-        Assert.That(ResolveMainProcessingTracers(container), Has.None.InstanceOf<OpcodeBlockTracer>());
+        // Invalid config makes PrepareAsync throw while resolving the live tracer, aborting startup by design
+        // rather than silently running with tracing off.
+        Assert.That(() => ResolveMainProcessingTracers(container), Throws.InstanceOf<DependencyResolutionException>());
     }
 
     [Test]

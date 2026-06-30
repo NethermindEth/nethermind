@@ -29,7 +29,7 @@ public class OpcodeTraceRecorderTests
     }
 
     [Test]
-    public void RealTime_attaches_opcode_block_tracer()
+    public async Task RealTime_attaches_opcode_block_tracer()
     {
         using OpcodeTraceRecorder recorder = CreateRecorder(new OpcodeTracingConfig
         {
@@ -39,15 +39,15 @@ public class OpcodeTraceRecorderTests
             OutputDirectory = _tempDir
         });
 
-        recorder.Prepare();
+        await recorder.PrepareAsync();
 
         Assert.That(recorder.AttachRealTime(), Is.InstanceOf<OpcodeBlockTracer>());
     }
 
     [Test]
-    public void Prepare_returns_false_on_invalid_config()
+    public void PrepareAsync_throws_on_invalid_config()
     {
-        // StartBlock > EndBlock fails validation; the wrapper catches the throw and reports failure so the caller disables tracing.
+        // StartBlock > EndBlock fails validation; PrepareAsync throws so a misconfigured node aborts startup instead of running with tracing silently off.
         using OpcodeTraceRecorder recorder = CreateRecorder(new OpcodeTracingConfig
         {
             Enabled = true,
@@ -57,7 +57,7 @@ public class OpcodeTraceRecorderTests
             OutputDirectory = _tempDir
         });
 
-        Assert.That(recorder.Prepare(), Is.False);
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await recorder.PrepareAsync());
     }
 
     [Test]
@@ -72,7 +72,7 @@ public class OpcodeTraceRecorderTests
             OutputDirectory = _tempDir
         });
 
-        recorder.Prepare();
+        await recorder.PrepareAsync();
         // The returned task is the background trace; awaiting it ensures the trace output has been written.
         await recorder.ExecuteTracingAsync();
 
@@ -89,7 +89,7 @@ public class OpcodeTraceRecorderTests
             RecentBlocks = 5,
             OutputDirectory = _tempDir
         });
-        recorder.Prepare();
+        await recorder.PrepareAsync();
         recorder.AttachRealTime();
 
         await recorder.DisposeAsync();

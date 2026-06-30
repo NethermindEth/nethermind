@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm.Tracing;
@@ -52,7 +51,10 @@ public class OpcodeTracingModule(IOpcodeTracingConfig config) : Module
                 .AddSingleton<IBlockTracer>(ctx =>
                 {
                     OpcodeTraceRecorder recorder = ctx.Resolve<OpcodeTraceRecorder>();
-                    return recorder.Prepare() ? recorder.AttachRealTime() : NullBlockTracer.Instance;
+                    // PrepareAsync has no real await; resolve synchronously. An invalid config throws here and
+                    // aborts startup by design rather than silently running with tracing off.
+                    recorder.PrepareAsync().GetAwaiter().GetResult();
+                    return recorder.AttachRealTime();
                 });
     }
 }

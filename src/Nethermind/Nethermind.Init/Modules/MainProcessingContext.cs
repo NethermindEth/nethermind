@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -52,7 +51,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats, IEnumerable<IBlockTracer>>((branchProcessor, processingStats, blockTracers) =>
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats, IBlockTracer[]>((branchProcessor, processingStats, blockTracers) =>
                     new BlockchainProcessor(
                         blockTree,
                         branchProcessor,

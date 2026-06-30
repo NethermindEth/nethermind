@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -102,7 +101,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ILogManager logManager,
         Options options,
         IProcessingStats processingStats,
-        IEnumerable<IBlockTracer> blockTracers)
+        params IBlockTracer[] blockTracers)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
@@ -114,7 +113,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
-        _compositeBlockTracer.AddRange(blockTracers.ToArray());
+        _compositeBlockTracer.AddRange(blockTracers);
     }
 
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
