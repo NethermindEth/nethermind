@@ -236,12 +236,14 @@ public class DebugModuleTests
                 {UInt256.Parse("1".PadLeft(64, '0')), UInt256.Parse("2".PadLeft(64, '0'))},
                 {UInt256.Parse("3".PadLeft(64, '0')), UInt256.Parse("4".PadLeft(64, '0'))},
             },
-            Memory =
-            [
-                (UInt256)5,
-                (UInt256)6
-            ],
-            Stack = [],
+            Memory = (ReadOnlyMemory<byte>?)new byte[64]
+            {
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6
+            },
+            Stack = null,
             Opcode = "STOP",
             Gas = 22000,
             GasCost = 1,
@@ -278,14 +280,16 @@ public class DebugModuleTests
                         Gas = 22000,
                         GasCost = 1,
                         Depth = 1,
-                        Memory =
-                        [
-                            (UInt256)5,
-                            (UInt256)6
-                        ],
+                        Memory = (ReadOnlyMemory<byte>?)new byte[64]
+                        {
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6
+                        },
                         Opcode = "STOP",
                         ProgramCounter = 0,
-                        Stack = [],
+                        Stack = null,
                         Storage = new Dictionary<UInt256, UInt256>
                         {
                             {

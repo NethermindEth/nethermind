@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -157,21 +158,19 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         writer.WritePropertyName("memSize");
         writer.WriteNumberValue(entry.MemorySize ?? 0UL);
 
-        if ((entry.Memory?.Length ?? 0) != 0)
+        if (entry.Memory is { Length: > 0 } mem)
         {
-            byte[] raw = new byte[entry.Memory!.Length * 32];
-            for (int i = 0; i < entry.Memory.Length; i++)
-                entry.Memory[i].ToBigEndian(raw.AsSpan(i * 32, 32));
             writer.WritePropertyName("memory");
-            writer.WriteStringValue($"0x{Convert.ToHexString(raw).ToLowerInvariant()}");
+            writer.WriteStringValue("0x" + Convert.ToHexString(mem.Span).ToLowerInvariant());
         }
 
-        if (entry.Stack is not null)
+        if (entry.Stack is { Length: > 0 } stack)
         {
             writer.WritePropertyName("stack");
             writer.WriteStartArray();
-            foreach (UInt256 s in entry.Stack)
-                writer.WriteStringValue($"0x{s:x}");
+            ReadOnlySpan<byte> sp = stack.Span;
+            for (int i = 0; i < sp.Length; i += EvmStack.WordSize)
+                writer.WriteStringValue($"0x{new UInt256(sp.Slice(i, EvmStack.WordSize), isBigEndian: true):x}");
             writer.WriteEndArray();
         }
 

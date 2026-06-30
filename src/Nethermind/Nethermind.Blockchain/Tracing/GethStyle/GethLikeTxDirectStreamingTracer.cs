@@ -62,7 +62,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private int _returnDataByteCount;
     private byte[]? _returnDataHexBuffer;
 
-    private readonly Dictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = [];
+    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = new(InitialStorageMapCapacity);
     private readonly Stack<PooledDictionary<UInt256, UInt256>> _storageMapPool = new();
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
@@ -264,8 +264,10 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (_returnDataBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataBuffer); _returnDataBuffer = null; }
         if (_returnDataHexBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataHexBuffer); _returnDataHexBuffer = null; }
         foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values) map.Dispose();
-        _storageByAddress.Clear();
+        _storageByAddress.Dispose();
+
         while (_storageMapPool.TryPop(out PooledDictionary<UInt256, UInt256>? map)) map.Dispose();
+
         _pendingStorageMap = null;
     }
 
@@ -292,7 +294,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
         if (IsTracingStack) WriteStackArrayIfPresent();
         if (IsTracingFullMemory) WriteMemoryArrayIfPresent();
-        if (IsTracingOpLevelStorage && _pendingStorageTouched) WriteStorageObjectIfPresent();
+        if (IsTracingOpLevelStorage && _pendingStorageToucheWriteStorageObjectIfPresent();
         if (IsTracingReturnData && _returnDataByteCount > 0) WriteReturnDataValue();
 
         _writer.WriteEndObject();

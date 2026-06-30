@@ -236,14 +236,14 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trace.Entries[0].Stack.Count, Is.EqualTo(0), "BEGIN 1");
-            Assert.That(trace.Entries[8].Stack.Count, Is.EqualTo(8), "CALL FROM 1");
-            Assert.That(trace.Entries[9].Stack.Count, Is.EqualTo(0), "BEGIN 2");
-            Assert.That(trace.Entries[19].Stack.Count, Is.EqualTo(4), "CREATE FROM 2");
-            Assert.That(trace.Entries[20].Stack.Count, Is.EqualTo(0), "BEGIN 3");
-            Assert.That(trace.Entries[25].Stack.Count, Is.EqualTo(2), "END 3");
-            Assert.That(trace.Entries[26].Stack.Count, Is.EqualTo(2), "END 2");
-            Assert.That(trace.Entries[27].Stack.Count, Is.EqualTo(2), "END 1");
+            Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[8].StackWordCount(), Is.EqualTo(8), "CALL FROM 1");
+            Assert.That(trace.Entries[9].StackWordCount(), Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[19].StackWordCount(), Is.EqualTo(4), "CREATE FROM 2");
+            Assert.That(trace.Entries[20].StackWordCount(), Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[25].StackWordCount(), Is.EqualTo(2), "END 3");
+            Assert.That(trace.Entries[26].StackWordCount(), Is.EqualTo(2), "END 2");
+            Assert.That(trace.Entries[27].StackWordCount(), Is.EqualTo(2), "END 1");
         }
     }
 
@@ -283,14 +283,14 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trace.Entries[0].Memory.Count, Is.EqualTo(0), "BEGIN 1");
-            Assert.That(trace.Entries[10].Memory.Count, Is.EqualTo(3), "CALL FROM 1");
-            Assert.That(trace.Entries[11].Memory.Count, Is.EqualTo(0), "BEGIN 2");
-            Assert.That(trace.Entries[23].Memory.Count, Is.EqualTo(2), "CREATE FROM 2");
-            Assert.That(trace.Entries[24].Memory.Count, Is.EqualTo(0), "BEGIN 3");
-            Assert.That(trace.Entries[29].Memory.Count, Is.EqualTo(1), "END 3");
-            Assert.That(trace.Entries[30].Memory.Count, Is.EqualTo(2), "END 2");
-            Assert.That(trace.Entries[31].Memory.Count, Is.EqualTo(3), "END 1");
+            Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[10].MemoryWordCount(), Is.EqualTo(3), "CALL FROM 1");
+            Assert.That(trace.Entries[11].MemoryWordCount(), Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[23].MemoryWordCount(), Is.EqualTo(2), "CREATE FROM 2");
+            Assert.That(trace.Entries[24].MemoryWordCount(), Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[29].MemoryWordCount(), Is.EqualTo(1), "END 3");
+            Assert.That(trace.Entries[30].MemoryWordCount(), Is.EqualTo(2), "END 2");
+            Assert.That(trace.Entries[31].MemoryWordCount(), Is.EqualTo(3), "END 1");
         }
     }
 
@@ -410,17 +410,17 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].Stack.Count, Is.EqualTo(0), "entry[0] length");
+        Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].Stack.Count, Is.EqualTo(1), "entry[1] length");
-        Assert.That(trace.Entries[1].Stack[0], Is.EqualTo(sample1), "entry[1][0]");
+        Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
+        Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
 
-        Assert.That(trace.Entries[2].Stack.Count, Is.EqualTo(2), "entry[2] length");
-        Assert.That(trace.Entries[2].Stack[0], Is.EqualTo(sample1), "entry[2][0]");
-        Assert.That(trace.Entries[2].Stack[1], Is.EqualTo(UInt256.Zero), "entry[2][1]");
+        Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
+        Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
+        Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
 
-        Assert.That(trace.Entries[3].Stack.Count, Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].Stack[0], Is.EqualTo(sample1), "entry[3][0]");
+        Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
+        Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
     }
 
     [Test]
@@ -442,20 +442,20 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].Memory.Count, Is.EqualTo(0), "entry[0] length");
+        Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].Memory.Count, Is.EqualTo(0), "entry[1] length");
+        Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
 
-        Assert.That(trace.Entries[2].Memory.Count, Is.EqualTo(0), "entry[2] length");
+        Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
 
-        Assert.That(trace.Entries[3].Memory.Count, Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].Memory[0], Is.EqualTo(sample1), "entry[3][0]");
+        Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
+        Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
 
-        Assert.That(trace.Entries[4].Memory.Count, Is.EqualTo(1), "entry[4] length");
-        Assert.That(trace.Entries[4].Memory[0], Is.EqualTo(sample1), "entry[4][0]");
+        Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
+        Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
 
-        Assert.That(trace.Entries[5].Memory.Count, Is.EqualTo(1), "entry[5] length");
-        Assert.That(trace.Entries[5].Memory[0], Is.EqualTo(sample1), "entry[5][0]");
+        Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
+        Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
     }
 
     [Test]
@@ -674,8 +674,8 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         {
             Assert.That(entry.ProgramCounter, Is.EqualTo(expectedPc));
             Assert.That(entry.Opcode, Is.EqualTo(expectedOpcode));
-            Assert.That(entry.Stack![^1], Is.EqualTo(expectedStackTop));
-            Assert.That(entry.Stack!.Length, Is.EqualTo(expectedStackCount));
+            Assert.That(entry.GetStackWord(entry.StackWordCount() - 1), Is.EqualTo(expectedStackTop));
+            Assert.That(entry.StackWordCount(), Is.EqualTo(expectedStackCount));
         }
     }
 

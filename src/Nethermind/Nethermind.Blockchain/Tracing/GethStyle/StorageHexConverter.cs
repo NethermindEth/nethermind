@@ -16,9 +16,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// Geth-style <c>{ "0x..key..": "0x..value.." }</c> shape (0x-prefixed 32-byte words) without allocating
 /// per-entry hex strings during tracing — values are formatted only here, at write time.
 /// </summary>
-public sealed class StorageHexConverter : JsonConverter<Dictionary<UInt256, UInt256>>
+public sealed class StorageHexConverter : JsonConverter<IDictionary<UInt256, UInt256>>
 {
-    public override void Write(Utf8JsonWriter writer, Dictionary<UInt256, UInt256> value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, IDictionary<UInt256, UInt256> value, JsonSerializerOptions options)
     {
         writer.WriteStartObject();
         foreach (KeyValuePair<UInt256, UInt256> slot in value)
@@ -28,7 +28,7 @@ public sealed class StorageHexConverter : JsonConverter<Dictionary<UInt256, UInt
         writer.WriteEndObject();
     }
 
-    public override Dictionary<UInt256, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override IDictionary<UInt256, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         Dictionary<UInt256, UInt256> storage = [];
         while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)

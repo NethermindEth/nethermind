@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -126,23 +127,34 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         List<GethTxTraceEntry> entries,
         JsonSerializerOptions options)
     {
-        Dictionary<AddressAsKey, Dictionary<UInt256, UInt256>> runningByAddress = [];
+        using PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> runningByAddress = new(4);
         writer.WriteStartArray();
-        foreach (GethTxTraceEntry entry in entries)
+        try
         {
-            if (entry.StorageDelta is { } delta)
+            foreach (GethTxTraceEntry entry in entries)
             {
-                if (!runningByAddress.TryGetValue(delta.Address, out Dictionary<UInt256, UInt256>? map))
-                    runningByAddress[delta.Address] = map = [];
-                map[delta.Key] = delta.Value;
-                entry.Storage = map;
-                try { JsonSerializer.Serialize(writer, entry, options); }
-                finally { entry.Storage = null; }
+                if (entry.StorageDelta is { } delta)
+                {
+                    if (!runningByAddress.TryGetValue(delta.Address, out PooledDictionary<UInt256, UInt256>? map))
+                    {
+                        map = new PooledDictionary<UInt256, UInt256>(8);
+                        runningByAddress[delta.Address] = map;
+                    }
+                    map[delta.Key] = delta.Value;
+                    entry.Storage = map;
+                    try { JsonSerializer.Serialize(writer, entry, options); }
+                    finally { entry.Storage = null; }
+                }
+                else
+                {
+                    JsonSerializer.Serialize(writer, entry, options);
+                }
             }
-            else
-            {
-                JsonSerializer.Serialize(writer, entry, options);
-            }
+        }
+        finally
+        {
+            foreach (PooledDictionary<UInt256, UInt256> inner in runningByAddress.Values)
+                inner.Dispose();
         }
         writer.WriteEndArray();
     }

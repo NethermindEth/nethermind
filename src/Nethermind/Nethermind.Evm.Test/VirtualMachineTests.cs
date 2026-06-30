@@ -132,8 +132,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(entry.Depth, Is.EqualTo(1), nameof(entry.Depth));
             Assert.That(entry.Gas, Is.EqualTo(79000 - GasCostOf.VeryLow), nameof(entry.Gas));
             Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
-            Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
-            Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
+            Assert.That(entry.MemoryWordCount(), Is.EqualTo(0), nameof(entry.Memory));
+            Assert.That(entry.StackWordCount(), Is.EqualTo(1), nameof(entry.Stack));
             Assert.That(entry.Storage, Is.Null, nameof(entry.Storage));
             Assert.That(trace.Entries[4].Opcode, Is.EqualTo("SSTORE"), "SSTORE opcode");
             Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
@@ -500,8 +500,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        UInt256 copied = traces.Entries.Last().Memory[0];
-        UInt256 origin = traces.Entries.Last().Memory[1];
+        UInt256 copied = traces.Entries.Last().GetMemoryWord(0);
+        UInt256 origin = traces.Entries.Last().GetMemoryWord(1);
 
         using (Assert.EnterMultipleScope())
         {
@@ -527,7 +527,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        UInt256 result = traces.Entries.Last().Memory[0];
+        UInt256 result = traces.Entries.Last().GetMemoryWord(0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -554,7 +554,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)((data.Length + 31) / 32)), "gas");
-            Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
+            Assert.That(traces.Entries.Last().MemoryWordCount(), Is.EqualTo(1));
         }
     }
 
@@ -587,7 +587,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        UInt256 result = traces.Entries.Last().Memory[0];
+        UInt256 result = traces.Entries.Last().GetMemoryWord(0);
 
         using (Assert.EnterMultipleScope())
         {

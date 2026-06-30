@@ -709,34 +709,26 @@ public class JsonRpcSocketsClientTests
 
     private static object RandomObject(int size)
     {
-        UInt256[] words = RandomWordArray(size / 2);
+        byte[] rawBytes = RandomRawBytes(size / 2 * 32);
         return new GethLikeTxTrace
         {
             Entries =
             {
                 new GethTxTraceEntry
                 {
-                    Stack = words, Memory = words,
+                    Stack = (ReadOnlyMemory<byte>?)rawBytes, Memory = (ReadOnlyMemory<byte>?)rawBytes,
                 }
             }
         };
     }
 
-    private static UInt256[] RandomWordArray(int length, bool runGc = true)
+    private static byte[] RandomRawBytes(int byteLength, bool runGc = true)
     {
         Random random = new();
-        UInt256[] array = new UInt256[length];
-        Span<byte> word = stackalloc byte[32];
-        for (int i = 0; i < length; i++)
-        {
-            random.NextBytes(word);
-            array[i] = new UInt256(word, isBigEndian: true);
-            if (runGc && i % 100 == 0)
-            {
-                GC.Collect();
-            }
-        }
-        return array;
+        byte[] bytes = new byte[byteLength];
+        random.NextBytes(bytes);
+        if (runGc) GC.Collect();
+        return bytes;
     }
 
     private static bool IsEndOfIpcMessage(ReceiveResult result) => result.EndOfMessage && (!result.Closed || result.Read != 0);

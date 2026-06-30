@@ -5,7 +5,6 @@ using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -40,36 +39,18 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
         return memory;
     }
 
-    /// <summary>Materializes memory as one <see cref="UInt256"/> per 32-byte word (zero-padding the trailing partial word), avoiding the per-word hex string allocation of a textual representation.</summary>
-    public UInt256[] ToWordArray()
+    /// <summary>Returns a copy of the raw memory bytes padded to a whole number of 32-byte words.
+    /// Returns an empty array for zero-size memory. The EVM reuses its internal buffer across opcodes, so a copy is required.</summary>
+    public byte[] ToRawWordBytes()
     {
-        UInt256[] words = new UInt256[(int)Size / EvmPooledMemory.WordSize + (Size % EvmPooledMemory.WordSize == 0 ? 0 : 1)];
-        int traceLocation = 0;
-
-        Span<byte> paddedWord = stackalloc byte[EvmPooledMemory.WordSize];
-
-        int i = 0;
-        while ((ulong)traceLocation < Size)
-        {
-            int sizeAvailable = Math.Min(EvmPooledMemory.WordSize, _memory.Length - traceLocation);
-            if (sizeAvailable == EvmPooledMemory.WordSize)
-            {
-                words[i] = new UInt256(_memory.Slice(traceLocation, sizeAvailable).Span, isBigEndian: true);
-            }
-            else if (sizeAvailable > 0)
-            {
-                // Zero-pad a partial word to a full 32-byte chunk
-                paddedWord.Clear();
-                _memory.Slice(traceLocation, sizeAvailable).Span.CopyTo(paddedWord);
-                words[i] = new UInt256(paddedWord, isBigEndian: true);
-            }
-            // else: uninitialized memory stays UInt256.Zero (default)
-
-            traceLocation += EvmPooledMemory.WordSize;
-            i++;
-        }
-
-        return words;
+        if (Size == 0) return Array.Empty<byte>();
+        int wordCount = (int)((Size + EvmPooledMemory.WordSize - 1) / EvmPooledMemory.WordSize);
+        byte[] raw = new byte[wordCount * EvmPooledMemory.WordSize];
+        int copyLength = Math.Min((int)Size, _memory.Length);
+        if (copyLength > 0)
+            _memory.Span.Slice(0, copyLength).CopyTo(raw);
+        // remainder is zero-initialised by the array constructor
+        return raw;
     }
 
     private const int MemoryPadLimit = MemorySizes.MiB;

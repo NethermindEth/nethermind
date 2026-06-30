@@ -2,39 +2,43 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
+using Nethermind.Evm;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 /// <summary>
-/// Serializes the per-opcode memory snapshot kept as one <see cref="UInt256"/> per 32-byte word into the
-/// Geth-style array of <c>0x</c>-prefixed, zero-padded 32-byte hex words without allocating per-word hex
-/// strings during tracing — words are formatted only here, at write time.
+/// Serializes a per-opcode memory snapshot stored as raw bytes into the Geth-style array of
+/// <c>0x</c>-prefixed, zero-padded 32-byte hex words, and vice versa. Hex encoding is deferred
+/// to write time — no per-word string allocations occur during tracing.
 /// </summary>
-public sealed class MemoryHexConverter : JsonConverter<UInt256[]>
+public sealed class MemoryHexConverter : JsonConverter<ReadOnlyMemory<byte>>
 {
-    public override void Write(Utf8JsonWriter writer, UInt256[] value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, ReadOnlyMemory<byte> value, JsonSerializerOptions options)
     {
         writer.WriteStartArray();
-        foreach (UInt256 word in value)
-        {
-            HexWriter.WriteUInt256HexRawValue(writer, word, zeroPadded: true, addHexPrefix: true);
-        }
+        ReadOnlySpan<byte> span = value.Span;
+        for (int offset = 0; offset < span.Length; offset += EvmPooledMemory.WordSize)
+            HexWriter.WriteFixed32HexRawValue(writer, span.Slice(offset, EvmPooledMemory.WordSize), addHexPrefix: true);
         writer.WriteEndArray();
     }
 
-    public override UInt256[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override ReadOnlyMemory<byte> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        List<UInt256> words = [];
+        using ArrayPoolList<byte> raw = new(64);
+        Span<byte> wordBuf = stackalloc byte[EvmPooledMemory.WordSize];
         while (reader.Read() && reader.TokenType == JsonTokenType.String)
         {
-            words.Add(new UInt256(Bytes.FromHexString(reader.GetString()!), isBigEndian: true));
+            ReadOnlySpan<byte> decoded = Bytes.FromHexString(reader.GetString()!);
+            wordBuf.Clear();
+            decoded.CopyTo(wordBuf.Slice(EvmPooledMemory.WordSize - decoded.Length));
+            raw.AddRange(wordBuf);
         }
-        return [.. words];
+        return raw.AsSpan().ToArray();
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -96,21 +97,25 @@ public class GethLikeTxTraceConverterTests
                 [
                     new()
                     {
-                        Storage = new()
+                        Storage = new Dictionary<UInt256, UInt256>
                         {
                             { (UInt256)1, (UInt256)2 },
                             { (UInt256)3, (UInt256)4 },
                         },
-                        Memory =
-                        [
-                            (UInt256)5,
-                            (UInt256)6
-                        ],
-                        Stack =
-                        [
-                            (UInt256)7,
-                            (UInt256)8
-                        ],
+                        Memory = (ReadOnlyMemory<byte>?)new byte[64]
+                        {
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6
+                        },
+                        Stack = (ReadOnlyMemory<byte>?)new byte[64]
+                        {
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8
+                        },
                         Opcode = "STOP",
                         Gas = 22000,
                         GasCost = 1,

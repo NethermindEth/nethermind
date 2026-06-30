@@ -30,16 +30,14 @@ public readonly struct TraceStack(ReadOnlyMemory<byte> stack)
         return hexWordList;
     }
 
-    /// <summary>Materializes the stack words as <see cref="UInt256"/> domain values, avoiding the per-word hex string allocation of a textual representation.</summary>
-    public UInt256[] ToWordArray()
+    /// <summary>Returns a copy of the raw stack bytes (one 32-byte word per slot, bottom-of-stack first).
+    /// Returns an empty array for an empty stack. The EVM reuses its internal buffer across opcodes, so a copy is required.</summary>
+    public byte[] ToRawBytes()
     {
-        UInt256[] words = new UInt256[Count];
-        for (int i = 0; i < words.Length; i++)
-        {
-            words[i] = new UInt256(this[i].Span, isBigEndian: true);
-        }
-
-        return words;
+        if (_stack.Length == 0) return Array.Empty<byte>();
+        byte[] raw = new byte[_stack.Length];
+        _stack.Span.CopyTo(raw);
+        return raw;
     }
 
     public ReadOnlySpan<byte> Peek(int index) => this[^(index + 1)].Span;

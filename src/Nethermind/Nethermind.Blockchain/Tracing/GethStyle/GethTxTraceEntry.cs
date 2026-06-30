@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -38,13 +39,13 @@ public class GethTxTraceEntry
     public long? Refund { get; set; }
 
     [JsonConverter(typeof(StackHexConverter))]
-    public UInt256[]? Stack { get; set; }
+    public ReadOnlyMemory<byte>? Stack { get; set; }
 
     [JsonConverter(typeof(MemoryHexConverter))]
-    public UInt256[]? Memory { get; set; }
+    public ReadOnlyMemory<byte>? Memory { get; set; }
 
     [JsonConverter(typeof(StorageHexConverter))]
-    public Dictionary<UInt256, UInt256>? Storage { get; set; }
+    public IDictionary<UInt256, UInt256>? Storage { get; set; }
 
     [JsonIgnore]
     internal (Address Address, UInt256 Key, UInt256 Value)? StorageDelta { get; set; }

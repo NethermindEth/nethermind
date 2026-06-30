@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Evm;
@@ -57,19 +56,22 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WritePropertyName("memSize");
         writer.WriteNumberValue(value.MemorySize ?? 0UL);
 
-        if ((value.Memory?.Length ?? 0) != 0)
+        if (value.Memory is { Length: > 0 } mem)
         {
             writer.WritePropertyName("memory");
-            WriteMemoryBlob(writer, value.Memory!);
+            WriteMemoryBlob(writer, mem);
         }
 
-        if (value.Stack is not null)
+        if (value.Stack is { Length: > 0 } stack)
         {
             writer.WritePropertyName("stack");
             writer.WriteStartArray();
 
-            foreach (UInt256 word in value.Stack)
-                HexWriter.WriteUInt256HexRawValue(writer, word, zeroPadded: false, addHexPrefix: true);
+            ReadOnlySpan<byte> stackSpan = stack.Span;
+            for (int offset = 0; offset < stackSpan.Length; offset += EvmStack.WordSize)
+                HexWriter.WriteUInt256HexRawValue(writer,
+                    new UInt256(stackSpan.Slice(offset, EvmStack.WordSize), isBigEndian: true),
+                    zeroPadded: false, addHexPrefix: true);
 
             writer.WriteEndArray();
         }
@@ -103,21 +105,6 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
     }
 
     // The file format renders memory as a single contiguous 0x-prefixed hex blob, not a per-word array.
-    private static void WriteMemoryBlob(Utf8JsonWriter writer, UInt256[] words)
-    {
-        int rawLength = words.Length * EvmPooledMemory.WordSize;
-        byte[] raw = ArrayPool<byte>.Shared.Rent(rawLength);
-        try
-        {
-            Span<byte> rawSpan = raw.AsSpan(0, rawLength);
-            for (int i = 0; i < words.Length; i++)
-                words[i].ToBigEndian(rawSpan.Slice(i * EvmPooledMemory.WordSize, EvmPooledMemory.WordSize));
-
-            HexWriter.WriteHexStringValue(writer, rawSpan);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(raw);
-        }
-    }
+    private static void WriteMemoryBlob(Utf8JsonWriter writer, ReadOnlyMemory<byte> memory) =>
+        HexWriter.WriteHexStringValue(writer, memory.Span);
 }
