@@ -378,6 +378,32 @@ jobs:
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
+      - name: Start Grafana Alloy (logs + metrics)
+        run: |
+          network="${{ matrix.config.network }}"
+          sync_mode="${{ matrix.config.mode }}"
+          node_name="SyncSupportedChains-${network}-${sync_mode}-${{ github.run_id }}"
+
+          docker run -d \
+            --name grafana-alloy \
+            --net host \
+            --restart unless-stopped \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v $GITHUB_WORKSPACE/scripts/monitoring/alloy-config.alloy:/etc/alloy/config.alloy:ro \
+            -e SEDGE_NETWORK="${network}" \
+            -e SYNC_MODE="${sync_mode}" \
+            -e RUN_ID="${{ github.run_id }}" \
+            -e NODE_NAME="${node_name}" \
+            -e GITHUB_USER="${{ github.actor }}" \
+            -e LOKI_PUSH_URL="${{ secrets.LOKI_URL }}" \
+            -e LOKI_USERNAME="${{ secrets.LOKI_USERNAME }}" \
+            -e LOKI_PASSWORD="${{ secrets.LOKI_PASSWORD }}" \
+            -e PROMETHEUS_URL="${{ secrets.PROMETHEUS_URL }}" \
+            -e PROMETHEUS_USERNAME="${{ secrets.PROMETHEUS_USERNAME }}" \
+            -e PROMETHEUS_PASSWORD="${{ secrets.PROMETHEUS_PASSWORD }}" \
+            grafana/alloy:latest \
+              run --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
+
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
         env:
@@ -428,6 +454,12 @@ jobs:
       - name: Check size of DB
         run: |
           du -h $GITHUB_WORKSPACE/sedge
+
+      - name: Stop Grafana Alloy
+        if: always()
+        run: |
+          docker stop grafana-alloy || true
+          docker rm grafana-alloy || true
 
       - name: Destroy VM
         if: always()
