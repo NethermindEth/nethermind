@@ -328,8 +328,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     if (nonceDelta != 0) worldState.IncrementNonce(senderAddress, nonceDelta, out _);
 
                     if (bs.Spec.UseTxAccessLists) worldState.WarmUp(tx.AccessList); // eip-2930
+                    if (bs.PreWarmer.SkipExecWarmup(tx, i)) return state;
                     scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(bs.Block.Header, bs.Spec));
-                    scope.TransactionProcessor.Warmup(bs.PreWarmer.CapForWarmup(tx), NullTxTracer.Instance);
+                    scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException or OperationCanceledException)
                 {
@@ -366,22 +367,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <summary>
-    /// Returns the transaction to speculatively warm: for transactions whose gas limit exceeds the
-    /// configured warmup gas cap, a gas-capped clone so warming OOG-reverts after the cap (across all call
-    /// frames). This bounds speculative execution of a heavy transaction the main thread runs concurrently:
-    /// its cold-state reads (front-loaded) are still warmed, but the trailing compute — which warms nothing
-    /// and only contends with the main thread — is not executed. 0 disables (warm the original).
+    /// Whether to skip speculative <em>execution</em> of a transaction during warming.
     /// </summary>
-    private Transaction CapForWarmup(Transaction tx)
-    {
-        long cap = _adaptiveAbortMinGas;
-        if (cap <= 0 || tx.GasLimit <= (ulong)cap) return tx;
-
-        Transaction capped = new();
-        tx.CopyTo(capped);
-        capped.GasLimit = (ulong)cap;
-        return capped;
-    }
+    /// <remarks>
+    /// The prewarmer starts together with the main processing thread, so it cannot get ahead of a heavy
+    /// transaction at the very front of the block: the main thread begins executing it immediately. For such
+    /// a dominating index-0 transaction, speculatively executing it does not pre-load anything the main
+    /// thread reaches later — it only runs concurrently with the main thread's execution of the same
+    /// transaction and contends with it (catastrophic for a compute-bound giant, e.g. block 22360451). Its
+    /// sender and access list are still warmed cheaply by the caller. Gated by gas so normal first
+    /// transactions are unaffected; 0 disables the skip.
+    /// </remarks>
+    private bool SkipExecWarmup(Transaction tx, int txIndex)
+        => _adaptiveAbortMinGas > 0 && txIndex == 0 && tx.GasLimit > (ulong)_adaptiveAbortMinGas;
 
     private static void WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
@@ -408,7 +406,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList); // eip-2930
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(blockState.PreWarmer.CapForWarmup(tx), NullTxTracer.Instance);
+            if (blockState.PreWarmer.SkipExecWarmup(tx, txIndex)) return;
+
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
