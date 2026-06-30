@@ -29,18 +29,22 @@ namespace Nethermind.Evm;
 /// <see cref="BlocksConfig.SlowBlockThresholdMs"/>. The threshold gates slow-block JSON
 /// emission only, not the exported counter increments.</para>
 /// <para>To eliminate the counter overhead entirely (e.g. for performance-critical benchmark
-/// builds), rebuild with the <c>NETHERMIND_NO_EXECUTION_METRICS</c> symbol defined: the JIT
+/// builds), rebuild with the <c>NO_EXEC_METRICS</c> symbol defined: the JIT
 /// folds <see cref="IsActive"/> to <c>false</c>, every <c>if (!ExecutionMetricsFlag.IsActive)
 /// return;</c> guard becomes an unconditional early return, and with
 /// <c>AggressiveInlining</c> the empty bodies are inlined into callers — eliminating both
 /// the call and the atomic write.</para>
-/// <para>Pre-existing counters (Calls, SLoad/SStore, CodeDbCache, …) are not gated by this
-/// flag; their cost is unaffected by the symbol.</para>
+/// <para>The zkVM guest build defines <c>NO_EXEC_METRICS</c> automatically (see
+/// <c>Directory.Build.props</c>), since the guest exports no metrics — no reflection metadata to
+/// read them, and a no-op <c>LocalMetricsFlush</c> — so every execution counter is elided to shed
+/// the atomics from the proof.</para>
+/// <para>Non-execution counters (background-task gauges, gas-price aggregates, <see cref="Metrics.EvmExceptions"/>)
+/// are not gated by this flag and fire unconditionally.</para>
 /// </remarks>
 public readonly struct ExecutionMetricsFlag : IFlag
 {
     public static bool IsActive =>
-#if NETHERMIND_NO_EXECUTION_METRICS
+#if NO_EXEC_METRICS
         false;
 #else
         true;
@@ -49,12 +53,7 @@ public readonly struct ExecutionMetricsFlag : IFlag
 
 public class Metrics
 {
-#if ZK_EVM
-    // Single-threaded guest: skip the AsyncLocal lookup on every metric bump.
-    private static bool IsBlockProcessingThread => true;
-#else
     private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
-#endif
 
     [CounterMetric]
     [Description("Number of Code DB cache reads.")]
@@ -63,7 +62,12 @@ public class Metrics
     private static CacheLinePaddedLong _otherCodeDbCache;
     [Description("Number of Code DB cache reads on main processing thread.")]
     public static long MainThreadCodeDbCache => _mainCodeDbCache.Value;
-    internal static void IncrementCodeDbCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache.Value : ref _otherCodeDbCache.Value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void IncrementCodeDbCache()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache.Value : ref _otherCodeDbCache.Value);
+    }
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
     public static long EvmExceptions { get; set; }
@@ -75,7 +79,12 @@ public class Metrics
     private static CacheLinePaddedLong _otherOpCodes;
     [Description("Number of opcodes executed on main processing thread.")]
     public static long MainThreadOpCodes => _mainOpCodes.Value;
-    public static void IncrementOpCodes(int count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainOpCodes.Value : ref _otherOpCodes.Value, count);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementOpCodes(int count)
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainOpCodes.Value : ref _otherOpCodes.Value, count);
+    }
 
     [CounterMetric]
     [Description("Number of SELFDESTRUCT calls.")]
@@ -84,7 +93,12 @@ public class Metrics
     private static CacheLinePaddedLong _otherSelfDestructs;
     [Description("Number of SELFDESTRUCT calls on main processing thread.")]
     public static long MainThreadSelfDestructs => _mainSelfDestructs.Value;
-    public static void IncrementSelfDestructs() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSelfDestructs.Value : ref _otherSelfDestructs.Value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementSelfDestructs()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSelfDestructs.Value : ref _otherSelfDestructs.Value);
+    }
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
@@ -93,7 +107,12 @@ public class Metrics
     private static CacheLinePaddedLong _otherCalls;
     [Description("Number of calls to other contracts on main processing thread.")]
     public static long MainThreadCalls => _mainCalls.Value;
-    public static void IncrementCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCalls.Value : ref _otherCalls.Value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementCalls()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCalls.Value : ref _otherCalls.Value);
+    }
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
@@ -102,7 +121,12 @@ public class Metrics
     private static CacheLinePaddedLong _otherSLoadOpcode;
     [Description("Number of SLOAD opcodes executed on main processing thread.")]
     public static long MainThreadSLoadOpcode => _mainSLoadOpcode.Value;
-    public static void IncrementSLoadOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSLoadOpcode.Value : ref _otherSLoadOpcode.Value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementSLoadOpcode()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSLoadOpcode.Value : ref _otherSLoadOpcode.Value);
+    }
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
@@ -111,7 +135,12 @@ public class Metrics
     private static CacheLinePaddedLong _otherSStoreOpcode;
     [Description("Number of SSTORE opcodes executed on main processing thread.")]
     public static long MainThreadSStoreOpcode => _mainSStoreOpcode.Value;
-    public static void IncrementSStoreOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode.Value : ref _otherSStoreOpcode.Value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementSStoreOpcode()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode.Value : ref _otherSStoreOpcode.Value);
+    }
 
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
@@ -120,7 +149,12 @@ public class Metrics
     private static CacheLinePaddedLong _otherEmptyCalls;
     [Description("Number of calls made to addresses without code on main processing thread.")]
     public static long MainThreadEmptyCalls => _mainEmptyCalls.Value;
-    public static void IncrementEmptyCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEmptyCalls.Value : ref _otherEmptyCalls.Value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementEmptyCalls()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEmptyCalls.Value : ref _otherEmptyCalls.Value);
+    }
 
     [CounterMetric]
     [Description("Number of contract create calls.")]
@@ -129,7 +163,12 @@ public class Metrics
     private static CacheLinePaddedLong _otherCreates;
     [Description("Number of contract create calls on main processing thread.")]
     public static long MainThreadCreates => _mainCreates.Value;
-    public static void IncrementCreates() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCreates.Value : ref _otherCreates.Value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementCreates()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCreates.Value : ref _otherCreates.Value);
+    }
 
     [Description("Number of contracts' code analysed for jump destinations.")]
     public static long ContractsAnalysed => _mainContractsAnalysed.Value + _otherContractsAnalysed.Value;
@@ -137,7 +176,12 @@ public class Metrics
     private static CacheLinePaddedLong _otherContractsAnalysed;
     [Description("Number of contracts' code analysed for jump destinations on main processing thread.")]
     public static long MainThreadContractsAnalysed => _mainContractsAnalysed.Value;
-    public static void IncrementContractsAnalysed() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainContractsAnalysed.Value : ref _otherContractsAnalysed.Value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementContractsAnalysed()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainContractsAnalysed.Value : ref _otherContractsAnalysed.Value);
+    }
 
     // Cross-client execution metrics gated by ExecutionMetricsFlag.
     // Each Increment* method short-circuits when ExecutionMetricsFlag.IsActive is false:
