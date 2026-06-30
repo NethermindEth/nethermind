@@ -55,6 +55,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private IMessageSerializationService _receiverSerializationManager;
         private Node _receiver;
 
+        private Task _bondPongProcessing = Task.CompletedTask;
+
         private void ConfigureBondCallback() =>
             _msgSender
                 .When(x => x.SendMsg(Arg.Any<PingMsg>()))
@@ -68,13 +70,17 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                         _timestamper.UnixTime.SecondsLong + 1,
                         sent.Mdc!.Value);
                     pong.FarAddress = _receiver.Address;
-                    Task.Run(() => _adapter.OnIncomingMsg(pong));
+                    _bondPongProcessing = Task.Run(() => _adapter.OnIncomingMsg(pong));
                 });
 
         private async Task BondReceiver(CancellationToken token)
         {
             ConfigureBondCallback();
             await _adapter.Ping(_receiver, token);
+            // Ping returns once the pong's response handler completes, but OnIncomingMsg records the
+            // health-tracker call afterwards. Await the full pong processing before clearing recorded
+            // calls so the bonding pong does not leak into later DidNotReceive assertions.
+            await _bondPongProcessing;
             _msgSender.ClearReceivedCalls();
             _nodeHealthTracker.ClearReceivedCalls();
         }
