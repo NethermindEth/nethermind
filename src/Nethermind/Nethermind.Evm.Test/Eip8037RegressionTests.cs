@@ -72,6 +72,39 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Eip8037_soft_failed_call_refunds_spilled_new_account_state_gas_to_gas_left()
+    {
+        byte[] code = Prepare.EvmCode
+            .CallWithValue(TestItem.AddressF, long.MaxValue, 101.Ether)
+            .Op(Instruction.POP)
+            .Call(Address.FromNumber(6), long.MaxValue)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        long precompileCallGas = 0;
+        bool foundPrecompileCall = false;
+        foreach (TestAllTracerWithOutput.ActionTrace action in tracer.Actions)
+        {
+            if (action.IsPrecompileCall && action.To == Address.FromNumber(6))
+            {
+                precompileCallGas = action.Gas;
+                foundPrecompileCall = true;
+                break;
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(foundPrecompileCall, Is.True);
+            Assert.That(precompileCallGas, Is.EqualTo(955_588));
+        }
+    }
+
     /// <summary>
     /// When a nested CREATE/CREATE2 child frame has too little regular gas to cover both
     /// the regular code deposit cost AND the state-gas spill, the create operation must fail.
