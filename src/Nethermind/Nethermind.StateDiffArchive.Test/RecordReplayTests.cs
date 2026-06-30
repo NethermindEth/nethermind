@@ -118,7 +118,7 @@ public class RecordReplayTests
         using (container)
         {
             ReplayScopeTracker tracker = new();
-            ReplayScopeProvider provider = new(flatScope, tracker, verifyStateRoot: true, LimboLogs.Instance);
+            ReplayScopeProvider provider = new(flatScope, tracker, LimboLogs.Instance);
             WorldState ws = new(provider, LimboLogs.Instance);
 
             IBlockProcessor inner = Substitute.For<IBlockProcessor>();
@@ -150,7 +150,7 @@ public class RecordReplayTests
 
     private static StateDiffStore MakeStore(string dir, bool recording = false, bool replay = false)
         => new(
-            new StateDiffArchiveConfig { ArchivePath = dir, RecordingEnabled = recording, ReplayEnabled = replay, VerifyStateRoot = true },
+            new StateDiffArchiveConfig { ArchivePath = dir, RecordingEnabled = recording, ReplayEnabled = replay },
             new InitConfig(),
             LimboLogs.Instance);
 }

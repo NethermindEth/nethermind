@@ -19,7 +19,6 @@ namespace Nethermind.StateDiffArchive.Replay;
 public sealed class ReplayScopeProvider(
     IWorldStateScopeProvider inner,
     ReplayScopeTracker tracker,
-    bool verifyStateRoot,
     ILogManager logManager) : IWorldStateScopeProvider
 {
     private readonly ILogger _logger = logManager.GetClassLogger<ReplayScopeProvider>();
@@ -28,7 +27,7 @@ public sealed class ReplayScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
-        ReplayScope scope = new(inner.BeginScope(baseBlock, metrics), tracker, verifyStateRoot, _logger);
+        ReplayScope scope = new(inner.BeginScope(baseBlock, metrics), tracker, _logger);
         tracker.Current = scope;
         return scope;
     }
@@ -36,7 +35,6 @@ public sealed class ReplayScopeProvider(
     private sealed class ReplayScope(
         IWorldStateScopeProvider.IScope inner,
         ReplayScopeTracker tracker,
-        bool verifyStateRoot,
         ILogger logger) : IWorldStateScopeProvider.IScope
     {
         public Hash256 RootHash => inner.RootHash;
@@ -53,7 +51,8 @@ public sealed class ReplayScopeProvider(
             Hash256? expected = tracker.ExpectedRoot;
             tracker.ExpectedRoot = null;
 
-            if (verifyStateRoot && expected is not null)
+            // A replayed block always carries an expected root; an EVM fall-through block leaves it null.
+            if (expected is not null)
             {
                 // Verify before committing so a mismatch leaves nothing persisted.
                 inner.UpdateRootHash();

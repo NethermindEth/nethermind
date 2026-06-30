@@ -32,13 +32,11 @@ public sealed class StateDiffStore : IDisposable
         _logger = logManager.GetClassLogger<StateDiffStore>();
         RecordingEnabled = config.RecordingEnabled;
         ReplayEnabled = config.ReplayEnabled;
-        VerifyStateRoot = config.VerifyStateRoot;
         Directory = directory;
     }
 
     public bool RecordingEnabled { get; }
     public bool ReplayEnabled { get; }
-    public bool VerifyStateRoot { get; }
     public string Directory { get; }
 
     public void Write(StateDiffRecordBuilder builder, ulong blockNumber, Hash256 stateRoot)

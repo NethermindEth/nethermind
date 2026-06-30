@@ -21,9 +21,6 @@ public interface IStateDiffArchiveConfig : IConfig
     [ConfigItem(Description = "Directory (relative to BaseDbPath) holding the state-diff era files.", DefaultValue = "stateDiffArchive")]
     string ArchivePath { get; set; }
 
-    [ConfigItem(Description = "During replay, verify each block's recomputed state root against the recorded one and fail on mismatch.", DefaultValue = "true")]
-    bool VerifyStateRoot { get; set; }
-
     [ConfigItem(Description = "Semicolon-separated source archive directories to merge into ArchivePath at startup. When set, the node merges and then exits without processing.", DefaultValue = null)]
     string? MergeSources { get; set; }
 }

@@ -8,6 +8,5 @@ public class StateDiffArchiveConfig : IStateDiffArchiveConfig
     public bool RecordingEnabled { get; set; }
     public bool ReplayEnabled { get; set; }
     public string ArchivePath { get; set; } = "stateDiffArchive";
-    public bool VerifyStateRoot { get; set; } = true;
     public string? MergeSources { get; set; }
 }

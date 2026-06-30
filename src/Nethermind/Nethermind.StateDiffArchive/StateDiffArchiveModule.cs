@@ -52,7 +52,7 @@ public class StateDiffArchiveModule(IStateDiffArchiveConfig config) : Module
                 if (store.RecordingEnabled)
                     return new RecordingScopeProvider(inner, store, logManager);
                 if (store.ReplayEnabled)
-                    return new ReplayScopeProvider(inner, ctx.Resolve<ReplayScopeTracker>(), store.VerifyStateRoot, logManager);
+                    return new ReplayScopeProvider(inner, ctx.Resolve<ReplayScopeTracker>(), logManager);
                 return inner;
             });
     }
