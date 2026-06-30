@@ -100,7 +100,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
-                BlockState blockState = new(this, suggestedBlock, parent, spec);
+                BlockState blockState = new(this, suggestedBlock, parent, spec, cancellationToken);
                 _currentBlockState = blockState;
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
@@ -330,7 +330,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     if (bs.Spec.UseTxAccessLists) worldState.WarmUp(tx.AccessList); // eip-2930
                     if (bs.PreWarmer.SkipExecWarmup(tx, i)) return state;
                     scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(bs.Block.Header, bs.Spec));
-                    scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                    scope.TransactionProcessor.Warmup(tx, bs.WarmupTracer);
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException or OperationCanceledException)
                 {
@@ -408,7 +408,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (blockState.PreWarmer.SkipExecWarmup(tx, txIndex)) return;
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, blockState.WarmupTracer);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
@@ -592,12 +592,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private sealed class BlockState(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec)
+    private sealed class BlockState(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken)
     {
         public BlockCachePreWarmer PreWarmer { get; } = preWarmer;
         public Block Block { get; } = block;
         public BlockHeader Parent { get; } = parent;
         public IReleaseSpec Spec { get; } = spec;
+
+        // Cancellation-observing tracer reused for every speculatively-warmed transaction in this block.
+        // When the main thread finishes executing the block it cancels this token (BranchProcessor.CancelBackgroundWork);
+        // because IsCancelable is true the EVM polls IsCancelled (every 1024 opcodes per frame) and abandons any
+        // in-flight warming. Without it, warming a single dominating compute-bound tx (e.g. block 22360451) keeps the
+        // ~16 prewarmer workers busy past end-of-block, starving the main thread's parallel commit/merkleization work
+        // and blocking the BranchProcessor.WaitAndClear join (~10x slowdown). Stateless w.r.t. the tx, so shared.
+        public ITxTracer WarmupTracer { get; } = new CancellationTxTracer(NullTxTracer.Instance, cancellationToken);
 
         // Highest transaction index the main processing thread has started executing (-1 = none yet).
         // Written only by the single main thread (in order) via IncrementTransactionCounter; read by prewarmer threads.
