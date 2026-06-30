@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
@@ -161,11 +162,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
+            long _pwTxStart = Stopwatch.GetTimestamp();
             if (!addressWarmer.HasBal)
             {
                 WarmupTransactions(blockState, parallelOptions);
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
+            blockState.DiagWarmTxTicks = Stopwatch.GetTimestamp() - _pwTxStart;
 
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
         }
@@ -176,7 +179,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         finally
         {
             // Don't complete the task until address warmer is also done.
+            long _addrStart = Stopwatch.GetTimestamp();
             addressWarmer.Wait();
+            long _addrTicks = Stopwatch.GetTimestamp() - _addrStart;
+            if (_logger.IsWarn)
+            {
+                (long cnt, long totTicks, long maxTicks, long maxIdx) = blockState.WarmStats();
+                static double toMs(long t) => t * 1000.0 / Stopwatch.Frequency;
+                if (toMs(blockState.DiagWarmTxTicks) + toMs(_addrTicks) > 60.0)
+                    _logger.Warn($"[PWDIAG] block={suggestedBlock.Number} txs={suggestedBlock.Transactions.Length} warmTxMs={toMs(blockState.DiagWarmTxTicks):F1} addrWaitMs={toMs(_addrTicks):F1} warmedTxs={cnt} sumWarmMs={toMs(totTicks):F1} maxTxMs={toMs(maxTicks):F1}@idx{maxIdx}");
+            }
             addressWarmer.Dispose();
         }
     }
@@ -413,7 +425,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (blockState.PreWarmer.SkipExecWarmup(tx, txIndex)) return;
 
+            long _wt = Stopwatch.GetTimestamp();
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, blockState.WarmupTracer);
+            blockState.RecordWarm(txIndex, Stopwatch.GetTimestamp() - _wt);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
@@ -617,5 +631,26 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private int _lastExecutedTransaction = -1;
         public int LastExecutedTransaction => Volatile.Read(ref _lastExecutedTransaction);
         public void IncrementTransactionCounter() => Interlocked.Increment(ref _lastExecutedTransaction);
+
+        // Diagnostic accumulators for attributing prewarm-task time (see [PWDIAG] log).
+        public long DiagWarmTxTicks;
+        private long _warmedCount;
+        private long _totalWarmTicks;
+        private long _maxWarmTicks;
+        private long _maxWarmTxIndex;
+        public void RecordWarm(int txIndex, long ticks)
+        {
+            Interlocked.Increment(ref _warmedCount);
+            Interlocked.Add(ref _totalWarmTicks, ticks);
+            long prevMax = Volatile.Read(ref _maxWarmTicks);
+            while (ticks > prevMax)
+            {
+                long orig = Interlocked.CompareExchange(ref _maxWarmTicks, ticks, prevMax);
+                if (orig == prevMax) { Volatile.Write(ref _maxWarmTxIndex, txIndex); break; }
+                prevMax = orig;
+            }
+        }
+        public (long Count, long TotalTicks, long MaxTicks, long MaxIdx) WarmStats()
+            => (Volatile.Read(ref _warmedCount), Volatile.Read(ref _totalWarmTicks), Volatile.Read(ref _maxWarmTicks), Volatile.Read(ref _maxWarmTxIndex));
     }
 }
