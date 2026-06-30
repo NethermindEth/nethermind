@@ -196,7 +196,7 @@ jobs:
       convert_to_paprika: "${{ inputs.convert_to_paprika }}"
 
   resolve_urls:
-    name: Resolve Nethermind and Geth RPC URLs
+    name: Resolve Nethermind and reference RPC URLs
     runs-on: ubuntu-latest
     needs: [verify_correctness_of_setup, create_main_node, create_geth_node, create_reference_node]
     if: always() && needs.verify_correctness_of_setup.result == 'success' && (needs.create_main_node.result == 'success' || needs.create_main_node.result == 'skipped') && (needs.create_geth_node.result == 'success' || needs.create_geth_node.result == 'skipped') && (needs.create_reference_node.result == 'success' || needs.create_reference_node.result == 'skipped')
@@ -586,7 +586,7 @@ jobs:
       - name: Run rpc_int
         env:
           NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
-          # Prefer the spawned Geth URL; fall back to the provided reference_url.
+          # Resolved reference: spawned Geth / spawned reference Nethermind / provided URL.
           REFERENCE_URL: ${{ needs.resolve_urls.outputs.reference_url }}
           RPC_FLAG: ${{ needs.verify_correctness_of_setup.outputs.rpc_flag }}
           NETWORK: ${{ inputs.network }}
