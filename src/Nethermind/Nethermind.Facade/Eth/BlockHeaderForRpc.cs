@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -23,8 +22,7 @@ public class BlockHeaderForRpc
         Hash = header.Hash;
         ParentHash = header.ParentHash;
         MixHash = header.MixHash;
-        Nonce = new byte[8];
-        BinaryPrimitives.WriteUInt64BigEndian(Nonce, header.Nonce);
+        Nonce = header.Nonce;
         Sha3Uncles = header.UnclesHash;
         LogsBloom = header.Bloom;
         StateRoot = header.StateRoot;
@@ -68,7 +66,8 @@ public class BlockHeaderForRpc
     public Hash256? ParentHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public byte[]? Nonce { get; set; }
+    [JsonConverter(typeof(BlockNonceConverter))]
+    public ulong? Nonce { get; set; }
 
     public Hash256? MixHash { get; set; }
     public Hash256? Sha3Uncles { get; set; }
