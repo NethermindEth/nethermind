@@ -254,6 +254,9 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             preloadedCodeInfo = null;
             preloadedDelegationAddress = null;
+            // EIP-2780 charges the recipient touch/value tiers during top-level execution, which can
+            // out-of-gas — a case the fast path (which assumes transfers never fail) cannot represent.
+            if (spec.IsEip2780Enabled) return false;
             if (!IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return false;
 
             preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(tx.To!, followDelegation: true, spec, out preloadedDelegationAddress);
@@ -960,7 +963,69 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
-            => TGasPolicy.CalculateIntrinsicGas(tx, spec, blockGasLimit, WorldState);
+            => TGasPolicy.CalculateIntrinsicGas(tx, spec, blockGasLimit);
+
+        // EIP-2780 reprices the top-level transaction like a CALL to tx.To: the recipient cold/warm
+        // touch, its value-transfer STATE_UPDATE, the new-account surcharge, and the EIP-7708 transfer
+        // log. Read from pre-execution state and charged from execution gas, so intrinsic gas stays a
+        // pure function of the transaction. Access-list membership is the only pre-warm signal (self
+        // and precompile recipients are excluded).
+        private ulong Eip2780TopLevelGas(Transaction tx, IReleaseSpec spec)
+        {
+            bool isCreate = tx.IsContractCreation;
+            Address? to = tx.To;
+            bool hasValue = !tx.ValueRef.IsZero;
+            bool senderIsRecipient = !isCreate && tx.SenderAddress == to;
+
+            ulong cost = 0;
+            // EIP-7708 transfer log on the top-level value transfer; CREATE endows a distinct address.
+            if (hasValue && (isCreate || !senderIsRecipient))
+                cost += GasCostOf.TransferLogEip2780;
+
+            if (isCreate || to is null) return cost;
+
+            bool isPrecompile = spec.IsPrecompile(to);
+            bool recipientDead = WorldState.IsDeadAccount(to);
+
+            // New-account surcharge: value transfer to a nonexistent, non-precompile recipient.
+            if (hasValue && !isPrecompile && recipientDead)
+                cost += GasCostOf.NewAccount;
+
+            if (!senderIsRecipient && !isPrecompile)
+            {
+                cost += Eip2780RecipientTouchCost(tx, spec, to);
+                // The new-account surcharge already covers the recipient leaf write.
+                if (hasValue && !recipientDead)
+                    cost += GasCostOf.StateUpdateEip2780;
+            }
+
+            return cost;
+        }
+
+        private ulong Eip2780RecipientTouchCost(Transaction tx, IReleaseSpec spec, Address to)
+        {
+            bool toHasCode = WorldState.IsContract(to);
+            ulong cost = Eip2780InAccessList(tx, to)
+                ? GasCostOf.WarmStateRead
+                : toHasCode ? GasCostOf.ColdAccountAccess : GasCostOf.ColdAccountAccessNoCodeEip2780;
+
+            // EIP-7702: a delegated recipient also touches its delegation target (which always has code).
+            if (spec.IsEip7702Enabled && toHasCode
+                && ICodeInfoRepository.TryGetDelegatedAddress(WorldState.GetCode(to).AsSpan(), out Address? target))
+                cost += Eip2780InAccessList(tx, target) ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess;
+
+            return cost;
+        }
+
+        private static bool Eip2780InAccessList(Transaction tx, Address? address)
+        {
+            if (tx.AccessList is null) return false;
+            foreach ((Address entry, _) in tx.AccessList)
+            {
+                if (entry == address) return true;
+            }
+            return false;
+        }
 
         protected virtual UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
         {
@@ -1189,6 +1254,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
             PayValue(tx, spec, opts);
 
+            // EIP-2780 prices the top-level recipient like a CALL to tx.To. Charged from execution gas
+            // (not intrinsic); on out-of-gas restore the pre-value state and fail the transaction.
+            if (spec.IsEip2780Enabled && !TGasPolicy.UpdateGas(ref gasAvailable, Eip2780TopLevelGas(tx, spec)))
+            {
+                WorldState.Restore(snapshot);
+                goto FailOutOfGas;
+            }
+
             if (env.CodeInfo is not null)
             {
                 if (tx.IsContractCreation)
@@ -1297,6 +1370,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
             }
             WorldState.Restore(snapshot);
+        FailOutOfGas:
             TGasPolicy intrinsicGasStandard = gas.Standard;
             if (spec.IsEip8037Enabled)
             {

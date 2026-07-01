@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
@@ -505,20 +504,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
         CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
 
-    public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit, IReadOnlyStateProvider? worldState = null)
+    public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {
         ulong tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
         ulong floorTokensInAccessList = IGasPolicy<EthereumGasPolicy>.CalculateFloorTokensInAccessList(tx, spec);
         (ulong authRegularCost, ulong authStateCost) = IGasPolicy<EthereumGasPolicy>.AuthorizationListCost(tx, spec);
         ulong accessListCost = IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec, floorTokensInAccessList);
 
+        // EIP-2780 reduces TX_BASE_COST; the recipient touch / value-transfer charges are applied at
+        // execution (see TransactionProcessor), keeping intrinsic gas a pure function of the transaction.
         ulong baseCost = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
         ulong regularGas = baseCost
                           + DataCost(tx, spec, tokensInCallData)
                           + CreateCost(tx, spec)
                           + accessListCost
-                          + authRegularCost
-                          + Eip2780ExtraGas(tx, spec, worldState);
+                          + authRegularCost;
         ulong floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tx, spec, tokensInCallData, floorTokensInAccessList);
         ulong createStateCost = CreateStateCost(tx, spec);
         ulong totalStateCost = authStateCost + createStateCost;
@@ -577,75 +577,4 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong DataCost(Transaction tx, IReleaseSpec spec, ulong tokensInCallData) =>
         spec.GetBaseDataCost(tx) + tokensInCallData * GasCostOf.TxDataZero;
-
-    /// <summary>
-    /// EIP-2780 charges on top of TX_BASE_COST: the EIP-7708 transfer log, the new-account surcharge,
-    /// and the recipient cold/warm touch plus its value-transfer STATE_UPDATE.
-    /// </summary>
-    /// <remarks>
-    /// The recipient touch overrides EIP-2929's "tx addresses are warm" rule. Pricing it here (where
-    /// pre-state is available via <paramref name="worldState"/>) keeps the recipient pre-warmed so no opcode re-charges it.
-    /// </remarks>
-    private static ulong Eip2780ExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
-    {
-        if (!spec.IsEip2780Enabled) return 0;
-
-        bool isCreate = tx.IsContractCreation;
-        Address? to = tx.To;
-        bool hasValue = !tx.Value.IsZero;
-        bool senderIsRecipient = !isCreate && tx.SenderAddress == to;
-
-        ulong cost = 0;
-        // EIP-7708 transfer log on the top-level value transfer; CREATE endows a distinct address.
-        if (hasValue && (isCreate || !senderIsRecipient))
-            cost += GasCostOf.TransferLogEip2780;
-
-        if (isCreate || to is null || worldState is null) return cost;
-
-        bool isPrecompile = spec.IsPrecompile(to);
-        bool recipientDead = worldState.IsDeadAccount(to);
-
-        // New-account surcharge: value transfer to a nonexistent, non-precompile recipient.
-        if (hasValue && !isPrecompile && recipientDead)
-            cost += GasCostOf.NewAccount;
-
-        // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST;
-        // precompiles are warm at tx start and charged zero.
-        if (!senderIsRecipient && !isPrecompile)
-        {
-            cost += RecipientTouchCost(tx, spec, worldState, to);
-            // The new-account surcharge already covers the recipient leaf write.
-            if (hasValue && !recipientDead)
-                cost += GasCostOf.StateUpdateEip2780;
-        }
-
-        return cost;
-    }
-
-    private static ulong RecipientTouchCost(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider worldState, Address to)
-    {
-        bool toHasCode = worldState.IsContract(to);
-        ulong cost = IsInAccessList(tx, to)
-            ? GasCostOf.WarmStateRead
-            : toHasCode ? GasCostOf.ColdAccountAccess : GasCostOf.ColdAccountAccessNoCodeEip2780;
-
-        // EIP-7702: a delegated recipient also touches its delegation target. The EVM warms but never
-        // charges it at the top level, so this is the sole charge; only accounts with code carry a delegation.
-        if (spec.IsEip7702Enabled && toHasCode
-            && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(to).AsSpan(), out Address? target))
-            cost += IsInAccessList(tx, target) ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess;
-
-        return cost;
-    }
-
-    // Linear scan avoids a per-tx HashSet allocation; access lists are small and we probe at most two addresses.
-    private static bool IsInAccessList(Transaction tx, Address? address)
-    {
-        if (tx.AccessList is null) return false;
-        foreach ((Address entry, _) in tx.AccessList)
-        {
-            if (entry == address) return true;
-        }
-        return false;
-    }
 }

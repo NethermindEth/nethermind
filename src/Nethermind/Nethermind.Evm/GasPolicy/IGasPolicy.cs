@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
@@ -150,9 +149,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static virtual IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
         TSelf.CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
-    // EIP-2780 needs the pre-execution state to price the new-account surcharge; worldState is
-    // optional so callers without state (and pre-2780 specs) keep working.
-    static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit, IReadOnlyStateProvider? worldState = null);
+    static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit);
 
     static abstract TSelf CreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec);
 
