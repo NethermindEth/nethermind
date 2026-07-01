@@ -50,10 +50,10 @@ public sealed class NewPayloadWithWitnessHandler(
         PayloadStatusV1 payloadStatus = statusResult.Data!;
         Witness? witness = null;
 
-        // engine_newPayloadV5 returns only after ProcessOne has run. On VALID the processor has already
-        // completed the rendezvous with the captured witness; on any other status the task may still be
-        // pending (cancelled by the using-Dispose below), so awaiting it could block — a completed check
-        // is required, and reading .Result on a completed-successfully task never throws.
+        // We can't just await the rendezvous task: an already-known block returns VALID without
+        // re-processing, and INVALID/SYNCING blocks may never reach witness capture — in those cases the
+        // task is never completed and is only cancelled by the using-Dispose below, so awaiting would
+        // block. IsCompletedSuccessfully is the non-blocking probe; .Result on a completed task can't throw.
         if (witnessRequest.Task.IsCompletedSuccessfully)
         {
             Witness? captured = witnessRequest.Task.Result;
