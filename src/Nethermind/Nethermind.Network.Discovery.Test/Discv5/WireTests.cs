@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -241,6 +243,8 @@ public class WireTests
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
         NettyDiscoveryV5Handler handler = new(new TestLogManager());
         EmbeddedChannel channel = new();
+        OutboundDatagramCapture outbound = new();
+        channel.Pipeline.AddLast(outbound);
         handler.InitializeChannel(channel);
 
         TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord, enrSequence);
@@ -261,7 +265,7 @@ public class WireTests
             ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
 
-        return new TestPeer(adapter, handler, channel, packetCodec, kademlia, nodeRecordProvider, endpoint);
+        return new TestPeer(adapter, handler, channel, outbound, packetCodec, kademlia, nodeRecordProvider, endpoint);
     }
 
     private static async Task PumpUntilComplete(Task task, TestPeer peerA, TestPeer peerB, CancellationToken token)
@@ -325,7 +329,7 @@ public class WireTests
 
     private static void Pump(TestPeer from, TestPeer to)
     {
-        while (from.Channel.ReadOutbound<DatagramPacket>() is { } packet)
+        while (from.Outbound.TryDequeue(out DatagramPacket? packet))
         {
             try
             {
@@ -344,6 +348,7 @@ public class WireTests
         KademliaAdapter Adapter,
         NettyDiscoveryV5Handler Handler,
         EmbeddedChannel Channel,
+        OutboundDatagramCapture Outbound,
         PacketCodec PacketCodec,
         IKademlia<PublicKey, Node> Kademlia,
         TestNodeRecordProvider NodeRecordProvider,
@@ -359,12 +364,46 @@ public class WireTests
             {
                 try
                 {
+                    Outbound.ReleaseAll();
                     Channel.FinishAndReleaseAll();
                 }
                 finally
                 {
                     PacketCodec.Dispose();
                 }
+            }
+        }
+    }
+
+    /// <summary>Captures outbound datagrams into a thread-safe queue, bypassing the embedded channel's non-thread-safe <c>ChannelOutboundBuffer</c> so packet workers can send concurrently with the test thread's pumping and disposal.</summary>
+    private sealed class OutboundDatagramCapture : ChannelHandlerAdapter
+    {
+        private readonly ConcurrentQueue<DatagramPacket> _queue = new();
+
+        public override Task WriteAsync(IChannelHandlerContext context, object message)
+        {
+            // discv5 only writes DatagramPackets; anything else would reach the suppressed-flush buffer and re-introduce the race.
+            if (message is not DatagramPacket packet)
+            {
+                throw new NotSupportedException($"Unexpected outbound message type: {message?.GetType()}.");
+            }
+
+            _queue.Enqueue(packet);
+            return Task.CompletedTask;
+        }
+
+        public override void Flush(IChannelHandlerContext context)
+        {
+            // Datagrams are captured in WriteAsync; there is nothing to flush to the embedded buffer.
+        }
+
+        public bool TryDequeue([NotNullWhen(true)] out DatagramPacket? packet) => _queue.TryDequeue(out packet);
+
+        public void ReleaseAll()
+        {
+            while (_queue.TryDequeue(out DatagramPacket? packet))
+            {
+                ReferenceCountUtil.Release(packet);
             }
         }
     }
