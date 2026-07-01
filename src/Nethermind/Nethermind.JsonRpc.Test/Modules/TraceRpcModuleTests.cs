@@ -786,7 +786,7 @@ public class TraceRpcModuleTests
     {
         Context context = new();
         await context.Build();
-        object transaction = new { from = "0xaaaaaaaa8583de65cc752fe3fad5098643244d22", to = "0xd6a8d04cb9846759416457e2c593c99390092df6", gas = 1000000 };
+        object transaction = new { from = "0xaaaaaaaa8583de65cc752fe3fad5098643244d22", to = "0xd6a8d04cb9846759416457e2c593c99390092df6", gas = "0xf4240" };
         string[] traceTypes = { "trace" };
         string blockParameter = "latest";
         string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0xaaaaaaaa8583de65cc752fe3fad5098643244d22\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xd6a8d04cb9846759416457e2c593c99390092df6\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"vmTrace\":null},\"id\":67}";

@@ -281,7 +281,7 @@ public class StartupTests
             Error = new Error { Code = ErrorCodes.ExecutionError, Message = "out of gas" }
         });
 
-        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32003,\"message\":\"out of gas\"},\"id\":1}"));
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"out of gas\"},\"id\":1}"));
     }
 
     [Test]

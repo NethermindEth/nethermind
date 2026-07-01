@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -50,6 +51,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
 
         return new ContainerBuilder()
             .AddModule(new EraETestModule())
+            .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
             .AddSingleton<ITimestamper>(PostMerge)
             .AddSingleton<IBlockTree>(blockTreeBuilder.TestObject)
             .OnBuild(ctx =>
@@ -93,6 +95,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
             .AddModule(TestNethermindModule.CreateWithRealChainSpec())
             .AddModule(new EraEModule())
             .AddSingleton<IFileSystem>(new RealFileSystem())
+            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
             .AddSingleton<IEraEConfig>(new EraEConfig()
             {
                 MaxEraSize = 16,

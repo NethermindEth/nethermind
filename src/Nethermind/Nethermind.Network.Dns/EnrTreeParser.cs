@@ -63,21 +63,60 @@ public static class EnrTreeParser
     {
         ArgumentNullException.ThrowIfNull(enrTreeRootText);
 
-        EnrTreeRoot enrTreeRoot = new();
-
-        int ensRootIndex = enrTreeRootText.IndexOf("e=", StringComparison.Ordinal);
-        enrTreeRoot.EnrRoot = enrTreeRootText.Substring(ensRootIndex + 2, HashLengthBase32);
-
-        int linkRootIndex = enrTreeRootText.IndexOf("l=", StringComparison.Ordinal);
-        enrTreeRoot.LinkRoot = enrTreeRootText.Substring(linkRootIndex + 2, HashLengthBase32);
-
-        int seqIndex = enrTreeRootText.IndexOf("seq=", StringComparison.Ordinal);
-        int seqLength = enrTreeRootText.IndexOf(' ', seqIndex) - (seqIndex + 4);
-        enrTreeRoot.Sequence = int.Parse(enrTreeRootText.AsSpan(seqIndex + 4, seqLength));
-
-        int sigIndex = enrTreeRootText.IndexOf("sig=", StringComparison.Ordinal);
-        enrTreeRoot.Signature = enrTreeRootText.Substring(sigIndex + 4, SigLengthBase32);
+        // enrTreeRootText comes from an untrusted DNS TXT record (parsed before any signature check),
+        // so validate every field's presence and length before slicing to avoid an unhandled exception.
+        EnrTreeRoot enrTreeRoot = new()
+        {
+            EnrRoot = ExtractFixedField(enrTreeRootText, "e=", HashLengthBase32),
+            LinkRoot = ExtractFixedField(enrTreeRootText, "l=", HashLengthBase32),
+            Sequence = ExtractSequence(enrTreeRootText),
+            Signature = ExtractFixedField(enrTreeRootText, "sig=", SigLengthBase32),
+        };
 
         return enrTreeRoot;
+
+        static string ExtractFixedField(string text, string key, int length)
+        {
+            int index = text.IndexOf(key, StringComparison.Ordinal);
+            if (index < 0 || index + key.Length + length > text.Length)
+            {
+                throw new FormatException($"Malformed enrtree-root: '{key}' field is missing or too short.");
+            }
+
+            if (text.IndexOf(key, index + key.Length, StringComparison.Ordinal) >= 0)
+            {
+                throw new FormatException($"Malformed enrtree-root: '{key}' field appears more than once.");
+            }
+
+            return text.Substring(index + key.Length, length);
+        }
+
+        static int ExtractSequence(string text)
+        {
+            int index = text.IndexOf("seq=", StringComparison.Ordinal);
+            if (index < 0)
+            {
+                throw new FormatException("Malformed enrtree-root: 'seq=' field is missing.");
+            }
+
+            if (text.IndexOf("seq=", index + "seq=".Length, StringComparison.Ordinal) >= 0)
+            {
+                throw new FormatException("Malformed enrtree-root: 'seq=' field appears more than once.");
+            }
+
+            int start = index + "seq=".Length;
+            int end = text.IndexOf(' ', start);
+            if (end < 0)
+            {
+                throw new FormatException("Malformed enrtree-root: 'seq=' field is not terminated.");
+            }
+
+            if (!int.TryParse(text.AsSpan(start, end - start), out int sequence))
+            {
+                throw new FormatException("Malformed enrtree-root: 'seq=' value is not a valid number.");
+            }
+
+            return sequence;
+        }
     }
 }

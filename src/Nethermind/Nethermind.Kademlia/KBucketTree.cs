@@ -5,7 +5,8 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Collections.Pooled;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -34,19 +35,24 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     public KBucketTree(
         KademliaConfig<TNode> config,
         INodeHashProvider<TNode, TKadKey> nodeHashProvider,
+        IKademliaDistance<TKadKey> distance)
+        : this(config, nodeHashProvider, distance, NullLoggerFactory.Instance)
+    {
+    }
+
+    public KBucketTree(
+        KademliaConfig<TNode> config,
+        INodeHashProvider<TNode, TKadKey> nodeHashProvider,
         IKademliaDistance<TKadKey> distance,
-        ILogManager? logManager = null)
+        ILoggerFactory loggerFactory)
     {
         _k = config.KSize;
         _b = config.Beta;
         _distance = distance;
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _root = new TreeNode(config.KSize, distance.Zero);
-        _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<KBucketTree<TNode, TKadKey>>();
-        if (_logger.IsDebug)
-        {
-            _logger.Debug($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
-        }
+        _logger = loggerFactory.CreateLogger<KBucketTree<TNode, TKadKey>>();
+        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
     }
 
     public BucketAddResult TryAddOrRefresh(in TKadKey nodeHash, TNode node, out TNode? toRefresh)
@@ -55,10 +61,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         bool fireAdded;
         lock (_lock)
         {
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Adding node {node} with XOR distance {_distance.CalculateLogDistance(_currentNodeHash, nodeHash)}");
-            }
+            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Adding node {node} with XOR distance {_distance.CalculateLogDistance(_currentNodeHash, nodeHash)}");
 
             TreeNode current = _root;
             // As in, what would be the depth of the node assuming all branch on the traversal is populated.
@@ -68,28 +71,28 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
             {
                 if (current.IsLeaf)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Reached leaf node at depth {depth}");
+                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Reached leaf node at depth {depth}");
                     resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
                     fireAdded = resp == BucketAddResult.Added;
                     if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Successfully added/refreshed node {node} in bucket at depth {depth}");
+                        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Successfully added/refreshed node {node} in bucket at depth {depth}");
                         break;
                     }
 
                     if (resp == BucketAddResult.Full && ShouldSplit(depth, logDistance))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Splitting bucket at depth {depth}");
+                        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Splitting bucket at depth {depth}");
                         SplitBucket(depth, current);
                         continue;
                     }
 
-                    if (_logger.IsDebug) _logger.Debug($"Failed to add node {nodeHash} {node}. Bucket at depth {depth} is full. {_k} {current.Bucket.Count}");
+                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Failed to add node {nodeHash} {node}. Bucket at depth {depth} is full. {_k} {current.Bucket.Count}");
                     break;
                 }
 
                 bool goRight = _distance.GetBit(nodeHash, depth);
-                if (_logger.IsTrace) _logger.Trace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
 
                 current = goRight ? current.Right! : current.Left!;
                 depth++;
@@ -116,12 +119,12 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         {
             if (current.IsLeaf)
             {
-                if (_logger.IsTrace) _logger.Trace($"Reached leaf node at depth {depth}");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Reached leaf node at depth {depth}");
                 return current.Bucket;
             }
 
             bool goRight = _distance.GetBit(nodeHash, depth);
-            if (_logger.IsTrace) _logger.Trace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
+            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
 
             current = goRight ? current.Right! : current.Left!;
             depth++;
@@ -131,7 +134,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     private bool ShouldSplit(int depth, int targetLogDistance)
     {
         bool shouldSplit = depth < _distance.MaxDistance && targetLogDistance + _b >= depth;
-        if (_logger.IsTrace) _logger.Trace($"ShouldSplit at depth {depth}: {shouldSplit}");
+        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"ShouldSplit at depth {depth}: {shouldSplit}");
         return shouldSplit;
     }
 
@@ -140,7 +143,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         node.Left = new TreeNode(_k, node.Prefix);
         node.Right = new TreeNode(_k, _distance.SetBit(node.Prefix, depth));
 
-        if (_logger.IsTrace) _logger.Trace($"Created children at depth {depth + 1}");
+        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Created children at depth {depth + 1}");
 
         // Iterate from oldest to newest so the new buckets preserve original LRU order.
         (TKadKey, TNode)[] items = node.Bucket.GetAllWithHash();
@@ -149,11 +152,11 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
             (TKadKey itemHash, TNode value) = items[i];
             TreeNode? targetNode = _distance.GetBit(itemHash, depth) ? node.Right : node.Left;
             targetNode.Bucket.TryAddOrRefresh(itemHash, value, out _);
-            if (_logger.IsTrace) _logger.Trace($"Moved item ({itemHash}, {value}) to {(_distance.GetBit(itemHash, depth) ? "right" : "left")} child");
+            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Moved item ({itemHash}, {value}) to {(_distance.GetBit(itemHash, depth) ? "right" : "left")} child");
         }
 
         node.Bucket.Clear();
-        if (_logger.IsTrace) _logger.Trace($"Finished splitting bucket. Left count: {node.Left.Bucket.Count}, Right count: {node.Right.Bucket.Count}");
+        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Finished splitting bucket. Left count: {node.Left.Bucket.Count}, Right count: {node.Right.Bucket.Count}");
     }
 
     public bool Remove(in TKadKey nodeHash)
@@ -162,7 +165,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         TNode? removedNode;
         lock (_lock)
         {
-            if (_logger.IsTrace) _logger.Trace($"Attempting to remove node {nodeHash}");
+            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Attempting to remove node {nodeHash}");
 
             KBucket<TNode, TKadKey> bucket = GetBucketForHash(nodeHash);
             removedNode = bucket.GetByHash(nodeHash);
@@ -177,13 +180,13 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     {
         lock (_lock)
         {
-            if (_logger.IsTrace) _logger.Trace($"Getting all nodes at distance {distance}");
+            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Getting all nodes at distance {distance}");
             using PooledList<TNode> result = new(_k);
             (TKadKey Hash, TNode Node)[] bucketEntries = ArrayPool<(TKadKey Hash, TNode Node)>.Shared.Rent(_k);
             try
             {
                 GetAllAtDistanceRecursive(_root, 0, distance, result, bucketEntries);
-                if (_logger.IsTrace) _logger.Trace($"Found {result.Count} nodes at distance {distance}");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Found {result.Count} nodes at distance {distance}");
 
                 return result.Span.ToArray();
             }
@@ -396,7 +399,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
 
     private void LogTreeStatistics()
     {
-        if (!_logger.IsDebug) return;
+        if (!_logger.IsEnabled(LogLevel.Debug)) return;
 
         int totalNodes = 0;
         int totalBuckets = 0;
@@ -422,21 +425,21 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
 
         TraverseTree(_root, 0);
 
-        _logger.Debug($"Tree Statistics: Total Nodes: {totalNodes}, Total Buckets: {totalBuckets}, Max Depth: {maxDepth}, Total Items: {totalItems}, Average Items per Bucket: {(double)totalItems / totalBuckets:F2}");
+        _logger.LogDebug($"Tree Statistics: Total Nodes: {totalNodes}, Total Buckets: {totalBuckets}, Max Depth: {maxDepth}, Total Items: {totalItems}, Average Items per Bucket: {(double)totalItems / totalBuckets:F2}");
     }
 
     private void LogTreeStructure()
     {
-        if (!_logger.IsTrace) return;
+        if (!_logger.IsEnabled(LogLevel.Trace)) return;
 
         StringBuilder sb = new();
         LogTreeStructureRecursive(_root, "", true, 0, sb);
-        _logger.Trace($"Current Tree Structure:{Environment.NewLine}{sb}");
+        _logger.LogTrace($"Current Tree Structure:{Environment.NewLine}{sb}");
     }
 
     public void LogDebugInfo()
     {
-        if (!_logger.IsDebug) return;
+        if (!_logger.IsEnabled(LogLevel.Debug)) return;
 
         LogTreeStatistics();
         LogTreeStructure();

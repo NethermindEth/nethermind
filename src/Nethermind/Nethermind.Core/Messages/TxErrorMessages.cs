@@ -11,6 +11,10 @@ public static class TxErrorMessages
         "intrinsic gas too low";
     public const string GasBelowFloorDataCost =
         "gas below floor data cost";
+    public const string InsufficientFundsForTransfer =
+        "insufficient funds for transfer";
+    public const string InsufficientFundsForGas =
+        "insufficient funds for gas * price + value";
     public const string TxMissingTo =
         "blob transaction of type create";
 

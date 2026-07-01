@@ -49,6 +49,15 @@ public static partial class EvmInstructions
         // Deduct the operation's gas cost.
         TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
 
+        return BitwiseCore<TOpBitwise>(ref stack);
+    }
+
+    /// <summary>Gas-free body of <see cref="InstructionBitwise{TGasPolicy, TOpBitwise}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType BitwiseCore<TOpBitwise>(ref EvmStack stack)
+        where TOpBitwise : struct, IOpBitwise
+    {
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;

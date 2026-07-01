@@ -802,7 +802,7 @@ public class DebugRpcModule(
 
         if (simulationResult.ErrorCode != 0)
         {
-            string errorMessage = simulationResult.Result ? $"Simulation failed with error code {simulationResult.ErrorCode}." : simulationResult.Result.ToString();
+            string errorMessage = simulationResult.Result.Error ?? $"Simulation failed with error code {simulationResult.ErrorCode}.";
             if (_logger.IsWarn) _logger.Warn($"debug_traceCallMany simulation failed: Code={simulationResult.ErrorCode}, Details={errorMessage}");
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(errorMessage, simulationResult.ErrorCode);
         }
