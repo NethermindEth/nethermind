@@ -10,6 +10,7 @@ public class DbConfig : IDbConfig
     public static DbConfig Default = new();
 
     public ulong SharedBlockCacheSize { get; set; } = 256UL.MiB;
+    public bool SharedBlockCacheUseHyperClock { get; set; } = false;
     public bool SkipMemoryHintSetting { get; set; } = false;
 
     public bool WriteAheadLogSync { get; set; } = false;

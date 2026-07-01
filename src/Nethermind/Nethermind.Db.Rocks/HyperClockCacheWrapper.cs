@@ -14,11 +14,15 @@ public class HyperClockCacheWrapper : SafeHandleZeroOrMinusOneIsInvalid
 
     private readonly long _capacity;
 
-    public HyperClockCacheWrapper(ulong capacity = 32_000_000) : base(ownsHandle: true)
+    public HyperClockCacheWrapper(ulong capacity = 32_000_000, bool useHyperClock = true) : base(ownsHandle: true)
     {
         lock (_nativeCacheLock)
         {
-            SetHandle(Native.Instance.rocksdb_cache_create_hyper_clock(new UIntPtr(capacity), 0));
+            // HyperClock's auto-charge mode (estimated_entry_charge=0) regressed state-DB Get latency ~28%
+            // vs the LRU cache used through 1.36.0; LRU is the default for the block-processing read path.
+            SetHandle(useHyperClock
+                ? Native.Instance.rocksdb_cache_create_hyper_clock(new UIntPtr(capacity), 0)
+                : Native.Instance.rocksdb_cache_create_lru(new UIntPtr(capacity)));
         }
         // If the native call returned a zero/null handle, SafeHandle won't call ReleaseHandle,
         // so don't add pressure either — keep add/remove balanced.

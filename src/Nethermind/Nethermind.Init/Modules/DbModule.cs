@@ -70,7 +70,7 @@ public class DbModule(
             .AddColumnDatabase<ReceiptsColumns>(DbNames.Receipts)
             .AddColumnDatabase<BlobTxsColumns>(DbNames.BlobTransactions)
 
-            .AddSingleton<HyperClockCacheWrapper>((ctx) => new HyperClockCacheWrapper(ctx.Resolve<IDbConfig>().SharedBlockCacheSize))
+            .AddSingleton<HyperClockCacheWrapper>((ctx) => new HyperClockCacheWrapper(ctx.Resolve<IDbConfig>().SharedBlockCacheSize, ctx.Resolve<IDbConfig>().SharedBlockCacheUseHyperClock))
             ;
 
         switch (initConfig.DiagnosticMode)

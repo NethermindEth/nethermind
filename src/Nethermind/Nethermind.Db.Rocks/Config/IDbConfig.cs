@@ -9,6 +9,12 @@ namespace Nethermind.Db.Rocks.Config;
 public interface IDbConfig : IConfig
 {
     ulong SharedBlockCacheSize { get; set; }
+
+    /// <summary>
+    /// Use RocksDB's HyperClock cache for the shared block cache instead of LRU. HyperClock's auto-charge
+    /// mode regressed state-DB read latency, so this defaults to <c>false</c> (LRU) on the block-processing path.
+    /// </summary>
+    bool SharedBlockCacheUseHyperClock { get; set; }
     public bool SkipMemoryHintSetting { get; set; }
 
     /// <summary>
