@@ -138,7 +138,7 @@ public class L2Api(
         };
     }
 
-    public Task<AccountProof?> GetProof(Address accountAddress, HashSet<StorageIndex> storageKeys, ulong blockNumber)
+    public Task<AccountProof?> GetProof(Address accountAddress, StorageKeys storageKeys, ulong blockNumber)
     {
         // TODO: Retry logic
         ResultWrapper<AccountProof> result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));

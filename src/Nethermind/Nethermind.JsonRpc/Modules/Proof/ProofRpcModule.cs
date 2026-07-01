@@ -15,7 +15,6 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -130,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, HashSet<StorageIndex> storageKeys, BlockParameter? blockParameter)
+        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
         {
             if (storageKeys.Count > EthRpcModule.GetProofStorageKeyLimit)
             {
@@ -154,14 +153,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            UInt256[] keys = new UInt256[storageKeys.Count];
-            int keyIndex = 0;
-            foreach (StorageIndex storageKey in storageKeys)
-            {
-                keys[keyIndex++] = storageKey.Value;
-            }
-
-            AccountProofCollector accountProofCollector = new(accountAddress, keys);
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 

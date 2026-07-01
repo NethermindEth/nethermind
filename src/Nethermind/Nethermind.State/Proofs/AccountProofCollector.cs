@@ -90,6 +90,21 @@ namespace Nethermind.State.Proofs
         public AccountProofCollector(Address? address, IEnumerable<UInt256> storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray()) { }
 
+        public AccountProofCollector(Address? address, IReadOnlyCollection<UInt256> storageKeys)
+            : this(address, ToRawKeys(storageKeys)) { }
+
+        private static byte[][] ToRawKeys(IReadOnlyCollection<UInt256> storageKeys)
+        {
+            byte[][] rawKeys = new byte[storageKeys.Count][];
+            int i = 0;
+            foreach (UInt256 storageKey in storageKeys)
+            {
+                rawKeys[i++] = ToKey(storageKey);
+            }
+
+            return rawKeys;
+        }
+
         public AccountProof BuildResult()
         {
             // EIP-1186 distinguishes a non-existent account from an empty existing account by

@@ -21,7 +21,11 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
     private const int MaxLength = 2 + 64;
 
     [SkipLocalsInit]
-    public override StorageIndex Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override StorageIndex Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        new(ReadValue(ref reader));
+
+    [SkipLocalsInit]
+    internal static UInt256 ReadValue(ref Utf8JsonReader reader)
     {
         if (reader.TokenType != JsonTokenType.String)
         {
@@ -44,14 +48,14 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
         return Parse(reader.ValueSpan);
     }
 
-    private static StorageIndex Parse(ReadOnlySpan<byte> hex)
+    private static UInt256 Parse(ReadOnlySpan<byte> hex)
     {
         if (!hex.StartsWith("0x"u8))
         {
             throw new JsonException();
         }
 
-        return new StorageIndex(UInt256Converter.ReadHex(hex));
+        return UInt256Converter.ReadHex(hex);
     }
 
     public override void Write(Utf8JsonWriter writer, StorageIndex value, JsonSerializerOptions options) =>

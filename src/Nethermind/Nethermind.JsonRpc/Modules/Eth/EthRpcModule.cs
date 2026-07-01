@@ -926,7 +926,7 @@ public partial class EthRpcModule(
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, HashSet<StorageIndex> storageKeys, BlockParameter? blockParameter)
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
     {
         if (storageKeys.Count > GetProofStorageKeyLimit)
         {
@@ -948,14 +948,7 @@ public partial class EthRpcModule(
             return GetStateFailureResult<AccountProof>(header);
         }
 
-        UInt256[] keys = new UInt256[storageKeys.Count];
-        int keyIndex = 0;
-        foreach (StorageIndex storageKey in storageKeys)
-        {
-            keys[keyIndex++] = storageKey.Value;
-        }
-
-        AccountProofCollector accountProofCollector = new(accountAddress, keys);
+        AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
         return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
     }

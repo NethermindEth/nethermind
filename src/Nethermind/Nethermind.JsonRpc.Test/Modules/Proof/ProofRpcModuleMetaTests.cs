@@ -139,10 +139,10 @@ public class ProofRpcModuleMetaTests
         AccountProofWithMeta withoutStorage = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressB, [], BlockParameter.Earliest).Data;
 
-        HashSet<StorageIndex> storageKeys = [];
+        StorageKeys storageKeys = [];
         for (int i = 0; i < StorageSlotCount; i++)
         {
-            storageKeys.Add(new StorageIndex((UInt256)i));
+            storageKeys.Add((UInt256)i);
         }
         AccountProofWithMeta withStorage = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressB, storageKeys, BlockParameter.Earliest).Data;
@@ -156,10 +156,10 @@ public class ProofRpcModuleMetaTests
     [Test]
     public void Rejects_too_many_storage_keys()
     {
-        HashSet<StorageIndex> storageKeys = [];
+        StorageKeys storageKeys = [];
         for (int i = 0; i <= EthRpcModule.GetProofStorageKeyLimit; i++)
         {
-            storageKeys.Add(new StorageIndex((UInt256)i));
+            storageKeys.Add((UInt256)i);
         }
 
         ResultWrapper<AccountProofWithMeta> result = _proofRpcModule.proof_getProofWithMeta(
