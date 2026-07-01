@@ -82,8 +82,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // The direct-dispatch switch inlines the hot handlers and pays off only for the cancelable
                 // (eth_call/simulation) path, where a few hot contracts run repeatedly and stay in I-cache.
                 // Block processing runs a diverse opcode mix across many contracts, where the switch's
-                // jump-table indirection and code-size pressure regress throughput ~8% versus the plain
-                // function-pointer table; that path takes the table below.
+                // jump-table indirection and code-size pressure measurably regress throughput versus the
+                // plain function-pointer table; that path takes the table below.
                 TCancelable.IsActive;
 #endif
                 // directDispatch folds at compile time, so this specializes into two loop bodies with no runtime branch.
@@ -156,7 +156,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref pc);
                             break;
 #if ZK_EVM
-                        // Hot on the guest's precompile-call loops (~12.5%); not in the curated eth_call set.
+                        // GAS is hot on the guest but absent from mainline's curated eth_call set.
                         case Instruction.GAS:
                             exceptionType = EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
                             break;

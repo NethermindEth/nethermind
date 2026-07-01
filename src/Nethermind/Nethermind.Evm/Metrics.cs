@@ -34,12 +34,6 @@ namespace Nethermind.Evm;
 /// return;</c> guard becomes an unconditional early return, and with
 /// <c>AggressiveInlining</c> the empty bodies are inlined into callers — eliminating both
 /// the call and the atomic write.</para>
-/// <para>The zkVM guest build defines <c>NO_EXEC_METRICS</c> automatically (see
-/// <c>Directory.Build.props</c>), since the guest exports no metrics — no reflection metadata to
-/// read them, and a no-op <c>LocalMetricsFlush</c> — so every execution counter is elided to shed
-/// the atomics from the proof.</para>
-/// <para>Non-execution counters (background-task gauges, gas-price aggregates, <see cref="Metrics.EvmExceptions"/>)
-/// are not gated by this flag and fire unconditionally.</para>
 /// </remarks>
 public readonly struct ExecutionMetricsFlag : IFlag
 {

@@ -45,11 +45,10 @@ public static partial class IReleaseSpecExtensions
         _precompileMaskSpec = spec;
     }
 
-    // Each `spec.IsEipXxxEnabled` is an IReleaseSpec interface dispatch (~3.45% of zkVM
-    // steps), and the getters below are read per-opcode / per-storage-access. The spec is
-    // fork-fixed and monomorphic per block, so resolve the hot flags ONCE per spec into
-    // static slots (single slot: one block = one spec) and have the getters read a cached
-    // bool (reference-compare + field load, no dispatch). Rebuilds if the spec changes.
+    // Each `spec.IsEipXxxEnabled` is an IReleaseSpec interface dispatch, and the getters below are read
+    // per-opcode / per-storage-access. The spec is fork-fixed and monomorphic per block, so resolve the
+    // hot flags ONCE per spec into static slots (single slot: one block = one spec) and have the getters
+    // read a cached bool (reference-compare + field load, no dispatch). Rebuilds if the spec changes.
     // Only profile-hot flags are cached; add others here if profiling shows them hot.
     private static IReleaseSpec? _flagsSpec;
     private static bool _clearEmptyAccountWhenTouched;

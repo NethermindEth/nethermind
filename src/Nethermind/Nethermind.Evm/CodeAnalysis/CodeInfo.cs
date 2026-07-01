@@ -144,8 +144,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public void AnalyzeInBackgroundIfRequired()
     {
-        // No background pass in the single-threaded zkVM guest; ValidateJump builds the
-        // jump bitmap lazily, so code that never jumps skips analysis entirely.
 #if !ZK_EVM
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
