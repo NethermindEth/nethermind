@@ -289,11 +289,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
             }
 
-            if (blockState.Spec.UseTxAccessLists)
-            {
-                worldState.WarmUp(tx.AccessList); // eip-2930
-            }
-
+            // No eager tx.AccessList warmup: the Warmup below already warms the state actually accessed;
+            // loading a (possibly hugely over-declared) EIP-2930 list only warms slots never read.
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");

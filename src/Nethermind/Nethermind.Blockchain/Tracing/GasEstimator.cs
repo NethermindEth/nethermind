@@ -32,7 +32,7 @@ public class GasEstimator(
     public const string InsufficientBalance = TxErrorMessages.InsufficientFundsForTransfer;
 
     /// <summary>Message emitted when the sender cannot cover gas * price + value.</summary>
-    public const string InsufficientFundsForGas = "insufficient funds for gas * price + value";
+    public const string InsufficientFundsForGas = TxErrorMessages.InsufficientFundsForGas;
 
     private const int MaxErrorMargin = 10000;
     private const double BasisPointsDivisor = 10000d;
