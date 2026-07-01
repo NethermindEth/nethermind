@@ -326,7 +326,7 @@ namespace Nethermind.Db
             byte[]? lastKey = null;
             foreach ((byte[] Key, int Version, byte[]? Value) entry in _db)
             {
-                if (lastKey == null || lastKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
+                if (lastKey is null || lastKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
                 {
                     lastKey = entry.Key;
                     yield return entry.Key;

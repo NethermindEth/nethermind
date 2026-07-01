@@ -46,6 +46,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual ulong GetStateGasSpillRefunded(in TSelf gas) => 0;
 
     static abstract void Consume(ref TSelf gas, ulong cost);
+    static virtual bool TryConsume(ref TSelf gas, ulong cost)
+    {
+        if (TSelf.GetRemainingGas(in gas) < cost) return false;
+        TSelf.Consume(ref gas, cost);
+        return true;
+    }
+
     static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
     static abstract void ConsumeCodeDeposit(ref TSelf gas, ulong cost);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);

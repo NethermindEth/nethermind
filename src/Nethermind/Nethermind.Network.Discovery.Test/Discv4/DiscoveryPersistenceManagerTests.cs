@@ -184,7 +184,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
             Node node = new(TestItem.PrivateKeyA.PublicKey, "8.8.8.8", 30304)
             {
-                Enr = enr.EnrString
+                Enr = enr
             };
 
             using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
@@ -211,7 +211,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 NodeRecord? persistedEnr = persistedNode.Enr;
                 Assert.That(persistedNode.IsEnr, Is.True);
                 Assert.That(persistedEnr, Is.Not.Null);
-                Assert.That(persistedEnr!.EnrString, Is.EqualTo(enr.EnrString));
+                Assert.That(persistedEnr!.ToString(), Is.EqualTo(enr.ToString()));
                 Assert.That(persistedNode.NodeId, Is.EqualTo(TestItem.PrivateKeyA.PublicKey));
                 Assert.That(persistedNode.Host, Is.EqualTo("8.8.8.8"));
                 Assert.That(persistedNode.Port, Is.EqualTo(30304));

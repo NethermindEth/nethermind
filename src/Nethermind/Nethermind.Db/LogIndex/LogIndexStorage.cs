@@ -563,7 +563,7 @@ namespace Nethermind.Db.LogIndex
 
                 foreach (TxReceipt receipt in receipts)
                 {
-                    if (receipt.Logs == null)
+                    if (receipt.Logs is null)
                         continue;
 
                     foreach (LogEntry log in receipt.Logs)

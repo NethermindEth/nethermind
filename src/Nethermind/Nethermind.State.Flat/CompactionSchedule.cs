@@ -43,14 +43,14 @@ public sealed class CompactionSchedule : ICompactionSchedule
         return Math.Min(lowestBit, _compactSize);
     }
 
-    public ulong NextFullCompactionAfter(ulong from)
+    public ulong NextFullCompactionAfter(in StateId from)
     {
         if (_compactSize <= 1) return ulong.MaxValue;
-        if (from == ulong.MaxValue) return ulong.MaxValue;
 
-        ulong mod = (from + _offset) % _compactSize;
+        ulong blockNumber = from == StateId.PreGenesis ? 0UL : from.BlockNumber;
+        ulong mod = (blockNumber + _offset) % _compactSize;
         ulong distance = mod == 0 ? _compactSize : _compactSize - mod;
-        return from > ulong.MaxValue - distance ? ulong.MaxValue : from + distance;
+        return blockNumber > ulong.MaxValue - distance ? ulong.MaxValue : blockNumber + distance;
     }
 
     private ulong ResolveOffset(IDb metadataDb, IFlatDbConfig config, ILogger logger)

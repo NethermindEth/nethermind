@@ -172,6 +172,12 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = false;
             }
+            else if (IsPostMergeGenesis(header))
+            {
+                // EIP-3675 chains with chain-spec TTD == 0 are post-merge from genesis.
+                isTerminal = false;
+                isPostMerge = true;
+            }
             else if (header.TotalDifficulty is not null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
             {
                 // In a hive test, a block is requested from EL with total difficulty < TTD. so IsPostMerge does not work.
@@ -211,6 +217,11 @@ namespace Nethermind.Merge.Plugin
 
         public bool IsPostMerge(BlockHeader header) =>
             GetBlockConsensusInfo(header).IsPostMerge;
+
+        // Use chain-spec TTD, not effective spec-provider TTD, so MergeConfig test overrides
+        // do not change genesis classification.
+        private bool IsPostMergeGenesis(BlockHeader header) =>
+            header.IsGenesis && _chainSpec?.Parameters?.TerminalTotalDifficulty?.IsZero == true;
 
         public bool HasEverReachedTerminalBlock() => _hasEverReachedTerminalDifficulty;
 

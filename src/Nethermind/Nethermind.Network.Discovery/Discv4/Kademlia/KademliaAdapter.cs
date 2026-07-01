@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -7,8 +7,10 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NonBlocking;
@@ -25,7 +27,7 @@ public sealed class KademliaAdapter(
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     ILogManager logManager
-) : IKademliaAdapter
+) : KademliaAdapterBase("discv4", logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
 {
     private const int MaxNodesPerNeighborsMsg = 12;
 
@@ -35,7 +37,6 @@ public sealed class KademliaAdapter(
     private readonly TimeSpan _expirationTime = TimeSpan.FromMilliseconds(discoveryConfig.MessageExpiryTime);
     private readonly TimeSpan _waitAfterPongDelay = TimeSpan.FromMilliseconds(discoveryConfig.BondWaitTime);
 
-    private readonly ILogger _logger = logManager.GetClassLogger<KademliaAdapter>();
     private readonly RateLimiter _outboundRateLimiter = new(discoveryConfig.MaxOutgoingMessagePerSecond);
     public IMsgSender? MsgSender { get; set; }
 
@@ -52,13 +53,13 @@ public sealed class KademliaAdapter(
         // If we have received ping, then we have ponged which mean we should be bonded from their point of view
         if (nodeSession is { HasReceivedPing: true, NotTooManyFailure: true }) return true;
 
-        if (_logger.IsTrace) _logger.Trace($"Ensure session for node {node}");
+        if (Logger.IsTrace) Logger.Trace($"Ensure session for node {node}");
         if (!await Ping(node, token)) return false;
         // We send them ping. But expect that eventually they send back another a ping so that we can pong.
         // Give some time for peer to process pong. Such is the logic from geth codebase.
         await Task.Delay(_waitAfterPongDelay, token);
 
-        if (_logger.IsTrace) _logger.Trace($"Node {node} pong sent.");
+        if (Logger.IsTrace) Logger.Trace($"Node {node} pong sent.");
         return true;
     }
 
@@ -200,6 +201,7 @@ public sealed class KademliaAdapter(
         if (!response.HasResponse) return false;
 
         session.OnPongReceived(response.Value.FarAddress ?? receiver.Address);
+        await RefreshRemoteRecordIfNewer(receiver, response.Value.EnrSequence, token);
         return true;
     }
 
@@ -215,6 +217,23 @@ public sealed class KademliaAdapter(
 
         return response.HasResponse ? response.Value : null;
     }
+
+    private Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
+        => advertisedSequence is { } sequence
+            ? base.RefreshRemoteRecordIfNewer(node, sequence, token)
+            : Task.CompletedTask;
+
+    protected override async ValueTask<NodeRecord?> RequestRemoteRecord(Node node, ulong requestedSequence, CancellationToken token)
+    {
+        EnrResponseMsg? response = await SendEnrRequest(node, token);
+        return response?.NodeRecord;
+    }
+
+    protected override bool IsEnrValidForNode(Node node, NodeRecord record)
+        => HasExpectedNodeId(record, node.Id);
+
+    protected override void AddOrRefreshRemoteNode(Node node)
+        => kademlia.Value.AddOrRefresh(node);
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
     {
@@ -233,13 +252,13 @@ public sealed class KademliaAdapter(
     {
         if (!session.HasEndpointProof(node.Address))
         {
-            if (_logger.IsDebug) _logger.Debug($"Rejecting enr request from unbonded peer {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request from unbonded peer {node}");
             return false;
         }
 
         if (msg.Hash is not { } requestHash)
         {
-            if (_logger.IsDebug) _logger.Debug($"Rejecting enr request without packet hash from {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request without packet hash from {node}");
             return false;
         }
 
@@ -251,7 +270,7 @@ public sealed class KademliaAdapter(
     {
         if (!session.HasEndpointProof(node.Address))
         {
-            if (_logger.IsDebug) _logger.Debug($"Rejecting findNode request from unbonded peer {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting findNode request from unbonded peer {node}");
             return false;
         }
 
@@ -274,16 +293,17 @@ public sealed class KademliaAdapter(
 
     private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
     {
-        if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
+        if (Logger.IsTrace) Logger.Trace($"Receive ping from {node}");
         if (ping.Mdc is not { } pingMdc)
         {
-            if (_logger.IsDebug) _logger.Debug($"Rejecting ping without packet hash from {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting ping without packet hash from {node}");
             return;
         }
 
-        PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc);
+        PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc, (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
         session.OnPingReceived();
         await SendMessage(session, msg, token);
+        await RefreshRemoteRecordIfNewer(node, ping.EnrSequence, token);
 
         if (!session.HasReceivedPong)
         {
@@ -297,11 +317,11 @@ public sealed class KademliaAdapter(
     {
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Received msg: {msg}");
+            if (Logger.IsTrace) Logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
             if (msg.FarPublicKey is null || msg.FarAddress is null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid remote endpoint or signature, message: {msg}");
+                if (Logger.IsDebug) Logger.Debug($"Discovery message without a valid remote endpoint or signature, message: {msg}");
                 return;
             }
 
@@ -342,17 +362,17 @@ public sealed class KademliaAdapter(
                     }
                     break;
                 default:
-                    if (_logger.IsError) _logger.Error($"Unsupported msgType: {msgType}");
+                    if (Logger.IsError) Logger.Error($"Unsupported msgType: {msgType}");
                     return;
             }
         }
         catch (TaskCanceledException e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Error during msg handling. {e}");
+            if (Logger.IsDebug) Logger.Debug($"Error during msg handling. {e}");
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error("Error during msg handling", e);
+            if (Logger.IsError) Logger.Error("Error during msg handling", e);
         }
     }
 
@@ -362,7 +382,7 @@ public sealed class KademliaAdapter(
     {
         if (msg.DestinationAddress is null || msg.FarAddress is null)
         {
-            if (_logger.IsError) _logger.Error($"Received a ping message with empty address, message: {msg}");
+            if (Logger.IsError) Logger.Error($"Received a ping message with empty address, message: {msg}");
             return false;
         }
 
@@ -384,6 +404,9 @@ public sealed class KademliaAdapter(
 
         return false;
     }
+
+    private static bool HasExpectedNodeId(NodeRecord record, PublicKey expectedNodeId)
+        => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Equals(expectedNodeId) == true;
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

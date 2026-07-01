@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia;
@@ -145,14 +144,13 @@ public sealed class NodeSource(
     private bool TryCreatePeerCandidate(Node discoveryNode, [NotNullWhen(true)] out Node? peerCandidate)
     {
         peerCandidate = null;
-        if (string.IsNullOrEmpty(discoveryNode.Enr))
+        if (discoveryNode.Enr is not { Signature: not null } record)
         {
             return false;
         }
 
         try
         {
-            NodeRecord record = NodeRecord.FromEnrString(discoveryNode.Enr);
             if (recordFilter.Excludes(record))
             {
                 return false;

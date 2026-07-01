@@ -109,7 +109,6 @@ internal static class StructLogEnvelopeWriter
         string detail = result.ErrorDescription;
         return result.Error switch
         {
-            ErrorType.InsufficientSenderBalance => ReplacePrefix(detail, "insufficient sender balance for transfer", "insufficient funds for transfer"),
             ErrorType.InsufficientMaxFeePerGasForSenderBalance => detail,
             ErrorType.SenderHasDeployedCode => ReplacePrefix(detail, "sender has deployed code", "sender not an eoa"),
             ErrorType.NonceOverflow => ReplacePrefix(detail, "nonce overflow", "nonce has max value"),
