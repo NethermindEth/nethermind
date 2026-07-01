@@ -320,6 +320,64 @@ public class PersistedSnapshotTests
         Assert.That(storageNodes, Is.EqualTo(3), "one storage node per depth tier");
     }
 
+    // A single account with enough storage slots to span many 4 KiB data blocks (and far exceed the
+    // scanner's 32-record linear skip) must round-trip through the streaming scanner: the per-address pass
+    // binary-searches past the slots to the account, and the Slots view re-seeks and streams every slot
+    // exactly once. A larger address after it verifies the scanner bounds the slot range and advances.
+    [Test]
+    public void Scanner_StreamsLargeSlotAccountAcrossBlocks()
+    {
+        const int slotCount = 3000;
+        byte[] bigBytes = new byte[20]; bigBytes[0] = 0x11;
+        byte[] nextBytes = new byte[20]; nextBytes[0] = 0x22;
+        Address big = new(bigBytes);
+        Address next = new(nextBytes);
+
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("large-slots"));
+
+        SnapshotContent content = new();
+        content.Accounts[big] = Build.An.Account.WithBalance(1000).WithNonce(7).TestObject;
+        byte[][] expected = new byte[slotCount + 1][];
+        for (int i = 1; i <= slotCount; i++)
+        {
+            byte[] v = new byte[32];
+            v[30] = (byte)((i >> 8) & 0xFF);
+            v[31] = (byte)(i & 0xFF);
+            expected[i] = v;
+            content.Storages[(big, (UInt256)i)] = new SlotValue(v);
+        }
+        content.Accounts[next] = Build.An.Account.WithBalance(2000).TestObject;
+        byte[] nextSlot = new byte[32]; nextSlot[31] = 0x2A;
+        content.Storages[(next, (UInt256)42)] = new SlotValue(nextSlot);
+
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+
+        Dictionary<Address, (bool HasAccount, UInt256? Balance)> accounts = [];
+        Dictionary<(Address, UInt256), byte[]?> slots = [];
+        using (WholeReadSession session = persisted.BeginWholeReadSession())
+        {
+            WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
+            foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
+            {
+                accounts[e.Address] = (e.HasAccount, e.Account?.Balance);
+                foreach (WholeReadScanner.SlotEntry s in e.Slots)
+                    slots[(e.Address, s.Slot)] = s.Value?.AsReadOnlySpan.ToArray();
+            }
+        }
+
+        Assert.That(accounts[big].HasAccount, Is.True);
+        Assert.That(accounts[big].Balance, Is.EqualTo((UInt256)1000));
+        Assert.That(accounts[next].HasAccount, Is.True);
+        Assert.That(accounts[next].Balance, Is.EqualTo((UInt256)2000));
+        Assert.That(slots.Count, Is.EqualTo(slotCount + 1), "every slot of both addresses streamed exactly once");
+        for (int i = 1; i <= slotCount; i++)
+            Assert.That(slots[(big, (UInt256)i)], Is.EqualTo(expected[i]), $"slot {i}");
+        Assert.That(slots[(next, (UInt256)42)], Is.EqualTo(nextSlot));
+    }
+
     // When a column / sub-tag tier is absent, the enumerators must seek past it gracefully:
     // state nodes only in the top tier, storage nodes only in the fallback tier, and no
     // per-address column at all.

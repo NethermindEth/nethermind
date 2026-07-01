@@ -25,6 +25,8 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
     where TReader : IByteReader<TPin>, allows ref struct
 {
     private readonly long _tableOffset;
+    // Reader-absolute start of the index block, retained so Seek can re-run its ceiling search.
+    private long _indexStart;
     // Index-block cursor: walks (separator → data-block byte offset) records in order, decoding the
     // changed-prefix-coded offsets, to locate each data block. _indexPos == _indexEnd ⇒ no more data blocks.
     private long _indexPos;
@@ -49,6 +51,7 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
             long indexStart = SortedTable.IndexBlockStart(table, footer);
             if (IndexBlockReader.TryReadRecordRange<TReader, TPin>(in reader, indexStart, out long recordsStart, out long recordsEnd))
             {
+                _indexStart = indexStart;
                 _indexPos = indexStart + recordsStart;
                 _indexEnd = indexStart + recordsEnd;
             }
@@ -76,6 +79,38 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         long valueStart = keyStart + suffixLen;
         _value = new Bound(valueStart, rec.ValueLength);
         _pos = valueStart + rec.ValueLength;
+        return true;
+    }
+
+    /// <summary>
+    /// Reposition the cursor so a subsequent forward scan reaches records at or after <paramref name="target"/>.
+    /// Lands the data cursor at the start of the block whose ceiling separator ≥ <paramref name="target"/> and
+    /// resumes the index walk just past that block, so the caller skips within that one block to the exact
+    /// ceiling. Returns <c>false</c> — leaving the cursor exhausted — when the table is empty or every key is
+    /// &lt; <paramref name="target"/>.
+    /// </summary>
+    public bool Seek(scoped in TReader reader, scoped ReadOnlySpan<byte> target)
+    {
+        _pos = _blockEnd = 0; // force MoveNext to pull the sought block; a failure below leaves it exhausted
+        if (_indexEnd == 0) return false; // no valid index (empty/footer-less table)
+
+        Span<byte> sepBuf = stackalloc byte[256];
+        if (!IndexBlockReader.SeekCeiling<TReader, TPin>(in reader, _indexStart, target, sepBuf, out _, out long byteOffset, out long ceilingRecordEnd))
+        {
+            _indexPos = _indexEnd; // every separator < target ⇒ nothing at or after it
+            return false;
+        }
+
+        // Resume the index walk just past the ceiling record; its reconstructed value is this block's offset,
+        // carried over as the running high bytes for the next changed-prefix-coded index record.
+        _indexPos = ceilingRecordEnd;
+        _indexRunningValue = byteOffset;
+
+        long blockStart = _tableOffset + byteOffset;
+        if (!DataBlockReader.TryReadRecordRange<TReader, TPin>(in reader, blockStart, out long recordsStart, out long recordsEnd))
+            return false;
+        _pos = blockStart + recordsStart;
+        _blockEnd = blockStart + recordsEnd;
         return true;
     }
 

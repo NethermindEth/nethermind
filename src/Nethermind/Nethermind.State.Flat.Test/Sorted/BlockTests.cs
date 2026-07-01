@@ -154,7 +154,7 @@ public class BlockTests
     {
         SpanByteReader reader = new(block);
         Span<byte> keyBuf = stackalloc byte[256];
-        if (!IndexBlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, out int keyLen, out long v))
+        if (!IndexBlockReader.SeekCeiling<SpanByteReader, NoOpPin>(in reader, 0, target, keyBuf, out int keyLen, out long v, out _))
         {
             key = [];
             value = 0;

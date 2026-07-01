@@ -59,12 +59,13 @@ internal static class IndexBlockReader
     /// </remarks>
     internal static bool SeekCeiling<TReader, TPin>(scoped in TReader reader, long blockStart,
         scoped ReadOnlySpan<byte> target, scoped Span<byte> keyBuf,
-        out int keyLen, out long byteOffset)
+        out int keyLen, out long byteOffset, out long ceilingRecordEnd)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IByteReader<TPin>, allows ref struct
     {
         keyLen = 0;
         byteOffset = 0;
+        ceilingRecordEnd = 0;
 
         Header header = default;
         if (!reader.TryRead(blockStart, MemoryMarshal.AsBytes(new Span<Header>(ref header)))) return false;
@@ -130,6 +131,9 @@ internal static class IndexBlockReader
             {
                 keyLen = kLen;
                 byteOffset = runningValue;
+                // Index position just past the ceiling record, so a resuming cursor keeps walking the
+                // index from the next record with `runningValue` as its carried-over high bytes.
+                ceilingRecordEnd = valueStart + valChangedLen;
                 return true;
             }
             pos = valueStart + valChangedLen;
