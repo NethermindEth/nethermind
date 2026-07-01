@@ -153,6 +153,9 @@ public sealed class StateDiffRecord : IDisposable
     /// </summary>
     public readonly struct SlotSet(ReadOnlyMemory<byte> rlp, int start, int end)
     {
+        /// <summary>Encoded byte length of the region — an O(1) proxy for how much work the slots represent (no slot count needed).</summary>
+        public int Length => end - start;
+
         public SlotEnumerator GetEnumerator() => new(rlp, start, end);
     }
 

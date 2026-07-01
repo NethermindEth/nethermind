@@ -161,11 +161,17 @@ public sealed class ReplayBlockProcessor(
 
         if (work.Count == 0) return;
 
-        // The opened batches operate on independent tries; ParallelUnbalancedWork load-balances, so no pre-sort.
+        // Independent tries, so process the opened batches concurrently. Schedule the largest regions first
+        // to help balance; the key is the slots' encoded byte length (O(1) — no slot count needed).
         if (work.Count >= MultiThreadThreshold)
+        {
+            work.AsSpan().Sort(static (a, b) => b.Slots.Length.CompareTo(a.Slots.Length));
             ParallelUnbalancedWork.For(0, work.Count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, i => ApplyOneStorage(work[i]));
+        }
         else
+        {
             foreach (StorageWork w in work) ApplyOneStorage(w);
+        }
     }
 
     private static void ApplyOneStorage(StorageWork work)
