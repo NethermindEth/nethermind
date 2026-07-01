@@ -97,6 +97,14 @@ on:
         required: false
         type: boolean
         default: false
+      trace_blocks:
+        description: >-
+          Comma-separated block numbers to profile with dotTrace (e.g. 22360451,22360454). When set,
+          implies dottrace=true, passes the list to the client as NETHERMIND_PROFILE_BLOCKS (so its
+          BlockProfiler plugin brackets each block), and produces one .dtp + one parsed XML per block.
+          Leave empty for whole-run profiling.
+        required: false
+        default: ""
   pull_request:
     types: [labeled]
   push:
@@ -140,6 +148,7 @@ jobs:
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -167,6 +176,7 @@ jobs:
           DISPATCH_RETROSPECTIVE_LAST: ${{ inputs.retrospective_last }}
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
           DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
+          DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
         run: |
           set -euo pipefail
 
@@ -204,6 +214,14 @@ jobs:
             retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
             retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
             dottrace="${DISPATCH_DOTTRACE:-false}"
+            trace_blocks="$(printf '%s' "${DISPATCH_TRACE_BLOCKS:-}" | tr -d '[:space:]')"
+            if [[ -n "${trace_blocks}" ]]; then
+              if ! [[ "${trace_blocks}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+                echo "trace_blocks must be a comma-separated list of block numbers, got '${trace_blocks}'."
+                exit 1
+              fi
+              dottrace="true"   # tracing specific blocks implies dotTrace
+            fi
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -228,6 +246,7 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            trace_blocks=""
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
@@ -243,6 +262,7 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            trace_blocks=""
           fi
 
           # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
@@ -344,6 +364,7 @@ jobs:
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
+            echo "trace_blocks=${trace_blocks}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
             echo "EOF"
@@ -570,6 +591,7 @@ jobs:
           PAYLOAD_SET: ${{ matrix.payload_set }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
@@ -645,6 +667,12 @@ jobs:
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
+
+          # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
+          if [[ -n "${TRACE_BLOCKS:-}" ]]; then
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_env.NETHERMIND_PROFILE_BLOCKS = \"${TRACE_BLOCKS}\"" "${RENDERED_CONFIG_FILE}"
+            echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
+          fi
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
@@ -1727,6 +1755,12 @@ jobs:
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
+
+          # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
+          if [[ -n "${TRACE_BLOCKS:-}" ]]; then
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_env.NETHERMIND_PROFILE_BLOCKS = \"${TRACE_BLOCKS}\"" "${RENDERED_CONFIG_FILE}"
+            echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
+          fi
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
