@@ -233,10 +233,10 @@ namespace Nethermind.Xdc
             if (!TryAdvance(ref _highestSelfMinedRound, round)) return;
 
             // Gate 1: enforce minimum mine period since parent block was produced
-            ulong now = _timestamper.UnixTime.Seconds;
-            ulong mineReadyAt = proposalParent.Timestamp + proposalSpec.MinePeriod;
+            TimeSpan now = TimeSpan.FromSeconds(_timestamper.UnixTime.Seconds);
+            TimeSpan mineReadyAt = TimeSpan.FromSeconds(proposalParent.Timestamp + proposalSpec.MinePeriod);
             if (mineReadyAt > now)
-                await Task.Delay(TimeSpan.FromSeconds(mineReadyAt - now), ct);
+                await Task.Delay(mineReadyAt - now, ct);
 
             if (ct.IsCancellationRequested) return;
 
@@ -246,10 +246,10 @@ namespace Nethermind.Xdc
             bool headHasQc = head.Hash == qc.ProposedBlockInfo.Hash;
             if (!headHasQc)
             {
-                ulong fallbackReadyAt = head.Timestamp + (ulong)proposalSpec.TimeoutPeriod / 2;
-                now = _timestamper.UnixTime.Seconds;
+                TimeSpan fallbackReadyAt = TimeSpan.FromSeconds(head.Timestamp + (ulong)proposalSpec.TimeoutPeriod / 2);
+                now = TimeSpan.FromSeconds(_timestamper.UnixTime.Seconds);
                 if (fallbackReadyAt > now)
-                    await Task.Delay(TimeSpan.FromSeconds(fallbackReadyAt - now), ct);
+                    await Task.Delay(fallbackReadyAt - now, ct);
             }
 
             if (ct.IsCancellationRequested) return;
@@ -269,7 +269,7 @@ namespace Nethermind.Xdc
                 {
                     Round = currentRound,
                     QuorumCertificate = qc,
-                    Timestamp = _timestamper.UnixTime.Seconds
+                    Timestamp = Math.Max(_timestamper.UnixTime.Seconds, parent.Timestamp + spec.MinePeriod)
                 };
 
                 Block? proposedBlock = await _blockBuilder.BuildBlock(parent, null, payloadAttributes, IBlockProducer.Flags.None, ct);
