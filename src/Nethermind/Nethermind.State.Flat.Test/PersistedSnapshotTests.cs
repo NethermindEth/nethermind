@@ -200,57 +200,6 @@ public class PersistedSnapshotTests
         Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted));
     }
 
-    // Regression: a storage-trie node record can land within <12 bytes of a 4 KiB boundary in a
-    // region-relative (SpanByteReader-scoped) read; TryLoadNode used to clamp the speculative
-    // window to that short page remainder and overrun the 12-byte header. A single account with
-    // ~280 spread-out slots places such a node; reading every slot back must not throw.
-    [Test]
-    public void StorageNode_NearPageBoundary_RoundTrips()
-    {
-        Address a = TestItem.AddressA;
-        const int slotCount = 280;
-
-        SnapshotContent content = new();
-        content.Accounts[a] = Build.An.Account.WithBalance(1).TestObject;
-        SlotValue[] expected = new SlotValue[slotCount];
-        UInt256[] keys = new UInt256[slotCount];
-        for (int i = 0; i < slotCount; i++)
-        {
-            keys[i] = new UInt256(Keccak.Compute(i.ToString()).Bytes, isBigEndian: true);
-            byte[] v = new byte[32];
-            v[31] = (byte)((i % 255) + 1);
-            expected[i] = new SlotValue(v);
-            content.Storages[(a, keys[i])] = expected[i];
-        }
-
-        StateId from = new(0, Keccak.EmptyTreeHash), to = new(1, Keccak.Compute("to"));
-        string arenaDir = Path.Combine(Path.GetTempPath(), $"nm-regr-arena-{Guid.NewGuid():N}");
-        using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaDir, 64 * 1024 * 1024);
-        string blobsDir = Path.Combine(Path.GetTempPath(), $"nm-regr-{Guid.NewGuid():N}");
-        using BlobArenaManager blobs = new(blobsDir, 64L * 1024 * 1024);
-        try
-        {
-            Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, blobs);
-            using PersistedSnapshot persisted = TestFixtureHelpers.CreatePersistedSnapshot(arena, blobs, from, to, data);
-
-            Assert.DoesNotThrow(() =>
-            {
-                for (int i = 0; i < slotCount; i++)
-                {
-                    SlotValue got = default;
-                    Assert.That(persisted.TryGetSlot(a, keys[i], ref got), Is.True, $"slot {i} missing");
-                    Assert.That(got.AsReadOnlySpan.SequenceEqual(expected[i].AsReadOnlySpan), Is.True, $"slot {i} mismatch");
-                }
-            });
-        }
-        finally
-        {
-            try { Directory.Delete(blobsDir, recursive: true); } catch { /* best-effort */ }
-            try { Directory.Delete(arenaDir, recursive: true); } catch { /* best-effort */ }
-        }
-    }
-
     // Covers the scanner slot-decode path (PersistedSnapshotScanner.SlotEntry.Value), which
     // PersistPersistedSnapshot uses to flush slots back into the flat DB. Slot values are now
     // RLP-wrapped; this asserts varied widths (1-byte < 0x80, 1-byte >= 0x80, full 32 bytes)

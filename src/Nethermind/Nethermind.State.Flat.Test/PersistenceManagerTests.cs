@@ -40,7 +40,7 @@ public class PersistenceManagerTests
             CompactSize = 16,
             MinReorgDepth = 64,
             MaxInMemoryBaseSnapshotCount = 128 + 32,
-            MaxReorgDepth = 90000,
+            MaxReorgDepth = 256,
             LongFinalityMaxReorgDepth = 90000,
             EnableLongFinality = true
         };
