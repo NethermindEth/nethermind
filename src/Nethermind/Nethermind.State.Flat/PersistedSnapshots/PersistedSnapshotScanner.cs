@@ -231,7 +231,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
         // Resume from the block the per-address pass already walked to for the first slot — no re-seek.
         // Addresses with no slots stay inert (no enumerator).
         private SortedTableEnumerator<TReader, TPin> _inner =
-            hasSlots ? new SortedTableEnumerator<TReader, TPin>(in reader, in slotCursor) : default;
+            hasSlots ? new SortedTableEnumerator<TReader, TPin>(in slotCursor) : default;
         private readonly Address _address = address;
         private readonly bool _active = hasSlots;
 
