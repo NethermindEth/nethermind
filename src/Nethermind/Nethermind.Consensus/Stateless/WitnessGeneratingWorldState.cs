@@ -110,7 +110,7 @@ public class WitnessGeneratingWorldState(
 
         if (_storageSlots.Count > 0)
         {
-            using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
+            using ArrayPoolListRef<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
             foreach (AddressAsKey address in _storageSlots.Keys)
             {
                 PatriciaTrieWitnessGenerator.AccessType access = base.AccountExists(address)
@@ -130,7 +130,7 @@ public class WitnessGeneratingWorldState(
                 ValueHash256 storageRoot = account.StorageRoot;
                 if (storageRoot == Keccak.EmptyTreeHash.ValueHash256) continue;
 
-                using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> slotEntries = new(kvp.Value.Count);
+                using ArrayPoolListRef<PatriciaTrieWitnessGenerator.PathEntry> slotEntries = new(kvp.Value.Count);
                 foreach (UInt256 slot in kvp.Value)
                 {
                     ValueHash256 slotKey = default;
