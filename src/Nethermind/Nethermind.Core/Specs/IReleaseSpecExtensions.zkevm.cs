@@ -54,23 +54,23 @@ public static partial class IReleaseSpecExtensions
     // Only flags found hot in the step profile are cached; every other extension flag still
     // dispatches per call. If a new hot path reads one of those, re-profile and add it here.
     private static IReleaseSpec? _flagsSpec;
-    private static bool _f_clearEmptyAccountWhenTouched;
-    private static bool _f_useHotAndColdStorage;
-    private static bool _f_chargeForTopLevelCreate;
-    private static bool _f_failOnOutOfGasCodeDeposit;
-    private static bool _f_useShanghaiDDosProtection;
-    private static bool _f_useConstantinopleNetGasMetering;
-    private static bool _f_useIstanbulNetGasMetering;
+    private static bool _clearEmptyAccountWhenTouched;
+    private static bool _useHotAndColdStorage;
+    private static bool _chargeForTopLevelCreate;
+    private static bool _failOnOutOfGasCodeDeposit;
+    private static bool _useShanghaiDDosProtection;
+    private static bool _useConstantinopleNetGasMetering;
+    private static bool _useIstanbulNetGasMetering;
 
     private static void BuildSpecFlags(IReleaseSpec spec)
     {
-        _f_clearEmptyAccountWhenTouched = spec.IsEip158Enabled;
-        _f_useHotAndColdStorage = spec.IsEip2929Enabled;
-        _f_chargeForTopLevelCreate = spec.IsEip2Enabled;
-        _f_failOnOutOfGasCodeDeposit = spec.IsEip2Enabled;
-        _f_useShanghaiDDosProtection = spec.IsEip150Enabled;
-        _f_useConstantinopleNetGasMetering = spec.IsEip1283Enabled;
-        _f_useIstanbulNetGasMetering = spec.IsEip2200Enabled;
+        _clearEmptyAccountWhenTouched = spec.IsEip158Enabled;
+        _useHotAndColdStorage = spec.IsEip2929Enabled;
+        _chargeForTopLevelCreate = spec.IsEip2Enabled;
+        _failOnOutOfGasCodeDeposit = spec.IsEip2Enabled;
+        _useShanghaiDDosProtection = spec.IsEip150Enabled;
+        _useConstantinopleNetGasMetering = spec.IsEip1283Enabled;
+        _useIstanbulNetGasMetering = spec.IsEip2200Enabled;
         _flagsSpec = spec;
     }
 
@@ -87,7 +87,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_clearEmptyAccountWhenTouched;
+                return _clearEmptyAccountWhenTouched;
             }
         }
 
@@ -96,7 +96,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_useHotAndColdStorage;
+                return _useHotAndColdStorage;
             }
         }
 
@@ -105,7 +105,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_chargeForTopLevelCreate;
+                return _chargeForTopLevelCreate;
             }
         }
 
@@ -114,7 +114,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_failOnOutOfGasCodeDeposit;
+                return _failOnOutOfGasCodeDeposit;
             }
         }
 
@@ -123,7 +123,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_useShanghaiDDosProtection;
+                return _useShanghaiDDosProtection;
             }
         }
 
@@ -132,7 +132,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_useConstantinopleNetGasMetering;
+                return _useConstantinopleNetGasMetering;
             }
         }
 
@@ -141,7 +141,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_useIstanbulNetGasMetering;
+                return _useIstanbulNetGasMetering;
             }
         }
 
@@ -150,7 +150,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_useConstantinopleNetGasMetering || _f_useIstanbulNetGasMetering;
+                return _useConstantinopleNetGasMetering || _useIstanbulNetGasMetering;
             }
         }
 
@@ -159,7 +159,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_useIstanbulNetGasMetering;
+                return _useIstanbulNetGasMetering;
             }
         }
 
@@ -168,7 +168,7 @@ public static partial class IReleaseSpecExtensions
             get
             {
                 EnsureSpecFlags(spec);
-                return _f_useShanghaiDDosProtection;
+                return _useShanghaiDDosProtection;
             }
         }
 
