@@ -12,13 +12,10 @@ namespace Nethermind.RpcTests.Monitor;
 
 internal class HeadMonitor(Uri nodeUrl, INotifier notifier, ErrorReporter errorReporter)
 {
-    private const string SubscribeRequest =
-        """{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}""";
+    private const string SubscribeRequest = """{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}""";
+    private static readonly TimeSpan CleanReconnectDelay = TimeSpan.FromSeconds(1);
 
     private readonly OutageReporter _outage = new(errorReporter, notifier);
-
-    public static Uri DeriveWsUrl(Uri httpUrl) =>
-        new UriBuilder(httpUrl) { Scheme = httpUrl.Scheme == "https" ? "wss" : "ws" }.Uri;
 
     public async IAsyncEnumerable<BlockInfo> SubscribeAsync([EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -53,7 +50,7 @@ internal class HeadMonitor(Uri nodeUrl, INotifier notifier, ErrorReporter errorR
                         Console.Error.WriteLine("WebSocket disconnected, reconnecting...");
 
                     // reached in case of a clean disconnect
-                    await Task.Delay(TimeSpan.FromSeconds(1), ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                    await Task.Delay(CleanReconnectDelay, ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
                     continue;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -127,4 +124,6 @@ internal class HeadMonitor(Uri nodeUrl, INotifier notifier, ErrorReporter errorR
         ms.Position = 0;
         return await JsonNode.ParseAsync(ms, cancellationToken: ct);
     }
+
+    private static Uri DeriveWsUrl(Uri httpUrl) => new UriBuilder(httpUrl) { Scheme = httpUrl.Scheme == "https" ? "wss" : "ws" }.Uri;
 }

@@ -89,7 +89,6 @@ internal sealed class RpcClient(Uri url) : IDisposable
 
 internal static class RpcClientExtensions
 {
-    // TODO: use decorator instead
     public static async Task<JsonNode> RetrySendAsync(this RpcClient client, JsonNode requestData, CancellationToken ct = default)
     {
         const int maxAttempts = 3;

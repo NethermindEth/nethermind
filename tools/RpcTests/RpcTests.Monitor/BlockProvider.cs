@@ -8,10 +8,6 @@ namespace Nethermind.RpcTests.Monitor;
 /// <summary>
 /// Caches recent blocks by number, populated from the head subscription, falling back to a node request for a missing block.
 /// </summary>
-/// <remarks>
-/// Backed by a ring buffer indexed by <c>number % capacity</c>, so a block seen for an existing
-/// number replaces it (reorgs) and a block <c>capacity</c> ahead evicts the slot.
-/// </remarks>
 internal class BlockProvider(RpcClient client, int capacity = 128)
 {
     private readonly BlockInfo?[] _blocks = new BlockInfo?[capacity];
