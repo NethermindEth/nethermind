@@ -42,6 +42,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
             .Bind<ITxValidator, TxValidator>()
             .AddSingleton<IBlockValidator, BlockValidator>()
+            // Recover senders at ingress so pre-processing validation can evaluate EIP-2780's
+            // sender-dependent intrinsic-gas check without the validator itself doing crypto.
+            .AddDecorator<IBlockValidator, RecoveringBlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
 

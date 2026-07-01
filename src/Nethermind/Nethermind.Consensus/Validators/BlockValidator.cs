@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -35,9 +34,6 @@ public class BlockValidator(
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
-    // Recovers senders before per-tx validation: the EIP-2780/EIP-8038 intrinsic-gas check is
-    // sender-dependent (self-transfers skip the recipient charge), as EELS validates against the sender.
-    private EthereumEcdsa? _ecdsa;
 
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
@@ -317,11 +313,6 @@ public class BlockValidator(
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
         {
             Transaction transaction = transactions[txIndex];
-
-            // Recover the sender if a preprocessor hasn't yet: the intrinsic-gas validation below is
-            // sender-dependent (EIP-2780 self-transfer discount) and downstream recomputes reuse this tx.
-            if (transaction.SenderAddress is null && transaction.Signature is not null)
-                transaction.SenderAddress = (_ecdsa ??= new EthereumEcdsa(_specProvider.ChainId)).RecoverAddress(transaction, !spec.ValidateChainId);
 
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
             if (!isWellFormed)
