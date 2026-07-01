@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Frozen;
 using System.Threading;
 using Nethermind.Core;
@@ -55,8 +54,7 @@ public class BlockForRpc
         LogsBloom = block.Bloom;
         Miner = block.Beneficiary;
         MixHash = block.MixHash;
-        Nonce = new byte[8];
-        BinaryPrimitives.WriteUInt64BigEndian(Nonce, block.Nonce);
+        Nonce = block.Nonce;
 
         if (specProvider is not null)
         {
@@ -130,7 +128,8 @@ public class BlockForRpc
     public Hash256? MixHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public byte[]? Nonce { get; set; }
+    [JsonConverter(typeof(BlockNonceConverter))]
+    public ulong? Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public ulong? Number { get; set; }
