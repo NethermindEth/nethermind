@@ -299,7 +299,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
-                .AddSingleton<INewPayloadWithWitnessHandler, NewPayloadWithWitnessHandler>()
+                .AddSingleton<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>

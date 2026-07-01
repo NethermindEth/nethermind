@@ -19,16 +19,13 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
     WitnessRendezvous rendezvous,
-    ILogManager? logManager = null) : INewPayloadWithWitnessHandler
+    ILogManager? logManager = null) : IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
 
-    public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(
-        ExecutionPayloadV4 executionPayload,
-        Hash256?[] blobVersionedHashes,
-        Hash256? parentBeaconBlockRoot,
-        byte[][]? executionRequests)
+    public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(ExecutionPayloadParams<ExecutionPayloadV4> request)
     {
+        ExecutionPayloadV4 executionPayload = request.ExecutionPayload;
         Hash256? blockHash = executionPayload.BlockHash;
 
         if (blockHash is null)
@@ -38,10 +35,10 @@ public sealed class NewPayloadWithWitnessHandler(
                 "executionPayload.blockHash is required", ErrorCodes.InvalidParams);
         }
 
-        using WitnessRequest request = rendezvous.RequestWitness(blockHash);
+        using WitnessRequest witnessRequest = rendezvous.RequestWitness(blockHash);
 
         using ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
-            executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+            executionPayload, request.BlobVersionedHashes ?? [], request.ParentBeaconBlockRoot, request.ExecutionRequests);
 
         if (statusResult.Result.ResultType != ResultType.Success)
         {
@@ -53,15 +50,17 @@ public sealed class NewPayloadWithWitnessHandler(
         PayloadStatusV1 payloadStatus = statusResult.Data!;
         Witness? witness = null;
 
-        // engine_newPayloadV5 returns only after ProcessOne has run, so the registration is already in
-        // its final state — a synchronous check suffices (the using-Dispose cancels it otherwise).
-        if (request.Task.IsCompletedSuccessfully)
+        // engine_newPayloadV5 returns only after ProcessOne has run. On VALID the processor has already
+        // completed the rendezvous with the captured witness; on any other status the task may still be
+        // pending (cancelled by the using-Dispose below), so awaiting it could block — a completed check
+        // is required, and reading .Result on a completed-successfully task never throws.
+        if (witnessRequest.Task.IsCompletedSuccessfully)
         {
+            Witness? captured = witnessRequest.Task.Result;
             if (payloadStatus.Status == PayloadStatus.Valid)
-                witness = request.Task.Result;
+                witness = captured;
             else
-                // Non-VALID, so we won't return the witness; dispose it to avoid a leak.
-                request.Task.Result?.Dispose();
+                captured?.Dispose(); // stray witness for a non-VALID status: drop it to avoid leaking pooled buffers.
         }
 
         return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(
