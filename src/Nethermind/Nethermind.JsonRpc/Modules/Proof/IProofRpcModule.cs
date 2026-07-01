@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Proof
