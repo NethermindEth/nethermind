@@ -24,6 +24,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.Serialization.Json;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -138,10 +139,10 @@ public class ProofRpcModuleMetaTests
         AccountProofWithMeta withoutStorage = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressB, [], BlockParameter.Earliest).Data;
 
-        HashSet<UInt256> storageKeys = [];
+        HashSet<StorageIndex> storageKeys = [];
         for (int i = 0; i < StorageSlotCount; i++)
         {
-            storageKeys.Add((UInt256)i);
+            storageKeys.Add(new StorageIndex((UInt256)i));
         }
         AccountProofWithMeta withStorage = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressB, storageKeys, BlockParameter.Earliest).Data;
@@ -155,10 +156,10 @@ public class ProofRpcModuleMetaTests
     [Test]
     public void Rejects_too_many_storage_keys()
     {
-        HashSet<UInt256> storageKeys = [];
+        HashSet<StorageIndex> storageKeys = [];
         for (int i = 0; i <= EthRpcModule.GetProofStorageKeyLimit; i++)
         {
-            storageKeys.Add((UInt256)i);
+            storageKeys.Add(new StorageIndex((UInt256)i));
         }
 
         ResultWrapper<AccountProofWithMeta> result = _proofRpcModule.proof_getProofWithMeta(
