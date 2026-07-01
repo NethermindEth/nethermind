@@ -228,36 +228,32 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
     public ref struct SlotEnumerator(TReader reader, Address address, bool hasSlots, SortedTableCursor slotCursor) : IDisposable
     {
         private TReader _reader = reader;
-        // Resume from the block the per-address pass already walked to for the first slot — no re-seek.
-        // Addresses with no slots stay inert (no enumerator).
+        // Resume from the restart the per-address pass captured — no re-seek. Addresses with no slots stay inert.
         private SortedTableEnumerator<TReader, TPin> _inner =
             hasSlots ? new SortedTableEnumerator<TReader, TPin>(in slotCursor) : default;
         private readonly Address _address = address;
         private readonly bool _active = hasSlots;
+        // Exact byte offset of the address's first slot; resume reads the restart-interval prefix only to
+        // rebuild the front-coded key, so those records are skipped by offset rather than by a key comparison.
+        private readonly long _firstSlotPos = slotCursor.FirstRecordPos;
 
         public bool MoveNext()
         {
             if (!_active) return false;
             while (_inner.MoveNext(in _reader))
             {
-                int rel = SlotRelation(_inner.CurrentKey);
-                if (rel < 0) continue;     // row precedes this address's slots (block fill before the seek target)
-                if (rel > 0) return false; // past this address's slots
-                return true;
+                if (_inner.CurrentRecordStart < _firstSlotPos) continue; // restart-interval prefix — key still rebuilds
+                return IsSlotOf(_inner.CurrentKey); // yield while still this address's slot; account / next group stops it
             }
             return false;
         }
 
-        // Orders a row against this address's slot range: &lt;0 before, 0 a slot of the address, &gt;0 past.
-        private readonly int SlotRelation(ReadOnlySpan<byte> key)
-        {
-            if (key[0] != PersistedSnapshotKey.AccountColumn)
-                return key[0] < PersistedSnapshotKey.AccountColumn ? -1 : 1;
-            int addrCmp = PersistedSnapshotKey.PerAddressAddress(key).SequenceCompareTo(_address.Bytes);
-            if (addrCmp != 0) return addrCmp;
-            byte sub = PersistedSnapshotKey.PerAddressSubColumn(key);
-            return sub == PersistedSnapshotKey.SlotSub ? 0 : sub < PersistedSnapshotKey.SlotSub ? -1 : 1;
-        }
+        // The account (sub 0xFF) and the next address's rows (different address) both end the run; the address
+        // check is load-bearing because a following address's slots share this row's column and sub-tag.
+        private readonly bool IsSlotOf(ReadOnlySpan<byte> key) =>
+            key[0] == PersistedSnapshotKey.AccountColumn
+            && PersistedSnapshotKey.PerAddressSubColumn(key) == PersistedSnapshotKey.SlotSub
+            && PersistedSnapshotKey.PerAddressAddress(key).SequenceEqual(_address.Bytes);
 
         public readonly SlotEntry Current =>
             new(_reader, PersistedSnapshotKey.SlotKeyBytes(_inner.CurrentKey), _inner.CurrentValue);

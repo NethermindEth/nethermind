@@ -8,14 +8,18 @@ using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
-/// <summary>Positional snapshot of a mid-scan <see cref="SortedTableEnumerator{TReader,TPin}"/>: the
-/// index-walk state plus the data cursor at the last restart record (a <c>cp == 0</c>, self-contained key)
-/// at or before the captured position. Enough for an independent enumerator to resume forward iteration from
-/// that restart with no reads at all — no footer, no index ceiling search, not even the block header.</summary>
-/// <param name="RestartPos">Reader-absolute byte offset of the restart record to resume from.</param>
-/// <param name="BlockEnd">Reader-absolute end of that record's data block, so the resume knows when to cross.</param>
+/// <summary>Exact positional snapshot of a mid-scan <see cref="SortedTableEnumerator{TReader,TPin}"/>: the
+/// index-walk state, the restart record to resume reading from (a <c>cp == 0</c>, self-contained key), and
+/// the exact record the consumer wants to start at. A resumed enumerator re-reads from <see cref="RestartPos"/>
+/// — rebuilding the front-coded key over the intervening restart interval, none of which needs a disk read
+/// beyond the records themselves — and the consumer skips straight to <see cref="FirstRecordPos"/> by byte
+/// offset, so it needs no key comparison to find its start.</summary>
+/// <param name="RestartPos">Reader-absolute offset of the restart record to resume reading from.</param>
+/// <param name="FirstRecordPos">Reader-absolute offset of the first record the consumer yields.</param>
+/// <param name="BlockEnd">Reader-absolute end of the restart record's data block, so resume knows when to cross.</param>
 public readonly record struct SortedTableCursor(
-    long TableOffset, long IndexPos, long IndexEnd, long IndexRunningValue, long RestartPos, long BlockEnd);
+    long TableOffset, long IndexPos, long IndexEnd, long IndexRunningValue,
+    long RestartPos, long FirstRecordPos, long BlockEnd);
 
 /// <summary>
 /// Forward cursor over a <see cref="SortedTable"/> in ascending key order. Visits the data blocks by
@@ -48,6 +52,8 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
     // Start of the most recent restart record read (a cp == 0, self-contained key). Capture resumes from
     // here so a resumed cursor re-reads at most one restart interval, not the whole block.
     private long _lastRestartPos;
+    // Start of the record most recently read by MoveNext; lets a caller bound a scan by byte offset.
+    private long _recordStart;
     private readonly NativeMemoryList<byte> _keyBuf;
     private int _keyLength;
     private Bound _value;
@@ -71,11 +77,14 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         // _pos == _blockEnd == 0 ⇒ the first MoveNext pulls the first data block from the index.
     }
 
-    /// <summary>Capture the current index-walk position and the last restart record so another enumerator can
-    /// resume from it. Valid only after the first successful <see cref="MoveNext"/> (once a restart — at
-    /// minimum the block start — has been read).</summary>
+    /// <summary>Reader-absolute start of the record most recently returned by <see cref="MoveNext"/>.</summary>
+    public readonly long CurrentRecordStart => _recordStart;
+
+    /// <summary>Capture an exact resume cursor anchored at the current record: resume from the last restart,
+    /// with the consumer starting exactly at the current record. Valid only after the first successful
+    /// <see cref="MoveNext"/> (once a restart — at minimum the block start — has been read).</summary>
     public readonly SortedTableCursor Capture() =>
-        new(_tableOffset, _indexPos, _indexEnd, _indexRunningValue, _lastRestartPos, _blockEnd);
+        new(_tableOffset, _indexPos, _indexEnd, _indexRunningValue, _lastRestartPos, _recordStart, _blockEnd);
 
     /// <summary>
     /// Resume forward iteration from a <see cref="Capture"/>d cursor, starting at its restart record — no reads
@@ -101,10 +110,11 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         while (_pos >= _blockEnd)
             if (!TryAdvanceToNextDataBlock(in reader)) return false;
 
+        _recordStart = _pos;
         Block.DataRecordHeader rec = default;
         if (!reader.TryRead(_pos, MemoryMarshal.AsBytes(new Span<Block.DataRecordHeader>(ref rec)))) return false;
         int cp = rec.CommonPrefix;
-        if (cp == 0) _lastRestartPos = _pos; // restart (block start or RestartInterval boundary): a resumable point
+        if (cp == 0) _lastRestartPos = _recordStart; // restart (block start or RestartInterval boundary): a resumable point
         int suffixLen = rec.SuffixLength;
         long keyStart = _pos + Unsafe.SizeOf<Block.DataRecordHeader>();
         // Front-coded: keep _keyBuf[0..cp) from the previous record, append this record's suffix.
