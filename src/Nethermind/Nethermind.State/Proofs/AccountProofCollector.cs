@@ -91,18 +91,30 @@ namespace Nethermind.State.Proofs
             : this(address, storageKeys.Select(ToKey).ToArray()) { }
 
         public AccountProofCollector(Address? address, IReadOnlyCollection<UInt256> storageKeys)
-            : this(address, ToRawKeys(storageKeys)) { }
-
-        private static byte[][] ToRawKeys(IReadOnlyCollection<UInt256> storageKeys)
         {
-            byte[][] rawKeys = new byte[storageKeys.Count][];
-            int i = 0;
+            _accountProof = new AccountProof
+            {
+                StorageProofs = new StorageProof[storageKeys.Count],
+                Address = _address = address ?? throw new ArgumentNullException(nameof(address))
+            };
+            _fullAccountPath = Nibbles.FromBytes(Keccak.Compute(_address.Bytes).Bytes);
+            _fullStoragePaths = new Nibble[storageKeys.Count][];
+            _storageProofItems = new List<byte[]>[storageKeys.Count];
+
+            byte[] keyBuffer = new byte[32];
+            int j = 0;
             foreach (UInt256 storageKey in storageKeys)
             {
-                rawKeys[i++] = ToKey(storageKey);
+                storageKey.ToBigEndian(keyBuffer);
+                _fullStoragePaths[j] = Nibbles.FromBytes(ValueKeccak.Compute(keyBuffer).Bytes);
+                _storageProofItems[j] = [];
+                _accountProof.StorageProofs![j] = new StorageProof
+                {
+                    Key = keyBuffer.ToHexString(true, true),
+                    Value = Bytes.ZeroByte
+                };
+                j++;
             }
-
-            return rawKeys;
         }
 
         public AccountProof BuildResult()
