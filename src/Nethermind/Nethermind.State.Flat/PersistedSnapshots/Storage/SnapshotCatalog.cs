@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
@@ -14,7 +15,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// <c>(To.BlockNumber, To.StateRoot, depth)</c> where <c>depth = To.BlockNumber - From.BlockNumber</c>
 /// distinguishes entries that share a <c>To</c> across the base/compacted/CompactSized buckets.
 /// </summary>
-public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
+public sealed class SnapshotCatalog([KeyFilter(DbNames.PersistedSnapshotCatalog)] IDb db) : ISnapshotCatalog
 {
     // On-disk entry value, blitted to/from the store. Pack=1 keeps the fields at fixed contiguous byte
     // offsets (fromBlock 0, fromRoot 8, toBlock 40, toRoot 48, arenaId 80, offset 84, size 92, tier 100).
@@ -87,7 +88,7 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
         if (!tier.IsPersisted())
             throw new InvalidOperationException(
                 $"Persisted snapshot catalog entry has non-persisted tier byte {e.Tier} (only Persisted* tiers are ever stored). " +
-                "The persisted_snapshot/ directory has an incompatible or corrupted layout — wipe and resync.");
+                "The persistedSnapshot/ directory has an incompatible or corrupted layout — wipe and resync.");
 
         return new CatalogEntry(
             new StateId((ulong)e.FromBlock, e.FromRoot),

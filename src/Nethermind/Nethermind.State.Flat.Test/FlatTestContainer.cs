@@ -88,10 +88,10 @@ internal sealed class FlatTestContainer : IDisposable
             // The module sizes the blob arena off ArenaFileSizeBytes (shared with the trie-RLP arena);
             // tests size the two independently, so override the blob arena's file size.
             .AddSingleton<BlobArenaManager, IInitConfig>(initConfig =>
-                new BlobArenaManager(Path.Combine(initConfig.BaseDbPath, "persisted_snapshot", "blob"), blobFileSizeBytes))
-            // Config defaults to EnableLongFinality=false, which makes the module swap in the Null
-            // catalog/loader. These fixtures exercise the real persisted tier, so force the real catalog
-            // back (last-registration wins); the real loader is reached via concrete resolves below.
+                new BlobArenaManager(Path.Combine(initConfig.BaseDbPath, "persistedSnapshot", "blob"), blobFileSizeBytes))
+            // These fixtures exercise the real persisted tier. Should a caller's config disable long
+            // finality the module swaps in the Null catalog/loader, so force the real catalog back
+            // (last-registration wins); the real loader is reached via concrete resolves below.
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>());
 
         configure?.Invoke(_builder);

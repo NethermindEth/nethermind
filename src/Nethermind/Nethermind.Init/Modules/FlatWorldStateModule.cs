@@ -62,19 +62,18 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IPersistenceManager, PersistenceManager>()
             .AddSingleton<IArenaManager, IFlatDbConfig, IInitConfig, ILogManager>((cfg, initConfig, logManager) =>
             {
-                string basePath = Path.Combine(initConfig.BaseDbPath, "persisted_snapshot");
+                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
                 return new ArenaManager(Path.Combine(basePath, "arena"), cfg, logManager);
             })
             .AddSingleton<BlobArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
             {
-                string basePath = Path.Combine(initConfig.BaseDbPath, "persisted_snapshot");
+                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
                 return new BlobArenaManager(
                     Path.Combine(basePath, "blob"),
                     cfg.ArenaFileSizeBytes);
             })
             .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
-            // Registered after ISnapshotRepository so DI disposes it first.
             .AddSingleton<IPersistedSnapshotLoader, PersistedSnapshotLoader>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
@@ -92,16 +91,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-            // Persisted snapshot catalog: dedicated RocksDB co-located with the arena/blob files it
-            // indexes under <BaseDbPath>/persisted_snapshot/catalog/. Wiping persisted_snapshot/
-            // therefore wipes the catalog alongside the data.
             .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx => ctx
                 .Resolve<IDbFactory>()
                 .CreateDb(new DbSettings(
                     nameof(DbNames.PersistedSnapshotCatalog),
-                    Path.Combine("persisted_snapshot", "catalog"))))
-            .AddSingleton<SnapshotCatalog>(ctx =>
-                new SnapshotCatalog(ctx.ResolveKeyed<IDb>(DbNames.PersistedSnapshotCatalog)))
+                    Path.Combine("persistedSnapshot", "catalog"))))
+            .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
@@ -131,12 +126,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             })
             ;
 
-        // EnableLongFinality off: inert the whole persisted tier. The Null loader skips loading any
-        // on-disk tier at startup and never converts in-memory snapshots into it; the Null catalog keeps
-        // it empty (nothing recorded or loaded); the Null compactor runs no background compaction. The
-        // conversion paths in PersistenceManager.DetermineSnapshotAction are also gated on this flag.
-        // SnapshotRepository still constructs its arena/blob/catalog stores under
-        // `<data-dir>/persisted_snapshot/`, but they stay empty and unread.
         if (!flatDbConfig.EnableLongFinality)
         {
             builder

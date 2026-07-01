@@ -134,7 +134,8 @@ internal static class DataBlockReader
             if (!reader.TryRead(pos, MemoryMarshal.AsBytes(new Span<Block.DataRecordHeader>(ref rec)))) return false;
             int cp = rec.CommonPrefix;
             int suffixLen = rec.SuffixLength;
-            if (cp + suffixLen > keyBuf.Length) return false; // corrupt/torn record: key longer than the search buffer ⇒ miss
+            if (cp + suffixLen > keyBuf.Length)
+                SortedTable.ThrowCorrupt($"data record at byte {pos} declares key length {cp}+{suffixLen} exceeding the {keyBuf.Length}-byte reader buffer");
             long keyStart = pos + Unsafe.SizeOf<Block.DataRecordHeader>();
             if (!reader.TryRead(keyStart, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
             int kLen = cp + suffixLen;

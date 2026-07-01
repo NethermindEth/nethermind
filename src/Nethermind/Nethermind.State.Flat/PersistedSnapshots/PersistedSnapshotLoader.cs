@@ -124,7 +124,7 @@ public sealed class PersistedSnapshotLoader(
             reservation.Dispose();
             throw new InvalidOperationException(
                 $"Persisted snapshot format mismatch: on-disk v{onDisk}, runtime expects v{SortedTable.FormatVersion}. " +
-                "The persisted_snapshot/ directory has an incompatible layout — wipe and resync.");
+                "The persistedSnapshot/ directory has an incompatible layout — wipe and resync.");
         }
 
         // The ctor walks its own ref_ids metadata and leases each blob arena file (rolling back on
@@ -193,22 +193,12 @@ public sealed class PersistedSnapshotLoader(
     /// <inheritdoc/>
     public void ConvertAndRegister(Snapshot snapshot)
     {
-        // One unified bloom covering account/slot/SD keys + state-trie + storage-trie paths.
-        // Sized as the union of both expected key counts at the configured bits-per-key.
-        BloomFilter bloom;
-        if (BloomEnabled)
-        {
-            long capacity = (long)snapshot.AccountsCount
-                          + snapshot.Content.SelfDestructedStorageAddresses.Count
-                          + 2L * snapshot.StoragesCount
-                          + snapshot.StateNodesCount
-                          + snapshot.StorageNodesCount;
-            bloom = new BloomFilter(Math.Max(capacity, 1), _bloomBitsPerKey);
-        }
-        else
-        {
-            bloom = BloomFilter.AlwaysTrue();
-        }
+        // One unified bloom covering account/slot/SD keys + state-trie + storage-trie paths. Base
+        // snapshots are always sub-CompactSize and read-cold after compaction, so they skip a
+        // capacity-sized bloom: pass a minimal single-cache-line filter the builder still populates
+        // (keeping Bloom.Count accurate for the wider merge that later consumes this base). Reads stay
+        // correct — the bloom is only a skip filter, so a saturated tiny one just forgoes the skip.
+        BloomFilter bloom = BloomEnabled ? new BloomFilter(1, _bloomBitsPerKey) : BloomFilter.AlwaysTrue();
 
         long estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
 

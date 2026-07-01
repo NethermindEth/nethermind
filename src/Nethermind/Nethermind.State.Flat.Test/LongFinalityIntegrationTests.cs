@@ -19,6 +19,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -161,8 +162,8 @@ public class LongFinalityIntegrationTests
         // referenced blob file with PersistOnShutdown before tearing down the managers,
         // so both file kinds must survive on disk for the catalog to re-bind in session 2.
         // Split assertions so a missing flag on one side fingerprints which side regressed.
-        string arenaDir = Path.Combine(_testDir, "persisted_snapshot", "arena");
-        string blobDir = Path.Combine(_testDir, "persisted_snapshot", "blob");
+        string arenaDir = Path.Combine(_testDir, "persistedSnapshot", "arena");
+        string blobDir = Path.Combine(_testDir, "persistedSnapshot", "blob");
         // PersistedBase metadata lives in the small-arena pool (sub-CompactSize tier).
         Assert.That(Directory.GetFiles(arenaDir, "small_arena_*.bin"), Is.Not.Empty,
             "arena files were deleted on Dispose — PersistOnShutdown flag did not propagate to ArenaFile");
@@ -383,11 +384,146 @@ public class LongFinalityIntegrationTests
         persisted.Dispose();
     }
 
+    // A settable finalized-state provider so a test can park finality at an arbitrary block/root.
+    private sealed class SettableFinalizedProvider : IFinalizedStateProvider
+    {
+        private readonly System.Collections.Generic.Dictionary<ulong, Hash256> _roots = [];
+        public ulong FinalizedBlockNumber { get; set; }
+        public void SetRoot(ulong block, Hash256 root) => _roots[block] = root;
+        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => _roots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+    }
+
+    // A real PersistenceManager over the container's real repository, so DetermineSnapshotAction runs its
+    // actual persist/convert decision logic against on-disk-backed state.
+    private static PersistenceManager BuildManager(FlatTestContainer tier, IFinalizedStateProvider finalized, StateId persistedState)
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persistedState);
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        return new PersistenceManager(
+            tier.Config,
+            ScheduleHelper.CreateWithOffset(tier.Config, 0),
+            finalized,
+            persistence,
+            tier.Repository,
+            LimboLogs.Instance,
+            Substitute.For<IPersistedSnapshotCompactor>(),
+            tier.Loader,
+            Substitute.For<IProcessExitSource>());
+    }
+
+    private static StateId AddInMemoryBase(FlatTestContainer tier, StateId from, ulong toBlock)
+    {
+        StateId to = new(toBlock, Keccak.Compute($"s{toBlock}"));
+        Snapshot snap = tier.ResourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        snap.Content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)toBlock).TestObject;
+        tier.Repository.TryAdd(snap, SnapshotTier.InMemoryBase);
+        tier.Repository.AddStateId(to);
+        return to;
+    }
+
+    [Test]
+    public void MaxInMemoryBaseSnapshotCount_GatesConversionToPersistedTier()
+    {
+        // Long finality on; finality parked at genesis and depth far below the backstop, so neither
+        // Phase-1 path fires — only the MaxInMemoryBaseSnapshotCount gate decides Phase-2 conversion.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 64,
+            MaxInMemoryBaseSnapshotCount = 4,
+            LongFinalityMaxReorgDepth = 90000,
+            EnableLongFinality = true
+        };
+        using FlatTestContainer tier = new(config: config);
+        StateId block0 = new(0, Keccak.EmptyTreeHash);
+        SettableFinalizedProvider finalized = new(); // genesis → Phase-1 finalized trigger never fires
+        using PersistenceManager pm = BuildManager(tier, finalized, block0);
+
+        StateId prev = block0;
+        for (ulong b = 1; b <= 4; b++) prev = AddInMemoryBase(tier, prev, b);
+        // SnapshotCount == MaxInMemoryBaseSnapshotCount → conversion still gated off.
+        (_, _, PersistenceManager.ConversionCandidate? atThreshold) = pm.DetermineSnapshotAction(prev);
+        Assert.That(atThreshold, Is.Null, "conversion must not start at or below MaxInMemoryBaseSnapshotCount");
+
+        prev = AddInMemoryBase(tier, prev, 5); // one over the threshold
+        (_, _, PersistenceManager.ConversionCandidate? overThreshold) = pm.DetermineSnapshotAction(prev);
+        Assert.That(overThreshold, Is.Not.Null, "conversion must start once past MaxInMemoryBaseSnapshotCount");
+    }
+
+    [Test]
+    public void LongFinalityMaxReorgDepth_TriggersForcePersistBackstop()
+    {
+        // Backstop = max(LongFinalityMaxReorgDepth, MinReorgDepth + CompactSize) = max(100, 24) = 100, so
+        // LongFinalityMaxReorgDepth is the deciding threshold. depth comes from the DetermineSnapshotAction
+        // argument, so one reachable in-memory base is enough for the forced walk to find a chunk.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 8,
+            MaxInMemoryBaseSnapshotCount = 100000, // high → Phase-2 conversion never fires
+            LongFinalityMaxReorgDepth = 100,
+            EnableLongFinality = true
+        };
+        using FlatTestContainer tier = new(config: config);
+        StateId block0 = new(0, Keccak.EmptyTreeHash);
+        AddInMemoryBase(tier, block0, 1);
+        SettableFinalizedProvider finalized = new(); // genesis → Phase-1 finalized trigger never fires
+        using PersistenceManager pm = BuildManager(tier, finalized, block0);
+
+        (_, Snapshot? atBackstop, _) = pm.DetermineSnapshotAction(new StateId(100, Keccak.Compute("h100")));
+        atBackstop?.Dispose();
+        Assert.That(atBackstop, Is.Null, "depth at LongFinalityMaxReorgDepth must not force-persist yet");
+
+        (_, Snapshot? pastBackstop, _) = pm.DetermineSnapshotAction(new StateId(101, Keccak.Compute("h101")));
+        Assert.That(pastBackstop, Is.Not.Null, "depth beyond LongFinalityMaxReorgDepth must force-persist");
+        Assert.That(pastBackstop!.From, Is.EqualTo(block0));
+        pastBackstop.Dispose();
+    }
+
+    [Test]
+    public void FinalizedBoundary_PersistsWithinLongFinalityRange()
+    {
+        // A finalized compaction boundary well inside the long-finality window (depth << backstop) must
+        // still drive finalized persistence from the persisted base rather than waiting for the backstop.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 4,
+            MinReorgDepth = 2,
+            MaxInMemoryBaseSnapshotCount = 100000,
+            LongFinalityMaxReorgDepth = 90000,
+            EnableLongFinality = true
+        };
+        using FlatTestContainer tier = new(config: config);
+        StateId block0 = new(0, Keccak.EmptyTreeHash);
+
+        StateId prev = block0;
+        StateId at4 = default;
+        for (ulong b = 1; b <= 4; b++)
+        {
+            prev = AddInMemoryBase(tier, prev, b);
+            if (b == 4) at4 = prev;
+        }
+
+        SettableFinalizedProvider finalized = new() { FinalizedBlockNumber = 4 };
+        finalized.SetRoot(4, new Hash256(at4.StateRoot.Bytes));
+        using PersistenceManager pm = BuildManager(tier, finalized, block0);
+
+        // Depth 4 is far inside LongFinalityMaxReorgDepth (90000); the finalized boundary at block 4 still
+        // triggers Phase-1 persistence starting from the persisted base.
+        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(prev);
+        Assert.That(toPersist, Is.Not.Null, "finalized boundary within the long-finality window must still persist");
+        Assert.That(toPersist!.From, Is.EqualTo(block0));
+        toPersist.Dispose();
+    }
+
     [Test]
     public void Configuration_DefaultValues()
     {
         FlatDbConfig config = new();
-        Assert.That(config.EnableLongFinality, Is.False);
+        Assert.That(config.EnableLongFinality, Is.True);
         Assert.That(config.MaxReorgDepth, Is.EqualTo(256));
         Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(90000));
         Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));

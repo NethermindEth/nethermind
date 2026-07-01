@@ -108,9 +108,11 @@ public abstract class SmallRefCountingDisposable(int initialCount = 1) : IDispos
             return;
         }
 
+        // Only the thread that won the exclusive 1 -> 0 decrement above reaches here, and nothing can move
+        // _leases off 0 afterwards (a concurrent acquire refuses at 0, a concurrent release throws
+        // over-disposed), so this CAS always succeeds and CleanUp runs exactly once — no double dispose.
         if (Interlocked.CompareExchange(ref _leases, Disposing, NoAccessors) == NoAccessors)
         {
-            // set to disposed by this Release
             CleanUp();
         }
 

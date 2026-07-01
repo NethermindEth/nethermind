@@ -89,11 +89,11 @@ public class SortedTableTests
     }
 
     // A torn/corrupt data record whose common-prefix-length byte exceeds the reader's 256-byte key buffer
-    // must degrade to a clean miss, not throw out of a normal lookup. Regression for the previously
-    // unguarded keyBuf.Slice(cp, suffixLen) in DataBlockReader.SeekCeiling, which would have thrown
-    // ArgumentOutOfRangeException when cp + suffixLen > keyBuf.Length on a power-loss-torn table.
+    // must fail loudly with a clear corruption message, not silently degrade to a miss (which would surface
+    // downstream as wrong state). Guards keyBuf.Slice(cp, suffixLen) in DataBlockReader.SeekCeiling against
+    // cp + suffixLen > keyBuf.Length on a power-loss-torn table.
     [Test]
-    public void Corrupt_common_prefix_length_byte_returns_miss_not_throw()
+    public void Corrupt_common_prefix_length_byte_throws_clear_message()
     {
         (byte[] Key, byte[] Value)[] entries = [(Bytes.FromHexString("abcdef"), Bytes.FromHexString("1234"))];
         byte[] bytes = BuildTable(entries);
@@ -106,8 +106,8 @@ public class SortedTableTests
         int firstRecord = 1 + 2 * sizeof(ushort) + numRestarts * sizeof(ushort);
         bytes[firstRecord] = 0xFF; // cp
 
-        // Before the guard this threw ArgumentOutOfRangeException out of the read; now it is a clean miss.
-        Assert.That(Seek(bytes, entries[0].Key, out _), Is.False);
+        Assert.That(() => Seek(bytes, entries[0].Key, out _),
+            Throws.InvalidOperationException.With.Message.Contains("Corrupt persisted-snapshot SortedTable"));
     }
 
     [Test]

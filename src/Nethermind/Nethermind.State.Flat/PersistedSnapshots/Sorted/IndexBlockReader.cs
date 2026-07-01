@@ -112,8 +112,10 @@ internal static class IndexBlockReader
             int cp = rec.CommonPrefix;
             int suffixLen = rec.SuffixLength;
             int valChangedLen = rec.ValueChangedLength;
-            if (valChangedLen > 6) return false; // > u48 ⇒ corrupt
-            if (cp + suffixLen > keyBuf.Length) return false; // corrupt/torn record: key longer than the search buffer ⇒ miss
+            if (valChangedLen > 6)
+                SortedTable.ThrowCorrupt($"index record at byte {pos} declares value-changed length {valChangedLen} exceeding the u48 maximum of 6");
+            if (cp + suffixLen > keyBuf.Length)
+                SortedTable.ThrowCorrupt($"index record at byte {pos} declares key length {cp}+{suffixLen} exceeding the {keyBuf.Length}-byte reader buffer");
 
             long keyStart = pos + Unsafe.SizeOf<Block.IndexRecordHeader>();
             if (!reader.TryRead(keyStart, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.State.Flat.Io;
 
@@ -97,4 +98,12 @@ internal static class SortedTable
         footer = new Footer(indexOffset);
         return true;
     }
+
+    /// <summary>Signals unrecoverable corruption in an on-disk table — an impossible length or offset read
+    /// off a torn/malformed record. Loud by design: a persisted-snapshot read fails fast here rather than
+    /// silently returning a miss, which would surface downstream as wrong state.</summary>
+    [DoesNotReturn]
+    internal static void ThrowCorrupt(string detail) =>
+        throw new InvalidOperationException(
+            $"Corrupt persisted-snapshot SortedTable: {detail}. The persistedSnapshot/ directory is corrupted — wipe and resync.");
 }

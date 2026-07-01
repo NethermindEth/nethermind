@@ -24,7 +24,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;
     public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
-    public bool EnableLongFinality { get; set; } = false;
+    public bool EnableLongFinality { get; set; } = true;
     public ulong LongFinalityMaxReorgDepth { get; set; } = 90000;
     public int MaxInMemoryBaseSnapshotCount { get; set; } = 128;
     public long ArenaFileSizeBytes { get; set; } = 1.GiB;

@@ -314,19 +314,26 @@ public class PersistedSnapshotCompactor(
                     bloomCapacity += snapshots[i].Bloom.Count;
             }
 
-            // Bloom-disabled or empty-capacity case uses an AlwaysTrue sentinel so the
-            // downstream AddCompactedSnapshot receives a non-null bloom uniformly.
-            BloomFilter mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
-                ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
-                : BloomFilter.AlwaysTrue();
             // A non-CompactSized merge at a large-compaction boundary spans >CompactSize — its own tier
             // so the assemble walk can prefer it as the widest skip-pointer. Computed up front so the
-            // sub-CompactSize tier (PersistedSmallCompacted) lands in the separate small-arena pool.
+            // sub-CompactSize tier (PersistedSmallCompacted) lands in the separate small-arena pool and
+            // takes the tiny bloom below.
             SnapshotTier tier = isCompactSized
                 ? SnapshotTier.PersistedCompactSized
                 : _schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber)
                     ? SnapshotTier.PersistedLargeCompacted
                     : SnapshotTier.PersistedSmallCompacted;
+
+            // Sub-CompactSize intermediates (PersistedSmallCompacted) are read-cold and short-lived, so
+            // they skip a capacity-sized bloom and take a minimal single-cache-line filter the merge still
+            // populates (keeping Bloom.Count accurate for a wider merge that later consumes them). The
+            // CompactSized and LargeCompacted tiers keep the real sized bloom. Bloom-disabled or empty
+            // capacity falls back to the AlwaysTrue sentinel so the builder always gets a non-null bloom.
+            BloomFilter mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
+                ? (tier == SnapshotTier.PersistedSmallCompacted
+                    ? new BloomFilter(1, _bloomBitsPerKey)
+                    : new BloomFilter(bloomCapacity, _bloomBitsPerKey))
+                : BloomFilter.AlwaysTrue();
 
             SnapshotLocation location;
             ArenaReservation reservation;

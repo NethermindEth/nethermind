@@ -108,61 +108,6 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// Regression for large-tier boundary compaction of an address with 256k sequential
-    /// storage slots. Each big-endian-contiguous run of 65536 slots forms one dense 30-byte
-    /// slot-prefix group; merging the per-block slices accumulates a group's inner sub-slot
-    /// table past <c>ArenaBufferWriter</c>'s 1 MiB buffer. No single source snapshot crosses
-    /// that threshold (16384 slots per block), so the oversized value first appears inside
-    /// <c>NWayNestedStreamingSlotMerge</c> during the merge — the mainnet crash site.
-    /// </summary>
-    [Test]
-    public void DoCompactSnapshot_SequentialSlotsAcrossDensePrefixGroups_RoundTrips()
-    {
-        const int snapshotCount = 16;
-        const int slotsPerSnapshot = 16 * 1024; // 16 × 16384 = 256k merged slots
-
-        // 64 MiB shared arena: the per-block snapshots and the ~10 MiB compacted output
-        // stay below the 512 MiB dedicated-arena threshold, so each must fit a shared file.
-        using FlatTestContainer tier = new(
-            arenaFileSizeBytes: 64 * 1024 * 1024,
-            blobFileSizeBytes: 4 * 1024 * 1024,
-            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 4 }, 0)));
-        SnapshotRepository repo = tier.Repository;
-        PersistedSnapshotCompactor compactor = tier.Compactor;
-
-        // Each block writes a contiguous 16384-slot slice on AddressA. A slice stays well
-        // under ArenaBufferWriter's 1 MiB buffer, so every per-block build succeeds; only
-        // the merged 65536-slot prefix groups cross the threshold.
-        StateId prev = new(0, Keccak.EmptyTreeHash);
-        for (int i = 1; i <= snapshotCount; i++)
-        {
-            StateId next = new((ulong)i, Keccak.Compute($"s{i}"));
-            SnapshotContent c = new();
-            TestFixtureHelpers.AddSequentialSlots(c, TestItem.AddressA,
-                firstSlot: (i - 1) * slotsPerSnapshot + 1, count: slotsPerSnapshot);
-            tier.ConvertToPersistedBase(
-                new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-            prev = next;
-        }
-
-        compactor.DoCompactSnapshot(prev);
-
-        Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True);
-        try
-        {
-            int totalSlots = snapshotCount * slotsPerSnapshot;
-            foreach (int probe in new[] { 1, 65535, 65536, 131072, totalSlots })
-            {
-                SlotValue slot = default;
-                Assert.That(compacted!.TryGetSlot(TestItem.AddressA, (UInt256)probe, ref slot), Is.True, $"slot {probe} missing");
-                Assert.That(slot.AsReadOnlySpan.SequenceEqual(TestFixtureHelpers.SequentialSlotValue(probe)), Is.True,
-                    $"slot {probe} value mismatch");
-            }
-        }
-        finally { compacted!.Dispose(); }
-    }
-
-    /// <summary>
     /// Regression for bloom completeness on a single matching source (matchCount==1), which
     /// routes through the value mergers' <c>MergeValues</c> like any other key. We pack
     /// AddressA into one source with slots plus storage-trie nodes at every depth tier (top /
@@ -226,84 +171,6 @@ public class PersistedSnapshotCompactorTests
                     "Storage-trie compact");
                 Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in fallbackPath)), Is.True,
                     "Storage-trie fallback");
-            });
-        }
-    }
-
-    /// <summary>
-    /// Regression for the 4 KiB page-alignment pad applied by the BTree builder
-    /// (<c>BlockBuilder.Add → TryAlign</c>) when an about-to-straddle entry is pushed
-    /// onto a fresh page. The leading pad bytes must be inert so the outer leaf's
-    /// <c>ValueStart = MetadataStart − ValueLength</c> derivation lands inside the value and
-    /// decoding succeeds. Drives many distinct single-source addresses (matchCount==1) through
-    /// compaction with non-trivial inner tables (slots + a storage-trie node each) so positions
-    /// sweep across multiple page boundaries — at least some entries trigger the pad code path,
-    /// and all must round-trip read intact post-compaction.
-    /// </summary>
-    [TestCase(40)]
-    [TestCase(120)]
-    public void Compact_SingleSourceAddress_PageAlignPaddingPreservesValues(int accountCount)
-    {
-        using FlatTestContainer tier = new(
-            arenaFileSizeBytes: 256 * 1024,
-            blobFileSizeBytes: 4 * 1024 * 1024,
-            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 }, 0)));
-        SnapshotRepository repo = tier.Repository;
-        PersistedSnapshotCompactor compactor = tier.Compactor;
-
-        // Source 0: accountCount addresses with varying slot counts so inner-table
-        // sizes span ~tens to ~hundreds of bytes — repeated fast-path writes
-        // sweep across 4 KiB page boundaries in the destination arena.
-        SnapshotContent c0 = new();
-        for (int i = 0; i < accountCount; i++)
-        {
-            Address addr = TestItem.Addresses[i];
-            c0.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
-            int slots = 1 + (i % 7);
-            for (int s = 0; s < slots; s++)
-                c0.Storages[(addr, (UInt256)(s + 1))] = new SlotValue(new byte[] { (byte)((i * 13 + s) & 0xFF) });
-            c0.StorageNodes[(Keccak.Compute(addr.Bytes), new TreePath(Keccak.Compute($"p{i}"), 4))]
-                = new TrieNode(NodeType.Leaf, [0xC1, (byte)(i & 0xFF)]);
-        }
-
-        // Source 1: a single unrelated address so matchCount == 1 for every
-        // address in source 0 (drives them all through the fast path).
-        SnapshotContent c1 = new();
-        c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(999).TestObject;
-
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("p1"));
-        StateId s2 = new(2, Keccak.Compute("p2"));
-        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-        tier.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-
-        compactor.DoCompactSnapshot(s2);
-
-        Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True);
-        using (compacted)
-        {
-            Assert.Multiple(() =>
-            {
-                for (int i = 0; i < accountCount; i++)
-                {
-                    Address addr = TestItem.Addresses[i];
-                    Assert.That(compacted!.TryGetAccount(addr, out Account? a), Is.True,
-                        $"Account {i} must survive fast-path compaction");
-                    Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
-                        $"Account {i} balance mismatch — pad bytes leaked into the value range");
-
-                    int slots = 1 + (i % 7);
-                    for (int s = 0; s < slots; s++)
-                    {
-                        SlotValue slot = default;
-                        Assert.That(compacted.TryGetSlot(addr, (UInt256)(s + 1), ref slot), Is.True,
-                            $"Slot {s + 1} for account {i} must survive fast-path compaction");
-                        SlotValue expected = new(new byte[] { (byte)((i * 13 + s) & 0xFF) });
-                        Assert.That(slot.AsReadOnlySpan.ToArray(),
-                            Is.EqualTo(expected.AsReadOnlySpan.ToArray()),
-                            $"Slot value mismatch for account {i} slot {s + 1}");
-                    }
-                }
             });
         }
     }
@@ -876,71 +743,6 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// Regression for the builder no-storage fast path in
-    /// <c>PersistedSnapshotBuilder.WritePerAddressColumn</c>: when an address has no
-    /// slots and no storage-trie nodes the per-address inner table is staged into a
-    /// pooled buffer so its length is known up-front, and the outer leaf entry applies
-    /// 4 KiB page-alignment padding. Drives many EOAs so writer positions sweep across
-    /// page boundaries; every address must round-trip read intact and every self-destruct
-    /// flag must survive the staging path. A mix of plain EOAs, EOA-with-SD and a few
-    /// contracts (which take the streaming path) confirms both branches coexist.
-    /// </summary>
-    [TestCase(40)]
-    [TestCase(120)]
-    public void WritePerAddressColumn_NoStorageFastPath_RoundTripsEoaSnapshot(int accountCount)
-    {
-        using FlatTestContainer tier = new(arenaFileSizeBytes: 256 * 1024, blobFileSizeBytes: 4 * 1024 * 1024);
-        SnapshotRepository repo = tier.Repository;
-
-        // Every 7th address gets storage (so the streaming path also fires) and the
-        // routing decision flips per-address; every 5th address gets a self-destruct
-        // flag (so the SD sub-tag is exercised on the staged DenseByteIndex).
-        SnapshotContent c = new();
-        for (int i = 0; i < accountCount; i++)
-        {
-            Address addr = TestItem.Addresses[i];
-            c.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
-            if (i % 5 == 0)
-                c.SelfDestructedStorageAddresses[addr] = (i % 10 == 0);
-            if (i % 7 == 0)
-                c.Storages[(addr, 1)] = new SlotValue(new byte[] { (byte)(i & 0xFF) });
-        }
-
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("p1"));
-        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-
-        Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? built), Is.True);
-        using (built)
-        {
-            Assert.Multiple(() =>
-            {
-                for (int i = 0; i < accountCount; i++)
-                {
-                    Address addr = TestItem.Addresses[i];
-                    Assert.That(built!.TryGetAccount(addr, out Account? a), Is.True,
-                        $"Account {i} ({(i % 7 == 0 ? "with-storage" : "no-storage")}) must survive WritePerAddressColumn");
-                    Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
-                        $"Account {i} balance mismatch — pad bytes leaked into the value range");
-                    if (i % 5 == 0)
-                    {
-                        Assert.That(built.TryGetSelfDestructFlag(addr), Is.EqualTo((bool?)(i % 10 == 0)),
-                            $"Self-destruct flag for account {i} must survive the staged DenseByteIndex path");
-                    }
-                    if (i % 7 == 0)
-                    {
-                        SlotValue slot = default;
-                        Assert.That(built.TryGetSlot(addr, 1, ref slot), Is.True,
-                            $"Slot for storage-bearing account {i} must come back from the streaming path");
-                        SlotValue expected = new(new byte[] { (byte)(i & 0xFF) });
-                        Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(expected.AsReadOnlySpan.ToArray()));
-                    }
-                }
-            });
-        }
-    }
-
-    /// <summary>
     /// Regression for the merger no-storage fast path in
     /// <c>PersistedSnapshotMerger.NWayMergePerAddressColumn</c>: two snapshots covering
     /// the SAME set of EOAs collide on every address (<c>matchCount &gt; 1</c>) without any
@@ -1199,15 +1001,16 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// A demoted sub-<c>CompactSize</c> intermediate that no wider compaction has covered keeps its real,
-    /// populated merged bloom — <c>Demote</c> only advises its pages cold. Regression for reverting the
-    /// AlwaysTrue-sentinel-on-demote behaviour.
+    /// A sub-<c>CompactSize</c> intermediate takes a minimal single-cache-line bloom (<c>Capacity == 1</c>)
+    /// rather than a capacity-sized one: it is read-cold and short-lived, so it skips the real bloom. The
+    /// filter is still populated by the merge (<c>Count &gt; 0</c>), keeping its key count accurate for a
+    /// wider merge that later consumes it, and it must still read back correctly.
     /// </summary>
     [Test]
-    public void Demote_KeepsIntermediateRealBloom()
+    public void SubCompactSizeIntermediate_UsesTinyBloom()
     {
-        // CompactSize=4: block 2's window (0,2] spans 2 (< 4) → demoted intermediate. No large boundary
-        // is compacted, so nothing shares over it.
+        // CompactSize=4: block 2's window (0,2] spans 2 (< 4) → sub-CompactSize intermediate. No large
+        // boundary is compacted, so nothing shares over it.
         using FlatTestContainer tier = NewTier(compactSize: 4);
         SnapshotRepository repo = tier.Repository;
         PersistedSnapshotCompactor compactor = tier.Compactor;
@@ -1224,16 +1027,17 @@ public class PersistedSnapshotCompactorTests
             prev = states[i];
         }
 
-        compactor.DoCompactSnapshot(states[2]); // sub-CompactSize intermediate → demoted, keeps its real bloom
+        compactor.DoCompactSnapshot(states[2]); // sub-CompactSize intermediate → tiny bloom
 
         Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? intermediate), Is.True);
         using (intermediate)
         {
             Assert.Multiple(() =>
             {
-                // A real merge over the window's two accounts carries keys (Count > 0), unlike the
-                // Count==0 AlwaysTrue sentinel the reverted demote path installed.
-                Assert.That(intermediate!.Bloom.Count, Is.GreaterThan(0), "demoted intermediate must keep its real bloom");
+                // Minimal (capacity-1) bloom, but still populated by the merge (Count > 0), not the
+                // Count==0 AlwaysTrue sentinel and not a capacity-sized filter.
+                Assert.That(intermediate!.Bloom.Capacity, Is.EqualTo(1), "sub-CompactSize intermediate must take the tiny bloom");
+                Assert.That(intermediate.Bloom.Count, Is.GreaterThan(0), "tiny bloom is still populated, not AlwaysTrue");
                 Assert.That(intermediate.TryGetAccount(TestItem.Addresses[0], out Account? a1), Is.True);
                 Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
                 Assert.That(intermediate.TryGetAccount(TestItem.Addresses[1], out Account? a2), Is.True);

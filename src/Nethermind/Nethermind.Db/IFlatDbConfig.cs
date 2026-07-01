@@ -55,7 +55,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
-    [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "false")]
+    [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 
     [ConfigItem(Description = "Force-persist backstop used when EnableLongFinality is on, in place of MaxReorgDepth. The persisted-snapshot tier serves deep reorgs, so this is much larger than the non-long-finality backstop.", DefaultValue = "90000")]
