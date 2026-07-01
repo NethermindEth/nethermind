@@ -11,7 +11,7 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvider specProvider, BlockDecoder blockDecoder, IBlockForRpcFactory blockForRpcFactory)
+public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvider specProvider, IRlpDecoder<Block> blockDecoder, IBlockForRpcFactory blockForRpcFactory)
 {
     public BlockForRpc Block { get; } = blockForRpcFactory.Create(block, includeFullTransactionData, specProvider);
     public Hash256 Hash { get; } = block.Header.Hash;

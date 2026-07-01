@@ -49,7 +49,8 @@ public class DebugRpcModule(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
-    private readonly BlockDecoder _blockDecoder = new();
+    // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
+    private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)

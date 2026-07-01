@@ -79,7 +79,7 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
-            _decodersSnapshot = null;
+            Volatile.Write(ref _decodersSnapshot, null);
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
@@ -88,7 +88,7 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
-            _decodersSnapshot = null;
+            Volatile.Write(ref _decodersSnapshot, null);
         }
 
         public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false);

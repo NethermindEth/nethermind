@@ -588,7 +588,9 @@ public class ContractBasedValidatorTests
 
         _blockFinalizationManager.GetLastLevelFinalizedBy(blockTree.Head.ParentHash).Returns((ulong)lastLevelFinalized);
 
-        validator.OnBlockProcessingStart(blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None));
+        // The generic BlockTreeBuilder produces plain headers; AuRa always processes AuRaBlockHeaders.
+        Block head = blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None);
+        validator.OnBlockProcessingStart(head.WithReplacedHeader(AuRaBlockHeader.UpgradeFrom(head.Header)));
 
         PendingValidators pendingValidators = null;
         if (expectedBlockValidators.HasValue)

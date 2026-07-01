@@ -15,6 +15,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -92,6 +93,12 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<Snap.GetTrieNodesMessage, Snap.GetTrieNodesMessageSerializer>()
             .AddMessageSerializer<Snap.StorageRangeMessage, Snap.StorageRangesMessageSerializer>()
             .AddMessageSerializer<Snap.TrieNodesMessage, Snap.TrieNodesMessageSerializer>()
+
+            // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
+            // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
+            .AddSingleton<IHeaderDecoder, HeaderDecoder>()
+            .AddSingleton(new BlockDecoder())
+            .AddSingleton(BlockBodyDecoder.Instance)
 
             // V62
             .AddMessageSerializer<V62.BlockBodiesMessage, V62.BlockBodiesMessageSerializer>()

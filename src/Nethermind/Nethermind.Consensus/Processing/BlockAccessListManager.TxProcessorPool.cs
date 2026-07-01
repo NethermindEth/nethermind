@@ -168,6 +168,8 @@ public partial class BlockAccessListManager
                     StaticPool<BlockAccessListAtIndex>.Return(generatedBal);
                 }
                 processor.WorldState.SetGeneratingBlockAccessList(null);
+                // Detach any parent reader Setup may have installed so the recycled slot isn't poisoned.
+                processor.ClearParentReader();
                 ReturnProcessor(processor);
                 throw;
             }

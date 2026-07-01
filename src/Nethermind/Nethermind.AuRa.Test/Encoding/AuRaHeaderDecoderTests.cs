@@ -114,4 +114,28 @@ public class AuRaHeaderDecoderTests
         Assert.That(Build.A.BlockHeader.TestObject, Is.Not.InstanceOf<AuRaBlockHeader>());
         Assert.That(Build.A.BlockHeader.WithAura(0, []).TestObject, Is.InstanceOf<AuRaBlockHeader>());
     }
+
+    /// <summary>
+    /// Regression for the class of bug where a component embeds header RLP through a hardcoded base
+    /// <see cref="HeaderDecoder"/> instead of the registered one (e.g. <c>ProofRpcModule</c>,
+    /// <c>Era</c> writers, stateless witness). The base decoder writes an AuRa header as mixHash+nonce,
+    /// silently corrupting the seal; the registered AuRa decoder must produce a distinct, round-tripping
+    /// step+signature encoding.
+    /// </summary>
+    [Test]
+    public void Base_header_decoder_does_not_reproduce_the_AuRa_seal()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithAura(77, DeterministicSignature(7)).TestObject;
+
+        byte[] viaAuRa = _decoder.Encode(header).Bytes;
+        byte[] viaBase = new HeaderDecoder().Encode(header).Bytes;
+
+        Assert.That(viaBase, Is.Not.EqualTo(viaAuRa));
+
+        RlpReader ctx = new(viaAuRa);
+        BlockHeader decoded = _decoder.Decode(ref ctx)!;
+        decoded.Hash = decoded.CalculateHash();
+        Assert.That(decoded, Is.InstanceOf<AuRaBlockHeader>());
+        Assert.That(decoded.Hash, Is.EqualTo(header.Hash));
+    }
 }

@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (!options.ContainsFlag(ProcessingOptions.ProducingBlock) && !block.IsGenesis)
             {
-                ulong auRaStep = block.Header.GetAuRaStepOrZero();
+                ulong auRaStep = block.Header.RequireAuRa().AuRaStep;
                 if (!_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, auRaStep, out Address expectedAddress))
                 {
                     string reason = $"Incorrect proposer at step {auRaStep}, expected {expectedAddress}, but found {block.Beneficiary}";
