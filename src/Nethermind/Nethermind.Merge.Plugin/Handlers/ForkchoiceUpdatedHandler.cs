@@ -36,7 +36,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </remarks>
 public class ForkchoiceUpdatedHandler(
     IBlockTree blockTree,
-    IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
     IBlockProcessingQueue processingQueue,
@@ -51,7 +50,6 @@ public class ForkchoiceUpdatedHandler(
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-    private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
@@ -92,7 +90,7 @@ public class ForkchoiceUpdatedHandler(
     // L1-derived finality models override this to relax the bounds check while keeping
     // ancestry validation.
     protected virtual ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(
-        BlockHeader? header, long lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
+        BlockHeader? header, ulong lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
     {
         if ((header is not null && (header.Number < lowerBound || header.Number > newHeadHeader.Number))
             || IsInconsistent(header, newHeadHeader))
@@ -241,7 +239,7 @@ public class ForkchoiceUpdatedHandler(
         // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
         // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
         // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
-        long finalizedNumber = finalizedHeader?.Number ?? 0;
+        ulong finalizedNumber = finalizedHeader?.Number ?? 0;
 
         if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
         if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
@@ -260,12 +258,6 @@ public class ForkchoiceUpdatedHandler(
             string setHeadErrorMsg = $"Block's {newHeadHeader} main chain predecessor cannot be found and it will not be set as head.";
             if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
-        }
-
-        bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
-        if (nonZeroFinalizedBlockHash)
-        {
-            _manualBlockFinalizationManager.MarkFinalized(newHeadHeader, finalizedHeader!);
         }
 
         if (shouldUpdateHead)

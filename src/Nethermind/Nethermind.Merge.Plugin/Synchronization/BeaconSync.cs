@@ -98,7 +98,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool MergeTransitionFinished => _poSSwitcher.TransitionFinished;
 
-        public long? GetTargetBlockHeight()
+        public ulong? GetTargetBlockHeight()
         {
             if (_beaconPivot.BeaconPivotExists())
             {

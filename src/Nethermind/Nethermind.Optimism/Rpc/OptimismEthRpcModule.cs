@@ -56,6 +56,7 @@ public class OptimismEthRpcModule(
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
     ILogIndexConfig? logIndexConfig,
+    IReceiptConfig receiptConfig,
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider)
@@ -76,6 +77,7 @@ public class OptimismEthRpcModule(
         protocolsManager,
         forkInfo,
         logIndexConfig,
+        receiptConfig,
         secondsPerSlot,
         headBlockSignal,
         capabilitiesProvider), IOptimismEthRpcModule

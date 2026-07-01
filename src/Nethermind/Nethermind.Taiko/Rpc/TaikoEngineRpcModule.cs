@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
@@ -199,7 +198,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 beneficiary,
                 UInt256.Zero,
                 head!.Number + 1,
-                (long)blockMaxGasLimit,
+                blockMaxGasLimit,
                 head.Timestamp + 1,
                 [])
         {
@@ -221,7 +220,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         void CommitAndDisposeBatch(Batch batch)
         {
             Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => TransactionForRpc.FromTransaction(tx)).ToArray(),
-                                            (ulong)blockHeader.GasUsed,
+                                            blockHeader.GasUsed,
                                             batch.GetCompressedTxsLength()));
             blockHeader.GasUsed = 0;
             batch.Dispose();
@@ -231,7 +230,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 
-        void Restore(Snapshot snapshot, long gasUsed)
+        void Restore(Snapshot snapshot, ulong gasUsed)
         {
             worldState.Restore(snapshot);
             blockHeader.GasUsed = gasUsed;
@@ -243,7 +242,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             {
                 Transaction tx = txSource[i];
                 Snapshot snapshot = worldState.TakeSnapshot(true);
-                long gasUsedBefore = blockHeader.GasUsed;
+                ulong gasUsedBefore = blockHeader.GasUsed;
 
                 try
                 {
@@ -349,53 +348,36 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         public readonly ulong GetCompressedTxsLength()
         {
             int contentLength = Transactions.Sum(GetTxLength);
-            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
+            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(data);
 
-            try
+            writer.StartSequence(contentLength);
+            foreach (Transaction tx in Transactions.AsSpan())
             {
-                RlpStream rlpStream = new(data);
-
-                rlpStream.StartSequence(contentLength);
-                foreach (Transaction tx in Transactions.AsSpan())
-                {
-                    txDecoder.Encode(rlpStream, tx);
-                }
-
-                return GetCompressedLength(data, rlpStream.Position);
-
+                txDecoder.Encode(ref writer, tx);
             }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(data);
-            }
+
+            return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
         private readonly ulong EstimateTxLength(Transaction tx)
         {
             int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
-            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
+            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(data);
 
-            try
-            {
-                RlpStream rlpStream = new(data);
+            writer.StartSequence(contentLength);
+            txDecoder.Encode(ref writer, tx);
 
-                rlpStream.StartSequence(contentLength);
-                txDecoder.Encode(rlpStream, tx);
-
-                return GetCompressedLength(data, rlpStream.Position);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(data);
-            }
+            return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
-        private static ulong GetCompressedLength(byte[] data, int length)
+        private static ulong GetCompressedLength(ReadOnlySpan<byte> data)
         {
             using RecyclableMemoryStream stream = RecyclableStream.GetStream(nameof(Batch));
             using ZLibStream compressingStream = new(stream, CompressionMode.Compress, false);
 
-            compressingStream.Write(data, 0, length);
+            compressingStream.Write(data);
             compressingStream.Flush();
             return (ulong)stream.Position;
         }

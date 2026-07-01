@@ -15,6 +15,9 @@ namespace Nethermind.Serialization.Json;
 
 public class LongConverter : JsonConverter<long>
 {
+    private readonly bool _strictQuantity;
+    public LongConverter() { }
+    public LongConverter(bool strictQuantity) => _strictQuantity = strictQuantity;
     public static long FromString(string s)
     {
         if (s is null)
@@ -51,18 +54,20 @@ public class LongConverter : JsonConverter<long>
 
     public static long FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<long>(s);
 
-    internal static long ReadCore(ref Utf8JsonReader reader)
+    internal static long ReadCore(ref Utf8JsonReader reader, bool strictQuantity = false)
     {
         if (reader.TokenType == JsonTokenType.Number)
         {
+            if (strictQuantity) ThrowJsonException();
             return reader.GetInt64();
         }
 
         if (reader.TokenType == JsonTokenType.String)
         {
-            return !reader.HasValueSequence
-                ? NumericConverterHelper.Parse<long>(reader.ValueSpan)
-                : NumericConverterHelper.Parse<long>(reader.ValueSequence.ToArray());
+            ReadOnlySpan<byte> span = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            if (strictQuantity)
+                QuantityValidator.AssertNoLeadingZero(span);
+            return FromString(span);
         }
 
         ThrowJsonException();
@@ -75,7 +80,7 @@ public class LongConverter : JsonConverter<long>
     public override long Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options) => ReadCore(ref reader);
+        JsonSerializerOptions options) => ReadCore(ref reader, _strictQuantity);
 
     [SkipLocalsInit]
     public override void Write(

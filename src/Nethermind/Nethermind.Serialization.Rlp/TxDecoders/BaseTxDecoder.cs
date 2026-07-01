@@ -19,7 +19,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     public TxType Type => txType;
 
-    public virtual void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         transaction ??= _createTransaction();
         transaction.Type = txType;
@@ -45,14 +45,13 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         }
     }
 
-    protected void CalculateHash(Transaction transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext)
+    protected static void CalculateHash(Transaction transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext)
     {
         if (transactionSequence.Length <= MaxDelayedHashTxnSize)
         {
             // Delay hash generation, as may be filtered as having too low gas etc
-            if (decoderContext.ShouldSliceMemory)
+            if (decoderContext.IsMemoryBacked)
             {
-                // Do not copy the memory in this case.
                 int currentPosition = decoderContext.Position;
                 decoderContext.Position = txSequenceStart;
                 transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
@@ -70,13 +69,14 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         }
     }
 
-    public virtual void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public virtual void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int contentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
 
-        stream.StartSequence(contentLength);
-        EncodePayload(transaction, stream);
-        EncodeSignature(transaction.Signature, stream, forSigning, isEip155Enabled, chainId);
+        writer.StartSequence(contentLength);
+        EncodePayload(transaction, ref writer);
+        EncodeSignature(transaction.Signature, ref writer, forSigning, isEip155Enabled, chainId);
     }
 
     public virtual int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
@@ -86,19 +86,19 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         return txPayloadLength;
     }
 
-    protected virtual void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        transaction.Nonce = decoderContext.DecodeUInt256();
+        transaction.Nonce = decoderContext.DecodeULong();
         DecodeGasPrice(transaction, ref decoderContext);
-        transaction.GasLimit = decoderContext.DecodePositiveLong();
+        transaction.GasLimit = decoderContext.DecodeULong();
         transaction.To = decoderContext.DecodeAddress();
         transaction.Value = decoderContext.DecodeUInt256();
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
     }
 
-    protected virtual void DecodeGasPrice(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();
+    protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();
 
-    protected Signature? DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected Signature? DecodeSignature(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
@@ -109,17 +109,19 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
     protected virtual Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? fallbackSignature;
 
-    protected virtual void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected virtual void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        stream.Encode(transaction.Nonce);
-        EncodeGasPrice(transaction, stream);
-        stream.Encode(transaction.GasLimit);
-        stream.Encode(transaction.To);
-        stream.Encode(in transaction.ValueRef);
-        stream.Encode(transaction.Data);
+        writer.Encode(transaction.Nonce);
+        EncodeGasPrice(transaction, ref writer);
+        writer.Encode(transaction.GasLimit);
+        writer.Encode(transaction.To);
+        writer.Encode(in transaction.ValueRef);
+        writer.Encode(transaction.Data);
     }
 
-    protected virtual void EncodeGasPrice(Transaction transaction, RlpStream stream) => stream.Encode(transaction.GasPrice);
+    protected virtual void EncodeGasPrice<TWriter>(Transaction transaction, ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Encode(transaction.GasPrice);
 
     protected virtual int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
         GetPayloadLength(transaction) + GetSignatureLength(transaction.Signature, forSigning, isEip155Enabled, chainId);
@@ -129,7 +131,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         + Rlp.LengthOf(transaction.GasPrice)
         + Rlp.LengthOf(transaction.GasLimit)
         + Rlp.LengthOf(transaction.To)
-        + Rlp.LengthOf(in transaction.ValueRef)
+        + Rlp.LengthOf(transaction.ValueRef)
         + Rlp.LengthOf(transaction.Data);
 
     protected virtual int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
@@ -157,21 +159,22 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     protected virtual ulong GetSignatureFirstElement(Signature signature) => signature.RecoveryId;
 
-    protected virtual void EncodeSignature(Signature? signature, RlpStream stream, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+    protected virtual void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (!forSigning)
         {
             if (signature is null)
             {
-                stream.Encode(0);
-                stream.Encode(Bytes.Empty);
-                stream.Encode(Bytes.Empty);
+                writer.Encode(0);
+                writer.Encode(Bytes.Empty);
+                writer.Encode(Bytes.Empty);
             }
             else
             {
-                stream.Encode(GetSignatureFirstElement(signature));
-                stream.Encode(signature.RAsSpan.WithoutLeadingZeros());
-                stream.Encode(signature.SAsSpan.WithoutLeadingZeros());
+                writer.Encode(GetSignatureFirstElement(signature));
+                writer.Encode(signature.RAsSpan.WithoutLeadingZeros());
+                writer.Encode(signature.SAsSpan.WithoutLeadingZeros());
             }
         }
     }

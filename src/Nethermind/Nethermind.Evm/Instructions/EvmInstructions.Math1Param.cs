@@ -25,7 +25,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        virtual static ulong GasCost => GasCostOf.VeryLow;
 
         /// <summary>
         /// Executes the operation on the provided 256‐bit operand.
@@ -58,6 +58,15 @@ public static partial class EvmInstructions
         // Deduct the gas cost associated with the math operation.
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
+        return Math1ParamCore<TOpMath>(ref stack);
+    }
+
+    /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType Math1ParamCore<TOpMath>(ref EvmStack stack)
+        where TOpMath : struct, IOpMath1Param
+    {
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
         ref byte bytesRef = ref stack.PeekBytesByRef();
@@ -100,7 +109,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpCLZ : IOpMath1Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static ulong GasCost => GasCostOf.Low;
 
         public static EvmWord Operation(EvmWord value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
@@ -121,7 +130,8 @@ public static partial class EvmInstructions
         // Pop the byte position and the 256-bit word.
         if (!stack.PopUInt256(out UInt256 a))
             goto StackUnderflow;
-        Span<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytes))
+            goto StackUnderflow;
 
         // If the position is out-of-range, push zero. Using direct limb access avoids the
         // full 256-bit vector compare + defensive `in` copy the JIT emits for `a >= BigInt32`,
@@ -165,7 +175,11 @@ public static partial class EvmInstructions
         int position = 31 - (int)a;
 
         // Peek at the 256-bit word without removing it.
-        Span<byte> bytes = stack.PeekWord256();
+        ref byte bytesRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref bytesRef))
+            goto StackUnderflow;
+
+        Span<byte> bytes = MemoryMarshal.CreateSpan(ref bytesRef, EvmStack.WordSize);
         sbyte sign = (sbyte)bytes[position];
 
         // Extend the sign by replacing higher-order bytes.

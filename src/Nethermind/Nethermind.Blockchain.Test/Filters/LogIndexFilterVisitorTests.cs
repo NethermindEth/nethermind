@@ -374,8 +374,8 @@ public class LogIndexFilterVisitorTests
             yield return enumerator.Current;
     }
 
-    private const long FromBlock = 0;
-    private const long ToBlock = 99;
+    private const ulong FromBlock = 0;
+    private const ulong ToBlock = 99;
 
     private static readonly Ranges LogIndexRanges = GenerateLogIndexRanges();
 

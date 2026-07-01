@@ -259,7 +259,7 @@ public class CertainBatchLookupTests
     public void TestBatchLookup_MainnetScanPathBelowThresholdReturnsNull()
     {
         UInt256 batchId = 1;
-        long blockNumber = (long)(BatchLookupThresholds.TaikoMainnetBatchLookupThreshold - 1);
+        ulong blockNumber = BatchLookupThresholds.TaikoMainnetBatchLookupThreshold - 1;
 
         // Shasta extraData layout: [basefeeSharingPctg=0][proposalId=batchId, 6 bytes big-endian].
         byte[] extraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
@@ -282,7 +282,7 @@ public class CertainBatchLookupTests
 
         // Write the L1Origin so a missing gate would yield a non-null Data on lastL1OriginByBatchID,
         // proving the gate (not a missing record) is what produces the null result.
-        UInt256 blockId = (UInt256)(ulong)blockNumber;
+        UInt256 blockId = (UInt256)blockNumber;
         _store.WriteL1Origin(blockId, new L1Origin(blockId, Hash256.Zero, 3, Hash256.Zero, null));
         // Deliberately do NOT WriteBatchToLastBlockID — forces the scan fallback.
 
@@ -338,7 +338,7 @@ public class CertainBatchLookupTests
         Substitute.For<ITxPool>(),
         blockFinder ?? Substitute.For<IBlockFinder>(),
         Substitute.For<IShareableTxProcessorSource>(),
-        Substitute.For<IRlpDecoder<Transaction>>(),
+        TxDecoder.Instance,
         l1OriginStore,
         new SurgeConfig()
     );

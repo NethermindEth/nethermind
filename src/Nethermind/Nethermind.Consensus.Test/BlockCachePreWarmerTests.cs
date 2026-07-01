@@ -15,6 +15,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Container;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -240,6 +241,38 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// The prewarmer must not eagerly load a transaction's EIP-2930 access list: a value transfer that
+    /// over-declares an unaccessed slot must not warm it (the speculative execution warms only what it touches).
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_DoesNotEagerlyLoadUnaccessedAccessListSlots()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        StorageCell overDeclaredSlot = new(TestItem.AddressB, 10);
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(TestItem.AddressB)
+            .AddStorage(overDeclaredSlot.Index)
+            .Build();
+
+        // A plain value transfer (to an EOA) never SLOADs, so it does not access the declared slot.
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithType(TxType.AccessList).WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei)
+                .WithAccessList(accessList).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+        ];
+        Block block = Build.A.Block.WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in overDeclaredSlot, out _), Is.False,
+            "a declared but unaccessed access-list slot must not be eagerly warmed");
+    }
+
+    /// <summary>
     /// Verifies that the prewarmer does not inherit the <see cref="ProcessingThread.IsBlockProcessingThread"/>
     /// flag from the caller, so speculative EVM work is attributed to the _other* metric counters.
     /// </summary>
@@ -345,7 +378,7 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StateCache.TryGetValue(in warmedAddress, out _), Is.True);
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _), Is.True);
 
-        preBlockCaches.StateCache.Set(in warmedAddress, new Account((UInt256)777));
+        preBlockCaches.StateCache.Set(in warmedAddress, new Account(777UL));
         preBlockCaches.StorageCache.Set(in warmedCell, [0x24]);
 
         AddressAsKey missedAddress = TestItem.AddressB;
