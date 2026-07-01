@@ -254,7 +254,7 @@ public partial class EngineModuleTests
             rendezvous);
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
+            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -275,7 +275,7 @@ public partial class EngineModuleTests
             rendezvous);
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
+            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -303,7 +303,7 @@ public partial class EngineModuleTests
 
         NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(moduleFactory), rendezvous);
 
-        await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
+        await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
         Assert.That(rendezvous.HasPendingRequest(TestItem.KeccakA), Is.False,
             "the handler must cancel the rendezvous entry on every non-VALID outcome");
@@ -325,7 +325,7 @@ public partial class EngineModuleTests
             BlockHash = null!
         };
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await handler.HandleAsync(payload, [], TestItem.KeccakA, []);
+            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(payload, [], TestItem.KeccakA, []));
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
             "a null blockHash is a malformed payload — return InvalidParams instead of forwarding");
