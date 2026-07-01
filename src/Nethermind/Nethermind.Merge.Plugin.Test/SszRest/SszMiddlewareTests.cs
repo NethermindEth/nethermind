@@ -116,7 +116,7 @@ public class SszMiddlewareTests
             new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
             new CapabilitiesSszHandler(_specProvider),
 
-            new NewPayloadWithWitnessSszHandler(_engineModule),
+            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV1, NewPayloadV5RequestWire>(_engineModule),
         ];
 
         return new SszMiddleware(
