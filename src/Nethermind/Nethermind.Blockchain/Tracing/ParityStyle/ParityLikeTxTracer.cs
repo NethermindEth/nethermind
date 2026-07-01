@@ -237,12 +237,24 @@ public class ParityLikeTxTracer : TxTracer
             throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
         }
 
-        if (_trace.Action!.TraceAddress.Length == 0)
+        if (_trace.Action is null)
+        {
+            ParityTraceAction action = RentAction();
+            action.From = _tx!.SenderAddress;
+            action.To = _tx.To;
+            action.Value = _tx.Value;
+            action.Input = CopyInput(_tx.Data);
+            action.Gas = _tx.GasLimit;
+            action.CallType = _tx.IsMessageCall ? "call" : "init";
+            _trace.Action = action;
+        }
+
+        if (_trace.Action.TraceAddress.Length == 0)
         {
             _trace.Output = output;
         }
 
-        _trace.Action!.Result!.Output = output;
+        _trace.Action.Result!.Output = output;
     }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
