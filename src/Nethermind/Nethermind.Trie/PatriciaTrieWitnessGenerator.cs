@@ -19,21 +19,9 @@ namespace Nethermind.Trie;
 /// recompute the post-state root.
 /// </summary>
 /// <remarks>
-/// The algorithm mirrors <see cref="PatriciaTree.BulkSet"/>: a single recursive traversal that partial-sorts the
-/// entries by nibble, bucketizes them into 16, and recurses — parallelizing a full branch in place exactly as
-/// BulkSet does. It is read-only: it never mutates the trie, builds nodes, or commits. Unlike a plain read-path
-/// visitor it also reports the <em>collapse sibling</em>: when deletions reduce a branch to a single remaining
-/// child the branch collapses into an extension, so the verifier needs that surviving sibling even though it was
-/// never on a touched path.
-/// <para>
-/// The witness is just a set of node RLPs that a verifier rehashes to rebuild the (partial) trie and re-apply the
-/// block's changes. For wide compatibility nothing is assumed about the order in which the verifier applies those
-/// changes, so the witness must cover every node that <em>any</em> ordering could touch. A recursion therefore
-/// returns <c>true</c> ("treat this subtree as deleted", which drives the parent's lone-child check) whenever
-/// <em>some</em> permutation of the entries could empty the subtree — not only when the net result deletes it. In
-/// particular a keyed node whose key is deleted is treated as deleted even if another entry inserts a sibling that
-/// would refill the slot, because the verifier may apply the delete first and transiently collapse the parent.
-/// </para>
+/// The witness must cover every node that <em>any</em> apply order could touch, so a recursion returns <c>true</c>
+/// ("treat this subtree as deleted", driving the parent's lone-child check) whenever <em>some</em> permutation of
+/// the entries could empty the subtree — not only when the net result deletes it.
 /// </remarks>
 public static class PatriciaTrieWitnessGenerator
 {
@@ -41,22 +29,15 @@ public static class PatriciaTrieWitnessGenerator
     private const int MinEntriesToParallelizeThreshold = 128;
     private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
 
-    // Per-child verdict. MaybeEmptied: some apply order could empty the child, which arms the parent's
-    // collapse-sibling capture. Survived / Untraversed: it cannot be emptied under any order.
+    // MaybeEmptied arms the parent's collapse-sibling capture; Survived/Untraversed cannot be emptied under any order.
     private const byte Untraversed = 0;
     private const byte Survived = 1;
     private const byte MaybeEmptied = 2;
 
-    // Deletion is the only structurally significant access, so it is encoded as a null entry value (BulkSet's own
-    // "null == removal" convention) and everything non-deleting shares this non-null sentinel.
+    // Deletion is encoded as a null entry value (BulkSet's "null == removal" convention); non-deleting accesses share this non-null sentinel.
     private static readonly byte[] NonDeleteMarker = [];
 
     /// <summary>How a key path was touched in this block.</summary>
-    /// <remarks>
-    /// Only <see cref="Delete"/> is structurally significant — it can empty a slot and collapse a branch, pulling a
-    /// sibling into the witness. Any non-removing access — a read, an update, or an insert — only needs its path
-    /// captured and cannot delete a node under any apply order, so they all map to the single <see cref="Read"/>.
-    /// </remarks>
     public enum AccessType : byte
     {
         /// <summary>The key was read or written without being removed; only its path is needed.</summary>
@@ -78,17 +59,12 @@ public static class PatriciaTrieWitnessGenerator
 
     /// <summary>Receives the trie nodes that make up the witness as the generator walks a trie.</summary>
     /// <remarks>
-    /// Only standalone nodes (those with their own <see cref="TrieNode.Keccak"/>) are reported; inline nodes live
-    /// inside their parent's RLP and need not be collected separately. Each standalone node is reported once: a trie
-    /// node is content-addressed, so the same node recurring at two different paths would take a hash collision
-    /// (astronomically improbable), and the sink therefore need not deduplicate. When the generator runs in parallel,
-    /// <see cref="Add"/> may be called concurrently and must be thread-safe.
+    /// Only standalone nodes (those with their own <see cref="TrieNode.Keccak"/>) are reported, each exactly once.
+    /// <see cref="Add"/> may be called concurrently and must be thread-safe when the generator runs in parallel.
     /// </remarks>
     public interface ISink
     {
         /// <summary>Reports a witness node at <paramref name="path"/>.</summary>
-        /// <param name="path">The trie path at which <paramref name="node"/> sits.</param>
-        /// <param name="node">A resolved, standalone trie node required by the witness.</param>
         void Add(in TreePath path, TrieNode node);
     }
 
@@ -99,11 +75,7 @@ public static class PatriciaTrieWitnessGenerator
     /// Walks the trie at <paramref name="rootHash"/> and reports the witness nodes for <paramref name="paths"/> to
     /// <paramref name="sink"/>.
     /// </summary>
-    /// <param name="resolver">Resolver for the trie being walked (state trie or a single account's storage trie).</param>
-    /// <param name="rootHash">Pre-state root of the trie.</param>
-    /// <param name="paths">Every read and written/deleted key path, tagged with its <see cref="AccessType"/>.</param>
     /// <param name="sink">Receives the witness nodes. Must be thread-safe when <paramref name="parallelize"/> is set.</param>
-    /// <param name="parallelize">When set, a full branch with enough entries fans its 16 children out across threads, recursively (as in BulkSet).</param>
     public static void Generate(
         ITrieNodeResolver resolver,
         Hash256 rootHash,
@@ -114,8 +86,7 @@ public static class PatriciaTrieWitnessGenerator
         if (paths.Length == 0 || rootHash == Keccak.EmptyTreeHash) return;
 
         PatriciaTree.BulkSetEntry[] entriesArr = ArrayPool<PatriciaTree.BulkSetEntry>.Shared.Rent(paths.Length);
-        // BucketSort16 (>= InPlaceSortThreshold entries) needs a separate sort target; a deeper node never has more
-        // entries than the root, so one root-sized buffer suffices for the whole walk.
+        // One root-sized buffer suffices for the whole walk: a deeper node never has more entries than the root.
         PatriciaTree.BulkSetEntry[]? bufferArr = paths.Length >= InPlaceSortThreshold
             ? ArrayPool<PatriciaTree.BulkSetEntry>.Shared.Rent(paths.Length)
             : null;
@@ -145,8 +116,7 @@ public static class PatriciaTrieWitnessGenerator
 
     /// <summary>
     /// The single recursive traversal (mirrors <c>PatriciaTree.BulkSet</c>). Reports every real node it visits and
-    /// returns <c>true</c> iff some permutation of the entries could empty the subtree below <paramref name="node"/>
-    /// (see the type remarks).
+    /// returns <c>true</c> iff some permutation of the entries could empty the subtree below <paramref name="node"/>.
     /// </summary>
     private static bool Walk(
         in Context ctx,
@@ -160,7 +130,7 @@ public static class PatriciaTrieWitnessGenerator
         ISink sink)
     {
         node.ResolveNode(resolver, path);
-        // Inline nodes (< 32 bytes) have no standalone hash; they live in their parent's already-reported RLP.
+        // Inline nodes have no standalone hash; they live in their parent's already-reported RLP.
         if (node.Keccak is not null) sink.Add(path, node);
 
         if (node.IsLeaf || node.IsExtension)
@@ -168,8 +138,7 @@ public static class PatriciaTrieWitnessGenerator
             return WalkKeyedNode(in ctx, resolver, node, ref path, entries, sortBuffer, flipCount, parallelize, sink);
         }
 
-        // Bucketize by the nibble at this depth. The large path sorts into `sortBuffer` then swaps it with `entries`
-        // so children read sorted data (BulkSet's flip; `flipCount` parity lets parallel workers recover the array).
+        // Bucketize by the nibble at this depth; the large path flips `entries`/`sortBuffer` (flipCount parity lets parallel workers recover the array).
         Span<int> indexes = stackalloc int[TrieNode.BranchesCount];
         int nibMask;
         if (entries.Length == 1)
@@ -216,7 +185,7 @@ public static class PatriciaTrieWitnessGenerator
 
                 path.SetLast(nib);
                 TrieNode? child = childIterator.GetChildWithChildPath(resolver, ref path, nib);
-                if (child is null) continue; // absent child: the divergence is already covered by reporting this branch
+                if (child is null) continue;
 
                 bool childMaybeEmptied = Walk(in ctx, resolver, child, ref path, entries[start..end], sortBuffer[start..end], flipCount, parallelize, sink);
                 childState[nib] = childMaybeEmptied ? MaybeEmptied : Survived;
@@ -228,9 +197,8 @@ public static class PatriciaTrieWitnessGenerator
     }
 
     /// <summary>
-    /// Decides the "treat-as-deleted" answer for a node that carries a key (a leaf or an extension), already resolved
-    /// and reported. Per the order-independence rule (see the type remarks) it is <c>true</c> if any permutation of
-    /// the entries could empty the subtree; off-key entries cannot, so only deletions on this node's path matter.
+    /// Decides the "treat-as-deleted" answer for an already-reported keyed node (leaf or extension): <c>true</c> if any
+    /// apply order could empty the subtree. Off-key entries cannot, so only deletions on this node's path matter.
     /// </summary>
     private static bool WalkKeyedNode(
         in Context ctx,
@@ -257,9 +225,7 @@ public static class PatriciaTrieWitnessGenerator
             return false;
         }
 
-        // Extension: keep the entries within the prefix's subtree [lower, upper]; the rest branch off it and cannot
-        // empty its child. Extensions are rare, so this stays a plain linear range filter rather than a bucketized
-        // fan-out like the branch path.
+        // Extension: keep only entries within the prefix's subtree [lower, upper]; the rest branch off it and cannot empty its child.
         ValueHash256 lower = keyedPath.ToLowerBoundPath();
         ValueHash256 upper = keyedPath.ToUpperBoundPath();
         int m = 0;
@@ -274,10 +240,7 @@ public static class PatriciaTrieWitnessGenerator
         return Walk(in ctx, resolver, child, ref keyedPath, entries[..m], sortBuffer[..m], flipCount, parallelize, sink);
     }
 
-    /// <summary>
-    /// Parallel form of the branch loop, gated on a full branch with enough entries (as in BulkSet). Children are
-    /// disjoint subtrees, so each is walked on its own thread; the root branch itself is only read.
-    /// </summary>
+    /// <summary>Parallel form of the branch loop: each of the 16 disjoint child subtrees is walked on its own thread.</summary>
     private static void WalkBranchParallel(
         in Context ctx,
         ITrieNodeResolver resolver,
@@ -289,8 +252,7 @@ public static class PatriciaTrieWitnessGenerator
         ISink sink,
         Span<byte> childState)
     {
-        // After `flipCount` flips, `entries` lives in this array and the scratch buffer in the other; recover both so
-        // each worker can rebuild its span from an offset (a Span cannot cross the Parallel.For boundary).
+        // flipCount parity says which array `entries` currently lives in; recover both so each worker can rebuild its span from an offset (a Span cannot cross the Parallel.For boundary).
         PatriciaTree.BulkSetEntry[] originalEntries = (flipCount & 1) == 0 ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
         PatriciaTree.BulkSetEntry[] originalBuffer = (flipCount & 1) == 0 ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
 
@@ -364,10 +326,9 @@ public static class PatriciaTrieWitnessGenerator
             survivorTraversed = childState[i] == Survived;
         }
 
-        if (survivingCount == 0) return true; // every child may be emptied, so the whole branch may be too
+        if (survivingCount == 0) return true;
 
-        // One survivor, so an order that empties the rest collapses the branch into it. A traversed survivor was
-        // already reported; an untouched one was not, and the verifier needs it to recompute that collapse.
+        // One survivor: an order that empties the rest collapses the branch into it. Report the survivor if it was untouched, since the verifier needs it to recompute that collapse.
         if (!survivorTraversed)
         {
             path.AppendMut(survivingIndex);

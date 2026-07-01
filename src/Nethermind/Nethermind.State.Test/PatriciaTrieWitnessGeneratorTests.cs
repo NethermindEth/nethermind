@@ -18,9 +18,8 @@ namespace Nethermind.Store.Test;
 public class PatriciaTrieWitnessGeneratorTests
 {
     /// <summary>
-    /// The generator must report exactly the set of pre-state nodes a real execution touches. The ground truth is
-    /// obtained by replaying the reads and deletions on a clone of the trie through a read-capturing store: every
-    /// node whose RLP is loaded (path nodes plus the collapse siblings deletion pulls in) is the correct witness.
+    /// The generator must report exactly the pre-state nodes a real execution touches, using a read-capturing store
+    /// that replays the reads and deletions as the ground truth.
     /// </summary>
     [TestCaseSource(nameof(WitnessCases))]
     public void Witness_matches_capture_during_mutation(Scenario scenario)
@@ -29,7 +28,6 @@ public class PatriciaTrieWitnessGeneratorTests
 
         HashSet<Hash256AsKey> oracle = CaptureDuringMutation(db, root, scenario, out _);
 
-        // The sequential and parallel walks must both produce exactly the oracle's node set.
         Assert.That(RunGenerator(db, root, scenario, parallelize: false), Is.EquivalentTo(oracle));
         Assert.That(RunGenerator(db, root, scenario, parallelize: true), Is.EquivalentTo(oracle));
     }
@@ -43,11 +41,9 @@ public class PatriciaTrieWitnessGeneratorTests
     {
         (TestMemDb db, Hash256 root) = BuildTrie(scenario.Existing);
 
-        // Reference post-state and per-read values from the full trie.
         Hash256 expectedRoot = ApplyWrites(new RawScopedTrieStore(db), root, scenario, out Dictionary<Hash256AsKey, byte[]> readValues);
 
-        // Rebuild a store holding ONLY the witness nodes and replay against it. Use the Hash key scheme so nodes
-        // are addressed purely by keccak, independent of the path they originally sat at.
+        // Rebuild a store holding ONLY the witness nodes; Hash key scheme addresses nodes purely by keccak.
         Dictionary<Hash256AsKey, byte[]> witness = CollectWitness(db, root, scenario);
         NodeStorage witnessStorage = new(new TestMemDb(), INodeStorage.KeyScheme.Hash);
         foreach ((Hash256AsKey hash, byte[] rlp) in witness)
@@ -58,14 +54,12 @@ public class PatriciaTrieWitnessGeneratorTests
         IScopedTrieStore witnessStore = new RawScopedTrieStore(witnessStorage);
         PatriciaTree tree = new(witnessStore, LimboLogs.Instance) { RootHash = root };
 
-        // Reads are served from the witness alone and must match the full trie.
         foreach (Hash256 key in scenario.Reads)
         {
             byte[] value = tree.Get(key.Bytes).ToArray();
             Assert.That(value, Is.EqualTo(readValues[key]), $"read mismatch for {key}");
         }
 
-        // Writes/deletes re-applied against the witness must reproduce the post-state root.
         foreach (Hash256 key in scenario.Deletes) tree.Set(key.Bytes, (byte[])null);
         foreach ((Hash256 key, byte[] value) in scenario.Writes) tree.Set(key.Bytes, value);
         tree.UpdateRootHash();
@@ -91,8 +85,7 @@ public class PatriciaTrieWitnessGeneratorTests
 
     private static PatriciaTrieWitnessGenerator.PathEntry[] BuildEntries(Scenario scenario)
     {
-        // Reads and non-deleting writes both walk their path without triggering a collapse (the generator maps both
-        // to AccessType.Read); only Delete can collapse a branch.
+        // Reads and non-deleting writes both map to AccessType.Read; only Delete can collapse a branch.
         List<PatriciaTrieWitnessGenerator.PathEntry> entries = [];
         foreach (Hash256 key in scenario.Reads) entries.Add(new(key, PatriciaTrieWitnessGenerator.AccessType.Read));
         foreach ((Hash256 key, byte[] _) in scenario.Writes) entries.Add(new(key, PatriciaTrieWitnessGenerator.AccessType.Read));
@@ -108,11 +101,7 @@ public class PatriciaTrieWitnessGeneratorTests
     }
 
     /// <summary>Reads first (on the pristine trie), then applies the mutations, returning the post-state root.</summary>
-    /// <remarks>
-    /// Deletes are applied before writes on purpose: the witness must hold for any apply order, and deletes-first is
-    /// the collapse-maximizing order (a slot emptied by a delete forces the trie to read its sibling before a later
-    /// write can refill it), so it realizes the worst case the generator must cover.
-    /// </remarks>
+    /// <remarks>Deletes are applied before writes on purpose: deletes-first is the collapse-maximizing order the generator must cover.</remarks>
     private static Hash256 ApplyWrites(IScopedTrieStore store, Hash256 root, Scenario scenario, out Dictionary<Hash256AsKey, byte[]> readValues)
     {
         PatriciaTree tree = new(store, LimboLogs.Instance) { RootHash = root };
@@ -153,21 +142,16 @@ public class PatriciaTrieWitnessGeneratorTests
 
     public static IEnumerable<TestCaseData> WitnessCases()
     {
-        // Fuzz: random tries with random read/delete/write subsets plus some absent keys.
         for (int seed = 0; seed < 20; seed++)
         {
             yield return Case(MakeFuzz(seed, 1 + new Random(seed).Next(800)));
         }
 
-        // Large tries so a child branch (depth >= 1) also exceeds the parallelization threshold — exercises the
-        // recursive/nested parallel path and its flipCount + GetSpanOffset span recovery, not just the root fan-out.
+        // Large enough that a child branch also exceeds the parallelization threshold, exercising the nested parallel path and its flipCount + GetSpanOffset span recovery.
         yield return Case(MakeFuzz(seed: 101, size: 6000));
         yield return Case(MakeFuzz(seed: 102, size: 12000));
 
-        // Reuse BulkSet's (existing tree, updates) fixtures — they pack the structural edge cases (replaces,
-        // removals, extension heads, matching long extensions, splits, ...). The updates become the witness entries:
-        // a non-empty value is a non-deleting write, a null/empty value a deletion (matching BulkSet's own
-        // "null/empty == removal" convention).
+        // Reuse BulkSet's fixtures for their structural edge cases; a non-empty update value is a write, a null/empty one a deletion.
         int idx = 0;
         foreach (TestCaseData tc in PatriciaTreeBulkSetterTests.BulkSetTestGen())
         {
@@ -178,7 +162,7 @@ public class PatriciaTrieWitnessGeneratorTests
             yield return Case(new Scenario($"bulkset {idx++}: {tc.TestName}", existing, [], deletes, writes));
         }
 
-        // Targeted collapse: a two-child branch where one child is deleted forces the lone sibling into the witness.
+        // Collapse: deleting one of a two-child branch's children forces the lone sibling into the witness.
         List<(Hash256, byte[])> twoChild =
         [
             (Hash("aaaa000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("01")),
@@ -186,7 +170,7 @@ public class PatriciaTrieWitnessGeneratorTests
         ];
         yield return Case(new Scenario("collapse one of two", twoChild, [], [Hash("aaaa000000000000000000000000000000000000000000000000000000000000")], []));
 
-        // Chained collapse through an extension: deleting the leaf removes the extension chain and collapses the parent.
+        // Chained collapse through an extension.
         List<(Hash256, byte[])> chained =
         [
             (Hash("1111111111111111111111111111111111111111111111111111111111111111"), Bytes.FromHexString("01")),
@@ -199,13 +183,12 @@ public class PatriciaTrieWitnessGeneratorTests
             Hash("2233333333333333333333333333333333333333333333333333333333333333"),
         ], []));
 
-        // Absent-key read and absent-key delete (no-op) over a populated trie.
+        // Absent-key read and absent-key delete over a populated trie.
         List<(Hash256, byte[])> populated = PatriciaTreeBulkSetterTests.GenRandomOfLength(50, 99);
         yield return Case(new Scenario("absent read/delete", populated,
             [Hash("dd")], [Hash("ee")], []));
 
-        // Order-independence: an off-key insert (write branching off a deleted leaf's key) must NOT keep the sibling
-        // (2b) out of the witness, because applying the delete before the insert transiently collapses the branch.
+        // Order-independence: an off-key insert must NOT keep the sibling out of the witness, since a delete-first order transiently collapses the branch.
         List<(Hash256, byte[])> splitBase =
         [
             (Hash("1a"), Bytes.FromHexString("01")),
@@ -214,7 +197,6 @@ public class PatriciaTrieWitnessGeneratorTests
         yield return Case(new Scenario("off-key insert still needs sibling", splitBase,
             [], [Hash("1a")], [(Hash("1c"), Bytes.FromHexString("03"))]));
 
-        // Insert a new key (split) alongside an update and a delete.
         List<(Hash256, byte[])> mixedBase = PatriciaTreeBulkSetterTests.GenRandomOfLength(40, 7);
         List<Hash256> mixedPresent = PresentKeys(mixedBase);
         yield return Case(new Scenario("mixed read/write/delete", mixedBase,
@@ -263,8 +245,7 @@ public class PatriciaTrieWitnessGeneratorTests
         private readonly object _lock = new();
         public Dictionary<Hash256AsKey, byte[]> Nodes { get; } = [];
 
-        // Locked so the parallel walk can report concurrently. TryAdd enforces the documented contract that each
-        // standalone node is reported exactly once (so the sink never has to deduplicate).
+        // Locked for the parallel walk; TryAdd asserts the "each node reported exactly once" contract.
         public void Add(in TreePath path, TrieNode node)
         {
             byte[] rlp = node.FullRlp.ToArray();

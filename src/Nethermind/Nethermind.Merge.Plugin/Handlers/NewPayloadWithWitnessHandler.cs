@@ -50,10 +50,7 @@ public sealed class NewPayloadWithWitnessHandler(
         PayloadStatusV1 payloadStatus = statusResult.Data!;
         Witness? witness = null;
 
-        // We can't just await the rendezvous task: an already-known block returns VALID without
-        // re-processing, and INVALID/SYNCING blocks may never reach witness capture — in those cases the
-        // task is never completed and is only cancelled by the using-Dispose below, so awaiting would
-        // block. IsCompletedSuccessfully is the non-blocking probe; .Result on a completed task can't throw.
+        // Non-blocking probe rather than await: already-known/INVALID/SYNCING blocks never complete the task (it's only cancelled on Dispose), so awaiting would block.
         if (witnessRequest.Task.IsCompletedSuccessfully)
         {
             Witness? captured = witnessRequest.Task.Result;

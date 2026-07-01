@@ -532,7 +532,6 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         BlockHeader parent = chain.BlockTree.Head!.Header;
 
-        // Transfer between two genesis-funded accounts (sender AddressA, recipient AddressB).
         Transaction tx = Build.A.Transaction
             .WithValue(UInt256.One)
             .WithTo(TestItem.AddressB)

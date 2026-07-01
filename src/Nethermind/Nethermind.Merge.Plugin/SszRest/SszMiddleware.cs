@@ -32,14 +32,9 @@ public sealed class SszMiddleware
     private readonly ILogger _logger;
     private readonly CancellationToken _processExitToken;
 
-    // Path: /engine/v2/{fork}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v2/";
 
-    /// <summary>
-    /// Maximum allowed request body size in bytes (64 MiB).
-    /// Mirrors the <c>payload.max_bytes</c> example value advertised in the Engine API
-    /// SSZ-REST spec capabilities response (see https://github.com/ethereum/execution-apis/pull/793).
-    /// </summary>
+    /// <summary>Maximum allowed request body size in bytes (64 MiB), mirroring the spec's <c>payload.max_bytes</c> (execution-apis#793).</summary>
     public const int MaxBodySize = 0x4000000;
 
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
@@ -76,7 +71,6 @@ public sealed class SszMiddleware
 
         foreach (ISszEndpointHandler h in handlers)
         {
-            // Dictionaries are keyed case-insensitively below — keep resource as-is, no lowercasing.
             Dictionary<string, List<ISszEndpointHandler>> dict =
                 h.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
                     ? getDict
@@ -155,8 +149,6 @@ public sealed class SszMiddleware
         else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, fork, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
-            // intermediate string; appending the span goes straight into the format buffer.
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
                 $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
                 SszRestErrorCodes.MethodNotFound);
@@ -182,11 +174,6 @@ public sealed class SszMiddleware
     /// <summary>Shared body-read + handler invocation + metrics + error mapping for the fork-routed endpoints.</summary>
     private async Task DispatchAsync(HttpContext ctx, ISszEndpointHandler handler, int version, ReadOnlyMemory<char> extra)
     {
-        // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
-        // pooled blocks (~4 KB each), so multi-segment is the common case for blob-bearing
-        // payloads. The generated SSZ codecs accept ReadOnlySequence<byte> — single-segment
-        // is zero-copy, multi-segment consolidates once via ArrayPool. Both paths skip the
-        // MemoryStream + ToArray dance the previous implementation needed.
         PipeReader reader = ctx.Request.BodyReader;
         ReadOnlySequence<byte> body = default;
         bool bodyRead = false;
@@ -219,11 +206,7 @@ public sealed class SszMiddleware
         }
         catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
         {
-            // Per execution-apis #793 (Engine API SSZ Transport spec, "HTTP status codes" section):
-            // malformed SSZ encoding is 400 Bad Request with type=ssz-decode-error: canned error,
-            // no detail (spec verbatim).  422 Unprocessable Entity is reserved for
-            // "Invalid payload attributes" and is emitted by the handler chain via
-            // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
+            // Malformed SSZ encoding is 400 with type=ssz-decode-error, no detail (execution-apis#793).
             Metrics.SszRestDecodeFailuresTotal++;
             Metrics.SszRestRequestsClientErrorTotal++;
             if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
@@ -235,9 +218,7 @@ public sealed class SszMiddleware
             Metrics.SszRestRequestsServerErrorTotal++;
             if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
 
-            // If the inner code already aborted the request (e.g. encode failed mid-stream
-            // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
-            // OperationCanceledException, producing a duplicate exception in the logs.
+            // If the inner code already aborted the request, writing a 500 would throw a duplicate OperationCanceledException.
             if (!ctx.RequestAborted.IsCancellationRequested)
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
         }
@@ -259,8 +240,7 @@ public sealed class SszMiddleware
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        // Collapse a trailing slash so `/foo` and `/foo/` route identically; `pathLen` then
-        // bounds every subsequent `path.AsMemory(...)` slice so the slash never reaches `extra`.
+        // Collapse a trailing slash so `/foo` and `/foo/` route identically; pathLen bounds every later slice so the slash never reaches `extra`.
         int pathLen = path.Length;
         if (pathLen > EnginePrefix.Length && path[pathLen - 1] == '/')
         {
@@ -278,8 +258,7 @@ public sealed class SszMiddleware
             pathSegment = path.AsMemory(offset, pathLen - offset);
             return true;
         }
-        // Unscoped endpoints don't accept path extras — reject "/identity/foo" / "/capabilities/foo"
-        // as 404 method-not-found rather than letting them fall through to fork parsing.
+        // Unscoped endpoints don't accept path extras — reject "/identity/foo" / "/capabilities/foo" as 404.
         if (span.StartsWith("identity/".AsSpan(), StringComparison.OrdinalIgnoreCase)
             || span.StartsWith("capabilities/".AsSpan(), StringComparison.OrdinalIgnoreCase))
         {
@@ -301,20 +280,17 @@ public sealed class SszMiddleware
             return false;
         }
 
-        // Everything remaining should be a fork-scoped path: /{fork}/{resource}[/{extra}]
+        // Fork-scoped path: /{fork}/{resource}[/{extra}]
         int nextSlash = span.IndexOf('/');
         if (nextSlash <= 0)
         {
-            // E.g. bodies query or payloads query without extra path segment
             nextSlash = span.Length;
         }
 
         ReadOnlySpan<char> forkSpan = span[..nextSlash];
-        // SszRestPaths.SupportedForks uses OrdinalIgnoreCase, so no lowercasing needed.
         if (!SszRestPaths.SupportedForksSpanLookup.Contains(forkSpan))
         {
-            // Reject `/engine/v2/v<N>/...` (looks like a version-only path with no fork) before
-            // emitting an unsupported-fork error — let the caller produce a 404 instead.
+            // Reject `/engine/v2/v<N>/...` as 404 rather than an unsupported-fork error.
             if (forkSpan.Length > 1
                 && (forkSpan[0] == 'v' || forkSpan[0] == 'V')
                 && int.TryParse(forkSpan[1..], out _))
@@ -335,8 +311,7 @@ public sealed class SszMiddleware
         }
         else
         {
-            // Recognised fork but missing resource segment, e.g. /engine/v2/cancun — not
-            // a valid endpoint; leave unsupportedFork = false so the caller uses 404.
+            // Recognised fork but missing resource segment (e.g. /engine/v2/cancun) — 404, not unsupported-fork.
             return false;
         }
         return true;
@@ -355,12 +330,9 @@ public sealed class SszMiddleware
         FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
             lookup = isPost ? _postLookup : _getLookup;
 
-        // Prefer the whole path as a route key so a handler can own a multi-segment resource
-        // (e.g. "bodies/hash", "payloads/witness") without a per-endpoint special case. Membership is
-        // method-agnostic so a multi-segment resource stays whole even under the wrong verb: a GET on
-        // the POST-only "payloads/witness" then resolves no handler (→ 404) instead of being misread as
-        // "payloads/{payload_id}". Otherwise the first segment is the resource and the rest a path extra
-        // (e.g. "payloads/{payload_id}").
+        // Prefer the whole path as a route key so a handler can own a multi-segment resource (e.g. "payloads/witness")
+        // without a special case; membership is method-agnostic so it stays whole under the wrong verb (→ 404, not misread
+        // as "payloads/{payload_id}"). Otherwise the first segment is the resource and the rest a path extra.
         ReadOnlyMemory<char> resource;
         ReadOnlyMemory<char> extraMem;
         if (_postLookup.ContainsKey(pathSegment.Span) || _getLookup.ContainsKey(pathSegment.Span))
@@ -455,7 +427,6 @@ public sealed class SszMiddleware
                 if (IsDiagnosticGetPath(path))
                     return SszRequestKind.EngineOk;
 
-                // Hot-path SSZ GET endpoints require Accept: application/octet-stream.
                 foreach (string? v in ctx.Request.Headers.Accept)
                 {
                     if (v is not null && v.Contains(
@@ -483,9 +454,8 @@ public sealed class SszMiddleware
     }
 
     /// <summary>
-    /// Returns the request body as a <see cref="ReadOnlySequence{T}"/> over the PipeReader's
-    /// pooled segments. The caller MUST call <see cref="PipeReader.AdvanceTo(SequencePosition)"/>
-    /// once the wire object has been decoded (no remaining views into the segments).
+    /// Returns the request body as a <see cref="ReadOnlySequence{T}"/> over the PipeReader's pooled segments.
+    /// The caller MUST call <see cref="PipeReader.AdvanceTo(SequencePosition)"/> once the wire object has been decoded.
     /// </summary>
     private static async Task<ReadOnlySequence<byte>> ReadBodyAsync(HttpContext ctx, PipeReader reader)
     {
@@ -506,8 +476,7 @@ public sealed class SszMiddleware
                 }
         }
 
-        // ContentLength unknown (chunked transfer): drain the pipe without consuming any
-        // bytes so the final ReadResult holds the entire body in one ReadOnlySequence.
+        // ContentLength unknown (chunked): drain without consuming so the final ReadResult holds the whole body.
         while (true)
         {
             ReadResult rr = await reader.ReadAsync(ctx.RequestAborted);

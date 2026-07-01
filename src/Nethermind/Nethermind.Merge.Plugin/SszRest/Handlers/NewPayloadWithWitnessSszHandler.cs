@@ -13,11 +13,8 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
 /// Handles <c>POST /engine/v2/{fork}/payloads/witness</c> (EIP-7928), the SSZ-REST equivalent of
-/// <c>engine_newPayloadWithWitness</c>. Generic over a per-version descriptor so a new version is one
-/// new descriptor struct + one DI line — mirroring <see cref="NewPayloadSszHandler{TVersion,TWire}"/>.
-/// The SSZ request body matches the standard <c>payloads</c> endpoint; the SSZ response is
-/// <c>PayloadStatusWithWitness</c> — the payload status plus a witness present only when the status is
-/// VALID (execution-apis#773/#793).
+/// <c>engine_newPayloadWithWitness</c>. The response is <c>PayloadStatusWithWitness</c>, the payload
+/// status plus a witness present only when the status is VALID (execution-apis#773/#793).
 /// </summary>
 public sealed class NewPayloadWithWitnessSszHandler<TVersion, TWire>(IEngineRpcModule engineModule) : SszEndpointHandlerBase
     where TVersion : struct, INewPayloadWithWitnessVersion<TWire>
