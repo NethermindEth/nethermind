@@ -35,9 +35,7 @@ namespace Nethermind.Trie
 
         public TrieType TrieType { get; init; }
 
-#if !ZK_EVM
         [ThreadStatic]
-#endif
         private static TraverseStack? _threadStaticTraverseStack;
 
         private static TraverseStack GetTraverseStack()
