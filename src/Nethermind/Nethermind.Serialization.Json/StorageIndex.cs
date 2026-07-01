@@ -18,7 +18,7 @@ public readonly record struct StorageIndex(UInt256 Value)
 
 public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
 {
-    private const int MaxLength = 66;
+    private const int MaxLength = 2 + 64;
 
     [SkipLocalsInit]
     public override StorageIndex Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

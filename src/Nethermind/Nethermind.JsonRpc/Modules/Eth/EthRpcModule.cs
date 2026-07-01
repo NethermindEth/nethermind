@@ -948,7 +948,14 @@ public partial class EthRpcModule(
             return GetStateFailureResult<AccountProof>(header);
         }
 
-        AccountProofCollector accountProofCollector = new(accountAddress, storageKeys.Select(k => k.Value));
+        UInt256[] keys = new UInt256[storageKeys.Count];
+        int keyIndex = 0;
+        foreach (StorageIndex storageKey in storageKeys)
+        {
+            keys[keyIndex++] = storageKey.Value;
+        }
+
+        AccountProofCollector accountProofCollector = new(accountAddress, keys);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
         return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
     }
