@@ -7,9 +7,6 @@ namespace Nethermind.Stateless.Execution.IO;
 
 internal static class ForkIndexHelper
 {
-    // Indexes are the ordinals of tests-zkevm@v0.5.0's ProtocolFork enum
-    // (stateless_ssz.py: PROTOCOL_FORKS = tuple(ProtocolFork); the SSZ fork value is that
-    // tuple index). The enum is contiguous; the spec's StPetersburg maps to ConstantinopleFix.
     private static readonly Dictionary<string, ulong> _forkIndexes = new(StringComparer.Ordinal)
     {
         [Frontier.Instance.Name] = 0,

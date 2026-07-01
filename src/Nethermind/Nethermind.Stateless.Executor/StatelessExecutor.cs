@@ -20,33 +20,19 @@ namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
-    /// <summary>
-    /// Gets the encoded failure result of the current execution. Intended for zkVM guests.
-    /// </summary>
-    /// <remarks>
-    /// As there's no exception unwinding in the zkVM runtime, an exception thrown during execution
-    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
-    /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
-    /// The failure result is therefore encoded up front, before execution begins, so the
-    /// callback can access it.
-    /// </remarks>
-    public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
-
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
-        // Any failure to decode the input yields the default failed result (zeroed request root),
-        // matching the reference guest's `run_stateless_guest`. Pre-encode it so the zkVM
-        // `ZkvmThrow` callback can surface it if decoding throws.
-        byte[] output = StatelessValidationResult.Encode(CreateDefaultFailedResult());
+        byte[] output = StatelessValidationResult.Encode(_defaultFailureResult);
         FailureOutput = output;
-
         StatelessPayload payload;
+
         try
         {
             payload = InputDecoder.Decode(data);
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.Fail(ex.Message);
             return output;
         }
 
@@ -155,7 +141,19 @@ public static class StatelessExecutor
         return true;
     }
 
-    private static StatelessValidationResult CreateDefaultFailedResult() => new()
+    /// <summary>
+    /// Gets the encoded failure result of the current execution. Intended for zkVM guests.
+    /// </summary>
+    /// <remarks>
+    /// As there's no exception unwinding in the zkVM runtime, an exception thrown during execution
+    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
+    /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
+    /// The failure result is therefore encoded up front, before execution begins, so the
+    /// callback can access it.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
+
+    private static readonly StatelessValidationResult _defaultFailureResult = new()
     {
         NewPayloadRequestRoot = Hash256.Zero,
         IsSuccess = false,
@@ -165,7 +163,7 @@ public static class StatelessExecutor
             ActiveFork = new ForkConfig
             {
                 Fork = 0,
-                Activation = new SszForkActivation { BlockNumber = [], Timestamp = [] },
+                Activation = new() { BlockNumber = [], Timestamp = [] },
                 BlobSchedule = []
             }
         }

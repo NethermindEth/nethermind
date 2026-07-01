@@ -262,10 +262,6 @@ public partial class SszExecutionPayloadV4(ExecutionPayloadV4 payload)
 
     public override ExecutionPayloadV4 AsExecutionPayload() => Inner;
 
-    // MAX_BYTES_PER_TRANSACTION (2^30): tests-zkevm@v0.5.0 defines
-    // block_access_list as ByteList[MAX_BYTES_PER_TRANSACTION] (stateless_ssz.py),
-    // and the SSZ merkle root of NewPayloadRequest embedded in the pyspec stateless
-    // fixtures depends on this limit.
     [SszList(0x4000_0000)]
     public byte[] BlockAccessList
     {
