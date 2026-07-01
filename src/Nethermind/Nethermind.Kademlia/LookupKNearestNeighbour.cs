@@ -279,9 +279,9 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 bool shouldWarn = e is not SocketException && e.InnerException is not SocketException;
                 if (shouldWarn)
                 {
-                    if (_logger.IsEnabled(LogLevel.Warning)) _logger.LogWarning($"Find neighbour op failed: {e}");
+                    if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogWarning($"Find neighbour op failed: {e}");
                 }
-                else if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Find neighbour op failed: {e.Message}");
+                else if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Find neighbour op failed: {e.Message}");
                 return null;
             }
         }

@@ -84,7 +84,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 OnRequestFailed(toRefresh);
-                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Error while refreshing node {toRefresh}: {e}");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Error while refreshing node {toRefresh}: {e}");
             }
 
             if (_isRefreshing.TryRemove(nodeHash, out _))
