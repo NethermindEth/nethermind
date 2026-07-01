@@ -13,9 +13,10 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>POST /engine/v{N}/forkchoice</c>, the SSZ-REST equivalent of
-/// <c>engine_forkchoiceUpdatedV{N}</c>. Generic over a per-version descriptor
-/// so adding V5 is one new descriptor struct + one DI line — no version switch.
+/// Handles <c>POST /engine/v2/forkchoice</c>, the SSZ-REST equivalent of
+/// <c>engine_forkchoiceUpdatedV{N}</c> (the version is selected by the <c>Eth-Execution-Version</c>
+/// header). Generic over a per-version descriptor so adding V5 is one new descriptor struct + one
+/// DI line — no version switch.
 /// </summary>
 public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModule engineModule, ISpecProvider specProvider) : SszEndpointHandlerBase
     where TVersion : struct, IForkchoiceUpdatedVersion<TWire>
@@ -29,7 +30,7 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     {
         TWire.Decode(body, out TWire wire);
 
-        if (GetUrlForkMismatchMessage(ctx, TVersion.GetTimestamp(wire)) is { } mismatch)
+        if (GetForkMismatchMessage(ctx, TVersion.GetTimestamp(wire)) is { } mismatch)
         {
             await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, mismatch, MergeErrorCodes.UnsupportedFork);
             return;
@@ -40,20 +41,21 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     }
 
     /// <summary>
-    /// Returns an error message if the payload's timestamp fork doesn't match the URL <c>{fork}</c>
-    /// segment, or <c>null</c> when the check doesn't apply (no payload attributes / no route fork).
+    /// Returns an error message if the payload's timestamp fork doesn't match the fork requested via
+    /// the <c>Eth-Execution-Version</c> header, or <c>null</c> when the check doesn't apply (no
+    /// payload attributes / no route fork).
     /// </summary>
-    private string? GetUrlForkMismatchMessage(HttpContext ctx, ulong? timestamp)
+    private string? GetForkMismatchMessage(HttpContext ctx, ulong? timestamp)
     {
         if (!timestamp.HasValue
             || !ctx.Items.TryGetValue("SszRouteFork", out object? forkObj)
-            || forkObj is not string urlFork)
+            || forkObj is not string requestedFork)
             return null;
 
         IReleaseSpec payloadSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp.Value));
         string? payloadForkSegment = SszRestPaths.GetEngineApiUrlSegment(payloadSpec);
-        return string.Equals(payloadForkSegment, urlFork, StringComparison.OrdinalIgnoreCase)
+        return string.Equals(payloadForkSegment, requestedFork, StringComparison.OrdinalIgnoreCase)
             ? null
-            : $"URL fork '{urlFork}' does not match the fork for timestamp {timestamp.Value}";
+            : $"Eth-Execution-Version fork '{requestedFork}' does not match the fork for timestamp {timestamp.Value}";
     }
 }

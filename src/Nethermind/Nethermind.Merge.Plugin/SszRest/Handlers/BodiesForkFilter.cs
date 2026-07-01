@@ -11,10 +11,10 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Per execution-apis #793, <c>/engine/v2/{fork}/bodies/...</c> responses MUST mark
-/// blocks whose timestamp falls outside the URL fork as <c>available=false</c>.
-/// Applied at the SSZ-REST boundary because the underlying engine handler is shared
-/// with the un-scoped JSON-RPC <c>engine_getPayloadBodies*</c> methods.
+/// Per execution-apis #793, <c>/engine/v2/bodies/...</c> responses MUST mark blocks whose
+/// timestamp falls outside the fork requested via the <c>Eth-Execution-Version</c> header as
+/// <c>available=false</c>. Applied at the SSZ-REST boundary because the underlying engine handler
+/// is shared with the un-scoped JSON-RPC <c>engine_getPayloadBodies*</c> methods.
 /// </summary>
 internal static class BodiesForkFilter
 {

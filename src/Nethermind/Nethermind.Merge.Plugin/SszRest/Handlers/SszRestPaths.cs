@@ -12,13 +12,6 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 public static class SszRestPaths
 {
-    private static readonly string _paris = Forks.Paris.Instance.EngineApiUrlSegment!;
-    private static readonly string _shanghai = Forks.Shanghai.Instance.EngineApiUrlSegment!;
-    private static readonly string _cancun = Forks.Cancun.Instance.EngineApiUrlSegment!;
-    private static readonly string _prague = Forks.Prague.Instance.EngineApiUrlSegment!;
-    private static readonly string _osaka = Forks.Osaka.Instance.EngineApiUrlSegment!;
-    private static readonly string _amsterdam = Forks.Amsterdam.Instance.EngineApiUrlSegment!;
-
     /// <summary>
     /// Single source of truth: URL fork segment → <see cref="Forks.NamedReleaseSpec"/>. Built by
     /// walking back from the latest fork via <see cref="Forks.NamedReleaseSpec.Parent"/> and
@@ -54,13 +47,6 @@ public static class SszRestPaths
     public static readonly FrozenSet<string> SupportedForks =
         SupportedForksOrdered.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Cached <see cref="ReadOnlySpan{Char}"/> alternate lookup for <see cref="SupportedForks"/>,
-    /// so the per-request <c>GetAlternateLookup</c> call in <c>SszMiddleware.TryRoute</c> is avoided.
-    /// </summary>
-    public static readonly FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> SupportedForksSpanLookup =
-        SupportedForks.GetAlternateLookup<ReadOnlySpan<char>>();
-
     public const string Payloads = "payloads";
 
     public const string Forkchoice = "forkchoice";
@@ -76,38 +62,21 @@ public static class SszRestPaths
     public const string Blobs = "blobs";
 
     // Documentation strings for the SSZ-REST routes — used by EngineRpcCapabilitiesProvider
-    // (registration) and EngineModuleTests (coverage assertions). Built at static-init time from
-    // each fork's EngineApiUrlSegment so the route docs stay in sync with the routing layer.
-    public static readonly string PostV1Payloads = $"POST /engine/v2/{_paris}/payloads";
-    public static readonly string GetV1Payloads = $"GET /engine/v2/{_paris}/payloads/{{payload_id}}";
-    public static readonly string PostV1Forkchoice = $"POST /engine/v2/{_paris}/forkchoice";
-    public const string PostV1Capabilities = "GET /engine/v2/capabilities";
-    public const string PostV1ClientVersion = "GET /engine/v2/identity";
-
-    public static readonly string PostV2Payloads = $"POST /engine/v2/{_shanghai}/payloads";
-    public static readonly string PostV2Forkchoice = $"POST /engine/v2/{_shanghai}/forkchoice";
-    public static readonly string GetV2Payloads = $"GET /engine/v2/{_shanghai}/payloads/{{payload_id}}";
-    public static readonly string PostV1PayloadBodiesByHash = $"POST /engine/v2/{_shanghai}/bodies/hash";
-    public static readonly string GetV1PayloadBodiesByRange = $"GET /engine/v2/{_shanghai}/bodies";
-
-    public static readonly string PostV3Payloads = $"POST /engine/v2/{_cancun}/payloads";
-    public static readonly string PostV3Forkchoice = $"POST /engine/v2/{_cancun}/forkchoice";
-    public static readonly string GetV3Payloads = $"GET /engine/v2/{_cancun}/payloads/{{payload_id}}";
-    public const string PostV1Blobs = "POST /engine/v2/blobs/v1";
-
-    public static readonly string PostV4Payloads = $"POST /engine/v2/{_prague}/payloads";
-    public static readonly string GetV4Payloads = $"GET /engine/v2/{_prague}/payloads/{{payload_id}}";
-
-    public static readonly string GetV5Payloads = $"GET /engine/v2/{_osaka}/payloads/{{payload_id}}";
-    public const string PostV2Blobs = "POST /engine/v2/blobs/v2";
-    public const string PostV3Blobs = "POST /engine/v2/blobs/v3";
-
-    public static readonly string PostV5Payloads = $"POST /engine/v2/{_amsterdam}/payloads";
-    public static readonly string GetV6Payloads = $"GET /engine/v2/{_amsterdam}/payloads/{{payload_id}}";
-    public static readonly string PostV4Forkchoice = $"POST /engine/v2/{_amsterdam}/forkchoice";
-    public static readonly string PostV2PayloadBodiesByHash = $"POST /engine/v2/{_amsterdam}/bodies/hash";
-    public static readonly string GetV2PayloadBodiesByRange = $"GET /engine/v2/{_amsterdam}/bodies";
-    public const string PostV4Blobs = "POST /engine/v2/blobs/v4";
+    // (registration) and EngineModuleTests (coverage assertions). Since execution-apis#793 moved
+    // the fork out of the path and into the Eth-Execution-Version header, each fork-scoped route is
+    // advertised once: fork selection is a request header, not a distinct path. Blobs remain
+    // independently path-versioned, and identity/capabilities stay unscoped.
+    public const string PostPayloads = "POST /engine/v2/payloads";
+    public const string GetPayloads = "GET /engine/v2/payloads/{payload_id}";
+    public const string PostForkchoice = "POST /engine/v2/forkchoice";
+    public const string PostBodiesByHash = "POST /engine/v2/bodies/hash";
+    public const string GetBodiesByRange = "GET /engine/v2/bodies";
+    public const string GetCapabilities = "GET /engine/v2/capabilities";
+    public const string GetIdentity = "GET /engine/v2/identity";
+    public const string PostBlobsV1 = "POST /engine/v2/blobs/v1";
+    public const string PostBlobsV2 = "POST /engine/v2/blobs/v2";
+    public const string PostBlobsV3 = "POST /engine/v2/blobs/v3";
+    public const string PostBlobsV4 = "POST /engine/v2/blobs/v4";
 
     /// <summary>
     /// Resolves the per-fork engine API method version for the given <paramref name="resource"/>
