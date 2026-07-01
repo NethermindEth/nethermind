@@ -49,7 +49,7 @@ public class RewardTests
         builder.WithExtraData(XdcTestHelper.BuildV1ExtraData(extraDataMasternodes));
         XdcBlockHeader checkpointHeader = builder.TestObject;
         IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
-        spec.SwitchBlock.Returns(0);
+        spec.SwitchBlock.Returns(0UL);
         XdcRewardCalculatorSource source = CreateRewardCalculatorSource(isSubnet);
         XdcRewardCalculator rewardCalculator = (XdcRewardCalculator)source.Get(
             CreateXdcTransactionProcessor(Substitute.For<ISpecProvider>(), Substitute.For<IMasternodeVotingContract>()));
