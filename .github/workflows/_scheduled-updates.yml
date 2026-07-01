@@ -1,0 +1,201 @@
+name: '[reusable] Scheduled updates'
+
+on:
+  workflow_call:
+    inputs:
+      which:
+        description: 'Comma-separated: update-fast-sync, update-superchain, update-dockerfiles, all'
+        required: false
+        default: all
+        type: string
+  workflow_dispatch:
+    inputs:
+      which:
+        description: 'Which update job to run'
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - update-fast-sync
+          - update-superchain
+          - update-dockerfiles
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fast-sync:
+    name: Update fast sync settings
+    if: contains(inputs.which, 'update-fast-sync') || inputs.which == 'all'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          pip install setuptools
+          pip install emoji
+
+      - name: Update config files
+        run: python3 scripts/sync-settings.py -k ${{ secrets.ETHERSCAN_API_KEY }}
+
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Create a pull request
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          head_branch=chore/fast-sync-config-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          git checkout -b $head_branch
+          git add -A
+          git commit -am "Auto-update fast sync settings"
+          git push origin $head_branch
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Auto-update fast sync settings" \
+            -b "Updated fast sync settings in config files" -l configuration -l sync
+
+  superchain:
+    name: Update OP Superchain chains
+    if: contains(inputs.which, 'update-superchain') || inputs.which == 'all'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13.1'
+      - name: Install dependencies
+        run: |
+          pip install zstandard
+          pip install safe-pysha3
+          pip install requests
+          pip install setuptools
+          pip install emoji
+      - name: Remove existing Chainspec and config files
+        run: |
+          rm -f ./src/Nethermind/Chains/*.zst
+          rm -f ./src/Nethermind/Chains/dictionary
+          find src/Nethermind/Nethermind.Runner/configs -maxdepth 1 -name '*.json' ! -name '*_archive.json' -exec grep -l '"Optimism"' {} \; | xargs rm
+      - name: Generate Chainspec and config files
+        run: python3 scripts/superchain.py -v -o /tmp/superchain
+      - name: Copy generated files
+        run: |
+          cp -r /tmp/superchain/chainspec/* ./src/Nethermind/Chains
+          cp -r /tmp/superchain/runner/* ./src/Nethermind/Nethermind.Runner/configs
+      - name: Update fast sync settings
+        run: python3 scripts/sync-settings.py --superchain
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - name: Create a pull request
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          head_branch=feature/update-superchain-${{ github.run_number }}-${{ github.run_attempt }}
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b $head_branch
+          git add -A
+          git commit -am "Update OP Superchain chains"
+          git push origin $head_branch
+          gh pr create -B master -H $head_branch -t "Update OP Superchain chains" \
+            -b "Generated Chainspec and config files" -l configuration -l sync
+
+  dockerfiles:
+    name: Update Dockerfiles
+    if: contains(inputs.which, 'update-dockerfiles') || inputs.which == 'all'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Detect .NET version
+        run: |
+          dotnet_version=$(jq -r '.sdk.version' global.json | cut -d. -f1,2)
+          echo "DOTNET_VERSION=$dotnet_version" >> $GITHUB_ENV
+
+      - name: Update Dockerfiles
+        id: update
+        run: |
+          # Get the latest .NET release information
+          manifest=$(curl -s https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/$DOTNET_VERSION/releases.json)
+          runtime_version=$(echo "$manifest" | jq -r '."latest-runtime"')
+          sdk_version=$(echo "$manifest" | jq -r '."latest-sdk"')
+
+          # Get the digests for the specified tags
+          runtime_chiseled_tag=${runtime_version}-resolute-chiseled
+          runtime_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_chiseled_tag} --no-tags | jq -r '.Digest')
+
+          runtime_tag=${runtime_version}-resolute
+          runtime_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_tag} --no-tags | jq -r '.Digest')
+
+          sdk_tag=${sdk_version}-resolute
+          sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:${sdk_tag} --no-tags | jq -r '.Digest')
+
+          # Update Dockerfiles
+          dockerfiles=(
+            "Dockerfile"
+            "Dockerfile.chiseled"
+            "Dockerfile.pgo"
+            "scripts/build/Dockerfile"
+          )
+
+          for file in "${dockerfiles[@]}"; do
+            sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1${sdk_tag}@${sdk_digest}|" "$file"
+          done
+
+          runtime_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
+
+          for file in "Dockerfile" "Dockerfile.pgo"; do
+            sed -i "s|${runtime_pattern}|\1${runtime_tag}@${runtime_digest}|" "$file"
+          done
+
+          sed -i "s|${runtime_pattern}|\1${runtime_chiseled_tag}@${runtime_chiseled_digest}|" Dockerfile.chiseled
+
+          # Get the number of modified files
+          file_count=$(git status --porcelain | wc -l)
+          echo "file-count=$file_count" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub app token
+        if: steps.update.outputs.file-count != '0'
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Create a pull request
+        if: steps.update.outputs.file-count != '0'
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          head_branch=chore/update-dockerfiles-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
+          body=$(cat <<EOF
+          Updated Dockerfiles to use the latest versions of .NET $DOTNET_VERSION SDK and runtime.
+
+          To verify manually, see:
+          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags
+          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/sdk/tags
+          EOF
+          )
+
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          git checkout -b $head_branch
+          git add -A
+          git commit -am "Update Dockerfiles"
+          git push origin $head_branch
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "chore: Update Dockerfiles" -b "$body" -l .net -l devops

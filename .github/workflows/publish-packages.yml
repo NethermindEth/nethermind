@@ -1,8 +1,7 @@
 name: Publish packages
 
 on:
-  release:
-    types: [published]
+  workflow_call:
 
 jobs:
   publish-ppa:

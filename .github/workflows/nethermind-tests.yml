@@ -1,14 +1,7 @@
 name: Nethermind/Ethereum tests
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 on:
-  pull_request:
-  push:
-    branches: [master]
-  workflow_dispatch:
+  workflow_call:
     inputs:
       coverage:
         default: false
@@ -17,7 +10,7 @@ on:
         type: boolean
 
 env:
-  COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
+  COLLECT_COVERAGE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master') || inputs.coverage }}
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
 

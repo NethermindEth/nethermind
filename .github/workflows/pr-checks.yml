@@ -1,0 +1,106 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [master]
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+  security-events: write
+
+jobs:
+  paths:
+    name: Detect changed paths
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      taiko: ${{ steps.filter.outputs.taiko }}
+      evm: ${{ steps.filter.outputs.evm }}
+    steps:
+      - name: Detect changed paths
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          match() { echo "$files" | grep -qE "$1"; }
+          match '^src/Nethermind/Nethermind\.Taiko/|^\.github/workflows/_taiko-integration\.yml' \
+            && taiko=true || taiko=false
+          match '^src/Nethermind/Nethermind\.Evm/|^Directory\.Packages\.props|^\.github/workflows/evm-opcode-benchmark-diff\.yml|^scripts/evm_benchmark_utils\.py' \
+            && evm=true || evm=false
+          echo "taiko=$taiko" >> "$GITHUB_OUTPUT"
+          echo "evm=$evm" >> "$GITHUB_OUTPUT"
+
+  build-solutions:
+    name: Build solutions
+    uses: ./.github/workflows/build-solutions.yml
+
+  build-tools:
+    name: Build tools
+    uses: ./.github/workflows/build-tools.yml
+
+  nethermind-tests:
+    name: Nethermind/Ethereum tests
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/nethermind-tests.yml
+    secrets: inherit
+
+  nethermind-tests-checked:
+    name: Nethermind extra test variants
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/nethermind-tests-checked.yml
+
+  nethermind-tests-flat:
+    name: Nethermind tests (Flat DB)
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/nethermind-tests-flat.yml
+
+  code-quality:
+    name: Code quality
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/_code-quality.yml
+
+  trivy:
+    name: Trivy scanner
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/trivy.yml
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/dependency-review.yml
+
+  stateless-tests:
+    name: Stateless execution tests
+    uses: ./.github/workflows/stateless-tests.yml
+
+  sync-pr-gate:
+    name: Sync PR Gate (Hoodi)
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/sync-pr-gate.yml
+    secrets: inherit
+
+  evm-opcode-benchmark-diff:
+    name: EVM Opcode Benchmark Diff
+    needs: paths
+    if: needs.paths.outputs.evm == 'true'
+    uses: ./.github/workflows/evm-opcode-benchmark-diff.yml
+
+  taiko-integration:
+    name: Taiko integration
+    needs: paths
+    if: needs.paths.outputs.taiko == 'true'
+    uses: ./.github/workflows/_taiko-integration.yml
+    secrets: inherit

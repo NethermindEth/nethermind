@@ -480,7 +480,10 @@ jobs:
   benchmark:
     name: benchmark (${{ matrix.payload_set }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
     needs: [resolve, prepare-docker]
-    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
+    if: >-
+      needs.resolve.outputs.should_run == 'true'
+      && needs.resolve.outputs.mode == 'single'
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     strategy:
       matrix:
         run: ${{ fromJson(needs.resolve.outputs.run_indices) }}
@@ -1618,7 +1621,10 @@ jobs:
   benchmark-multi:
     name: benchmark (${{ matrix.tag }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
     needs: [resolve, resolve-images]
-    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'multi'
+    if: >-
+      needs.resolve.outputs.should_run == 'true'
+      && needs.resolve.outputs.mode == 'multi'
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     strategy:
       matrix: ${{ fromJson(needs.resolve-images.outputs.matrix) }}
       max-parallel: 1

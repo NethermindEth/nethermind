@@ -1,12 +1,7 @@
 name: Sync PR Gate (Hoodi)
 
 on:
-  pull_request:
-    branches: [master]
-
-concurrency:
-  group: sync-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  workflow_call:
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"

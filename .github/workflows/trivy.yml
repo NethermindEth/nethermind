@@ -1,12 +1,7 @@
 name: Trivy scanner
 
 on:
-  pull_request:
-    branches: [master]
-  push:
-    branches: [master]
-  schedule:
-    - cron: '29 19 * * 4'
+  workflow_call:
   workflow_dispatch:
 
 permissions:

@@ -1,9 +1,13 @@
 name: "Hive consensus tests"
 
 on:
-  push:
-    branches: [release/*]
-
+  workflow_call:
+    inputs:
+      parallelism:
+        description: 'Number of concurrently running tests in each job.'
+        required: false
+        default: '8'
+        type: string
   workflow_dispatch:
     inputs:
       parallelism:
@@ -12,10 +16,6 @@ on:
         default: '8'
         type: choice
         options: ['1', '2', '3', '4', '8', '16']
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   create_docker_image:
@@ -81,8 +81,6 @@ jobs:
       - name: Trigger Docker Build Action with Cleaned Ref
         if: steps.check_conditions.outputs.skip_docker_build != 'true'
         uses: benc-uk/workflow-dispatch@v1
-        env:
-          ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
         with:
           workflow: publish-docker.yml
           ref: "${{ github.ref }}"
@@ -143,7 +141,7 @@ jobs:
     steps:
       - name: Set up parameters
         run: |
-          echo "PARALLELISM=${{ github.event.inputs.parallelism || '8' }}" >> $GITHUB_ENV
+          echo "PARALLELISM=${{ inputs.parallelism || '8' }}" >> $GITHUB_ENV
 
       - name: Check out Nethermind repository
         uses: actions/checkout@v6

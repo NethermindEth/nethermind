@@ -75,7 +75,9 @@ jobs:
 
   benchmark:
     needs: resolve-inputs
-    if: needs.resolve-inputs.outputs.should_run == 'true'
+    if: >-
+      needs.resolve-inputs.outputs.should_run == 'true'
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: benchmark
     timeout-minutes: 30
     steps:
