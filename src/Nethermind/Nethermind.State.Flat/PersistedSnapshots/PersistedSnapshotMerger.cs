@@ -120,6 +120,9 @@ public static class PersistedSnapshotMerger
                 {
                     curAddr = new Address(PersistedSnapshotKey.PerAddressAddress(key));
                     addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(curAddr);
+                    // addrKey is the single key the reader probes for this address's account, self-destruct,
+                    // and the address half of every slot lookup — add it once per group, not per record.
+                    bloom.Add(addrBloomKey);
                     barrier = -1;
                 }
 
@@ -137,7 +140,7 @@ public static class PersistedSnapshotMerger
                         // Self-destruct sorts before this address's slots: resolve the truncation barrier
                         // here so the slots that follow can be filtered and streamed without buffering.
                         barrier = ComputeSelfDestructBarrier<TView, TReader, TPin>(views, enums, matching[..matchCount]);
-                        EmitSelfDestruct(ref table, bloom, key, barrier);
+                        EmitSelfDestruct(ref table, key, barrier);
                     }
                     else if (sub == PersistedSnapshotKey.SlotSub)
                     {
@@ -184,7 +187,6 @@ public static class PersistedSnapshotMerger
         TReader r = views[newest].CreateReader();
         using TPin pin = r.PinBuffer(enums[newest].CurrentValue);
         table.Add(key, pin.Buffer);
-        bloom.Add(addrBloomKey);
         bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, PersistedSnapshotKey.SlotKeyBytes(key)));
     }
 
@@ -224,14 +226,11 @@ public static class PersistedSnapshotMerger
     /// keys off the barrier (presence) via <see cref="PersistedSnapshotStack.TryGetSelfDestruct"/>.
     /// </remarks>
     private static void EmitSelfDestruct<TWriter>(
-        ref SortedTableBuilder<TWriter> table, BloomFilter bloom, scoped ReadOnlySpan<byte> key, int barrier)
-        where TWriter : IByteBufferWriter
-    {
+        ref SortedTableBuilder<TWriter> table, scoped ReadOnlySpan<byte> key, int barrier)
+        where TWriter : IByteBufferWriter =>
         table.Add(key, barrier >= 0
             ? PersistedSnapshotTags.SelfDestructDestructedMarker
             : PersistedSnapshotTags.SelfDestructNewMarker);
-        bloom.Add(PersistedSnapshotBloomBuilder.AddressKey(PersistedSnapshotKey.PerAddressAddress(key)));
-    }
 
     /// <summary>Emit the newest source's value for <paramref name="key"/> (account / state node /
     /// storage node) and add the matching bloom key.</summary>
@@ -256,8 +255,7 @@ public static class PersistedSnapshotMerger
             case PersistedSnapshotKey.RefIdColumn:
                 break; // ref-id presence records are not bloom-gated
             case PersistedSnapshotKey.AccountColumn:
-                bloom.Add(PersistedSnapshotBloomBuilder.AddressKey(PersistedSnapshotKey.PerAddressAddress(key)));
-                break;
+                break; // addrKey is added once per group when the group is entered
             case PersistedSnapshotKey.StorageColumn:
                 ulong addrHashKey = MemoryMarshal.Read<ulong>(PersistedSnapshotKey.StorageAddressHash(key));
                 bloom.Add(addrHashKey ^ PersistedSnapshotBloomBuilder.StatePathKey(PersistedSnapshotKey.StoragePathBytes(key)));

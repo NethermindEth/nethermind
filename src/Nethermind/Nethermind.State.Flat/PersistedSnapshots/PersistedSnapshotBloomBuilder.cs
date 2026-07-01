@@ -28,14 +28,15 @@ internal static class PersistedSnapshotBloomBuilder
     {
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
 
-        // Pass 1: count keys to size the bloom accurately.
+        // Pass 1: count keys to size the bloom accurately. addrKey is the single key the reader probes for
+        // the address's account, self-destruct flag, and the address half of every slot lookup, so it is
+        // counted once per address — not once per account/flag/slot.
         long capacity = 0;
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
-            if (entry.HasAccount) capacity++;
-            if (entry.SelfDestructFlag is not null) capacity++;
+            capacity++; // addrKey
             foreach (WholeReadScanner.SlotEntry _ in entry.Slots)
-                capacity += 2; // address key + (address, slot) key
+                capacity++; // (address, slot) key
         }
         foreach (WholeReadScanner.StateNodeEntry _ in scanner.StateNodes)
             capacity++;
@@ -47,19 +48,14 @@ internal static class PersistedSnapshotBloomBuilder
 
         BloomFilter bloom = new(capacity, bitsPerKey);
 
-        // Pass 2: populate. Address/slot/SD keys.
+        // Pass 2: populate. addrKey once per address (covers account, self-destruct, and the address half
+        // of a slot check), then one key per slot.
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
             ulong addrKey = AddressKey(entry.Address);
-            if (entry.HasAccount)
-                bloom.Add(addrKey);
-            if (entry.SelfDestructFlag is not null)
-                bloom.Add(addrKey);
+            bloom.Add(addrKey);
             foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-            {
-                bloom.Add(addrKey);
                 bloom.Add(SlotKey(addrKey, slot.Slot));
-            }
         }
         // Trie-node keys (state + storage).
         foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
