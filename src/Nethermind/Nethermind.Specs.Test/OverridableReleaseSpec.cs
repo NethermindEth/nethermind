@@ -125,7 +125,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip7843Enabled => spec.IsEip7843Enabled;
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
-        // Not cached: this test spec is mutated after construction, so GasCosts must reflect current flags.
         public SpecGasCosts GasCosts => new(this);
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }

@@ -14,11 +14,8 @@ namespace Nethermind.Consensus.Validators;
 /// Recovers transaction senders (and EIP-7702 authorities) before delegating to the inner validator.
 /// </summary>
 /// <remarks>
-/// Suggested- and orphaned-block validation run at ingress, ahead of the <see cref="RecoverSignatures"/>
-/// preprocessor step, yet EIP-2780 makes the intrinsic-gas check sender-dependent (the self-transfer
-/// discount). Recovering here — via the same <see cref="RecoverSignatures"/> logic the processing path
-/// uses — keeps <see cref="BlockValidator"/> a pure structural check and ensures the later preprocessor
-/// pass (which short-circuits once senders are populated) still finds authorities recovered.
+/// Ingress validation runs ahead of the <see cref="RecoverSignatures"/> preprocessor, yet EIP-2780's
+/// intrinsic-gas check is sender-dependent; recovering here keeps <see cref="BlockValidator"/> pure.
 /// </remarks>
 public class RecoveringBlockValidator(
     IBlockValidator baseValidator,
@@ -40,8 +37,7 @@ public class RecoveringBlockValidator(
         return baseValidator.ValidateOrphanedBlock(block, out error);
     }
 
-    // Remaining members need no recovery: processed blocks already carry senders, and header,
-    // withdrawal, and body checks do not depend on transaction senders.
+    // Remaining members need no recovery: processed blocks already carry senders; header/body checks don't use them.
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error) =>
         baseValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error);
 

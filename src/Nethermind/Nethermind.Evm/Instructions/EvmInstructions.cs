@@ -331,14 +331,8 @@ public static unsafe partial class EvmInstructions
         return lookup;
     }
 
-    /// <summary>
-    /// Resolves the <c>hasCode</c> argument for the account-access gas charge under EIP-2780, which
-    /// prices a cold touch of a code-less account cheaper than one with code.
-    /// </summary>
-    /// <remarks>
-    /// <c>hasCode</c> only affects the cold-access tier, so the <c>IsContract</c> state read is skipped
-    /// for warm accesses (and when EIP-2780 is off), where the value is unused.
-    /// </remarks>
+    // EIP-2780 hasCode argument for account access: only the cold tier uses it, so skip the IsContract
+    // read for warm accesses (and when EIP-2780 is off).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool ResolveHasCode<TGasPolicy>(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, Address address)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
