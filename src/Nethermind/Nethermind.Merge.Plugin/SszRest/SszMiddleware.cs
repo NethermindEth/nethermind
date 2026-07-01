@@ -11,6 +11,7 @@ using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
@@ -164,14 +165,23 @@ public sealed class SszMiddleware
             Metrics.SszRestRequestsClientErrorTotal++;
             await forkError!;
         }
-        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, fork, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
+        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, fork, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra, out bool endpointNotAvailableForFork))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
             // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
             // intermediate string; appending the span goes straight into the format buffer.
-            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
-                SszRestErrorCodes.MethodNotFound);
+            if (endpointNotAvailableForFork)
+            {
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                    $"Fork '{fork}' does not support {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
+                    MergeErrorCodes.UnsupportedFork);
+            }
+            else
+            {
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+                    $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
+                    SszRestErrorCodes.MethodNotFound);
+            }
         }
         else
         {
@@ -323,11 +333,15 @@ public sealed class SszMiddleware
         fork = null;
         error = null;
 
-        string headerValue = ctx.Request.Headers[ForkHeaderName].ToString();
+        // Exactly one fork header is expected. Read the StringValues directly: indexing the single
+        // value avoids the per-request string join that .ToString() performs on multi-valued headers,
+        // and a 0- or multi-valued header is rejected as a bad request rather than silently joined.
+        StringValues headerValues = ctx.Request.Headers[ForkHeaderName];
+        string? headerValue = headerValues.Count == 1 ? headerValues[0] : null;
         if (string.IsNullOrEmpty(headerValue))
         {
             error = SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                $"Missing required '{ForkHeaderName}' header", SszRestErrorCodes.InvalidRequest);
+                $"Request must carry exactly one '{ForkHeaderName}' header", SszRestErrorCodes.InvalidRequest);
             return false;
         }
 
@@ -344,10 +358,11 @@ public sealed class SszMiddleware
     }
 
     private bool TryResolveHandler(string method, ReadOnlyMemory<char> pathSegment, int version, string? fork,
-        out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra)
+        out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra, out bool endpointNotAvailableForFork)
     {
         handler = null;
         extra = default;
+        endpointNotAvailableForFork = false;
 
         bool isPost = HttpMethods.IsPost(method);
         bool isGet = !isPost && HttpMethods.IsGet(method);
@@ -371,8 +386,14 @@ public sealed class SszMiddleware
 
         if (fork is not null)
         {
-            int? mappedVersion = SszRestPaths.MapForkToVersion(fork, resource.Span, method);
-            if (mappedVersion is null) return false;
+            int? mappedVersion = SszRestPaths.MapForkToVersion(fork, resource.Span, method, out bool recognizedResource);
+            if (mappedVersion is null)
+            {
+                // Known endpoint the requested fork predates (e.g. paris + bodies) → let the caller
+                // emit 400 unsupported-fork; a genuinely unknown resource stays 404 method-not-found.
+                endpointNotAvailableForFork = recognizedResource;
+                return false;
+            }
             version = mappedVersion.Value;
         }
 

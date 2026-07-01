@@ -45,10 +45,10 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
         if (result.Result.ResultType == ResultType.Success && result.Data is { Count: > 0 } data)
         {
-            string? urlFork = ctx.Items.TryGetValue(SszMiddleware.RouteForkItemKey, out object? f) ? f as string : null;
-            if (urlFork is not null)
+            string? requestedFork = ctx.Items.TryGetValue(SszMiddleware.RouteForkItemKey, out object? f) ? f as string : null;
+            if (requestedFork is not null)
             {
-                TResult?[] filtered = BodiesForkFilter.FilterByHash(data, hashes, urlFork, blockFinder, specProvider);
+                TResult?[] filtered = BodiesForkFilter.FilterByHash(data, hashes, requestedFork, blockFinder, specProvider);
                 ResultWrapper<IReadOnlyList<TResult?>> wrapped = ResultWrapper<IReadOnlyList<TResult?>>.Success(filtered);
                 wrapped.AddDisposable(result.Dispose);
                 result = wrapped;

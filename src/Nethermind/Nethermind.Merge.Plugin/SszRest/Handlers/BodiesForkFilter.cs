@@ -21,7 +21,7 @@ internal static class BodiesForkFilter
     public static TResult?[] FilterByHash<TResult>(
         IReadOnlyList<TResult?> bodies,
         IReadOnlyList<Hash256> hashes,
-        string urlFork,
+        string requestedFork,
         IBlockFinder blockFinder,
         ISpecProvider specProvider)
         where TResult : class
@@ -32,7 +32,7 @@ internal static class BodiesForkFilter
             TResult? body = bodies[i];
             if (body is null) continue;
             BlockHeader? header = blockFinder.FindHeader(hashes[i]);
-            if (header is not null && Matches(header, urlFork, specProvider))
+            if (header is not null && Matches(header, requestedFork, specProvider))
                 result[i] = body;
         }
         return result;
@@ -41,7 +41,7 @@ internal static class BodiesForkFilter
     public static TResult?[] FilterByRange<TResult>(
         IReadOnlyList<TResult?> bodies,
         ulong start,
-        string urlFork,
+        string requestedFork,
         IBlockFinder blockFinder,
         ISpecProvider specProvider)
         where TResult : class
@@ -52,15 +52,15 @@ internal static class BodiesForkFilter
             TResult? body = bodies[i];
             if (body is null) continue;
             BlockHeader? header = blockFinder.FindHeader(start + (ulong)i);
-            if (header is not null && Matches(header, urlFork, specProvider))
+            if (header is not null && Matches(header, requestedFork, specProvider))
                 result[i] = body;
         }
         return result;
     }
 
-    private static bool Matches(BlockHeader header, string urlFork, ISpecProvider specProvider)
+    private static bool Matches(BlockHeader header, string requestedFork, ISpecProvider specProvider)
     {
         IReleaseSpec spec = specProvider.GetSpec(header);
-        return string.Equals(SszRestPaths.GetEngineApiUrlSegment(spec), urlFork, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(SszRestPaths.GetEngineApiForkName(spec), requestedFork, StringComparison.OrdinalIgnoreCase);
     }
 }

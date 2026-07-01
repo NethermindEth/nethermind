@@ -13,7 +13,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 public static class SszRestPaths
 {
     /// <summary>
-    /// Single source of truth: URL fork segment → <see cref="Forks.NamedReleaseSpec"/>. Built by
+    /// Single source of truth: fork name (Eth-Execution-Version value) → <see cref="Forks.NamedReleaseSpec"/>. Built by
     /// walking back from the latest fork via <see cref="Forks.NamedReleaseSpec.Parent"/> and
     /// keeping every fork that introduces an engine-API method-version change vs. its parent.
     /// BPO blob-parameter override forks inherit all engine-API versions and so are filtered out.
@@ -38,7 +38,7 @@ public static class SszRestPaths
 
         Dictionary<string, Forks.NamedReleaseSpec> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (Forks.NamedReleaseSpec spec in ordered)
-            result[spec.EngineApiUrlSegment!] = spec;
+            result[spec.EngineApiForkName!] = spec;
         return result;
     }
 
@@ -84,22 +84,29 @@ public static class SszRestPaths
     /// Each fork only declares the versions it changes vs. its parent; values flow forward through
     /// the spec inheritance chain.
     /// </summary>
-    public static int? MapForkToVersion(string fork, ReadOnlySpan<char> resource, string httpMethod)
+    /// <param name="recognizedResource">
+    /// <c>true</c> when <paramref name="resource"/> + <paramref name="httpMethod"/> name a known
+    /// fork-scoped endpoint, even if this fork has no version for it (e.g. <c>paris</c> + <c>bodies</c>).
+    /// Lets the caller distinguish "endpoint not available for this fork" (400) from "unknown
+    /// endpoint" (404) when the returned version is <c>null</c>.
+    /// </param>
+    public static int? MapForkToVersion(string fork, ReadOnlySpan<char> resource, string httpMethod, out bool recognizedResource)
     {
+        recognizedResource = false;
         if (!_forkSpecByUrl.TryGetValue(fork, out Forks.NamedReleaseSpec? spec)) return null;
 
-        // Resource comparisons are case-insensitive (URL segments are lowercase per spec,
+        // Resource comparisons are case-insensitive (fork names are lowercase per spec,
         // but routing accepts any case).
         if (string.Equals(httpMethod, "POST", StringComparison.Ordinal))
         {
-            if (Eq(resource, Payloads)) return spec.EngineApiNewPayloadVersion;
-            if (Eq(resource, Forkchoice)) return spec.EngineApiForkchoiceVersion;
-            if (Eq(resource, PayloadBodiesByHash)) return spec.EngineApiPayloadBodiesByHashVersion;
+            if (Eq(resource, Payloads)) { recognizedResource = true; return spec.EngineApiNewPayloadVersion; }
+            if (Eq(resource, Forkchoice)) { recognizedResource = true; return spec.EngineApiForkchoiceVersion; }
+            if (Eq(resource, PayloadBodiesByHash)) { recognizedResource = true; return spec.EngineApiPayloadBodiesByHashVersion; }
         }
         else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
         {
-            if (Eq(resource, Payloads)) return spec.EngineApiGetPayloadVersion;
-            if (Eq(resource, PayloadBodiesByRange)) return spec.EngineApiPayloadBodiesByRangeVersion;
+            if (Eq(resource, Payloads)) { recognizedResource = true; return spec.EngineApiGetPayloadVersion; }
+            if (Eq(resource, PayloadBodiesByRange)) { recognizedResource = true; return spec.EngineApiPayloadBodiesByRangeVersion; }
         }
 
         return null;
@@ -108,15 +115,16 @@ public static class SszRestPaths
     }
 
     /// <summary>
-    /// Returns the URL fork segment that owns <paramref name="spec"/>'s engine API surface,
-    /// walking up the parent chain so BPO forks resolve to their parent (e.g. <c>bpo1 → osaka</c>).
+    /// Returns the fork name (<c>Eth-Execution-Version</c> value) that owns <paramref name="spec"/>'s
+    /// engine API surface, walking up the parent chain so BPO forks resolve to their parent
+    /// (e.g. <c>bpo1 → osaka</c>).
     /// </summary>
-    public static string? GetEngineApiUrlSegment(IReleaseSpec spec)
+    public static string? GetEngineApiForkName(IReleaseSpec spec)
     {
         for (Forks.NamedReleaseSpec? n = spec as Forks.NamedReleaseSpec; n is not null; n = n.Parent)
         {
-            if (n.EngineApiUrlSegment is { } seg && _forkSpecByUrl.ContainsKey(seg))
-                return seg;
+            if (n.EngineApiForkName is { } forkName && _forkSpecByUrl.ContainsKey(forkName))
+                return forkName;
         }
         return null;
     }
