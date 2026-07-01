@@ -262,11 +262,11 @@ public partial class SszExecutionPayloadV4(ExecutionPayloadV4 payload)
 
     public override ExecutionPayloadV4 AsExecutionPayload() => Inner;
 
-    // Keep at 0x0100_0000 (16 MiB) to match execution-spec-tests fixtures used by
-    // StatelessExecutor.InputDecoder, which embeds the SSZ merkle root of
-    // NewPayloadRequest in pyspec test data. The execution-apis #793 spec lists
-    // MAX_BAL_BYTES = MAX_BYTES_PER_TX (2^30) — divergence raised upstream.
-    [SszList(0x0100_0000)]
+    // MAX_BYTES_PER_TRANSACTION (2^30): tests-zkevm@v0.5.0 defines
+    // block_access_list as ByteList[MAX_BYTES_PER_TRANSACTION] (stateless_ssz.py),
+    // and the SSZ merkle root of NewPayloadRequest embedded in the pyspec stateless
+    // fixtures depends on this limit.
+    [SszList(0x4000_0000)]
     public byte[] BlockAccessList
     {
         get => Inner.BlockAccessList ?? [];
