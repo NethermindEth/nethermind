@@ -338,7 +338,7 @@ jobs:
           [ "$SPAWN_NM" == "true" ] && [ -n "$NM_URL" ] && nm_urls+=("$NM_URL")
           # The spawned reference Nethermind is an NM too -> wait on it via the NM sync checks.
           [ -n "$REFERENCE_REF" ] && [ -n "$REFERENCE_NM_URL" ] && nm_urls+=("$REFERENCE_NM_URL")
-          [ "$SPAWN_GETH" == "true" ] && [ -n "$GETH_URL" ] && geth_urls=("$GETH_URL")
+          [ "$SPAWN_GETH" == "true" ] && [ -n "$GETH_URL" ] && geth_urls+=("$GETH_URL")
 
           # ------------------------------------------------------------
           # Helper: guarded curl POST with timeouts/retries and JSON header
