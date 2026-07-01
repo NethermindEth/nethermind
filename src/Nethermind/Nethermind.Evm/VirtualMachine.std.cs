@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -14,19 +14,19 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private static long _txCount;
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
 
-    // std-only: ConditionalWeakTable relies on GC dependent-handles the zkEVM guest can't map, so this
-    // must not live in the shared VirtualMachine.cs (the .zkevm partial caches in plain statics instead).
+    // Per-spec opcode dispatch tables; only a handful of specs are ever active (at head, the current and
+    // next fork). std-only: the zkEVM guest runs a single fork and caches in plain statics (see .zkevm).
     private sealed unsafe class OpcodeTable
     {
         public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? NoTrace;
         public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? Traced;
     }
 
-    private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
+    private static readonly ConcurrentDictionary<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
 
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
-        OpcodeTable table = _opcodeTablesBySpec.GetValue(spec, static _ => new OpcodeTable());
+        OpcodeTable table = _opcodeTablesBySpec.GetOrAdd(spec, static _ => new OpcodeTable());
 
         // Check if tracing instructions are inactive.
         if (!TTracingInst.IsActive)
