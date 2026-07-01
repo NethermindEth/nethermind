@@ -72,6 +72,19 @@ public sealed class StateDiffRecord : IDisposable
 
     public bool HasCodes => _codesEnd > _codesStart;
 
+    /// <summary>Counts the changed accounts by walking their region, reading only each entry's length prefix (not decoding it).</summary>
+    public int CountAccounts()
+    {
+        RlpReader reader = new(_rlp.Span) { Position = _accountsStart };
+        int count = 0;
+        while (reader.Position < _accountsEnd)
+        {
+            reader.SkipItem();
+            count++;
+        }
+        return count;
+    }
+
     public AccountEnumerator Accounts => new(_rlp, _accountsStart, _accountsEnd);
     public CodeEnumerator Codes => new(_rlp, _codesStart, _codesEnd);
 
@@ -153,8 +166,18 @@ public sealed class StateDiffRecord : IDisposable
     /// </summary>
     public readonly struct SlotSet(ReadOnlyMemory<byte> rlp, int start, int end)
     {
-        /// <summary>Encoded byte length of the region — an O(1) proxy for how much work the slots represent (no slot count needed).</summary>
-        public int Length => end - start;
+        /// <summary>Counts the slots by walking the region, reading only each entry's length prefix (not its contents).</summary>
+        public int Count()
+        {
+            RlpReader reader = new(rlp.Span) { Position = start };
+            int count = 0;
+            while (reader.Position < end)
+            {
+                reader.SkipItem();
+                count++;
+            }
+            return count;
+        }
 
         public SlotEnumerator GetEnumerator() => new(rlp, start, end);
     }

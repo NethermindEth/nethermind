@@ -127,7 +127,7 @@ public sealed class ReplayBlockProcessor(
             foreach (StateDiffRecord.CodeView code in record.Codes) codeSetter.Set(code.CodeHash, code.Code);
         }
 
-        using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(0);
+        using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(record.CountAccounts());
 
         // Storage first: each contract's storage is an independent trie, so it commits before the account
         // flush (writeBatch.Dispose) folds the recomputed storage root back into the account.
@@ -156,16 +156,20 @@ public sealed class ReplayBlockProcessor(
         foreach (StateDiffRecord.AccountView account in record.Accounts)
         {
             if (!account.StorageCleared && !account.HasSlots) continue;
-            work.Add(new StorageWork(writeBatch.CreateStorageWriteBatch(account.Address, 0), account.StorageCleared, account.Slots));
+
+            // Count the slots once (a light length-prefix walk) to size the storage batch and to key the sort;
+            // the slots themselves are parsed and written by the worker.
+            StateDiffRecord.SlotSet slots = account.Slots;
+            int slotCount = slots.Count();
+            work.Add(new StorageWork(writeBatch.CreateStorageWriteBatch(account.Address, slotCount), account.StorageCleared, slots, slotCount));
         }
 
         if (work.Count == 0) return;
 
-        // Independent tries, so process the opened batches concurrently. Schedule the largest regions first
-        // to help balance; the key is the slots' encoded byte length (O(1) — no slot count needed).
+        // Independent tries, so process the opened batches concurrently. Schedule the largest first to help balance.
         if (work.Count >= MultiThreadThreshold)
         {
-            work.AsSpan().Sort(static (a, b) => b.Slots.Length.CompareTo(a.Slots.Length));
+            work.AsSpan().Sort(static (a, b) => b.SlotCount.CompareTo(a.SlotCount));
             ParallelUnbalancedWork.For(0, work.Count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, i => ApplyOneStorage(work[i]));
         }
         else
@@ -184,5 +188,6 @@ public sealed class ReplayBlockProcessor(
     private readonly record struct StorageWork(
         IWorldStateScopeProvider.IStorageWriteBatch Batch,
         bool Cleared,
-        StateDiffRecord.SlotSet Slots);
+        StateDiffRecord.SlotSet Slots,
+        int SlotCount);
 }

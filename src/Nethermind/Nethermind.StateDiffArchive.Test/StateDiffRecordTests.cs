@@ -59,6 +59,7 @@ public class StateDiffRecordTests
             Assert.That(record.BlockNumber, Is.EqualTo(123_456UL));
             Assert.That(record.StateRoot, Is.EqualTo(TestItem.KeccakA));
             Assert.That(record.HasCodes, Is.True);
+            Assert.That(record.CountAccounts(), Is.EqualTo(4));
         });
 
         int accountCount = 0;
@@ -78,6 +79,7 @@ public class StateDiffRecordTests
                 Assert.That(account.Change, Is.EqualTo(AccountChangeKind.Set));
                 Assert.That(account.Account, Is.EqualTo(accountB));
                 Assert.That(account.StorageCleared, Is.True);
+                Assert.That(account.Slots.Count(), Is.EqualTo(3));
                 foreach (StateDiffRecord.SlotView slot in account.Slots)
                 {
                     bSlots++;
@@ -98,6 +100,7 @@ public class StateDiffRecordTests
                 Assert.That(account.Change, Is.EqualTo(AccountChangeKind.None));
                 Assert.That(account.Account, Is.Null);
                 Assert.That(account.HasSlots, Is.True);
+                Assert.That(account.Slots.Count(), Is.EqualTo(1));
             }
         }
 
@@ -165,6 +168,7 @@ public class StateDiffRecordTests
         {
             Assert.That(accounts, Is.Zero);
             Assert.That(codes, Is.Zero);
+            Assert.That(record.CountAccounts(), Is.Zero);
             Assert.That(record.HasCodes, Is.False);
             Assert.That(record.BlockNumber, Is.Zero);
             Assert.That(record.StateRoot, Is.EqualTo(Keccak.EmptyTreeHash));
