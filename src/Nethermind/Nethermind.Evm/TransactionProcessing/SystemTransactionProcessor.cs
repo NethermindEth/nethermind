@@ -44,11 +44,15 @@ public class SystemTransactionProcessor<TGasPolicy>(
     protected virtual void OnBeforeSystemTransaction() { }
 
     /// <summary>
-    /// Whether <see cref="GetSpec"/> should short-circuit to the unwrapped spec for the given
-    /// header. Default returns <c>header.IsGenesis</c> so genesis system transactions skip the
-    /// system-tx spec wrap. Subclasses override to force EIP-158 off even at genesis.
+    /// Whether <see cref="GetSpec"/> should skip wrapping the spec for the system transaction and
+    /// return it unwrapped. Default returns <c>header.IsGenesis</c> so genesis system transactions
+    /// run with EIP-158 still on. Subclasses override to force EIP-158 off even at genesis.
     /// </summary>
-    protected virtual bool TreatAsGenesisForSpec(BlockHeader header) => header.IsGenesis;
+    /// <remarks>
+    /// This is a distinct decision from any block-execution "is genesis" flag used elsewhere (e.g.
+    /// pre-execution account materialisation); the two are intentionally decoupled — do not unify them.
+    /// </remarks>
+    protected virtual bool SkipSystemSpecWrap(BlockHeader header) => header.IsGenesis;
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -73,7 +77,7 @@ public class SystemTransactionProcessor<TGasPolicy>(
     }
 
     protected override IReleaseSpec GetSpec(BlockHeader header) =>
-        base.GetSpec(header).ForSystemTransaction(TreatAsGenesisForSpec(header));
+        base.GetSpec(header).ForSystemTransaction(SkipSystemSpecWrap(header));
 
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in TGasPolicy intrinsicGas, ulong minGasRequired, bool validate) => TransactionResult.Ok;
 

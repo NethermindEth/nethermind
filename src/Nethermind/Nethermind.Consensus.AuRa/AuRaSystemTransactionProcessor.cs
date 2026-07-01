@@ -31,11 +31,13 @@ public sealed class AuRaSystemTransactionProcessor<TGasPolicy>(
 
     protected override void OnBeforeSystemTransaction()
     {
+        // Materialise SYSTEM_ADDRESS only off-genesis. Note this genesis check is deliberately
+        // independent of SkipSystemSpecWrap below, which never skips (EIP-158 stays off even at genesis).
         if (!VirtualMachine.BlockExecutionContext.IsGenesis)
         {
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, 0);
         }
     }
 
-    protected override bool TreatAsGenesisForSpec(BlockHeader header) => false;
+    protected override bool SkipSystemSpecWrap(BlockHeader header) => false;
 }

@@ -28,15 +28,16 @@ public class BlockForRpc
         get
         {
             FrozenDictionary<RlpDecoderKey, IRlpDecoder> snapshot = Rlp.Decoders;
-            IRlpDecoder<Block> decoder = _blockDecoder;
-            if (!ReferenceEquals(Volatile.Read(ref _decodersSnapshot), snapshot))
+            // Acquire: if the snapshot matches, the paired _blockDecoder write is already visible.
+            if (ReferenceEquals(Volatile.Read(ref _decodersSnapshot), snapshot))
             {
-                decoder = Rlp.GetDecoder<Block>() ?? new BlockDecoder();
-                // Publish the decoder before the snapshot so a reader seeing the new snapshot also sees it.
-                _blockDecoder = decoder;
-                Volatile.Write(ref _decodersSnapshot, snapshot);
+                return _blockDecoder;
             }
 
+            IRlpDecoder<Block> decoder = Rlp.GetDecoder<Block>() ?? new BlockDecoder();
+            // Publish the decoder before the snapshot so a reader seeing the new snapshot also sees it.
+            _blockDecoder = decoder;
+            Volatile.Write(ref _decodersSnapshot, snapshot);
             return decoder;
         }
     }

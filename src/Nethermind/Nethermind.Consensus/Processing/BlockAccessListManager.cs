@@ -52,18 +52,16 @@ public partial class BlockAccessListManager(
     bool witnessMode = false)
     : IBlockAccessListManager, IDisposable
 {
-    private readonly ITransactionProcessorFactory _transactionProcessorFactory =
-        transactionProcessorFactory ??= new TransactionProcessorFactory<EthereumGasPolicy>();
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory,
-            transactionProcessorFactory!, witnessMode));
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager,
-            transactionProcessorFactory!, witnessMode));
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), witnessMode));
     private const int GasValidationChunkSize = 8;
     private ulong? _gasRemaining;
     private bool _isBuilding;

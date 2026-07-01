@@ -37,7 +37,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule
     {
-        private readonly HeaderDecoder _headerDecoder = new();
+        // Registry-resolved so AuRa chains encode headers with step + signature (see AuRaHeaderModule).
+        private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
         private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
         private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, jsonRpcConfig);
 
