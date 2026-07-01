@@ -540,9 +540,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// and the recipient cold/warm touch plus its value-transfer STATE_UPDATE.
     /// </summary>
     /// <remarks>
-    /// The recipient touch overrides EIP-2929's "all tx addresses are warm" rule. It is priced here
-    /// (where pre-state is available) rather than mid-execution; the recipient remains pre-warmed, so
-    /// no opcode re-charges it. Requires <paramref name="worldState"/> for the state-dependent parts.
+    /// The recipient touch overrides EIP-2929's "tx addresses are warm" rule. Pricing it here (where
+    /// pre-state is available via <paramref name="worldState"/>) keeps the recipient pre-warmed so no opcode re-charges it.
     /// </remarks>
     private static long Eip2780ExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
     {
@@ -587,9 +586,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             ? GasCostOf.WarmStateRead
             : toHasCode ? GasCostOf.ColdAccountAccess : GasCostOf.ColdAccountAccessNoCodeEip2780;
 
-        // EIP-7702: a delegated recipient also touches its delegation target (always carries code).
-        // The EVM warms (does not gas-charge) this target for the top-level frame, so this is the sole charge.
-        // Only an account with code can carry a delegation, so plain EOAs skip the code read entirely.
+        // EIP-7702: a delegated recipient also touches its delegation target. The EVM warms but never
+        // charges it at the top level, so this is the sole charge; only accounts with code carry a delegation.
         if (spec.IsEip7702Enabled && toHasCode
             && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(to).AsSpan(), out Address? target))
             cost += IsInAccessList(tx, target) ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess;
@@ -597,8 +595,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return cost;
     }
 
-    // A single linear scan beats materialising a HashSet: access lists are small and we probe at
-    // most two addresses (the recipient and an optional EIP-7702 delegation target) per transaction.
+    // Linear scan avoids a per-tx HashSet allocation; access lists are small and we probe at most two addresses.
     private static bool IsInAccessList(Transaction tx, Address? address)
     {
         if (tx.AccessList is null) return false;

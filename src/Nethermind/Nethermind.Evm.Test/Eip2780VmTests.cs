@@ -14,9 +14,8 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// EVM-opcode-level coverage for EIP-2780 repricing. Each test is a differential between two runs
-/// that differ only in the operation under test, so the (identical) intrinsic and recipient costs
-/// cancel and the assertion isolates the EIP-2780 delta.
+/// EVM-opcode-level coverage for EIP-2780 repricing. Each test differentials two runs that differ
+/// only in the operation under test, so shared intrinsic/recipient costs cancel and isolate the delta.
 /// </summary>
 public class Eip2780VmTests : VirtualMachineTestsBase
 {
@@ -86,9 +85,8 @@ public class Eip2780VmTests : VirtualMachineTestsBase
     [Test]
     public void Delegated_recipient_charges_delegation_target_cold_touch_once()
     {
-        // A delegated recipient pays COLD_ACCOUNT_COST_CODE for itself and its delegation target.
-        // The EVM only warms (does not gas-charge) the target for the top-level frame, so the total
-        // exceeds a plain-contract recipient by exactly one cold-code touch, not two (no double-charge).
+        // A delegated recipient pays COLD_ACCOUNT_COST_CODE for itself and its delegation target. The EVM
+        // only warms (not charges) the target at the top level, so the total adds exactly one cold-code touch.
         Address target = TestItem.AddressC;
         TestState.CreateAccount(target, 1.Ether);
         TestState.InsertCode(target, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
