@@ -162,7 +162,7 @@ public static partial class EvmInstructions
         // EIP-2780 charges a cold code-less account less; delegated accounts always carry code.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource,
-                hasCode: !spec.IsEip2780Enabled || !vm.VmState.AccessTracker.IsCold(codeSource) || state.IsContract(codeSource))) goto OutOfGas;
+                hasCode: ResolveHasCode(vm, spec, codeSource))) goto OutOfGas;
 
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 

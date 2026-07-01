@@ -225,7 +225,7 @@ public static partial class EvmInstructions
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary,
-                hasCode: !spec.IsEip2780Enabled || !vmState.AccessTracker.IsCold(inheritor) || vm.WorldState.IsContract(inheritor)))
+                hasCode: ResolveHasCode(vm, spec, inheritor)))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
