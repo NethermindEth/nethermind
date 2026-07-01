@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Collections.Pooled;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -117,15 +118,14 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         JsonSerializer.Serialize(writer, value.ReturnValue, options);
 
         writer.WritePropertyName("structLogs"u8);
-        WriteEntriesWithStorageForwardPass(writer, value.Entries, options);
+        WriteEntriesWithStorageForwardPass(writer, value.Entries);
 
         writer.WriteEndObject();
     }
 
     private static void WriteEntriesWithStorageForwardPass(
         Utf8JsonWriter writer,
-        List<GethTxTraceEntry> entries,
-        JsonSerializerOptions options)
+        List<GethTxTraceEntry> entries)
     {
         using PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> runningByAddress = new(4);
         writer.WriteStartArray();
@@ -133,6 +133,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         {
             foreach (GethTxTraceEntry entry in entries)
             {
+                PooledDictionary<UInt256, UInt256>? storageToWrite = null;
                 if (entry.StorageDelta is { } delta)
                 {
                     if (!runningByAddress.TryGetValue(delta.Address, out PooledDictionary<UInt256, UInt256>? map))
@@ -141,14 +142,9 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
                         runningByAddress[delta.Address] = map;
                     }
                     map[delta.Key] = delta.Value;
-                    entry.Storage = map;
-                    try { JsonSerializer.Serialize(writer, entry, options); }
-                    finally { entry.Storage = null; }
+                    storageToWrite = map;
                 }
-                else
-                {
-                    JsonSerializer.Serialize(writer, entry, options);
-                }
+                WriteEntry(writer, entry, storageToWrite);
             }
         }
         finally
@@ -157,5 +153,51 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
                 inner.Dispose();
         }
         writer.WriteEndArray();
+    }
+
+    private static void WriteEntry(
+        Utf8JsonWriter writer,
+        GethTxTraceEntry entry,
+        IDictionary<UInt256, UInt256>? storage)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("pc"u8, entry.ProgramCounter);
+        writer.WriteString("op"u8, entry.Opcode);
+        writer.WriteNumber("gas"u8, entry.Gas);
+        writer.WriteNumber("gasCost"u8, entry.GasCost);
+        writer.WriteNumber("depth"u8, entry.Depth);
+        if (entry.Error is not null) writer.WriteString("error"u8, entry.Error);
+        if (entry.Refund is { } refund) writer.WriteNumber("refund"u8, refund);
+
+        if (entry.Stack is { } stack)
+        {
+            writer.WriteStartArray("stack"u8);
+            ReadOnlySpan<byte> stackSpan = stack.Span;
+            for (int i = 0; i < stackSpan.Length; i += EvmStack.WordSize)
+                HexWriter.WriteUInt256HexRawValue(writer,
+                    new UInt256(stackSpan.Slice(i, EvmStack.WordSize), isBigEndian: true));
+            writer.WriteEndArray();
+        }
+
+        if (entry.Memory is { } memory)
+        {
+            writer.WriteStartArray("memory"u8);
+            ReadOnlySpan<byte> memSpan = memory.Span;
+            for (int i = 0; i < memSpan.Length; i += EvmPooledMemory.WordSize)
+                HexWriter.WriteFixed32HexRawValue(writer,
+                    memSpan.Slice(i, EvmPooledMemory.WordSize), addHexPrefix: true);
+            writer.WriteEndArray();
+        }
+
+        if (storage is not null)
+        {
+            writer.WriteStartObject("storage"u8);
+            foreach (KeyValuePair<UInt256, UInt256> kv in storage)
+                HexWriter.WriteUInt256StorageSlot(writer, kv.Key, kv.Value);
+            writer.WriteEndObject();
+        }
+
+        if (entry.ReturnData is not null) writer.WriteString("returnData"u8, entry.ReturnData);
+        writer.WriteEndObject();
     }
 }
