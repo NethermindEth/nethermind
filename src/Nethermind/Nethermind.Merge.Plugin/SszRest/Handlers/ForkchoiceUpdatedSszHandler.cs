@@ -48,7 +48,7 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     private string? GetForkMismatchMessage(HttpContext ctx, ulong? timestamp)
     {
         if (!timestamp.HasValue
-            || !ctx.Items.TryGetValue("SszRouteFork", out object? forkObj)
+            || !ctx.Items.TryGetValue(SszMiddleware.RouteForkItemKey, out object? forkObj)
             || forkObj is not string requestedFork)
             return null;
 

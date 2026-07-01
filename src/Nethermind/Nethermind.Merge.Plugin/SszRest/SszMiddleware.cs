@@ -43,6 +43,13 @@ public sealed class SszMiddleware
     public const string ForkHeaderName = "Eth-Execution-Version";
 
     /// <summary>
+    /// <see cref="HttpContext.Items"/> key under which the resolved fork is stashed for fork-scoped
+    /// endpoints, so handlers can read it back without re-parsing the request. A typo in a reader
+    /// would silently disable fork filtering, hence the single shared constant.
+    /// </summary>
+    internal const string RouteForkItemKey = "SszRouteFork";
+
+    /// <summary>
     /// Maximum allowed request body size in bytes (64 MiB).
     /// Mirrors the <c>payload.max_bytes</c> example value advertised in the Engine API
     /// SSZ-REST spec capabilities response (see https://github.com/ethereum/execution-apis/pull/793).
@@ -170,7 +177,7 @@ public sealed class SszMiddleware
         {
             if (fork is not null)
             {
-                ctx.Items["SszRouteFork"] = fork;
+                ctx.Items[RouteForkItemKey] = fork;
             }
 
             if (_logger.IsTrace)
