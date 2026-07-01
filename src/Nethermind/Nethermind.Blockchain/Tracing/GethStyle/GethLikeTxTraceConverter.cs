@@ -133,18 +133,17 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         {
             foreach (GethTxTraceEntry entry in entries)
             {
-                PooledDictionary<UInt256, UInt256>? storageToWrite = null;
+                PooledDictionary<UInt256, UInt256>? map = null;
                 if (entry.StorageDelta is { } delta)
                 {
-                    if (!runningByAddress.TryGetValue(delta.Address, out PooledDictionary<UInt256, UInt256>? map))
+                    if (!runningByAddress.TryGetValue(delta.Address, out map))
                     {
                         map = new PooledDictionary<UInt256, UInt256>(8);
                         runningByAddress[delta.Address] = map;
                     }
                     map[delta.Key] = delta.Value;
-                    storageToWrite = map;
                 }
-                WriteEntry(writer, entry, storageToWrite);
+                WriteEntry(writer, entry, map);
             }
         }
         finally
@@ -189,10 +188,11 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             writer.WriteEndArray();
         }
 
-        if (storage is not null)
+        IDictionary<UInt256, UInt256>? effectiveStorage = storage ?? entry.Storage;
+        if (effectiveStorage is not null)
         {
             writer.WriteStartObject("storage"u8);
-            foreach (KeyValuePair<UInt256, UInt256> kv in storage)
+            foreach (KeyValuePair<UInt256, UInt256> kv in effectiveStorage)
                 HexWriter.WriteUInt256StorageSlot(writer, kv.Key, kv.Value);
             writer.WriteEndObject();
         }
