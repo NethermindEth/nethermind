@@ -143,7 +143,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         private int GetInnerLength(TxReceipt?[]? txReceipts)
         {
-            if (txReceipts == null || txReceipts.Length == 0)
+            if (txReceipts is null || txReceipts.Length == 0)
                 return 0;
 
             int contentLength = 0;

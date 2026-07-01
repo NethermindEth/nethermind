@@ -1176,11 +1176,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             try
             {
                 await act(cts.Token);
-                if (DisconnectFailure != null) Assert.Fail($"Disconnect detected. {DisconnectFailure}");
+                if (DisconnectFailure is not null) Assert.Fail($"Disconnect detected. {DisconnectFailure}");
             }
             catch (OperationCanceledException)
             {
-                if (DisconnectFailure == null) throw; // Timeout without disconnect
+                if (DisconnectFailure is null) throw; // Timeout without disconnect
                 Assert.Fail($"Disconnect detected. {DisconnectFailure}");
             }
         }
@@ -1208,11 +1208,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             try
             {
                 await act(cts.Token);
-                if (BlockProcessingFailure != null) Assert.Fail($"Block processing failure detected. {BlockProcessingFailure}");
+                if (BlockProcessingFailure is not null) Assert.Fail($"Block processing failure detected. {BlockProcessingFailure}");
             }
             catch (OperationCanceledException)
             {
-                if (BlockProcessingFailure == null) throw; // Timeout without disconnect
+                if (BlockProcessingFailure is null) throw; // Timeout without disconnect
                 Assert.Fail($"Block processing failure detected. {BlockProcessingFailure}");
             }
         }
