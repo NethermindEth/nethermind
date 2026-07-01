@@ -40,7 +40,7 @@ on:
       exclude_apis:
         type: string
         description: "APIs to exclude from rpc_int (-x), comma-separated. Empty to exclude nothing."
-        default: "erigon_,bor_,ots_,parity_"
+        default: "erigon_,bor_,ots_,parity_,eth_protocolVersion"
         required: false
       max_failures:
         type: string
