@@ -4,9 +4,10 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Tracing;
 using Nethermind.Synchronization.ParallelSync;
@@ -96,12 +97,12 @@ public class OpcodeTraceRecorderTests
         Assert.DoesNotThrowAsync(async () => await recorder.DisposeAsync());
     }
 
-    private static OpcodeTraceRecorder CreateRecorder(IOpcodeTracingConfig config)
-    {
-        INethermindApi api = Substitute.For<INethermindApi>();
-        api.LogManager.Returns(LimboLogs.Instance);
-        api.BlockTree.Returns(Substitute.For<IBlockTree>());
-        api.SyncModeSelector.Returns(Substitute.For<ISyncModeSelector>());
-        return new(config, Substitute.For<IReadOnlyTxProcessingEnvFactory>(), api, LimboLogs.Instance);
-    }
+    private static OpcodeTraceRecorder CreateRecorder(IOpcodeTracingConfig config) =>
+        new(config,
+            Substitute.For<IReadOnlyTxProcessingEnvFactory>(),
+            Substitute.For<IBlockTree>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<IEthereumEcdsa>(),
+            Substitute.For<ISyncModeSelector>(),
+            LimboLogs.Instance);
 }

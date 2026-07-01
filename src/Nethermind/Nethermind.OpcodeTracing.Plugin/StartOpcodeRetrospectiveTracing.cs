@@ -10,21 +10,15 @@ namespace Nethermind.OpcodeTracing.Plugin;
 /// Kicks off retrospective opcode tracing (historical block analysis). Registered only when the configured
 /// tracing mode is Retrospective or RetrospectiveExecution.
 /// </summary>
-/// <remarks>
-/// No step dependency is declared: the recorder reads the chain tip from <c>IBlockTree</c>, whose head is
-/// loaded eagerly in its constructor, so the range is resolved correctly whenever this step runs.
-/// <see cref="MustInitialize"/> is <see langword="true"/> so that an invalid tracing configuration (which makes
-/// <see cref="OpcodeTraceRecorder.PrepareAsync"/> throw) aborts startup rather than silently running with tracing off.
-/// </remarks>
 public class StartOpcodeRetrospectiveTracing(OpcodeTraceRecorder recorder) : IStep
 {
+    // true so an invalid tracing config (PrepareAsync throws) aborts startup instead of being swallowed.
     public bool MustInitialize => true;
 
     public async Task Execute(CancellationToken cancellationToken)
     {
-        // Validate the configuration up front; an invalid config throws and aborts startup.
         await recorder.PrepareAsync(cancellationToken);
-        // Fire-and-forget: the background loop handles its own errors and shuts down via the recorder's disposal.
+        // Fire-and-forget: the background loop owns its errors and tears down via the recorder's disposal.
         _ = recorder.ExecuteTracingAsync();
     }
 }

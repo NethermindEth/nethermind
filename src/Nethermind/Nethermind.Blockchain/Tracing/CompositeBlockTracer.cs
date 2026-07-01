@@ -94,12 +94,14 @@ public class CompositeBlockTracer : IBlockTracer
         _version++;
     }
 
-    public void AddRange(params IBlockTracer[] tracers)
+    public void AddRange(params IBlockTracer[] tracers) => AddRange((IEnumerable<IBlockTracer>)tracers);
+
+    public void AddRange(IEnumerable<IBlockTracer> tracers)
     {
-        _childTracers.AddRange(tracers);
-        for (int i = 0; i < tracers.Length; i++)
+        foreach (IBlockTracer tracer in tracers)
         {
-            IsTracingRewards |= tracers[i].IsTracingRewards;
+            _childTracers.Add(tracer);
+            IsTracingRewards |= tracer.IsTracingRewards;
         }
         _version++;
     }

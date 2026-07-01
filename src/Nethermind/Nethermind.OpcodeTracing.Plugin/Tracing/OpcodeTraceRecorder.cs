@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
@@ -20,7 +21,10 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 public sealed class OpcodeTraceRecorder(
     IOpcodeTracingConfig config,
     IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
-    INethermindApi api,
+    IBlockTree blockTree,
+    ISpecProvider specProvider,
+    IEthereumEcdsa ethereumEcdsa,
+    ISyncModeSelector syncModeSelector,
     ILogManager logManager) : IDisposable, IAsyncDisposable
 {
     private readonly IOpcodeTracingConfig _config = config;
@@ -55,7 +59,7 @@ public sealed class OpcodeTraceRecorder(
         try
         {
             // Get current chain tip
-            ulong currentChainTip = api.BlockTree?.Head?.Number ?? 0UL;
+            ulong currentChainTip = blockTree.Head?.Number ?? 0UL;
 
             // Parse mode for validation
             TracingMode mode = TracingMode.RealTime;
@@ -94,7 +98,7 @@ public sealed class OpcodeTraceRecorder(
             }
 
             // Validate output directory
-            if (!DirectoryHelper.ValidateWritable(_traceConfig.OutputDirectory, api.LogManager))
+            if (!DirectoryHelper.ValidateWritable(_traceConfig.OutputDirectory, logManager))
             {
                 throw new InvalidOperationException($"Output directory is not writable: {_traceConfig.OutputDirectory}");
             }
@@ -136,12 +140,9 @@ public sealed class OpcodeTraceRecorder(
         try
         {
             // Check and log sync state - RealTime mode only captures blocks processed through the EVM
-            _syncModeSelector = api.SyncModeSelector;
-            if (_syncModeSelector is not null)
-            {
-                LogSyncStateWarning(_syncModeSelector.Current);
-                _syncModeSelector.Changed += OnSyncModeChanged;
-            }
+            _syncModeSelector = syncModeSelector;
+            LogSyncStateWarning(syncModeSelector.Current);
+            syncModeSelector.Changed += OnSyncModeChanged;
 
             // For RealTime mode with Blocks parameter, recalculate range based on current chain tip
             // This ensures we trace the NEXT N blocks from when the tracer attaches, not from init time
@@ -150,7 +151,7 @@ public sealed class OpcodeTraceRecorder(
 
             if (_config.RecentBlocks.HasValue && !_config.StartBlock.HasValue && !_config.EndBlock.HasValue)
             {
-                ulong currentTip = api.BlockTree?.Head?.Number ?? 0UL;
+                ulong currentTip = blockTree.Head?.Number ?? 0UL;
                 effectiveStart = currentTip + 1;
                 effectiveEnd = currentTip + _config.RecentBlocks.Value;
 
@@ -175,7 +176,7 @@ public sealed class OpcodeTraceRecorder(
                 _traceConfig.OutputDirectory,
                 _sessionId,
                 OnBlockCompletedRealTime,
-                api.LogManager);
+                logManager);
 
             _blockTracer = new OpcodeBlockTracer(_realTimeTracer.OnBlockCompleted);
 
@@ -289,28 +290,18 @@ public sealed class OpcodeTraceRecorder(
 
             try
             {
-                IBlockTree? blockTree = api.BlockTree;
-                if (blockTree is null)
-                {
-                    if (_logger.IsError)
-                    {
-                        _logger.Error("BlockTree is not available");
-                    }
-                    return;
-                }
-
                 BlockRange range = new(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
 
                 if (_traceConfig.Mode == TracingMode.RetrospectiveExecution)
                 {
                     RetrospectiveExecutionTracer executionTracer = new(
                         blockTree,
-                        api.SpecProvider!,
+                        specProvider,
                         _txProcessingEnvFactory,
-                        api.EthereumEcdsa!,
+                        ethereumEcdsa,
                         _counter,
                         _traceConfig.MaxDegreeOfParallelism,
-                        api.LogManager);
+                        logManager);
 
                     if (_logger.IsInfo)
                     {
@@ -333,7 +324,7 @@ public sealed class OpcodeTraceRecorder(
                 else
                 {
                     // Use RetrospectiveTracer for static bytecode analysis
-                    RetrospectiveTracer tracer = new(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, api.LogManager);
+                    RetrospectiveTracer tracer = new(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, logManager);
 
                     if (_logger.IsInfo)
                     {

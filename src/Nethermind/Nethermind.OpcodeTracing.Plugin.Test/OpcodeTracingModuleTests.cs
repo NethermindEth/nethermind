@@ -7,12 +7,13 @@ using System.IO;
 using System.Linq;
 using Autofac;
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Tracing;
@@ -84,19 +85,16 @@ public class OpcodeTracingModuleTests
             Has.Member(typeof(StartOpcodeRetrospectiveTracing)));
     }
 
-    private IContainer BuildContainer(IOpcodeTracingConfig config)
-    {
-        INethermindApi api = Substitute.For<INethermindApi>();
-        api.LogManager.Returns(LimboLogs.Instance);
-        api.BlockTree.Returns(Substitute.For<IBlockTree>());
-        api.SyncModeSelector.Returns(Substitute.For<ISyncModeSelector>());
-        return new ContainerBuilder()
+    private IContainer BuildContainer(IOpcodeTracingConfig config) =>
+        new ContainerBuilder()
             .AddSingleton<ILogManager>(LimboLogs.Instance)
-            .AddSingleton(api)
+            .AddSingleton(Substitute.For<IBlockTree>())
+            .AddSingleton(Substitute.For<ISpecProvider>())
+            .AddSingleton(Substitute.For<IEthereumEcdsa>())
+            .AddSingleton(Substitute.For<ISyncModeSelector>())
             .AddSingleton(Substitute.For<IReadOnlyTxProcessingEnvFactory>())
             .AddModule(new OpcodeTracingModule(config))
             .Build();
-    }
 
     // Mirrors how MainProcessingContext applies the registered IMainProcessingModules and resolves the tracers.
     private static IBlockTracer[] ResolveMainProcessingTracers(IContainer root)
