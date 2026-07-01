@@ -21,8 +21,7 @@ public static partial class ZkEvmBitOperations
     // xxHash64 prime — good avalanche when folded against the high bits.
     private const ulong Prime = 0xD6E8FEB86659FD93UL;
 
-    // The BCL's ReverseEndianness(ulong) lowers on RISC-V to two 32-bit swaps
-    // plus sign-extension glue (~40 instructions); this all-64-bit form is ~15.
+    // RISC-V has no byte-swap instruction; this all-64-bit form beats the BCL's ReverseEndianness.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Bswap64(ulong x)
     {

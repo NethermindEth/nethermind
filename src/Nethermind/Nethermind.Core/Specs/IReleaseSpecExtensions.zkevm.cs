@@ -50,9 +50,7 @@ public static partial class IReleaseSpecExtensions
     // fork-fixed and monomorphic per block, so resolve the hot flags ONCE per spec into
     // static slots (single slot: one block = one spec) and have the getters read a cached
     // bool (reference-compare + field load, no dispatch). Rebuilds if the spec changes.
-    //
-    // Only flags found hot in the step profile are cached; every other extension flag still
-    // dispatches per call. If a new hot path reads one of those, re-profile and add it here.
+    // Only profile-hot flags are cached; add others here if profiling shows them hot.
     private static IReleaseSpec? _flagsSpec;
     private static bool _clearEmptyAccountWhenTouched;
     private static bool _useHotAndColdStorage;

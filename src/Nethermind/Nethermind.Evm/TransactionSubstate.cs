@@ -57,9 +57,7 @@ public readonly ref struct TransactionSubstate
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
-        // Enum.ToString() faults in the trimmed zkVM runtime (no enum metadata); use the
-        // reflection-free mapping. A top-level tx can legitimately fail and the receipts tracer
-        // formats this error name.
+        // Reflection-free error name; see FastToString for why Enum.ToString() can't be used here.
         Error = isTracerConnected ? exceptionType.FastToString() : SomeError;
         SubstateError = substateError;
         EvmExceptionType = exceptionType;
