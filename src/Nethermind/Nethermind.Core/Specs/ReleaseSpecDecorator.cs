@@ -12,14 +12,14 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual string Name => spec.Name;
     public virtual long MaximumExtraDataSize => spec.MaximumExtraDataSize;
     public virtual long MaxCodeSize => spec.MaxCodeSize;
-    public virtual long MinGasLimit => spec.MinGasLimit;
-    public virtual long MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
-    public virtual long MinBalRetentionEpochs => spec.MinBalRetentionEpochs;
-    public virtual long GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
+    public virtual ulong MinGasLimit => spec.MinGasLimit;
+    public virtual ulong MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
+    public virtual ulong MinBalRetentionEpochs => spec.MinBalRetentionEpochs;
+    public virtual ulong GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
     public virtual UInt256 BlockReward => spec.BlockReward;
-    public virtual long DifficultyBombDelay => spec.DifficultyBombDelay;
-    public virtual long DifficultyBoundDivisor => spec.DifficultyBoundDivisor;
-    public virtual long? FixedDifficulty => spec.FixedDifficulty;
+    public virtual ulong DifficultyBombDelay => spec.DifficultyBombDelay;
+    public virtual ulong DifficultyBoundDivisor => spec.DifficultyBoundDivisor;
+    public virtual ulong? FixedDifficulty => spec.FixedDifficulty;
     public virtual int MaximumUncleCount => spec.MaximumUncleCount;
     public virtual bool IsTimeAdjustmentPostOlympic => spec.IsTimeAdjustmentPostOlympic;
     public virtual bool IsEip2Enabled => spec.IsEip2Enabled;
@@ -54,7 +54,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip2929Enabled => spec.IsEip2929Enabled;
     public virtual bool IsEip2930Enabled => spec.IsEip2930Enabled;
     public virtual bool IsEip1559Enabled => spec.IsEip1559Enabled;
-    public virtual long Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
+    public virtual ulong Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
     public virtual Address? Eip158IgnoredAccount => spec.Eip158IgnoredAccount;
     public virtual bool IsEip3198Enabled => spec.IsEip3198Enabled;
     public virtual bool IsEip3529Enabled => spec.IsEip3529Enabled;
@@ -78,7 +78,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip2935Enabled => spec.IsEip2935Enabled;
     public virtual bool IsEip7709Enabled => spec.IsEip7709Enabled;
     public virtual Address? Eip2935ContractAddress => spec.Eip2935ContractAddress;
-    public virtual long Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
+    public virtual ulong Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public virtual bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsEip7823Enabled => spec.IsEip7823Enabled;
@@ -96,7 +96,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual ulong TargetBlobCount => spec.TargetBlobCount;
     public virtual ulong MaxBlobCount => spec.MaxBlobCount;
     public virtual ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
-    public virtual UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
+    public virtual ulong BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
     public virtual bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
@@ -104,7 +104,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? FeeCollector => spec.FeeCollector;
     public virtual UInt256 ForkBaseFee => spec.ForkBaseFee;
     public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
-    public virtual long ElasticityMultiplier => spec.ElasticityMultiplier;
+    public virtual ulong ElasticityMultiplier => spec.ElasticityMultiplier;
     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }

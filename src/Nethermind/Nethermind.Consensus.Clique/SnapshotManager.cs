@@ -94,7 +94,7 @@ namespace Nethermind.Consensus.Clique
 
         public ulong GetLastSignersCount() => _lastSignersCount;
 
-        public Snapshot GetOrCreateSnapshot(long number, Hash256 hash)
+        public Snapshot GetOrCreateSnapshot(ulong number, Hash256 hash)
         {
             Snapshot? snapshot = GetSnapshot(number, hash);
             if (snapshot is not null)
@@ -127,12 +127,12 @@ namespace Nethermind.Consensus.Clique
 
                         if (_logger.IsInfo) _logger.Info($"Creating epoch snapshot at block {number}");
                         int signersCount = CalculateSignersCount(header);
-                        SortedList<Address, long> signers = new(signersCount, GenericComparer.GetOptimized<Address>());
+                        SortedList<Address, ulong> signers = new(signersCount, GenericComparer.GetOptimized<Address>());
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
                             Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.Size, Address.Size));
-                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0L : parentSnapshot.Signers.TryGetValue(signer, out long value) ? value : 0L);
+                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0UL : parentSnapshot.Signers.TryGetValue(signer, out ulong value) ? value : 0UL);
                         }
 
                         snapshot = new Snapshot(number, header.Hash, signers);
@@ -172,7 +172,7 @@ namespace Nethermind.Consensus.Clique
                 // If we've generated a new checkpoint snapshot, save to disk
             }
 
-            if ((ulong)snapshot.Number % Clique.CheckpointInterval == 0 && headers.Count > 0)
+            if (snapshot.Number % Clique.CheckpointInterval == 0 && headers.Count > 0)
             {
                 Store(snapshot);
             }
@@ -180,10 +180,10 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
-        public bool HasSignedRecently(Snapshot snapshot, long number, Address signer)
+        public bool HasSignedRecently(Snapshot snapshot, ulong number, Address signer)
         {
-            long signedAt = snapshot.Signers[signer];
-            if (signedAt == 0L) return false;
+            ulong signedAt = snapshot.Signers[signer];
+            if (signedAt == 0UL) return false;
 
             return number - signedAt < snapshot.SignerLimit;
         }
@@ -194,11 +194,11 @@ namespace Nethermind.Consensus.Clique
             return signer && !authorize || !signer && authorize;
         }
 
-        public bool IsInTurn(Snapshot snapshot, long number, Address signer) => (long)number % snapshot.Signers.Count == snapshot.Signers.IndexOfKey(signer);
+        public bool IsInTurn(Snapshot snapshot, ulong number, Address signer) => number % (ulong)snapshot.Signers.Count == (ulong)snapshot.Signers.IndexOfKey(signer);
 
-        private bool IsEpochTransition(long number) => (ulong)number % _cliqueConfig.Epoch == 0;
+        private bool IsEpochTransition(ulong number) => number % _cliqueConfig.Epoch == 0;
 
-        private Snapshot? GetSnapshot(long number, Hash256 hash)
+        private Snapshot? GetSnapshot(ulong number, Hash256 hash)
         {
             if (_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
             // If an in-memory snapshot was found, use that
@@ -206,7 +206,7 @@ namespace Nethermind.Consensus.Clique
             if (cachedSnapshot is not null) return cachedSnapshot;
 
             // If an on-disk checkpoint snapshot can be found, use that
-            if ((ulong)number % Clique.CheckpointInterval == 0)
+            if (number % Clique.CheckpointInterval == 0)
             {
                 Snapshot? persistedSnapshot = LoadSnapshot(hash);
                 if (persistedSnapshot is not null) return persistedSnapshot;
@@ -247,7 +247,7 @@ namespace Nethermind.Consensus.Clique
             // Sanity check that the headers can be applied
             for (int i = 0; i < headers.Count - 1; i++)
             {
-                if (headers[i].Number != original.Number + i + 1)
+                if (headers[i].Number != original.Number + (ulong)i + 1)
                 {
                     throw new InvalidOperationException("Invalid voting chain");
                 }
@@ -258,8 +258,8 @@ namespace Nethermind.Consensus.Clique
             foreach (BlockHeader header in headers)
             {
                 // Remove any votes on checkpoint blocks
-                long number = header.Number;
-                if ((ulong)number % epoch == 0)
+                ulong number = header.Number;
+                if (number % epoch == 0)
                 {
                     snapshot.Votes.Clear();
                     snapshot.Tally.Clear();
@@ -267,7 +267,7 @@ namespace Nethermind.Consensus.Clique
 
                 // Resolve the authorization key and check against signers
                 Address signer = header.Author;
-                if (!snapshot.Signers.TryGetValue(signer, out long value)) throw new InvalidOperationException("Unauthorized signer");
+                if (!snapshot.Signers.TryGetValue(signer, out ulong value)) throw new InvalidOperationException("Unauthorized signer");
                 if (HasSignedRecently(snapshot, number, signer)) throw new InvalidOperationException($"Recently signed (trying to sign {number} when last signed {value} with {snapshot.Signers.Count} signers)");
 
                 snapshot.Signers[signer] = number;
@@ -300,7 +300,7 @@ namespace Nethermind.Consensus.Clique
                 {
                     if (tally.Authorize)
                     {
-                        snapshot.Signers.Add(header.Beneficiary, 0);
+                        snapshot.Signers.Add(header.Beneficiary, 0UL);
                     }
                     else
                     {
@@ -336,7 +336,7 @@ namespace Nethermind.Consensus.Clique
                 }
             }
 
-            snapshot.Number += headers.Count;
+            snapshot.Number += (ulong)headers.Count;
 
             // was this needed?
             //            snapshot.Hash = headers[headers.Count - 1].CalculateHash();

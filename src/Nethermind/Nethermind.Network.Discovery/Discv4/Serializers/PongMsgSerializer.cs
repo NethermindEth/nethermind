@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
@@ -29,6 +29,10 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         ValueHash256? pingMdc = msg.PingMdc;
         writer.Encode(in pingMdc);
         writer.Encode(msg.ExpirationTime);
+        if (msg.EnrSequence.HasValue)
+        {
+            writer.Encode(msg.EnrSequence.Value);
+        }
 
         byteBuffer.ResetIndex();
 
@@ -41,12 +45,13 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
 
         RlpReader ctx = new(data.AsSpan());
 
-        ctx.ReadSequenceLength();
-        ctx.ReadSequenceLength();
+        int messageEnd = ctx.ReadSequenceLength() + ctx.Position;
+        int addressEnd = ctx.ReadSequenceLength() + ctx.Position;
 
         ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         ctx.DecodeInt(); // UDP port (we ignore and take it from Netty)
         ctx.DecodeInt(); // TCP port
+        ctx.Check(addressEnd);
         ReadOnlySpan<byte> token = ctx.DecodeByteArraySpan(RlpLimit.L32);
         if (token.Length != Hash256.Size)
         {
@@ -55,8 +60,20 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
 
         long expirationTime = ctx.DecodeLong();
 
+        ulong? enrSequence = null;
+        if (ctx.Position < messageEnd && IsNextEnrSequence(ctx))
+        {
+            enrSequence = ctx.DecodeULong();
+        }
+
+        while (ctx.Position < messageEnd)
+        {
+            ctx.SkipItem();
+        }
+
+        ctx.Check(messageEnd);
         data.SetReaderIndex(data.ReaderIndex + ctx.Position);
-        PongMsg msg = new(farPublicKey, expirationTime, new ValueHash256(token));
+        PongMsg msg = new(farPublicKey, expirationTime, new ValueHash256(token), enrSequence);
         return msg;
     }
 
@@ -79,7 +96,28 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         ValueHash256? pingMdc = message.PingMdc;
         contentLength += Rlp.LengthOf(in pingMdc);
         contentLength += Rlp.LengthOf(message.ExpirationTime);
+        if (message.EnrSequence.HasValue)
+        {
+            contentLength += Rlp.LengthOf(message.EnrSequence.Value);
+        }
 
         return (Rlp.LengthOfSequence(contentLength), contentLength, farAddressLength);
+    }
+
+    private static bool IsNextEnrSequence(RlpReader ctx)
+    {
+        byte prefix = ctx.PeekByte();
+        return prefix switch
+        {
+            >= 1 and < 128 or 128 => true,
+            > 128 and <= 136 => IsCanonicalMultiByteInteger(ctx, prefix - 128),
+            _ => false
+        };
+    }
+
+    private static bool IsCanonicalMultiByteInteger(RlpReader ctx, int length)
+    {
+        byte firstByte = ctx.Peek(1, 1)[0];
+        return length == 1 ? firstByte >= 128 : firstByte != 0;
     }
 }

@@ -22,7 +22,7 @@ public class Eip2780VmTests : VirtualMachineTestsBase
     protected override ISpecProvider SpecProvider { get; } =
         new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true });
 
-    private long GasSpent(byte[] code)
+    private ulong GasSpent(byte[] code)
     {
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), result.Error);
@@ -30,13 +30,13 @@ public class Eip2780VmTests : VirtualMachineTestsBase
     }
 
     // Gas charged at the given opcode's step, per the Geth-style trace.
-    private long OpCost(string opcode, byte[] code)
+    private ulong OpCost(string opcode, byte[] code)
     {
         foreach (global::Nethermind.Blockchain.Tracing.GethStyle.GethTxTraceEntry e in ExecuteAndTrace(code).Entries)
         {
             if (e.Opcode == opcode) return e.GasCost;
         }
-        return -1;
+        return ulong.MaxValue;
     }
 
     [Test]
@@ -48,8 +48,8 @@ public class Eip2780VmTests : VirtualMachineTestsBase
         TestState.CreateAccount(withCode, 1.Ether);
         TestState.InsertCode(withCode, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
 
-        long codelessCost = OpCost("BALANCE", Prepare.EvmCode.PushData(codeless).Op(Instruction.BALANCE).STOP().Done);
-        long withCodeCost = OpCost("BALANCE", Prepare.EvmCode.PushData(withCode).Op(Instruction.BALANCE).STOP().Done);
+        ulong codelessCost = OpCost("BALANCE", Prepare.EvmCode.PushData(codeless).Op(Instruction.BALANCE).STOP().Done);
+        ulong withCodeCost = OpCost("BALANCE", Prepare.EvmCode.PushData(withCode).Op(Instruction.BALANCE).STOP().Done);
 
         Assert.That((codelessCost, withCodeCost), Is.EqualTo((GasCostOf.ColdAccountAccessNoCodeEip2780, GasCostOf.ColdAccountAccess)));
     }
@@ -61,8 +61,8 @@ public class Eip2780VmTests : VirtualMachineTestsBase
         Address newAccount = TestItem.AddressF;       // dead   -> CallValueNewAccountEip2780 (27756)
         TestState.CreateAccount(existing, 1.Ether);
 
-        long existingGas = GasSpent(Prepare.EvmCode.CallWithValue(existing, 50000, 1).STOP().Done);
-        long newAccountGas = GasSpent(Prepare.EvmCode.CallWithValue(newAccount, 50000, 1).STOP().Done);
+        ulong existingGas = GasSpent(Prepare.EvmCode.CallWithValue(existing, 50000, 1).STOP().Done);
+        ulong newAccountGas = GasSpent(Prepare.EvmCode.CallWithValue(newAccount, 50000, 1).STOP().Done);
 
         Assert.That(newAccountGas - existingGas, Is.EqualTo(GasCostOf.CallValueNewAccountEip2780 - GasCostOf.CallValueExistingEip2780));
     }
@@ -76,8 +76,8 @@ public class Eip2780VmTests : VirtualMachineTestsBase
         TestState.CreateAccount(codeSource, 1.Ether);
         TestState.InsertCode(codeSource, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
 
-        long noValueOp = OpCost("CALLCODE", Prepare.EvmCode.CallCode(codeSource, 50000, 0).STOP().Done);
-        long withValueOp = OpCost("CALLCODE", Prepare.EvmCode.CallCode(codeSource, 50000, 1).STOP().Done);
+        ulong noValueOp = OpCost("CALLCODE", Prepare.EvmCode.CallCode(codeSource, 50000, 0).STOP().Done);
+        ulong withValueOp = OpCost("CALLCODE", Prepare.EvmCode.CallCode(codeSource, 50000, 1).STOP().Done);
 
         Assert.That(withValueOp - noValueOp, Is.EqualTo(GasCostOf.CallValueSelfEip2780));
     }
@@ -92,8 +92,8 @@ public class Eip2780VmTests : VirtualMachineTestsBase
         TestState.InsertCode(target, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
         byte[] delegated = [.. Eip7702Constants.DelegationHeader, .. target.Bytes];
 
-        long delegatedGas = GasSpent(delegated);
-        long plainContractGas = GasSpent(Prepare.EvmCode.Op(Instruction.STOP).Done);
+        ulong delegatedGas = GasSpent(delegated);
+        ulong plainContractGas = GasSpent(Prepare.EvmCode.Op(Instruction.STOP).Done);
 
         Assert.That(delegatedGas - plainContractGas, Is.EqualTo(GasCostOf.ColdAccountAccess));
     }

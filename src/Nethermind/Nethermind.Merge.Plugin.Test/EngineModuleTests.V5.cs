@@ -95,7 +95,7 @@ public partial class EngineModuleTests
         ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
 
         Block head = chain.BlockTree.Head!;
-        long initialHeadNumber = head.Number;
+        ulong initialHeadNumber = head.Number;
 
         PayloadAttributes payloadAttributes = new()
         {

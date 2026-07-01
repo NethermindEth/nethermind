@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test;
 /// </summary>
 internal class Eip1153Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     /// <summary>
@@ -81,10 +81,10 @@ internal class Eip1153Tests : VirtualMachineTestsBase
     [Test]
     public void transient_storage_performance_test()
     {
-        long blockGasLimit = 30000000;
-        long numOfOps = (long)(blockGasLimit * .95) / (GasCostOf.TLoad + GasCostOf.TStore + GasCostOf.VeryLow * 4);
+        ulong blockGasLimit = 30000000;
+        ulong numOfOps = (blockGasLimit * 95UL / 100UL) / (GasCostOf.TLoad + GasCostOf.TStore + GasCostOf.VeryLow * 4);
         Prepare prepare = Prepare.EvmCode;
-        for (long i = 0; i < numOfOps; i++)
+        for (ulong i = 0; i < numOfOps; i++)
         {
             prepare.StoreDataInTransientStorage(1, 8);
             prepare.LoadDataFromTransientStorage(1);

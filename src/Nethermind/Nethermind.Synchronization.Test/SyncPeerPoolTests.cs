@@ -55,7 +55,7 @@ public class SyncPeerPoolTests
         public string ProtocolCode { get; } = null!;
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
         public string ClientId { get; } = description;
-        public long HeadNumber { get; set; }
+        public ulong HeadNumber { get; set; }
         public UInt256? TotalDifficulty { get; set; } = 1;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
@@ -68,7 +68,7 @@ public class SyncPeerPoolTests
         public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
             Task.FromResult(new OwnedBlockBodies([]));
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token) =>
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token) =>
             Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>

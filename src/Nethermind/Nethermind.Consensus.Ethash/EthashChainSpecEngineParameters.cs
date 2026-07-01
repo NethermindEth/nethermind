@@ -8,7 +8,7 @@ using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Consensus.Ethash;
 
@@ -17,25 +17,26 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
     public string? EngineName => SealEngineType;
     public string? SealEngineType => Core.SealEngineType.Ethash;
 
-    public long HomesteadTransition { get; set; } = 0;
-    public long? DaoHardforkTransition { get; set; }
+    public ulong HomesteadTransition { get; set; } = 0;
+    public ulong? DaoHardforkTransition { get; set; }
     public Address DaoHardforkBeneficiary { get; set; }
     public Address[] DaoHardforkAccounts { get; set; } = [];
-    public long? Eip100bTransition { get; set; }
-    public long? FixedDifficulty { get; set; }
-    public long DifficultyBoundDivisor { get; set; } = 0x0800;
-    public long DurationLimit { get; set; } = 13;
+    public ulong? Eip100bTransition { get; set; }
+    public ulong? FixedDifficulty { get; set; }
+    public ulong DifficultyBoundDivisor { get; set; } = 0x0800;
+    public ulong DurationLimit { get; set; } = 13;
     public UInt256 MinimumDifficulty { get; set; } = 0;
 
     [JsonConverter(typeof(BlockRewardConverter))]
-    public SortedDictionary<long, UInt256>? BlockReward { get; set; }
-    public IDictionary<long, long>? DifficultyBombDelays { get; set; }
+    public SortedDictionary<ulong, UInt256>? BlockReward { get; set; }
+    [JsonConverter(typeof(DifficultyBombDelaysConverter))]
+    public IDictionary<ulong, ulong>? DifficultyBombDelays { get; set; }
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
     {
         if (DifficultyBombDelays is not null)
         {
-            foreach ((long blockNumber, _) in DifficultyBombDelays)
+            foreach ((ulong blockNumber, _) in DifficultyBombDelays)
             {
                 blockNumbers.Add(blockNumber);
             }
@@ -43,7 +44,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 
         if (BlockReward is not null)
         {
-            foreach ((long blockNumber, _) in BlockReward)
+            foreach ((ulong blockNumber, _) in BlockReward)
             {
                 blockNumbers.Add(blockNumber);
             }
@@ -54,7 +55,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
         if (Eip100bTransition is not null) blockNumbers.Add(Eip100bTransition.Value);
     }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp)
     {
         SetDifficultyBombDelays(spec, startBlock);
 
@@ -65,11 +66,11 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
         spec.FixedDifficulty = FixedDifficulty;
     }
 
-    private void SetDifficultyBombDelays(ReleaseSpec spec, long startBlock)
+    private void SetDifficultyBombDelays(ReleaseSpec spec, ulong startBlock)
     {
         if (BlockReward is not null)
         {
-            foreach (KeyValuePair<long, UInt256> blockReward in BlockReward)
+            foreach (KeyValuePair<ulong, UInt256> blockReward in BlockReward)
             {
                 if (blockReward.Key <= startBlock)
                 {
@@ -80,7 +81,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 
         if (DifficultyBombDelays is not null)
         {
-            foreach (KeyValuePair<long, long> bombDelay in DifficultyBombDelays)
+            foreach (KeyValuePair<ulong, ulong> bombDelay in DifficultyBombDelays)
             {
                 if (bombDelay.Key <= startBlock)
                 {

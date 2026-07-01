@@ -187,7 +187,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return jsonRpcResult;
         }
 
-        private SyncingSubscription GetSyncingSubscription(int bestSuggested, int head)
+        private SyncingSubscription GetSyncingSubscription(ulong bestSuggested, ulong head)
         {
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(bestSuggested).TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(blockHeader);
@@ -487,7 +487,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -508,7 +508,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_not_matching_block_on_NewHeadBlock_event()
         {
-            int blockNumber = 22222;
+            ulong blockNumber = 22222;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -526,7 +526,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_one_TxReceipt_with_few_logs()
         {
-            int blockNumber = 77777;
+            ulong blockNumber = 77777;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -558,7 +558,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -604,7 +604,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_address_mismatches()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = new()
             {
                 FromBlock = BlockParameter.Latest,
@@ -651,7 +651,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_topic_mismatches()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
 
             Filter filter = new()
             {
@@ -698,7 +698,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_few_topics_and_some_address_and_topic_mismatches()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
 
             Filter filter = new()
             {
@@ -751,7 +751,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_should_not_send_logs_of_new_txs_on_ReceiptsInserted_event_but_on_NewHeadBlock_event()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
@@ -1195,7 +1195,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_can_send_logs_with_removed_txs_when_inserted()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);

@@ -153,6 +153,38 @@ public struct EvmPooledMemory
             => memory.AsSpan(offset, length).Clear();
     }
 
+    /// <summary>
+    /// Variant of <see cref="TrySave"/> requiring the caller to have already invoked
+    /// <see cref="IGasPolicy{TSelf}.UpdateMemoryCost"/> for (<paramref name="location"/>,
+    /// <paramref name="value"/>.Length) — which both bounds-checks and grows/rents the buffer —
+    /// so this skips re-validation. Mirrors <see cref="CopyAfterGas"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void SaveAfterGas(in UInt256 location, in ZeroPaddedSpan value)
+    {
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        Debug.Assert(location.IsUint64);
+        Debug.Assert(location.u0 + (ulong)value.Length <= Size);
+        PrepareAccessAfterGas(location.u0 + (ulong)value.Length);
+
+        int intLocation = TruncateToInt32(location.u0);
+        int spanLength = value.Span.Length;
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+
+        if (spanLength > 0)
+        {
+            value.Span.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref memory, intLocation), spanLength));
+        }
+        if (value.PaddingLength > 0)
+        {
+            MemoryMarshal.CreateSpan(ref Unsafe.Add(ref memory, intLocation + spanLength), value.PaddingLength).Clear();
+        }
+    }
+
     public bool TryLoadSpan(scoped in UInt256 location, out Span<byte> data)
     {
         CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool isViolation);
@@ -247,32 +279,32 @@ public struct EvmPooledMemory
         }
     }
 
-    public long CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
+    public ulong CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
     {
         if (length == 0)
         {
             outOfGas = false;
-            return 0L;
+            return 0;
         }
 
         CheckMemoryAccessViolation(in location, length, out ulong newSize, out outOfGas);
         if (outOfGas) return 0;
 
-        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
-    public long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
+    public ulong CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
     {
         if (length.IsZero)
         {
             outOfGas = false;
-            return 0L;
+            return 0;
         }
 
         CheckMemoryAccessViolation(in location, in length, out ulong newSize, out outOfGas);
         if (outOfGas) return 0;
 
-        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -340,7 +372,7 @@ public struct EvmPooledMemory
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private long ComputeMemoryExpansionCost(ulong newSize)
+    private ulong ComputeMemoryExpansionCost(ulong newSize)
     {
         // CheckMemoryAccessViolation has already capped newSize at MaxMemorySize (< 2^31), so the
         // ceiling division cannot overflow uint and the squared terms stay below 2^52. Size is
@@ -348,12 +380,13 @@ public struct EvmPooledMemory
         Debug.Assert(newSize <= MaxMemorySize);
         Debug.Assert(Size % WordSize == 0);
 
-        long newActiveWords = (long)((newSize + (WordSize - 1UL)) >> 5);
-        long activeWords = (long)(Size >> 5);
+        ulong newActiveWords = (newSize + (WordSize - 1UL)) >> 5;
+        ulong activeWords = Size >> 5;
 
         // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
-        // in long -- so the outOfGas propagation that older revisions carried is unreachable.
-        long cost = (newActiveWords - activeWords) * GasCostOf.Memory +
+        // in ulong -- so the outOfGas propagation that older revisions carried is unreachable.
+        // newActiveWords >= activeWords by the gating condition in UpdateSize, so the subtractions are safe.
+        ulong cost = (newActiveWords - activeWords) * GasCostOf.Memory +
             ((newActiveWords * newActiveWords) >> 9) -
             ((activeWords * activeWords) >> 9);
 
@@ -371,7 +404,7 @@ public struct EvmPooledMemory
 
     public void Dispose()
     {
-        byte[] memory = _memory;
+        byte[]? memory = _memory;
 
         if (memory is not null)
         {
