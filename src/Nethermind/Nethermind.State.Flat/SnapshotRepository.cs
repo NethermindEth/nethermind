@@ -326,7 +326,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     public bool HasState(in StateId stateId)
     {
         if (_snapshots.ContainsKey(stateId)) return true;
-        if (HasBaseSnapshot(stateId)) return true;
+        if (HasBasePersistedSnapshot(stateId)) return true;
         return false;
     }
 
@@ -668,7 +668,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     public bool RemovePersistedStateExact(in StateId toState) =>
         _base.RemoveExact(toState) | _smallCompacted.RemoveExact(toState) | _largeCompacted.RemoveExact(toState) | _compactSized.RemoveExact(toState);
 
-    public bool HasBaseSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
+    public bool HasBasePersistedSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
 
     public IEnumerable<PersistedSnapshot> PersistedSnapshots
     {

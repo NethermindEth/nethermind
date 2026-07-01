@@ -483,7 +483,7 @@ public class PersistenceManagerTests
         // A persisted entry below the new persisted block must be pruned by the persist.
         StateId stale = CreateStateId(8);
         PersistBase(Block0, stale);
-        Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.True);
+        Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.True);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
@@ -494,7 +494,7 @@ public class PersistenceManagerTests
         await _persistenceManager.AddToPersistence(latest);
 
         // Persisting the in-memory snapshot at `to` must prune the persisted tier below `to`.
-        Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.False);
+        Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
     [Test]
@@ -519,7 +519,7 @@ public class PersistenceManagerTests
 
         await _persistenceManager.AddToPersistence(latest);
 
-        Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.False);
+        Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
     [Test]
@@ -1044,7 +1044,7 @@ public class PersistenceManagerTests
 
         Assert.That(result, Is.EqualTo(target));
         _persistence.Received().CreateWriteBatch(Block0, target);
-        Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.False);
+        Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
     #endregion

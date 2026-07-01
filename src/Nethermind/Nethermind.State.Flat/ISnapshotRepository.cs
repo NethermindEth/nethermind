@@ -61,7 +61,7 @@ public interface ISnapshotRepository
     PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);
 
     /// <summary>Whether the persisted base bucket holds a snapshot at <paramref name="stateId"/>.</summary>
-    bool HasBaseSnapshot(in StateId stateId);
+    bool HasBasePersistedSnapshot(in StateId stateId);
 
     /// <summary>Every loaded persisted snapshot across the three buckets, for one-off lifecycle iteration
     /// (bloom rebuild) at load time.</summary>

@@ -214,7 +214,7 @@ public class PersistenceManager(
     }
 
     private bool IsOnDisk(in StateId state, in StateId currentPersistedState) =>
-        state == currentPersistedState || snapshotRepository.HasBaseSnapshot(state);
+        state == currentPersistedState || snapshotRepository.HasBasePersistedSnapshot(state);
 
     internal sealed record ConversionCandidate(Snapshot? Compacted, Snapshot? Base);
 
@@ -359,15 +359,8 @@ public class PersistenceManager(
     /// </remarks>
     public StateId FlushToPersistence()
     {
-        _persistenceLock.Wait();
-        try
-        {
-            return FlushToPersistenceLocked();
-        }
-        finally
-        {
-            _persistenceLock.Release();
-        }
+        using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
+        return FlushToPersistenceLocked();
     }
 
     private StateId FlushToPersistenceLocked()
@@ -483,7 +476,6 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (_, TreePath path) = k;
@@ -512,7 +504,6 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long storageNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (Hash256 address, TreePath path) = k;

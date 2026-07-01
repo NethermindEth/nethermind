@@ -114,8 +114,8 @@ public class PersistenceManagerPersistedTests
 
         Assert.That(LeasePresent(repo, nc4), Is.False, "orphan NC4 above the persisted block should be pruned from the persisted tier");
         Assert.That(LeasePresent(repo, c4), Is.True, "canonical C4 should be kept");
-        Assert.That(repo.HasBaseSnapshot(c3), Is.True, "canonical target C3 should be kept");
-        Assert.That(repo.HasBaseSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
+        Assert.That(repo.HasBasePersistedSnapshot(c3), Is.True, "canonical target C3 should be kept");
+        Assert.That(repo.HasBasePersistedSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
         Assert.That(repo.HasState(c5), Is.True, "canonical in-memory C5 reachable through persisted C4 must be kept");
     }
 
@@ -148,8 +148,8 @@ public class PersistenceManagerPersistedTests
         repo.RemoveSiblingAndDescendents(c3);
 
         Assert.That(LeasePresent(repo, nc4), Is.False, "persisted orphan NC4 above the in-memory tip should be pruned");
-        Assert.That(repo.HasBaseSnapshot(c3), Is.True, "canonical C3 should be kept");
-        Assert.That(repo.HasBaseSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
+        Assert.That(repo.HasBasePersistedSnapshot(c3), Is.True, "canonical C3 should be kept");
+        Assert.That(repo.HasBasePersistedSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
     }
 
     [Test]
@@ -170,8 +170,8 @@ public class PersistenceManagerPersistedTests
         repo.RemoveSiblingAndDescendents(s1);
 
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(before), "a linear persisted chain has no fork; nothing should be pruned");
-        Assert.That(repo.HasBaseSnapshot(s2), Is.True);
-        Assert.That(repo.HasBaseSnapshot(s3), Is.True);
+        Assert.That(repo.HasBasePersistedSnapshot(s2), Is.True);
+        Assert.That(repo.HasBasePersistedSnapshot(s3), Is.True);
     }
 
     private void PersistToTier(FlatTestContainer tier, StateId from, StateId to)
