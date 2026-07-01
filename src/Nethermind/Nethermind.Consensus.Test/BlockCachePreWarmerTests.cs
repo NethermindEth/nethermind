@@ -240,12 +240,7 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA should be warmed via speculative execution even without BAL path");
     }
 
-    /// <summary>
-    /// The prewarmer warms each transaction's EIP-2930 access list (this helps the main thread on
-    /// honestly-declared lists). The warm is cancellation-responsive so a transaction that over-declares a
-    /// huge list cannot stall the end-of-block join — the end-to-end effect is covered by the reproducible
-    /// benchmark on block 22360451; here we assert both the warming and that a cancelled token stops it.
-    /// </summary>
+    /// <summary>Prewarming warms a transaction's declared EIP-2930 access-list slots for the main thread.</summary>
     [Test]
     public async Task PreWarmCaches_WarmsAccessList_AndHonorsCancellation()
     {
@@ -273,11 +268,7 @@ public class BlockCachePreWarmerTests
             "declared access-list slots are warmed for the main thread");
     }
 
-    /// <summary>
-    /// The access-list warm is cancellation-responsive: with an already-cancelled token it stops at its first
-    /// periodic check, so an over-declared list cannot keep loading slots past end-of-block. Verified as a
-    /// differential — a live token warms the tail slot, a cancelled token does not.
-    /// </summary>
+    /// <summary>A cancelled token stops the access-list warm (storage-key dimension): live warms the tail slot, cancelled does not.</summary>
     [Test]
     public void WarmUp_AccessList_StopsOnCancellation()
     {
@@ -303,11 +294,7 @@ public class BlockCachePreWarmerTests
         }
     }
 
-    /// <summary>
-    /// The per-address dimension is also cancellation-responsive: an access list that over-declares many
-    /// addresses (each with no storage keys, allowed by EIP-2930) must still bail, since each entry is a
-    /// potentially-cold account load. Differential: a live token warms the tail address, a cancelled one does not.
-    /// </summary>
+    /// <summary>A cancelled token stops the per-address access-list warm (many address-only entries): live warms the tail address, cancelled does not.</summary>
     [Test]
     public void WarmUp_AccessList_StopsOnCancellation_ManyAddresses()
     {
