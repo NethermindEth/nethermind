@@ -214,6 +214,27 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCallMany_with_invalid_simulation_override_returns_original_error_message()
+    {
+        using Context ctx = await CreateContext();
+        Address ecrecoverAddress = new("0x0000000000000000000000000000000000000001");
+        TransactionBundle bundle = CreateBundle(CreateTransaction());
+        bundle.StateOverrides = new Dictionary<Address, AccountOverride>
+        {
+            [ecrecoverAddress] = new() { MovePrecompileToAddress = ecrecoverAddress }
+        };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.MovePrecompileSelfReference));
+            Assert.That(result.Result.Error, Is.EqualTo("MovePrecompileToAddress referenced itself in replacement"));
+        }
+    }
+
+    [Test]
     public async Task Debug_traceCallMany_block_override_gaslimit_applies()
     {
         using Context ctx = await CreateContext();

@@ -125,9 +125,9 @@ public sealed class DiscoveryPersistenceManager(
 
     private static NetworkNode CreatePersistedNode(Node node, long reputation)
     {
-        if (!string.IsNullOrEmpty(node.Enr))
+        if (node.Enr is not null)
         {
-            return new NetworkNode(node.Enr) { Reputation = reputation };
+            return new NetworkNode(node.Enr.ToString()) { Reputation = reputation };
         }
 
         return new NetworkNode(node.Id, node.Host, node.Port, reputation);

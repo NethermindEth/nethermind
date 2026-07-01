@@ -96,6 +96,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         using ArrayPoolListRef<byte> depositRequests = new(receipts.Length * 2 + 1);
         depositRequests.Add((byte)ExecutionRequestType.Deposit);
 
+        Span<byte> depositRequestBuffer = stackalloc byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
         for (int i = 0; i < receipts.Length; i++)
         {
             LogEntry[]? logEntries = receipts[i].Logs;
@@ -106,9 +107,8 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     LogEntry log = logEntries[j];
                     if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
                     {
-                        Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
                         DecodeDepositRequest(block, log, depositRequestBuffer);
-                        depositRequests.AddRange(depositRequestBuffer.ToArray());
+                        depositRequests.AddRange(depositRequestBuffer);
                     }
                 }
             }
