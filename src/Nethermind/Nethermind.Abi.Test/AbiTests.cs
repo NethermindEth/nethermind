@@ -579,6 +579,17 @@ public class AbiTests
         Assert.Throws<AbiException>(() => new AbiEncoder().Decode(AbiEncodingStyle.None, abi, data));
     }
 
+    [Test]
+    public void Should_wrap_out_of_bounds_dynamic_bytes_length_one_decode()
+    {
+        AbiSignature abi = new("Test", AbiType.DynamicBytes);
+        byte[] data = new byte[64];
+        data[31] = 32;
+        data[63] = 1;
+
+        Assert.Throws<AbiException>(() => _abiEncoder.Decode(AbiEncodingStyle.None, abi, data));
+    }
+
     [TestCaseSource(nameof(DynamicBytesAllocationCases))]
     public void Should_reject_dynamic_bytes_length_before_allocating(
         AbiEncodingStyle encodingStyle,
