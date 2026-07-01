@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
+using System.Runtime.InteropServices;
 using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -201,69 +201,62 @@ public static class PersistedSnapshotBuilder
         // Slim-account RLP fits in 256 bytes; slot RLP (≤ RlpSlotValueBufferSize) reuses the same
         // buffer — table.Add copies each value out immediately, and slots are emitted before the
         // account for a given address, so there is no overlap.
-        byte[] rlpBuffer = ArrayPool<byte>.Shared.Rent(256);
+        Span<byte> rlpBuffer = stackalloc byte[256];
         Span<byte> keyBuf = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
         Span<byte> slotKey = stackalloc byte[32];
         int storageIdx = 0;
 
-        try
+        for (int addrIdx = 0; addrIdx < uniqueAddresses.Count; addrIdx++)
         {
-            for (int addrIdx = 0; addrIdx < uniqueAddresses.Count; addrIdx++)
+            ValueAddress addrValue = uniqueAddresses[addrIdx];
+            ReadOnlySpan<byte> addressBytes = addrValue.AsSpan;
+            Address address = addrValue.ToAddress();
+
+            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressBytes);
+            bloom.Add(addrBloomKey);
+
+            // Self-destruct (sub-tag 0x02) sorts before slots.
+            if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
             {
-                ValueAddress addrValue = uniqueAddresses[addrIdx];
-                ReadOnlySpan<byte> addressBytes = addrValue.AsSpan;
-                Address address = addrValue.ToAddress();
+                int len = PersistedSnapshotKey.WriteSelfDestructKey(keyBuf, addressBytes);
+                table.Add(keyBuf[..len],
+                    sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
+            }
 
-                ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressBytes);
-                bloom.Add(addrBloomKey);
+            // Slots (sub-tag 0x01). Full 32-byte big-endian slot inline — no prefix/suffix split.
+            while (storageIdx < sortedStorages.Count &&
+                sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
+            {
+                SlotValue? value = sortedStorages[storageIdx].Value;
+                sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
+                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
+                // Present values are RLP-wrapped; null/deleted slots keep an empty payload so the
+                // length-0 = absent sentinel survives.
+                ReadOnlySpan<byte> payload = value.HasValue
+                    ? rlpBuffer[..Rlp.Encode(value.Value.AsReadOnlySpan.WithoutLeadingZeros(), rlpBuffer)]
+                    : [];
+                int len = PersistedSnapshotKey.WriteSlotKey(keyBuf, addressBytes, slotKey);
+                table.Add(keyBuf[..len], payload);
+                storageIdx++;
+            }
 
-                // Self-destruct (sub-tag 0x02) sorts before slots.
-                if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
+            // Account (sub-tag 0x00). Slim RLP starts with a list header (0xc0+), so the
+            // [0x00] deleted-marker is unambiguous against any valid RLP.
+            if (snapshot.TryGetAccount(address, out Account? account))
+            {
+                int len = PersistedSnapshotKey.WriteAccountKey(keyBuf, addressBytes);
+                if (account is null)
                 {
-                    int len = PersistedSnapshotKey.WriteSelfDestructKey(keyBuf, addressBytes);
-                    table.Add(keyBuf[..len],
-                        sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
+                    table.Add(keyBuf[..len], PersistedSnapshotTags.AccountDeletedMarker);
                 }
-
-                // Slots (sub-tag 0x01). Full 32-byte big-endian slot inline — no prefix/suffix split.
-                while (storageIdx < sortedStorages.Count &&
-                    sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
+                else
                 {
-                    SlotValue? value = sortedStorages[storageIdx].Value;
-                    sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
-                    bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
-                    // Present values are RLP-wrapped; null/deleted slots keep an empty payload so the
-                    // length-0 = absent sentinel survives.
-                    ReadOnlySpan<byte> payload = value.HasValue
-                        ? rlpBuffer.AsSpan(0, Rlp.Encode(value.Value.AsReadOnlySpan.WithoutLeadingZeros(), rlpBuffer))
-                        : [];
-                    int len = PersistedSnapshotKey.WriteSlotKey(keyBuf, addressBytes, slotKey);
-                    table.Add(keyBuf[..len], payload);
-                    storageIdx++;
-                }
-
-                // Account (sub-tag 0x00). Slim RLP starts with a list header (0xc0+), so the
-                // [0x00] deleted-marker is unambiguous against any valid RLP.
-                if (snapshot.TryGetAccount(address, out Account? account))
-                {
-                    int len = PersistedSnapshotKey.WriteAccountKey(keyBuf, addressBytes);
-                    if (account is null)
-                    {
-                        table.Add(keyBuf[..len], PersistedSnapshotTags.AccountDeletedMarker);
-                    }
-                    else
-                    {
-                        int rlpLen = AccountDecoder.Slim.GetLength(account);
-                        RlpWriter rlpWriter = new(rlpBuffer);
-                        AccountDecoder.Slim.Encode(account, ref rlpWriter);
-                        table.Add(keyBuf[..len], rlpBuffer.AsSpan(0, rlpLen));
-                    }
+                    int rlpLen = AccountDecoder.Slim.GetLength(account);
+                    RlpWriter rlpWriter = new(rlpBuffer);
+                    AccountDecoder.Slim.Encode(account, ref rlpWriter);
+                    table.Add(keyBuf[..len], rlpBuffer[..rlpLen]);
                 }
             }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(rlpBuffer);
         }
     }
 
@@ -272,16 +265,14 @@ public static class PersistedSnapshotBuilder
         NativeMemoryList<TreePath> keys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
         Span<byte> keyBuf = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
-        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
         for (int i = 0; i < keys.Count; i++)
         {
             TreePath path = keys[i];
             if (!snapshot.TryGetStateNode(path, out TrieNode? node) || node is null)
                 throw new InvalidOperationException($"State node {path} disappeared between extraction and persist.");
             NodeRef nr = blobWriter.WriteRlp(node.FullRlp.AsSpan());
-            NodeRef.Write(nrBuf, in nr);
             int len = PersistedSnapshotKey.WriteStateNodeKey(keyBuf, in path);
-            table.Add(keyBuf[..len], nrBuf);
+            table.Add(keyBuf[..len], MemoryMarshal.AsBytes(new Span<NodeRef>(ref nr)));
             bloom.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
         }
     }
@@ -301,7 +292,6 @@ public static class PersistedSnapshotBuilder
         BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
         Span<byte> keyBuf = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
-        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
         // Cache the materialised Hash256 across a per-addressHash run — the merge keeps all of an
         // address-hash's nodes (across sublists) contiguous, so one Gen0 alloc per address-hash.
         ValueHash256 cachedHash = default;
@@ -332,9 +322,8 @@ public static class PersistedSnapshotBuilder
             if (!snapshot.TryGetStorageNode((cachedRef, path), out TrieNode? node) || node is null)
                 throw new InvalidOperationException($"Storage node {addressHash}:{path} disappeared between extraction and persist.");
             NodeRef nr = blobWriter.WriteRlp(node.FullRlp.AsSpan());
-            NodeRef.Write(nrBuf, in nr);
             int len = PersistedSnapshotKey.WriteStorageNodeKey(keyBuf, addressHash.Bytes, in path);
-            table.Add(keyBuf[..len], nrBuf);
+            table.Add(keyBuf[..len], MemoryMarshal.AsBytes(new Span<NodeRef>(ref nr)));
             bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
         }
     }
