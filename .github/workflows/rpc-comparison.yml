@@ -655,8 +655,8 @@ jobs:
   cleanup_spawned_nodes:
     name: Destroy spawned nodes
     runs-on: ubuntu-latest
-    needs: [create_main_node, create_geth_node, compare]
-    if: always() && (needs.create_main_node.outputs.run_id != '' || needs.create_geth_node.outputs.run_id != '')
+    needs: [create_main_node, create_geth_node, create_reference_node, compare]
+    if: always() && (needs.create_main_node.outputs.run_id != '' || needs.create_geth_node.outputs.run_id != '' || needs.create_reference_node.outputs.run_id != '')
     steps:
       - name: Authenticate App
         id: gh-app
@@ -684,4 +684,14 @@ jobs:
           gh workflow run manual-destroy-smoketests.yml \
             --repo NethermindEth/post-merge-smoke-tests --ref main \
             -f workflow_run_id="${{ needs.create_geth_node.outputs.run_id }}" \
+            -f timeout="0"
+
+      - name: Destroy reference Nethermind node
+        if: needs.create_reference_node.outputs.run_id != ''
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          gh workflow run manual-destroy-smoketests.yml \
+            --repo NethermindEth/post-merge-smoke-tests --ref main \
+            -f workflow_run_id="${{ needs.create_reference_node.outputs.run_id }}" \
             -f timeout="0"
