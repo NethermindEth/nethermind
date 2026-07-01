@@ -144,7 +144,16 @@ public sealed class StateDiffRecord : IDisposable
             }
         }
 
-        public SlotEnumerator Slots => new(_rlp, _slotsStart, _slotsEnd);
+        public SlotSet Slots => new(_rlp, _slotsStart, _slotsEnd);
+    }
+
+    /// <summary>
+    /// A storable (non-ref) handle to an account's changed-slot region within the record buffer; enumerating
+    /// it parses the slots on demand, so it can be carried into a parallel worker and read there.
+    /// </summary>
+    public readonly struct SlotSet(ReadOnlyMemory<byte> rlp, int start, int end)
+    {
+        public SlotEnumerator GetEnumerator() => new(rlp, start, end);
     }
 
     /// <summary>Walks an account's changed storage slots.</summary>

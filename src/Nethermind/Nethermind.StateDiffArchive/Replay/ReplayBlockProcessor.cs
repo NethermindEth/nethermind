@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.StateDiffArchive.Data;
 using Nethermind.StateDiffArchive.Storage;
@@ -117,6 +116,9 @@ public sealed class ReplayBlockProcessor(
     // Matches PersistentStorageProvider.UpdateRootHashes: below this many contracts the parallel overhead isn't worth it.
     private const int MultiThreadThreshold = 3;
 
+    // Initial pooled-list capacity for the per-block storage work; grows if a block touches more contracts.
+    private const int InitialStorageCapacity = 64;
+
     private static void ApplyRecord(IWorldStateScopeProvider.IScope scope, StateDiffRecord record)
     {
         if (record.HasCodes)
@@ -148,40 +150,33 @@ public sealed class ReplayBlockProcessor(
     private static void ApplyStorage(StateDiffRecord record, IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         // Opening a storage write batch mutates the scope's per-address tree map and must stay single-threaded,
-        // so collect the per-contract work serially first.
-        List<StorageWork> work = [];
+        // so open them serially. Each work item keeps only the record-backed slot region; the slots are parsed
+        // and written by the worker, so nothing is materialized here.
+        using ArrayPoolList<StorageWork> work = new(InitialStorageCapacity);
         foreach (StateDiffRecord.AccountView account in record.Accounts)
         {
             if (!account.StorageCleared && !account.HasSlots) continue;
-
-            List<(UInt256 Index, byte[] Value)> slots = [];
-            foreach (StateDiffRecord.SlotView slot in account.Slots) slots.Add((slot.Index, slot.Value.ToArray()));
-            work.Add(new StorageWork(writeBatch.CreateStorageWriteBatch(account.Address, slots.Count), account.StorageCleared, slots));
+            work.Add(new StorageWork(writeBatch.CreateStorageWriteBatch(account.Address, 0), account.StorageCleared, account.Slots));
         }
 
         if (work.Count == 0) return;
 
-        // The opened batches operate on independent tries, so process them concurrently (largest first to balance).
+        // The opened batches operate on independent tries; ParallelUnbalancedWork load-balances, so no pre-sort.
         if (work.Count >= MultiThreadThreshold)
-        {
-            work.Sort(static (a, b) => b.Slots.Count.CompareTo(a.Slots.Count));
             ParallelUnbalancedWork.For(0, work.Count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, i => ApplyOneStorage(work[i]));
-        }
         else
-        {
             foreach (StorageWork w in work) ApplyOneStorage(w);
-        }
     }
 
     private static void ApplyOneStorage(StorageWork work)
     {
         using IWorldStateScopeProvider.IStorageWriteBatch batch = work.Batch;
         if (work.Cleared) batch.Clear();
-        foreach ((UInt256 index, byte[] value) in work.Slots) batch.Set(index, value);
+        foreach (StateDiffRecord.SlotView slot in work.Slots) batch.Set(slot.Index, slot.Value.ToArray());
     }
 
     private readonly record struct StorageWork(
         IWorldStateScopeProvider.IStorageWriteBatch Batch,
         bool Cleared,
-        List<(UInt256 Index, byte[] Value)> Slots);
+        StateDiffRecord.SlotSet Slots);
 }
