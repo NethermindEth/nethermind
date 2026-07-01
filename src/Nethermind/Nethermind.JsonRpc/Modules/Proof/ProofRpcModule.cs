@@ -154,7 +154,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys.Select(static k => (UInt256)k));
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys.Select(k => k.Value));
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 

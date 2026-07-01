@@ -38,10 +38,20 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
         {
             Span<byte> span = stackalloc byte[length];
             reader.ValueSequence.CopyTo(span);
-            return new StorageIndex(UInt256Converter.ReadHex(span));
+            return Parse(span);
         }
 
-        return new StorageIndex(UInt256Converter.ReadHex(reader.ValueSpan));
+        return Parse(reader.ValueSpan);
+    }
+
+    private static StorageIndex Parse(ReadOnlySpan<byte> hex)
+    {
+        if (!hex.StartsWith("0x"u8))
+        {
+            throw new JsonException();
+        }
+
+        return new StorageIndex(UInt256Converter.ReadHex(hex));
     }
 
     public override void Write(Utf8JsonWriter writer, StorageIndex value, JsonSerializerOptions options) =>

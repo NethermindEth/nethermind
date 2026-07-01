@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Optimism.CL;
@@ -138,7 +139,7 @@ public class L2Api(
         };
     }
 
-    public Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, ulong blockNumber)
+    public Task<AccountProof?> GetProof(Address accountAddress, HashSet<StorageIndex> storageKeys, ulong blockNumber)
     {
         // TODO: Retry logic
         ResultWrapper<AccountProof> result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));
