@@ -52,7 +52,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _root = new TreeNode(config.KSize, distance.Zero);
         _logger = loggerFactory.CreateLogger<KBucketTree<TNode, TKadKey>>();
-        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
+        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
     }
 
     public BucketAddResult TryAddOrRefresh(in TKadKey nodeHash, TNode node, out TNode? toRefresh)

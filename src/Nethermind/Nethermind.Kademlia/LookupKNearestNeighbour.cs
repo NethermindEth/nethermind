@@ -138,7 +138,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         CancellationToken token
     )
     {
-        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Initiate lookup for hash {targetHash}");
+        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initiate lookup for hash {targetHash}");
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
