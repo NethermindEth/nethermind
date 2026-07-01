@@ -253,7 +253,9 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeout.GapNumber);
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
 
-        // Verify msg signature
+        if (timeout.Signature is null || !timeout.Signature.HasLowS())
+            return false;
+
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeout.Round, timeout.GapNumber);
         Address signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
         timeout.Signer = signer;
