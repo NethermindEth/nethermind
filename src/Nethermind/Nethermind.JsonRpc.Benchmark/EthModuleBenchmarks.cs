@@ -97,7 +97,8 @@ namespace Nethermind.JsonRpc.Benchmark
                     _container.Resolve<ISyncConfig>(),
                     Substitute.For<ISyncPointers>(),
                     Substitute.For<IHistoryConfig>(),
-                    Substitute.For<IHistoryPruner>()));
+                    Substitute.For<IHistoryPruner>()),
+                new BlockForRpcFactory());
         }
 
         [GlobalCleanup]

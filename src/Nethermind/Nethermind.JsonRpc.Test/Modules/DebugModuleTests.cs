@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Facade.Eth;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -53,7 +54,8 @@ public class DebugModuleTests
         _specProvider,
         _blockchainBridge,
         new BlocksConfig(),
-        _blockFinder);
+        _blockFinder,
+        new BlockForRpcFactory());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);

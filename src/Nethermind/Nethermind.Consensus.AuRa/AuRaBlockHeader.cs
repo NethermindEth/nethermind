@@ -23,15 +23,14 @@ public sealed class AuRaBlockHeader(
     ulong timestamp,
     byte[] extraData)
     : BlockHeader(parentHash!, unclesHash!, beneficiary!, in difficulty, number, gasLimit, timestamp, extraData),
-      IAuRaSealedHeader,
       IHashResolver
 {
     private static readonly AuRaHeaderDecoder _headerDecoder = new();
 
-    /// <inheritdoc/>
+    /// <summary>The AuRa step the block was sealed in.</summary>
     public ulong AuRaStep { get; set; }
 
-    /// <inheritdoc/>
+    /// <summary>The sealer's signature; null until the block is sealed.</summary>
     public byte[]? AuRaSignature { get; set; }
 
     /// <inheritdoc/>

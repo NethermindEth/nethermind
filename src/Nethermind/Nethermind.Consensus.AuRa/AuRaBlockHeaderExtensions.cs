@@ -9,11 +9,11 @@ namespace Nethermind.Consensus.AuRa;
 
 public static class AuRaBlockHeaderExtensions
 {
-    public static ulong? GetAuRaStep(this BlockHeader header) => (header as IAuRaSealedHeader)?.AuRaStep;
+    public static ulong? GetAuRaStep(this BlockHeader header) => (header as AuRaBlockHeader)?.AuRaStep;
 
     public static ulong GetAuRaStepOrZero(this BlockHeader? header) => header?.GetAuRaStep() ?? 0;
 
-    public static byte[]? GetAuRaSignature(this BlockHeader header) => (header as IAuRaSealedHeader)?.AuRaSignature;
+    public static byte[]? GetAuRaSignature(this BlockHeader header) => (header as AuRaBlockHeader)?.AuRaSignature;
 
     /// <summary>Cast or throw a uniform <see cref="InvalidOperationException"/>; <paramref name="operation"/> defaults to the calling method.</summary>
     public static AuRaBlockHeader RequireAuRa(this BlockHeader header, [CallerMemberName] string? operation = null)

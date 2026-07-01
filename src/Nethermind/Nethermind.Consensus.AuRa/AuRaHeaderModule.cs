@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa;
@@ -31,7 +32,8 @@ public class AuRaHeaderModule : Module
             .AddSingleton<IHeaderDecoder>(headerDecoder)
             .AddSingleton(blockDecoder)
             .AddSingleton(blockBodyDecoder)
-            .AddDecorator<IGenesisBuilder, AuRaGenesisBuilder>();
+            .AddDecorator<IGenesisBuilder, AuRaGenesisBuilder>()
+            .AddSingleton<IBlockForRpcFactory, AuRaBlockForRpcFactory>();
     }
 }
 

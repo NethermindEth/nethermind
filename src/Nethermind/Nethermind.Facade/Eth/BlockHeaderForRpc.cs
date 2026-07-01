@@ -4,7 +4,6 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -23,18 +22,9 @@ public class BlockHeaderForRpc
         Number = header.Number;
         Hash = header.Hash;
         ParentHash = header.ParentHash;
-        if (header is IAuRaSealedHeader aura)
-        {
-            Author = header.Author;
-            Step = aura.AuRaStep;
-            Signature = aura.AuRaSignature;
-        }
-        else
-        {
-            MixHash = header.MixHash;
-            Nonce = new byte[8];
-            BinaryPrimitives.WriteUInt64BigEndian(Nonce, header.Nonce);
-        }
+        MixHash = header.MixHash;
+        Nonce = new byte[8];
+        BinaryPrimitives.WriteUInt64BigEndian(Nonce, header.Nonce);
         Sha3Uncles = header.UnclesHash;
         LogsBloom = header.Bloom;
         StateRoot = header.StateRoot;

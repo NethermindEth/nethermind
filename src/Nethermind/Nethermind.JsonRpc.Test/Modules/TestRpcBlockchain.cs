@@ -205,7 +205,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 @this.Container.Resolve<ISyncConfig>(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
-                Substitute.For<IHistoryPruner>()));
+                Substitute.For<IHistoryPruner>()),
+            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory());
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {

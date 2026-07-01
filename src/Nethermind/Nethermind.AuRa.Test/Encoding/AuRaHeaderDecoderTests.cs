@@ -110,9 +110,9 @@ public class AuRaHeaderDecoderTests
     }
 
     [Test]
-    public void IAuRaSealedHeader_distinguishes_subclass_from_base_BlockHeader()
+    public void AuRaBlockHeader_distinguishes_subclass_from_base_BlockHeader()
     {
-        Assert.That(Build.A.BlockHeader.TestObject, Is.Not.InstanceOf<IAuRaSealedHeader>());
-        Assert.That(Build.A.BlockHeader.WithAura(0, []).TestObject, Is.InstanceOf<IAuRaSealedHeader>());
+        Assert.That(Build.A.BlockHeader.TestObject, Is.Not.InstanceOf<AuRaBlockHeader>());
+        Assert.That(Build.A.BlockHeader.WithAura(0, []).TestObject, Is.InstanceOf<AuRaBlockHeader>());
     }
 }

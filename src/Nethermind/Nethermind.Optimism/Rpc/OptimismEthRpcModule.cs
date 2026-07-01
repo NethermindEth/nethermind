@@ -58,7 +58,8 @@ public class OptimismEthRpcModule(
     ILogIndexConfig? logIndexConfig,
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
-    IEthCapabilitiesProvider capabilitiesProvider)
+    IEthCapabilitiesProvider capabilitiesProvider,
+    IBlockForRpcFactory blockForRpcFactory)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
@@ -78,7 +79,8 @@ public class OptimismEthRpcModule(
         logIndexConfig,
         secondsPerSlot,
         headBlockSignal,
-        capabilitiesProvider), IOptimismEthRpcModule
+        capabilitiesProvider,
+        blockForRpcFactory), IOptimismEthRpcModule
 {
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {

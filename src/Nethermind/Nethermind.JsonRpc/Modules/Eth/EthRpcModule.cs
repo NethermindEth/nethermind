@@ -73,7 +73,8 @@ public partial class EthRpcModule(
     ILogIndexConfig? logIndexConfig,
     ulong? secondsPerSlot,
     HeadBlockSignal headBlockSignal,
-    IEthCapabilitiesProvider capabilitiesProvider) : IEthRpcModule
+    IEthCapabilitiesProvider capabilitiesProvider,
+    IBlockForRpcFactory blockForRpcFactory) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -88,6 +89,7 @@ public partial class EthRpcModule(
     protected readonly ITxSender _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
     protected readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    protected readonly IBlockForRpcFactory _blockForRpcFactory = blockForRpcFactory ?? throw new ArgumentNullException(nameof(blockForRpcFactory));
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
@@ -566,7 +568,7 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc blockForRpc = new(block, returnFullTransactionObjects, _specProvider);
+        BlockForRpc blockForRpc = _blockForRpcFactory.Create(block, returnFullTransactionObjects, _specProvider);
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             blockForRpc.Hash = null;
@@ -592,7 +594,7 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockHeaderForRpc?>.Success(null);
         }
 
-        BlockHeaderForRpc result = new(searchResult.Object!, _specProvider);
+        BlockHeaderForRpc result = _blockForRpcFactory.CreateHeader(searchResult.Object!, _specProvider);
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             result.Hash = null;
@@ -744,7 +746,7 @@ public partial class EthRpcModule(
         }
 
         BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
-        return ResultWrapper<BlockForRpc?>.Success(new BlockForRpc(new Block(uncleHeader), false, _specProvider));
+        return ResultWrapper<BlockForRpc?>.Success(_blockForRpcFactory.Create(new Block(uncleHeader), false, _specProvider));
     }
 
     public ResultWrapper<UInt256?> eth_newFilter(Filter filter)

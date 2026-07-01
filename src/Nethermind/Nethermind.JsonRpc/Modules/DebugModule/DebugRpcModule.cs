@@ -30,6 +30,7 @@ using Nethermind.Config;
 using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Simulate;
 using Nethermind.Consensus.Stateless;
 
@@ -42,7 +43,8 @@ public class DebugRpcModule(
     ISpecProvider specProvider,
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
-    IBlockFinder blockFinder)
+    IBlockFinder blockFinder,
+    IBlockForRpcFactory blockForRpcFactory)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
@@ -642,7 +644,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
     {
-        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder));
+        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
 

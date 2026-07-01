@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Frozen;
 using System.Threading;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -55,18 +54,9 @@ public class BlockForRpc
         Hash = block.Hash;
         LogsBloom = block.Bloom;
         Miner = block.Beneficiary;
-        if (block.Header is IAuRaSealedHeader aura)
-        {
-            Author = block.Author;
-            Step = aura.AuRaStep;
-            Signature = aura.AuRaSignature;
-        }
-        else
-        {
-            MixHash = block.MixHash;
-            Nonce = new byte[8];
-            BinaryPrimitives.WriteUInt64BigEndian(Nonce, block.Nonce);
-        }
+        MixHash = block.MixHash;
+        Nonce = new byte[8];
+        BinaryPrimitives.WriteUInt64BigEndian(Nonce, block.Nonce);
 
         if (specProvider is not null)
         {

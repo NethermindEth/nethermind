@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using NUnit.Framework.Constraints;
@@ -22,8 +22,8 @@ public sealed class AuRaBlockHeaderEqualityComparer(bool compareHash = true) : I
         if (!_baseComparer.Equals(actual, expected)) return false;
         if (actual is null || expected is null) return true;
 
-        IAuRaSealedHeader? actualSeal = actual as IAuRaSealedHeader;
-        IAuRaSealedHeader? expectedSeal = expected as IAuRaSealedHeader;
+        AuRaBlockHeader? actualSeal = actual as AuRaBlockHeader;
+        AuRaBlockHeader? expectedSeal = expected as AuRaBlockHeader;
         if ((actualSeal is null) != (expectedSeal is null)) return false;
         return actualSeal is null
             || (actualSeal.AuRaStep == expectedSeal!.AuRaStep && BytesEqual(actualSeal.AuRaSignature, expectedSeal.AuRaSignature));
