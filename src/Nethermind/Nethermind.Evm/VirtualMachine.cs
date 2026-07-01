@@ -101,10 +101,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
-    // IsTracingActions is read at ~9 hot CALL / precompile sites. The tracer is fixed per execution,
-    // so the guest flavor caches the flag (set in ExecuteTransaction) to drop the interface dispatch;
-    // the std flavor forwards directly.
-    private partial bool IsTracingActionsFast { get; }
+    // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
+    // once in ExecuteTransaction and read the field rather than dispatching through the tracer each time.
+    private bool _isTracingActionsCached;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -146,9 +145,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
-#if ZK_EVM
         _isTracingActionsCached = txTracer.IsTracingActions;
-#endif
         _worldState = worldState;
 
         // Reset Parity touch bug state to prevent cross-transaction leakage.
@@ -183,7 +180,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // If the current state represents a precompiled contract, handle it separately.
                 if (_currentState.IsPrecompile)
                 {
-                    callResult = ExecutePrecompile(_currentState, IsTracingActionsFast, out failure, out substateError);
+                    callResult = ExecutePrecompile(_currentState, _isTracingActionsCached, out failure, out substateError);
                     if (failure is not null)
                     {
                         // Jump to the failure handler if a precompile error occurred.
@@ -197,7 +194,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         AddTransferLog(_currentState);
 
                         // Start transaction tracing for non-continuation frames if tracing is enabled.
-                        if (IsTracingActionsFast)
+                        if (_isTracingActionsCached)
                         {
                             TraceTransactionActionStart(_currentState);
                         }
@@ -240,7 +237,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // If the current execution state is the top-level call, finalize tracing and return the result.
                 if (_currentState.IsTopLevel)
                 {
-                    if (IsTracingActionsFast)
+                    if (_isTracingActionsCached)
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
@@ -364,7 +361,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             }
         }
 
-        if (IsTracingActionsFast)
+        if (_isTracingActionsCached)
         {
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
         }
@@ -450,7 +447,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             {
                 _currentState.Gas = gasAfterCodeDeposit;
                 _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
-                if (IsTracingActionsFast)
+                if (_isTracingActionsCached)
                 {
                     _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - regularDepositCost, callCodeOwner, code);
                 }
@@ -476,12 +473,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _previousCallResult = BytesZero;
             previousStateSucceeded = false;
 
-            if (IsTracingActionsFast)
+            if (_isTracingActionsCached)
             {
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
-        else if (!chargedCodeDeposit && IsTracingActionsFast)
+        else if (!chargedCodeDeposit && _isTracingActionsCached)
         {
             _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
         }
@@ -525,7 +522,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
         // If transaction tracing is enabled, report the revert action along with the available gas and output bytes.
-        if (IsTracingActionsFast)
+        if (_isTracingActionsCached)
         {
             _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGas(previousState.Gas), outputBytes);
         }

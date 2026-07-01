@@ -12,11 +12,7 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private bool _isTracingActionsCached;
-
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
-
-    private partial bool IsTracingActionsFast => _isTracingActionsCached;
 
     // Select and lazily build the opcode dispatch table for the active tracing mode, caching each
     // mode separately on the spec. Mirrors the std build minus its periodic PGO-driven cache refresh,
@@ -70,7 +66,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             stateForAccessLists: in parent.AccessTracker,
             snapshot: in snapshot);
 
-        CallResult callResult = ExecutePrecompile(child, IsTracingActionsFast, out Exception? failure, out _);
+        CallResult callResult = ExecutePrecompile(child, _isTracingActionsCached, out Exception? failure, out _);
 
         if (failure is not null)
         {
