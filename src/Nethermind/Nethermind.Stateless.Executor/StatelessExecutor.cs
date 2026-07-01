@@ -34,7 +34,22 @@ public static class StatelessExecutor
 
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
-        StatelessPayload payload = InputDecoder.Decode(data);
+        // Any failure to decode the input yields the default failed result (zeroed request root),
+        // matching the reference guest's `run_stateless_guest`. Pre-encode it so the zkVM
+        // `ZkvmThrow` callback can surface it if decoding throws.
+        byte[] output = StatelessValidationResult.Encode(CreateDefaultFailedResult());
+        FailureOutput = output;
+
+        StatelessPayload payload;
+        try
+        {
+            payload = InputDecoder.Decode(data);
+        }
+        catch
+        {
+            return output;
+        }
+
         ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
         Transaction[] transactions = payload.Block.Transactions;
         StatelessValidationResult result = new()
@@ -43,7 +58,7 @@ public static class StatelessExecutor
             IsSuccess = false,
             ChainConfig = payload.ChainConfig
         };
-        byte[] output = StatelessValidationResult.Encode(result);
+        output = StatelessValidationResult.Encode(result);
         bool success = false;
 
         FailureOutput = output;
@@ -139,6 +154,22 @@ public static class StatelessExecutor
 
         return true;
     }
+
+    private static StatelessValidationResult CreateDefaultFailedResult() => new()
+    {
+        NewPayloadRequestRoot = Hash256.Zero,
+        IsSuccess = false,
+        ChainConfig = new ChainConfig
+        {
+            ChainId = 0,
+            ActiveFork = new ForkConfig
+            {
+                Fork = 0,
+                Activation = new SszForkActivation { BlockNumber = [], Timestamp = [] },
+                BlobSchedule = []
+            }
+        }
+    };
 
     private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
     {
