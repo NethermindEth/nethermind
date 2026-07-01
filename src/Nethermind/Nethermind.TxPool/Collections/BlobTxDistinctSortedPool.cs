@@ -385,7 +385,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             cells = new byte[cellsPerBlob][];
             using ArrayPoolSpan<byte> allCells = new(Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob);
             ReadOnlySpan<byte> blob = wrapper.Blobs[blobIndex];
-            KzgPolynomialCommitments.ComputeCells(allCells.Slice(0, allCells.Length), blob);
+            KzgPolynomialCommitments.ComputeCells(blob, allCells.Slice(0, allCells.Length));
             int i = 0;
             foreach (int cellIndex in availableMask.EnumerateSetBits())
             {

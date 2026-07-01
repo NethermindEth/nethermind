@@ -58,6 +58,16 @@ public static partial class EvmInstructions
         // Deduct gas cost specific to the shift operation.
         TGasPolicy.Consume(ref gas, TOpShift.GasCost);
 
+        return ShiftCore<TOpShift, TTracingInst>(ref stack);
+    }
+
+    /// <summary>Gas-free body of <see cref="InstructionShift{TGasPolicy, TOpShift, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType ShiftCore<TOpShift, TTracingInst>(ref EvmStack stack)
+        where TOpShift : struct, IOpShift
+        where TTracingInst : struct, IFlag
+    {
         // Amortise the bounds check across both operands (mirrors InstructionSar).
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 
@@ -94,29 +104,21 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Deduct the gas cost for the arithmetic shift operation.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        // Pop the shift amount and the value to be shifted.
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 
         // If the shift amount is 256 or more, the result depends solely on the sign of the value.
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
         if (!a.IsUint64 || a.u0 >= 256)
         {
-            // Convert the unsigned value to a signed integer to determine its sign.
             return As<UInt256, Int256>(ref b).Sign >= 0
-                // Non-negative value: result is zero.
                 ? stack.PushZero<TTracingInst>()
-                // Negative value: result is -1 (all bits set).
                 : stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
         }
 
-        // For a valid shift amount (<256), perform an arithmetic right shift.
         As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
-        // Convert the signed result back to unsigned representation.
         return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
-        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

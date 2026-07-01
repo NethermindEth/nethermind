@@ -53,7 +53,7 @@ public class EnrDiscoveryTests
             NodeRecord nodeRecord = parser.ParseRecord(record);
             if (!nodeRecord.Snap)
             {
-                Assert.That(nodeRecord.EnrString, Is.EqualTo(record));
+                Assert.That(nodeRecord.ToString(), Is.EqualTo(record));
                 verified++;
             }
         }

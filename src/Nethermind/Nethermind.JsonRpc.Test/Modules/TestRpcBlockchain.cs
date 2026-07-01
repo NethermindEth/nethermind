@@ -65,6 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
         public ILogIndexConfig LogIndexConfig { get; } = new LogIndexConfig();
+        public IReceiptConfig ReceiptConfig { get; private set; } = new ReceiptConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -127,6 +128,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             public Builder<T> WithConfig(IJsonRpcConfig config)
             {
                 _blockchain.RpcConfig = config;
+                return this;
+            }
+
+            public Builder<T> WithReceiptConfig(IReceiptConfig receiptConfig)
+            {
+                _blockchain.ReceiptConfig = receiptConfig;
                 return this;
             }
 
@@ -196,6 +203,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.LogIndexConfig,
+            @this.ReceiptConfig,
             @this.BlocksConfig.SecondsPerSlot,
             new HeadBlockSignal(@this.BlockTree),
             new EthCapabilitiesProvider(

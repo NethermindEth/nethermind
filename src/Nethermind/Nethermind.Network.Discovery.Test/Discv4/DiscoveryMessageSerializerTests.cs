@@ -135,6 +135,53 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
+    public void Pong_with_enr_there_and_back()
+    {
+        PongMsg pongMsg = new(
+            new IPEndPoint(TestItem.IPEndPointA.Address, 30303),
+            long.MaxValue,
+            TestItem.KeccakA.ValueHash256,
+            3);
+        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(pongMsg).AsDisposable();
+        pongMsg = _messageSerializationService.Deserialize<PongMsg>(serialized);
+        Assert.That(pongMsg.EnrSequence, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Pong_with_enr_and_future_trailing_value_deserializes()
+    {
+        byte[] ip = TestItem.IPEndPointA.Address.GetAddressBytes();
+        const int port = 30303;
+        const ulong enrSequence = 3;
+        const string futureValue = "future";
+        ValueHash256? pingMdc = TestItem.KeccakA.ValueHash256;
+        int addressLength = Rlp.LengthOf(ip) + 2 * Rlp.LengthOf(port);
+        int contentLength =
+            Rlp.LengthOfSequence(addressLength) +
+            Rlp.LengthOf(in pingMdc) +
+            Rlp.LengthOf(long.MaxValue) +
+            Rlp.LengthOf(enrSequence) +
+            Rlp.LengthOf(futureValue);
+
+        byte[] data = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(data);
+        writer.StartSequence(contentLength);
+        writer.StartSequence(addressLength);
+        writer.Encode(ip);
+        writer.Encode(port);
+        writer.Encode(port);
+        writer.Encode(in pingMdc);
+        writer.Encode(long.MaxValue);
+        writer.Encode(enrSequence);
+        writer.Encode(futureValue);
+
+        PongMsg pongMsg = _messageSerializationService.Deserialize<PongMsg>(
+            SignAndWrapDiscoveryPacket((byte)MsgType.Pong, data));
+
+        Assert.That(pongMsg.EnrSequence, Is.EqualTo(enrSequence));
+    }
+
+    [Test]
     public void Enr_request_there_and_back()
     {
         EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);

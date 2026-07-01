@@ -61,7 +61,7 @@ public interface ITxPoolConfig : IConfig
     bool CurrentBlobBaseFeeRequired { get; set; }
 
     [ConfigItem(DefaultValue = "false",
-        Description = "Enable transformation of blob txs with network wrapper in version 0x0 (blob proof) to version 0x1 (cell proofs)",
+        Description = "Enable transformation of blob txs between network wrapper version 0x0 (blob proofs) and version 0x1 (cell proofs).",
         HiddenFromDocs = true)]
     bool ProofsTranslationEnabled { get; set; }
 

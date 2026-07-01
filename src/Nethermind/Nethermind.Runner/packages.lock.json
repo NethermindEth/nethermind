@@ -908,8 +908,7 @@
       "nethermind.kademlia": {
         "type": "Project",
         "dependencies": {
-          "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )"
+          "Collections.Pooled": "[1.0.82, )"
         }
       },
       "nethermind.keystore": {
@@ -996,6 +995,7 @@
           "Nethermind.Crypto": "[1.40.0-unstable, )",
           "Nethermind.Facade": "[1.40.0-unstable, )",
           "Nethermind.Kademlia": "[1.40.0-unstable, )",
+          "Nethermind.Logging.Microsoft": "[1.40.0-unstable, )",
           "Nethermind.Network": "[1.40.0-unstable, )",
           "Nethermind.Network.Enr": "[1.40.0-unstable, )"
         }
@@ -1140,12 +1140,23 @@
           "System.IO.Hashing": "[10.0.9, )"
         }
       },
-      "nethermind.statecomposition": {
+      "nethermind.statediff.core": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.40.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
+          "Nethermind.Trie": "[1.40.0-unstable, )"
+        }
+      },
+      "nethermind.statediffswriter": {
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[1.40.0-unstable, )",
           "Nethermind.Db": "[1.40.0-unstable, )",
+          "Nethermind.Db.Rocks": "[1.40.0-unstable, )",
           "Nethermind.Init": "[1.40.0-unstable, )",
+          "Nethermind.State.Flat": "[1.40.0-unstable, )",
+          "Nethermind.StateDiff.Core": "[1.40.0-unstable, )",
           "Nethermind.Trie": "[1.40.0-unstable, )"
         }
       },

@@ -95,7 +95,7 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
     /// This is specifically designed for Taiko integration tests where the chain is reset to a base block.
     /// After a reorg, stale txpool caches would reject transaction resubmissions with "already known" or "nonce too low".
     /// Pending transactions must also be cleared because tests resubmit transactions with the same hash/nonce,
-    /// which would be rejected as "ReplacementNotAllowed" if they remain in the pool.
+    /// which would be rejected as "replacement transaction underpriced" if they remain in the pool.
     /// </summary>
     [JsonRpcMethod(
         Description = "Clears txpool state after chain reorg for testing/debugging purposes. " +
