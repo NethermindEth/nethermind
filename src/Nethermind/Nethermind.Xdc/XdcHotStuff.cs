@@ -88,6 +88,7 @@ namespace Nethermind.Xdc
 
                     XdcBlockHeader head = (XdcBlockHeader)_blockTree.Head!.Header;
                     StartRoundTask(head, _xdcContext.CurrentRound);
+                    ResetTimeout(head, _xdcContext.CurrentRound);
                 }
             }
         }
@@ -152,10 +153,15 @@ namespace Nethermind.Xdc
             _pendingPrevRound = args.PreviousRound;
             _pendingLastRoundDuration = args.LastRoundDuration;
 
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, currentRound);
-            _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
+            ResetTimeout(head, currentRound);
 
             StartRoundTask(head, args.NewRound);
+        }
+
+        private void ResetTimeout(XdcBlockHeader head, ulong currentRound)
+        {
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, currentRound);
+            _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
         }
 
         // ── Round task ───────────────────────────────────────────────────────────
