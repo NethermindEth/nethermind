@@ -28,6 +28,4 @@ public readonly ref struct SpanByteReader : IByteReader<NoOpPin>
             throw new ArgumentOutOfRangeException(nameof(bound));
         return new NoOpPin(_data.Slice((int)bound.Offset, (int)bound.Length));
     }
-
-    public readonly void Prefetch(long offset) { }
 }

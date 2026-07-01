@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.Intrinsics.X86;
 using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -55,19 +54,6 @@ public unsafe ref struct ArenaByteReader : IByteReader<NoOpPin>
             throw new ArgumentOutOfRangeException(nameof(bound));
         TouchRange(bound.Offset, bound.Length);
         return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + bound.Offset, checked((int)bound.Length)));
-    }
-
-    /// <summary>
-    /// Prefetches the body of a BTree node whose first byte was just read (page + TLB now resident):
-    /// pulls the two cache lines after the header line so the floor-search's key scan finds them warm.
-    /// <paramref name="offset"/> is the node start; line 0 is already cached from the flag-byte read.
-    /// </summary>
-    public readonly void Prefetch(long offset)
-    {
-        if (!Sse.IsSupported || (ulong)offset >= (ulong)_length) return;
-        byte* p = _basePtr + offset;
-        Sse.Prefetch0(p + 64);
-        Sse.Prefetch0(p + 128);
     }
 
     private void TouchRange(long localOffset, long length)

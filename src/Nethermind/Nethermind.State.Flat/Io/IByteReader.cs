@@ -55,10 +55,4 @@ public interface IByteReader<TPin> where TPin : struct, IBufferPin, allows ref s
     /// the returned pin is disposed.
     /// </summary>
     TPin PinBuffer(Bound bound);
-
-    /// <summary>
-    /// Software-prefetch hint for the cache line(s) at <paramref name="offset"/>. No-op for readers
-    /// without a stable base pointer; pointer-backed readers issue a real prefetch.
-    /// </summary>
-    void Prefetch(long offset);
 }
