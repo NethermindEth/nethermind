@@ -25,7 +25,7 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
 
-internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
+internal partial class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
 {
     private static readonly UInt256 _zero = UInt256.Zero;
 
@@ -53,6 +53,10 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
+
+    // Invalidates the guest front cache when a restore/commit/reset recycles the change stacks; elided on
+    // mainline, which has no front cache (no implementing declaration).
+    partial void InvalidateFrontCache();
 #if ZK_EVM
     // Single-entry cache in front of _intraTxCache: the EVM accesses the same
     // account many times in a row. A cheap return when the address' change
@@ -64,6 +68,8 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
     private int _cachedStackCount;
     private int _cachedEpoch = -1;
     private int _epoch;
+
+    partial void InvalidateFrontCache() => _epoch++;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool IsFrontCacheHit(Address address) =>
@@ -376,9 +382,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         if (_logger.IsTrace) Trace(snapshot);
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
-#if ZK_EVM
-        _epoch++;
-#endif
+        InvalidateFrontCache();
 
         int stepsBack = lastIndex - snapshot;
         // Reserve capacity up‐front (avoid grows)
@@ -630,9 +634,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
         trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
 
-#if ZK_EVM
-        _epoch++;
-#endif
+        InvalidateFrontCache();
         _changes.Clear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
@@ -912,9 +914,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         _intraTxCache.ResetAndClear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
-#if ZK_EVM
-        _epoch++;
-#endif
+        InvalidateFrontCache();
         _changes.Clear();
         _needsStateRootUpdate = false;
 
