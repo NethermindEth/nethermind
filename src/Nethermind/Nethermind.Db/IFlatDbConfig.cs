@@ -61,7 +61,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Force-persist backstop used when EnableLongFinality is on, in place of MaxReorgDepth. The persisted-snapshot tier serves deep reorgs, so this is much larger than the non-long-finality backstop.", DefaultValue = "90000")]
     ulong LongFinalityMaxReorgDepth { get; set; }
 
-    [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth.", DefaultValue = "128")]
+    [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth. Sized as a ~128 target plus one CompactSize of headroom, since a bulk (CompactSize-wide) conversion drops the in-memory count by up to CompactSize at a boundary — so the tier still retains ~128 base snapshots after each conversion.", DefaultValue = "160")]
     int MaxInMemoryBaseSnapshotCount { get; set; }
 
     [ConfigItem(Description = "Maximum size in bytes for a single arena file before a new one is started.", DefaultValue = "1073741824")]
