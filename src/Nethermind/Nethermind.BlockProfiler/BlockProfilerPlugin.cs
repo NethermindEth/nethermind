@@ -81,7 +81,8 @@ public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
-        if (!_targets.Contains(e.Block.Number)) return;
+        // (ulong) cast keeps this source compilable as a drop-in against older images where Block.Number was long
+        if (!_targets.Contains((ulong)e.Block.Number)) return;
         if (_collecting) MeasureProfiler.StopCollectingData(); // close any stray window (e.g. a prior target that errored)
         MeasureProfiler.StartCollectingData();
         _collecting = true;
@@ -90,7 +91,7 @@ public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
     {
-        if (!_collecting || !_targets.Contains(e.Block.Number)) return;
+        if (!_collecting || !_targets.Contains((ulong)e.Block.Number)) return;
         _collecting = false;
         MeasureProfiler.StopCollectingData();
         MeasureProfiler.SaveData(); // one snapshot per target block
