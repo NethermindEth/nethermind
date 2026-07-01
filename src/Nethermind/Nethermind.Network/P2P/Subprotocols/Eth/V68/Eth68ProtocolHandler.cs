@@ -42,6 +42,8 @@ public class Eth68ProtocolHandler(ISession session,
     )
     : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
+    private const int MaxPooledTransactionHashesPerRequest = 256;
+
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
@@ -142,16 +144,17 @@ public class Eth68ProtocolHandler(ISession session,
             if (txSize > maxTxSize)
                 continue;
 
-            if (_blobSupportEnabled || txType != TxType.Blob)
+            if (CanRequestPooledTransaction(txType))
             {
-                if ((txSize <= TransactionsMessage.MaxPacketSize && txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
+                bool countsTowardPacketSize = txSize <= TransactionsMessage.MaxPacketSize;
+                if (ShouldSendCurrentRequest(countsTowardPacketSize, txSize, packetSizeLeft, toRequestCount))
                 {
                     SendHashesToRequest();
                 }
 
                 hashesToRequest.Add(hash);
                 _txPool.NotifyAboutTx(hash, this);
-                if (txSize <= TransactionsMessage.MaxPacketSize)
+                if (countsTowardPacketSize)
                 {
                     packetSizeLeft -= txSize;
                 }
@@ -176,6 +179,12 @@ public class Eth68ProtocolHandler(ISession session,
             toRequestCount = 0;
         }
     }
+
+    private bool CanRequestPooledTransaction(TxType txType) => _blobSupportEnabled || txType is not TxType.Blob;
+
+    private static bool ShouldSendCurrentRequest(bool countsTowardPacketSize, int txSize, int packetSizeLeft, int toRequestCount) =>
+        toRequestCount >= MaxPooledTransactionHashesPerRequest
+        || (countsTowardPacketSize && txSize > packetSizeLeft && toRequestCount > 0);
 
     private ArrayPoolListRef<int> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
     {
