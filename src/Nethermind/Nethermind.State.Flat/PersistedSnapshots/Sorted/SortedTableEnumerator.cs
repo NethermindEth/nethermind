@@ -8,6 +8,11 @@ using Nethermind.State.Flat.Io;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
+/// <summary>Positional snapshot of a mid-scan <see cref="SortedTableEnumerator{TReader,TPin}"/>: the
+/// index-walk state and table offset, enough for an independent enumerator to resume forward iteration from
+/// the same data block without re-reading the footer or re-running the index ceiling search.</summary>
+public readonly record struct SortedTableCursor(long TableOffset, long IndexPos, long IndexEnd, long IndexRunningValue);
+
 /// <summary>
 /// Forward cursor over a <see cref="SortedTable"/> in ascending key order. Visits the data blocks by
 /// reading the index block in order — each index record's value is the next data block's table-relative
@@ -57,6 +62,31 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
             }
         }
         // _pos == _blockEnd == 0 ⇒ the first MoveNext pulls the first data block from the index.
+    }
+
+    /// <summary>Capture the current index-walk position so another enumerator can resume from this data block.
+    /// Valid only after the first successful <see cref="MoveNext"/> (once a data block has been pulled).</summary>
+    public readonly SortedTableCursor Capture() => new(_tableOffset, _indexPos, _indexEnd, _indexRunningValue);
+
+    /// <summary>
+    /// Resume forward iteration from a <see cref="Capture"/>d cursor, re-reading only the current data block's
+    /// record range — no footer read, no index ceiling search. The first <see cref="MoveNext"/> yields that
+    /// block's first record. <see cref="Seek"/> must not be called on a resumed cursor (its index-block start
+    /// is not recovered).
+    /// </summary>
+    public SortedTableEnumerator(scoped in TReader reader, in SortedTableCursor cursor)
+    {
+        _keyBuf = new NativeMemoryList<byte>(256, 256);
+        _tableOffset = cursor.TableOffset;
+        _indexPos = cursor.IndexPos;
+        _indexEnd = cursor.IndexEnd;
+        _indexRunningValue = cursor.IndexRunningValue;
+        long blockStart = _tableOffset + _indexRunningValue;
+        if (DataBlockReader.TryReadRecordRange<TReader, TPin>(in reader, blockStart, out long recordsStart, out long recordsEnd))
+        {
+            _pos = blockStart + recordsStart;
+            _blockEnd = blockStart + recordsEnd;
+        }
     }
 
     public bool MoveNext(scoped in TReader reader)

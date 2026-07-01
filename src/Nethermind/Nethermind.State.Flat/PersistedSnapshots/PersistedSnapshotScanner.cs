@@ -49,11 +49,13 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
     // ---------------- PerAddress (column 0xFE: Account + SelfDestruct + Slots) ----------------
 
     public readonly ref struct PerAddressEntry(
-        TReader reader, Address address, bool hasAccount, Bound accountBound, bool? selfDestructFlag, bool hasSlots)
+        TReader reader, Address address, bool hasAccount, Bound accountBound, bool? selfDestructFlag,
+        bool hasSlots, SortedTableCursor slotCursor)
     {
         private readonly TReader _reader = reader;
         private readonly Bound _accountBound = accountBound;
         private readonly bool _hasSlots = hasSlots;
+        private readonly SortedTableCursor _slotCursor = slotCursor;
 
         public Address Address { get; } = address;
         public bool? SelfDestructFlag { get; } = selfDestructFlag;
@@ -75,9 +77,9 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
         }
 
         /// <summary>Streams the address's slots straight off the table rather than buffering them — an
-        /// account can carry an unbounded number of storage slots. Each enumeration re-seeks to the
-        /// address's first slot and scans until the slots end; addresses with no slots cost nothing.</summary>
-        public SlotEnumerable Slots => new(_reader, Address, _hasSlots);
+        /// account can carry an unbounded number of storage slots. Resumes from the block the per-address
+        /// pass already walked to (no re-seek); addresses with no slots cost nothing.</summary>
+        public SlotEnumerable Slots => new(_reader, Address, _hasSlots, _slotCursor);
     }
 
     public readonly ref struct PerAddressEnumerable(TReader reader)
@@ -101,6 +103,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
         private Bound _accountBound;
         private bool? _sdFlag;
         private bool _hasSlots;
+        private SortedTableCursor _slotCursor;
 
         public PerAddressEnumerator(TReader reader)
         {
@@ -139,6 +142,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             if (IsCurrentSub(PersistedSnapshotKey.SlotSub))
             {
                 _hasSlots = true;
+                _slotCursor = _inner.Capture(); // record the first slot's block before skipping to the account
                 SkipSlotsToAccount();
             }
 
@@ -184,7 +188,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
         }
 
         public readonly PerAddressEntry Current =>
-            new(_reader, _curAddress!, _hasAccount, _accountBound, _sdFlag, _hasSlots);
+            new(_reader, _curAddress!, _hasAccount, _accountBound, _sdFlag, _hasSlots, _slotCursor);
 
         public void Dispose() => _inner.Dispose();
     }
@@ -211,33 +215,25 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
         }
     }
 
-    public readonly ref struct SlotEnumerable(TReader reader, Address address, bool hasSlots)
+    public readonly ref struct SlotEnumerable(
+        TReader reader, Address address, bool hasSlots, SortedTableCursor slotCursor)
     {
         private readonly TReader _reader = reader;
         private readonly Address _address = address;
         private readonly bool _hasSlots = hasSlots;
-        public SlotEnumerator GetEnumerator() => new(_reader, _address, _hasSlots);
+        private readonly SortedTableCursor _slotCursor = slotCursor;
+        public SlotEnumerator GetEnumerator() => new(_reader, _address, _hasSlots, _slotCursor);
     }
 
-    public ref struct SlotEnumerator : IDisposable
+    public ref struct SlotEnumerator(TReader reader, Address address, bool hasSlots, SortedTableCursor slotCursor) : IDisposable
     {
-        private TReader _reader;
-        private SortedTableEnumerator<TReader, TPin> _inner;
-        private readonly Address _address;
-        private readonly bool _active;
-
-        public SlotEnumerator(TReader reader, Address address, bool hasSlots)
-        {
-            _reader = reader;
-            _address = address;
-            _active = hasSlots;
-            if (!hasSlots) { _inner = default; return; } // no slots → no enumerator, no seek
-
-            _inner = new SortedTableEnumerator<TReader, TPin>(in reader, new Bound(0, reader.Length));
-            Span<byte> prefix = stackalloc byte[2 + PersistedSnapshotKey.AddressKeyLength];
-            int len = PersistedSnapshotKey.WriteSlotPrefix(prefix, address.Bytes);
-            _inner.Seek(in reader, prefix[..len]);
-        }
+        private TReader _reader = reader;
+        // Resume from the block the per-address pass already walked to for the first slot — no re-seek.
+        // Addresses with no slots stay inert (no enumerator).
+        private SortedTableEnumerator<TReader, TPin> _inner =
+            hasSlots ? new SortedTableEnumerator<TReader, TPin>(in reader, in slotCursor) : default;
+        private readonly Address _address = address;
+        private readonly bool _active = hasSlots;
 
         public bool MoveNext()
         {

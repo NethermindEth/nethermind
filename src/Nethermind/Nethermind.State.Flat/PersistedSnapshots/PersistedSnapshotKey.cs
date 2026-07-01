@@ -107,17 +107,6 @@ internal static class PersistedSnapshotKey
         return 2 + AddressKeyLength + SlotLength;
     }
 
-    /// <summary>The 22-byte prefix <c>[AccountColumn][address][SlotSub]</c> shared by all of an address's
-    /// slot keys. A ceiling seek to it lands on the address's first slot (or the first row past its slots),
-    /// and it is the boundary a slot scan tests each row against.</summary>
-    internal static int WriteSlotPrefix(Span<byte> dst, scoped ReadOnlySpan<byte> address)
-    {
-        dst[0] = AccountColumn;
-        address.CopyTo(dst[1..]);
-        dst[1 + AddressKeyLength] = SlotSub;
-        return 2 + AddressKeyLength;
-    }
-
     internal static int WriteStateNodeKey(Span<byte> dst, scoped in TreePath path)
     {
         if (path.Length <= TopPathThreshold)
