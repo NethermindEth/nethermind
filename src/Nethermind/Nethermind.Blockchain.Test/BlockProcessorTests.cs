@@ -408,8 +408,6 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        // After Process returns the handler must be unsubscribed; if still subscribed it would
-        // try to cancel a disposed CTS.
         int externalHandlerCallCount = 0;
         processor.TransactionsExecuted += () => externalHandlerCallCount++;
 
@@ -1062,8 +1060,6 @@ public class BlockProcessorTests
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching,
-            // Supplying the parent-reader factory enables parallel execution (as the production DI path
-            // does); without it _hasParentReaderPool is false and the manager runs sequentially.
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)

@@ -19,8 +19,18 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
-/// <summary>Owns the second, witness-wired <see cref="IBlockProcessor"/> graph that the <see cref="WitnessCapturingBlockProcessor"/> selector delegates a witnessed block to, recording the real block import as a side effect via a <see cref="WitnessGeneratingWorldState"/> recorder.</summary>
-/// <remarks>Built off the <em>root</em> lifetime scope (not the main-processing child scope) to avoid inheriting the selector decorator and forming a cycle, while the recorder still wraps the exact main-pipeline <see cref="IWorldState"/> instance so scope/commit and witness execution stay coherent. Construction is deferred to the first witnessed block; the recorder is reused across serially-processed blocks, cleared via <see cref="ResetForBlock"/>.</remarks>
+/// <summary>
+/// Owns the second, witness-wired <see cref="IBlockProcessor"/> graph that the
+/// <see cref="WitnessCapturingBlockProcessor"/> selector delegates a witnessed block to, recording the
+/// real block import as a side effect via a <see cref="WitnessGeneratingWorldState"/> recorder.
+/// </summary>
+/// <remarks>
+/// Built off the <em>root</em> lifetime scope (not the main-processing child scope) to avoid inheriting
+/// the selector decorator and forming a cycle, while the recorder still wraps the exact main-pipeline
+/// <see cref="IWorldState"/> instance so scope/commit and witness execution stay coherent. Construction
+/// is deferred to the first witnessed block; the recorder is reused across serially-processed blocks,
+/// cleared via <see cref="ResetForBlock"/>.
+/// </remarks>
 public sealed class WitnessCapturingBlockProcessingEnv(
     ILifetimeScope rootLifetimeScope,
     IWorldStateManager worldStateManager,
@@ -56,7 +66,6 @@ public sealed class WitnessCapturingBlockProcessingEnv(
         IHeaderStore headerStore,
         IBlockValidationModule[] validationModules)
     {
-        // The exact main-pipeline world state the BranchProcessor scopes/commits; the recorder wraps it.
         IWorldState parentWorldState = rootLifetimeScope.Resolve<IMainProcessingContext>().WorldState;
 
         IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();

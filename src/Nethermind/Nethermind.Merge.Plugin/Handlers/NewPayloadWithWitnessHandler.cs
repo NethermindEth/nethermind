@@ -43,7 +43,7 @@ public sealed class NewPayloadWithWitnessHandler(
         if (statusResult.Result.ResultType != ResultType.Success)
         {
             return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
-                statusResult.Result.Error ?? "engine_newPayloadV5 failed",
+                statusResult.Result.Error ?? "engine_newPayloadWithWitness: payload processing failed",
                 statusResult.ErrorCode);
         }
 

@@ -255,8 +255,6 @@ public class BaseMergePluginModule : Module
 
             .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
             .AddSingleton<WitnessRendezvous>()
-            // At root so it doesn't inherit the main scope's IBlockProcessor selector decorator (which
-            // would cycle), while still wrapping the shared main IWorldState. Built lazily.
             .AddSingleton<WitnessCapturingBlockProcessingEnv>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
