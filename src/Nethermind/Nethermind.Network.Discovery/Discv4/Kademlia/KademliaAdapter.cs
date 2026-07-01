@@ -23,6 +23,7 @@ public sealed class KademliaAdapter(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     INodeRecordProvider nodeRecordProvider,
+    IEnrForkIdFilter enrForkIdFilter,
     INodeStatsManager nodeStatsManager,
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
@@ -201,7 +202,7 @@ public sealed class KademliaAdapter(
         if (!response.HasResponse) return false;
 
         session.OnPongReceived(response.Value.FarAddress ?? receiver.Address);
-        await RefreshRemoteRecordIfNewer(receiver, response.Value.EnrSequence, token);
+        await RefreshRemoteRecordIfNewer(receiver, session, response.Value.EnrSequence, token);
         return true;
     }
 
@@ -218,10 +219,38 @@ public sealed class KademliaAdapter(
         return response.HasResponse ? response.Value : null;
     }
 
-    private Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
-        => advertisedSequence is { } sequence
-            ? base.RefreshRemoteRecordIfNewer(node, sequence, token)
-            : Task.CompletedTask;
+    private async Task<bool> RefreshRemoteRecordIfNewer(Node node, NodeSession session, ulong? advertisedSequence, CancellationToken token)
+    {
+        Node recordNode = GetSessionEnrNode(node, session);
+        if (advertisedSequence is not { } sequence || sequence == 0)
+        {
+            return recordNode.RequestingEnrSequence == 0;
+        }
+
+        if (recordNode.Enr is { Signature: not null } currentRecord && currentRecord.EnrSequence >= sequence)
+        {
+            return true;
+        }
+
+        if (recordNode.RequestingEnrSequence != 0)
+        {
+            return false;
+        }
+
+        await base.RefreshRemoteRecordIfNewer(recordNode, sequence, token);
+        return false;
+    }
+
+    private static Node GetSessionEnrNode(Node node, NodeSession session)
+    {
+        if (session.EnrNode is { } enrNode)
+        {
+            return enrNode;
+        }
+
+        session.EnrNode = node;
+        return node;
+    }
 
     protected override async ValueTask<NodeRecord?> RequestRemoteRecord(Node node, ulong requestedSequence, CancellationToken token)
     {
@@ -230,10 +259,26 @@ public sealed class KademliaAdapter(
     }
 
     protected override bool IsEnrValidForNode(Node node, NodeRecord record)
-        => HasExpectedNodeId(record, node.Id);
+    {
+        if (!HasExpectedNodeId(record, node.Id))
+        {
+            return false;
+        }
+
+        if (enrForkIdFilter.IsAcceptable(record))
+        {
+            return true;
+        }
+
+        RemoveNodeWithIncompatibleForkId(node);
+        return false;
+    }
 
     protected override void AddOrRefreshRemoteNode(Node node)
-        => kademlia.Value.AddOrRefresh(node);
+    {
+        kademlia.Value.AddOrRefresh(node);
+        nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+    }
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
     {
@@ -291,26 +336,28 @@ public sealed class KademliaAdapter(
         return true;
     }
 
-    private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
+    private async Task<bool> HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
     {
         if (Logger.IsTrace) Logger.Trace($"Receive ping from {node}");
         if (ping.Mdc is not { } pingMdc)
         {
             if (Logger.IsDebug) Logger.Debug($"Rejecting ping without packet hash from {node}");
-            return;
+            return false;
         }
 
         PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc, (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
         session.OnPingReceived();
         await SendMessage(session, msg, token);
-        await RefreshRemoteRecordIfNewer(node, ping.EnrSequence, token);
+        bool shouldAdmitNode = await RefreshRemoteRecordIfNewer(node, session, ping.EnrSequence, token);
 
-        if (!session.HasReceivedPong)
+        if (!session.HasReceivedPong && shouldAdmitNode)
         {
             // If we have never received any pong, then this peer is not bonded and we should not respond to any auth request.
             // Send a ping to bond the peer.
             _ = await Ping(node, token);
         }
+
+        return shouldAdmitNode;
     }
 
     public async Task OnIncomingMsg(DiscoveryMsg msg)
@@ -327,7 +374,11 @@ public sealed class KademliaAdapter(
 
                 NodeSession responseSession = GetSession(node);
                 responseSession.RecordStatsForIncomingMsg(msg);
-                nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                if (msgType != MsgType.EnrResponse)
+                {
+                    nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                }
+
                 return;
             }
 
@@ -340,8 +391,10 @@ public sealed class KademliaAdapter(
                 case MsgType.Ping:
                     PingMsg ping = (PingMsg)msg;
                     if (!ValidatePingAddress(ping)) return;
-                    await HandlePing(node, session, ping, token);
-                    nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    if (await HandlePing(node, session, ping, token))
+                    {
+                        nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    }
                     break;
                 case MsgType.FindNode:
                     if (await HandleFindNode(node, session, (FindNodeMsg)msg, token))
@@ -401,6 +454,12 @@ public sealed class KademliaAdapter(
 
     private static bool HasExpectedNodeId(NodeRecord record, PublicKey expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Equals(expectedNodeId) == true;
+
+    private void RemoveNodeWithIncompatibleForkId(Node node)
+    {
+        kademlia.Value.Remove(node);
+        if (Logger.IsTrace) Logger.Trace($"Removed discv4 node {node:s} after incompatible refreshed ENR fork ID.");
+    }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

@@ -68,6 +68,7 @@ public class DiscoveryV5AppTests
         builder.RegisterInstance(ecdsa).As<IEthereumEcdsa>().As<IEcdsa>();
         builder.RegisterInstance(blockTree).As<IBlockTree>();
         builder.RegisterInstance(forkInfo).As<IForkInfo>();
+        builder.RegisterInstance(new TestEnrForkIdFilter()).As<IEnrForkIdFilter>();
         builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
         builder.RegisterInstance(new CryptoRandom()).As<ICryptoRandom>();
         builder.RegisterInstance(new NetworkStorage(_discoveryDb, LimboLogs.Instance)).Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);

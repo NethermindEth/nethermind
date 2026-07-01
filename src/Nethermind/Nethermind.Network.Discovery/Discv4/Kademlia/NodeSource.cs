@@ -17,6 +17,7 @@ public sealed class NodeSource(
     IKademliaAdapter discv4Adapter,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
+    IEnrForkIdFilter enrForkIdFilter,
     ILogManager logManager)
     : IKademliaNodeSource
 {
@@ -81,7 +82,7 @@ public sealed class NodeSource(
 
         async Task WriteDiscoveredNode(Node node)
         {
-            if (IsExcluded(node))
+            if (IsExcluded(node) || !IsForkIdAcceptable(node))
             {
                 return;
             }
@@ -117,7 +118,7 @@ public sealed class NodeSource(
 
         void Handler(object? _, Node addedNode)
         {
-            if (IsExcluded(addedNode))
+            if (IsExcluded(addedNode) || !IsForkIdAcceptable(addedNode))
             {
                 return;
             }
@@ -137,4 +138,22 @@ public sealed class NodeSource(
     }
 
     private bool IsExcluded(Node node) => node.IdHash.Equals(_currentNodeHash);
+
+    private bool IsForkIdAcceptable(Node node)
+    {
+        if (node.Enr is not { } record)
+        {
+            return true;
+        }
+
+        try
+        {
+            return enrForkIdFilter.IsAcceptable(record);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Unable to parse discv4 discovered ENR for {node}: {e}");
+            return false;
+        }
+    }
 }

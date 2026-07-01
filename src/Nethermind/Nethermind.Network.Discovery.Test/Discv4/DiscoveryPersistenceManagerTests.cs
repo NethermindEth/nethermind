@@ -67,6 +67,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _discv4Adapter,
             _kademlia,
             _discoveryConfig,
+            new TestEnrForkIdFilter(),
             _logManager);
 
         private static Task PingReceived(IKademliaAdapter adapter, NetworkNode node, int times = 1) =>

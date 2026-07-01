@@ -112,6 +112,7 @@ public class NodeSourceTests
             new DiscoveryConfig { ConcurrentDiscoveryJob = 1 },
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
             ExecutionLayerDiscv5RecordFilter.Instance,
+            new TestEnrForkIdFilter(),
             LimboLogs.Instance);
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
@@ -136,6 +137,7 @@ public class NodeSourceTests
             new DiscoveryConfig { ConcurrentDiscoveryJob = 0 },
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
             ExecutionLayerDiscv5RecordFilter.Instance,
+            new TestEnrForkIdFilter(),
             LimboLogs.Instance);
     }
 
