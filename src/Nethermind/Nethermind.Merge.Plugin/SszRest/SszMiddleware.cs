@@ -350,29 +350,37 @@ public sealed class SszMiddleware
 
         bool isPost = HttpMethods.IsPost(method);
         bool isGet = !isPost && HttpMethods.IsGet(method);
+        if (!isPost && !isGet) return false;
 
-        ReadOnlyMemory<char> resource = pathSegment;
-        ReadOnlyMemory<char> extraMem = default;
+        FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
+            lookup = isPost ? _postLookup : _getLookup;
 
-        int firstSlash = pathSegment.Span.IndexOf('/');
-        if (firstSlash > 0)
+        // Prefer the whole path as a route key so a handler can own a multi-segment resource
+        // (e.g. "bodies/hash", "payloads/witness") without a per-endpoint special case. Membership is
+        // method-agnostic so a multi-segment resource stays whole even under the wrong verb: a GET on
+        // the POST-only "payloads/witness" then resolves no handler (→ 404) instead of being misread as
+        // "payloads/{payload_id}". Otherwise the first segment is the resource and the rest a path extra
+        // (e.g. "payloads/{payload_id}").
+        ReadOnlyMemory<char> resource;
+        ReadOnlyMemory<char> extraMem;
+        if (_postLookup.ContainsKey(pathSegment.Span) || _getLookup.ContainsKey(pathSegment.Span))
         {
-            extraMem = pathSegment[(firstSlash + 1)..];
-            resource = pathSegment[..firstSlash];
-        }
-
-        if (resource.Span.Equals("bodies".AsSpan(), StringComparison.OrdinalIgnoreCase)
-            && extraMem.Span.Equals("hash".AsSpan(), StringComparison.OrdinalIgnoreCase))
-        {
-            resource = SszRestPaths.PayloadBodiesByHash.AsMemory();
+            resource = pathSegment;
             extraMem = default;
         }
-
-        if (resource.Span.Equals("payloads".AsSpan(), StringComparison.OrdinalIgnoreCase)
-            && extraMem.Span.Equals("witness".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        else
         {
-            resource = SszRestPaths.PayloadWithWitness.AsMemory();
-            extraMem = default;
+            int firstSlash = pathSegment.Span.IndexOf('/');
+            if (firstSlash > 0)
+            {
+                resource = pathSegment[..firstSlash];
+                extraMem = pathSegment[(firstSlash + 1)..];
+            }
+            else
+            {
+                resource = pathSegment;
+                extraMem = default;
+            }
         }
 
         if (fork is not null)
@@ -382,38 +390,30 @@ public sealed class SszMiddleware
             version = mappedVersion.Value;
         }
 
-        FrozenDictionary<string, List<ISszEndpointHandler>>? exactDict = isPost ? _postRoutes : isGet ? _getRoutes : null;
-
-        if (exactDict is not null)
+        if (lookup.TryGetValue(resource.Span, out List<ISszEndpointHandler>? exactList))
         {
-            FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
-                lookup = isPost ? _postLookup : _getLookup;
-
-            if (lookup.TryGetValue(resource.Span, out List<ISszEndpointHandler>? exactList))
+            ISszEndpointHandler? fallback = null;
+            foreach (ISszEndpointHandler candidate in exactList)
             {
-                ISszEndpointHandler? fallback = null;
-                foreach (ISszEndpointHandler candidate in exactList)
+                if (candidate.Version == version)
                 {
-                    if (candidate.Version == version)
-                    {
-                        if (!extraMem.IsEmpty && !candidate.AcceptsPathExtra)
-                            return false;
-
-                        handler = candidate;
-                        extra = extraMem;
-                        return true;
-                    }
-                    if (candidate.Version is null) fallback = candidate;
-                }
-                if (fallback is not null)
-                {
-                    if (!extraMem.IsEmpty && !fallback.AcceptsPathExtra)
+                    if (!extraMem.IsEmpty && !candidate.AcceptsPathExtra)
                         return false;
 
-                    handler = fallback;
+                    handler = candidate;
                     extra = extraMem;
                     return true;
                 }
+                if (candidate.Version is null) fallback = candidate;
+            }
+            if (fallback is not null)
+            {
+                if (!extraMem.IsEmpty && !fallback.AcceptsPathExtra)
+                    return false;
+
+                handler = fallback;
+                extra = extraMem;
+                return true;
             }
         }
 
