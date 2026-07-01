@@ -132,15 +132,20 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
-        public void WarmUp(AccessList? accessList)
+        public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         {
             if (accessList?.IsEmpty == false)
             {
+                int warmed = 0;
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
+                    // Stop warming once cancelled (end of block): the remainder of an over-declared list is unread.
+                    // Checked on both loops so a list that over-declares addresses (empty key lists) also bails.
+                    if ((++warmed & 0x3F) == 0 && cancellationToken.IsCancellationRequested) return;
                     bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
+                        if ((++warmed & 0x3F) == 0 && cancellationToken.IsCancellationRequested) return;
                         _persistentStorageProvider.WarmUp(new StorageCell(address, in storage), isEmpty: !exists);
                     }
                 }

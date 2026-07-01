@@ -241,22 +241,23 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// The prewarmer must not eagerly load a transaction's EIP-2930 access list: a value transfer that
-    /// over-declares an unaccessed slot must not warm it (the speculative execution warms only what it touches).
+    /// The prewarmer warms each transaction's EIP-2930 access list (this helps the main thread on
+    /// honestly-declared lists). The warm is cancellation-responsive so a transaction that over-declares a
+    /// huge list cannot stall the end-of-block join — the end-to-end effect is covered by the reproducible
+    /// benchmark on block 22360451; here we assert both the warming and that a cancelled token stops it.
     /// </summary>
     [Test]
-    public async Task PreWarmCaches_DoesNotEagerlyLoadUnaccessedAccessListSlots()
+    public async Task PreWarmCaches_WarmsAccessList_AndHonorsCancellation()
     {
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
 
-        StorageCell overDeclaredSlot = new(TestItem.AddressB, 10);
+        StorageCell declaredSlot = new(TestItem.AddressB, 10); // seeded in genesis
         AccessList accessList = new AccessList.Builder()
             .AddAddress(TestItem.AddressB)
-            .AddStorage(overDeclaredSlot.Index)
+            .AddStorage(declaredSlot.Index)
             .Build();
 
-        // A plain value transfer (to an EOA) never SLOADs, so it does not access the declared slot.
         Transaction[] txs =
         [
             Build.A.Transaction.WithType(TxType.AccessList).WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei)
@@ -268,8 +269,75 @@ public class BlockCachePreWarmerTests
 
         await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
 
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(in overDeclaredSlot, out _), Is.False,
-            "a declared but unaccessed access-list slot must not be eagerly warmed");
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in declaredSlot, out _), Is.True,
+            "declared access-list slots are warmed for the main thread");
+    }
+
+    /// <summary>
+    /// The access-list warm is cancellation-responsive: with an already-cancelled token it stops at its first
+    /// periodic check, so an over-declared list cannot keep loading slots past end-of-block. Verified as a
+    /// differential — a live token warms the tail slot, a cancelled token does not.
+    /// </summary>
+    [Test]
+    public void WarmUp_AccessList_StopsOnCancellation()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+
+        AccessList.Builder builder = new AccessList.Builder().AddAddress(TestItem.AddressB);
+        for (int i = 0; i < 256; i++) builder.AddStorage((UInt256)(1000 + i));
+        AccessList accessList = builder.Build();
+        StorageCell tailSlot = new(TestItem.AddressB, 1255);
+
+        using (worldState.BeginScope(BuildParentHeader()))
+        {
+            worldState.WarmUp(accessList, CancellationToken.None);
+            bool warmedLive = preBlockCaches.StorageCache.TryGetValue(in tailSlot, out _);
+
+            preBlockCaches.StorageCache.Clear();
+            worldState.WarmUp(accessList, new CancellationToken(canceled: true));
+            bool warmedCancelled = preBlockCaches.StorageCache.TryGetValue(in tailSlot, out _);
+
+            Assert.That(warmedLive, Is.True, "a live token warms the whole access list");
+            Assert.That(warmedCancelled, Is.False, "a cancelled token stops the warm before the tail");
+        }
+    }
+
+    /// <summary>
+    /// The per-address dimension is also cancellation-responsive: an access list that over-declares many
+    /// addresses (each with no storage keys, allowed by EIP-2930) must still bail, since each entry is a
+    /// potentially-cold account load. Differential: a live token warms the tail address, a cancelled one does not.
+    /// </summary>
+    [Test]
+    public void WarmUp_AccessList_StopsOnCancellation_ManyAddresses()
+    {
+        static Address AddrFromIndex(int i)
+        {
+            byte[] b = new byte[20];
+            b[16] = (byte)(i >> 24); b[17] = (byte)(i >> 16); b[18] = (byte)(i >> 8); b[19] = (byte)i;
+            return new Address(b);
+        }
+
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+
+        AccessList.Builder builder = new();
+        for (int i = 0; i < 256; i++) builder.AddAddress(AddrFromIndex(i)); // address-only entries, no storage keys
+        AccessList accessList = builder.Build();
+        Address tail = AddrFromIndex(255);
+
+        using (worldState.BeginScope(BuildParentHeader()))
+        {
+            worldState.WarmUp(accessList, CancellationToken.None);
+            bool warmedLive = preBlockCaches.StateCache.TryGetValue(tail, out _);
+
+            preBlockCaches.StateCache.Clear();
+            worldState.WarmUp(accessList, new CancellationToken(canceled: true));
+            bool warmedCancelled = preBlockCaches.StateCache.TryGetValue(tail, out _);
+
+            Assert.That(warmedLive, Is.True, "a live token warms every declared address");
+            Assert.That(warmedCancelled, Is.False, "a cancelled token stops the per-address warm before the tail");
+        }
     }
 
     /// <summary>
