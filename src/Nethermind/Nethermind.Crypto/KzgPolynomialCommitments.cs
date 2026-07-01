@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CkzgLib;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -70,8 +71,11 @@ public static partial class KzgPolynomialCommitments
         ReadOnlySpan<byte> proof
     );
 
-    public static void ComputeCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs) =>
-        Ckzg.ComputeCellsAndKzgProofs(new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell], cellProofs, blob, _ckzgSetup);
+    public static void ComputeCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)
+    {
+        using ArrayPoolSpan<byte> cells = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell);
+        Ckzg.ComputeCellsAndKzgProofs(cells, cellProofs, blob, _ckzgSetup);
+    }
 
     /// <param name="blob">The input blob data.</param>
     /// <param name="cells">The output span of size <c>CELLS_PER_EXT_BLOB * BYTES_PER_CELL</c> (262144 bytes) where cells will be written.</param>
