@@ -30,7 +30,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     private readonly bool _enabled;
 
     private ulong _lastCapturedBlock;
-    private volatile bool _anyCaptured;
+    private bool _anyCaptured;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
         : this(history, BasePersistence.ResolveSlotEncoding(
@@ -56,9 +56,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     }
 
     public ulong LastCapturedBlock => _lastCapturedBlock;
-
-    /// <summary>Set once the first block capture ran, i.e. the node is fully initialized and processing blocks.</summary>
-    public bool HasCapturedAnything => _anyCaptured;
 
     /// <summary>
     /// Captures the changeset of every block on <paramref name="persistedHead"/>'s chain that has not yet been

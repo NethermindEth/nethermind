@@ -12,8 +12,7 @@ namespace Nethermind.State.Flat.History;
 /// Finalized-only storage-clear events (<c>[account key | block BE] -> empty</c>), one per self-destruct that had
 /// persisted storage. The live flat column expresses such a destruct as a range-delete over the account's slots,
 /// which leaves no per-slot tombstones in <see cref="HistoryStore"/>; this column records the event so an as-of
-/// read can tell that a slot value written before the destruct is dead. The key layout matches the account
-/// history's <c>[key | block BE]</c> exactly, so an account deletion tombstone's key doubles as a clear-marker key.
+/// read can tell that a slot value written before the destruct is dead.
 /// </summary>
 public sealed class StorageClearStore
 {
