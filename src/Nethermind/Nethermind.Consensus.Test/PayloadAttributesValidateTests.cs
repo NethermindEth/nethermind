@@ -19,7 +19,9 @@ public class PayloadAttributesValidateTests
         SuggestedFeeRecipient = Address.Zero,
         Withdrawals = [],
         ParentBeaconBlockRoot = Keccak.Zero,
+        // SlotNumber and TargetGasLimit are the V4 (Amsterdam) fields; a complete V4 payload carries both.
         SlotNumber = withSlotNumber ? 42UL : null,
+        TargetGasLimit = withSlotNumber ? 30_000_000L : null,
     };
 
     private static ISpecProvider MakeSpecProvider(bool isAmsterdam)
