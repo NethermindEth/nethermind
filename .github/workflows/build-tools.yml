@@ -24,7 +24,6 @@ jobs:
           - DocGen/DocGen.slnx
           - Evm/Evm.slnx
           - HiveCompare/HiveCompare.slnx
-          - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
           - JitAsm/JitAsm.slnx
           - Kute/Kute.slnx
           # - SchemaGenerator/SchemaGenerator.slnx
