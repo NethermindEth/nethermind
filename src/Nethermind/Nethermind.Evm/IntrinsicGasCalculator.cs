@@ -17,7 +17,7 @@ public readonly record struct EthereumIntrinsicGas(ulong Standard, ulong FloorGa
     public ulong MinimalGas { get; } = Math.Max(Standard, FloorGas);
     public static explicit operator ulong(EthereumIntrinsicGas gas) => gas.MinimalGas;
     public static implicit operator EthereumIntrinsicGas(IntrinsicGas<EthereumGasPolicy> gas) =>
-        new(gas.Standard.Value + gas.Standard.StateReservoir, gas.FloorGas.Value);
+        new(gas.Standard.Value + (ulong)gas.Standard.StateReservoir, gas.FloorGas.Value);
 }
 
 public static class IntrinsicGasCalculator

@@ -24,17 +24,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// <summary>Regular gas budget (legacy gas_left).</summary>
     public ulong Value;
     /// <summary>State gas reservoir used by EIP-8037 paths.</summary>
-    public ulong StateReservoir;
+    public long StateReservoir;
     /// <summary>Cumulative state gas used for block accounting.</summary>
-    public ulong StateGasUsed;
+    public long StateGasUsed;
     /// <summary>State gas that spilled from gas_left (for block regular gas exclusion).</summary>
-    public ulong StateGasSpill;
+    public long StateGasSpill;
     /// <summary>Tx-cumulative spill from reverted child frames used by top-level halt accounting.</summary>
-    public ulong StateGasSpillBurned;
+    public long StateGasSpillBurned;
     /// <summary>Spill that should remain in the block regular dimension.</summary>
-    public ulong StateGasSpillReclassified;
+    public long StateGasSpillReclassified;
     /// <summary>Spill consumed by state refunds and excluded from block regular gas.</summary>
-    public ulong StateGasSpillRefunded;
+    public long StateGasSpillRefunded;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
 
@@ -46,7 +46,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         new()
         {
             Value = 0,
-            StateReservoir = Eip8037Constants.SystemCallStateReservoir,
+            StateReservoir = (long)Eip8037Constants.SystemCallStateReservoir,
         };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -54,11 +54,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (spec.IsEip8037Enabled)
         {
-            ulong reservoir = Math.Min(gasLimit, intrinsicGas.StateReservoir);
+            ulong reservoir = Math.Min(gasLimit, (ulong)intrinsicGas.StateReservoir);
             return new EthereumGasPolicy
             {
                 Value = gasLimit - reservoir,
-                StateReservoir = reservoir,
+                StateReservoir = (long)reservoir,
                 StateGasUsed = intrinsicGas.StateGasUsed,
                 StateGasSpill = 0,
             };
@@ -71,40 +71,40 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static ulong GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStorageSetStateCost(in EthereumGasPolicy gas) => GasCostOf.SSetState;
+    public static long GetStorageSetStateCost(in EthereumGasPolicy gas) => (long)GasCostOf.SSetState;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetCreateStateCost(in EthereumGasPolicy gas) => GasCostOf.CreateState;
+    public static long GetCreateStateCost(in EthereumGasPolicy gas) => (long)GasCostOf.CreateState;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetNewAccountStateCost(in EthereumGasPolicy gas) => GasCostOf.NewAccountState;
+    public static long GetNewAccountStateCost(in EthereumGasPolicy gas) => (long)GasCostOf.NewAccountState;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetPerAuthBaseStateCost(in EthereumGasPolicy gas) => GasCostOf.PerAuthBaseState;
+    public static long GetPerAuthBaseStateCost(in EthereumGasPolicy gas) => (long)GasCostOf.PerAuthBaseState;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetCodeDepositStateCost(in EthereumGasPolicy gas, int byteCodeLength) => GasCostOf.CodeDepositState * (ulong)byteCodeLength;
+    public static long GetCodeDepositStateCost(in EthereumGasPolicy gas, int byteCodeLength) => (long)GasCostOf.CodeDepositState * byteCodeLength;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStorageSetReversalRefund(in EthereumGasPolicy gas) => RefundOf.SSetReversedEip8037;
+    public static long GetStorageSetReversalRefund(in EthereumGasPolicy gas) => (long)RefundOf.SSetReversedEip8037;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateReservoir(in EthereumGasPolicy gas) => gas.StateReservoir;
+    public static long GetStateReservoir(in EthereumGasPolicy gas) => gas.StateReservoir;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateGasUsed(in EthereumGasPolicy gas) => gas.StateGasUsed;
+    public static long GetStateGasUsed(in EthereumGasPolicy gas) => gas.StateGasUsed;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
+    public static long GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateGasSpillBurned(in EthereumGasPolicy gas) => gas.StateGasSpillBurned;
+    public static long GetStateGasSpillBurned(in EthereumGasPolicy gas) => gas.StateGasSpillBurned;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateGasSpillReclassified(in EthereumGasPolicy gas) => gas.StateGasSpillReclassified;
+    public static long GetStateGasSpillReclassified(in EthereumGasPolicy gas) => gas.StateGasSpillReclassified;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetStateGasSpillRefunded(in EthereumGasPolicy gas) => gas.StateGasSpillRefunded;
+    public static long GetStateGasSpillRefunded(in EthereumGasPolicy gas) => gas.StateGasSpillRefunded;
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -131,7 +131,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeStateGas(ref EthereumGasPolicy gas, ulong stateGasCost)
+    public static bool ConsumeStateGas(ref EthereumGasPolicy gas, long stateGasCost)
     {
         if (gas.StateReservoir >= stateGasCost)
         {
@@ -140,8 +140,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return true;
         }
 
-        ulong spillAmount = stateGasCost - gas.StateReservoir;
-        if (!TryConsume(ref gas, spillAmount))
+        long spillAmount = stateGasCost - gas.StateReservoir;
+        if (!TryConsume(ref gas, (ulong)spillAmount))
         {
             return false;
         }
@@ -152,7 +152,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return true;
     }
 
-    public static bool TryConsumeStateAndRegularGas(ref EthereumGasPolicy gas, ulong stateGasCost, ulong regularGasCost) =>
+    public static bool TryConsumeStateAndRegularGas(ref EthereumGasPolicy gas, long stateGasCost, ulong regularGasCost) =>
         (regularGasCost <= 0 || UpdateGas(ref gas, regularGasCost)) &&
         (stateGasCost <= 0 || ConsumeStateGas(ref gas, stateGasCost));
 
@@ -187,8 +187,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // gas_left and returns only (used - spill) to the reservoir; the parent then absorbs the
         // child's gas_left. Crediting the spill back to the reservoir instead would leave it inflated,
         // so a subsequent top-level halt would return spilled gas the spec burns.
-        ulong childNetSpill = childGas.StateGasSpill.SaturatingSub(childGas.StateGasSpillRefunded);
-        parentGas.Value += childNetSpill;
+        long childNetSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
+        parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasSpill += childGas.StateGasSpill;
         parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned;
@@ -206,7 +206,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // EELS refill_frame_state_gas on halt restores the reservoir by (used - spilled) and refills the
         // spilled portion into gas_left, which the halt then BURNS as regular gas. So only the
         // reservoir-funded portion returns to the parent; the child's net (unrefunded) spill stays burned.
-        ulong childNetSpill = childGas.StateGasSpill.SaturatingSub(childGas.StateGasSpillRefunded);
+        long childNetSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasSpill += childGas.StateGasSpill;
         parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
@@ -222,14 +222,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // reservoir-funded state gas returns to the parent reservoir; crediting the spilled portion
         // too would over-refund — e.g. a failed CREATE deposit whose init wrote storage slots would
         // get its (spilled) storage state gas back instead of burning it.
-        ulong childNetSpill = childGas.StateGasSpill.SaturatingSub(childGas.StateGasSpillRefunded);
+        long childNetSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
         parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong GetUnrefundedStateGasSpill(in EthereumGasPolicy childGas) =>
-        childGas.StateGasSpill.SaturatingSub(childGas.StateGasSpillRefunded);
+    private static long GetUnrefundedStateGasSpill(in EthereumGasPolicy childGas) =>
+        Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsOutOfGas(in EthereumGasPolicy gas) => gas.OutOfGas;
@@ -374,15 +374,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ulong refund) => gas.Value += refund;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void RefundStateGas(ref EthereumGasPolicy gas, ulong amount, ulong stateGasFloor)
+    public static void RefundStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
         => RefundStateGas(ref gas, amount, stateGasFloor, trackSpillRefund: true);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void RefundStateGas(ref EthereumGasPolicy gas, ulong amount, ulong stateGasFloor, bool trackSpillRefund)
+    public static void RefundStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor, bool trackSpillRefund)
     {
-        ulong refundableStateGas = gas.StateGasUsed.SaturatingSub(stateGasFloor);
-        ulong appliedRefund = Math.Min(amount, refundableStateGas);
-        ulong toGasLeft = 0;
+        long refundableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
+        long appliedRefund = Math.Min(amount, refundableStateGas);
+        long toGasLeft = 0;
         if (trackSpillRefund)
         {
             // Source-based LIFO refill (EELS credit_state_gas_refund): a state-gas refund returns to the
@@ -394,16 +394,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             gas.StateGasSpillRefunded += toGasLeft;
         }
 
-        gas.Value += toGasLeft;
+        gas.Value += (ulong)toGasLeft;
         gas.StateReservoir += appliedRefund - toGasLeft;
         gas.StateGasUsed -= appliedRefund;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong DiscardStateGas(ref EthereumGasPolicy gas, ulong amount, ulong stateGasFloor, bool trackSpillRefund)
+    public static long DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor, bool trackSpillRefund)
     {
-        ulong discardableStateGas = gas.StateGasUsed.SaturatingSub(stateGasFloor);
-        ulong appliedRefund = Math.Min(amount, discardableStateGas);
+        long discardableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
+        long appliedRefund = Math.Min(amount, discardableStateGas);
         if (trackSpillRefund)
         {
             TrackStateGasSpillRefund(ref gas, appliedRefund);
@@ -414,7 +414,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, ulong amount, bool trackSpillRefund)
+    public static void AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, long amount, bool trackSpillRefund)
     {
         if (trackSpillRefund)
         {
@@ -425,9 +425,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void RemoveStateGasRefundFromReservoir(ref EthereumGasPolicy gas, ulong amount)
+    public static void RemoveStateGasRefundFromReservoir(ref EthereumGasPolicy gas, long amount)
     {
-        ulong fromReservoir = Math.Min(amount, gas.StateReservoir);
+        long fromReservoir = Math.Min(amount, gas.StateReservoir);
         gas.StateReservoir -= fromReservoir;
         amount -= fromReservoir;
 
@@ -438,14 +438,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void TrackStateGasSpillRefund(ref EthereumGasPolicy gas, ulong amount)
+    private static void TrackStateGasSpillRefund(ref EthereumGasPolicy gas, long amount)
     {
-        ulong unrefundedSpill = GetUnrefundedStateGasSpill(in gas);
+        long unrefundedSpill = GetUnrefundedStateGasSpill(in gas);
         gas.StateGasSpillRefunded += Math.Min(amount, unrefundedSpill);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ResetForHalt(ref EthereumGasPolicy gas, ulong initialStateReservoir, ulong initialStateGasUsed)
+    public static void ResetForHalt(ref EthereumGasPolicy gas, long initialStateReservoir, long initialStateGasUsed)
     {
         // Snap state-gas back to its tx-start shape (reservoir=R0, used=intrinsic floor,
         // spill=0). The post-reset StateGasUsed feeds SpentGas so the user does not keep
@@ -471,7 +471,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, ulong codeInsertRefunds, IReleaseSpec spec, ulong stateGasFloor)
+    public static ulong ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, ulong codeInsertRefunds, IReleaseSpec spec, long stateGasFloor)
         // Under EIP-8037 the per-authorization state refund is applied pre-execution in
         // Apply8037DelegationRefunds; only the regular refund is surfaced for the refund counter here.
         => GetCodeInsertRegularRefund(codeInsertRefunds, spec);
@@ -526,7 +526,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateChildFrameGas(ref EthereumGasPolicy parentGas, ulong childRegularGas)
     {
-        ulong childStateReservoir = parentGas.StateReservoir;
+        long childStateReservoir = parentGas.StateReservoir;
         parentGas.StateReservoir = 0;
 
         return new EthereumGasPolicy
@@ -564,8 +564,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                 new EthereumGasPolicy
                 {
                     Value = regularGas,
-                    StateReservoir = totalStateCost,
-                    StateGasUsed = totalStateCost,
+                    StateReservoir = (long)totalStateCost,
+                    StateGasUsed = (long)totalStateCost,
                 },
                 FromULong(floorCost))
             : new IntrinsicGas<EthereumGasPolicy>(FromULong(regularGas), FromULong(floorCost));
@@ -576,12 +576,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // Callers must validate intrinsic gas against gasLimit (ValidateIntrinsicGas / Eip8037.ExceedsCap)
         // before calling; if they don't, the subtraction wraps silently.
-        Debug.Assert(gasLimit >= intrinsicGas.Value + intrinsicGas.StateReservoir,
+        Debug.Assert(gasLimit >= intrinsicGas.Value + (ulong)intrinsicGas.StateReservoir,
             $"gasLimit ({gasLimit}) < intrinsicRegular ({intrinsicGas.Value}) + intrinsicState ({intrinsicGas.StateReservoir})");
         Debug.Assert(!spec.IsEip8037Enabled || Eip7825Constants.DefaultTxGasLimitCap >= intrinsicGas.Value,
             "Eip8037 enabled but intrinsicRegular exceeds tx gas cap.");
 
-        ulong executionGas = gasLimit - intrinsicGas.Value - intrinsicGas.StateReservoir;
+        ulong executionGas = gasLimit - intrinsicGas.Value - (ulong)intrinsicGas.StateReservoir;
         ulong reservoir = 0;
 
         if (spec.IsEip8037Enabled)
@@ -595,7 +595,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return new EthereumGasPolicy
         {
             Value = executionGas,
-            StateReservoir = reservoir,
+            StateReservoir = (long)reservoir,
             StateGasUsed = intrinsicGas.StateReservoir,
             StateGasSpill = 0,
         };
