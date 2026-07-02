@@ -244,9 +244,14 @@ public class StartingSyncPivotUpdater(
 
                 if (agreements >= 2) return candidate;
             }
-            catch (Exception e) when (e is TimeoutException or OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: peer {peer.SyncPeer.Node.ClientId} did not answer the header request for {targetNumber}. {e.Message}");
+                return null;
+            }
+            catch (Exception e)
+            {
+                // Best-effort probe over untrusted peers: skip the peer, keep probing.
+                if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: header request for {targetNumber} to {peer.SyncPeer.Node.ClientId} failed. {e.Message}");
             }
         }
 
@@ -279,7 +284,11 @@ public class StartingSyncPivotUpdater(
                     empty++;
                     if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: peer {peer.SyncPeer.Node.ClientId} returned no data for state root {target.StateRoot} at block {target.Number}.");
                 }
-                catch (Exception e) when (e is TimeoutException or OperationCanceledException)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return null;
+                }
+                catch (Exception e)
                 {
                     timeouts++;
                     if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: snap probe to {peer.SyncPeer.Node.ClientId} failed. {e.Message}");
