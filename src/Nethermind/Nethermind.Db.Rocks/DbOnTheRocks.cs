@@ -865,8 +865,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public WriteOptions? WriteFlagsToWriteOptions(WriteFlags flags) => flags switch
     {
-        _ when (flags & WriteFlags.LowPriorityAndNoWAL) == WriteFlags.LowPriorityAndNoWAL => _lowPriorityAndNoWalWrite,
-        _ when (flags & WriteFlags.DisableWAL) == WriteFlags.DisableWAL => _noWalWrite,
+        // DIAGNOSTIC: ignore DisableWAL — route through WAL-backed options so these writes are recovered by
+        // WAL replay on restart instead of being memtable-only (do NOT set the RocksDB disable-WAL option).
+        _ when (flags & WriteFlags.LowPriorityAndNoWAL) == WriteFlags.LowPriorityAndNoWAL => _lowPriorityWriteOptions,
+        _ when (flags & WriteFlags.DisableWAL) == WriteFlags.DisableWAL => WriteOptions,
         _ when (flags & WriteFlags.LowPriority) == WriteFlags.LowPriority => _lowPriorityWriteOptions,
         _ => WriteOptions
     };
