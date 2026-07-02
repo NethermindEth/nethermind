@@ -79,6 +79,12 @@ public partial class BlockProcessor(
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
+        if (options.ContainsFlag(ProcessingOptions.DeferredStateRoots))
+        {
+            // Root computation is deferred to the end of the branch; the header takes the known-canonical root so
+            // the processed block's hash matches the suggested one.
+            block.Header.StateRoot = suggestedBlock.StateRoot;
+        }
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
@@ -169,7 +175,7 @@ public partial class BlockProcessor(
             SetAccountChanges(block);
         }
 
-        if (ShouldComputeStateRoot(header))
+        if (ShouldComputeStateRoot(header) && !options.ContainsFlag(ProcessingOptions.DeferredStateRoots))
         {
             ComputeStateRoot(header);
         }

@@ -28,7 +28,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState
+    public class WorldState : IWorldState, IDeferredRootWorldState
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -210,6 +210,24 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
+            _persistentStorageProvider.ClearStorageMap();
+        }
+
+        public bool SupportsDeferredRoots => _currentScope is IDeferredRootScope;
+
+        public bool BeginDeferredRootBlock()
+        {
+            DebugGuardInScope();
+            return _currentScope is IDeferredRootScope deferrable && deferrable.BeginDeferredRootBlock();
+        }
+
+        public void CommitTreeDeferred(ulong blockNumber, Hash256 knownStateRoot)
+        {
+            DebugGuardInScope();
+            // Runs while the scope's deferral flag is still set, so the underlying root-hash recomputation is a
+            // no-op; it only settles the provider's needs-update bookkeeping.
+            _stateProvider.UpdateStateRootIfNeeded();
+            ((IDeferredRootScope)_currentScope!).CommitDeferred(blockNumber, knownStateRoot);
             _persistentStorageProvider.ClearStorageMap();
         }
 

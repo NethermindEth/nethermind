@@ -96,4 +96,12 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "1000000000",
         HiddenFromDocs = true)]
     ulong MaxGasLimit { get; set; }
+
+    [ConfigItem(
+        Description = "Whether to defer state-root computation to the last block of each processed branch during " +
+                      "sync. Interior blocks of a known-canonical branch skip per-block state-trie updates and take " +
+                      "the root from their header; the branch's last block applies the accumulated changes and " +
+                      "verifies the computed root against the header. Experimental; requires the flat state backend.",
+        DefaultValue = "false")]
+    bool DeferBranchStateRoots { get; set; }
 }
