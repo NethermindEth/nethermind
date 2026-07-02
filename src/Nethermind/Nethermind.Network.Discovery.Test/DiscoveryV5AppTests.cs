@@ -367,4 +367,19 @@ public class DiscoveryV5AppTests
             Assert.That(bootNodes[0].Host, Is.EqualTo("8.8.8.8"));
         }
     }
+
+    [TestCase("8.8.8.8", true, true)]
+    [TestCase("8.8.8.8", false, false)]
+    [TestCase("127.0.0.1", true, false)]
+    public void Should_Use_Default_Discv5_Bootnodes_Only_For_Routable_Address(string externalIp, bool configured, bool expected)
+    {
+        DiscoveryConfig discoveryConfig = new()
+        {
+            UseDefaultDiscv5Bootnodes = configured
+        };
+
+        bool result = DiscoveryV5App.ShouldUseDefaultDiscv5Bootnodes(IPAddress.Parse(externalIp), discoveryConfig);
+
+        Assert.That(result, Is.EqualTo(expected));
+    }
 }
