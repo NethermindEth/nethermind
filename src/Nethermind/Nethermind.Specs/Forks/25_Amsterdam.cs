@@ -24,6 +24,7 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
         spec.IsEip8037Enabled = true;
         spec.IsEip8038Enabled = true;
         spec.IsEip8246Enabled = true;
+        spec.IsEip8282Enabled = true;
         spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V5;
         spec.EngineApiGetPayloadVersion = EngineApiVersions.GetPayload.V6;
         spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V4;

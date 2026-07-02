@@ -309,7 +309,9 @@ public partial class BlockAccessListManager
 
     private static bool IsSystemContract(Address address)
         => address == Eip7002Constants.WithdrawalRequestPredeployAddress
-        || address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+        || address == Eip7251Constants.ConsolidationRequestPredeployAddress
+        || address == Eip8282Constants.BuilderDepositRequestPredeployAddress
+        || address == Eip8282Constants.BuilderExitRequestPredeployAddress;
 
     private static bool IsToleratedGeneratedOnlyAccount(Address address, uint index, bool hasNoChangesAtIndex, bool hasChargeableReads)
         => hasNoChangesAtIndex
