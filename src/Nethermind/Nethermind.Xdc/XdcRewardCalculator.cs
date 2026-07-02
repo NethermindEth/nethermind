@@ -80,6 +80,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         {
             UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
             Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
+            AddSignerRewards(masternodeSigners, rewardSigners, rpcRewards, XdcConstants.RpcSignerSectionMasternode);
             AddDistributedRewards(xdcHeader, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionMasternode, foundationWalletAddr);
         }
         else
@@ -93,6 +94,10 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             Dictionary<Address, UInt256> observerRewards = CalculateFixedRewardForSigners(
                 spec.ObserverReward,
                 observerSigners);
+
+            AddSignerRewards(masternodeSigners, masternodeRewards, rpcRewards, XdcConstants.RpcSignerSectionMasternode);
+            AddSignerRewards(protectorSigners, protectorRewards, rpcRewards, XdcConstants.RpcSignerSectionProtector);
+            AddSignerRewards(observerSigners, observerRewards, rpcRewards, XdcConstants.RpcSignerSectionObserver);
 
             AddDistributedRewards(xdcHeader, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionMasternode, foundationWalletAddr);
             AddDistributedRewards(xdcHeader, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionProtector, foundationWalletAddr);
@@ -331,6 +336,26 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         UInt256 foundationReward = reward / 10;
 
         return (new BlockReward(owner, masterReward), foundationReward);
+    }
+
+    private static void AddSignerRewards(
+        Dictionary<Address, long> signerCounts,
+        Dictionary<Address, UInt256> signerRewards,
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> rpcRewards,
+        string rpcSectionKey)
+    {
+        Dictionary<string, Dictionary<string, string>> signers = new(signerCounts.Count);
+        foreach ((Address signer, long count) in signerCounts)
+        {
+            signerRewards.TryGetValue(signer, out UInt256 reward);
+            signers[signer.ToString()] = new Dictionary<string, string>
+            {
+                [XdcConstants.RpcSignerReward] = reward.ToString(),
+                [XdcConstants.RpcSignerCount] = count.ToString(),
+            };
+        }
+
+        rpcRewards[rpcSectionKey] = signers;
     }
 
     private void AddDistributedRewards(

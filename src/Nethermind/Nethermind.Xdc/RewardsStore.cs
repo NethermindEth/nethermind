@@ -163,8 +163,11 @@ internal sealed class RewardsStore(
         string accountKey = account.ToString();
         UInt256 total = UInt256.Zero;
 
-        foreach (Dictionary<string, Dictionary<string, string>> section in breakdown.Values)
+        foreach ((string sectionName, Dictionary<string, Dictionary<string, string>> section) in breakdown)
         {
+            if (!IsRewardSection(sectionName))
+                continue;
+
             foreach (Dictionary<string, string> holdersBySigner in section.Values)
             {
                 if (holdersBySigner.TryGetValue(accountKey, out string? valueStr)
@@ -177,6 +180,11 @@ internal sealed class RewardsStore(
 
         return total;
     }
+
+    private static bool IsRewardSection(string sectionName) => sectionName is
+        XdcConstants.RpcRewardSectionMasternode or
+        XdcConstants.RpcRewardSectionProtector or
+        XdcConstants.RpcRewardSectionObserver;
 
     private static byte[] BuildEpochRewardsKey(Hash256 epochBlockHash)
     {
