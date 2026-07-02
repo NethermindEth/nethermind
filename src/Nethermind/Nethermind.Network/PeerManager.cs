@@ -97,7 +97,7 @@ namespace Nethermind.Network
         public IReadOnlyCollection<Peer> CandidatePeers => _peerPool.Peers.Select(static kvp => kvp.Value).ToList();
         public IReadOnlyCollection<Peer> ConnectedPeers => _peerPool.ActivePeers.Select(static kvp => kvp.Value).Where(IsConnected).ToList();
 
-        public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.TrustedPeerCount;
+        public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount + _peerPool.TrustedPeerCount;
         public int ActivePeersCount => _peerPool.ActivePeerCount;
         public int ConnectedPeersCount => _peerPool.ActivePeers.Count(static kvp => IsConnected(kvp.Value));
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;
@@ -884,8 +884,8 @@ namespace Nethermind.Network
         public void OnP2PProtocolInitialized(ISession session)
         {
             // The margin-admitted overflow is shed here, now that the P2P protocol can carry a proper
-            // disconnect message. Trusted peers are exempt via the session-level disconnect suppression.
-            if (ActivePeersCount > MaxActivePeers)
+            // disconnect message. Static and trusted peers are must-keep and exempt from the capacity cap.
+            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount > MaxActivePeers)
             {
                 session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{ActivePeersCount}");
             }
@@ -909,7 +909,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            if (!session.Node.IsTrusted && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
+            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
             {
                 if (_logger.IsTrace) TraceHardLimitDisconnect();
                 session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");

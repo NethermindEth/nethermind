@@ -193,13 +193,18 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public IEnumerable<PeerInfo> NonTrustedPeers
+        /// <summary>
+        /// Peers eligible for worst-peer eviction. Static and trusted peers are excluded: they are
+        /// operator-configured must-keep peers (static is actively redialed by the peer manager, trusted
+        /// bypasses the peer limit), so evicting them here only causes disconnect/redial churn.
+        /// </summary>
+        public IEnumerable<PeerInfo> DroppablePeers
         {
             get
             {
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
-                    if (!peerInfo.SyncPeer.Node.IsTrusted)
+                    if (!peerInfo.SyncPeer.Node.IsStatic && !peerInfo.SyncPeer.Node.IsTrusted)
                     {
                         yield return peerInfo;
                     }
@@ -530,7 +535,7 @@ namespace Nethermind.Synchronization.Peers
             PeerInfo? worstPeer = null;
             string? worstReason = "DEFAULT";
 
-            foreach (PeerInfo peerInfo in NonTrustedPeers)
+            foreach (PeerInfo peerInfo in DroppablePeers)
             {
                 if (peerInfo.SyncPeer.IsPriority && !canDropPriorityPeer)
                 {

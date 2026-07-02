@@ -349,17 +349,23 @@ public class SessionTests
         Assert.That(session.IsClosing, Is.True);
     }
 
-    // Trusted nodes are kept connected through capacity/transient reasons, but chain-identity and protocol
-    // mismatches must still disconnect them (geth trustedConn semantics).
-    [TestCase(DisconnectReason.TooManyPeers, false)]
-    [TestCase(DisconnectReason.UselessPeer, false)]
-    [TestCase(DisconnectReason.InvalidNetworkId, true)]
-    [TestCase(DisconnectReason.InvalidForkId, true)]
-    [TestCase(DisconnectReason.IncompatibleP2PVersion, true)]
-    public void Trusted_node_disconnect_depends_on_reason(DisconnectReason reason, bool shouldDisconnect)
+    // Privileged (static or trusted) nodes are kept connected through capacity/transient reasons, but
+    // chain-identity and protocol mismatches must still disconnect them.
+    [TestCase(false, DisconnectReason.TooManyPeers, false)]
+    [TestCase(true, DisconnectReason.TooManyPeers, false)]
+    [TestCase(false, DisconnectReason.UselessPeer, false)]
+    [TestCase(true, DisconnectReason.UselessPeer, false)]
+    [TestCase(false, DisconnectReason.InvalidNetworkId, true)]
+    [TestCase(true, DisconnectReason.InvalidNetworkId, true)]
+    [TestCase(false, DisconnectReason.InvalidForkId, true)]
+    [TestCase(true, DisconnectReason.InvalidForkId, true)]
+    [TestCase(false, DisconnectReason.IncompatibleP2PVersion, true)]
+    [TestCase(true, DisconnectReason.IncompatibleP2PVersion, true)]
+    public void Privileged_node_disconnect_depends_on_reason(bool useStatic, DisconnectReason reason, bool shouldDisconnect)
     {
         bool wasCalled = false;
-        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545) { IsTrusted = true };
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545);
+        if (useStatic) node.IsStatic = true; else node.IsTrusted = true;
         Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (s, e) => wasCalled = true;
 
@@ -368,23 +374,6 @@ public class SessionTests
         session.InitiateDisconnect(reason);
         Assert.That(wasCalled, Is.EqualTo(shouldDisconnect));
         Assert.That(session.IsClosing, Is.EqualTo(shouldDisconnect));
-    }
-
-    // Static peers count against the limit (geth), so they are NOT exempt from capacity disconnects.
-    [TestCase(DisconnectReason.TooManyPeers)]
-    [TestCase(DisconnectReason.UselessPeer)]
-    public void Static_node_is_disconnected_for_capacity_reasons(DisconnectReason reason)
-    {
-        bool wasCalled = false;
-        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545) { IsStatic = true };
-        Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        session.Disconnecting += (s, e) => wasCalled = true;
-
-        session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
-        session.InitiateDisconnect(reason);
-        Assert.That(wasCalled, Is.True);
-        Assert.That(session.IsClosing, Is.True);
     }
 
     [Test]

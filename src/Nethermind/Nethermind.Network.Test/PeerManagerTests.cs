@@ -292,16 +292,16 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task MaxActivePeers_is_inflated_by_trusted_not_static()
+        public async Task MaxActivePeers_is_inflated_by_static_and_trusted()
         {
             await using Context ctx = new(maxActivePeers: 20);
             Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20));
 
             ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1) { IsStatic = true });
-            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20), "static peers count against the limit (geth)");
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(21), "static peers are additive on top of the limit");
 
             ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1) { IsTrusted = true });
-            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(21), "trusted peers are additive on top of the limit (geth)");
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(22), "trusted peers are additive too");
         }
 
         // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,
@@ -320,6 +320,7 @@ namespace Nethermind.Network.Test
             }
 
             ISession session = Substitute.For<ISession>();
+            session.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303)); // plain (non-static, non-trusted)
             ctx.PeerManager.OnP2PProtocolInitialized(session);
 
             if (shouldDisconnect)
