@@ -18,8 +18,8 @@ public class XdcBlockHeader(
     Hash256 unclesHash,
     Address beneficiary,
     in UInt256 difficulty,
-    long number,
-    long gasLimit,
+    ulong number,
+    ulong gasLimit,
     ulong timestamp,
     byte[] extraData,
     bool isSelfMined = false
@@ -77,8 +77,8 @@ public class XdcBlockHeader(
             //Check V2 consensus version in ExtraData field.
             if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
                 return null;
-            Rlp.ValueDecoderContext valueDecoderContext = new(ExtraData.AsSpan(1));
-            _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
+            RlpReader reader = new(ExtraData.AsSpan(1));
+            _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref reader);
             return _extraFieldsV2;
         }
         internal set
@@ -92,9 +92,9 @@ public class XdcBlockHeader(
 
     public virtual ValueHash256 CalculateHash()
     {
-        KeccakRlpStream rlpStream = new();
-        _headerDecoder.Encode(rlpStream, this);
-        return rlpStream.GetHash();
+        KeccakRlpWriter writer = new();
+        _headerDecoder.Encode(ref writer, this);
+        return writer.GetHash();
     }
 
     /// <inheritdoc />
@@ -115,6 +115,48 @@ public class XdcBlockHeader(
             MixHash = Hash256.Zero,
             RequestsHash = requestsHash,
         };
+    }
+
+    internal virtual XdcBlockHeader CreateHeaderForProcessing()
+    {
+        XdcBlockHeader header = new(
+            ParentHash,
+            UnclesHash,
+            Beneficiary,
+            Difficulty,
+            Number,
+            GasLimit,
+            Timestamp,
+            ExtraData,
+            IsSelfMined);
+
+        CopyFieldsForProcessing(header);
+
+        return header;
+    }
+
+    protected void CopyFieldsForProcessing(XdcBlockHeader header)
+    {
+        header.Bloom = Bloom.Empty;
+        header.Author = Author;
+        header.Hash = Hash;
+        header.MixHash = MixHash;
+        header.Nonce = Nonce;
+        header.TxRoot = TxRoot;
+        header.TotalDifficulty = TotalDifficulty;
+        header.AuRaStep = AuRaStep;
+        header.AuRaSignature = AuRaSignature;
+        header.ReceiptsRoot = ReceiptsRoot;
+        header.BaseFeePerGas = BaseFeePerGas;
+        header.WithdrawalsRoot = WithdrawalsRoot;
+        header.RequestsHash = RequestsHash;
+        header.IsPostMerge = IsPostMerge;
+        header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        header.ExcessBlobGas = ExcessBlobGas;
+        header.BlobGasUsed = BlobGasUsed;
+        header.Validator = Validator;
+        header.Validators = Validators;
+        header.Penalties = Penalties;
     }
 
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)

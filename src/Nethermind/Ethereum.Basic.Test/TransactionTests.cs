@@ -73,7 +73,7 @@ public class TransactionTests
             Data = Bytes.FromHexString(testJson.Data),
             GasPrice = (UInt256)testJson.GasPrice,
             PrivateKey = new PrivateKey(testJson.Key),
-            Nonce = (UInt256)testJson.Nonce,
+            Nonce = testJson.Nonce,
             Signed = new Rlp(Bytes.FromHexString(testJson.Signed))
         };
         byte[] unsigned = Bytes.FromHexString(testJson.Unsigned);
@@ -92,9 +92,9 @@ public class TransactionTests
     private class TransactionTestJson
     {
         public string Key { get; set; }
-        public long Nonce { get; set; }
+        public ulong Nonce { get; set; }
         public long GasPrice { get; set; }
-        public long StartGas { get; set; }
+        public ulong StartGas { get; set; }
         public string To { get; set; }
         public long Value { get; set; }
         public string Data { get; set; }
@@ -106,9 +106,9 @@ public class TransactionTests
     public class TransactionTest
     {
         public PrivateKey PrivateKey { get; set; }
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
-        public long StartGas { get; set; }
+        public ulong StartGas { get; set; }
         public Address To { get; set; }
         public UInt256 Value { get; set; }
         public byte[] Data { get; set; }

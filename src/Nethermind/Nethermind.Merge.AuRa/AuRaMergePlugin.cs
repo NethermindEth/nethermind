@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -17,6 +16,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -25,6 +25,7 @@ using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Network;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa
@@ -35,7 +36,6 @@ namespace Nethermind.Merge.AuRa
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
     public class AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : MergePlugin(chainSpec, mergeConfig)
     {
-        private AuRaNethermindApi? _auraApi;
         private readonly IMergeConfig _mergeConfig = mergeConfig;
         private readonly ChainSpec _chainSpec = chainSpec;
 
@@ -49,22 +49,12 @@ namespace Nethermind.Merge.AuRa
             if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
-                _auraApi = (AuRaNethermindApi)nethermindApi;
 
                 // this runs before all init steps that use tx filters
                 TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
                     originalFilter is MinGasPriceContractTxFilter ? originalFilter
                     : new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
             }
-        }
-
-        protected override void InitializeMergeFinalization()
-        {
-            IAuRaBlockFinalizationManager auRa = _auraApi!.AuRaFinalizationManager
-                ?? throw new ArgumentNullException(nameof(_auraApi.AuRaFinalizationManager),
-                    "Cannot construct AuRaTerminalBlockDisposer when AuRaFinalizationManager is null!");
-            AuRaTerminalBlockDisposer disposer = new(auRa, _poSSwitcher, _api.BlockTree!);
-            _api.DisposeStack.Push(disposer);
         }
 
         public override IModule Module => new AuRaMergeModule();
@@ -80,6 +70,8 @@ namespace Nethermind.Merge.AuRa
         protected override void Load(ContainerBuilder builder) => builder
                 .AddModule(new BaseMergePluginModule())
 
+                .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
+
                 // Aura (non merge) use `BlockProducerStarter` directly.
                 .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
 
@@ -90,6 +82,7 @@ namespace Nethermind.Merge.AuRa
                         new AuRaPostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
                 .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
                 .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
+                .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
 
                 .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
                 .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
@@ -101,6 +94,10 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
+
+                // Disposes the AuRa finalization manager at the merge transition. Resolved eagerly in
+                // InitializeBlockchainAuRaMerge for its constructor side-effect; Autofac owns disposal.
+                .AddSingleton<AuRaTerminalBlockDisposer>()
 
                 // Merge-aware override: skips wiring the branch processor on post-merge chains so
                 // the AuRa finalization manager's startup catch-up walk never runs.

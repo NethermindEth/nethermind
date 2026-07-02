@@ -383,7 +383,7 @@ public partial class EngineModuleTests
             ]);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.LogsBloom, bloom);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.Transactions, [[1]]);
-            yield return GetNewBlockRequestBadDataTestCase(static r => r.GasUsed, 1);
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.GasUsed, 1UL);
         }
     }
 
@@ -433,19 +433,43 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task executePayloadV1_invalid_hash_records_bad_block()
+    public async Task executePayloadV1_invalid_hash_returns_invalid_and_does_not_store_bad_block()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload payload = await BuildAndGetPayloadResult(chain, rpc);
-        long blockNumber = payload.BlockNumber;
         payload.BlockHash = TestItem.KeccakC;
 
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(payload);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+        // Hash-mismatched payloads are not stored in debug_getBadBlocks: block.Hash is the
+        // caller-supplied (unverified) value, and ReportBadBlock would write it to _invalidBlocks,
+        // which would prevent the legitimate block from being inserted if the CL later sends
         IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
-        Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(blockNumber));
+        Assert.That(badBlockStore.GetAll(), Is.Empty);
+    }
+
+    [Test]
+    public async Task executePayloadV1_invalid_hash_does_not_poison_chain_tracker()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 genesisHash = chain.BlockTree.HeadHash;
+        await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+
+        // Build block 2 on block 1 (BuildAndGetPayloadResult sees block1 as head),
+        // then corrupt BlockHash to genesisHash
+        ExecutionPayload block2 = await BuildAndGetPayloadResult(chain, rpc);
+        Hash256 realBlock2Hash = block2.BlockHash!;
+        block2.BlockHash = genesisHash;
+
+        ResultWrapper<PayloadStatusV1> invalidResult = await rpc.engine_newPayloadV1(block2);
+        Assert.That(invalidResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+
+        block2.BlockHash = realBlock2Hash;
+        ResultWrapper<PayloadStatusV1> validResult = await rpc.engine_newPayloadV1(block2);
+        Assert.That(validResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     [Test]
@@ -454,7 +478,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload payload = await BuildAndGetPayloadResult(chain, rpc);
-        long blockNumber = payload.BlockNumber;
+        ulong blockNumber = payload.BlockNumber;
 
         // Detach from any known parent so `NewPayloadHandler` enters the orphaned-block validation
         // branch, then break a header-level invariant (`GasUsed > GasLimit`) so
@@ -498,7 +522,7 @@ public partial class EngineModuleTests
         {
             childPayload.BlockHash = childHash;
         }
-        long childNumber = childPayload.BlockNumber;
+        ulong childNumber = childPayload.BlockNumber;
 
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(childPayload);
 
@@ -2130,6 +2154,29 @@ public partial class EngineModuleTests
         chain.LogManager.GetClassLogger<ExchangeCapabilitiesHandler>().UnderlyingLogger.Received().Warn(
             Arg.Is<string>(static a =>
                 a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
+    }
+
+    [Test]
+    public async Task Should_not_warn_for_missing_ssz_rest_paths()
+    {
+        ILogManager loggerManager = Substitute.For<ILogManager>();
+        InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+        iLogger.IsWarn.Returns(true);
+        ILogger logger = new(iLogger);
+        loggerManager.GetClassLogger<ExchangeCapabilitiesHandler>().Returns(logger);
+
+        using MergeTestBlockchain chain = await CreateBaseBlockchain()
+            .BuildMergeTestBlockchain(configurer: builder => builder
+                .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Prague.Instance))
+                .AddSingleton<ILogManager>(loggerManager));
+
+        EngineRpcCapabilitiesProvider provider = new(new TestSingleReleaseSpecProvider(Prague.Instance));
+        string[] list = [.. provider.GetJsonRpcCapabilities().Where(kv => kv.Value.IsEnabled()).Select(kv => kv.Key)];
+
+        chain.EngineRpcModule.engine_exchangeCapabilities(list);
+
+        chain.LogManager.GetClassLogger<ExchangeCapabilitiesHandler>().UnderlyingLogger.DidNotReceive()
+            .Warn(Arg.Any<string>());
     }
 
     private static readonly string[] SszRestPathsParis =

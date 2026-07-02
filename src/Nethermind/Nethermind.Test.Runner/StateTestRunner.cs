@@ -95,7 +95,6 @@ namespace Nethermind.Test.Runner
                     StateTestTxTrace txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
-
                     try
                     {
                         txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;

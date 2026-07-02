@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -186,22 +185,21 @@ public static partial class EvmInstructions
                 : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
         }
 
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-        long gasLimitUl;
+        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        ulong gasLimitUl;
 
         if (spec.Use63Over64Rule)
         {
-            // EIP-150: cap is a non-negative long, so min(gasLimit, cap) fits without 256-bit math.
-            Debug.Assert(gasAvailable >= 0, "GetRemainingGas must be non-negative; (ulong)cap below would otherwise wrap.");
-            long cap = gasAvailable - gasAvailable / 64;
-            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= (ulong)cap
-                ? (long)gasLimit.u0
+            // EIP-150: only 63/64 of remaining gas is forwarded.
+            ulong cap = gasAvailable - gasAvailable / 64;
+            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= cap
+                ? gasLimit.u0
                 : cap;
         }
         else
         {
-            if (!gasLimit.IsUint64 || gasLimit.u0 >= long.MaxValue) goto OutOfGas;
-            gasLimitUl = (long)gasLimit.u0;
+            if (!gasLimit.IsUint64) goto OutOfGas;
+            gasLimitUl = gasLimit.u0;
         }
 
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
@@ -271,11 +269,19 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
+        return CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
 
+        // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
+        // has no icache and counts instructions, so the NoInlining call and its wide argument
+        // marshalling are pure overhead on every CALL; inline it, pulling the hot precompile path in too.
+#if ZK_EVM
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#else
         [MethodImpl(MethodImplOptions.NoInlining)]
+#endif
         static EvmExceptionType CreateFullCallFrame(
             VirtualMachine<TGasPolicy> vm,
+            ref EvmStack stack,
             ref TGasPolicy gas,
             in UInt256 dataOffset,
             UInt256 dataLength,
@@ -287,7 +293,7 @@ public static partial class EvmInstructions
             Address codeSource,
             ExecutionEnvironment env,
             in UInt256 callValue,
-            long gasLimitUl)
+            ulong gasLimitUl)
         {
             IWorldState state = vm.WorldState;
             // Take a snapshot of the state for potential rollback.
@@ -315,9 +321,28 @@ public static partial class EvmInstructions
                 outputOffset = default;
             }
 
+            TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
+
+#if ZK_EVM
+            // Precompiles run no bytecode: handle them inline, skipping the child
+            // frame's round trip through the ExecuteTransaction dispatch loop.
+            if (codeInfo.IsPrecompile)
+            {
+                return vm.InlinePrecompileCall<TTracingInst>(
+                    callEnv,
+                    childGas,
+                    outputOffset.ToLong(),
+                    outputLength.ToLong(),
+                    TOpCall.ExecutionType,
+                    TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
+                    in snapshot,
+                    ref stack);
+            }
+#endif
+
             // Rent a new call frame for executing the call.
             vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-                gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
+                gas: childGas,
                 outputDestination: outputOffset.ToLong(),
                 outputLength: outputLength.ToLong(),
                 executionType: TOpCall.ExecutionType,

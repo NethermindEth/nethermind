@@ -60,7 +60,7 @@ public class PersistenceManagerTests
     {
     }
 
-    private StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    private StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
@@ -118,7 +118,7 @@ public class PersistenceManagerTests
         StateId latest = CreateStateId(100);
 
         // Vary target block and compaction based on parameter
-        int targetBlock = useCompacted ? 16 : 1; // compacted uses 16, fallback uses 1
+        ulong targetBlock = useCompacted ? 16UL : 1UL; // compacted uses 16, fallback uses 1
         StateId target = CreateStateId(targetBlock);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -131,6 +131,40 @@ public class PersistenceManagerTests
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.From, Is.EqualTo(persisted));
+        Assert.That(result.To, Is.EqualTo(target));
+
+        result.Dispose();
+    }
+
+    #endregion
+
+    #region Fresh DB (nothing persisted) Tests
+
+    [Test]
+    public void DetermineSnapshotToPersist_FreshDbBelowForceLimit_PersistsFinalizedBoundary()
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(StateId.PreGenesis);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        ICompactionSchedule scheduler = ScheduleHelper.CreateWithOffset(_config, 0);
+        PersistenceManager pm = new(_config, scheduler, _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+
+        // Depth 101 is past MinReorgDepth + CompactSize (80) but below the MaxReorgDepth force limit (256),
+        // so only the finalized branch can produce a snapshot here.
+        StateId target = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(StateId.PreGenesis, target, compacted: true);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.From, Is.EqualTo(StateId.PreGenesis));
         Assert.That(result.To, Is.EqualTo(target));
 
         result.Dispose();
@@ -165,7 +199,7 @@ public class PersistenceManagerTests
         StateId latest = CreateStateId(300);
 
         // Vary target block and compaction based on parameter
-        int targetBlock = useCompacted ? 16 : 1; // compacted uses 16, fallback uses 1
+        ulong targetBlock = useCompacted ? 16UL : 1UL; // compacted uses 16, fallback uses 1
         StateId target = CreateStateId(targetBlock);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
@@ -300,6 +334,37 @@ public class PersistenceManagerTests
         Assert.That(result!.To.StateRoot.Bytes.ToArray(), Is.EqualTo(target2.StateRoot.Bytes.ToArray())); // Should select finalized one
 
         result.Dispose();
+    }
+
+    [Test]
+    public void DetermineSnapshotToPersist_LatestSnapshotBelowPersistedBlock_ReturnsNullWithoutUnderflow()
+    {
+        // A deep reorg below a force-persisted unfinalized block can leave the latest snapshot
+        // behind the last persisted block. The in-memory depth must saturate to 0 (not underflow to ~2^64),
+        // so the keep-in-memory guard returns null early instead of force-persisting a stale head ancestor.
+        StateId persisted = CreateStateId(100);
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persisted);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        PersistenceManager pm = new(_config, ScheduleHelper.CreateWithOffset(_config, 0), _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+
+        // Latest snapshot (50) is below the persisted block (100); finalized far behind so the force-persist
+        // branch would be taken on underflow. Stage a head-ancestor snapshot the buggy path would return.
+        StateId latest = CreateStateId(50);
+        StateId headAncestor = CreateStateId(101);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+
+        using Snapshot staged = CreateSnapshot(persisted, headAncestor, compacted: false);
+        _snapshotRepository.SetLastCommittedStateId(headAncestor);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+        using Snapshot? _ = result; // dispose if the buggy underflow path returned a snapshot
+
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -448,10 +513,10 @@ public class PersistenceManagerTests
 
     #region Offset Behavior
 
-    [TestCase(3, 13)]
-    [TestCase(5, 11)]
-    [TestCase(0, 16)]
-    public void DetermineSnapshotToPersist_WithOffset_FirstBoundaryShifted(int offset, int expectedTargetBlock)
+    [TestCase(3, 13UL)]
+    [TestCase(5, 11UL)]
+    [TestCase(0, 16UL)]
+    public void DetermineSnapshotToPersist_WithOffset_FirstBoundaryShifted(int offset, ulong expectedTargetBlock)
     {
         // Fresh DB: currentPersistedState = Block0 (block 0).
         // With CompactSize=16 and offset=N, the next full compaction boundary is at block 16-N.
@@ -657,16 +722,16 @@ public class PersistenceManagerTests
 
     private class TestFinalizedStateProvider : IFinalizedStateProvider
     {
-        private long _finalizedBlockNumber;
-        private readonly Dictionary<long, Hash256> _finalizedStateRoots = [];
+        private ulong _finalizedBlockNumber;
+        private readonly Dictionary<ulong, Hash256> _finalizedStateRoots = [];
 
-        public long FinalizedBlockNumber => _finalizedBlockNumber;
+        public ulong FinalizedBlockNumber => _finalizedBlockNumber;
 
-        public void SetFinalizedBlockNumber(long blockNumber) => _finalizedBlockNumber = blockNumber;
+        public void SetFinalizedBlockNumber(ulong blockNumber) => _finalizedBlockNumber = blockNumber;
 
-        public void SetFinalizedStateRootAt(long blockNumber, Hash256 stateRoot) => _finalizedStateRoots[blockNumber] = stateRoot;
+        public void SetFinalizedStateRootAt(ulong blockNumber, Hash256 stateRoot) => _finalizedStateRoots[blockNumber] = stateRoot;
 
-        public Hash256? GetFinalizedStateRootAt(long blockNumber) =>
+        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) =>
             _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
     }
 

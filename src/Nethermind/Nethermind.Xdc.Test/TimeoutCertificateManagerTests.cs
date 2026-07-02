@@ -45,7 +45,7 @@ public class TimeoutCertificateManagerTests
     {
         TimeoutCertificate tc = new(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
                     .Returns((Snapshot?)null);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
@@ -74,7 +74,7 @@ public class TimeoutCertificateManagerTests
     {
         TimeoutCertificate tc = new(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
             .Returns(new Snapshot(0, Hash256.Zero, Array.Empty<Address>()));
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
@@ -135,6 +135,10 @@ public class TimeoutCertificateManagerTests
         Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
         yield return new TestCaseData(new TimeoutCertificate(1, [.. sigs, malleable], 0), masterNodes, false)
             .SetName("MalleableDuplicateSigner");
+
+        Signature[] highOnlySigs = sigs.Select(XdcTestHelper.CreateMalleableSignature).ToArray();
+        yield return new TestCaseData(new TimeoutCertificate(1, highOnlySigs, 0), masterNodes, false)
+            .SetName("MalleableHighSOnly");
     }
 
     [TestCaseSource(nameof(TcCases))]
@@ -142,7 +146,7 @@ public class TimeoutCertificateManagerTests
     {
         Address[] masternodes = masternodesList.ToArray();
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
@@ -157,15 +161,15 @@ public class TimeoutCertificateManagerTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.EpochLength.Returns(900);
-        xdcReleaseSpec.SwitchEpoch.Returns(89300);
+        xdcReleaseSpec.EpochLength.Returns(900UL);
+        xdcReleaseSpec.SwitchEpoch.Returns(89300UL);
         xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.Head.Returns(new Block(header, new BlockBody()));
-        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree.FindHeader(Arg.Any<ulong>()).Returns(header);
 
         XdcConsensusContext context = new();
         ISigner signer = Substitute.For<ISigner>();

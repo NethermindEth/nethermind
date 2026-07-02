@@ -6,7 +6,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
@@ -93,19 +92,19 @@ internal class DelegatedAccountFilterTest
 
     private static readonly object[] DelegatedWithTxInPoolCases =
     {
-        new object[] { 0, AcceptTxResult.Accepted },
-        new object[] { 1, AcceptTxResult.NotCurrentNonceForDelegation },
+        new object[] { 0UL, AcceptTxResult.Accepted },
+        new object[] { 1UL, AcceptTxResult.NotCurrentNonceForDelegation },
     };
 
     [TestCaseSource(nameof(DelegatedWithTxInPoolCases))]
-    public void Accept_SenderIsDelegatedWithOneTransactionInPool(int txNonce, AcceptTxResult expected)
+    public void Accept_SenderIsDelegatedWithOneTransactionInPool(ulong txNonce, AcceptTxResult expected)
     {
         (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
         Transaction inPool = Build.A.Transaction.SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
         standardPool.TryInsert(inPool.Hash, inPool);
         TestReadOnlyStateProvider stateProvider = CreateDelegatedStateProvider();
         DelegatedAccountFilter filter = CreateFilter(Prague.Instance, standardPool, blobPool, stateProvider);
-        Transaction transaction = Build.A.Transaction.WithNonce((UInt256)txNonce).SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
+        Transaction transaction = Build.A.Transaction.WithNonce(txNonce).SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
         TxFilteringState state = new(transaction, stateProvider);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
@@ -138,19 +137,19 @@ internal class DelegatedAccountFilterTest
 
     private static readonly object[] PendingDelegationNonceCases =
     {
-        new object[] { 0, AcceptTxResult.NotCurrentNonceForDelegation },
-        new object[] { 1, AcceptTxResult.Accepted },
-        new object[] { 2, AcceptTxResult.NotCurrentNonceForDelegation },
+        new object[] { 0UL, AcceptTxResult.NotCurrentNonceForDelegation },
+        new object[] { 1UL, AcceptTxResult.Accepted },
+        new object[] { 2UL, AcceptTxResult.NotCurrentNonceForDelegation },
     };
 
     [TestCaseSource(nameof(PendingDelegationNonceCases))]
-    public void Accept_SenderHasPendingDelegation_OnlyAcceptsIfNonceIsExactMatch(int nonce, AcceptTxResult expected)
+    public void Accept_SenderHasPendingDelegation_OnlyAcceptsIfNonceIsExactMatch(ulong nonce, AcceptTxResult expected)
     {
         (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
         DelegationCache pendingDelegations = new();
         pendingDelegations.IncrementDelegationCount(TestItem.AddressA);
         DelegatedAccountFilter filter = CreateFilter(Prague.Instance, standardPool, blobPool, delegationCache: pendingDelegations);
-        Transaction transaction = Build.A.Transaction.WithNonce((UInt256)nonce).SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
+        Transaction transaction = Build.A.Transaction.WithNonce(nonce).SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
         TestReadOnlyStateProvider stateProvider = new();
         stateProvider.CreateAccount(TestItem.AddressA, 0, 1);
         TxFilteringState state = new(transaction, stateProvider);

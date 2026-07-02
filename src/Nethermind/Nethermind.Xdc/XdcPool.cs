@@ -75,6 +75,18 @@ public class XdcPool<T> where T : IXdcPoolItem
         }
     }
 
+    public IReadOnlyList<IReadOnlyCollection<T>> GetGroupsByRound(ulong round)
+    {
+        using McsLock.Disposable lockRelease = _lock.Acquire();
+        List<IReadOnlyCollection<T>> result = [];
+        foreach (KeyValuePair<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pair in _items)
+        {
+            if (pair.Key.Round == round)
+                result.Add(pair.Value.Values.ToArray());
+        }
+        return result;
+    }
+
     public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> GetItems()
     {
         using McsLock.Disposable lockRelease = _lock.Acquire();

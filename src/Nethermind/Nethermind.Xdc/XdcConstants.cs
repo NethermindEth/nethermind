@@ -64,4 +64,7 @@ internal static class XdcConstants
     public const string RpcRewardSectionMasternode = "rewards";
     public const string RpcRewardSectionProtector = "rewardsProtector";
     public const string RpcRewardSectionObserver = "rewardsObserver";
+
+    // Only sign recent head blocks.
+    public const ulong MaxSignableBlockPeriods = 2;
 }

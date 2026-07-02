@@ -5,8 +5,8 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.TxPool.Comparison;
+using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using System.Collections.Generic;
 
@@ -14,11 +14,6 @@ namespace Nethermind.Xdc.TxPool;
 
 internal class CompareTxBySender(IXdcReleaseSpec spec) : IComparer<Transaction>
 {
-    public CompareTxBySender(ISpecProvider specProvider)
-        : this((IXdcReleaseSpec)specProvider.GetFinalSpec())
-    {
-    }
-
     public int Compare(Transaction? newTx, Transaction? oldTx)
     {
         if (ReferenceEquals(newTx, oldTx)) return TxComparisonResult.NotDecided;
@@ -45,7 +40,8 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
     {
         IComparer<Transaction> defaultComparer = defaultComparerProvider.GetDefaultComparer();
 
-        CompareTxBySender signerFilter = new(specProvider);
+        IXdcReleaseSpec finalSpec = specProvider.GetXdcSpec(ulong.MaxValue - 1);
+        CompareTxBySender signerFilter = new(finalSpec);
 
         return signerFilter.ThenBy(defaultComparer);
     }
@@ -55,7 +51,6 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
         IComparer<Transaction> defaultComparer = defaultComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(blockPreparationContext.BlockNumber);
-
         CompareTxBySender signerFilter = new(currentSpec);
 
         return signerFilter.ThenBy(defaultComparer);
