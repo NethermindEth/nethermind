@@ -15,6 +15,62 @@ namespace Nethermind.Xdc.RPC;
 
 internal static class RpcHelpers
 {
+    public static AccountEpochReward BuildAccountEpochReward(
+        this Dictionary<string, Dictionary<string, Dictionary<string, string>>> epochRewardData,
+        Address account,
+        ulong epochBlockNumber)
+    {
+        string accountKey = account.ToString();
+
+        if (TryReadSignerEpochReward(
+                epochRewardData,
+                XdcConstants.RpcSignerSectionMasternode,
+                XdcConstants.RpcRewardSectionMasternode,
+                accountKey,
+                XdcConstants.RpcAccountStatusMasternode,
+                out AccountEpochReward masternodeReward))
+        {
+            masternodeReward.EpochBlockNum = epochBlockNumber;
+            masternodeReward.Address = account;
+            return masternodeReward;
+        }
+
+        if (TryReadSignerEpochReward(
+                epochRewardData,
+                XdcConstants.RpcSignerSectionProtector,
+                XdcConstants.RpcRewardSectionProtector,
+                accountKey,
+                XdcConstants.RpcAccountStatusProtector,
+                out AccountEpochReward protectorReward))
+        {
+            protectorReward.EpochBlockNum = epochBlockNumber;
+            protectorReward.Address = account;
+            return protectorReward;
+        }
+
+        if (TryReadSignerEpochReward(
+                epochRewardData,
+                XdcConstants.RpcSignerSectionObserver,
+                XdcConstants.RpcRewardSectionObserver,
+                accountKey,
+                XdcConstants.RpcAccountStatusObserver,
+                out AccountEpochReward observerReward))
+        {
+            observerReward.EpochBlockNum = epochBlockNumber;
+            observerReward.Address = account;
+            return observerReward;
+        }
+
+        return new AccountEpochReward
+        {
+            EpochBlockNum = epochBlockNumber,
+            Address = account,
+            AccountStatus = "",
+            AccountReward = null,
+            DelegatedReward = [],
+        };
+    }
+
     public static PublicApiSnapshot BuildRpcSnapshot(this Snapshot snapshot) => new()
     {
         Number = (ulong)snapshot.BlockNumber,
@@ -91,5 +147,49 @@ internal static class RpcHelpers
         };
 
         return missedRoundsMetadata;
+    }
+
+    private static bool TryReadSignerEpochReward(
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> epochRewardData,
+        string signerSection,
+        string rewardSection,
+        string accountKey,
+        string accountStatus,
+        out AccountEpochReward epochReward)
+    {
+        if (!epochRewardData.TryGetValue(signerSection, out Dictionary<string, Dictionary<string, string>>? signers)
+            || !signers.TryGetValue(accountKey, out Dictionary<string, string>? signerData))
+        {
+            epochReward = null!;
+            return false;
+        }
+
+        UInt256? accountReward = null;
+        if (signerData.TryGetValue(XdcConstants.RpcSignerReward, out string? rewardStr)
+            && UInt256.TryParse(rewardStr, out UInt256 reward))
+        {
+            accountReward = reward;
+        }
+
+        Dictionary<string, UInt256> delegatedReward = [];
+        if (epochRewardData.TryGetValue(rewardSection, out Dictionary<string, Dictionary<string, string>>? rewards)
+            && rewards.TryGetValue(accountKey, out Dictionary<string, string>? holders))
+        {
+            foreach ((string holder, string amountStr) in holders)
+            {
+                if (UInt256.TryParse(amountStr, out UInt256 amount))
+                {
+                    delegatedReward[holder] = amount;
+                }
+            }
+        }
+
+        epochReward = new AccountEpochReward
+        {
+            AccountStatus = accountStatus,
+            AccountReward = accountReward,
+            DelegatedReward = delegatedReward,
+        };
+        return true;
     }
 }

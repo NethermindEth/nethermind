@@ -69,4 +69,7 @@ internal static class XdcConstants
     public const string RpcSignerSectionObserver = "signersObserver";
     public const string RpcSignerReward = "reward";
     public const string RpcSignerCount = "sign";
+    public const string RpcAccountStatusMasternode = "MasterNode";
+    public const string RpcAccountStatusProtector = "ProtectorNode";
+    public const string RpcAccountStatusObserver = "ObserverNode";
 }
