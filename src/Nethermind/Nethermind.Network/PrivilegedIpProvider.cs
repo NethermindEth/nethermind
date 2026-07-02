@@ -48,13 +48,10 @@ public sealed class PrivilegedIpProvider : IPrivilegedIpProvider
             .ToHashSet();
     }
 
-    public bool IsPrivileged(IPAddress ip)
-    {
-        IPAddress normalized = Normalize(ip);
-        return _configStaticIps.Contains(normalized)
-               || _staticNodesManager.Nodes.Any(n => Normalize(n.HostIp).Equals(normalized))
-               || _trustedNodesManager.Nodes.Any(n => Normalize(n.HostIp).Equals(normalized));
-    }
+    public bool IsPrivileged(IPAddress ip) =>
+        _configStaticIps.Contains(Normalize(ip))
+        || _staticNodesManager.ContainsIp(ip)
+        || _trustedNodesManager.ContainsIp(ip);
 
     private static IPAddress Normalize(IPAddress ip) => ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip;
 }

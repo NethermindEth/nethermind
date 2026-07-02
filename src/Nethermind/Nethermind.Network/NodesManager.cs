@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,6 +24,50 @@ public abstract class NodesManager(string path, ILogger logger)
 
     protected readonly ILogger _logger = logger;
     protected ConcurrentDictionary<PublicKey, NetworkNode> _nodes = [];
+
+    // Refcount of managed nodes per (normalized) IP so membership can be queried in O(1) on hot paths.
+    // A count rather than a set because several nodes can share one IP (different ports/keys).
+    private readonly ConcurrentDictionary<IPAddress, int> _ipCounts = new();
+
+    /// <summary>Returns <see langword="true"/> when any managed node is reachable at <paramref name="ip"/>.</summary>
+    public bool ContainsIp(IPAddress ip) => _ipCounts.ContainsKey(Normalize(ip));
+
+    /// <summary>Adds a node and updates the IP index. Returns <see langword="false"/> if already present.</summary>
+    protected bool TryAddNode(NetworkNode node)
+    {
+        if (!_nodes.TryAdd(node.NodeId, node)) return false;
+        _ipCounts.AddOrUpdate(Normalize(node.HostIp), 1, static (_, count) => count + 1);
+        return true;
+    }
+
+    /// <summary>Replaces the whole node set (bulk load) and rebuilds the IP index.</summary>
+    protected void SetNodes(ConcurrentDictionary<PublicKey, NetworkNode> nodes)
+    {
+        _nodes = nodes;
+        _ipCounts.Clear();
+        foreach (KeyValuePair<PublicKey, NetworkNode> kvp in nodes)
+        {
+            _ipCounts.AddOrUpdate(Normalize(kvp.Value.HostIp), 1, static (_, count) => count + 1);
+        }
+    }
+
+    private void UnindexIp(NetworkNode node)
+    {
+        IPAddress key = Normalize(node.HostIp);
+        while (_ipCounts.TryGetValue(key, out int count))
+        {
+            if (count > 1)
+            {
+                if (_ipCounts.TryUpdate(key, count - 1, count)) return;
+            }
+            else if (_ipCounts.TryRemove(new KeyValuePair<IPAddress, int>(key, count)))
+            {
+                return;
+            }
+        }
+    }
+
+    private static IPAddress Normalize(IPAddress ip) => ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip;
 
     private void EnsureFile(string resource)
     {
@@ -148,6 +193,7 @@ public abstract class NodesManager(string path, ILogger logger)
         if (!_nodes.TryRemove(nodeId, out NetworkNode? removed))
             return false;
 
+        UnindexIp(removed);
         NodeRemoved?.Invoke(this, new ExplicitNodeRemovalEventArgs(new Node(removed)));
         return true;
     }

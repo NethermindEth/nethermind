@@ -23,7 +23,12 @@ namespace Nethermind.Network.Test
         private const string EnodeString =
             "enode://94c15d1b9e2fe7ce56e458b9a3b672ef11894ddedd0c6f247e0f1d3487f52b66208fb4aeb8179fce6e3a749ea93ed147c37976d67af557508d199d9594c35f09@192.81.208.223:30303";
 
+        // Different public key and port, but the SAME IP as EnodeString (for the ContainsIp refcount test).
+        private const string SameIpEnodeString =
+            "enode://94c15d1b9e2fe7ce56e458b9a3b672ef11894ddedd0c6f247e0f1d3487f52b66208fb4aeb8179fce6e3a749ea93ed147c37976d67af557508d199d9594c35f0a@192.81.208.223:30304";
+
         private static readonly NetworkNode Enode = new(EnodeString);
+        private static readonly NetworkNode SameIpEnode = new(SameIpEnodeString);
 
         [SetUp]
         public void Setup()
@@ -57,6 +62,31 @@ namespace Nethermind.Network.Test
             Assert.That(_staticNodesManager.IsStatic(Enode), Is.False);
             await _staticNodesManager.AddAsync(Enode, false);
             Assert.That(_staticNodesManager.IsStatic(Enode), Is.True);
+        }
+
+        [Test]
+        public async Task contains_ip_tracks_membership_and_normalizes()
+        {
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.False);
+            await _staticNodesManager.AddAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.True);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp.MapToIPv6()), Is.True, "IPv4-mapped-IPv6 is normalized");
+            await _staticNodesManager.RemoveAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.False);
+        }
+
+        [Test]
+        public async Task contains_ip_refcounts_nodes_sharing_an_ip()
+        {
+            await _staticNodesManager.AddAsync(Enode, false);
+            await _staticNodesManager.AddAsync(SameIpEnode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.True);
+
+            await _staticNodesManager.RemoveAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.True, "still referenced by the other node on the same IP");
+
+            await _staticNodesManager.RemoveAsync(SameIpEnode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.False, "last node on the IP removed");
         }
 
         [Test]

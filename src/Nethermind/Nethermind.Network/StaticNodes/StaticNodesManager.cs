@@ -26,12 +26,12 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
 
         LogNodeList("Static nodes", nodes);
 
-        _nodes = nodes;
+        SetNodes(nodes);
     }
 
     public async Task<bool> AddAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
-        if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
+        if (!TryAddNode(networkNode))
         {
             if (_logger.IsInfo) _logger.Info($"Static node was already added: {networkNode}");
             return false;
