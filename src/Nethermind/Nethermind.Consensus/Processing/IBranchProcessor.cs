@@ -38,6 +38,11 @@ public interface IBranchProcessor
     event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
 
     /// <summary>
+    /// Fired after branch processing finishes.
+    /// </summary>
+    event EventHandler<BlocksProcessingEventArgs> BlocksProcessed;
+
+    /// <summary>
     /// Fired when a block is being processed.
     /// </summary>
     event EventHandler<BlockEventArgs> BlockProcessing;

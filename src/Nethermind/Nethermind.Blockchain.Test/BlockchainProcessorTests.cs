@@ -102,47 +102,56 @@ public class BlockchainProcessorTests
 
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                 int nextBlock = 0;
-                while (true)
+                BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+                try
                 {
-                    lock (_gate)
+                    while (true)
                     {
-                        bool notYet = false;
-                        for (int i = nextBlock; i < suggestedBlocks.Count; i++)
+                        lock (_gate)
                         {
-                            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
-                            Block suggestedBlock = suggestedBlocks[i];
-                            BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
-                            Hash256 hash = suggestedBlock.Hash!;
-                            if (!_allowed.Contains(hash))
+                            bool notYet = false;
+                            for (int i = nextBlock; i < suggestedBlocks.Count; i++)
                             {
-                                if (_allowedToFail.TryRemove(hash))
+                                Block suggestedBlock = suggestedBlocks[i];
+                                BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                                Hash256 hash = suggestedBlock.Hash!;
+                                if (!_allowed.Contains(hash))
                                 {
-                                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
-                                    throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                    if (_allowedToFail.TryRemove(hash))
+                                    {
+                                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                                        throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                    }
+
+                                    notYet = true;
+                                    break;
                                 }
 
-                                notYet = true;
-                                break;
+                                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                                nextBlock = i + 1;
                             }
 
-                            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
-                            nextBlock = i + 1;
-                        }
-
-                        if (notYet)
-                        {
-                            Monitor.Wait(_gate, MockRecheckInterval);
-                        }
-                        else
-                        {
-                            _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
-                            return suggestedBlocks.ToArray();
+                            if (notYet)
+                            {
+                                Monitor.Wait(_gate, MockRecheckInterval);
+                            }
+                            else
+                            {
+                                _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
+                                return suggestedBlocks.ToArray();
+                            }
                         }
                     }
+                }
+                finally
+                {
+                    BlocksProcessed?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
                 }
             }
 
             public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+
+            public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessed;
 
             public event EventHandler<BlockEventArgs>? BlockProcessing;
 

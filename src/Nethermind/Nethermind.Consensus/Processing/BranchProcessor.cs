@@ -36,6 +36,8 @@ public class BranchProcessor(
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
+    public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessed;
+
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
     private void PreCommitBlock(BlockHeader block)
@@ -72,6 +74,7 @@ public class BranchProcessor(
 
         CancellationTokenSource? backgroundCancellation = new();
         Task? preWarmTask = null;
+        BlocksProcessingEventArgs? blocksProcessingEventArgs = null;
 
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
@@ -87,7 +90,8 @@ public class BranchProcessor(
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
-            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+            blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
+            BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
 
             BlockHeader? preBlockBaseBlock = baseBlock;
 
@@ -189,8 +193,18 @@ public class BranchProcessor(
         }
         finally
         {
-            blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
-            worldStateCloser?.Dispose();
+            try
+            {
+                blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+                worldStateCloser?.Dispose();
+            }
+            finally
+            {
+                if (blocksProcessingEventArgs is not null)
+                {
+                    BlocksProcessed?.Invoke(this, blocksProcessingEventArgs);
+                }
+            }
         }
 
         static void WaitAndClear(ref Task? task)
