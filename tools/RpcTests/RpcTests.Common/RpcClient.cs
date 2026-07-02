@@ -5,13 +5,13 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace Nethermind.RpcTests.Monitor;
+namespace Nethermind.RpcTests.Common;
 
 /// <summary>
 /// Sends JSON-RPC requests to a single node, throwing on transport, status, or parse failure
 /// with the request and response attached for reporting.
 /// </summary>
-internal sealed class RpcClient(Uri url) : IDisposable
+public sealed class RpcClient(Uri url) : IDisposable
 {
     private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(60) };
 
@@ -87,7 +87,7 @@ internal sealed class RpcClient(Uri url) : IDisposable
     void IDisposable.Dispose() => _client.Dispose();
 }
 
-internal static class RpcClientExtensions
+public static class RpcClientExtensions
 {
     public static async Task<JsonNode> RetrySendAsync(this RpcClient client, JsonNode requestData, CancellationToken ct = default)
     {

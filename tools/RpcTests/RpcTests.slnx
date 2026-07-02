@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="RpcTests.Common/RpcTests.Common.csproj" />
   <Project Path="RpcTests.Generator/RpcTests.Generator.csproj" />
   <Project Path="RpcTests.Monitor/RpcTests.Monitor.csproj" />
 </Solution>

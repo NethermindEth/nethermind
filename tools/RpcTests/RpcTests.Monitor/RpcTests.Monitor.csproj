@@ -16,6 +16,14 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="../RpcTests.Common/RpcTests.Common.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Using Include="Nethermind.RpcTests.Common" />
+    </ItemGroup>
+
+    <ItemGroup>
       <None Update="tests/**/*.json">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>

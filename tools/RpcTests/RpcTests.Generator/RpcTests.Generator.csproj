@@ -10,4 +10,12 @@
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../RpcTests.Common/RpcTests.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Nethermind.RpcTests.Common" />
+  </ItemGroup>
+
 </Project>

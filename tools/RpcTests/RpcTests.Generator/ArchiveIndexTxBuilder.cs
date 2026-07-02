@@ -4,7 +4,7 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 
-namespace Nethermind.RpcTests.Monitor;
+namespace Nethermind.RpcTests.Generator;
 
 /// <summary>
 /// Drives the archive-index read path end to end: sources the accounts and storage slots touched in a
