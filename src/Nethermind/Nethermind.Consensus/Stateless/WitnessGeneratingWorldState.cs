@@ -111,7 +111,7 @@ public class WitnessGeneratingWorldState(
     /// <summary>
     /// Walks the pre-state trie(s) with <see cref="PatriciaTrieWitnessGenerator"/> to collect every node a
     /// stateless verifier needs: one pass over the state trie for the touched accounts, then one pass per
-    /// account over its pre-state storage trie for the touched slots. Read/Delete is read off the committed
+    /// account over its pre-state storage trie for the touched slots. Upsert/Delete is read off the committed
     /// post-state (an account that no longer exists, or a slot whose value is now zero, was removed).
     /// </summary>
     private void CollectStateNodes(BlockHeader parentHeader, CollectingSink sink)
@@ -128,8 +128,13 @@ public class WitnessGeneratingWorldState(
             using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
             foreach (AddressAsKey address in _storageSlots.Keys)
             {
+                // A surviving account occupies its state-trie slot in the post-state (an upsert); a removed one is
+                // a delete. Tagging survivors Upsert rather than Read keeps a newly-created account (absent in the
+                // pre-state trie) from being treated as non-occupying, so a sibling deletion in the same branch does
+                // not falsely collapse it — mirrors the storage-slot tagging below and the generator's
+                // upsert-before-delete model.
                 PatriciaTrieWitnessGenerator.AccessType access = base.AccountExists(address)
-                    ? PatriciaTrieWitnessGenerator.AccessType.Read
+                    ? PatriciaTrieWitnessGenerator.AccessType.Upsert
                     : PatriciaTrieWitnessGenerator.AccessType.Delete;
                 accountEntries.Add(new(address.Value.ToAccountPath, access));
             }

@@ -43,8 +43,15 @@ public sealed class NewPayloadWithWitnessHandler(
         using ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
             executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
 
+        // engine_newPayloadV5 returns only after ProcessOne has run, so the registration is already in its
+        // final state — a synchronous check suffices (the using-Dispose cancels it otherwise). Drain any
+        // produced witness up front so every early-return path below disposes it rather than leaking its
+        // pooled buffers (Release is a no-op once the processor has claimed and completed the slot).
+        Witness? capturedWitness = request.Task.IsCompletedSuccessfully ? request.Task.Result : null;
+
         if (statusResult.Result.ResultType != ResultType.Success)
         {
+            capturedWitness?.Dispose();
             return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
                 statusResult.Result.Error ?? "engine_newPayloadV5 failed",
                 statusResult.ErrorCode);
@@ -53,16 +60,11 @@ public sealed class NewPayloadWithWitnessHandler(
         PayloadStatusV1 payloadStatus = statusResult.Data!;
         Witness? witness = null;
 
-        // engine_newPayloadV5 returns only after ProcessOne has run, so the registration is already in
-        // its final state — a synchronous check suffices (the using-Dispose cancels it otherwise).
-        if (request.Task.IsCompletedSuccessfully)
-        {
-            if (payloadStatus.Status == PayloadStatus.Valid)
-                witness = request.Task.Result;
-            else
-                // Non-VALID, so we won't return the witness; dispose it to avoid a leak.
-                request.Task.Result?.Dispose();
-        }
+        if (payloadStatus.Status == PayloadStatus.Valid)
+            witness = capturedWitness;
+        else
+            // Non-VALID, so we won't return the witness; dispose it to avoid a leak.
+            capturedWitness?.Dispose();
 
         return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(
             NewPayloadWithWitnessV1Result.FromPayloadStatus(payloadStatus, witness));

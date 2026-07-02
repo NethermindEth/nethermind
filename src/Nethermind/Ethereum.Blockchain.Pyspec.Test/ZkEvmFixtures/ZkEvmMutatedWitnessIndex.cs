@@ -24,22 +24,33 @@ namespace Ethereum.Blockchain.Pyspec.Test.ZkEvmFixtures;
 /// </remarks>
 internal static class ZkEvmMutatedWitnessIndex
 {
-    // normalized test name -> block indices whose witness is mutated.
-    private static readonly Lazy<IReadOnlyDictionary<string, HashSet<int>>> s_index = new(Build);
+    // composite "category::name" key -> mutated-witness info for that test.
+    private static readonly Lazy<IReadOnlyDictionary<string, MutatedInfo>> s_index = new(Build);
+
+    /// <summary>The mutated-witness footprint of a single engine test: how many payloads it declared and which of
+    /// their indices are marked mutated.</summary>
+    private readonly record struct MutatedInfo(int PayloadCount, HashSet<int> MutatedIndices);
 
     /// <summary>Stamps <see cref="TestBlockJson.ExecutionWitnessMutated"/> on the RLP blocks that the
     /// engine fixtures flag as mutated, then yields each test through unchanged.</summary>
     public static IEnumerable<BlockchainTest> StampMutatedBlocks(IEnumerable<BlockchainTest> tests)
     {
-        IReadOnlyDictionary<string, HashSet<int>> index = s_index.Value;
+        IReadOnlyDictionary<string, MutatedInfo> index = s_index.Value;
         foreach (BlockchainTest test in tests)
         {
             if (test.Blocks is { Length: > 0 } blocks && test.Name is not null
-                && index.TryGetValue(Normalize(test.Name), out HashSet<int> mutatedIndices))
+                && index.TryGetValue(Key(test.Category, test.Name), out MutatedInfo info))
             {
+                // The blocks[i] == engineNewPayloads[i] mapping is the whole basis for stamping by index; a count
+                // mismatch means that assumption broke (fixture format drift), so fail loudly rather than mis-stamp.
+                if (blocks.Length != info.PayloadCount)
+                    throw new InvalidOperationException(
+                        $"zkEVM mutated-witness index misaligned for '{Key(test.Category, test.Name)}': " +
+                        $"{blocks.Length} RLP blocks vs {info.PayloadCount} engine payloads.");
+
                 for (int i = 0; i < blocks.Length; i++)
                 {
-                    if (mutatedIndices.Contains(i))
+                    if (info.MutatedIndices.Contains(i))
                         blocks[i].ExecutionWitnessMutated = true;
                 }
             }
@@ -47,19 +58,24 @@ internal static class ZkEvmMutatedWitnessIndex
         }
     }
 
-    // BlockchainTest.Name is the fixture key AFTER ".py::" (see JsonToEthereumTest.GetNameAndCategory),
-    // so reduce the engine JSON key the same way, then collapse "blockchain_test_engine" onto
-    // "blockchain_test" so both formats' ids match (also covers the *_from_state_test variants).
-    private static string Normalize(string testKeyOrName)
+    // Key on category + name (not name alone): BlockchainTest.Name is only the part AFTER ".py::", so same-named
+    // functions in different source dirs would otherwise collide and cross-stamp each other's blocks. Collapse
+    // "blockchain_test_engine" onto "blockchain_test" so both formats' ids match (also covers *_from_state_test).
+    private static string Key(string category, string name)
+        => (category ?? string.Empty) + "::" + name.Replace("blockchain_test_engine", "blockchain_test");
+
+    // Splits an engine fixture key into (category, name) the same way JsonToEthereumTest.GetNameAndCategory does for
+    // the RLP side: everything before ".py::" is the category, everything after is the name.
+    private static (string Category, string Name) SplitKey(string key)
     {
-        int i = testKeyOrName.IndexOf(".py::", StringComparison.Ordinal);
-        string name = i < 0 ? testKeyOrName : testKeyOrName[(i + 5)..];
-        return name.Replace("blockchain_test_engine", "blockchain_test");
+        key = key.Replace('\\', '/');
+        int i = key.IndexOf(".py::", StringComparison.Ordinal);
+        return i < 0 ? (string.Empty, key) : (key[..i], key[(i + 5)..]);
     }
 
-    private static IReadOnlyDictionary<string, HashSet<int>> Build()
+    private static IReadOnlyDictionary<string, MutatedInfo> Build()
     {
-        Dictionary<string, HashSet<int>> index = [];
+        Dictionary<string, MutatedInfo> index = [];
 
         // Same args as the loader → reuses the loader's cached download dir.
         string cacheDir = TestFixtureDownloader.EnsureDownloaded(
@@ -84,17 +100,20 @@ internal static class ZkEvmMutatedWitnessIndex
                     continue;
 
                 HashSet<int> mutatedIndices = null;
-                int i = 0;
+                int payloadCount = 0;
                 foreach (JsonElement payload in payloads.EnumerateArray())
                 {
                     if (payload.TryGetProperty("executionWitnessMutated", out JsonElement mutated)
                         && mutated.ValueKind == JsonValueKind.True)
-                        (mutatedIndices ??= []).Add(i);
-                    i++;
+                        (mutatedIndices ??= []).Add(payloadCount);
+                    payloadCount++;
                 }
 
                 if (mutatedIndices is not null)
-                    index[Normalize(testProperty.Name)] = mutatedIndices;
+                {
+                    (string category, string name) = SplitKey(testProperty.Name);
+                    index[Key(category, name)] = new MutatedInfo(payloadCount, mutatedIndices);
+                }
             }
         }
 
