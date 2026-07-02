@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.GasPolicy;
 
@@ -14,19 +15,24 @@ public static class Eip8037BlockGasInclusionCheck
     public enum Outcome { Ok, RegularDimensionExceeded, StateDimensionExceeded }
 
     public static Outcome Validate(
-        long blockGasLimit,
-        long cumulativeBlockRegular,
-        long cumulativeBlockState,
-        long txGas)
+        ulong blockGasLimit,
+        ulong cumulativeBlockRegular,
+        ulong cumulativeBlockState,
+        ulong txGas)
     {
-        long regularAvailable = blockGasLimit - cumulativeBlockRegular;
-        long stateAvailable = blockGasLimit - cumulativeBlockState;
+        // A cumulative dimension that already exceeded the block limit must reject — silent saturation
+        // would otherwise let the worst-case check pass and admit a tx that block-end validation rejects.
+        if (cumulativeBlockRegular > blockGasLimit) return Outcome.RegularDimensionExceeded;
+        if (cumulativeBlockState > blockGasLimit) return Outcome.StateDimensionExceeded;
+
+        ulong regularAvailable = blockGasLimit - cumulativeBlockRegular;
+        ulong stateAvailable = blockGasLimit - cumulativeBlockState;
 
         // EIP-8037: the inclusion check reserves the transaction's full gas limit in each dimension
         // (no intrinsic subtraction). The regular dimension is additionally bounded by EIP-7825's
         // per-tx gas limit cap, since regular execution can never exceed it; the state dimension has
         // no such cap, as state-heavy work may be funded by the state reservoir above it.
-        long worstCaseRegular = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
+        ulong worstCaseRegular = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
         if (worstCaseRegular > regularAvailable)
             return Outcome.RegularDimensionExceeded;
 
@@ -44,6 +50,6 @@ public static class Eip8037BlockGasInclusionCheck
     // even go negative when the reservoir survives, so subtract the state component directly. The
     // EIP-7623/7976 calldata floor is a sender-only minimum (tx_gas_used / receipts) and must NOT
     // inflate the block's regular-gas dimension.
-    public static long CalculateBlockRegularGas(long preRefundGas, long blockStateGas)
-        => Math.Max(0, preRefundGas - Math.Max(0, blockStateGas));
+    public static ulong CalculateBlockRegularGas(ulong preRefundGas, ulong blockStateGas)
+        => preRefundGas.SaturatingSub(blockStateGas);
 }

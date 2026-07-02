@@ -35,9 +35,9 @@ public class PayloadDecoder : IPayloadDecoder
         payload.ReceiptsRoot = new(movingData.TakeAndMove(32));
         payload.LogsBloom = new(movingData.TakeAndMove(256));
         payload.PrevRandao = new(movingData.TakeAndMove(32));
-        payload.BlockNumber = (long)BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-        payload.GasLimit = (long)BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-        payload.GasUsed = (long)BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.BlockNumber = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.GasLimit = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.GasUsed = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
         payload.Timestamp = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
         UInt32 extraDataOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(movingData.TakeAndMove(4));
         payload.BaseFeePerGas = new(movingData.TakeAndMove(32));

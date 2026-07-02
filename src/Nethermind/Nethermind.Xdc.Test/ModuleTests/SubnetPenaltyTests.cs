@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
@@ -36,7 +35,7 @@ internal class SubnetPenaltyTests
             validatorSelector: (validators, i) => validators[i % ValidatorCount]
         );
 
-        long target = EpochLength * 3 - Gap;
+        ulong target = EpochLength * 3 - Gap;
         Address[] penalties = ctx.Handler.HandlePenalties(
             target,
             ctx.Headers[(int)(target - 1)].Hash!,
@@ -56,7 +55,7 @@ internal class SubnetPenaltyTests
             validatorSelector: (validators, i) => i / EpochLength == absentEpoch ? validators[i % (ValidatorCount - 1)] : validators[i % ValidatorCount]
         );
 
-        long target = EpochLength * 3 - Gap;
+        ulong target = EpochLength * 3 - Gap;
         Address[] penalties = ctx.Handler.HandlePenalties(
             target,
             ctx.Headers[(int)(target - 1)].Hash!,
@@ -74,13 +73,14 @@ internal class SubnetPenaltyTests
             validatorSelector: (validators, i) => validators[i % ValidatorCount]
         );
 
-        long target = EpochLength * 3 - Gap;
+        ulong target = EpochLength * 3 - Gap;
+        int targetHeaderIndex = (int)target - EpochLength + 1;
 
         Address[] injectedPenalties = [TestItem.AddressA, TestItem.AddressB];
         byte[] penaltyBytes = new byte[injectedPenalties.Length * Address.Size];
         for (int i = 0; i < injectedPenalties.Length; i++)
             injectedPenalties[i].Bytes.CopyTo(penaltyBytes.AsSpan(i * Address.Size));
-        ctx.Headers[target - EpochLength + 1].Penalties = penaltyBytes;
+        ctx.Headers[targetHeaderIndex].Penalties = penaltyBytes;
 
         Address[] penalties = ctx.Handler.HandlePenalties(
             target,
@@ -99,9 +99,9 @@ internal class SubnetPenaltyTests
             validatorSelector: (validators, i) => i / EpochLength == 2 ? validators[i % (ValidatorCount - 1)] : validators[i % ValidatorCount]
         );
 
-        long target = EpochLength * 3 - Gap;
-        long signBlock = (target - 1) / MergeSignRange * MergeSignRange;
-        BlockHeader header = ctx.Headers[signBlock];
+        ulong target = EpochLength * 3 - Gap;
+        ulong signBlock = (target - 1) / MergeSignRange * MergeSignRange;
+        BlockHeader header = ctx.Headers[(int)signBlock];
         Transaction tx = BuildSigningTx(ctx.Spec, header.Number, header.Hash!, ctx.ValidatorKeys.Last());
         ctx.HashToBlock[header.Hash!] = new Block(header, [tx], Array.Empty<BlockHeader>());
 
@@ -121,9 +121,9 @@ internal class SubnetPenaltyTests
             validatorSelector: (validators, i) => i / EpochLength == 2 ? validators[i % (ValidatorCount - 1)] : validators[i % ValidatorCount]
         );
 
-        long target = EpochLength * 3 - Gap;
-        long signBlock = (target - 1 - (long)RangeReturnSigner) / MergeSignRange * MergeSignRange;
-        BlockHeader header = ctx.Headers[signBlock];
+        ulong target = EpochLength * 3 - Gap;
+        ulong signBlock = (target - 1 - RangeReturnSigner) / MergeSignRange * MergeSignRange;
+        BlockHeader header = ctx.Headers[(int)signBlock];
         Transaction tx = BuildSigningTx(ctx.Spec, header.Number, header.Hash!, ctx.ValidatorKeys.Last());
         ctx.HashToBlock[header.Hash!] = new Block(header, [tx], Array.Empty<BlockHeader>());
 
@@ -145,9 +145,9 @@ internal class SubnetPenaltyTests
             validatorSelector: (validators, i) => i / EpochLength == 2 ? validators[i % (ValidatorCount - 1)] : validators[i % ValidatorCount]
         );
 
-        long target = EpochLength * 3 - Gap;
-        long signBlock = (target - 1) / MergeSignRange * MergeSignRange - 1;
-        BlockHeader header = ctx.Headers[signBlock];
+        ulong target = EpochLength * 3 - Gap;
+        ulong signBlock = (target - 1) / MergeSignRange * MergeSignRange - 1;
+        BlockHeader header = ctx.Headers[(int)signBlock];
         Transaction tx = BuildSigningTx(ctx.Spec, header.Number, header.Hash!, ctx.ValidatorKeys.Last());
         ctx.HashToBlock[header.Hash!] = new Block(header, [tx], Array.Empty<BlockHeader>());
 
@@ -167,7 +167,8 @@ internal class SubnetPenaltyTests
             validatorSelector: (validators, i) => validators[i % ValidatorCount]
         );
 
-        long target = EpochLength * 3 - Gap;
+        ulong target = EpochLength * 3 - Gap;
+        int targetHeaderIndex = (int)target - EpochLength + 1;
 
         Address eip55First = new("0xECf1aC276D2D3333483cF394d2F73BaB6915feCb");
         Address eip55Second = new("0xe3eE640071486df6A007021c34D52b5DE7be94e3");
@@ -179,7 +180,7 @@ internal class SubnetPenaltyTests
         byte[] penaltyBytes = new byte[injectedPenalties.Length * Address.Size];
         for (int i = 0; i < injectedPenalties.Length; i++)
             injectedPenalties[i].Bytes.CopyTo(penaltyBytes.AsSpan(i * Address.Size));
-        ctx.Headers[target - EpochLength + 1].Penalties = penaltyBytes;
+        ctx.Headers[targetHeaderIndex].Penalties = penaltyBytes;
 
         Address[] penalties = ctx.Handler.HandlePenalties(
             target,
@@ -192,10 +193,10 @@ internal class SubnetPenaltyTests
     // ─── Helpers ──────────────────────────────────────────────────────
 
     private static Transaction BuildSigningTx(
-        IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0) =>
+        IXdcReleaseSpec spec, ulong blockNumber, Hash256 blockHash, PrivateKey signer, ulong nonce = 0) =>
         Build.A.Transaction
             .WithChainId(0)
-            .WithNonce((UInt256)nonce)
+            .WithNonce(nonce)
             .WithGasLimit(200000)
             .WithXdcSigningData(blockNumber, blockHash)
             .ToBlockSignerContract(spec)
@@ -238,9 +239,9 @@ internal class SubnetPenaltyTests
             hashToBlock[hash] = blocks[i];
         }
 
-        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong?>())
             .Returns(ci => hashToHeader.TryGetValue(ci.ArgAt<Hash256>(0), out XdcSubnetBlockHeader? h) ? h : null);
-        blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<long>())
+        blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<ulong?>())
             .Returns(ci => hashToBlock.TryGetValue(ci.ArgAt<Hash256>(0), out Block? block) ? block : null);
         blockTree.Head.Returns(blocks.Last());
 
@@ -265,13 +266,13 @@ internal class SubnetPenaltyTests
             .Returns(ci =>
             {
                 XdcBlockHeader header = (XdcBlockHeader)ci.Args()[0];
-                long switchEpoch = header.Number / EpochLength * EpochLength;
+                ulong switchEpoch = header.Number / EpochLength * EpochLength;
                 int idx = Math.Min((int)switchEpoch, chainLength - 1);
                 return new EpochSwitchInfo(
                     validatorAddresses,
                     [],
                     headers[idx].PenaltiesAddress?.ToArray() ?? [],
-                    new BlockRoundInfo(headers[idx].Hash!, (ulong)switchEpoch, switchEpoch));
+                    new BlockRoundInfo(headers[idx].Hash!, switchEpoch, switchEpoch));
             });
 
         ISigningTxCache signingTxCache = new SigningTxCache(blockTree, specProvider);

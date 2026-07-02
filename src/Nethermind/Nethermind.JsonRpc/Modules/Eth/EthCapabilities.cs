@@ -40,7 +40,7 @@ public record EthCapabilities(
 /// <summary>Head block number and hash.</summary>
 /// <param name="Number">Block number.</param>
 /// <param name="Hash">Block hash.</param>
-public readonly record struct ChainHead(long Number, Hash256 Hash);
+public readonly record struct ChainHead(ulong Number, Hash256 Hash);
 
 /// <summary>Availability descriptor for one historical data resource.</summary>
 /// <param name="Disabled"><c>true</c> when the resource is completely unavailable on this node.</param>
@@ -48,7 +48,7 @@ public readonly record struct ChainHead(long Number, Hash256 Hash);
 /// <param name="DeleteStrategy">Retention / deletion strategy. Present only when data is pruned with a rolling window. Omitted for archive nodes or disabled resources.</param>
 public readonly record struct ResourceAvailability(
     bool Disabled,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? OldestBlock = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ulong? OldestBlock = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DeleteStrategy? DeleteStrategy = null);
 
 /// <summary>Rolling-window deletion strategy for a resource.</summary>
@@ -56,4 +56,4 @@ public readonly record struct ResourceAvailability(
 /// <param name="RetentionBlocks">Number of recent blocks retained. Per spec this is a JSON integer (not a hex quantity).</param>
 public readonly record struct DeleteStrategy(
     string Type,
-    [property: JsonConverter(typeof(LongRawJsonConverter))] long RetentionBlocks);
+    [property: JsonConverter(typeof(ULongRawJsonConverter))] ulong RetentionBlocks);

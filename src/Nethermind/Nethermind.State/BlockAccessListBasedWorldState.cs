@@ -117,9 +117,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return default;
     }
 
-    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce) => oldNonce = GetNonce(address);
+    public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce) => oldNonce = GetNonce(address);
 
-    public override void SetNonce(Address address, in UInt256 nonce) { }
+    public override void SetNonce(Address address, in ulong nonce) { }
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => true;
@@ -138,7 +138,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return ref parentReader.GetBalance(address);
     }
 
-    public override UInt256 GetNonce(Address address)
+    public override ulong GetNonce(Address address)
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
@@ -175,16 +175,16 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void DeleteAccount(Address address) { }
 
-    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default) { }
+    public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default) { }
 
-    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default) { }
+    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default) { }
 
     public override bool TryGetAccount(Address address, out AccountStruct account)
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
         bool exists = parentReader.TryGetAccount(address, out account);
-        UInt256 nonce = exists ? account.Nonce : UInt256.Zero;
+        ulong nonce = exists ? account.Nonce : 0;
         UInt256 balance = exists ? account.Balance : UInt256.Zero;
         ValueHash256 storageRoot = exists ? account.StorageRoot : Keccak.EmptyTreeHash.ValueHash256;
         ValueHash256 codeHash = exists ? account.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
@@ -238,7 +238,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         // over the address into a pre-existing-account create that wrongly refunds its EIP-8037
         // create-state gas.
         => !GetBalance(address).IsZero
-           || !GetNonce(address).IsZero
+           || GetNonce(address) != 0
            || IsContract(address);
 
     public override bool IsContract(Address address)
@@ -261,7 +261,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     // BAL-backed mutations do not own MPT changes; CommitTree still delegates to commit the parent tree.
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) { }
 
-    public override void DecrementNonce(Address address, UInt256 delta) { }
+    public override void DecrementNonce(Address address, ulong delta) { }
 
     public override void RecalculateStateRoot() { }
 

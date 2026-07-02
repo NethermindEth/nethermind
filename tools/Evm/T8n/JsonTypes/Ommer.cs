@@ -5,4 +5,4 @@ using Nethermind.Core;
 
 namespace Evm.T8n.JsonTypes;
 
-public readonly record struct Ommer(int Delta, Address Address);
+public readonly record struct Ommer(ulong Delta, Address Address);

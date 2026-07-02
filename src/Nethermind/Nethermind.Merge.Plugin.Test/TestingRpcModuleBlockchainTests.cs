@@ -61,7 +61,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
         {
             BlockHeader head = chain.BlockTree.Head!.Header;
             Transaction tx = Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .WithTo(TestItem.AddressF)
                 .WithValue(transferValue)
                 .WithGasLimit(21_000)
@@ -95,7 +95,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
 
         BlockHeader head = chain.BlockTree.Head!.Header;
         Transaction tx = Build.A.Transaction
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .WithTo(TestItem.AddressF)
             .WithValue(1.Ether)
             .WithGasLimit(21_000)

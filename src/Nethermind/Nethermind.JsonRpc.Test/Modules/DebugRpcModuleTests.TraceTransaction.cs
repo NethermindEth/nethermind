@@ -43,8 +43,8 @@ public partial class DebugRpcModuleTests
         Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        long blockNumber = context.Blockchain.BlockTree.Head!.Number;
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, 0, options);
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
@@ -59,7 +59,7 @@ public partial class DebugRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         Hash256? blockHash = context.Blockchain.BlockTree.Head!.Hash;
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, 0, options);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
@@ -89,7 +89,7 @@ public partial class DebugRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, 0, options);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }

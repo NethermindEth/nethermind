@@ -190,13 +190,14 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
 
+                .AddSingleton<IAuRaBlockFinalizationManager>(Substitute.For<IAuRaBlockFinalizationManager>())
+
                 .AddDecorator<AuRaNethermindApi>((_, api) =>
                 {
                     // Yes getting from `TestBlockchain` itself, since steps are not run
                     // and some of these are not from DI. you know... chicken and egg, but don't forget about the rooster.
                     api.TxPool = TxPool;
                     api.TransactionComparerProvider = TransactionComparerProvider;
-                    api.AuRaFinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
                     return api;
                 });
 

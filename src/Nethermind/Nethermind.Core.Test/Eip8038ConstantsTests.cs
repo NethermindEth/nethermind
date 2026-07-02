@@ -15,12 +15,12 @@ public class Eip8038ConstantsTests
     [Test]
     public void Base_parameters_match_the_devnet6_repriced_values()
     {
-        long coldAccountAccess = Eip8038Constants.ColdAccountAccess;
-        long warmAccess = Eip8038Constants.WarmAccess;
-        long coldStorageAccess = Eip8038Constants.ColdStorageAccess;
-        long accountWrite = Eip8038Constants.AccountWrite;
-        long storageWrite = Eip8038Constants.StorageWrite;
-        long callStipend = Eip8038Constants.CallStipend;
+        ulong coldAccountAccess = Eip8038Constants.ColdAccountAccess;
+        ulong warmAccess = Eip8038Constants.WarmAccess;
+        ulong coldStorageAccess = Eip8038Constants.ColdStorageAccess;
+        ulong accountWrite = Eip8038Constants.AccountWrite;
+        ulong storageWrite = Eip8038Constants.StorageWrite;
+        ulong callStipend = Eip8038Constants.CallStipend;
 
         Assert.Multiple(() =>
         {
@@ -46,36 +46,36 @@ public class Eip8038ConstantsTests
     [Test]
     public void Call_value_is_account_write_plus_stipend()
     {
-        long callValue = Eip8038Constants.CallValue;
+        ulong callValue = Eip8038Constants.CallValue;
         Assert.That(callValue, Is.EqualTo(Eip8038Constants.AccountWrite + Eip8038Constants.CallStipend));
     }
 
     [Test]
     public void Create_access_is_account_write_plus_cold_storage_access()
     {
-        long createAccess = Eip8038Constants.CreateAccess;
+        ulong createAccess = Eip8038Constants.CreateAccess;
         Assert.That(createAccess, Is.EqualTo(Eip8038Constants.AccountWrite + Eip8038Constants.ColdStorageAccess));
     }
 
     [Test]
     public void Access_list_address_cost_equals_cold_account_access()
     {
-        long addressCost = Eip8038Constants.AccessListAddressCost;
+        ulong addressCost = Eip8038Constants.AccessListAddressCost;
         Assert.That(addressCost, Is.EqualTo(Eip8038Constants.ColdAccountAccess));
     }
 
     [Test]
     public void Access_list_storage_key_cost_equals_cold_storage_access()
     {
-        long storageKeyCost = Eip8038Constants.AccessListStorageKeyCost;
+        ulong storageKeyCost = Eip8038Constants.AccessListStorageKeyCost;
         Assert.That(storageKeyCost, Is.EqualTo(Eip8038Constants.ColdStorageAccess));
     }
 
     [Test]
     public void Access_list_costs_are_raised_above_the_eip2930_values()
     {
-        long addressCost = Eip8038Constants.AccessListAddressCost;
-        long storageKeyCost = Eip8038Constants.AccessListStorageKeyCost;
+        ulong addressCost = Eip8038Constants.AccessListAddressCost;
+        ulong storageKeyCost = Eip8038Constants.AccessListStorageKeyCost;
 
         Assert.Multiple(() =>
         {
@@ -87,8 +87,8 @@ public class Eip8038ConstantsTests
     [Test]
     public void Storage_clear_refund_follows_the_derivation_formula()
     {
-        long storageClearRefund = Eip8038Constants.StorageClearRefund;
-        long expected = (Eip8038Constants.StorageWrite + Eip8038Constants.ColdStorageAccess) * 4800 / 5000;
+        ulong storageClearRefund = Eip8038Constants.StorageClearRefund;
+        ulong expected = (Eip8038Constants.StorageWrite + Eip8038Constants.ColdStorageAccess) * 4800 / 5000;
         Assert.That(storageClearRefund, Is.EqualTo(expected));
     }
 }
