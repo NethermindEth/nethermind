@@ -26,6 +26,9 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
         spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V4;
         spec.EngineApiPayloadBodiesByHashVersion = EngineApiVersions.PayloadBodiesByHash.V2;
         spec.EngineApiPayloadBodiesByRangeVersion = EngineApiVersions.PayloadBodiesByRange.V2;
+        // EIP-8246 is implemented but stays off here: it is still a Draft and not part of the
+        // EEST `for_amsterdam` fixtures, so enabling it would diverge from conformance tests.
+        // It can be activated via the Eip8246Transition chainspec parameter when scheduled.
     }
 
     public static IReleaseSpec NoEip8037Instance { get; } = new Amsterdam { IsEip8037Enabled = false };
