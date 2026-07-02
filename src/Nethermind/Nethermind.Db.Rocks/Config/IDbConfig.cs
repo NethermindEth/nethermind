@@ -35,7 +35,7 @@ public interface IDbConfig : IConfig
     double CompressibilityHint { get; set; }
     [ConfigItem(
         Description = "How RocksDB is flushed on shutdown. 'None' skips flushing; 'WalOnly' flushes only the write-ahead log (fast, recovered via WAL replay on restart); 'Full' also materializes memtables into SST files (slower).",
-        DefaultValue = "WalOnly")]
+        DefaultValue = "Full")]
     FlushOnExitMode FlushOnExit { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }

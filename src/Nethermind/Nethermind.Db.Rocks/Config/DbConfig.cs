@@ -82,7 +82,7 @@ public class DbConfig : IDbConfig
     public bool? VerifyChecksum { get; set; } = true;
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
-    public FlushOnExitMode FlushOnExit { get; set; } = FlushOnExitMode.WalOnly;
+    public FlushOnExitMode FlushOnExit { get; set; } = FlushOnExitMode.Full;
 
     public string BadBlocksDbRocksDbOptions { get; set; } = "";
     public string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
