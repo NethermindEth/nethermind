@@ -33,7 +33,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading the program counter.
-        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        TGasPolicy.Consume<BaseGasCost>(ref gas);
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
         return stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
     }
@@ -54,7 +54,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost specific for a jump destination marker.
-        TGasPolicy.Consume(ref gas, GasCostOf.JumpDest);
+        TGasPolicy.Consume<JumpDestGasCost>(ref gas);
 
         return EvmExceptionType.None;
     }
@@ -77,7 +77,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost for performing a jump.
-        TGasPolicy.Consume(ref gas, GasCostOf.Jump);
+        TGasPolicy.Consume<JumpGasCost>(ref gas);
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
@@ -112,7 +112,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the high gas cost for a conditional jump.
-        TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
+        TGasPolicy.Consume<JumpIGasCost>(ref gas);
         // Pop the jump destination.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
@@ -173,7 +173,7 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState) ||
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;
@@ -289,7 +289,7 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionInvalid<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.High);
+        TGasPolicy.Consume<HighGasCost>(ref gas);
         return EvmExceptionType.BadInstruction;
     }
 
