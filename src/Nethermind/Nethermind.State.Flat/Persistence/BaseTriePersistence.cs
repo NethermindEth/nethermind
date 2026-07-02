@@ -224,6 +224,13 @@ public static class BaseTriePersistence
 
             // Delete from FallbackNodes (path length 16+, prefix 0x00)
             EncodeFullStateNodeKey(firstKeyBuf, fromPath);
+            // The length byte sits at the *end* of the key (offset 33) — different from the
+            // StateNodesTop/StateNodes columns where length is packed into the low nibble of
+            // the last path byte. fromPath is always built with Length=64, so without this
+            // override firstKey's length byte is 64 and any candidate at the same path bytes
+            // with length 16..63 would sort below firstKey and escape deletion. Setting it to
+            // 0 widens the lower bound to span every valid length.
+            firstKeyBuf[FullStateNodesKeyLength - PathLengthLength] = 0;
             EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], toPath);
             lastKeyBuf[FullStateNodesKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
@@ -254,6 +261,12 @@ public static class BaseTriePersistence
 
             // Delete from FallbackNodes (path length 16+, prefix 0x01)
             EncodeFullStorageNodeKey(firstKeyBuf, address, fromPath);
+            // Same rationale as the state FallbackNodes block above: length byte is a full
+            // byte after the path (offset 37) instead of packed into a nibble, so firstKey's
+            // encoded length=64 leaves shorter-length same-path-bytes entries below the range.
+            // Setting it to 0 widens the lower bound; the address-suffix filter in
+            // DeleteMatchingKeys still rejects entries for other accounts.
+            firstKeyBuf[1 + StoragePrefixPortion + FullPathLength] = 0;
             EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, toPath);
             lastKeyBuf[FullStorageNodesKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,

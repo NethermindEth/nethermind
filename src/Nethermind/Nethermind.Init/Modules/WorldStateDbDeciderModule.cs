@@ -53,5 +53,13 @@ internal class WorldStateDbDeciderModule : Module
                 (policy, flatFactory, patriciaFactory) =>
                     policy.ShouldTurnOnFlatDb()
                         ? flatFactory()
-                        : (IFullStateFinder)patriciaFactory());
+                        : (IFullStateFinder)patriciaFactory())
+
+            // BAL healing only works against the path-keyed flat backend; the legacy
+            // Patricia store returns a no-op so callers fall through to existing healing.
+            .AddSingleton<IBalHealing, FlatStateActivationPolicy, Func<FlatBalHealing>>(
+                (policy, flatFactory) =>
+                    policy.ShouldTurnOnFlatDb()
+                        ? flatFactory()
+                        : NoopBalHealing.Instance);
 }
