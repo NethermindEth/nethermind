@@ -4,6 +4,7 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
@@ -30,4 +31,7 @@ public class XdcSubnetModule : XdcModule
 
         builder.RegisterType<SubnetSnapshotManager>().As<ISubnetSnapshotManager>().WithAttributeFiltering().SingleInstance();
     }
+
+    protected override void RegisterRewardCalculatorSource(ContainerBuilder builder) =>
+        builder.AddDecorator<IRewardCalculatorSource, XdcSubnetRewardCalculatorSource>();
 }

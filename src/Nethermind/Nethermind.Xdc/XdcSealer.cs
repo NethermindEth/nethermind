@@ -9,13 +9,11 @@ using Nethermind.Serialization.Rlp;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
-internal class XdcSealer(ISigner signer, ILogManager logManager) : ISealer
+internal class XdcSealer(ISigner signer, IHeaderDecoder headerDecoder, ILogManager logManager) : ISealer
 {
-    private static readonly XdcHeaderDecoder _xdcHeaderDecoder = new();
     private readonly ILogger _logger = logManager.GetClassLogger<XdcSealer>();
     public Address Address => signer.Address;
 
@@ -27,10 +25,12 @@ internal class XdcSealer(ISigner signer, ILogManager logManager) : ISealer
     {
         if (block.Header is not XdcBlockHeader xdcBlockHeader)
             throw new ArgumentException("Only XDC headers are supported.");
-        if (block.IsGenesis) throw new InvalidOperationException("Can't sign genesis block");
+
+        if (block.IsGenesis)
+            throw new InvalidOperationException("Can't sign genesis block");
 
         KeccakRlpWriter writer = new();
-        _xdcHeaderDecoder.Encode(ref writer, xdcBlockHeader, RlpBehaviors.ForSealing);
+        headerDecoder.Encode(ref writer, xdcBlockHeader, RlpBehaviors.ForSealing);
         ValueHash256 hash = writer.GetValueHash();
         if (!signer.TrySign(in hash, out Signature signature))
         {
