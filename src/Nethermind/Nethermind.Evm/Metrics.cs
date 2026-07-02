@@ -88,7 +88,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherCalls;
     [Description("Number of calls to other contracts on main processing thread.")]
     public static long MainThreadCalls => _mainCalls.Value;
-    public static void IncrementCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCalls.Value : ref _otherCalls.Value);
+    public static void IncrementCalls(int count = 1) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCalls.Value : ref _otherCalls.Value, count);
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
@@ -97,7 +97,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherSLoadOpcode;
     [Description("Number of SLOAD opcodes executed on main processing thread.")]
     public static long MainThreadSLoadOpcode => _mainSLoadOpcode.Value;
-    public static void IncrementSLoadOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSLoadOpcode.Value : ref _otherSLoadOpcode.Value);
+    public static void IncrementSLoadOpcode(int count = 1) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainSLoadOpcode.Value : ref _otherSLoadOpcode.Value, count);
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
@@ -106,7 +106,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherSStoreOpcode;
     [Description("Number of SSTORE opcodes executed on main processing thread.")]
     public static long MainThreadSStoreOpcode => _mainSStoreOpcode.Value;
-    public static void IncrementSStoreOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode.Value : ref _otherSStoreOpcode.Value);
+    public static void IncrementSStoreOpcode(int count = 1) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainSStoreOpcode.Value : ref _otherSStoreOpcode.Value, count);
 
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
@@ -115,7 +115,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherEmptyCalls;
     [Description("Number of calls made to addresses without code on main processing thread.")]
     public static long MainThreadEmptyCalls => _mainEmptyCalls.Value;
-    public static void IncrementEmptyCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEmptyCalls.Value : ref _otherEmptyCalls.Value);
+    public static void IncrementEmptyCalls(int count = 1) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainEmptyCalls.Value : ref _otherEmptyCalls.Value, count);
 
     [CounterMetric]
     [Description("Number of contract create calls.")]
@@ -124,7 +124,7 @@ public class Metrics
     private static CacheLinePaddedLong _otherCreates;
     [Description("Number of contract create calls on main processing thread.")]
     public static long MainThreadCreates => _mainCreates.Value;
-    public static void IncrementCreates() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCreates.Value : ref _otherCreates.Value);
+    public static void IncrementCreates(int count = 1) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCreates.Value : ref _otherCreates.Value, count);
 
     [Description("Number of contracts' code analysed for jump destinations.")]
     public static long ContractsAnalysed => _mainContractsAnalysed.Value + _otherContractsAnalysed.Value;

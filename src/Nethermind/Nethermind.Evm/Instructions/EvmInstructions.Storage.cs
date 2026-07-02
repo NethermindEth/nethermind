@@ -346,8 +346,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Increment the SSTORE opcode metric.
-        Metrics.IncrementSStoreOpcode();
+        vm.SStoreOpcodeCount++;
 
         VmState<TGasPolicy> vmState = vm.VmState;
         // Disallow storage modifications in static calls.
@@ -455,8 +454,7 @@ public static partial class EvmInstructions
         where TUseNetGasStipendFix : struct, IFlag
         where TEip8037 : struct, IFlag
     {
-        // Increment the SSTORE opcode metric.
-        Metrics.IncrementSStoreOpcode();
+        vm.SStoreOpcodeCount++;
 
         VmState<TGasPolicy> vmState = vm.VmState;
         // Disallow storage modifications in static calls.
@@ -635,8 +633,7 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
 
-        // Increment the SLOAD opcode metric.
-        Metrics.IncrementSLoadOpcode();
+        vm.SLoadOpcodeCount++;
 
         // Deduct the gas cost for performing an SLOAD.
         TGasPolicy.Consume(ref gas, spec.GasCosts.SLoadCost);

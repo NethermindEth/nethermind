@@ -91,8 +91,7 @@ public static partial class EvmInstructions
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
     {
-        // Increment global call metrics.
-        Metrics.IncrementCalls();
+        vm.CallCount++;
 
         // Clear previous return data.
         vm.ReturnData = null;
@@ -264,7 +263,7 @@ public static partial class EvmInstructions
                 }
                 state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
             }
-            Metrics.IncrementEmptyCalls();
+            vm.EmptyCallCount++;
             vm.ReturnData = null;
             return EvmExceptionType.None;
         }

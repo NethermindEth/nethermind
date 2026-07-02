@@ -22,6 +22,7 @@ public interface IVirtualMachine<TGasPolicy>
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
     void SetTxExecutionContext(in TxExecutionContext txExecutionContext);
     int OpCodeCount { get; }
+    void FlushExecutionMetrics();
 }
 
 /// <summary>

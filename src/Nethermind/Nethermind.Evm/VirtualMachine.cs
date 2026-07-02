@@ -113,6 +113,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
+    public int CallCount { get; set; }
+    public int SLoadOpcodeCount { get; set; }
+    public int SStoreOpcodeCount { get; set; }
+    public int EmptyCallCount { get; set; }
+    public int CreateCount { get; set; }
+
+    public void FlushExecutionMetrics()
+    {
+        if (CallCount > 0) Metrics.IncrementCalls(CallCount);
+        if (SLoadOpcodeCount > 0) Metrics.IncrementSLoadOpcode(SLoadOpcodeCount);
+        if (SStoreOpcodeCount > 0) Metrics.IncrementSStoreOpcode(SStoreOpcodeCount);
+        if (EmptyCallCount > 0) Metrics.IncrementEmptyCalls(EmptyCallCount);
+        if (CreateCount > 0) Metrics.IncrementCreates(CreateCount);
+    }
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
@@ -149,6 +163,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
         OpCodeCount = 0;
+        CallCount = 0;
+        SLoadOpcodeCount = 0;
+        SStoreOpcodeCount = 0;
+        EmptyCallCount = 0;
+        CreateCount = 0;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
@@ -1132,7 +1151,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Increment a metric for empty calls if this is a nested call.
             if (!vmState.IsTopLevel)
             {
-                Metrics.IncrementEmptyCalls();
+                EmptyCallCount++;
             }
             goto Empty;
         }
