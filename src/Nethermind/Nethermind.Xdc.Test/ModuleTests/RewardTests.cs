@@ -50,6 +50,7 @@ public class RewardTests
         masternodeVotingContract
             .GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(2));
+        IRewardsStore rewardsStore = Substitute.For<IRewardsStore>();
 
         XdcRewardCalculator rewardCalculator = new(
             chain.EpochSwitchManager,
@@ -59,7 +60,7 @@ public class RewardTests
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
             Substitute.For<ITransactionProcessor>(),
-            Substitute.For<IRewardsStore>()
+            rewardsStore
         );
 
         XdcBlockHeader head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -114,11 +115,18 @@ public class RewardTests
 
         UInt256 totalAt3E = rewardsAt3E.Aggregate(UInt256.Zero, (acc, r) => acc + r.Value);
         UInt256 foundationRewardAt3E = rewardsAt3E.Single(r => r.Address == foundation).Value;
-        UInt256 ownerRewardAt3E = rewardsAt3E.Single(r => r.Address != foundation).Value;
+        BlockReward ownerBlockRewardAt3E = rewardsAt3E.Single(r => r.Address != foundation);
+        UInt256 ownerRewardAt3E = ownerBlockRewardAt3E.Value;
 
         // Check 90/10 split on totals
         Assert.That(foundationRewardAt3E, Is.EqualTo(totalAt3E / 10));
         Assert.That(ownerRewardAt3E, Is.EqualTo(totalAt3E * 90 / 100));
+        rewardsStore.Received(1).SaveEpochRewards(
+            header3E.Hash!,
+            (ulong)header3E.Number,
+            Arg.Is<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>(savedRewards =>
+                savedRewards[XdcConstants.RpcSignerSectionMasternode][ownerBlockRewardAt3E.Address.ToString()][XdcConstants.RpcSignerReward] == totalAt3E.ToString() &&
+                savedRewards[XdcConstants.RpcSignerSectionMasternode][ownerBlockRewardAt3E.Address.ToString()][XdcConstants.RpcSignerCount] == "1"));
 
         // === Part 2: signing hash in a different epoch still counts ===
 

@@ -158,6 +158,38 @@ public class RewardsStoreTests
     }
 
     [Test]
+    public void TryGetAccountReward_WhenSignerMetadataContainsAccountKey_ShouldIgnoreSignerMetadata()
+    {
+        IDb db = new MemDb();
+        RewardsStore store = new(db);
+        Address account = Address.FromNumber(1);
+        Address signer = Address.FromNumber(10);
+        const ulong epoch = 120;
+        Hash256 epochHash = EpochHash(epoch);
+
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
+        {
+            [XdcConstants.RpcRewardSectionMasternode] = new()
+            {
+                [signer.ToString()] = new() { [account.ToString()] = "100" },
+            },
+            [XdcConstants.RpcSignerSectionMasternode] = new()
+            {
+                [account.ToString()] = new()
+                {
+                    [XdcConstants.RpcSignerReward] = "1000",
+                    [XdcConstants.RpcSignerCount] = "10",
+                },
+            },
+        };
+
+        store.SaveEpochRewards(epochHash, epoch, payload);
+
+        Assert.That(store.TryGetAccountReward(account, epochHash, out UInt256 savedReward), Is.True);
+        Assert.That(savedReward, Is.EqualTo((UInt256)100));
+    }
+
+    [Test]
     public void SaveEpochRewards_WhenFoundationWalletAppearsUnderMultipleSigners_ShouldAggregateFoundationReward()
     {
         IDb db = new MemDb();

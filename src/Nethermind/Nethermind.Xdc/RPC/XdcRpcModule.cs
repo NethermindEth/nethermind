@@ -321,32 +321,32 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
 
         List<AccountEpochReward> epochRewards = new(epochSwitchInfos.Length);
-        UInt256 totalReward = UInt256.Zero;
+        UInt256 totalAccountReward = UInt256.Zero;
+        Dictionary<string, UInt256> totalDelegatedReward = [];
 
-        // No epoch switches in the requested range means no rewards to aggregate.
         foreach (EpochSwitchInfo epochSwitchInfo in epochSwitchInfos)
         {
             ulong epochBlockNumber = (ulong)epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
             Hash256 epochBlockHash = epochSwitchInfo.EpochSwitchBlockInfo.Hash;
-            if (!rewardsStore.HasEpochRewards(epochBlockHash))
+            if (!rewardsStore.TryGetEpochRewards(epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? epochRewardData)
+                || epochRewardData is null)
             {
                 return ResultWrapper<AccountRewardResponse>.Fail($"Reward data not available for epoch block {epochBlockNumber}");
             }
 
-            if (!rewardsStore.TryGetAccountReward(account, epochBlockHash, out UInt256 accountReward))
+            AccountEpochReward epochReward = epochRewardData.BuildAccountEpochReward(account, epochBlockNumber);
+            epochRewards.Add(epochReward);
+
+            if (epochReward.AccountReward is UInt256 accountReward)
             {
-                continue;
+                totalAccountReward += accountReward;
             }
 
-            totalReward += accountReward;
-            epochRewards.Add(new AccountEpochReward
+            foreach ((string holder, UInt256 amount) in epochReward.DelegatedReward ?? [])
             {
-                EpochBlockNum = epochBlockNumber,
-                Address = account,
-                AccountStatus = "owner",
-                AccountReward = accountReward,
-                DelegatedReward = []
-            });
+                totalDelegatedReward.TryGetValue(holder, out UInt256 existing);
+                totalDelegatedReward[holder] = existing + amount;
+            }
         }
 
         return ResultWrapper<AccountRewardResponse>.Success(new AccountRewardResponse
@@ -357,8 +357,8 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 Address = account,
                 StartBlockNum = (ulong)begin,
                 EndBlockNum = (ulong)end,
-                TotalAccountReward = totalReward,
-                TotalDelegatedReward = []
+                TotalAccountReward = totalAccountReward,
+                TotalDelegatedReward = totalDelegatedReward,
             }
         });
     }
@@ -465,7 +465,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
         }
 
-        if (header is not XdcBlockHeader xdcHeader)
+        if (header is not XdcBlockHeader)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Header is not an XDC block header");
         }
@@ -475,7 +475,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
         }
-        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot(xdcHeader));
+        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot());
     }
 
     public ResultWrapper<PublicApiSnapshot> XDPoS_getSnapshotAtHash(BlockParameter blockParam)
@@ -504,7 +504,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
         }
 
-        if (header is not XdcBlockHeader xdcHeader)
+        if (header is not XdcBlockHeader)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Header is not an XDC block header");
         }
@@ -514,7 +514,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
         }
-        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot(xdcHeader));
+        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot());
     }
 
     public ResultWrapper<V2BlockInfo> XDPoS_getV2BlockByHash(BlockParameter blockParam)
