@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
@@ -19,14 +20,22 @@ public class FlatHistoryModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         // Backfill is a one-time repair scan; started after container build so it never delays construction,
-        // disposed (cancelled) by the container on shutdown.
+        // disposed (cancelled) by the container on shutdown. Its scan additionally waits for the first block
+        // capture so the full-column read never competes with DB opening and node initialization.
         builder.RegisterBuildCallback(static container => container.Resolve<StorageClearBackfill>().Start());
 
         builder
             .AddColumnDatabase<FlatHistoryColumns>(DbNames.FlatHistory)
             .AddSingleton<HistoryReader>()
             .AddSingleton<HistoryWriter>()
-            .AddSingleton<StorageClearBackfill>()
+            .AddSingleton<StorageClearBackfill>(ctx =>
+            {
+                HistoryWriter writer = ctx.Resolve<HistoryWriter>();
+                return new StorageClearBackfill(
+                    ctx.Resolve<IColumnsDb<FlatHistoryColumns>>(),
+                    () => writer.HasCapturedAnything,
+                    ctx.Resolve<ILogManager>());
+            })
             .AddSingleton<IFlatPersistenceCaptureHook>(ctx => ctx.Resolve<HistoryWriter>())
             .AddDecorator<IFlatDbManager>((ctx, inner) => new HistoricalFlatDbManager(
                 inner,

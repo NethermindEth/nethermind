@@ -26,15 +26,20 @@ public sealed class StorageClearBackfill : IDisposable
 
     private static readonly byte[] CompletedKey = "storageClearBackfillCompleted"u8.ToArray();
 
+    private static readonly TimeSpan NodeReadyPollInterval = TimeSpan.FromSeconds(5);
+
     private readonly IColumnsDb<FlatHistoryColumns> _history;
+    private readonly Func<bool> _isNodeProcessingBlocks;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cancellation = new();
     private Task? _scan;
 
-    public StorageClearBackfill(IColumnsDb<FlatHistoryColumns> history, ILogManager logManager)
+    public StorageClearBackfill(IColumnsDb<FlatHistoryColumns> history, Func<bool> isNodeProcessingBlocks, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(isNodeProcessingBlocks);
         _history = history;
+        _isNodeProcessingBlocks = isNodeProcessingBlocks;
         _logger = logManager.GetClassLogger<StorageClearBackfill>();
     }
 
@@ -43,13 +48,21 @@ public sealed class StorageClearBackfill : IDisposable
     public void Start()
     {
         if (IsCompleted) return;
-        _scan = Task.Run(() =>
+        _scan = Task.Run(async () =>
         {
             try
             {
+                // The scan is a full read of the account-history column; deferring it until the first block
+                // capture keeps its IO out of DB opening and node initialization.
+                while (!_isNodeProcessingBlocks())
+                    await Task.Delay(NodeReadyPollInterval, _cancellation.Token);
+
                 RunScan(_cancellation.Token);
             }
-            catch (Exception e) when (e is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("Storage-clear backfill failed; it will retry on next start.", e);
             }

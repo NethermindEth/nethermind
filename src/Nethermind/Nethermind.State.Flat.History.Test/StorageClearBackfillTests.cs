@@ -33,7 +33,7 @@ public class StorageClearBackfillTests
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
-        _backfill = new StorageClearBackfill(_historyColumns, LimboLogs.Instance);
+        _backfill = new StorageClearBackfill(_historyColumns, static () => true, LimboLogs.Instance);
     }
 
     [TearDown]
