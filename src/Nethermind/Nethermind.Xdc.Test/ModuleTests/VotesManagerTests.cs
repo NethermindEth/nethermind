@@ -180,6 +180,13 @@ public class VotesManagerTests
         yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First()), true)
             .SetName("ValidMessage");
 
+        // High-S malleable signature
+        Vote validVote = XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First());
+        Signature malleableSig = XdcTestHelper.CreateMalleableSignature(validVote.Signature!);
+        Vote malleableVote = new(blockInfo, 450) { Signature = malleableSig, Signer = validVote.Signer };
+        yield return new TestCaseData(14UL, masternodes, malleableVote, false)
+            .SetName("MalleableHighS");
+
         // If snapshot missing should return false
         yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 1350, keys.First()), false)
             .SetName("SnapshotMissing");

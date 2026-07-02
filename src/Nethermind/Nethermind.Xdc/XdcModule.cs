@@ -87,9 +87,6 @@ public class XdcModule : Module
             // penalty handler
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
 
-            // reward handler
-            .AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>()
-
             // forensics handler
             .AddSingleton<IForensicsProcessor, NullForensicsProcessor>()
 
@@ -143,6 +140,7 @@ public class XdcModule : Module
 
             .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>();
 
+        RegisterRewardCalculatorSource(builder);
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();
 
@@ -152,6 +150,9 @@ public class XdcModule : Module
     }
 
     protected virtual XdcChainSpecLoader CreateChainSpecLoader() => new();
+
+    protected virtual void RegisterRewardCalculatorSource(ContainerBuilder builder) =>
+        builder.AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>();
 
     private IMasternodeVotingContract CreateVotingContract(
         IAbiEncoder abiEncoder,

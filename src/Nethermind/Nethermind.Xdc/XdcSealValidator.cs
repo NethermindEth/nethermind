@@ -142,10 +142,14 @@ internal class XdcSealValidator(
                  || xdcHeader.Validator[64] >= 4)
                 return false;
 
+            Signature signature = new(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]);
+            if (!signature.HasLowS())
+                return false;
+
             KeccakRlpWriter writer = new();
             HeaderDecoder.Encode(ref writer, xdcHeader, RlpBehaviors.ForSealing);
             ValueHash256 hash = writer.GetValueHash();
-            Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), in hash);
+            Address signer = _ethereumEcdsa.RecoverAddress(signature, in hash);
 
             header.Author = signer;
         }
