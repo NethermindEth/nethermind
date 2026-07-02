@@ -55,7 +55,7 @@ public static class PersistedSnapshotMerger
 
     /// <summary>
     /// Streaming N-way merge of every non-metadata entry. Per key the newest source wins. Within a
-    /// per-address group the order is self-destruct, then slots, then account (under the reverse-tag
+    /// per-address group the order is account, then self-destruct, then slots (under the reverse-tag
     /// order), so the self-destruct resolves the truncation barrier before the slots it filters — each
     /// slot is then emitted or dropped on the fly, with no per-address buffering.
     /// </summary>
@@ -84,7 +84,7 @@ public static class PersistedSnapshotMerger
 
             // Cached for the current per-address group: its address (for change detection + bloom keys) and
             // the self-destruct truncation barrier, resolved when the group's self-destruct record is seen
-            // (it now sorts before the slots) and -1 when the group has none.
+            // (it sorts before the slots it filters) and -1 when the group has none.
             Address? curAddr = null;
             ulong addrBloomKey = 0;
             int barrier = -1;
@@ -115,7 +115,8 @@ public static class PersistedSnapshotMerger
 
                 bool isPerAddr = key[0] == PersistedSnapshotKey.AccountColumn;
                 // On entering a new per-address group, cache its address + bloom key and reset the barrier;
-                // the group's self-destruct record (if any) sorts first and sets it before the slots.
+                // the account sorts first, then the self-destruct record (if any), which sets the barrier
+                // before the slots.
                 if (isPerAddr && (curAddr is null || !PersistedSnapshotKey.PerAddressAddress(key).SequenceEqual(curAddr.Bytes)))
                 {
                     curAddr = new Address(PersistedSnapshotKey.PerAddressAddress(key));

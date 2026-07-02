@@ -71,8 +71,8 @@ Block (data and index alike):
   `BlockBuilder` (separator → byte offset) accrues one entry per flushed data block; only the current
   data block and the index are held in memory. Producers (`PersistedSnapshotBuilder`,
   `PersistedSnapshotMerger`) therefore emit in ascending key order (see Keys below).
-- `version` rejects a blob written by a different format; the catalog version (`SnapshotCatalog`)
-  gates the whole tier across incompatible changes.
+- The footer's `version` byte (`SortedTable.FormatVersion`) rejects a blob written by an incompatible
+  format; a mismatch surfaces at load as a "wipe and resync" throw. There is no separate catalog version.
 
 ## Keys (`PersistedSnapshotKey`)
 
@@ -85,15 +85,15 @@ bytes are stored as `255 − tag`**; entity bytes are natural. Ascending order t
 | Ref-id | `00` + blobArenaId(2 BE) | `[01]` presence |
 | Storage node | `FA` + addrHash(20) + `{FF top, FE compact, FD fallback}` + path | `NodeRef` (6) |
 | State node | `{FD top, FC compact, FB fallback}` + path | `NodeRef` (6) |
-| Self-destruct | `FE` + addr(20) + `FD` | `[00]` destructed / `[01]` new |
-| Slot | `FE` + addr(20) + `FE` + slot(32 BE) | RLP-wrapped value / empty (deleted) |
-| Account | `FE` + addr(20) + `FF` | slim account RLP / `[00]` deleted |
+| Account | `FE` + addr(20) + `FD` | slim account RLP / `[00]` deleted |
+| Self-destruct | `FE` + addr(20) + `FE` | `[00]` destructed / `[01]` new |
+| Slot | `FE` + addr(20) + `FF` + slot(32 BE) | RLP-wrapped value / empty (deleted) |
 | Metadata | `FF` + name(10, NUL-padded) | metadata value |
 
 Each referenced blob-arena id is its own record under column `00`, which sorts before every real
 column — so the ref-ids are the first records and iterate cheaply from the table start
 (`PersistedSnapshot`'s ref-id enumerator stops at the first non-`00` record). Within an address:
-self-destruct → slots → account. Within an addressHash: fallback → compact → top. Across columns:
+account → self-destruct → slots. Within an addressHash: fallback → compact → top. Across columns:
 ref-ids → storage → state → per-address → metadata. The path encodings (4/8/33-byte) and the
 per-bucket ordering are unchanged from the columnar builder/compacter so a future proper columnar serializer
 can reuse them.

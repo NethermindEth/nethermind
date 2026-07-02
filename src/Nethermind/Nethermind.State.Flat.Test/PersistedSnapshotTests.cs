@@ -322,8 +322,8 @@ public class PersistedSnapshotTests
 
     // A single account with enough storage slots to span many 4 KiB data blocks (and far exceed the
     // scanner's 32-record linear skip) must round-trip through the streaming scanner: the per-address pass
-    // binary-searches past the slots to the account, and the Slots view re-seeks and streams every slot
-    // exactly once. A larger address after it verifies the scanner bounds the slot range and advances.
+    // reads the account at the group head, then the Slots view streams every slot off the shared cursor
+    // exactly once. A second address after it verifies the scanner advances cleanly to the next group.
     [Test]
     public void Scanner_StreamsLargeSlotAccountAcrossBlocks()
     {
@@ -376,6 +376,67 @@ public class PersistedSnapshotTests
         for (int i = 1; i <= slotCount; i++)
             Assert.That(slots[(big, (UInt256)i)], Is.EqualTo(expected[i]), $"slot {i}");
         Assert.That(slots[(next, (UInt256)42)], Is.EqualTo(nextSlot));
+    }
+
+    // Reading a per-address entry without draining its Slots must not strand the shared cursor mid-slots:
+    // the per-address enumerator has to skip the undrained tail to reach the next group. With more slots
+    // than the 32-record linear budget, this exercises the binary-search (Seek) skip past the address.
+    [Test]
+    public void Scanner_SkipsUndrainedSlots_ToReachNextGroup()
+    {
+        const int slotCount = 200; // > the 32-record linear skip, so the skip must Seek past the address
+        byte[] bigBytes = new byte[20]; bigBytes[0] = 0x11;
+        byte[] nextBytes = new byte[20]; nextBytes[0] = 0x22;
+        Address big = new(bigBytes);
+        Address next = new(nextBytes);
+
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("undrained-slots"));
+
+        SnapshotContent content = new();
+        content.Accounts[big] = Build.An.Account.WithBalance(1000).WithNonce(7).TestObject;
+        for (int i = 1; i <= slotCount; i++)
+        {
+            byte[] v = new byte[32];
+            v[30] = (byte)((i >> 8) & 0xFF);
+            v[31] = (byte)(i & 0xFF);
+            content.Storages[(big, (UInt256)i)] = new SlotValue(v);
+        }
+        content.Accounts[next] = Build.An.Account.WithBalance(2000).TestObject;
+        byte[] nextSlotValue = new byte[32]; nextSlotValue[31] = 0x2A;
+        content.Storages[(next, (UInt256)42)] = new SlotValue(nextSlotValue);
+
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+
+        (bool HasAccount, UInt256? Balance)? bigEntry = null;
+        (bool HasAccount, UInt256? Balance)? nextEntry = null;
+        Dictionary<(Address, UInt256), byte[]?> nextSlots = [];
+        using (WholeReadSession session = persisted.BeginWholeReadSession())
+        {
+            WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
+            foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
+            {
+                if (e.Address == big)
+                {
+                    // Read the account but deliberately leave big's Slots undrained.
+                    bigEntry = (e.HasAccount, e.Account?.Balance);
+                }
+                else
+                {
+                    nextEntry = (e.HasAccount, e.Account?.Balance);
+                    foreach (WholeReadScanner.SlotEntry s in e.Slots)
+                        nextSlots[(e.Address, s.Slot)] = s.Value?.AsReadOnlySpan.ToArray();
+                }
+            }
+        }
+
+        Assert.That(bigEntry?.HasAccount, Is.True);
+        Assert.That(bigEntry?.Balance, Is.EqualTo((UInt256)1000));
+        Assert.That(nextEntry?.HasAccount, Is.True, "the next group is reached after skipping big's undrained slots");
+        Assert.That(nextEntry?.Balance, Is.EqualTo((UInt256)2000));
+        Assert.That(nextSlots[(next, (UInt256)42)], Is.EqualTo(nextSlotValue));
     }
 
     // When a column / sub-tag tier is absent, the enumerators must seek past it gracefully:

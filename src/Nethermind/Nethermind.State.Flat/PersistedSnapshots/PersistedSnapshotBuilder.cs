@@ -199,8 +199,8 @@ public static class PersistedSnapshotBuilder
         BloomFilter bloom) where TWriter : IByteBufferWriter
     {
         // Slim-account RLP fits in 256 bytes; slot RLP (≤ RlpSlotValueBufferSize) reuses the same
-        // buffer — table.Add copies each value out immediately, and slots are emitted before the
-        // account for a given address, so there is no overlap.
+        // buffer — table.Add copies each value out immediately, so the emission order within an
+        // address (account, then slots) does not matter.
         Span<byte> rlpBuffer = stackalloc byte[256];
         Span<byte> keyBuf = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
         Span<byte> slotKey = stackalloc byte[32];
@@ -215,32 +215,7 @@ public static class PersistedSnapshotBuilder
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressBytes);
             bloom.Add(addrBloomKey);
 
-            // Self-destruct (sub-tag 0x02) sorts before slots.
-            if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
-            {
-                int len = PersistedSnapshotKey.WriteSelfDestructKey(keyBuf, addressBytes);
-                table.Add(keyBuf[..len],
-                    sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
-            }
-
-            // Slots (sub-tag 0x01). Full 32-byte big-endian slot inline — no prefix/suffix split.
-            while (storageIdx < sortedStorages.Count &&
-                sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
-            {
-                SlotValue? value = sortedStorages[storageIdx].Value;
-                sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
-                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
-                // Present values are RLP-wrapped; null/deleted slots keep an empty payload so the
-                // length-0 = absent sentinel survives.
-                ReadOnlySpan<byte> payload = value.HasValue
-                    ? rlpBuffer[..Rlp.Encode(value.Value.AsReadOnlySpan.WithoutLeadingZeros(), rlpBuffer)]
-                    : [];
-                int len = PersistedSnapshotKey.WriteSlotKey(keyBuf, addressBytes, slotKey);
-                table.Add(keyBuf[..len], payload);
-                storageIdx++;
-            }
-
-            // Account (sub-tag 0x00). Slim RLP starts with a list header (0xc0+), so the
+            // Account sorts first in the group. Slim RLP starts with a list header (0xc0+), so the
             // [0x00] deleted-marker is unambiguous against any valid RLP.
             if (snapshot.TryGetAccount(address, out Account? account))
             {
@@ -256,6 +231,31 @@ public static class PersistedSnapshotBuilder
                     AccountDecoder.Slim.Encode(account, ref rlpWriter);
                     table.Add(keyBuf[..len], rlpBuffer[..rlpLen]);
                 }
+            }
+
+            // Self-destruct sorts after the account and before slots.
+            if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
+            {
+                int len = PersistedSnapshotKey.WriteSelfDestructKey(keyBuf, addressBytes);
+                table.Add(keyBuf[..len],
+                    sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
+            }
+
+            // Slots sort last. Full 32-byte big-endian slot inline — no prefix/suffix split.
+            while (storageIdx < sortedStorages.Count &&
+                sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
+            {
+                SlotValue? value = sortedStorages[storageIdx].Value;
+                sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
+                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
+                // Present values are RLP-wrapped; null/deleted slots keep an empty payload so the
+                // length-0 = absent sentinel survives.
+                ReadOnlySpan<byte> payload = value.HasValue
+                    ? rlpBuffer[..Rlp.Encode(value.Value.AsReadOnlySpan.WithoutLeadingZeros(), rlpBuffer)]
+                    : [];
+                int len = PersistedSnapshotKey.WriteSlotKey(keyBuf, addressBytes, slotKey);
+                table.Add(keyBuf[..len], payload);
+                storageIdx++;
             }
         }
     }

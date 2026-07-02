@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -48,18 +49,33 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
 
     // ---------------- PerAddress (column 0xFE: Account + SelfDestruct + Slots) ----------------
 
-    public readonly ref struct PerAddressEntry(
-        TReader reader, Address address, bool hasAccount, Bound accountBound, bool? selfDestructFlag,
-        bool hasSlots, SortedTableCursor slotCursor)
+    public readonly ref struct PerAddressEntry
     {
-        private readonly TReader _reader = reader;
-        private readonly Bound _accountBound = accountBound;
-        private readonly bool _hasSlots = hasSlots;
-        private readonly SortedTableCursor _slotCursor = slotCursor;
+        // The per-address pass's own cursor, parked on this address's first slot. The Slots view streams it
+        // directly, so it advances as the caller drains Slots.
+        private readonly ref SortedTableEnumerator<TReader, TPin> _inner;
+        private readonly TReader _reader;
+        private readonly Bound _accountBound;
+        private readonly bool _hasSlots;
 
-        public Address Address { get; } = address;
-        public bool? SelfDestructFlag { get; } = selfDestructFlag;
-        public bool HasAccount { get; } = hasAccount;
+        public Address Address { get; }
+        public bool? SelfDestructFlag { get; }
+        public bool HasAccount { get; }
+
+        // internal (not the public primary-ctor form) because it takes the internal SortedTableEnumerator by
+        // ref; callers only ever receive a PerAddressEntry from the enumerator, never construct one.
+        internal PerAddressEntry(
+            ref SortedTableEnumerator<TReader, TPin> inner, TReader reader, Address address, bool hasAccount,
+            Bound accountBound, bool? selfDestructFlag, bool hasSlots)
+        {
+            _inner = ref inner;
+            _reader = reader;
+            _accountBound = accountBound;
+            _hasSlots = hasSlots;
+            Address = address;
+            SelfDestructFlag = selfDestructFlag;
+            HasAccount = hasAccount;
+        }
 
         /// <summary>Decoded account, or <c>null</c> when the on-disk marker is <c>[0x00]</c>
         /// (deleted). Branch on <see cref="HasAccount"/> first to tell "no account update in this
@@ -76,10 +92,13 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             }
         }
 
-        /// <summary>Streams the address's slots straight off the table rather than buffering them — an
-        /// account can carry an unbounded number of storage slots. Resumes from the block the per-address
-        /// pass already walked to (no re-seek); addresses with no slots cost nothing.</summary>
-        public SlotEnumerable Slots => new(_reader, Address, _hasSlots, _slotCursor);
+        /// <summary>Streams the address's slots straight off the shared per-address cursor rather than
+        /// buffering them — an account can carry an unbounded number of storage slots. Addresses with no
+        /// slots cost nothing.</summary>
+        /// <remarks>A single forward pass over the shared cursor: iterate it at most once, and before the
+        /// enclosing per-address enumerator advances. Any slots left undrained are skipped by the outer
+        /// enumerator's next <c>MoveNext</c>.</remarks>
+        public SlotEnumerable Slots => new(ref _inner, _reader, Address, _hasSlots);
     }
 
     public readonly ref struct PerAddressEnumerable(TReader reader)
@@ -90,10 +109,6 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
 
     public ref struct PerAddressEnumerator : IDisposable
     {
-        // Slots to scan past linearly before binary-searching to the account; a small account (the common
-        // case) reaches its account within the budget, avoiding a re-seek.
-        private const int MaxLinearSlotSkip = 32;
-
         private TReader _reader;
         private SortedTableEnumerator<TReader, TPin> _inner;
         private bool _hasRow;
@@ -103,7 +118,6 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
         private Bound _accountBound;
         private bool? _sdFlag;
         private bool _hasSlots;
-        private SortedTableCursor _slotCursor;
 
         public PerAddressEnumerator(TReader reader)
         {
@@ -114,6 +128,10 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
 
         public bool MoveNext()
         {
+            // The Slots view of the previous entry streams this same cursor; skip any slots it left undrained
+            // so the cursor is on the next group before we look for it.
+            SkipToNextGroup();
+
             // Skip to the next per-address row; stop once we pass it (metadata sorts after).
             while (_hasRow && _inner.CurrentKey[0] != PersistedSnapshotKey.AccountColumn)
             {
@@ -126,9 +144,17 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             _hasAccount = false;
             _accountBound = default;
             _sdFlag = null;
-            _hasSlots = false;
 
-            // A group's sub-columns sort SelfDestruct (0xFD) < Slots (0xFE) < Account (0xFF).
+            // A group's sub-columns sort Account (0xFD) < SelfDestruct (0xFE) < Slots (0xFF). Read the account
+            // and self-destruct eagerly; leave the cursor parked on the first slot so the Slots view can
+            // stream it off this same cursor.
+            if (IsCurrentSub(PersistedSnapshotKey.AccountSub))
+            {
+                _hasAccount = true;
+                _accountBound = _inner.CurrentValue;
+                _hasRow = _inner.MoveNext(in _reader);
+            }
+
             if (IsCurrentSub(PersistedSnapshotKey.SelfDestructSub))
             {
                 byte flag = 0;
@@ -137,21 +163,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
                 _hasRow = _inner.MoveNext(in _reader);
             }
 
-            // Slots come next but are streamed lazily by the Slots view — do not read or buffer them here.
-            // Jump past them to the account (which sorts last in the group).
-            if (IsCurrentSub(PersistedSnapshotKey.SlotSub))
-            {
-                _hasSlots = true;
-                _slotCursor = _inner.Capture(); // record the first slot's block before skipping to the account
-                SkipSlotsToAccount();
-            }
-
-            if (IsCurrentSub(PersistedSnapshotKey.AccountSub))
-            {
-                _hasAccount = true;
-                _accountBound = _inner.CurrentValue;
-                _hasRow = _inner.MoveNext(in _reader);
-            }
+            _hasSlots = IsCurrentSub(PersistedSnapshotKey.SlotSub);
             return true;
         }
 
@@ -162,33 +174,21 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             PersistedSnapshotKey.PerAddressSubColumn(_inner.CurrentKey) == sub &&
             PersistedSnapshotKey.PerAddressAddress(_inner.CurrentKey).SequenceEqual(_curAddress!.Bytes);
 
-        // On entry the cursor is on the address's first slot; on exit it is on the account (if any) or the
-        // first row past the group. Scans a bounded number of slots linearly, then binary-searches to the
-        // account key so an account with a huge number of slots costs O(1) here.
-        private void SkipSlotsToAccount()
+        // Advance the cursor past the current address's remaining slot rows — those the Slots view did not
+        // drain (or all of them, if the caller ignored Slots). Slots are the group's last sub-column, so this
+        // lands on the next group's first row (or the first row past the per-address column). A no-op in the
+        // common case where Slots was fully drained; otherwise a forward walk over the undrained slots (the
+        // caller ignoring a large account's Slots is a rare, defensive case).
+        private void SkipToNextGroup()
         {
-            for (int i = 0; i < MaxLinearSlotSkip; i++)
-            {
-                _hasRow = _inner.MoveNext(in _reader);
-                if (!IsCurrentSub(PersistedSnapshotKey.SlotSub)) return;
-            }
-
-            Span<byte> accountKey = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
-            int len = PersistedSnapshotKey.WriteAccountKey(accountKey, _curAddress!.Bytes);
-            if (!_inner.Seek(in _reader, accountKey[..len]))
-            {
-                _hasRow = false;
-                return;
-            }
-            // Seek lands on the block holding the ceiling; skip within it to the first row ≥ the account key
-            // (the account itself, or the next group when this address has no account record).
-            _hasRow = _inner.MoveNext(in _reader);
-            while (_hasRow && _inner.CurrentKey.SequenceCompareTo(accountKey[..len]) < 0)
+            if (_curAddress is null) return;
+            while (IsCurrentSub(PersistedSnapshotKey.SlotSub))
                 _hasRow = _inner.MoveNext(in _reader);
         }
 
-        public readonly PerAddressEntry Current =>
-            new(_reader, _curAddress!, _hasAccount, _accountBound, _sdFlag, _hasSlots, _slotCursor);
+        [UnscopedRef]
+        public PerAddressEntry Current =>
+            new(ref _inner, _reader, _curAddress!, _hasAccount, _accountBound, _sdFlag, _hasSlots);
 
         public void Dispose() => _inner.Dispose();
     }
@@ -215,41 +215,61 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
         }
     }
 
-    public readonly ref struct SlotEnumerable(
-        TReader reader, Address address, bool hasSlots, SortedTableCursor slotCursor)
+    public readonly ref struct SlotEnumerable
     {
-        private readonly TReader _reader = reader;
-        private readonly Address _address = address;
-        private readonly bool _hasSlots = hasSlots;
-        private readonly SortedTableCursor _slotCursor = slotCursor;
-        public SlotEnumerator GetEnumerator() => new(_reader, _address, _hasSlots, _slotCursor);
+        private readonly ref SortedTableEnumerator<TReader, TPin> _inner;
+        private readonly TReader _reader;
+        private readonly Address _address;
+        private readonly bool _hasSlots;
+
+        internal SlotEnumerable(ref SortedTableEnumerator<TReader, TPin> inner, TReader reader, Address address, bool hasSlots)
+        {
+            _inner = ref inner;
+            _reader = reader;
+            _address = address;
+            _hasSlots = hasSlots;
+        }
+
+        public SlotEnumerator GetEnumerator() => new(ref _inner, _reader, _address, _hasSlots);
     }
 
-    public ref struct SlotEnumerator(TReader reader, Address address, bool hasSlots, SortedTableCursor slotCursor) : IDisposable
+    public ref struct SlotEnumerator
     {
-        private TReader _reader = reader;
-        // Resume from the restart the per-address pass captured — no re-seek. Addresses with no slots stay inert.
-        private SortedTableEnumerator<TReader, TPin> _inner =
-            hasSlots ? new SortedTableEnumerator<TReader, TPin>(in slotCursor) : default;
-        private readonly Address _address = address;
-        private readonly bool _active = hasSlots;
-        // Exact byte offset of the address's first slot; resume reads the restart-interval prefix only to
-        // rebuild the front-coded key, so those records are skipped by offset rather than by a key comparison.
-        private readonly long _firstSlotPos = slotCursor.FirstRecordPos;
+        // The shared per-address cursor, parked on the address's first slot. Not owned here — the per-address
+        // enumerator disposes it — so streaming just advances it and leaves it for the outer to skip on.
+        private readonly ref SortedTableEnumerator<TReader, TPin> _inner;
+        private TReader _reader;
+        private readonly Address _address;
+        private bool _active;
+        // The cursor is already parked on the first slot, so the first MoveNext yields it; later calls advance.
+        private bool _started;
+
+        internal SlotEnumerator(ref SortedTableEnumerator<TReader, TPin> inner, TReader reader, Address address, bool hasSlots)
+        {
+            _inner = ref inner;
+            _reader = reader;
+            _address = address;
+            _active = hasSlots;
+        }
 
         public bool MoveNext()
         {
             if (!_active) return false;
-            while (_inner.MoveNext(in _reader))
+            if (_started)
             {
-                if (_inner.CurrentRecordStart < _firstSlotPos) continue; // restart-interval prefix — key still rebuilds
-                return IsSlotOf(_inner.CurrentKey); // yield while still this address's slot; account / next group stops it
+                if (!_inner.MoveNext(in _reader)) { _active = false; return false; }
             }
+            else
+            {
+                _started = true;
+            }
+            if (IsSlotOf(_inner.CurrentKey)) return true; // account/SD sort first, so only a different address stops it
+            _active = false;
             return false;
         }
 
-        // The account (sub 0xFF) and the next address's rows (different address) both end the run; the address
-        // check is load-bearing because a following address's slots share this row's column and sub-tag.
+        // The next address's rows (different address) end the run; the address check is load-bearing because a
+        // following address's slots share this row's column and sub-tag.
         private readonly bool IsSlotOf(ReadOnlySpan<byte> key) =>
             key[0] == PersistedSnapshotKey.AccountColumn
             && PersistedSnapshotKey.PerAddressSubColumn(key) == PersistedSnapshotKey.SlotSub
@@ -257,11 +277,6 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
 
         public readonly SlotEntry Current =>
             new(_reader, PersistedSnapshotKey.SlotKeyBytes(_inner.CurrentKey), _inner.CurrentValue);
-
-        public void Dispose()
-        {
-            if (_active) _inner.Dispose();
-        }
     }
 
     // ---------------- StateNode (columns 0xFB/0xFC/0xFD) ----------------
