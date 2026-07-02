@@ -18,7 +18,6 @@ public partial class Rlp
     {
         get
         {
-            // Acquire read paired with the Volatile.Write publish in CreateDecodersSnapshot / invalidations.
             FrozenDictionary<RlpDecoderKey, IRlpDecoder>? snapshot = Volatile.Read(ref _decodersSnapshot);
             return snapshot ?? CreateDecodersSnapshot();
         }

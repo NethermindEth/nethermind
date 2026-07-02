@@ -19,7 +19,7 @@ public sealed class AuRaBlockForRpc : BlockForRpc
         MixHash = null;
         Nonce = null;
         Author = block.Author;
-        AuRaBlockHeader aura = (AuRaBlockHeader)block.Header;
+        AuRaBlockHeader aura = block.Header.RequireAuRa();
         Step = aura.AuRaStep;
         Signature = aura.AuRaSignature;
     }
