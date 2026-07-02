@@ -15,12 +15,12 @@ public class ChainParameters
     public ulong? MaxCodeSizeTransition { get; set; }
     public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
     public ulong GasLimitBoundDivisor { get; set; }
-    public Address Registrar { get; set; }
+    public Address? Registrar { get; set; }
     public long MaximumExtraDataSize { get; set; }
     public ulong MinGasLimit { get; set; }
     public ulong MinHistoryRetentionEpochs { get; set; }
     public ulong MinBalRetentionEpochs { get; set; }
-    public Hash256 ForkCanonHash { get; set; }
+    public Hash256? ForkCanonHash { get; set; }
     public ulong? ForkBlock { get; set; }
     public ulong? Eip7Transition { get; set; }
     public ulong? Eip150Transition { get; set; }
@@ -67,7 +67,7 @@ public class ChainParameters
     /// <summary>
     ///  Transaction permission managing contract address.
     /// </summary>
-    public Address TransactionPermissionContract { get; set; }
+    public Address? TransactionPermissionContract { get; set; }
     /// <summary>
     /// Block at which the transaction permission contract should start being used.
     /// </summary>
@@ -94,7 +94,7 @@ public class ChainParameters
     /// <summary>
     /// Optional, address where burnt EIP-1559 fees will go
     /// </summary>
-    public Address FeeCollector { get; set; }
+    public Address? FeeCollector { get; set; }
 
     /// <summary>
     /// Block from which EIP1559 base fee cannot drop below <see cref="Eip1559BaseFeeMinValue"/>
@@ -128,15 +128,15 @@ public class ChainParameters
     public ulong? Eip6780Transition { get; set; }
     public ulong? Eip6780TransitionTimestamp { get; set; }
     public ulong? Eip4788TransitionTimestamp { get; set; }
-    public Address Eip4788ContractAddress { get; set; }
+    public Address? Eip4788ContractAddress { get; set; }
     public ulong? Eip6110TransitionTimestamp { get; set; }
-    public Address DepositContractAddress { get; set; }
+    public Address? DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
-    public Address Eip7002ContractAddress { get; set; }
+    public Address? Eip7002ContractAddress { get; set; }
     public ulong? Eip7251TransitionTimestamp { get; set; }
-    public Address Eip7251ContractAddress { get; set; }
+    public Address? Eip7251ContractAddress { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
-    public Address Eip2935ContractAddress { get; set; }
+    public Address? Eip2935ContractAddress { get; set; }
     public ulong Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }

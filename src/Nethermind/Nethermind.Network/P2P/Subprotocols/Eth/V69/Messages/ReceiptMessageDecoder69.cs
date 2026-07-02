@@ -54,7 +54,8 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
-            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+            entries[i] = LogEntryDecoder.Instance.Decode(ref ctx, RlpBehaviors.AllowExtraBytes)
+                ?? throw new RlpException("Receipt log decoding returned null.");
         }
 
         txReceipt.Logs = entries;

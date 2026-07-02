@@ -17,14 +17,14 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         => (beh & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
 
     protected abstract TH CreateHeader(
-        Hash256? parentHash,
-        Hash256? unclesHash,
-        Address? beneficiary,
+        Hash256 parentHash,
+        Hash256 unclesHash,
+        Address beneficiary,
         UInt256 difficulty,
         ulong number,
         ulong gasLimit,
         ulong timestamp,
-        byte[]? extraData);
+        byte[] extraData);
 
     protected abstract void DecodeHeaderSpecificFields(ref RlpReader decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
     protected abstract void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, TH header, RlpBehaviors rlpBehaviors)
@@ -44,13 +44,13 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         int headerCheck = decoderContext.Position + headerSequenceLength;
 
         // Common fields
-        Hash256? parentHash = decoderContext.DecodeKeccak();
-        Hash256? unclesHash = decoderContext.DecodeKeccak();
-        Address? beneficiary = decoderContext.DecodeAddress();
-        Hash256? stateRoot = decoderContext.DecodeKeccak();
-        Hash256? transactionsRoot = decoderContext.DecodeKeccak();
-        Hash256? receiptsRoot = decoderContext.DecodeKeccak();
-        Bloom? bloom = decoderContext.DecodeBloom();
+        Hash256 parentHash = decoderContext.DecodeKeccakNonNull();
+        Hash256 unclesHash = decoderContext.DecodeKeccakNonNull();
+        Address beneficiary = decoderContext.DecodeAddressNonNull();
+        Hash256 stateRoot = decoderContext.DecodeKeccakNonNull();
+        Hash256 transactionsRoot = decoderContext.DecodeKeccakNonNull();
+        Hash256 receiptsRoot = decoderContext.DecodeKeccakNonNull();
+        Bloom bloom = decoderContext.DecodeBloomNonNull();
         UInt256 difficulty = decoderContext.DecodeUInt256();
         ulong number = decoderContext.DecodeULong();
         ulong gasLimit = decoderContext.DecodeULong();
@@ -60,7 +60,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
 
         TH header = CreateHeader(
             parentHash, unclesHash, beneficiary,
-            difficulty, number, gasLimit, timestamp, extraData);
+            difficulty, number, gasLimit, timestamp, extraData ?? []);
 
         header.StateRoot = stateRoot;
         header.TxRoot = transactionsRoot;
@@ -69,7 +69,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         header.GasUsed = gasUsed;
         header.Hash = Keccak.Compute(headerRlp);
 
-        header.MixHash = decoderContext.DecodeKeccak();
+        header.MixHash = decoderContext.DecodeKeccakNonNull();
         header.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
 
         DecodeHeaderSpecificFields(ref decoderContext, header, rlpBehaviors, headerCheck);

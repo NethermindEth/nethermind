@@ -76,7 +76,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptArrayStorageDecoder decoder = new();
             RlpReader ctx = new((ReadOnlySpan<byte>)rlp);
-            TxReceipt[] deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
+            TxReceipt[] deserialized = decoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.Storage);
 
             deserialized.AssertEquivalentTo(GetExpectedArray());
         }

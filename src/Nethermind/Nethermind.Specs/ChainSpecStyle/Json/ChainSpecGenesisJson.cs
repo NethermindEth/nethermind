@@ -9,24 +9,24 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     public class ChainSpecGenesisJson
     {
-        public string Name { get; set; }
-        public string DataDir { get; set; }
-        public ChainSpecSealJson Seal { get; set; }
+        public string? Name { get; set; }
+        public string? DataDir { get; set; }
+        public ChainSpecSealJson? Seal { get; set; }
         public UInt256 Difficulty { get; set; }
-        public Address Author { get; set; }
+        public Address? Author { get; set; }
         public ulong Timestamp { get; set; }
-        public Hash256 ParentHash { get; set; }
-        public byte[] ExtraData { get; set; }
+        public Hash256? ParentHash { get; set; }
+        public byte[]? ExtraData { get; set; }
         public ulong GasLimit { get; set; }
 
         public UInt256? BaseFeePerGas { get; set; }
 
         public bool StateUnavailable { get; set; } = false;
-        public Hash256 StateRoot { get; set; }
+        public Hash256? StateRoot { get; set; }
 
         public ulong BlobGasUsed { get; set; }
         public ulong ExcessBlobGas { get; set; }
-        public Hash256 ParentBeaconBlockRoot { get; set; }
+        public Hash256? ParentBeaconBlockRoot { get; set; }
 
         public ulong? SlotNumber { get; set; }
     }

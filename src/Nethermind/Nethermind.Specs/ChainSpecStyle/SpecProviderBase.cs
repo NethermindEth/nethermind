@@ -11,8 +11,8 @@ namespace Nethermind.Specs.ChainSpecStyle;
 
 public abstract class SpecProviderBase(ILogger logger = default)
 {
-    protected (ForkActivation Activation, IReleaseSpec Spec)[] _blockTransitions;
-    private (ForkActivation Activation, IReleaseSpec Spec)[] _timestampTransitions;
+    protected (ForkActivation Activation, IReleaseSpec Spec)[] _blockTransitions = [];
+    private (ForkActivation Activation, IReleaseSpec Spec)[] _timestampTransitions = [];
     private ForkActivation? _firstTimestampActivation;
     protected readonly ILogger _logger = logger;
 
@@ -34,9 +34,9 @@ public abstract class SpecProviderBase(ILogger logger = default)
         GenesisSpec = transitions.First().Spec;
     }
 
-    public ForkActivation[] TransitionActivations { get; protected set; }
+    public ForkActivation[] TransitionActivations { get; protected set; } = [];
 
-    public IReleaseSpec GenesisSpec { get; private set; }
+    public IReleaseSpec GenesisSpec { get; private set; } = null!;
 
     public IReleaseSpec GetSpec(ForkActivation activation)
     {

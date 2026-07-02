@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public void Can_handle_int()
         {
             IdConverter converter = new();
-            converter.Write(new Utf8JsonWriter(new MemoryStream()), 1, null);
+            converter.Write(new Utf8JsonWriter(new MemoryStream()), 1, JsonSerializerOptions.Default);
         }
 
         [Test]
@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             IdConverter converter = new();
             Assert.Throws<NotSupportedException>(
-                () => converter.Write(new Utf8JsonWriter(new MemoryStream()), 1.1, null));
+                () => converter.Write(new Utf8JsonWriter(new MemoryStream()), 1.1, JsonSerializerOptions.Default));
         }
 
         [TestCase(typeof(int))]

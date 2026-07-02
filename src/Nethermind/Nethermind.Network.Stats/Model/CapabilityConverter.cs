@@ -94,7 +94,7 @@ namespace Nethermind.Stats.Model
             }
         }
 
-        private static bool TryParseCapability(ref Utf8JsonReader reader, out Capability? capability)
+        private static bool TryParseCapability(ref Utf8JsonReader reader, [NotNullWhen(true)] out Capability? capability)
         {
             capability = null;
 

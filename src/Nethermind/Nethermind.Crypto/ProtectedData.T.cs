@@ -15,9 +15,9 @@ namespace Nethermind.Crypto
 
         private readonly ICryptoRandom _random;
         private readonly ITimestamper _timestamper;
-        private byte[] _entropy;
+        private byte[] _entropy = null!;
         private DateTime _timestamp;
-        private byte[] _encryptedData;
+        private byte[] _encryptedData = null!;
 
         protected ProtectedData(byte[] data, string keyStoreDir, ICryptoRandom? random = null, ITimestamper? timestamper = null)
             : base(keyStoreDir)

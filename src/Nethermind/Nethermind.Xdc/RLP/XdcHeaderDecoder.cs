@@ -11,14 +11,14 @@ namespace Nethermind.Xdc.RLP;
 public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
 {
     protected override XdcBlockHeader CreateHeader(
-        Hash256? parentHash,
-        Hash256? unclesHash,
-        Address? beneficiary,
+        Hash256 parentHash,
+        Hash256 unclesHash,
+        Address beneficiary,
         UInt256 difficulty,
         ulong number,
         ulong gasLimit,
         ulong timestamp,
-        byte[]? extraData)
+        byte[] extraData)
         => new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
 
     protected override void DecodeHeaderSpecificFields(ref RlpReader decoderContext, XdcBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)

@@ -212,6 +212,7 @@ public class CliqueBlockProducerTests
             genesis.Header.TxRoot = Keccak.EmptyTreeHash;
             genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesis.Header.Bloom = Bloom.Empty;
+            genesis.Header.MixHash = Keccak.Zero;
 
             return genesis;
         }

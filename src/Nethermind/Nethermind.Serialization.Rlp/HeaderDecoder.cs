@@ -30,13 +30,13 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = decoderContext.ReadSequenceLength();
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
-            Hash256? parentHash = decoderContext.DecodeKeccak();
-            Hash256? unclesHash = decoderContext.DecodeKeccak();
-            Address? beneficiary = decoderContext.DecodeAddress();
-            Hash256? stateRoot = decoderContext.DecodeKeccak();
-            Hash256? transactionsRoot = decoderContext.DecodeKeccak();
-            Hash256? receiptsRoot = decoderContext.DecodeKeccak();
-            Bloom? bloom = decoderContext.DecodeBloom();
+            Hash256 parentHash = decoderContext.DecodeKeccakNonNull();
+            Hash256 unclesHash = decoderContext.DecodeKeccakNonNull();
+            Address beneficiary = decoderContext.DecodeAddressNonNull();
+            Hash256 stateRoot = decoderContext.DecodeKeccakNonNull();
+            Hash256 transactionsRoot = decoderContext.DecodeKeccakNonNull();
+            Hash256 receiptsRoot = decoderContext.DecodeKeccakNonNull();
+            Bloom bloom = decoderContext.DecodeBloomNonNull();
             UInt256 difficulty = decoderContext.DecodeUInt256();
             ulong number = decoderContext.DecodeULong();
             ulong gasLimit = decoderContext.DecodeULong();
@@ -52,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
                 number,
                 gasLimit,
                 timestamp,
-                extraData)
+                extraData ?? [])
             {
                 StateRoot = stateRoot,
                 TxRoot = transactionsRoot,
@@ -64,22 +64,26 @@ namespace Nethermind.Serialization.Rlp
 
             if (decoderContext.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
             {
-                blockHeader.MixHash = decoderContext.DecodeKeccak();
+                blockHeader.MixHash = decoderContext.DecodeKeccakNonNull();
                 blockHeader.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
             }
             else
             {
                 blockHeader.AuRaStep = decoderContext.DecodeULong();
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
+                if (blockHeader.AuRaSignature is null || blockHeader.AuRaSignature.Length == NonceLength)
+                {
+                    throw new RlpException("Invalid AuRa signature RLP.");
+                }
             }
 
             if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
-            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccakNonNull();
             if (decoderContext.Position != headerCheck) blockHeader.BlobGasUsed = decoderContext.DecodeULong();
             if (decoderContext.Position != headerCheck) blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
-            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
-            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccak();
-            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccakNonNull();
+            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccakNonNull();
+            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccakNonNull();
             if (decoderContext.Position != headerCheck) blockHeader.SlotNumber = decoderContext.DecodeULong();
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -112,7 +116,7 @@ namespace Nethermind.Serialization.Rlp
             writer.Encode(header.GasLimit);
             writer.Encode(header.GasUsed);
             writer.Encode(header.Timestamp);
-            writer.Encode(header.ExtraData);
+            writer.Encode(header.ExtraData ?? []);
 
             if (notForSealing)
             {
@@ -120,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
                 if (isAuRa)
                 {
                     writer.Encode(header.AuRaStep!.Value);
-                    writer.Encode(header.AuRaSignature);
+                    writer.Encode(header.AuRaSignature!);
                 }
                 else
                 {
@@ -148,9 +152,9 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[1]) writer.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
             if (requiredItems[2]) writer.Encode(header.BlobGasUsed.GetValueOrDefault());
             if (requiredItems[3]) writer.Encode(header.ExcessBlobGas.GetValueOrDefault());
-            if (requiredItems[4]) writer.Encode(header.ParentBeaconBlockRoot);
-            if (requiredItems[5]) writer.Encode(header.RequestsHash);
-            if (requiredItems[6]) writer.Encode(header.BlockAccessListHash);
+            if (requiredItems[4]) writer.Encode(header.ParentBeaconBlockRoot ?? Keccak.Zero);
+            if (requiredItems[5]) writer.Encode(header.RequestsHash ?? Keccak.Zero);
+            if (requiredItems[6]) writer.Encode(header.BlockAccessListHash ?? Keccak.Zero);
             if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
         }
 
@@ -226,9 +230,9 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[1]) contentLength += Rlp.LengthOf(item.WithdrawalsRoot ?? Keccak.Zero);
             if (requiredItems[2]) contentLength += Rlp.LengthOf(item.BlobGasUsed.GetValueOrDefault());
             if (requiredItems[3]) contentLength += Rlp.LengthOf(item.ExcessBlobGas.GetValueOrDefault());
-            if (requiredItems[4]) contentLength += Rlp.LengthOf(item.ParentBeaconBlockRoot);
-            if (requiredItems[5]) contentLength += Rlp.LengthOf(item.RequestsHash);
-            if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash);
+            if (requiredItems[4]) contentLength += Rlp.LengthOf(item.ParentBeaconBlockRoot ?? Keccak.Zero);
+            if (requiredItems[5]) contentLength += Rlp.LengthOf(item.RequestsHash ?? Keccak.Zero);
+            if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash ?? Keccak.Zero);
             if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
 
             return contentLength;

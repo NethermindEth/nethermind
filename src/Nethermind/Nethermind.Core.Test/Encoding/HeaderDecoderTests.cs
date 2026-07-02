@@ -34,13 +34,14 @@ public class HeaderDecoderTests
         Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
     }
 
-    [Test]
-    public void Can_decode_aura()
+    [TestCase(0UL)]
+    [TestCase(100000000UL)]
+    public void Can_decode_aura(ulong step)
     {
         byte[] auRaSignature = new byte[64];
         new Random().NextBytes(auRaSignature);
         BlockHeader header = Build.A.BlockHeader
-            .WithAura(100000000, auRaSignature)
+            .WithAura(step, auRaSignature)
             .TestObject;
 
         HeaderDecoder decoder = new();
@@ -63,8 +64,90 @@ public class HeaderDecoderTests
     public void Can_handle_nulls()
     {
         Rlp rlp = Rlp.Encode((BlockHeader?)null);
-        BlockHeader decoded = Rlp.Decode<BlockHeader>(rlp);
+        BlockHeader? decoded = Rlp.Decode<BlockHeader>(rlp);
         Assert.That(decoded, Is.Null);
+    }
+
+    [TestCase(nameof(BlockHeader.ParentHash))]
+    [TestCase(nameof(BlockHeader.UnclesHash))]
+    [TestCase(nameof(BlockHeader.Beneficiary))]
+    [TestCase(nameof(BlockHeader.StateRoot))]
+    [TestCase(nameof(BlockHeader.TxRoot))]
+    [TestCase(nameof(BlockHeader.ReceiptsRoot))]
+    [TestCase(nameof(BlockHeader.Bloom))]
+    public void Decode_throws_on_null_required_field(string fieldName)
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        switch (fieldName)
+        {
+            case nameof(BlockHeader.ParentHash):
+                header.ParentHash = null;
+                break;
+            case nameof(BlockHeader.UnclesHash):
+                header.UnclesHash = null;
+                break;
+            case nameof(BlockHeader.Beneficiary):
+                header.Beneficiary = null;
+                break;
+            case nameof(BlockHeader.StateRoot):
+                header.StateRoot = null;
+                break;
+            case nameof(BlockHeader.TxRoot):
+                header.TxRoot = null;
+                break;
+            case nameof(BlockHeader.ReceiptsRoot):
+                header.ReceiptsRoot = null;
+                break;
+            case nameof(BlockHeader.Bloom):
+                header.Bloom = null;
+                break;
+        }
+
+        HeaderDecoder decoder = new();
+        Rlp rlp = decoder.Encode(header);
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(rlp.Bytes);
+            decoder.Decode(ref reader);
+        }
+    }
+
+    [TestCase(nameof(BlockHeader.WithdrawalsRoot))]
+    [TestCase(nameof(BlockHeader.ParentBeaconBlockRoot))]
+    [TestCase(nameof(BlockHeader.RequestsHash))]
+    [TestCase(nameof(BlockHeader.BlockAccessListHash))]
+    public void Decode_throws_on_null_present_fork_hash_field(string fieldName)
+    {
+        byte[] bytes = EncodeHeaderWithNullPresentForkHashField(fieldName);
+        HeaderDecoder decoder = new();
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(bytes);
+            decoder.Decode(ref reader);
+        }
+    }
+
+    [Test]
+    public void Decode_throws_on_null_mix_hash()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        header.MixHash = null;
+        HeaderDecoder decoder = new();
+        Rlp rlp = decoder.Encode(header);
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(rlp.Bytes);
+            decoder.Decode(ref reader);
+        }
     }
 
     [Test]
@@ -72,7 +155,7 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp)!;
         Assert.That(blockHeader.BaseFeePerGas, Is.EqualTo((UInt256)123));
     }
 
@@ -90,7 +173,7 @@ public class HeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0)
             .WithWithdrawalsRoot(Keccak.Compute("withdrawals")).TestObject;
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp)!;
         Assert.That(blockHeader.WithdrawalsRoot, Is.EqualTo(Keccak.Compute("withdrawals")));
     }
 
@@ -112,7 +195,7 @@ public class HeaderDecoderTests
             WithGasLimit(largeValue).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -132,7 +215,7 @@ public class HeaderDecoderTests
             WithGasLimit(largeValue).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -154,7 +237,7 @@ public class HeaderDecoderTests
             .WithParentBeaconBlockRoot(parentBeaconBlockRoot).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -176,9 +259,49 @@ public class HeaderDecoderTests
             .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakB));
+    }
+
+    [Test]
+    public void Can_encode_decode_with_requests_hash_and_missing_parent_beacon_root()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithRequestsHash(TestItem.KeccakA).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
+            Assert.That(blockHeader.RequestsHash, Is.EqualTo(TestItem.KeccakA));
+        }
+    }
+
+    [Test]
+    public void Can_encode_decode_with_slot_number_and_missing_intermediate_hashes()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithSlotNumber(1).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
+            Assert.That(blockHeader.RequestsHash, Is.EqualTo(Keccak.Zero));
+            Assert.That(blockHeader.BlockAccessListHash, Is.EqualTo(Keccak.Zero));
+            Assert.That(blockHeader.SlotNumber, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -194,7 +317,7 @@ public class HeaderDecoderTests
             .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
@@ -241,7 +364,7 @@ public class HeaderDecoderTests
             .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan())!;
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
@@ -253,5 +376,94 @@ public class HeaderDecoderTests
         yield return new object?[] { 1ul, 2ul, TestItem.KeccakB };
         yield return new object?[] { ulong.MaxValue / 2, ulong.MaxValue, null };
         yield return new object?[] { ulong.MaxValue, ulong.MaxValue / 2, null };
+    }
+
+    private static byte[] EncodeHeaderWithNullPresentForkHashField(string fieldName)
+    {
+        bool includeBlobFields = fieldName is nameof(BlockHeader.ParentBeaconBlockRoot) or nameof(BlockHeader.RequestsHash) or nameof(BlockHeader.BlockAccessListHash);
+        bool includeRequestsHash = fieldName is nameof(BlockHeader.RequestsHash) or nameof(BlockHeader.BlockAccessListHash);
+        bool includeBlockAccessListHash = fieldName is nameof(BlockHeader.BlockAccessListHash);
+
+        UInt256 difficulty = 1;
+        UInt256 baseFee = 1;
+        Hash256? withdrawalsRoot = fieldName == nameof(BlockHeader.WithdrawalsRoot) ? null : Keccak.Zero;
+        Hash256? parentBeaconBlockRoot = fieldName == nameof(BlockHeader.ParentBeaconBlockRoot) ? null : Keccak.Zero;
+        Hash256? requestsHash = fieldName == nameof(BlockHeader.RequestsHash) ? null : Keccak.Zero;
+        Hash256? blockAccessListHash = null;
+
+        int contentLength = Rlp.LengthOf(TestItem.KeccakA)
+            + Rlp.LengthOf(TestItem.KeccakB)
+            + Rlp.LengthOf(TestItem.AddressA)
+            + Rlp.LengthOf(TestItem.KeccakC)
+            + Rlp.LengthOf(TestItem.KeccakD)
+            + Rlp.LengthOf(TestItem.KeccakE)
+            + Rlp.LengthOf(Bloom.Empty)
+            + Rlp.LengthOf(difficulty)
+            + Rlp.LengthOf(1UL)
+            + Rlp.LengthOf(1UL)
+            + Rlp.LengthOf(0UL)
+            + Rlp.LengthOf(1UL)
+            + Rlp.LengthOf(Array.Empty<byte>())
+            + Rlp.LengthOf(Keccak.Zero)
+            + Rlp.LengthOfNonce(0UL)
+            + Rlp.LengthOf(baseFee)
+            + Rlp.LengthOf(withdrawalsRoot);
+
+        if (includeBlobFields)
+        {
+            contentLength += Rlp.LengthOf(0UL);
+            contentLength += Rlp.LengthOf(0UL);
+            contentLength += Rlp.LengthOf(parentBeaconBlockRoot);
+        }
+
+        if (includeRequestsHash)
+        {
+            contentLength += Rlp.LengthOf(requestsHash);
+        }
+
+        if (includeBlockAccessListHash)
+        {
+            contentLength += Rlp.LengthOf(blockAccessListHash);
+        }
+
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(contentLength);
+        writer.Encode(TestItem.KeccakA);
+        writer.Encode(TestItem.KeccakB);
+        writer.Encode(TestItem.AddressA);
+        writer.Encode(TestItem.KeccakC);
+        writer.Encode(TestItem.KeccakD);
+        writer.Encode(TestItem.KeccakE);
+        writer.Encode(Bloom.Empty);
+        writer.Encode(difficulty);
+        writer.Encode(1UL);
+        writer.Encode(1UL);
+        writer.Encode(0UL);
+        writer.Encode(1UL);
+        writer.Encode(Array.Empty<byte>());
+        writer.Encode(Keccak.Zero);
+        writer.Encode((UInt256)0, HeaderDecoder.NonceLength);
+        writer.Encode(baseFee);
+        writer.Encode(withdrawalsRoot);
+
+        if (includeBlobFields)
+        {
+            writer.Encode(0UL);
+            writer.Encode(0UL);
+            writer.Encode(parentBeaconBlockRoot);
+        }
+
+        if (includeRequestsHash)
+        {
+            writer.Encode(requestsHash);
+        }
+
+        if (includeBlockAccessListHash)
+        {
+            writer.Encode(blockAccessListHash);
+        }
+
+        return bytes;
     }
 }

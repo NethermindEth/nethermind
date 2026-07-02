@@ -26,7 +26,7 @@ namespace Nethermind.Db
             }
         }
 
-        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out IDb db) ? _columnDbs[key] = new MemDb() : db;
+        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out IDb? db) ? _columnDbs[key] = new MemDb() : db;
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);

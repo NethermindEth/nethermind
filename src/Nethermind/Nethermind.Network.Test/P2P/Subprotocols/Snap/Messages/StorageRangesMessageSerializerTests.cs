@@ -119,6 +119,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }
 
+        [Test]
+        public void Deserialize_throws_on_null_storage_slot_path()
+        {
+            StorageRangesMessageSerializer serializer = new();
+
+            Assert.That(
+                () => serializer.Deserialize([0xc7, 0x01, 0xc4, 0xc3, 0xc2, 0x80, 0x80, 0xc0]),
+                Throws.TypeOf<RlpException>());
+        }
+
         [TestCase(SnapMessageLimits.MaxProofs, false)]
         [TestCase(SnapMessageLimits.MaxProofs + 1, true)]
         public void Deserialize_EnforcesProofsCountLimit(int proofCount, bool shouldThrow)

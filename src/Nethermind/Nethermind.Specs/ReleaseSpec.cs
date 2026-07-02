@@ -105,17 +105,13 @@ public class ReleaseSpec : IReleaseSpec
     public ulong BlobBaseFeeUpdateFraction { get; set; }
     [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
     public Address? Eip7251ContractAddress { get => IsEip7251Enabled ? field : null; set; }
-    [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
     public Address? Eip7002ContractAddress { get => IsEip7002Enabled ? field : null; set; }
-    [MemberNotNullWhen(true, nameof(IsEip4788Enabled))]
     public Address? Eip4788ContractAddress { get => IsEip4788Enabled ? field : null; set; }
     public bool IsEip8024Enabled { get; set; }
     public bool IsEip6110Enabled { get; set; }
-    [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
     public Address? DepositContractAddress { get => IsEip6110Enabled ? field : null; set; }
     public bool IsEip2935Enabled { get; set; }
     public bool IsEip7709Enabled { get; set; }
-    [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
     public Address? Eip2935ContractAddress { get => IsEip2935Enabled ? field : null; set; }
     public bool IsEip7594Enabled { get; set; }
     Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }

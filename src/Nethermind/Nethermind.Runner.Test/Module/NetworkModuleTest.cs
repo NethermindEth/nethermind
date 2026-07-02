@@ -129,6 +129,7 @@ public class NetworkModuleTest
             .Build();
 
         ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
 
         IProtocolHandler handler = cont.Resolve<IProtocolHandlerFactory[]>()
             .Where(static factory => factory.ProtocolCode == Protocol.Eth)

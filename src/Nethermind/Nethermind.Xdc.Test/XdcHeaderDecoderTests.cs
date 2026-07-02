@@ -110,5 +110,56 @@ namespace Nethermind.Xdc.Test
 
             Assert.That(encoded, Is.EqualTo(hexRlp));
         }
+
+        [TestCase(nameof(BlockHeader.ParentHash))]
+        [TestCase(nameof(BlockHeader.UnclesHash))]
+        [TestCase(nameof(BlockHeader.Beneficiary))]
+        [TestCase(nameof(BlockHeader.StateRoot))]
+        [TestCase(nameof(BlockHeader.TxRoot))]
+        [TestCase(nameof(BlockHeader.ReceiptsRoot))]
+        [TestCase(nameof(BlockHeader.Bloom))]
+        [TestCase(nameof(BlockHeader.MixHash))]
+        public void Decode_throws_on_null_required_common_field(string fieldName)
+        {
+            XdcHeaderDecoder decoder = new();
+            (XdcBlockHeader header, _) = BuildHeaderAndDefaultEncode(decoder);
+            switch (fieldName)
+            {
+                case nameof(BlockHeader.ParentHash):
+                    header.ParentHash = null;
+                    break;
+                case nameof(BlockHeader.UnclesHash):
+                    header.UnclesHash = null;
+                    break;
+                case nameof(BlockHeader.Beneficiary):
+                    header.Beneficiary = null;
+                    break;
+                case nameof(BlockHeader.StateRoot):
+                    header.StateRoot = null;
+                    break;
+                case nameof(BlockHeader.TxRoot):
+                    header.TxRoot = null;
+                    break;
+                case nameof(BlockHeader.ReceiptsRoot):
+                    header.ReceiptsRoot = null;
+                    break;
+                case nameof(BlockHeader.Bloom):
+                    header.Bloom = null;
+                    break;
+                case nameof(BlockHeader.MixHash):
+                    header.MixHash = null;
+                    break;
+            }
+
+            Rlp rlp = decoder.Encode(header);
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+            void Decode()
+            {
+                RlpReader reader = new(rlp.Bytes);
+                decoder.Decode(ref reader);
+            }
+        }
     }
 }

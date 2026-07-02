@@ -22,11 +22,11 @@ namespace Nethermind.Db
         public long WritesCount { get; private set; }
 
 #if ZK_EVM
-        private readonly Dictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
-        private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+        private readonly Dictionary<byte[], byte[]> _db = new(Bytes.EqualityComparer);
+        private readonly Dictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #else
-        private readonly ConcurrentDictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
-        private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+        private readonly ConcurrentDictionary<byte[], byte[]> _db = new(Bytes.EqualityComparer);
+        private readonly ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #endif
 
         public MemDb(string name)
@@ -72,7 +72,7 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount += keys.Length;
-                return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.GetValueOrDefault(k))).ToArray();
+                return keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, _db.GetValueOrDefault(k))).ToArray();
             }
         }
 
@@ -84,7 +84,15 @@ namespace Nethermind.Db
 
         public void Clear() => _db.Clear();
 
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+        {
+            if (ordered)
+            {
+                return OrderedDb;
+            }
+
+            return _db;
+        }
 
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Key) : Keys;
 
@@ -93,7 +101,7 @@ namespace Nethermind.Db
         public virtual IWriteBatch StartWriteBatch() => this.LikeABatch();
 
         public ICollection<byte[]> Keys => _db.Select(static kvp => kvp.Key).ToArray();
-        public ICollection<byte[]> Values => _db.Select(static kvp => kvp.Value).ToArray()!;
+        public ICollection<byte[]> Values => _db.Select(static kvp => kvp.Value).ToArray();
 
         public int Count => _db.Count;
 
@@ -111,7 +119,7 @@ namespace Nethermind.Db
             }
 
             ReadsCount++;
-            return _spanDb.TryGetValue(key, out byte[] value) ? value : null;
+            return _spanDb.TryGetValue(key, out byte[]? value) ? value : null;
         }
 
         public unsafe Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -135,6 +143,6 @@ namespace Nethermind.Db
 
         public virtual IDbMeta.DbMetric GatherMetric() => new() { Size = Count };
 
-        private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
+        private IEnumerable<KeyValuePair<byte[], byte[]>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }
 }

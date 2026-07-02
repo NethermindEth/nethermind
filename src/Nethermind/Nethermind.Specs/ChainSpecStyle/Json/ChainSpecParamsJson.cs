@@ -20,7 +20,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
 
-    public Address Registrar { get; set; }
+    public Address? Registrar { get; set; }
 
     public ulong? GasLimitBoundDivisor { get; set; }
 
@@ -34,7 +34,7 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? ForkBlock { get; set; }
 
-    public Hash256 ForkCanonHash { get; set; }
+    public Hash256? ForkCanonHash { get; set; }
 
     public ulong? Eip7Transition { get; set; }
 
@@ -116,7 +116,7 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? Eip1559ElasticityMultiplier { get; set; }
 
-    public Address TransactionPermissionContract { get; set; }
+    public Address? TransactionPermissionContract { get; set; }
 
     public ulong? TransactionPermissionContractTransition { get; set; }
 
@@ -126,7 +126,7 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? Eip1559FeeCollectorTransition { get; set; }
 
-    public Address FeeCollector { get; set; }
+    public Address? FeeCollector { get; set; }
 
     public ulong? Eip1559BaseFeeMinValueTransition { get; set; }
 
@@ -156,22 +156,22 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip6780Transition { get; set; }
     public ulong? Eip6780TransitionTimestamp { get; set; }
     public ulong? Eip4788TransitionTimestamp { get; set; }
-    public Address Eip4788ContractAddress { get; set; }
+    public Address? Eip4788ContractAddress { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
-    public Address Eip2935ContractAddress { get; set; }
+    public Address? Eip2935ContractAddress { get; set; }
     public ulong? Eip2935RingBufferSize { get; set; }
     public ulong? Eip4844BlobGasPriceUpdateFraction { get; set; }
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
     public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
     public ulong? Eip6110TransitionTimestamp { get; set; }
-    public Address DepositContractAddress { get; set; }
+    public Address? DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
     public ulong? Eip7976TransitionTimestamp { get; set; }
     public ulong? Eip7981TransitionTimestamp { get; set; }
-    public Address Eip7002ContractAddress { get; set; }
+    public Address? Eip7002ContractAddress { get; set; }
     public ulong? Eip7251TransitionTimestamp { get; set; }
-    public Address Eip7251ContractAddress { get; set; }
+    public Address? Eip7251ContractAddress { get; set; }
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }

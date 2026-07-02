@@ -24,4 +24,13 @@ public class SubnetSnapshotDecoderTests
     [Test, TestCaseSource(nameof(Snapshots))]
     public void RoundTrip(SubnetSnapshot original) =>
         Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original).UsingXdcComparer());
+
+    [Test]
+    public void Decode_throws_on_null_penalty()
+    {
+        SubnetSnapshot snapshot = new(1, Keccak.EmptyTreeHash, [], [null!]);
+        Rlp rlp = Decoder.Encode(snapshot);
+
+        Assert.That(() => Decoder.Decode(rlp.Bytes), Throws.TypeOf<RlpException>());
+    }
 }

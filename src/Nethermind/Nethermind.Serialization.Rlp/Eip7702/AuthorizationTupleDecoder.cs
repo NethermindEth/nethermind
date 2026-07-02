@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
@@ -40,6 +41,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
 
     public override void Encode<TWriter>(ref TWriter writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        ArgumentNullException.ThrowIfNull(item);
         int contentLength = GetContentLength(item);
         writer.StartSequence(contentLength);
         writer.Encode(item.ChainId);
@@ -91,7 +93,8 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         }
     }
 
-    public override int GetLength(AuthorizationTuple item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item));
+    public override int GetLength(AuthorizationTuple? item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item ?? throw new ArgumentNullException(nameof(item))));
 
     private static int GetContentLength(AuthorizationTuple tuple) =>
         GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)

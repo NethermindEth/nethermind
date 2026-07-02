@@ -45,7 +45,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
             txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
 
-        txReceipt.Bloom = ctx.DecodeBloom();
+        txReceipt.Bloom = ctx.DecodeBloomNonNull();
 
         int logEntriesCheck = ctx.ReadSequenceLength() + ctx.Position;
 
@@ -54,7 +54,8 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
-            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes)
+                ?? throw new RlpException("Log entry decoding returned null.");
         }
         txReceipt.Logs = entries;
 
@@ -74,7 +75,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         return txReceipt;
     }
 
-    private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
         {
@@ -116,19 +117,28 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
     public static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        for (int i = 0; i < item.Logs?.Length; i++)
+        LogEntry[] logs = GetLogs(item);
+        for (int i = 0; i < logs.Length; i++)
         {
-            logsLength += Rlp.LengthOf(item.Logs[i]);
+            logsLength += Rlp.LengthOf(logs[i]);
         }
 
         return logsLength;
     }
 
+    private static LogEntry[] GetLogs(TxReceipt item)
+        => item.Logs ?? throw new RlpException("Receipt logs are null.");
+
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
+        if (item is null)
+        {
+            return Rlp.LengthOfSequence(0);
+        }
+
         (int total, _) = GetContentLength(item, rlpBehaviors);
         int receiptPayloadLength = Rlp.LengthOfSequence(total);
 
@@ -172,9 +182,10 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         writer.Encode(item.Bloom);
 
         writer.StartSequence(logsLength);
-        for (int i = 0; i < item.Logs?.Length; i++)
+        LogEntry[] logs = GetLogs(item);
+        for (int i = 0; i < logs.Length; i++)
         {
-            LogEntryDecoder.Instance.Encode(ref writer, item.Logs[i]);
+            LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
         }
 
         if (item.IsOptimismTxReceipt(out OptimismTxReceipt? opItem))

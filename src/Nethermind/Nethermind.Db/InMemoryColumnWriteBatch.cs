@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public class InMemoryColumnWriteBatch<TKey>(IColumnsDb<TKey> columnsDb) : IColumnsWriteBatch<TKey>
+    public class InMemoryColumnWriteBatch<TKey>(IColumnsDb<TKey> columnsDb) : IColumnsWriteBatch<TKey> where TKey : notnull
     {
         private readonly ConcurrentDictionary<TKey, IWriteBatch> _writeBatches = new();
         private readonly IColumnsDb<TKey> _columnsDb = columnsDb;

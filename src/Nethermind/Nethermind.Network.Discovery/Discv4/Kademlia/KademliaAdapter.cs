@@ -319,6 +319,12 @@ public sealed class KademliaAdapter(
         {
             if (Logger.IsTrace) Logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
+            if (msg.FarPublicKey is null || msg.FarAddress is null)
+            {
+                if (Logger.IsDebug) Logger.Debug($"Discovery message without a valid remote endpoint or signature, message: {msg}");
+                return;
+            }
+
             Node node = new(msg.FarPublicKey, msg.FarAddress);
 
             if (IsResponse(msgType))
