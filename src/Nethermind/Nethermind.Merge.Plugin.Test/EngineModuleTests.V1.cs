@@ -2179,9 +2179,6 @@ public partial class EngineModuleTests
             .Warn(Arg.Any<string>());
     }
 
-    // Since execution-apis#793 moved the fork into the Eth-Execution-Version header, fork-scoped
-    // routes are advertised once (fork-less). Each array lists the distinct REST paths first
-    // introduced at that fork; later fork method versions reuse the same paths and add nothing.
     private static readonly string[] SszRestPathsParis =
     [
         SszRestPaths.PostPayloads,

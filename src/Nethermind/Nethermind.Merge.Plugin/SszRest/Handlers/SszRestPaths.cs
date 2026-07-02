@@ -98,6 +98,29 @@ public static class SszRestPaths
     public const string PostBlobsV3 = "POST /engine/v2/blobs/v3";
     public const string PostBlobsV4 = "POST /engine/v2/blobs/v4";
 
+    // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
+    // (one table per HTTP method). Presence in the table means the (method, resource) pair is a
+    // recognized endpoint, even when the selector returns null because this fork predates it.
+    private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>> _postVersionByResource =
+        new Dictionary<string, Func<Forks.NamedReleaseSpec, int?>>(StringComparer.OrdinalIgnoreCase)
+        {
+            [Payloads] = static spec => spec.EngineApiNewPayloadVersion,
+            [Forkchoice] = static spec => spec.EngineApiForkchoiceVersion,
+            [PayloadBodiesByHash] = static spec => spec.EngineApiPayloadBodiesByHashVersion,
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>> _getVersionByResource =
+        new Dictionary<string, Func<Forks.NamedReleaseSpec, int?>>(StringComparer.OrdinalIgnoreCase)
+        {
+            [Payloads] = static spec => spec.EngineApiGetPayloadVersion,
+            [PayloadBodiesByRange] = static spec => spec.EngineApiPayloadBodiesByRangeVersion,
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>>.AlternateLookup<ReadOnlySpan<char>> _postVersionLookup =
+        _postVersionByResource.GetAlternateLookup<ReadOnlySpan<char>>();
+    private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>>.AlternateLookup<ReadOnlySpan<char>> _getVersionLookup =
+        _getVersionByResource.GetAlternateLookup<ReadOnlySpan<char>>();
+
     /// <summary>
     /// Resolves the per-fork engine API method version for the given <paramref name="resource"/>
     /// + <paramref name="httpMethod"/> by looking it up on the fork's <see cref="Forks.NamedReleaseSpec"/>.
@@ -112,42 +135,16 @@ public static class SszRestPaths
     /// </param>
     public static int? MapForkToVersion(string fork, ReadOnlySpan<char> resource, string httpMethod, out bool recognizedResource)
     {
-        ForkScopedMethod method = ClassifyMethod(resource, httpMethod);
-        recognizedResource = method != ForkScopedMethod.None;
-        if (!recognizedResource || !_forkSpecByUrl.TryGetValue(fork, out Forks.NamedReleaseSpec? spec))
-            return null;
-
-        return method switch
-        {
-            ForkScopedMethod.NewPayload => spec.EngineApiNewPayloadVersion,
-            ForkScopedMethod.GetPayload => spec.EngineApiGetPayloadVersion,
-            ForkScopedMethod.Forkchoice => spec.EngineApiForkchoiceVersion,
-            ForkScopedMethod.BodiesByHash => spec.EngineApiPayloadBodiesByHashVersion,
-            ForkScopedMethod.BodiesByRange => spec.EngineApiPayloadBodiesByRangeVersion,
-            _ => null
-        };
-    }
-
-    private enum ForkScopedMethod { None, NewPayload, GetPayload, Forkchoice, BodiesByHash, BodiesByRange }
-
-    /// <summary>Maps a fork-scoped (<paramref name="resource"/>, <paramref name="httpMethod"/>) pair
-    /// to the engine method it targets, or <see cref="ForkScopedMethod.None"/> if unrecognized.</summary>
-    private static ForkScopedMethod ClassifyMethod(ReadOnlySpan<char> resource, string httpMethod)
-    {
-        // Resource comparisons are case-insensitive (fork/resource names are lowercase per spec,
-        // but routing accepts any case).
+        Func<Forks.NamedReleaseSpec, int?>? selectVersion = null;
         if (string.Equals(httpMethod, "POST", StringComparison.Ordinal))
-        {
-            if (ResourceEquals(resource, Payloads)) return ForkScopedMethod.NewPayload;
-            if (ResourceEquals(resource, Forkchoice)) return ForkScopedMethod.Forkchoice;
-            if (ResourceEquals(resource, PayloadBodiesByHash)) return ForkScopedMethod.BodiesByHash;
-        }
+            _postVersionLookup.TryGetValue(resource, out selectVersion);
         else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
-        {
-            if (ResourceEquals(resource, Payloads)) return ForkScopedMethod.GetPayload;
-            if (ResourceEquals(resource, PayloadBodiesByRange)) return ForkScopedMethod.BodiesByRange;
-        }
-        return ForkScopedMethod.None;
+            _getVersionLookup.TryGetValue(resource, out selectVersion);
+
+        recognizedResource = selectVersion is not null;
+        return recognizedResource && _forkSpecByUrl.TryGetValue(fork, out Forks.NamedReleaseSpec? spec)
+            ? selectVersion!(spec)
+            : null;
     }
 
     /// <summary>

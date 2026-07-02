@@ -82,9 +82,6 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         void Configure(string method, string path, RpcCapabilityOptions options)
         {
             jsonLocal[method] = options;
-            // Since execution-apis#793 the fork is a request header, so several method versions
-            // (e.g. newPayloadV1..V5) share one fork-less REST path. Accumulate with OR so the
-            // path is advertised as enabled whenever any contributing version is enabled.
             RpcCapabilityOptions sszOptions = options & ~WarnIfMissing;
             sszLocal[path] = sszLocal.TryGetValue(path, out RpcCapabilityOptions existing)
                 ? existing | sszOptions

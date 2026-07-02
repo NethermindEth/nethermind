@@ -326,9 +326,6 @@ public sealed class SszMiddleware
         fork = null;
         error = null;
 
-        // Exactly one fork header is expected. Read the StringValues directly: indexing the single
-        // value avoids the per-request string join that .ToString() performs on multi-valued headers,
-        // and a 0- or multi-valued header is rejected as a bad request rather than silently joined.
         StringValues headerValues = ctx.Request.Headers[ForkHeaderName];
         string? headerValue = headerValues.Count == 1 ? headerValues[0] : null;
         if (string.IsNullOrEmpty(headerValue))
@@ -338,7 +335,6 @@ public sealed class SszMiddleware
             return false;
         }
 
-        // SszRestPaths.SupportedForks uses OrdinalIgnoreCase, so header casing is accepted as-is.
         if (!SszRestPaths.SupportedForks.Contains(headerValue))
         {
             error = SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
