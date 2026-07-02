@@ -109,4 +109,25 @@ public class XdcSubnetBlockHeader(
 
         return x;
     }
+
+    internal override XdcBlockHeader CreateHeaderForProcessing()
+    {
+        XdcSubnetBlockHeader header = new(
+            ParentHash,
+            UnclesHash,
+            Beneficiary,
+            Difficulty,
+            Number,
+            GasLimit,
+            Timestamp,
+            ExtraData,
+            IsSelfMined)
+        {
+            NextValidators = NextValidators,
+        };
+
+        CopyFieldsForProcessing(header);
+
+        return header;
+    }
 }

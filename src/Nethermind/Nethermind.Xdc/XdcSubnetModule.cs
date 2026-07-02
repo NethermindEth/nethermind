@@ -23,6 +23,7 @@ public class XdcSubnetModule : XdcModule
             .Add<StartXdcSubnetBlockProducer>()
             .AddSingleton<XdcSubnetBlockProducerFactory>()
             .Bind<IBlockProducerFactory, XdcSubnetBlockProducerFactory>() // overrides the base producer binding; runner stays XdcBlockProducerFactory
+            .AddSingleton<IHeaderDecoder, XdcSubnetHeaderDecoder>()
             .AddSingleton(new BlockDecoder(new XdcSubnetHeaderDecoder()))
             .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
             .AddSingleton<ISubnetMasternodesCalculator, SubnetMasternodesCalculator>()
