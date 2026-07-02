@@ -47,17 +47,10 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()
 
-                // These are the actual decorated component that provide cached result
-                .AddDecorator<IWorldStateScopeProvider>((ctx, worldStateScopeProvider) =>
-                {
-                    if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state
-                    return new PrewarmerScopeProvider(
-                        worldStateScopeProvider,
-                        ctx.Resolve<PreBlockCaches>(),
-                        ctx.Resolve<ILogManager>(),
-                        isPrewarmer: false
-                    );
-                })
+                // DIAGNOSTIC: PrewarmerScopeProvider decoration of IWorldStateScopeProvider removed.
+                // BlockCachePreWarmer + PreBlockCaches stay registered, but main block processing reads
+                // the undecorated flat scope directly (no cache read-through). Tests whether the
+                // PrewarmerScopeProvider decoration itself corrupts the persisted flat state.
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
                 {
                     IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
