@@ -33,7 +33,10 @@ namespace Nethermind.Blockchain.PartialArchive;
 /// number. Pruning then deletes journal entries whose block left the window, guarded against
 /// resurrected nodes (a re-created node with an identical keccak must not be deleted).
 /// All index reads and writes, including prune execution, happen on a single consumer task, so
-/// event application and prune verification are strictly ordered.
+/// event application and prune verification are strictly ordered. Prune slices additionally run
+/// only inside the persistence barrier (<see cref="OnSnapshotPersisted"/>), while the
+/// persistence thread is parked waiting for the drain — so a node-key deletion can never race a
+/// concurrent persistence write of the same re-created key.
 /// Failure bias is towards leaking keys (never deleting) rather than deleting live state: on any
 /// tracking gap that could make deletion unsafe the tracker poisons itself durably and pruning
 /// halts until the state is resynced.
@@ -45,6 +48,8 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
     internal const int PruneRowBudget = 200_000;
     private static readonly TimeSpan BarrierTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan DisposeTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PersistEnqueueTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan RecommitEnqueueTimeout = TimeSpan.FromMilliseconds(250);
 
     private static readonly byte[] FloorKey = [1];
     private static readonly byte[] LastSnapshotBlockKey = [2];
@@ -75,6 +80,7 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
     private volatile bool _poisoned;
     private ulong _lastSnapshotBlock;
     private ulong _oldestRetainedBlock;
+    private ulong _pendingPruneCutoff;
     private long _droppedPersistEvents;
 
     public PartialArchiveNodeTracker(
@@ -117,28 +123,43 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
         Message message = Message.Node(address, in path, keccak, blockNumber);
         if (_messages.Writer.TryWrite(message)) return;
 
-        // Persistence threads run in the background; block briefly rather than lose supersession
-        // info. Losing a persist event only leaks a key, but the backlog should never last.
+        // Persistence threads run in the background; wait rather than lose supersession info.
+        // Losing a persist event only leaks a key, so give up with a warning after a deadline.
+        long deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * (long)PersistEnqueueTimeout.TotalSeconds;
         SpinWait spin = default;
-        while (!_disposed && !_poisoned)
+        while (!_disposed && !_poisoned && Stopwatch.GetTimestamp() < deadline)
         {
             spin.SpinOnce();
             if (_messages.Writer.TryWrite(message)) return;
         }
 
-        Interlocked.Increment(ref _droppedPersistEvents);
+        if (Interlocked.Increment(ref _droppedPersistEvents) == 1 && _logger.IsWarn)
+        {
+            _logger.Warn("Partial archive tracker is not keeping up with node persistence; some superseded keys will not be reclaimed.");
+        }
     }
 
     public void OnNodeRecommitted(Hash256? address, in TreePath path, Hash256 keccak, ulong blockNumber)
     {
         if (_disposed || _poisoned) return;
 
-        // Called on the block-processing path — must not block. A lost recommit can make the
-        // index treat a live node as superseded, after which deleting it would corrupt state,
-        // so pruning is permanently disabled instead.
-        if (!_messages.Writer.TryWrite(Message.Node(address, in path, keccak, blockNumber)))
+        Message message = Message.Node(address, in path, keccak, blockNumber);
+        if (_messages.Writer.TryWrite(message)) return;
+
+        // Called on the block-processing path. A lost recommit can make the index treat a live
+        // node as superseded, after which deleting it would corrupt state — so ride out a
+        // transient backlog with a short bounded wait, and only then permanently disable pruning.
+        long deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * (long)RecommitEnqueueTimeout.TotalMilliseconds / 1000;
+        SpinWait spin = default;
+        while (!_disposed && !_poisoned && Stopwatch.GetTimestamp() < deadline)
         {
-            Poison("a node recommit event was dropped because the tracking queue is full", null);
+            spin.SpinOnce();
+            if (_messages.Writer.TryWrite(message)) return;
+        }
+
+        if (!_disposed && !_poisoned)
+        {
+            Poison($"a node recommit event could not be enqueued within {RecommitEnqueueTimeout.TotalMilliseconds}ms (queue full)", null);
         }
     }
 
@@ -163,12 +184,26 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
 
     /// <summary>
     /// Requests deletion of superseded node keys journaled at or below <paramref name="cutoffBlockNumber"/>.
-    /// Executed asynchronously on the consumer task; large backlogs are processed in self-rescheduling slices.
     /// </summary>
+    /// <remarks>
+    /// Deletion is deferred to the next persistence barrier (<see cref="OnSnapshotPersisted"/>):
+    /// at that point the persistence thread is parked waiting for the tracker to drain, so a
+    /// prune's node-key deletions can never race a concurrent persistence write of the same
+    /// re-created key. Large backlogs are processed in bounded slices across barriers.
+    /// </remarks>
     public bool RequestPrune(ulong cutoffBlockNumber)
     {
         if (_disposed || _poisoned) return false;
-        return _messages.Writer.TryWrite(Message.Prune(cutoffBlockNumber));
+
+        ulong current = Volatile.Read(ref _pendingPruneCutoff);
+        while (cutoffBlockNumber > current)
+        {
+            ulong seen = Interlocked.CompareExchange(ref _pendingPruneCutoff, cutoffBlockNumber, current);
+            if (seen == current) break;
+            current = seen;
+        }
+
+        return true;
     }
 
     public void Dispose()
@@ -223,11 +258,10 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
                     case MessageKind.Barrier:
                         FlushBatch();
                         UpdateLastSnapshotBlock(message.BlockNumber);
+                        // Prune while the persistence thread is parked on this barrier: node-key
+                        // deletions cannot race a persistence write of the same re-created key.
+                        ExecutePendingPruneSlice();
                         SignalBarrier(message);
-                        break;
-                    case MessageKind.Prune:
-                        FlushBatch();
-                        ExecutePruneSlice(message.BlockNumber);
                         break;
                 }
             }
@@ -397,8 +431,11 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
         }
     }
 
-    private void ExecutePruneSlice(ulong requestedCutoff)
+    private void ExecutePendingPruneSlice()
     {
+        ulong requestedCutoff = Volatile.Read(ref _pendingPruneCutoff);
+        if (requestedCutoff == 0) return;
+
         // Journals are complete only up to the last finished persistence pass.
         ulong cutoff = Math.Min(requestedCutoff, Volatile.Read(ref _lastSnapshotBlock));
         if (cutoff == 0) return;
@@ -447,6 +484,15 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
                 journalBatch.Remove(journalKey);
                 floor = blockNumber;
             }
+
+            if (floor > Volatile.Read(ref _oldestRetainedBlock))
+            {
+                // In the same batch as the journal removal: the advertised floor may never get
+                // ahead of what was actually pruned, even across a crash.
+                Span<byte> floorValue = stackalloc byte[sizeof(ulong)];
+                BinaryPrimitives.WriteUInt64BigEndian(floorValue, floor);
+                archiveBatch.GetColumnBatch(PartialArchiveColumns.Metadata).Set(FloorKey, floorValue.ToArray());
+            }
         }
         finally
         {
@@ -459,7 +505,6 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
         if (floor > Volatile.Read(ref _oldestRetainedBlock))
         {
             Volatile.Write(ref _oldestRetainedBlock, floor);
-            WriteMetadataUlong(FloorKey, floor);
         }
 
         if (_logger.IsInfo && scanned > 0)
@@ -468,11 +513,10 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
             _logger.Info($"Partial archive prune: deleted {deleted} superseded node keys ({resurrected} kept as resurrected), retention floor {floor}, cutoff {cutoff}, took {elapsedMs}ms.");
         }
 
-        if (!exhausted)
+        if (exhausted)
         {
-            // Re-enqueue behind pending node events so a large backlog is drained in slices
-            // without starving event processing. If the queue is full the next trigger retries.
-            _messages.Writer.TryWrite(Message.Prune(requestedCutoff));
+            // Newer requests may have arrived while pruning; only clear the one we satisfied.
+            Interlocked.CompareExchange(ref _pendingPruneCutoff, 0, requestedCutoff);
         }
     }
 
@@ -512,7 +556,6 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
     {
         Node,
         Barrier,
-        Prune,
     }
 
     private readonly struct Message
@@ -529,8 +572,5 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
 
         public static Message BarrierMessage(ManualResetEventSlim barrier, ulong blockNumber) =>
             new() { Kind = MessageKind.Barrier, Barrier = barrier, BlockNumber = blockNumber };
-
-        public static Message Prune(ulong cutoffBlockNumber) =>
-            new() { Kind = MessageKind.Prune, BlockNumber = cutoffBlockNumber };
     }
 }

@@ -138,6 +138,22 @@ public class PartialArchiveNodeTrackerTests
     }
 
     [Test]
+    public void Prune_executes_only_at_persistence_barriers()
+    {
+        PersistNode(null, in PathA, V1, 1);
+        PersistNode(null, in PathA, V2, 2);
+        _tracker.OnSnapshotPersisted(5);
+
+        // A request alone must not delete anything: deletions are deferred to the next barrier,
+        // where the persistence thread is parked and cannot race them.
+        Assert.That(_tracker.RequestPrune(5), Is.True);
+        Assert.That(NodeExists(null, in PathA, V1), Is.True);
+
+        _tracker.OnSnapshotPersisted(5);
+        Assert.That(NodeExists(null, in PathA, V1), Is.False);
+    }
+
+    [Test]
     public void Prune_cutoff_is_capped_by_last_persisted_snapshot()
     {
         PersistNode(null, in PathA, V1, 1);
