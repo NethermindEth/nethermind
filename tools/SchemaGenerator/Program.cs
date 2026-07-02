@@ -36,9 +36,106 @@ foreach (KeyValuePair<string, JsonSchema> def in schema.Definitions)
     }
 }
 
+ApplyConfigParserSchemaOverrides(schema);
+PruneUnreferencedDefinitions(schema);
+
 schema.Properties.Add("$schema", new JsonSchemaProperty { Type = JsonObjectType.String });
 
 Console.WriteLine(schema.ToJson());
+
+void ApplyConfigParserSchemaOverrides(JsonSchema schema)
+{
+    if (!schema.Definitions.TryGetValue(nameof(NetworkNode), out JsonSchema? networkNodeSchema))
+    {
+        return;
+    }
+
+    foreach (JsonSchema definition in schema.Definitions.Values)
+    {
+        foreach (JsonSchemaProperty property in definition.Properties.Values)
+        {
+            if (property.Type == JsonObjectType.Array && property.Item?.ActualSchema == networkNodeSchema)
+            {
+                property.Type = default;
+                property.Item = null;
+                property.OneOf.Clear();
+                property.OneOf.Add(new JsonSchema { Type = JsonObjectType.String });
+                property.OneOf.Add(new JsonSchema
+                {
+                    Type = JsonObjectType.Array,
+                    Item = new JsonSchema { Type = JsonObjectType.String }
+                });
+            }
+        }
+    }
+}
+
+void PruneUnreferencedDefinitions(JsonSchema schema)
+{
+    HashSet<JsonSchema> visited = [];
+    HashSet<JsonSchema> referencedDefinitions = [];
+
+    foreach (JsonSchemaProperty property in schema.Properties.Values)
+    {
+        Visit(property);
+    }
+
+    List<string> unreferencedDefinitionKeys = [];
+    foreach (KeyValuePair<string, JsonSchema> definition in schema.Definitions)
+    {
+        if (!referencedDefinitions.Contains(definition.Value))
+        {
+            unreferencedDefinitionKeys.Add(definition.Key);
+        }
+    }
+
+    foreach (string key in unreferencedDefinitionKeys)
+    {
+        schema.Definitions.Remove(key);
+    }
+
+    void Visit(JsonSchema? currentSchema)
+    {
+        if (currentSchema is null || !visited.Add(currentSchema))
+        {
+            return;
+        }
+
+        if (currentSchema.Reference is not null)
+        {
+            referencedDefinitions.Add(currentSchema.Reference);
+            Visit(currentSchema.Reference);
+            return;
+        }
+
+        Visit(currentSchema.Item);
+
+        foreach (JsonSchema item in currentSchema.Items)
+        {
+            Visit(item);
+        }
+
+        foreach (JsonSchema item in currentSchema.OneOf)
+        {
+            Visit(item);
+        }
+
+        foreach (JsonSchema item in currentSchema.AnyOf)
+        {
+            Visit(item);
+        }
+
+        foreach (JsonSchema item in currentSchema.AllOf)
+        {
+            Visit(item);
+        }
+
+        foreach (JsonSchemaProperty property in currentSchema.Properties.Values)
+        {
+            Visit(property);
+        }
+    }
+}
 
 void CreateProperty(TypeBuilder typeBuilder, Type classType)
 {
@@ -56,7 +153,6 @@ void CreateProperty(TypeBuilder typeBuilder, Type classType)
     getIL.Emit(OpCodes.Ldfld, fieldBuilder);
     getIL.Emit(OpCodes.Ret);
 
-    // Define the 'set' accessor method
     MethodBuilder setMethodBuilder = typeBuilder.DefineMethod($"set_{propertyName}",
         MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig,
         null,
@@ -68,7 +164,6 @@ void CreateProperty(TypeBuilder typeBuilder, Type classType)
     setIL.Emit(OpCodes.Stfld, fieldBuilder);
     setIL.Emit(OpCodes.Ret);
 
-    // Map the get and set methods to the property
     propertyBuilder.SetGetMethod(getMethodBuilder);
     propertyBuilder.SetSetMethod(setMethodBuilder);
 }
