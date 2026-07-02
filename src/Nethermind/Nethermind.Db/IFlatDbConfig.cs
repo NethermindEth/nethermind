@@ -10,6 +10,14 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
     ulong BlockCacheSizeBudget { get; set; }
 
+    [ConfigItem(
+        Description = "Block cache size budget for the trie-node columns (StorageNodes/StateNodes/StateTopNodes). " +
+                      "At the tip these columns are served by the in-memory trie-node cache, so the default is off; " +
+                      "during archive replay their disk reads dominate merkleization, so replay setups should set " +
+                      "several GB. `0` to disable.",
+        DefaultValue = "0")]
+    ulong NodeBlockCacheSizeBudget { get; set; }
+
     [ConfigItem(Description = "Fixed compaction schedule offset in blocks. When 0 or greater, overrides the per-instance offset in the metadata DB, which is neither read nor updated. Only the value modulo CompactSize matters. -1 to use the stored offset, generating a random one when absent.", DefaultValue = "-1")]
     long CompactionOffset { get; set; }
 

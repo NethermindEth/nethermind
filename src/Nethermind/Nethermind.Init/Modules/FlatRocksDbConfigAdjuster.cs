@@ -40,28 +40,34 @@ internal class FlatRocksDbConfigAdjuster(
                                    "block_based_table_factory.index_type=kTwoLevelIndexSearch;";
             }
 
-            IntPtr? cacheHandle = null;
-            if (columnName == nameof(FlatDbColumns.Account))
+            // Value columns share BlockCacheSizeBudget (tip processing and RPC read flat values constantly).
+            // Trie-node columns are cached only when NodeBlockCacheSizeBudget is set: at the tip their working
+            // set is served by the managed trie-node cache and snapshots, but during archive replay every
+            // merkleization loads node paths from disk and those point reads dominate — replay setups opt in.
+            IntPtr? cacheHandle = columnName switch
             {
-                ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.3);
-                if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to account");
-                HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
-                cacheHandle = cacheWrapper.Handle;
-                disposeStack.Push(cacheWrapper);
-            }
-
-            if (columnName == nameof(FlatDbColumns.Storage))
-            {
-                ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.7);
-                if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to storage");
-                HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
-                cacheHandle = cacheWrapper.Handle;
-                disposeStack.Push(cacheWrapper);
-            }
+                nameof(FlatDbColumns.Account) => CreateCache(columnName, flatDbConfig.BlockCacheSizeBudget, 0.3),
+                nameof(FlatDbColumns.Storage) => CreateCache(columnName, flatDbConfig.BlockCacheSizeBudget, 0.7),
+                nameof(FlatDbColumns.StorageNodes) => CreateCache(columnName, flatDbConfig.NodeBlockCacheSizeBudget, 0.6),
+                nameof(FlatDbColumns.StateNodes) => CreateCache(columnName, flatDbConfig.NodeBlockCacheSizeBudget, 0.3),
+                nameof(FlatDbColumns.StateTopNodes) => CreateCache(columnName, flatDbConfig.NodeBlockCacheSizeBudget, 0.1),
+                _ => null,
+            };
 
             config = new AdjustedRocksdbConfig(config, additionalConfig, config.WriteBufferSize.GetValueOrDefault(), cacheHandle);
         }
 
         return config;
+    }
+
+    private IntPtr? CreateCache(string columnName, ulong budget, double budgetShare)
+    {
+        if (budget == 0) return null;
+
+        ulong cacheCapacity = (ulong)(budget * budgetShare);
+        if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to {columnName}");
+        HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
+        disposeStack.Push(cacheWrapper);
+        return cacheWrapper.Handle;
     }
 }
