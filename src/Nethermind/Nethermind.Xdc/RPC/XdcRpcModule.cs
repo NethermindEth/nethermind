@@ -465,7 +465,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
         }
 
-        if (header is not XdcBlockHeader xdcHeader)
+        if (header is not XdcBlockHeader)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Header is not an XDC block header");
         }
@@ -475,7 +475,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
         }
-        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot(xdcHeader));
+        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot());
     }
 
     public ResultWrapper<PublicApiSnapshot> XDPoS_getSnapshotAtHash(BlockParameter blockParam)
@@ -504,7 +504,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
         }
 
-        if (header is not XdcBlockHeader xdcHeader)
+        if (header is not XdcBlockHeader)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Header is not an XDC block header");
         }
@@ -514,7 +514,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
         }
-        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot(xdcHeader));
+        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot());
     }
 
     public ResultWrapper<V2BlockInfo> XDPoS_getV2BlockByHash(BlockParameter blockParam)

@@ -167,6 +167,22 @@ public class RpcModuleTests
     }
 
     [Test]
+    public void BuildRpcSnapshot_ShouldUseSnapshotIdentity()
+    {
+        const long snapshotNumber = 104_357_250;
+        Snapshot snapshot = new(snapshotNumber, TestItem.KeccakA, [TestItem.AddressA]);
+
+        PublicApiSnapshot result = snapshot.BuildRpcSnapshot();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Number, Is.EqualTo((ulong)snapshotNumber));
+            Assert.That(result.Hash, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(result.Signers, Is.EquivalentTo(new[] { TestItem.AddressA }));
+        }
+    }
+
+    [Test]
     public void CalculateBlockInfoByV1EpochNum_ShouldReturnFail_WhenV1EpochIsRequested()
     {
         // Act
