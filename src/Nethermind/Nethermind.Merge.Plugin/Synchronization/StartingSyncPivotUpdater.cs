@@ -50,6 +50,7 @@ public class StartingSyncPivotUpdater(
     private DateTimeOffset _fastFillDeadline;
     private bool _fastFillAbandoned;
     private BlockHeader? _fastFillTarget;
+    private (int SnapCapable, int Empty, int Timeouts) _fastFillProbeStats;
 
     private enum FastFillAttemptResult
     {
@@ -197,7 +198,8 @@ public class StartingSyncPivotUpdater(
         if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0)
         {
             TimeSpan left = _fastFillDeadline - DateTimeOffset.UtcNow;
-            _logger.Info($"Partial archive fast fill: still probing for a peer serving state at block {targetNumber} (target header {(target is null ? "not resolved yet" : "resolved")}, {_syncPeerPool.InitializedPeersCount} peers connected, fallback in {left.TotalMinutes:F0}m).");
+            (int snapCapable, int empty, int timeouts) = _fastFillProbeStats;
+            _logger.Info($"Partial archive fast fill: still probing for a peer serving state at block {targetNumber} (target header {(target is null ? "not resolved yet" : "resolved")}; {_syncPeerPool.InitializedPeersCount} peers, {snapCapable} snap-capable, last pass: {empty} without the state, {timeouts} timeouts; fallback in {left.TotalMinutes:F0}m).");
         }
 
         return FastFillAttemptResult.KeepWaiting;
@@ -254,26 +256,39 @@ public class StartingSyncPivotUpdater(
 
     private async Task<ISyncPeer?> TryFindPeerServingStateAt(BlockHeader target, CancellationToken cancellationToken)
     {
-        foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+        int snapCapable = 0;
+        int empty = 0;
+        int timeouts = 0;
+        try
         {
-            if (cancellationToken.IsCancellationRequested) return null;
-            if (!peer.SyncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapPeer)) continue;
-
-            try
+            foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
-                AccountRange probe = new(target.StateRoot!, ValueKeccak.Zero, ValueKeccak.Zero, target.Number);
-                using AccountsAndProofs response = await snapPeer.GetAccountRange(probe, cancellationToken);
-                if (response.PathAndAccounts.Count > 0 || response.Proofs.Count > 0)
+                if (cancellationToken.IsCancellationRequested) return null;
+                if (!peer.SyncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapPeer)) continue;
+
+                snapCapable++;
+                try
                 {
-                    return peer.SyncPeer;
-                }
+                    AccountRange probe = new(target.StateRoot!, ValueKeccak.Zero, ValueKeccak.Zero, target.Number);
+                    using AccountsAndProofs response = await snapPeer.GetAccountRange(probe, cancellationToken);
+                    if (response.PathAndAccounts.Count > 0 || response.Proofs.Count > 0)
+                    {
+                        return peer.SyncPeer;
+                    }
 
-                if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: peer {peer.SyncPeer.Node.ClientId} returned no data for state root {target.StateRoot} at block {target.Number}.");
+                    empty++;
+                    if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: peer {peer.SyncPeer.Node.ClientId} returned no data for state root {target.StateRoot} at block {target.Number}.");
+                }
+                catch (Exception e) when (e is TimeoutException or OperationCanceledException)
+                {
+                    timeouts++;
+                    if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: snap probe to {peer.SyncPeer.Node.ClientId} failed. {e.Message}");
+                }
             }
-            catch (Exception e) when (e is TimeoutException or OperationCanceledException)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: snap probe to {peer.SyncPeer.Node.ClientId} failed. {e.Message}");
-            }
+        }
+        finally
+        {
+            _fastFillProbeStats = (snapCapable, empty, timeouts);
         }
 
         return null;
