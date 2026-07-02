@@ -158,7 +158,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintGet(Address address, Account? account)
     {
-        _snapshotBundle.SetAccount(address, account);
+        _snapshotBundle.HintAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
