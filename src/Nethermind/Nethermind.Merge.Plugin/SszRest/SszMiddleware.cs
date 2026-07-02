@@ -294,8 +294,6 @@ public sealed class SszMiddleware
         switch (SszRestPaths.GetScoping(resource))
         {
             case SszRestPaths.ResourceScoping.Unscoped:
-                // Exact fixed paths (e.g. /capabilities, /identity): reject any extra segment or
-                // trailing slash so /capabilities and /capabilities/ don't diverge from /capabilities/foo.
                 if (!rest.IsEmpty || hadTrailingSlash) return false;
                 pathSegment = path.AsMemory(offset, pathLen - offset);
                 return true;

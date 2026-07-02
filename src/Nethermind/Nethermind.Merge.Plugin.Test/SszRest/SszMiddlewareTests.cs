@@ -923,8 +923,6 @@ public class SszMiddlewareTests
         }
     }
 
-    // Unscoped endpoints are exact paths: a trailing slash is rejected just like an extra segment,
-    // so /capabilities/ behaves consistently with /capabilities/foo (both 404).
     [TestCase("/engine/v2/capabilities/")]
     [TestCase("/engine/v2/identity/")]
     public async Task Trailing_slash_on_unscoped_endpoint_returns_404(string path)
