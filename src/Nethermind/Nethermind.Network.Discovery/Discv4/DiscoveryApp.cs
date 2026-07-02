@@ -57,7 +57,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         UseKademliaServices(services.NodeSource, services.Kademlia);
     }
 
-    internal static List<Node> CreateBootNodes(NetworkNode[] configuredBootnodes, ILogger logger)
+    internal static List<Node> CreateBootNodes(string[] configuredBootnodes, ILogger logger)
     {
         List<Node> bootNodes = [];
         if (configuredBootnodes.Length == 0)
@@ -65,9 +65,10 @@ public class DiscoveryApp : KademliaDiscoveryApp
             if (logger.IsWarn) logger.Warn("No bootnodes specified in configuration");
         }
 
-        for (int i = 0; i < configuredBootnodes.Length; i++)
+        NetworkNode[] networkNodes = NetworkNode.ParseNodes(configuredBootnodes, logger);
+        for (int i = 0; i < networkNodes.Length; i++)
         {
-            NetworkNode bootnode = configuredBootnodes[i];
+            NetworkNode bootnode = networkNodes[i];
             if (!bootnode.IsEnode)
             {
                 if (logger.IsTrace) logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");

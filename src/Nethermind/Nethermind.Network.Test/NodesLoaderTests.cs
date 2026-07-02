@@ -65,7 +65,7 @@ public class NodesLoaderTests
     [Test]
     public void Can_load_bootnodes()
     {
-        _networkConfig.Bootnodes = new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) };
+        _networkConfig.Bootnodes = [enode1String, enode2String];
         List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
         Assert.That(nodes.Count, Is.EqualTo(2));
         foreach (Node node in nodes)
@@ -77,7 +77,7 @@ public class NodesLoaderTests
     [Test]
     public void Does_not_load_bootnodes_as_peer_candidates_when_only_discv5_is_enabled()
     {
-        _networkConfig.Bootnodes = new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) };
+        _networkConfig.Bootnodes = [enode1String, enode2String];
         _loader = CreateLoader(loadBootnodesAsPeerCandidates: false);
 
         List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
@@ -102,7 +102,7 @@ public class NodesLoaderTests
     public void Can_load_only_static_nodes()
     {
         _networkConfig.StaticPeers = enode1String;
-        _networkConfig.Bootnodes = new[] { new NetworkNode(enode2String) };
+        _networkConfig.Bootnodes = [enode2String];
         _networkConfig.OnlyStaticPeers = true;
         List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
         Assert.That(nodes.Count, Is.EqualTo(1));

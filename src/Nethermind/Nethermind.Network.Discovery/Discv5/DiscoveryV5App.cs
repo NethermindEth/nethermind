@@ -93,7 +93,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         BootNodeStats configuredStats = new();
         BootNodeStats defaultStats = new();
 
-        NetworkNode[] configuredBootnodes = networkConfig.Bootnodes;
+        string[] configuredBootnodes = networkConfig.Bootnodes;
         for (int i = 0; i < configuredBootnodes.Length; i++)
         {
             configuredStats.Record(AddBootNode(bootNodes, seen, configuredBootnodes[i]));
@@ -158,6 +158,19 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
         Node node = new(networkNode.NodeId, networkNode.Host, networkNode.DiscoveryPort);
         return AddBootNode(bootNodes, seen, node);
+    }
+
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, string networkNode)
+    {
+        try
+        {
+            return AddBootNode(bootNodes, seen, new NetworkNode(networkNode));
+        }
+        catch (Exception e)
+        {
+            if (Logger.IsTrace) Logger.Trace($"Skipping invalid discv5 bootnode {networkNode}: {e}");
+            return BootNodeAddResult.Skipped;
+        }
     }
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NodeRecord nodeRecord)

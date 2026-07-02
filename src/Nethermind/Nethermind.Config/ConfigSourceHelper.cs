@@ -149,11 +149,6 @@ namespace Nethermind.Config
                 return new Hash256(itemValue);
             }
 
-            if (valueType == typeof(NetworkNode))
-            {
-                return new NetworkNode(itemValue);
-            }
-
             if (valueType.IsEnum)
             {
                 return Enum.TryParse(valueType, itemValue, true, out object? enumValue)

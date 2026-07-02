@@ -105,6 +105,16 @@ namespace Nethermind.Network
             LoadConfigPeers(peers, NetworkNode.ParseNodes(enodesString, _logger), nodeUpdate);
         }
 
+        private void LoadConfigPeers(List<Node> peers, string[] enodes, Action<Node> nodeUpdate)
+        {
+            if (enodes.Length == 0)
+            {
+                return;
+            }
+
+            LoadConfigPeers(peers, NetworkNode.ParseNodes(enodes, _logger), nodeUpdate);
+        }
+
         private static void LoadConfigPeers(List<Node> peers, IEnumerable<NetworkNode> networkNodes, Action<Node> nodeUpdate)
         {
             foreach (NetworkNode networkNode in networkNodes)

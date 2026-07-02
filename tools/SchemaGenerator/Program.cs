@@ -3,7 +3,6 @@ using NJsonSchema;
 using System.Reflection;
 using System.Reflection.Emit;
 using Nethermind.Config;
-using Nethermind.Core.Collections;
 
 Type iConfigType = typeof(IConfig);
 
@@ -32,110 +31,16 @@ foreach (KeyValuePair<string, JsonSchema> def in schema.Definitions)
     {
         def.Value.Type = JsonObjectType.String;
         def.Value.Enumeration.Clear();
-        def.Value.Enumeration.AddRange(def.Value.EnumerationNames);
+        foreach (object? enumerationName in def.Value.EnumerationNames)
+        {
+            def.Value.Enumeration.Add(enumerationName);
+        }
     }
 }
-
-ApplyConfigParserSchemaOverrides(schema);
-PruneUnreferencedDefinitions(schema);
 
 schema.Properties.Add("$schema", new JsonSchemaProperty { Type = JsonObjectType.String });
 
 Console.WriteLine(schema.ToJson());
-
-void ApplyConfigParserSchemaOverrides(JsonSchema schema)
-{
-    if (!schema.Definitions.TryGetValue(nameof(NetworkNode), out JsonSchema? networkNodeSchema))
-    {
-        return;
-    }
-
-    foreach (JsonSchema definition in schema.Definitions.Values)
-    {
-        foreach (JsonSchemaProperty property in definition.Properties.Values)
-        {
-            if (property.Type == JsonObjectType.Array && property.Item?.ActualSchema == networkNodeSchema)
-            {
-                property.Type = default;
-                property.Item = null;
-                property.OneOf.Clear();
-                property.OneOf.Add(new JsonSchema { Type = JsonObjectType.String });
-                property.OneOf.Add(new JsonSchema
-                {
-                    Type = JsonObjectType.Array,
-                    Item = new JsonSchema { Type = JsonObjectType.String }
-                });
-            }
-        }
-    }
-}
-
-void PruneUnreferencedDefinitions(JsonSchema schema)
-{
-    HashSet<JsonSchema> visited = [];
-    HashSet<JsonSchema> referencedDefinitions = [];
-
-    foreach (JsonSchemaProperty property in schema.Properties.Values)
-    {
-        Visit(property);
-    }
-
-    List<string> unreferencedDefinitionKeys = [];
-    foreach (KeyValuePair<string, JsonSchema> definition in schema.Definitions)
-    {
-        if (!referencedDefinitions.Contains(definition.Value))
-        {
-            unreferencedDefinitionKeys.Add(definition.Key);
-        }
-    }
-
-    foreach (string key in unreferencedDefinitionKeys)
-    {
-        schema.Definitions.Remove(key);
-    }
-
-    void Visit(JsonSchema? currentSchema)
-    {
-        if (currentSchema is null || !visited.Add(currentSchema))
-        {
-            return;
-        }
-
-        if (currentSchema.Reference is not null)
-        {
-            referencedDefinitions.Add(currentSchema.Reference);
-            Visit(currentSchema.Reference);
-            return;
-        }
-
-        Visit(currentSchema.Item);
-
-        foreach (JsonSchema item in currentSchema.Items)
-        {
-            Visit(item);
-        }
-
-        foreach (JsonSchema item in currentSchema.OneOf)
-        {
-            Visit(item);
-        }
-
-        foreach (JsonSchema item in currentSchema.AnyOf)
-        {
-            Visit(item);
-        }
-
-        foreach (JsonSchema item in currentSchema.AllOf)
-        {
-            Visit(item);
-        }
-
-        foreach (JsonSchemaProperty property in currentSchema.Properties.Values)
-        {
-            Visit(property);
-        }
-    }
-}
 
 void CreateProperty(TypeBuilder typeBuilder, Type classType)
 {
