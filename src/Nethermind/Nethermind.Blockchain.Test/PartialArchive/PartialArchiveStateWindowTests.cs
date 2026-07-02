@@ -32,7 +32,7 @@ public class PartialArchiveStateWindowTests
 
     private sealed class RecordingFinalizedStateProvider : IFinalizedStateProvider
     {
-        private readonly Dictionary<ulong, Hash256> _roots = new();
+        private readonly Dictionary<ulong, Hash256> _roots = [];
         public ulong FinalizedBlockNumber { get; private set; }
 
         public void MarkFinalized(ulong blockNumber, Hash256 stateRoot)
@@ -66,63 +66,62 @@ public class PartialArchiveStateWindowTests
         const ulong chainLength = 40;
         const ulong lastPersistedBlock = chainLength - 2; // finalization lags by PruningBoundary
 
-        Dictionary<ulong, Hash256> roots = new();
-        using (TrieStore trieStore = new(
+        Dictionary<ulong, Hash256> roots = [];
+        using TrieStore trieStore = new(
             nodeStorage,
             new PruneEveryCommitStrategy(),
             Persist.EveryNBlock(1),
             finalized,
             pruningConfig,
             LimboLogs.Instance,
-            tracker))
+            tracker);
+
+        PatriciaTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+        BlockHeader? baseBlock = null;
+        for (ulong i = 1; i <= chainLength; i++)
         {
-            PatriciaTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
-            BlockHeader? baseBlock = null;
-            for (ulong i = 1; i <= chainLength; i++)
+            using (trieStore.BeginScope(baseBlock))
             {
-                using (trieStore.BeginScope(baseBlock))
+                tree.Set(slotKey, ValueFor(i));
+                tree.Set(togglingKey, toggleValues[i % 2]);
+                using (trieStore.BeginBlockCommit(i))
                 {
-                    tree.Set(slotKey, ValueFor(i));
-                    tree.Set(togglingKey, toggleValues[i % 2]);
-                    using (trieStore.BeginBlockCommit(i))
-                    {
-                        tree.Commit();
-                    }
-
-                    roots[i] = tree.RootHash;
-                    baseBlock = Build.A.BlockHeader.WithParentOptional(baseBlock).WithStateRoot(tree.RootHash).TestObject;
+                    tree.Commit();
                 }
 
-                finalized.MarkFinalized(i, roots[i]);
-                await Task.Yield();
-                trieStore.WaitForPruning();
+                roots[i] = tree.RootHash;
+                baseBlock = Build.A.BlockHeader.WithParentOptional(baseBlock).WithStateRoot(tree.RootHash).TestObject;
             }
 
-            AssertHistoricalReads(nodeStorage, roots, slotKey, togglingKey, toggleValues, 1, lastPersistedBlock);
-
-            const ulong cutoff = 30;
-            Assert.That(tracker.RequestPrune(cutoff), Is.True);
-            // Barrier drains the queue, guaranteeing the prune command has executed.
-            tracker.OnSnapshotPersisted(tracker.LastSnapshotBlock);
-
-            using (Assert.EnterMultipleScope())
-            {
-                // Root of block b is superseded at b+1, so it is deletable once b+1 <= cutoff.
-                for (ulong i = 1; i < cutoff; i++)
-                {
-                    Assert.That(RootOnDisk(nodeStorage, roots[i]), Is.False, $"root of block {i} should be pruned");
-                }
-
-                for (ulong i = cutoff; i <= lastPersistedBlock; i++)
-                {
-                    Assert.That(RootOnDisk(nodeStorage, roots[i]), Is.True, $"root of block {i} must stay within the window");
-                }
-
-                Assert.That(tracker.OldestRetainedBlock, Is.EqualTo(cutoff));
-            }
-
-            AssertHistoricalReads(nodeStorage, roots, slotKey, togglingKey, toggleValues, cutoff, lastPersistedBlock);
+            finalized.MarkFinalized(i, roots[i]);
+            await Task.Yield();
+            trieStore.WaitForPruning();
         }
+
+        AssertHistoricalReads(nodeStorage, roots, slotKey, togglingKey, toggleValues, 1, lastPersistedBlock);
+
+        const ulong cutoff = 30;
+        Assert.That(tracker.RequestPrune(cutoff), Is.True);
+        // Barrier drains the queue, guaranteeing the prune command has executed.
+        tracker.OnSnapshotPersisted(tracker.LastSnapshotBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Root of block b is superseded at b+1, so it is deletable once b+1 <= cutoff.
+            for (ulong i = 1; i < cutoff; i++)
+            {
+                Assert.That(RootOnDisk(nodeStorage, roots[i]), Is.False, $"root of block {i} should be pruned");
+            }
+
+            for (ulong i = cutoff; i <= lastPersistedBlock; i++)
+            {
+                Assert.That(RootOnDisk(nodeStorage, roots[i]), Is.True, $"root of block {i} must stay within the window");
+            }
+
+            Assert.That(tracker.OldestRetainedBlock, Is.EqualTo(cutoff));
+        }
+
+        AssertHistoricalReads(nodeStorage, roots, slotKey, togglingKey, toggleValues, cutoff, lastPersistedBlock);
     }
 
     private static byte[] ValueFor(ulong blockNumber) => TestItem.Keccaks[(int)blockNumber].BytesToArray();
