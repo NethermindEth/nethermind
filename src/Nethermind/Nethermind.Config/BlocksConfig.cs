@@ -57,7 +57,7 @@ namespace Nethermind.Config
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
-        public bool PreWarmStateOnBlockProcessing { get; set; } = true;
+        public bool PreWarmStateOnBlockProcessing { get; set; } = false;
 
         public bool CachePrecompilesOnBlockProcessing { get; set; } = true;
 
