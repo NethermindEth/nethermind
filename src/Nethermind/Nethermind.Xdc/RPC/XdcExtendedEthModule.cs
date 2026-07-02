@@ -104,7 +104,7 @@ internal sealed class XdcExtendedEthModule(
             BlockHash = block.Hash ?? throw new InvalidOperationException($"Block returned by FindBlock has a null hash for block hash lookup {blockHash}"),
             TxRoot = TxTrie.CalculateRoot(transactions),
             ReceiptRoot = ReceiptTrie.CalculateRoot(spec, receipts, ReceiptEncoder),
-            Key = Bytes.ToHexString(Rlp.Encode(index).Bytes),
+            Key = Bytes.ToHexString(Rlp.Encode(index).Bytes, withZeroX: true),
             TxProofKeys = txProofKeys,
             TxProofValues = txProofValues,
             ReceiptProofKeys = receiptProofKeys,
@@ -122,7 +122,7 @@ internal sealed class XdcExtendedEthModule(
         {
             byte[] rlp = proofNodes[i];
             nodeHashes[i] = Keccak.Compute(rlp).ToString();
-            values[i] = Bytes.ToHexString(rlp);
+            values[i] = Bytes.ToHexString(rlp, withZeroX: true);
         }
 
         return (nodeHashes, values);

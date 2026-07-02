@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -12,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Specs;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RPC;
 using NSubstitute;
@@ -84,6 +84,55 @@ public class XdcExtendedEthModuleTests
 
         ResultWrapper<XdcTransactionAndReceiptProof?> result = await module.eth_getTransactionAndReceiptProof(TestItem.KeccakA);
         Assert.That(result.Data, Is.Null);
+    }
+
+    [Test]
+    public async Task eth_getTransactionAndReceiptProof_KnownTransaction_ReturnsZeroXPrefixedProofData()
+    {
+        Transaction firstTransaction = Build.A.Transaction
+            .WithNonce(0)
+            .WithHash(TestItem.KeccakA)
+            .TestObject;
+        Transaction targetTransaction = Build.A.Transaction
+            .WithNonce(1)
+            .WithHash(TestItem.KeccakB)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithTransactions(firstTransaction, targetTransaction)
+            .TestObject;
+        TxReceipt[] receipts =
+        [
+            Build.A.Receipt.WithTransactionHash(firstTransaction.Hash).WithStatusCode(1).TestObject,
+            Build.A.Receipt.WithTransactionHash(targetTransaction.Hash).WithStatusCode(1).TestObject,
+        ];
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(block.Hash!).Returns(block);
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(targetTransaction.Hash!).Returns(block.Hash);
+        receiptFinder.Get(block).Returns(receipts);
+
+        IXdcExtendedEthRpcModule module = new XdcExtendedEthModule(
+            blockFinder,
+            receiptFinder,
+            MainnetSpecProvider.Instance,
+            Substitute.For<IMasternodeVotingContract>(),
+            Substitute.For<IRewardsStore>());
+
+        ResultWrapper<XdcTransactionAndReceiptProof?> result =
+            await module.eth_getTransactionAndReceiptProof(targetTransaction.Hash!);
+
+        Assert.That(result.Data, Is.Not.Null);
+        XdcTransactionAndReceiptProof proof = result.Data!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof.Key, Is.EqualTo("0x01"));
+            Assert.That(proof.TxProofValues, Is.Not.Empty);
+            Assert.That(proof.TxProofValues, Has.All.Matches<string>(value => value.StartsWith("0x", System.StringComparison.Ordinal)));
+            Assert.That(proof.ReceiptProofValues, Is.Not.Empty);
+            Assert.That(proof.ReceiptProofValues, Has.All.Matches<string>(value => value.StartsWith("0x", System.StringComparison.Ordinal)));
+        }
     }
 
     private static IXdcExtendedEthRpcModule CreateOwnerModule(Address owner)
