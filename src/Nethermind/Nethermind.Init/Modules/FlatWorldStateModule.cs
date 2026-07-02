@@ -106,6 +106,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
         }
+
+        // DIAGNOSTIC: run the VerifyTrie pass on the flat backend at startup — the same RunVerifyTrie step
+        // that DiagnosticMode.VerifyTrie triggers for the pruning-trie backend (only wired there today).
+        // FlatWorldStateManager.VerifyTrie routes to FlatTrieVerifier, so on restart this verifies the
+        // persisted flat state against the trie and logs mismatched account/slot counts before the re-run.
+        builder.AddStep(typeof(RunVerifyTrie));
     }
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
