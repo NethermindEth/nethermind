@@ -19,7 +19,7 @@ public class DiscoveryAppTests
     {
         Enode enode = new(TestItem.PrivateKeyA.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, discoveryPort: 9001);
 
-        List<Node> bootNodes = DiscoveryApp.CreateBootNodes([enode.ToString()], LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>());
+        List<Node> bootNodes = DiscoveryApp.CreateBootNodes([new NetworkNode(enode)], LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>());
 
         using (Assert.EnterMultipleScope())
         {

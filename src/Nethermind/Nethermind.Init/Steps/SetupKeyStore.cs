@@ -1,21 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Config;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Wallet;
+using System.Linq;
 
 namespace Nethermind.Init.Steps
 {
@@ -65,41 +61,9 @@ namespace Nethermind.Init.Steps
                 set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
             }
 
-            networkConfig.Bootnodes = RemoveLocalBootnodes(
-                networkConfig.Bootnodes,
-                nodeKey.PublicKey,
-                get.LogManager.GetClassLogger<SetupKeyStore>());
+            networkConfig.Bootnodes = [.. networkConfig.Bootnodes.Where(bn => bn.NodeId != nodeKey.PublicKey)];
 
             return Task.CompletedTask;
-        }
-
-        private static string[] RemoveLocalBootnodes(string[] bootnodes, PublicKey localNodeId, ILogger logger)
-        {
-            if (bootnodes.Length == 0)
-            {
-                return bootnodes;
-            }
-
-            List<string> filteredBootnodes = new(bootnodes.Length);
-
-            for (int i = 0; i < bootnodes.Length; i++)
-            {
-                string bootnode = bootnodes[i];
-                try
-                {
-                    if (new NetworkNode(bootnode).NodeId != localNodeId)
-                    {
-                        filteredBootnodes.Add(bootnode);
-                    }
-                }
-                catch (Exception e)
-                {
-                    if (logger.IsError) logger.Error($"Could not parse enode data from {bootnode}", e);
-                    filteredBootnodes.Add(bootnode);
-                }
-            }
-
-            return [.. filteredBootnodes];
         }
     }
 }

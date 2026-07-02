@@ -328,7 +328,7 @@ public class DiscoveryV5AppTests
         NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 9001, includeTcp: false);
         NetworkConfig networkConfig = new()
         {
-            Bootnodes = [enr.ToString()]
+            Bootnodes = [new NetworkNode(enr.ToString())]
         };
         DiscoveryConfig discoveryConfig = new()
         {
@@ -351,7 +351,7 @@ public class DiscoveryV5AppTests
         Enode enode = new(TestItem.PrivateKeyA.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, discoveryPort: 9001);
         NetworkConfig networkConfig = new()
         {
-            Bootnodes = [enode.ToString()]
+            Bootnodes = [new NetworkNode(enode)]
         };
         DiscoveryConfig discoveryConfig = new()
         {

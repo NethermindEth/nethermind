@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -82,7 +80,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                     networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
                 }
 
-                networkConfig.Bootnodes = MergeBootnodes(networkConfig.Bootnodes, discoveryConfig.Bootnodes, chainSpec.Bootnodes);
+                networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. discoveryConfig.Bootnodes, .. chainSpec.Bootnodes];
 
                 return networkConfig;
             })
@@ -134,17 +132,4 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
         }
     }
 
-    private static string[] MergeBootnodes(string[] networkBootnodes, string[] discoveryBootnodes, NetworkNode[] chainSpecBootnodes)
-    {
-        List<string> bootnodes = new(networkBootnodes.Length + discoveryBootnodes.Length + chainSpecBootnodes.Length);
-        bootnodes.AddRange(networkBootnodes);
-        bootnodes.AddRange(discoveryBootnodes);
-
-        for (int i = 0; i < chainSpecBootnodes.Length; i++)
-        {
-            bootnodes.Add(chainSpecBootnodes[i].ToString());
-        }
-
-        return [.. bootnodes];
-    }
 }

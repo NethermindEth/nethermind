@@ -71,8 +71,8 @@ public class JsonConfigProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(networkConfig.Bootnodes, Has.Length.EqualTo(2));
-            Assert.That(networkConfig.Bootnodes[0], Does.StartWith("enode://"));
-            Assert.That(networkConfig.Bootnodes[1], Does.StartWith("enode://"));
+            Assert.That(networkConfig.Bootnodes[0].ToString(), Does.StartWith("enode://"));
+            Assert.That(networkConfig.Bootnodes[1].ToString(), Does.StartWith("enode://"));
         }
     }
 

@@ -111,9 +111,9 @@ public interface IDiscoveryConfig : IConfig
     int DiscoveryNewCycleWaitTime { get; }
 
     /// <summary>
-    /// Boot node connection strings.
+    /// Boot nodes connection details
     /// </summary>
-    string[] Bootnodes { get; set; }
+    NetworkNode[] Bootnodes { get; set; }
 
     /// <summary>
     /// Timeout for closing UDP channel in milliseconds
