@@ -276,7 +276,7 @@ internal class SubnetPenaltyTests
             });
 
         ISigningTxCache signingTxCache = new SigningTxCache(blockTree, specProvider);
-        SubnetPenaltyHandler handler = new(blockTree, specProvider, epochSwitchManager, signingTxCache);
+        SubnetPenaltyHandler handler = new(blockTree, specProvider, new Lazy<IEpochSwitchManager>(() => epochSwitchManager), signingTxCache);
 
         return new MockedSubnetPenaltyContext(
             headers, validatorKeys, releaseSpec, hashToBlock, handler);

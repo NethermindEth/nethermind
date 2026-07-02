@@ -13,7 +13,11 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
+internal class SubnetPenaltyHandler(
+    IBlockTree tree,
+    ISpecProvider specProvider,
+    Lazy<IEpochSwitchManager> epochSwitchManager,
+    ISigningTxCache signingTxCache) : IPenaltyHandler
 {
     private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
 
@@ -55,11 +59,12 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             Address miner = parentHeader.Beneficiary;
             minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
 
-            bool isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
+            // Lazy avoids constructor-time cycle: SnapshotManager -> PenaltyHandler -> EpochSwitchManager -> SnapshotManager
+            bool isEpochSwitch = epochSwitchManager.Value.IsEpochSwitchAtBlock(parentHeader);
 
             if (isEpochSwitch || parentNumber <= minBlockNumber)
             {
-                Address[] masternodes = epochSwitchManager.GetEpochSwitchInfo(parentHeader)?.Masternodes ?? [];
+                Address[] masternodes = epochSwitchManager.Value.GetEpochSwitchInfo(parentHeader)?.Masternodes ?? [];
                 foreach (Address masternode in masternodes)
                 {
                     if (minerStatistics.GetValueOrDefault(masternode, 0) < XdcConstants.MinimumMinerBlockPerEpoch)
