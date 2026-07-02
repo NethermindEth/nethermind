@@ -401,10 +401,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ref bool previousStateSucceeded)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in previousState.Gas, out ulong regularDepositCost, out ulong stateDepositCost))
+        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in previousState.Gas, out ulong regularDepositCost, out long stateDepositCost))
         {
             regularDepositCost = ulong.MaxValue;
-            stateDepositCost = ulong.MaxValue;
+            stateDepositCost = long.MaxValue;
         }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
@@ -435,16 +435,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ulong gasAvailableForCodeDeposit,
         ref bool previousStateSucceeded,
         ulong regularDepositCost,
-        ulong stateDepositCost,
+        long stateDepositCost,
         bool invalidCode,
         ReadOnlyMemory<byte> code)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
-        ulong childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
-        ulong stateSpill = stateDepositCost.SaturatingSub(childStateReservoir);
-        bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + stateSpill;
+        long childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
+        long stateSpill = Math.Max(0, stateDepositCost - childStateReservoir);
+        bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + (ulong)stateSpill;
         bool chargedCodeDeposit = false;
 
         if (hasEnoughGas && !invalidCode)
@@ -653,8 +653,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // state_gas_used (originally drawn from gas_left) is still in the user's pocket.
         // Refund the full state_gas_used — reservoir-portion AND spilled-portion — to the
         // reservoir. The user is billed only the regular component.
-        ulong stateGasFloor = _currentState.InitialStateGasUsed;
-        ulong revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
+        long stateGasFloor = _currentState.InitialStateGasUsed;
+        long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
         if (revertedStateGas > stateGasFloor)
         {
             TGasPolicy.RefundStateGas(ref _currentState.Gas, revertedStateGas, stateGasFloor);
@@ -662,7 +662,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void CreditStateGasRefund(ref TGasPolicy gas, ulong amount, bool trackSpillRefund = true)
+    internal void CreditStateGasRefund(ref TGasPolicy gas, long amount, bool trackSpillRefund = true)
     {
         if (!Spec.IsEip8037Enabled || amount == 0)
         {
@@ -670,16 +670,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         VmState<TGasPolicy> vmState = VmState;
-        ulong stateGasFloor = vmState.InitialStateGasUsed;
-        ulong refundableStateGas = TGasPolicy.GetStateGasUsed(in gas).SaturatingSub(stateGasFloor);
-        ulong appliedRefund = Math.Min(amount, refundableStateGas);
+        long stateGasFloor = vmState.InitialStateGasUsed;
+        long refundableStateGas = Math.Max(0, TGasPolicy.GetStateGasUsed(in gas) - stateGasFloor);
+        long appliedRefund = Math.Min(amount, refundableStateGas);
 
         if (appliedRefund > 0)
         {
             TGasPolicy.RefundStateGas(ref gas, appliedRefund, stateGasFloor, trackSpillRefund);
         }
 
-        ulong pendingRefund = amount - appliedRefund;
+        long pendingRefund = amount - appliedRefund;
         if (pendingRefund > 0)
         {
             // Restored state gas paid by an ancestor frame stays spendable here; the
@@ -695,8 +695,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         if (childState.StateGasRefundPending > 0)
         {
-            ulong pendingRefund = childState.StateGasRefundPending;
-            ulong unappliedRefund = TGasPolicy.DiscardStateGas(
+            long pendingRefund = childState.StateGasRefundPending;
+            long unappliedRefund = TGasPolicy.DiscardStateGas(
                 ref _currentState.Gas,
                 pendingRefund,
                 _currentState.InitialStateGasUsed,
@@ -941,7 +941,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         ulong regularDepositCost = 0;
-        ulong stateDepositCost = 0;
+        long stateDepositCost = 0;
         ulong codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas);
         bool hasEnoughGasForCodeDeposit = true;
         if (currentState.ExecutionType.IsAnyCreate())
@@ -949,7 +949,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _ = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out regularDepositCost, out stateDepositCost);
             hasEnoughGasForCodeDeposit =
                 TGasPolicy.GetRemainingGas(currentState.Gas) >= regularDepositCost &&
-                TGasPolicy.GetRemainingGas(currentState.Gas) + TGasPolicy.GetStateReservoir(in currentState.Gas) >= stateDepositCost;
+                TGasPolicy.GetRemainingGas(currentState.Gas) + (ulong)TGasPolicy.GetStateReservoir(in currentState.Gas) >= (ulong)stateDepositCost;
         }
 
         // Cache the output bytes for reuse in the tracing reports.
