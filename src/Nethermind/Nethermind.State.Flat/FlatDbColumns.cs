@@ -21,4 +21,6 @@ public enum FlatHistoryColumns
     StorageHistory,
     StorageChangeSets,
     AvailableBlocks,
+    StorageClears,
+    Metadata,
 }

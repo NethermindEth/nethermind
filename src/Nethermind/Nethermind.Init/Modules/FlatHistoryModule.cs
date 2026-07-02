@@ -16,11 +16,17 @@ namespace Nethermind.Init.Modules;
 /// </summary>
 public class FlatHistoryModule : Module
 {
-    protected override void Load(ContainerBuilder builder) =>
+    protected override void Load(ContainerBuilder builder)
+    {
+        // Backfill is a one-time repair scan; started after container build so it never delays construction,
+        // disposed (cancelled) by the container on shutdown.
+        builder.RegisterBuildCallback(static container => container.Resolve<StorageClearBackfill>().Start());
+
         builder
             .AddColumnDatabase<FlatHistoryColumns>(DbNames.FlatHistory)
             .AddSingleton<HistoryReader>()
             .AddSingleton<HistoryWriter>()
+            .AddSingleton<StorageClearBackfill>()
             .AddSingleton<IFlatPersistenceCaptureHook>(ctx => ctx.Resolve<HistoryWriter>())
             .AddDecorator<IFlatDbManager>((ctx, inner) => new HistoricalFlatDbManager(
                 inner,
@@ -29,4 +35,5 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<ITrieNodeCache>(),
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric));
+    }
 }

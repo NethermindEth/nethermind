@@ -25,6 +25,7 @@ public sealed class HistoryReader
 
     private readonly HistoryStore _accountHistory;
     private readonly HistoryStore _storageHistory;
+    private readonly StorageClearStore _storageClears;
     private readonly IDb _availableBlocks;
     private readonly bool _rlpWrapSlots;
 
@@ -46,6 +47,7 @@ public sealed class HistoryReader
         _storageHistory = new HistoryStore(
             history.GetColumnDb(FlatHistoryColumns.StorageHistory),
             history.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
+        _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
         _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
     }
 
@@ -86,14 +88,25 @@ public sealed class HistoryReader
     [SkipLocalsInit]
     public bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value)
     {
+        ValueHash256 addrHash = address.ToAccountPath;
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(index, ref slotHash);
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(
-            stackalloc byte[BaseFlatPersistence.StorageKeyLength], address.ToAccountPath, slotHash);
+            stackalloc byte[BaseFlatPersistence.StorageKeyLength], addrHash, slotHash);
 
         Span<byte> valueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        int written = _storageHistory.TryGetAt(block, flatKey, valueBuffer);
+        int written = _storageHistory.TryGetAt(block, flatKey, valueBuffer, out ulong changedAtBlock);
         if (written <= 0) // -1 = never changed at/before block, 0 = cleared tombstone
+        {
+            value = default;
+            return false;
+        }
+
+        // A self-destruct between the slot's last write and the read block kills the value. The live column
+        // expresses the destruct as a range-delete, which leaves no per-slot tombstone in the history.
+        ReadOnlySpan<byte> accountKey = BaseFlatPersistence.EncodeAccountKeyHashed(
+            stackalloc byte[BaseFlatPersistence.AccountKeyLength], addrHash);
+        if (_storageClears.HasClearInRange(accountKey, changedAtBlock, block))
         {
             value = default;
             return false;

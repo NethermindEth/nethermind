@@ -54,8 +54,15 @@ public sealed class HistoryStore
     /// never changed at/before <paramref name="block"/> (caller falls back to the tip), 0 for a deletion tombstone,
     /// otherwise the number of value bytes written.
     /// </summary>
+    public int TryGetAt(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer) =>
+        TryGetAt(block, flatKey, outBuffer, out _);
+
+    /// <summary>
+    /// Same as <see cref="TryGetAt(ulong, ReadOnlySpan{byte}, Span{byte})"/>, additionally reporting the block of
+    /// the resolved change in <paramref name="foundAtBlock"/> (0 when nothing was found).
+    /// </summary>
     [SkipLocalsInit]
-    public int TryGetAt(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer)
+    public int TryGetAt(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong foundAtBlock)
     {
         // A change at exactly `block` is the floor; KeyExists disambiguates a present-but-empty tombstone (length 0)
         // from a missing key, which Get's length alone cannot. Otherwise floor-seek strictly below `block`, where the
@@ -63,7 +70,12 @@ public sealed class HistoryStore
         Span<byte> key = stackalloc byte[flatKey.Length + BlockBytes];
         WriteHistoryKey(key, flatKey, block);
         if (_history.KeyExists(key))
+        {
+            foundAtBlock = block;
             return _history.Get(key, outBuffer);
+        }
+
+        foundAtBlock = 0;
 
         Span<byte> lowerBound = stackalloc byte[flatKey.Length + BlockBytes];
         flatKey.CopyTo(lowerBound);
@@ -76,6 +88,7 @@ public sealed class HistoryStore
         if (foundKey.Length != flatKey.Length + BlockBytes || !foundKey[..flatKey.Length].SequenceEqual(flatKey))
             return -1;
 
+        foundAtBlock = BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
         ReadOnlySpan<byte> value = view.CurrentValue;
         value.CopyTo(outBuffer);
         return value.Length;

@@ -222,20 +222,72 @@ public class HistoryWriterTests
 
         _writer.CaptureUpTo(StateAt(3), _repository);
 
-        bool found = _reader.TryGetStorage(readBlock, AddrA, Slot1, out SlotValue value);
+        AssertStorageAt(readBlock, Slot1, expectedHex);
+    }
+
+    // slot written @1, account self-destructed @2 (with prior persisted storage), slot re-written @3.
+    // The destruct is a range-delete in the live column, so only the clear marker can kill the @1 value.
+    [TestCase(0ul, null)]
+    [TestCase(1ul, "0a")]
+    [TestCase(2ul, null)] // destructed -> cleared without a per-slot tombstone
+    [TestCase(3ul, "0c")]
+    [TestCase(4ul, "0c")]
+    public void Storage_selfdestructed_then_rewritten_reads_per_height(ulong readBlock, string? expectedHex)
+    {
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        CommitBlock(2, 3, storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
+
+        _writer.CaptureUpTo(StateAt(3), _repository);
+
+        AssertStorageAt(readBlock, Slot1, expectedHex);
+    }
+
+    [Test]
+    public void Storage_untouched_after_selfdestruct_reads_empty_while_rewritten_slot_reads_new_value()
+    {
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a)), (AddrA, Slot2, HistorySlot(0x0b))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(1, 100))], storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
+
+        _writer.CaptureUpTo(StateAt(3), _repository);
 
         using (Assert.EnterMultipleScope())
         {
-            if (expectedHex is null)
-            {
-                Assert.That(found, Is.False);
-            }
-            else
-            {
-                Assert.That(found, Is.True);
-                Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)));
-            }
+            AssertStorageAt(3, Slot1, "0c");
+            AssertStorageAt(3, Slot2, null); // never re-written after the destruct -> dead
         }
+    }
+
+    // A destruct and a re-creation in the same block: the snapshot's slot values are the post-destruct state,
+    // so they win over the same-block clear (mirrors the live column's destruct-then-write batch order).
+    [Test]
+    public void Storage_destructed_and_rewritten_in_same_block_reads_the_rewrite()
+    {
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
+
+        _writer.CaptureUpTo(StateAt(2), _repository);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertStorageAt(1, Slot1, "0a");
+            AssertStorageAt(2, Slot1, "0b");
+            AssertStorageAt(3, Slot1, "0b");
+        }
+    }
+
+    // IsNewAccount == true means the account had no persisted storage before the destruct; the live column skips
+    // the range-delete in that case, so no clear is recorded and pre-existing history stays visible.
+    [Test]
+    public void Selfdestruct_of_account_without_persisted_storage_records_no_clear()
+    {
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        CommitBlock(1, 2, selfDestructs: [(AddrA, true)]);
+
+        _writer.CaptureUpTo(StateAt(2), _repository);
+
+        AssertStorageAt(3, Slot1, "0a");
     }
 
     // an EIP-158-style empty account (nonce 0, balance 0) must round-trip as a
@@ -349,6 +401,22 @@ public class HistoryWriterTests
         return new ReadOnlySnapshotBundle(snapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
     }
 
+    private void AssertStorageAt(ulong readBlock, UInt256 slot, string? expectedHex)
+    {
+        bool found = _reader.TryGetStorage(readBlock, AddrA, slot, out SlotValue value);
+
+        if (expectedHex is null)
+        {
+            Assert.That(found, Is.False, $"slot {slot} must read empty at block {readBlock}");
+        }
+        else
+        {
+            Assert.That(found, Is.True, $"slot {slot} must be present at block {readBlock}");
+            Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)),
+                $"slot {slot} resolved to the wrong value at block {readBlock}");
+        }
+    }
+
     private static byte[] RegressionSlotBytes(ulong block) => [0xAB, (byte)block];
 
     private static SlotValue RegressionSlotFor(ulong block) => SlotValue.FromSpanWithoutLeadingZero(RegressionSlotBytes(block));
@@ -362,7 +430,8 @@ public class HistoryWriterTests
         ulong fromBlock,
         ulong toBlock,
         (Address Address, Account? Account)[]? accountChanges = null,
-        (Address Address, UInt256 Slot, SlotValue? Value)[]? storageChanges = null)
+        (Address Address, UInt256 Slot, SlotValue? Value)[]? storageChanges = null,
+        (Address Address, bool IsNewAccount)[]? selfDestructs = null)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(StateAt(fromBlock), StateAt(toBlock), ResourcePool.Usage.ReadOnlyProcessingEnv);
 
@@ -373,6 +442,10 @@ public class HistoryWriterTests
         if (storageChanges is not null)
             foreach ((Address address, UInt256 slot, SlotValue? value) in storageChanges)
                 snapshot.Content.Storages[(address, slot)] = value;
+
+        if (selfDestructs is not null)
+            foreach ((Address address, bool isNewAccount) in selfDestructs)
+                snapshot.Content.SelfDestructedStorageAddresses[address] = isNewAccount;
 
         Assert.That(_repository.TryAddSnapshot(snapshot), Is.True);
         _repository.AddStateId(StateAt(toBlock));
@@ -413,6 +486,9 @@ public class HistoryWriterTests
     }
 
     private static SlotValue Slot(params byte[] bytes) => new(bytes);
+
+    // Right-aligned (numeric) slot value, matching what the reader decodes; Slot() is the raw 32-byte layout.
+    private static SlotValue HistorySlot(params byte[] bytes) => SlotValue.FromSpanWithoutLeadingZero(bytes);
 
     public enum ExpectedKind
     {

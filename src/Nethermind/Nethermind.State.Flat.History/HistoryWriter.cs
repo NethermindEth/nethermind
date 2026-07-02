@@ -25,6 +25,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly HistoryStore _accountHistory;
     private readonly HistoryStore _storageHistory;
+    private readonly StorageClearStore _storageClears;
     private readonly bool _rlpWrapSlots;
     private readonly bool _enabled;
 
@@ -51,6 +52,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         _storageHistory = new HistoryStore(
             history.GetColumnDb(FlatHistoryColumns.StorageHistory),
             history.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
+        _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
     }
 
     public ulong LastCapturedBlock => _lastCapturedBlock;
@@ -112,6 +114,17 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks).Set(blockKey, Array.Empty<byte>());
 
         Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        IWriteBatch storageClears = batch.GetColumnBatch(FlatHistoryColumns.StorageClears);
+        foreach (KeyValuePair<HashedKey<Address>, bool> destructed in snapshot.SelfDestructedStorageAddresses)
+        {
+            // Value == true means the account had no persisted storage before the destruct; PersistenceManager
+            // skips the flat range-delete in that case, so there is nothing in history to shadow either.
+            if (destructed.Value) continue;
+
+            ValueHash256 destructedAddrHash = destructed.Key.Key.ToAccountPath;
+            _storageClears.RecordClear(block, BaseFlatPersistence.EncodeAccountKeyHashed(accountKey, destructedAddrHash), storageClears);
+        }
+
         foreach (KeyValuePair<HashedKey<Address>, Account?> change in snapshot.Accounts)
         {
             ValueHash256 addrHash = change.Key.Key.ToAccountPath;
