@@ -21,12 +21,12 @@ internal class XdcSealer(ISigner signer, IHeaderDecoder headerDecoder, ILogManag
         //We might want to add more logic here in the future
         true;
 
-    public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) 
+    public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
     {
         if (block.Header is not XdcBlockHeader xdcBlockHeader)
             throw new ArgumentException("Only XDC headers are supported.");
-        
-        if (block.IsGenesis) 
+
+        if (block.IsGenesis)
             throw new InvalidOperationException("Can't sign genesis block");
 
         KeccakRlpWriter writer = new();
