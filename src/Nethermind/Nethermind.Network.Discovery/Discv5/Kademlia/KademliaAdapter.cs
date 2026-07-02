@@ -644,6 +644,8 @@ public sealed class KademliaAdapter(
         if (node.ValidatedProtocol == true)
         {
             int distance = _distance.CalculateLogDistance(_currentNodeHash, node.Id.Hash);
+            // Removing a stale bucket entry may promote an unvalidated replacement, so keep evicting until the
+            // endpoint-validated node can be admitted or no stale, non-static entries remain at this distance.
             while (true)
             {
                 Node[] nodes = table.GetAllAtDistance(distance);
