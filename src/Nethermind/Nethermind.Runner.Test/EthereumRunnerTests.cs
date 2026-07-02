@@ -21,8 +21,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
@@ -211,11 +209,6 @@ public class EthereumRunnerTests
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
-
-        if (api is AuRaNethermindApi auRaNethermindApi)
-        {
-            auRaNethermindApi.AuRaFinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
-        }
 
         try
         {

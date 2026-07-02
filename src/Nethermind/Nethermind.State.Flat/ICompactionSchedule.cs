@@ -11,12 +11,14 @@ public interface ICompactionSchedule
     /// not compact in lockstep. Returns 1 when no compaction should run (block 0 or compaction
     /// disabled).
     /// </summary>
-    int GetCompactSize(long blockNumber);
+    ulong GetCompactSize(ulong blockNumber);
 
     /// <summary>
-    /// The next block strictly greater than <paramref name="from"/> at which a full-size
-    /// compaction (and hence a persistence boundary) will occur. Returns <see cref="long.MaxValue"/>
-    /// when compaction is disabled.
+    /// The next block strictly greater than <paramref name="from"/>'s block number at which a full-size
+    /// compaction (and hence a persistence boundary) will occur. Returns <see cref="ulong.MaxValue"/>
+    /// when compaction is disabled. <see cref="StateId.PreGenesis"/> is treated as the slot before genesis,
+    /// so the boundary is anchored at block 0 instead of colliding with the <see cref="ulong.MaxValue"/>
+    /// "no further boundary" sentinel.
     /// </summary>
-    long NextFullCompactionAfter(long from);
+    ulong NextFullCompactionAfter(in StateId from);
 }

@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test;
@@ -50,10 +51,15 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         discoveryConfig.DiscoveryVersion = discoveryVersion;
         discoveryConfig.UseDefaultDiscv5Bootnodes = false;
 
-        return new ContainerBuilder()
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.GetForkId(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(new ForkId(0, 0));
+
+        ContainerBuilder builder = new();
+        builder
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
-            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}-{discoveryVersion}"))
-            .Build();
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}-{discoveryVersion}"));
+        builder.RegisterInstance(forkInfo).As<IForkInfo>();
+        return builder.Build();
     }
 
     int _discoveryPort = 0;

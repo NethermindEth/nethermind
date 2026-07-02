@@ -7,11 +7,11 @@ using Nethermind.Int256;
 
 namespace Evm.T8n.JsonTypes;
 
-public class EnvJson(Address currentCoinbase, long currentGasLimit, long currentNumber, ulong currentTimestamp)
+public class EnvJson(Address currentCoinbase, ulong currentGasLimit, ulong currentNumber, ulong currentTimestamp)
 {
     public Address CurrentCoinbase { get; set; } = currentCoinbase;
-    public long CurrentGasLimit { get; set; } = currentGasLimit;
-    public long CurrentNumber { get; set; } = currentNumber;
+    public ulong CurrentGasLimit { get; set; } = currentGasLimit;
+    public ulong CurrentNumber { get; set; } = currentNumber;
     public ulong CurrentTimestamp { get; set; } = currentTimestamp;
 
     public Withdrawal[]? Withdrawals { get; set; }
@@ -23,8 +23,8 @@ public class EnvJson(Address currentCoinbase, long currentGasLimit, long current
     public Hash256? ParentUncleHash { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public UInt256? ParentBaseFee { get; set; }
-    public long ParentGasUsed { get; set; }
-    public long ParentGasLimit { get; set; }
+    public ulong ParentGasUsed { get; set; }
+    public ulong ParentGasLimit { get; set; }
     public ulong? ParentExcessBlobGas { get; set; }
     public ulong? CurrentExcessBlobGas { get; set; }
     public ulong? ParentBlobGasUsed { get; set; }

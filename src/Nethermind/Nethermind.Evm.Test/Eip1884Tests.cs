@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test
 {
     public class Eip1884Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         private TestAllTracerWithOutput Execute(bool isIstanbul, byte[] code) =>
@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Test
 
         [TestCase(true, GasCostOf.ExtCodeHashEip1884)]
         [TestCase(false, GasCostOf.ExtCodeHash)]
-        public void Extcodehash_cost_depends_on_istanbul(bool isIstanbul, long expectedOpGasCost)
+        public void Extcodehash_cost_depends_on_istanbul(bool isIstanbul, ulong expectedOpGasCost)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
@@ -70,7 +70,7 @@ namespace Nethermind.Evm.Test
 
         [TestCase(true, GasCostOf.BalanceEip1884)]
         [TestCase(false, GasCostOf.BalanceEip150)]
-        public void Balance_cost_depends_on_istanbul(bool isIstanbul, long expectedOpGasCost)
+        public void Balance_cost_depends_on_istanbul(bool isIstanbul, ulong expectedOpGasCost)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
@@ -85,7 +85,7 @@ namespace Nethermind.Evm.Test
 
         [TestCase(true, GasCostOf.SLoadEip1884)]
         [TestCase(false, GasCostOf.SLoadEip150)]
-        public void Sload_cost_depends_on_istanbul(bool isIstanbul, long expectedOpGasCost)
+        public void Sload_cost_depends_on_istanbul(bool isIstanbul, ulong expectedOpGasCost)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 

@@ -13,8 +13,9 @@ namespace Nethermind.Serialization.Rlp;
 
 public static class KeyValueStoreRlpExtensions
 {
+
     [SkipLocalsInit]
-    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long blockNumber, ValueHash256 hash, IRlpDecoder<TItem> decoder,
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, ulong blockNumber, ValueHash256 hash, IRlpDecoder<TItem> decoder,
         ClockCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         Span<byte> dbKey = stackalloc byte[40];
@@ -26,6 +27,12 @@ public static class KeyValueStoreRlpExtensions
         Get(db, key, key.Bytes, decoder, cache, rlpBehaviors, shouldCache);
 
     public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long key, IRlpDecoder<TItem>? decoder, ClockCache<long, TItem>? cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    {
+        ReadOnlySpan<byte> keyDb = key.ToBigEndianSpanWithoutLeadingZeros(out _);
+        return Get(db, key, keyDb, decoder, cache, rlpBehaviors, shouldCache);
+    }
+
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, ulong key, IRlpDecoder<TItem>? decoder, ClockCache<ulong, TItem>? cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         ReadOnlySpan<byte> keyDb = key.ToBigEndianSpanWithoutLeadingZeros(out _);
         return Get(db, key, keyDb, decoder, cache, rlpBehaviors, shouldCache);
@@ -56,7 +63,7 @@ public static class KeyValueStoreRlpExtensions
     }
 
     [SkipLocalsInit]
-    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long blockNumber, ValueHash256 hash, IRlpDecoder<TItem> decoder,
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, ulong blockNumber, ValueHash256 hash, IRlpDecoder<TItem> decoder,
         AssociativeCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         Span<byte> dbKey = stackalloc byte[40];

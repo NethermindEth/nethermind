@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -50,7 +50,7 @@ public class NodeRecordSignerTests
         nodeRecord.EnrSequence = 1; // override
 
         signer.Sign(nodeRecord);
-        string enrString = nodeRecord.EnrString;
+        string enrString = nodeRecord.ToString();
         Assert.That(enrString, Is.EqualTo(expectedEnrString));
     }
 
@@ -128,14 +128,14 @@ public class NodeRecordSignerTests
     public void Can_serialize_eth_entry_as_nested_fork_id_list()
     {
         byte[] forkHash = [1, 2, 3, 4];
-        const long nextBlock = 0x0506;
+        const ulong next = 0x0506;
         byte[] expectedEntryBytes = Bytes.FromHexString("83657468c9c88401020304820506");
 
         Ecdsa ecdsa = new();
         PrivateKey privateKey = new(TestPrivateKey);
         NodeRecordSigner signer = new(ecdsa, privateKey);
         NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
+        nodeRecord.SetEntry(new EthEntry(forkHash, next));
         nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
         signer.Sign(nodeRecord);
 
@@ -147,7 +147,43 @@ public class NodeRecordSignerTests
 
         Assert.That(forkId, Is.Not.Null);
         Assert.That(forkId.Value.ForkHash, Is.EqualTo(forkHash));
-        Assert.That(forkId.Value.NextBlock, Is.EqualTo(nextBlock));
+        Assert.That(forkId.Value.Next, Is.EqualTo(next));
+    }
+
+    [Test]
+    public void Can_deserialize_and_verify_eth_entry_with_future_trailing_values()
+    {
+        byte[] forkHash = [1, 2, 3, 4];
+        const ulong next = ulong.MaxValue;
+
+        Ecdsa ecdsa = new();
+        PrivateKey privateKey = new(TestPrivateKey);
+        NodeRecordSigner signer = new(ecdsa, privateKey);
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new FutureEthEntry(forkHash, next));
+        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        signer.Sign(nodeRecord);
+        byte[] recordBytes = nodeRecord.ToRlpBytes();
+
+        NodeRecord decoded = NodeRecord.FromBytes(recordBytes, ecdsa);
+        ForkId? forkId = decoded.GetValue<ForkId>(EnrContentKey.Eth);
+
+        Assert.That(forkId, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkId.Value.ForkHash, Is.EqualTo(forkHash));
+            Assert.That(forkId.Value.Next, Is.EqualTo(next));
+            Assert.That(decoded.ToRlpBytes(), Is.EqualTo(recordBytes));
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(3)]
+    [TestCase(5)]
+    public void Eth_entry_rejects_fork_hash_with_wrong_length(int forkHashLength)
+    {
+        byte[] forkHash = new byte[forkHashLength];
+        Assert.That(() => new EthEntry(forkHash, 0UL), Throws.TypeOf<ArgumentException>());
     }
 
     [TestCaseSource(nameof(InvalidRecordByteCases))]
@@ -369,5 +405,30 @@ public class NodeRecordSignerTests
         }
 
         throw new InvalidOperationException("Could not create oversized ENR fixture.");
+    }
+
+    private sealed class FutureEthEntry(byte[] forkHash, ulong next) : EnrContentEntry<ForkId>(new ForkId(forkHash, next))
+    {
+        private const string FutureValue = "future";
+
+        public override string Key => EnrContentKey.Eth;
+
+        protected override int GetRlpLengthOfValue()
+        {
+            int forkIdContentLength = Rlp.LengthOf(Value.ForkHash) + Rlp.LengthOf(Value.Next);
+            int contentLength = Rlp.LengthOfSequence(forkIdContentLength) + Rlp.LengthOf(FutureValue);
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
+        protected override void EncodeValue<TWriter>(ref TWriter writer)
+        {
+            int forkIdContentLength = Rlp.LengthOf(Value.ForkHash) + Rlp.LengthOf(Value.Next);
+            int contentLength = Rlp.LengthOfSequence(forkIdContentLength) + Rlp.LengthOf(FutureValue);
+            writer.StartSequence(contentLength);
+            writer.StartSequence(forkIdContentLength);
+            writer.Encode(Value.ForkHash);
+            writer.Encode(Value.Next);
+            writer.Encode(FutureValue);
+        }
     }
 }

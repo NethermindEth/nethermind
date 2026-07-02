@@ -18,27 +18,27 @@ namespace Nethermind.AuRa.Test
 {
     public class AuRaContractGasLimitOverrideTests
     {
-        [TestCase(false, 1, 4000000)]
-        [TestCase(true, 1, 4000000)]
-        [TestCase(false, 3, 1000)]
-        [TestCase(false, 5, 3000000)]
-        [TestCase(true, 3, 2000000)]
-        [TestCase(true, 5, 3000000)]
-        [TestCase(true, 10, 4000000)]
-        [TestCase(false, 10, 4000000)]
-        public void GetGasLimit(bool minimum2MlnGasPerBlockWhenUsingBlockGasLimit, long blockNumber, long? expected)
+        [TestCase(false, 1UL, 4000000UL)]
+        [TestCase(true, 1UL, 4000000UL)]
+        [TestCase(false, 3UL, 1000UL)]
+        [TestCase(false, 5UL, 3000000UL)]
+        [TestCase(true, 3UL, 2000000UL)]
+        [TestCase(true, 5UL, 3000000UL)]
+        [TestCase(true, 10UL, 4000000UL)]
+        [TestCase(false, 10UL, 4000000UL)]
+        public void GetGasLimit(bool minimum2MlnGasPerBlockWhenUsingBlockGasLimit, ulong blockNumber, ulong? expected)
         {
             IBlockGasLimitContract blockGasLimitContract1 = Substitute.For<IBlockGasLimitContract>();
-            blockGasLimitContract1.ActivationBlock.Returns(3);
-            blockGasLimitContract1.Activation.Returns(3);
+            blockGasLimitContract1.ActivationBlock.Returns(3UL);
+            blockGasLimitContract1.Activation.Returns(3UL);
             blockGasLimitContract1.BlockGasLimit(Arg.Any<BlockHeader>()).Returns(1000u);
             IBlockGasLimitContract blockGasLimitContract2 = Substitute.For<IBlockGasLimitContract>();
-            blockGasLimitContract2.ActivationBlock.Returns(5);
-            blockGasLimitContract2.Activation.Returns(5);
+            blockGasLimitContract2.ActivationBlock.Returns(5UL);
+            blockGasLimitContract2.Activation.Returns(5UL);
             blockGasLimitContract2.BlockGasLimit(Arg.Any<BlockHeader>()).Returns(3000000u);
             IBlockGasLimitContract blockGasLimitContract3 = Substitute.For<IBlockGasLimitContract>();
-            blockGasLimitContract3.ActivationBlock.Returns(10);
-            blockGasLimitContract3.Activation.Returns(10);
+            blockGasLimitContract3.ActivationBlock.Returns(10UL);
+            blockGasLimitContract3.Activation.Returns(10UL);
             blockGasLimitContract3.BlockGasLimit(Arg.Any<BlockHeader>()).Throws(new AbiException(string.Empty));
 
             BlocksConfig config = new() { TargetBlockGasLimit = 4000000 };

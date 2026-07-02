@@ -27,7 +27,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
 
     public byte[]? GetMetadata(byte[] key) => _blockDb.Get(key);
 
-    public bool HasBlock(long blockNumber, Hash256 blockHash)
+    public bool HasBlock(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
@@ -45,21 +45,21 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
         _blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
     }
 
-    public void Delete(long blockNumber, Hash256 blockHash)
+    public void Delete(ulong blockNumber, Hash256 blockHash)
     {
         _blockCache.Delete(in blockHash.ValueHash256);
         _blockDb.Delete(blockNumber, blockHash);
         _blockDb.Remove(blockHash.Bytes);
     }
 
-    public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
+    public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
         Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
-    public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
+    public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
@@ -68,7 +68,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
         return _blockDb.Get(blockHash);
     }
 
-    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
+    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);

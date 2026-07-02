@@ -31,14 +31,14 @@ namespace Nethermind.Evm.Test
 
         public byte[]? ReturnValue { get; private set; }
 
-        public long GasSpent { get; private set; }
+        public ulong GasSpent { get; private set; }
 
         public string? Error { get; private set; }
 
         public byte StatusCode { get; private set; }
 
         public GasConsumed GasConsumedResult { get; private set; }
-        public long CumulativeRegularGasUsed { get; private set; }
+        public ulong CumulativeRegularGasUsed { get; private set; }
 
         public long Refund { get; private set; }
 
