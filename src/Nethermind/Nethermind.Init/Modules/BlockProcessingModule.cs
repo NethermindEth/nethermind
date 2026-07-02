@@ -64,7 +64,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
+
+            .AddSingleton<CodeInfoRepositoryFactory>(CodeInfoRepositoryFactories.Caching)
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
+
             .AddScoped<IProcessingStats, ProcessingStats>()
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))

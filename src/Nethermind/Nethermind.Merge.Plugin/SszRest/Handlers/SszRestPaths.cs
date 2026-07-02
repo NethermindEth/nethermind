@@ -75,6 +75,8 @@ public static class SszRestPaths
 
     public const string Blobs = "blobs";
 
+    public const string PayloadWithWitness = "payloads/witness";
+
     // Documentation strings for the SSZ-REST routes — used by EngineRpcCapabilitiesProvider
     // (registration) and EngineModuleTests (coverage assertions). Built at static-init time from
     // each fork's EngineApiUrlSegment so the route docs stay in sync with the routing layer.
@@ -103,6 +105,7 @@ public static class SszRestPaths
     public const string PostV3Blobs = "POST /engine/v2/blobs/v3";
 
     public static readonly string PostV5Payloads = $"POST /engine/v2/{_amsterdam}/payloads";
+    public static readonly string PostV5PayloadsWitness = $"POST /engine/v2/{_amsterdam}/payloads/witness";
     public static readonly string GetV6Payloads = $"GET /engine/v2/{_amsterdam}/payloads/{{payload_id}}";
     public static readonly string PostV4Forkchoice = $"POST /engine/v2/{_amsterdam}/forkchoice";
     public static readonly string PostV2PayloadBodiesByHash = $"POST /engine/v2/{_amsterdam}/bodies/hash";
@@ -126,6 +129,7 @@ public static class SszRestPaths
             if (Eq(resource, Payloads)) return spec.EngineApiNewPayloadVersion;
             if (Eq(resource, Forkchoice)) return spec.EngineApiForkchoiceVersion;
             if (Eq(resource, PayloadBodiesByHash)) return spec.EngineApiPayloadBodiesByHashVersion;
+            if (Eq(resource, PayloadWithWitness)) return spec.IsEip7928Enabled ? spec.EngineApiNewPayloadVersion : null;
         }
         else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
         {

@@ -32,20 +32,20 @@ public sealed class SszMiddleware
     private readonly ILogger _logger;
     private readonly CancellationToken _processExitToken;
 
-    // Path: /engine/v2/{fork}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v2/";
 
-    /// <summary>
-    /// Maximum allowed request body size in bytes (64 MiB).
-    /// Mirrors the <c>payload.max_bytes</c> example value advertised in the Engine API
-    /// SSZ-REST spec capabilities response (see https://github.com/ethereum/execution-apis/pull/793).
-    /// </summary>
+    /// <summary>Maximum allowed request body size in bytes (64 MiB), mirroring the spec's <c>payload.max_bytes</c> (execution-apis#793).</summary>
     public const int MaxBodySize = 0x4000000;
 
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _getRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _postLookup;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _getLookup;
+
+    // Verb-agnostic set of resources whose registered name spans several path segments ("payloads/witness",
+    // "bodies/hash"). Used to decide whether a request path is a whole resource or a resource + path extra.
+    private readonly FrozenSet<string> _multiSegmentResources;
+    private readonly FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> _multiSegmentLookup;
 
     private enum SszRequestKind { NotEngine, EngineWrongMediaType, EngineOk }
 
@@ -65,6 +65,12 @@ public sealed class SszMiddleware
         (_postRoutes, _getRoutes) = BuildRoutes(handlers);
         _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
+
+        HashSet<string> multiSegment = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string resource in _postRoutes.Keys) if (resource.Contains('/')) multiSegment.Add(resource);
+        foreach (string resource in _getRoutes.Keys) if (resource.Contains('/')) multiSegment.Add(resource);
+        _multiSegmentResources = multiSegment.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        _multiSegmentLookup = _multiSegmentResources.GetAlternateLookup<ReadOnlySpan<char>>();
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
@@ -76,7 +82,6 @@ public sealed class SszMiddleware
 
         foreach (ISszEndpointHandler h in handlers)
         {
-            // Dictionaries are keyed case-insensitively below — keep resource as-is, no lowercasing.
             Dictionary<string, List<ISszEndpointHandler>> dict =
                 h.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
                     ? getDict
@@ -155,8 +160,6 @@ public sealed class SszMiddleware
         else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, fork, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
-            // intermediate string; appending the span goes straight into the format buffer.
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
                 $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
                 SszRestErrorCodes.MethodNotFound);
@@ -175,69 +178,64 @@ public sealed class SszMiddleware
                     : $"SSZ-REST {ctx.Request.Method} /engine/v2/{pathSegment.Span}/{extra.Span}");
             }
 
-            // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
-            // pooled blocks (~4 KB each), so multi-segment is the common case for blob-bearing
-            // payloads. The generated SSZ codecs accept ReadOnlySequence<byte> — single-segment
-            // is zero-copy, multi-segment consolidates once via ArrayPool. Both paths skip the
-            // MemoryStream + ToArray dance the previous implementation needed.
-            PipeReader reader = ctx.Request.BodyReader;
-            ReadOnlySequence<byte> body = default;
-            bool bodyRead = false;
-            try
-            {
-                body = await ReadBodyAsync(ctx, reader);
-                bodyRead = true;
-                Metrics.SszRestRequestBytesTotal += body.Length;
+            await DispatchAsync(ctx, handler!, version, extra);
+        }
+    }
 
-                await handler!.HandleAsync(ctx, version, extra, body);
+    /// <summary>Shared body-read + handler invocation + metrics + error mapping for the fork-routed endpoints.</summary>
+    private async Task DispatchAsync(HttpContext ctx, ISszEndpointHandler handler, int version, ReadOnlyMemory<char> extra)
+    {
+        PipeReader reader = ctx.Request.BodyReader;
+        ReadOnlySequence<byte> body = default;
+        bool bodyRead = false;
+        try
+        {
+            body = await ReadBodyAsync(ctx, reader);
+            bodyRead = true;
+            Metrics.SszRestRequestBytesTotal += body.Length;
 
-                int status = ctx.Response.StatusCode;
-                switch (status)
-                {
-                    case >= 200 and < 300:
-                        Metrics.SszRestRequestsSuccessTotal++;
-                        break;
-                    case >= 400 and < 500:
-                        Metrics.SszRestRequestsClientErrorTotal++;
-                        break;
-                    case >= 500:
-                        Metrics.SszRestRequestsServerErrorTotal++;
-                        break;
-                }
-            }
-            catch (InvalidOperationException ex) when (!bodyRead)
-            {
-                Metrics.SszRestRequestsClientErrorTotal++;
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
-            }
-            catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
-            {
-                // Per execution-apis #793 (Engine API SSZ Transport spec, "HTTP status codes" section):
-                // malformed SSZ encoding is 400 Bad Request with type=ssz-decode-error: canned error,
-                // no detail (spec verbatim).  422 Unprocessable Entity is reserved for
-                // "Invalid payload attributes" and is emitted by the handler chain via
-                // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
-                Metrics.SszRestDecodeFailuresTotal++;
-                Metrics.SszRestRequestsClientErrorTotal++;
-                if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                    string.Empty, SszRestErrorCodes.SszDecodeError);
-            }
-            catch (Exception ex)
-            {
-                Metrics.SszRestRequestsServerErrorTotal++;
-                if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
+            await handler.HandleAsync(ctx, version, extra, body);
 
-                // If the inner code already aborted the request (e.g. encode failed mid-stream
-                // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
-                // OperationCanceledException, producing a duplicate exception in the logs.
-                if (!ctx.RequestAborted.IsCancellationRequested)
-                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
-            }
-            finally
+            int status = ctx.Response.StatusCode;
+            switch (status)
             {
-                if (bodyRead) reader.AdvanceTo(body.End);
+                case >= 200 and < 300:
+                    Metrics.SszRestRequestsSuccessTotal++;
+                    break;
+                case >= 400 and < 500:
+                    Metrics.SszRestRequestsClientErrorTotal++;
+                    break;
+                case >= 500:
+                    Metrics.SszRestRequestsServerErrorTotal++;
+                    break;
             }
+        }
+        catch (InvalidOperationException ex) when (!bodyRead)
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
+        {
+            // Malformed SSZ encoding is 400 with type=ssz-decode-error, no detail (execution-apis#793).
+            Metrics.SszRestDecodeFailuresTotal++;
+            Metrics.SszRestRequestsClientErrorTotal++;
+            if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                string.Empty, SszRestErrorCodes.SszDecodeError);
+        }
+        catch (Exception ex)
+        {
+            Metrics.SszRestRequestsServerErrorTotal++;
+            if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
+
+            // If the inner code already aborted the request, writing a 500 would throw a duplicate OperationCanceledException.
+            if (!ctx.RequestAborted.IsCancellationRequested)
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
+        }
+        finally
+        {
+            if (bodyRead) reader.AdvanceTo(body.End);
         }
     }
 
@@ -253,8 +251,7 @@ public sealed class SszMiddleware
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        // Collapse a trailing slash so `/foo` and `/foo/` route identically; `pathLen` then
-        // bounds every subsequent `path.AsMemory(...)` slice so the slash never reaches `extra`.
+        // Collapse a trailing slash so `/foo` and `/foo/` route identically; pathLen bounds every later slice so the slash never reaches `extra`.
         int pathLen = path.Length;
         if (pathLen > EnginePrefix.Length && path[pathLen - 1] == '/')
         {
@@ -272,8 +269,7 @@ public sealed class SszMiddleware
             pathSegment = path.AsMemory(offset, pathLen - offset);
             return true;
         }
-        // Unscoped endpoints don't accept path extras — reject "/identity/foo" / "/capabilities/foo"
-        // as 404 method-not-found rather than letting them fall through to fork parsing.
+        // Unscoped endpoints don't accept path extras — reject "/identity/foo" / "/capabilities/foo" as 404.
         if (span.StartsWith("identity/".AsSpan(), StringComparison.OrdinalIgnoreCase)
             || span.StartsWith("capabilities/".AsSpan(), StringComparison.OrdinalIgnoreCase))
         {
@@ -295,20 +291,17 @@ public sealed class SszMiddleware
             return false;
         }
 
-        // Everything remaining should be a fork-scoped path: /{fork}/{resource}[/{extra}]
+        // Fork-scoped path: /{fork}/{resource}[/{extra}]
         int nextSlash = span.IndexOf('/');
         if (nextSlash <= 0)
         {
-            // E.g. bodies query or payloads query without extra path segment
             nextSlash = span.Length;
         }
 
         ReadOnlySpan<char> forkSpan = span[..nextSlash];
-        // SszRestPaths.SupportedForks uses OrdinalIgnoreCase, so no lowercasing needed.
         if (!SszRestPaths.SupportedForksSpanLookup.Contains(forkSpan))
         {
-            // Reject `/engine/v2/v<N>/...` (looks like a version-only path with no fork) before
-            // emitting an unsupported-fork error — let the caller produce a 404 instead.
+            // Reject `/engine/v2/v<N>/...` as 404 rather than an unsupported-fork error.
             if (forkSpan.Length > 1
                 && (forkSpan[0] == 'v' || forkSpan[0] == 'V')
                 && int.TryParse(forkSpan[1..], out _))
@@ -329,8 +322,7 @@ public sealed class SszMiddleware
         }
         else
         {
-            // Recognised fork but missing resource segment, e.g. /engine/v2/cancun — not
-            // a valid endpoint; leave unsupportedFork = false so the caller uses 404.
+            // Recognised fork but missing resource segment (e.g. /engine/v2/cancun) — 404, not unsupported-fork.
             return false;
         }
         return true;
@@ -344,22 +336,21 @@ public sealed class SszMiddleware
 
         bool isPost = HttpMethods.IsPost(method);
         bool isGet = !isPost && HttpMethods.IsGet(method);
+        if (!isPost && !isGet) return false;
 
         ReadOnlyMemory<char> resource = pathSegment;
         ReadOnlyMemory<char> extraMem = default;
 
-        int firstSlash = pathSegment.Span.IndexOf('/');
-        if (firstSlash > 0)
+        // Multi-segment resources ("payloads/witness", "bodies/hash") stay whole;
+        // anything else splits into resource + path extra ("payloads/{id}")
+        if (!_multiSegmentLookup.Contains(pathSegment.Span))
         {
-            extraMem = pathSegment[(firstSlash + 1)..];
-            resource = pathSegment[..firstSlash];
-        }
-
-        if (resource.Span.Equals("bodies".AsSpan(), StringComparison.OrdinalIgnoreCase)
-            && extraMem.Span.Equals("hash".AsSpan(), StringComparison.OrdinalIgnoreCase))
-        {
-            resource = SszRestPaths.PayloadBodiesByHash.AsMemory();
-            extraMem = default;
+            int firstSlash = pathSegment.Span.IndexOf('/');
+            if (firstSlash > 0)
+            {
+                resource = pathSegment[..firstSlash];
+                extraMem = pathSegment[(firstSlash + 1)..];
+            }
         }
 
         if (fork is not null)
@@ -369,38 +360,33 @@ public sealed class SszMiddleware
             version = mappedVersion.Value;
         }
 
-        FrozenDictionary<string, List<ISszEndpointHandler>>? exactDict = isPost ? _postRoutes : isGet ? _getRoutes : null;
+        FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
+            lookup = isPost ? _postLookup : _getLookup;
 
-        if (exactDict is not null)
+        if (lookup.TryGetValue(resource.Span, out List<ISszEndpointHandler>? exactList))
         {
-            FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
-                lookup = isPost ? _postLookup : _getLookup;
-
-            if (lookup.TryGetValue(resource.Span, out List<ISszEndpointHandler>? exactList))
+            ISszEndpointHandler? fallback = null;
+            foreach (ISszEndpointHandler candidate in exactList)
             {
-                ISszEndpointHandler? fallback = null;
-                foreach (ISszEndpointHandler candidate in exactList)
+                if (candidate.Version == version)
                 {
-                    if (candidate.Version == version)
-                    {
-                        if (!extraMem.IsEmpty && !candidate.AcceptsPathExtra)
-                            return false;
-
-                        handler = candidate;
-                        extra = extraMem;
-                        return true;
-                    }
-                    if (candidate.Version is null) fallback = candidate;
-                }
-                if (fallback is not null)
-                {
-                    if (!extraMem.IsEmpty && !fallback.AcceptsPathExtra)
+                    if (!extraMem.IsEmpty && !candidate.AcceptsPathExtra)
                         return false;
 
-                    handler = fallback;
+                    handler = candidate;
                     extra = extraMem;
                     return true;
                 }
+                if (candidate.Version is null) fallback = candidate;
+            }
+            if (fallback is not null)
+            {
+                if (!extraMem.IsEmpty && !fallback.AcceptsPathExtra)
+                    return false;
+
+                handler = fallback;
+                extra = extraMem;
+                return true;
             }
         }
 
@@ -408,7 +394,7 @@ public sealed class SszMiddleware
     }
 
 
-    private static SszRequestKind ClassifySszRequest(HttpContext ctx)
+    private SszRequestKind ClassifySszRequest(HttpContext ctx)
     {
         string path = ctx.Request.Path.Value ?? string.Empty;
 
@@ -442,7 +428,6 @@ public sealed class SszMiddleware
                 if (IsDiagnosticGetPath(path))
                     return SszRequestKind.EngineOk;
 
-                // Hot-path SSZ GET endpoints require Accept: application/octet-stream.
                 foreach (string? v in ctx.Request.Headers.Accept)
                 {
                     if (v is not null && v.Contains(
@@ -470,9 +455,8 @@ public sealed class SszMiddleware
     }
 
     /// <summary>
-    /// Returns the request body as a <see cref="ReadOnlySequence{T}"/> over the PipeReader's
-    /// pooled segments. The caller MUST call <see cref="PipeReader.AdvanceTo(SequencePosition)"/>
-    /// once the wire object has been decoded (no remaining views into the segments).
+    /// Returns the request body as a <see cref="ReadOnlySequence{T}"/> over the PipeReader's pooled segments.
+    /// The caller MUST call <see cref="PipeReader.AdvanceTo(SequencePosition)"/> once the wire object has been decoded.
     /// </summary>
     private static async Task<ReadOnlySequence<byte>> ReadBodyAsync(HttpContext ctx, PipeReader reader)
     {
@@ -493,8 +477,7 @@ public sealed class SszMiddleware
                 }
         }
 
-        // ContentLength unknown (chunked transfer): drain the pipe without consuming any
-        // bytes so the final ReadResult holds the entire body in one ReadOnlySequence.
+        // ContentLength unknown (chunked): drain without consuming so the final ReadResult holds the whole body.
         while (true)
         {
             ReadResult rr = await reader.ReadAsync(ctx.RequestAborted);
