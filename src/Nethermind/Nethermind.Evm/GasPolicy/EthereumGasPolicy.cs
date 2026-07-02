@@ -511,8 +511,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         (ulong authRegularCost, ulong authStateCost) = IGasPolicy<EthereumGasPolicy>.AuthorizationListCost(tx, spec);
         ulong accessListCost = IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec, floorTokensInAccessList);
 
-        // EIP-2780 reduces TX_BASE_COST; the recipient touch / value-transfer charges are applied at
-        // execution (see TransactionProcessor), keeping intrinsic gas a pure function of the transaction.
         ulong baseCost = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
         ulong regularGas = baseCost
                           + DataCost(tx, spec, tokensInCallData)
