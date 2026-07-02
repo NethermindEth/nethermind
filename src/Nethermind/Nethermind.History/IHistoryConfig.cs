@@ -37,6 +37,11 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "2")]
     uint PruningTimeoutSeconds { get; set; }
 
+    [ConfigItem(
+        Description = "Whether to allow retention windows below the chain's required minimum (EIP-4444). WARNING: nodes retaining less history than the network minimum may fail to serve peers and violate protocol expectations; intended for dedicated RPC nodes such as rolling partial archives.",
+        DefaultValue = "false")]
+    bool AllowBelowMinRetention { get; set; }
+
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler
     bool Enabled() => Pruning != PruningModes.Disabled;

@@ -7,12 +7,14 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.PartialArchive;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.State;
 using Nethermind.State.Healing;
 using Nethermind.Synchronization.FastSync;
@@ -21,13 +23,29 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
-public class PruningTrieStoreModule(IInitConfig initConfig) : Module
+public class PruningTrieStoreModule(IInitConfig initConfig, ISyncConfig syncConfig, INetworkConfig networkConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
+        if (syncConfig.PartialArchiveEnabled)
+        {
+            builder
+                .AddSingleton<PartialArchiveNodeTracker>()
+                .Bind<IPersistedNodeObserver, PartialArchiveNodeTracker>();
+
+            if (!string.IsNullOrEmpty(syncConfig.PartialArchiveFeeders))
+            {
+                // Feeders must be persistent connections so the fast-fill pivot probe can reach them.
+                networkConfig.StaticPeers = string.IsNullOrEmpty(networkConfig.StaticPeers)
+                    ? syncConfig.PartialArchiveFeeders
+                    : $"{networkConfig.StaticPeers},{syncConfig.PartialArchiveFeeders}";
+            }
+        }
+
         builder
 
             // Special case for state db with pruning trie state.

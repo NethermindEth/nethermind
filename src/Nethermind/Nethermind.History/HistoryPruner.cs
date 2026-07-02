@@ -336,13 +336,22 @@ public class HistoryPruner : IHistoryPruner
 
     private void CheckConfig()
     {
+        if (_historyConfig.AllowBelowMinRetention)
+        {
+            if ((_historyConfig.RetentionEpochs < _minHistoryRetentionEpochs || _historyConfig.BalRetentionEpochs < _minBalRetentionEpochs) && _logger.IsWarn)
+            {
+                _logger.Warn($"History retention ({_historyConfig.RetentionEpochs} epochs) is below the chain minimum ({_minHistoryRetentionEpochs}). This node will not serve the network-expected history range.");
+            }
+            return;
+        }
+
         if (_historyConfig.RetentionEpochs < _minHistoryRetentionEpochs)
         {
-            throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
+            throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}. Set {nameof(IHistoryConfig)}.{nameof(IHistoryConfig.AllowBelowMinRetention)} to override.");
         }
         if (_historyConfig.BalRetentionEpochs < _minBalRetentionEpochs)
         {
-            throw new HistoryPrunerException($"BalRetentionEpochs must be at least {_minBalRetentionEpochs}.");
+            throw new HistoryPrunerException($"BalRetentionEpochs must be at least {_minBalRetentionEpochs}. Set {nameof(IHistoryConfig)}.{nameof(IHistoryConfig.AllowBelowMinRetention)} to override.");
         }
     }
 

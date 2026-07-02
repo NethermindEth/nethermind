@@ -69,6 +69,7 @@ public class DbModule(
 
             .AddColumnDatabase<ReceiptsColumns>(DbNames.Receipts)
             .AddColumnDatabase<BlobTxsColumns>(DbNames.BlobTransactions)
+            .AddColumnDatabase<PartialArchiveColumns>(DbNames.PartialArchive)
 
             .AddSingleton<HyperClockCacheWrapper>((ctx) => new HyperClockCacheWrapper(ctx.Resolve<IDbConfig>().SharedBlockCacheSize))
             ;

@@ -30,7 +30,8 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
         IDbProvider dbProvider,
         ILogManager logManager,
         IPruningConfig pruningConfig,
-        ILastNStateRootTracker lastNStateRootTracker = null
+        ILastNStateRootTracker lastNStateRootTracker = null,
+        ulong? retentionWindowBlocksOverride = null
     )
     {
         _dbProvider = dbProvider;
@@ -49,7 +50,7 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
             ? NoopSnapServer.Instance
             : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
 
-        RetentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : (ulong?)null;
+        RetentionWindowBlocks = retentionWindowBlocksOverride ?? (pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : (ulong?)null);
     }
 
     public ulong? RetentionWindowBlocks { get; }

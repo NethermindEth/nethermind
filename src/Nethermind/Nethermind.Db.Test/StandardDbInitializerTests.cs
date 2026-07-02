@@ -17,6 +17,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using NUnit.Framework;
 using Testably.Abstractions;
 
@@ -86,7 +87,7 @@ public class StandardDbInitializerTests
             {
                 DownloadReceiptsInFastSync = useReceipts
             }))
-            .AddModule(new PruningTrieStoreModule(initConfig)) // For the full pruning db
+            .AddModule(new PruningTrieStoreModule(initConfig, new SyncConfig(), new NetworkConfig())) // For the full pruning db
             .AddSingleton<IPruningConfig>(new PruningConfig())
             .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<IInitConfig>(initConfig)

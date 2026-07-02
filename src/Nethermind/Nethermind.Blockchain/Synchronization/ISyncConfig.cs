@@ -213,4 +213,19 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "200000000", HiddenFromDocs = true)]
     long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; }
+
+    [ConfigItem(Description = $"Whether to retain the full historical state (a rolling partial archive) for at least `{nameof(PartialArchiveRange)}` most recent blocks, starting from the moment the node is synced. The retained window serves historical state queries, such as `eth_getProof`, at native speed. Requires the HalfPath state layout and in-memory pruning.", DefaultValue = "false")]
+    bool PartialArchiveEnabled { get; set; }
+
+    [ConfigItem(Description = $"The minimum number of most recent blocks with the full historical state retained when `{nameof(PartialArchiveEnabled)}` is `true`. The window can be temporarily larger between pruning passes.", DefaultValue = "10000")]
+    ulong PartialArchiveRange { get; set; }
+
+    [ConfigItem(Description = $"The number of blocks between partial archive pruning passes when `{nameof(PartialArchiveEnabled)}` is `true`.", DefaultValue = "64")]
+    ulong PartialArchivePruneInterval { get; set; }
+
+    [ConfigItem(Description = $"How long, in minutes, a fresh partial archive node looks for a peer able to serve snap state at `head - {nameof(PartialArchiveRange)}` before falling back to the regular head pivot. Syncing from such an old pivot fills the whole historical window at sync completion instead of growing it forward one block per slot. `0` disables the fast fill.", DefaultValue = "60")]
+    ulong PartialArchiveFastFillWaitMinutes { get; set; }
+
+    [ConfigItem(Description = $"A comma-separated list of trusted feeder node URLs expected to serve historical snap state for the partial archive fast fill (e.g. archive or partial archive nodes with a raised `{nameof(SnapServingMaxDepth)}`). Added to static peers.", DefaultValue = "null")]
+    string? PartialArchiveFeeders { get; set; }
 }

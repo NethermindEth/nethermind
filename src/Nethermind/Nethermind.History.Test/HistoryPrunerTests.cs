@@ -257,17 +257,20 @@ public class HistoryPrunerTests
         CheckHeadPreserved(testBlockchain, blocks);
     }
 
-    [TestCase(0UL, 100000u, 0UL, 3533u, false)]
-    [TestCase(100UL, 10u, 0UL, 3533u, true)]      // block retention below min
-    [TestCase(0UL, 100000u, 3533UL, 3000u, true)] // BAL retention below min
-    [TestCase(0UL, 100000u, 3533UL, 3533u, false)] // BAL retention exactly at min
-    public void Validates_config(ulong minHistoryRetentionEpochs, uint retentionEpochs, ulong minBalRetentionEpochs, uint balRetentionEpochs, bool shouldThrow)
+    [TestCase(0UL, 100000u, 0UL, 3533u, false, false)]
+    [TestCase(100UL, 10u, 0UL, 3533u, false, true)]      // block retention below min
+    [TestCase(0UL, 100000u, 3533UL, 3000u, false, true)] // BAL retention below min
+    [TestCase(0UL, 100000u, 3533UL, 3533u, false, false)] // BAL retention exactly at min
+    [TestCase(100UL, 10u, 0UL, 3533u, true, false)]      // below min allowed by explicit override
+    [TestCase(0UL, 100000u, 3533UL, 3000u, true, false)] // BAL below min allowed by explicit override
+    public void Validates_config(ulong minHistoryRetentionEpochs, uint retentionEpochs, ulong minBalRetentionEpochs, uint balRetentionEpochs, bool allowBelowMinRetention, bool shouldThrow)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.Rolling,
             RetentionEpochs = retentionEpochs,
             BalRetentionEpochs = balRetentionEpochs,
+            AllowBelowMinRetention = allowBelowMinRetention,
         };
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec
         {

@@ -78,6 +78,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
     private readonly IFinalizedStateProvider _finalizedStateProvider;
+    private readonly IPersistedNodeObserver? _persistedNodeObserver;
 
     public TrieStore(
         INodeStorage nodeStorage,
@@ -85,13 +86,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         IPersistenceStrategy persistenceStrategy,
         IFinalizedStateProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
-        ILogManager logManager)
+        ILogManager logManager,
+        IPersistedNodeObserver? persistedNodeObserver = null)
     {
         _logger = logManager.GetClassLogger<TrieStore>();
         _nodeStorage = nodeStorage;
         _pruningStrategy = pruningStrategy;
         _persistenceStrategy = persistenceStrategy;
         _finalizedStateProvider = finalizedStateProvider;
+        _persistedNodeObserver = persistedNodeObserver;
 
         _publicStore = new TrieKeyValueStore(this);
         _persistedNodeRecorder = PersistedNodeRecorder;
@@ -320,6 +323,20 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (!ReferenceEquals(cachedNodeCopy, node))
         {
             Metrics.ReplacedNodesCount++;
+            if (_persistedNodeObserver is not null)
+            {
+                // The same (address, path, keccak) is live again at this block. Persistence skips
+                // deduplicated nodes, so without this signal the partial archive could treat the
+                // current version as superseded and eventually delete it.
+                _persistedNodeObserver.OnNodeRecommitted(address, in path, node.Keccak, blockNumber);
+                if (cachedNodeCopy.IsPersisted)
+                {
+                    // Force a re-persist: the window pruner may have deleted (or be about to
+                    // delete) this key based on an older supersession record; re-writing it on the
+                    // next persistence pass restores the on-disk copy.
+                    cachedNodeCopy.IsPersisted = false;
+                }
+            }
         }
         else
         {
@@ -740,11 +757,18 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         Action<TreePath, Hash256?, TrieNode> persistedNodeRecorder = shouldTrackPastKey ? _persistedNodeRecorder : _persistedNodeRecorderNoop;
 
+        ulong maxPersistedBlock = 0;
         for (int index = 0; index < candidateSets.Count; index++)
         {
             BlockCommitSet blockCommitSet = candidateSets[index];
             if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
-            ParallelPersistBlockCommitSet(blockCommitSet, persistedNodeRecorder);
+            maxPersistedBlock = Math.Max(maxPersistedBlock, blockCommitSet.BlockNumber);
+            ParallelPersistBlockCommitSet(blockCommitSet, ComposeRecorderWithObserver(persistedNodeRecorder, blockCommitSet));
+        }
+
+        if (candidateSets.Count > 0)
+        {
+            _persistedNodeObserver?.OnSnapshotPersisted(maxPersistedBlock);
         }
 
         AnnounceReorgBoundaries();
@@ -895,6 +919,38 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void PersistedNodeRecorderNoop(TreePath treePath, Hash256 address, TrieNode tn)
     {
+    }
+
+    /// <summary>
+    /// Wraps a persisted-node recorder so <see cref="IPersistedNodeObserver.OnNodePersisted"/> also
+    /// fires for every stored node of the commit set being persisted.
+    /// </summary>
+    /// <remarks>
+    /// Only provably canonical sets are reported: non-canonical (reorged) sets are persisted too,
+    /// and registering their nodes as superseding would let the window pruner delete versions the
+    /// canonical chain still references. When canonicality cannot be confirmed the set is skipped,
+    /// which at worst leaks keys.
+    /// </remarks>
+    private Action<TreePath, Hash256?, TrieNode> ComposeRecorderWithObserver(
+        Action<TreePath, Hash256?, TrieNode> recorder, BlockCommitSet commitSet)
+    {
+        IPersistedNodeObserver? observer = _persistedNodeObserver;
+        if (observer is null) return recorder;
+
+        Hash256? canonicalRoot = _finalizedStateProvider.GetFinalizedStateRootAt(commitSet.BlockNumber);
+        if (canonicalRoot is null || canonicalRoot != commitSet.StateRoot)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Not reporting persisted nodes of block {commitSet.BlockNumber} ({commitSet.StateRoot}) to the partial archive: {(canonicalRoot is null ? "canonicality unknown" : "not canonical")}.");
+            return recorder;
+        }
+
+        ulong blockNumber = commitSet.BlockNumber;
+        return (path, address, tn) =>
+        {
+            recorder(path, address, tn);
+            // Nodes without keccak are inlined in the parent RLP and never stored separately.
+            if (tn.Keccak is not null) observer.OnNodePersisted(address, in path, tn.Keccak, blockNumber);
+        };
     }
 
     private int _lastPrunedShardIdx = 0;
@@ -1283,12 +1339,20 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
 
+        ulong maxPersistedBlock = 0;
         for (int index = 0; index < candidateSets.Count; index++)
         {
             BlockCommitSet blockCommitSet = candidateSets[index];
             if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
-            ParallelPersistBlockCommitSet(blockCommitSet, _persistedNodeRecorderNoop);
+            maxPersistedBlock = Math.Max(maxPersistedBlock, blockCommitSet.BlockNumber);
+            ParallelPersistBlockCommitSet(blockCommitSet, ComposeRecorderWithObserver(_persistedNodeRecorderNoop, blockCommitSet));
         }
+
+        if (candidateSets.Count > 0)
+        {
+            _persistedNodeObserver?.OnSnapshotPersisted(maxPersistedBlock);
+        }
+
         _nodeStorage.Flush(onlyWal: false);
 
         if (candidateSets.Count == 0)
