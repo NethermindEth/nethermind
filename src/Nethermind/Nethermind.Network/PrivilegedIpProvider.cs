@@ -19,6 +19,12 @@ namespace Nethermind.Network;
 /// throttled. Config static peers are immutable at runtime, so their IPs are parsed once; the manager sets are
 /// read live on each query, so <c>admin_add/removePeer</c> and <c>admin_add/removeTrustedPeer</c> are reflected
 /// without event wiring.
+/// <para>
+/// Matching is by IP address, not node id. A node's true identity is its public key, and in theory it may
+/// present multiple IPs/ports, so IP-based privileging is approximate — but the recent-IP filter runs
+/// pre-handshake, before the remote public key is known, so the IP is the only identifier available at that
+/// point. A configured node connecting from an IP other than its advertised one would not be matched here.
+/// </para>
 /// </remarks>
 public sealed class PrivilegedIpProvider : IPrivilegedIpProvider
 {
