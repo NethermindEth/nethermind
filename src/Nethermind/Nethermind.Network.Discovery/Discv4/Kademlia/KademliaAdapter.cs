@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -37,7 +38,8 @@ public sealed class KademliaAdapter(
     private readonly TimeSpan _expirationTime = TimeSpan.FromMilliseconds(discoveryConfig.MessageExpiryTime);
     private readonly TimeSpan _waitAfterPongDelay = TimeSpan.FromMilliseconds(discoveryConfig.BondWaitTime);
 
-    private readonly RateLimiter _outboundRateLimiter = new(discoveryConfig.MaxOutgoingMessagePerSecond);
+    private readonly RateLimiter _outboundRateLimiter = new(Math.Max(1, discoveryConfig.MaxOutgoingMessagePerSecond / 2));
+    private readonly RateLimiter _responseRateLimiter = new(Math.Max(1, discoveryConfig.MaxOutgoingMessagePerSecond / 2));
     public IMsgSender? MsgSender { get; set; }
 
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
@@ -50,8 +52,8 @@ public sealed class KademliaAdapter(
 
     private async Task<bool> EnsureOutgoingMessageBondedPeer(Node node, NodeSession nodeSession, CancellationToken token)
     {
-        // If we have received ping, then we have ponged which mean we should be bonded from their point of view
-        if (nodeSession is { HasReceivedPing: true, NotTooManyFailure: true }) return true;
+        // If we received a ping from this endpoint, our pong should have bonded us from their point of view.
+        if (nodeSession.NotTooManyFailure && nodeSession.HasReceivedPingFrom(node.Address)) return true;
 
         if (Logger.IsTrace) Logger.Trace($"Ensure session for node {node}");
         if (!await Ping(node, token)) return false;
@@ -176,11 +178,12 @@ public sealed class KademliaAdapter(
     }
 
 
-    private async Task SendMessage(NodeSession session, DiscoveryMsg msg, CancellationToken token)
+    private async Task SendMessage(NodeSession session, DiscoveryMsg msg, CancellationToken token, bool isResponse = false)
     {
         if (MsgSender is { } sender)
         {
-            await _outboundRateLimiter.WaitAsync(token);
+            await (isResponse ? _responseRateLimiter : _outboundRateLimiter).WaitAsync(token);
+
             session.RecordStatsForOutgoingMsg(msg);
             await sender.SendMsg(msg);
         }
@@ -196,13 +199,23 @@ public sealed class KademliaAdapter(
         {
             EnrSequence = (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence // optional and does not seem to be used anywhere.
         };
-        session.OnPingSent();
-        DiscoveryResponse<PongMsg> response = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, _pingTimeout, token);
-        if (!response.HasResponse) return false;
+        long pingToken = session.OnPingSent(receiver.Address);
+        try
+        {
+            DiscoveryResponse<PongMsg> response = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, _pingTimeout, token);
+            if (!response.HasResponse) return false;
+            if (response.Value.FarAddress is not { } pongEndpoint) return false;
 
-        session.OnPongReceived(response.Value.FarAddress ?? receiver.Address);
-        await RefreshRemoteRecordIfNewer(receiver, response.Value.EnrSequence, token);
-        return true;
+            session.OnPongReceived(pongEndpoint);
+            if (!session.HasEndpointProof(receiver.Address)) return false;
+
+            await RefreshRemoteRecordIfNewer(receiver, response.Value.EnrSequence, token);
+            return true;
+        }
+        finally
+        {
+            session.OnPingCompleted(receiver.Address, pingToken);
+        }
     }
 
     public async Task<Node[]?> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
@@ -250,6 +263,8 @@ public sealed class KademliaAdapter(
 
     private async Task<bool> HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg, CancellationToken token)
     {
+        await WaitForEndpointProofIfBonding(node.Address, session, token);
+
         if (!session.HasEndpointProof(node.Address))
         {
             if (Logger.IsDebug) Logger.Debug($"Rejecting enr request from unbonded peer {node}");
@@ -262,12 +277,14 @@ public sealed class KademliaAdapter(
             return false;
         }
 
-        await SendMessage(session, new EnrResponseMsg(node.Address, await nodeRecordProvider.GetCurrentAsync(token), new Hash256(requestHash)), token);
+        await SendMessage(session, new EnrResponseMsg(node.Address, await nodeRecordProvider.GetCurrentAsync(token), new Hash256(requestHash)), token, isResponse: true);
         return true;
     }
 
     private async Task<bool> HandleFindNode(Node node, NodeSession session, FindNodeMsg msg, CancellationToken token)
     {
+        await WaitForEndpointProofIfBonding(node.Address, session, token);
+
         if (!session.HasEndpointProof(node.Address))
         {
             if (Logger.IsDebug) Logger.Debug($"Rejecting findNode request from unbonded peer {node}");
@@ -278,17 +295,25 @@ public sealed class KademliaAdapter(
         Node[] nodes = kademlia.Value.GetKNeighbour(publicKey, node, false);
         if (nodes.Length == 0)
         {
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes), token);
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes), token, isResponse: true);
             return true;
         }
 
         for (int i = 0; i < nodes.Length; i += MaxNodesPerNeighborsMsg)
         {
             int batchEnd = Math.Min(i + MaxNodesPerNeighborsMsg, nodes.Length);
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), new ArraySegment<Node>(nodes, i, batchEnd - i)), token);
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), new ArraySegment<Node>(nodes, i, batchEnd - i)), token, isResponse: true);
         }
 
         return true;
+    }
+
+    private async ValueTask WaitForEndpointProofIfBonding(IPEndPoint endpoint, NodeSession session, CancellationToken token)
+    {
+        if (!session.HasEndpointProof(endpoint) && session.HasReceivedPingFrom(endpoint) && session.HasPendingEndpointProof(endpoint))
+        {
+            await session.WaitForEndpointProof(endpoint, _pingTimeout, token);
+        }
     }
 
     private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
@@ -301,13 +326,16 @@ public sealed class KademliaAdapter(
         }
 
         PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc, (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
-        session.OnPingReceived();
-        await SendMessage(session, msg, token);
-        await RefreshRemoteRecordIfNewer(node, ping.EnrSequence, token);
-
-        if (!session.HasReceivedPong)
+        session.OnPingReceived(node.Address);
+        await SendMessage(session, msg, token, isResponse: true);
+        if (session.HasEndpointProof(node.Address))
         {
-            // If we have never received any pong, then this peer is not bonded and we should not respond to any auth request.
+            await RefreshRemoteRecordIfNewer(node, ping.EnrSequence, token);
+        }
+
+        if (!session.HasEndpointProof(node.Address))
+        {
+            // If this endpoint has no recent pong proof, it is not bonded and we should not respond to auth requests.
             // Send a ping to bond the peer.
             _ = await Ping(node, token);
         }
