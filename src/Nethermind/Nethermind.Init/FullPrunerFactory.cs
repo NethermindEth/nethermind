@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
@@ -22,6 +23,7 @@ namespace Nethermind.Init;
 public class FullPrunerFactory(
     IInitConfig initConfig,
     IPruningConfig pruningConfig,
+    ISyncConfig syncConfig,
     IDbProvider dbProvider,
     IBlockTree blockTree,
     INodeStorageFactory nodeStorageFactory,
@@ -39,6 +41,13 @@ public class FullPrunerFactory(
     public FullPruner? Create(IWorldStateManager worldStateManager, IPruningTrieStore trieStore)
     {
         IDb stateDb = dbProvider.StateDb;
+
+        if (syncConfig.PartialArchiveEnabled)
+        {
+            // Full pruning copies only the head state, which would discard the historical window.
+            if (_logger.IsInfo) _logger.Info("Full pruning is disabled because partial archive mode is enabled.");
+            return null;
+        }
 
         if (!pruningConfig.Mode.IsFull() || stateDb is not IFullPruningDb fullPruningDb) return null;
 

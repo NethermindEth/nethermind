@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
 using Nethermind.State.Flat.ScopeProvider;
@@ -26,6 +27,11 @@ internal class WorldStateDbDeciderModule : Module
                 (policy, syncConfig, flatFactory, patriciaFactory) =>
                 {
                     if (!policy.ShouldTurnOnFlatDb()) return patriciaFactory().WorldStateManager;
+                    if (syncConfig.PartialArchiveEnabled)
+                    {
+                        throw new InvalidConfigurationException(
+                            $"{nameof(ISyncConfig.PartialArchiveEnabled)} is not supported with the flat state layout; use the HalfPath trie layout.", -1);
+                    }
                     // Flat state can always serve snap requests; set before InitializeNetwork registers capabilities.
                     syncConfig.SnapServingEnabled ??= true;
                     return flatFactory();

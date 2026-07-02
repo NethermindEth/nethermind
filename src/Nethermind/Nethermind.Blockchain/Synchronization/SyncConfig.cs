@@ -97,6 +97,9 @@ namespace Nethermind.Blockchain.Synchronization
         public bool EnableSnapDoubleWriteCheck { get; set; } = false;
         public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB;
         public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB;
+        public bool PartialArchiveEnabled { get; set; } = false;
+        public ulong PartialArchiveRange { get; set; } = 10_000;
+        public ulong PartialArchivePruneInterval { get; set; } = 64;
 
         public override string ToString() =>
             $"SyncConfig details. FastSync {FastSync}, PivotNumber: {PivotNumber} DownloadHeadersInFastSync {DownloadHeadersInFastSync}, DownloadBodiesInFastSync {DownloadBodiesInFastSync}, DownloadReceiptsInFastSync {DownloadReceiptsInFastSync}, AncientBodiesBarrier {AncientBodiesBarrier}, AncientReceiptsBarrier {AncientReceiptsBarrier}";
