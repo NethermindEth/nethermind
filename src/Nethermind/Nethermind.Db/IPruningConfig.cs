@@ -81,9 +81,9 @@ public interface IPruningConfig : IConfig
     bool TrackPastKeys { get; set; }
 
     [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
-    int PruningBoundary { get; set; }
+    ulong PruningBoundary { get; set; }
 
-    [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]
+    [ConfigItem(Description = "Number of dirty node shards as a base-2 exponent; the shard count is 2^DirtyNodeShardBit. Must be between 1 and 30.", DefaultValue = "8")]
     int DirtyNodeShardBit { get; set; }
 
     [ConfigItem(Description = "Portion of persisted node to be prune at a time", DefaultValue = "0.05")]
@@ -93,16 +93,16 @@ public interface IPruningConfig : IConfig
     long PrunePersistedNodeMinimumTarget { get; set; }
 
     [ConfigItem(Description = "Maximum number of blocks worth of unpersisted state in memory. Default is 297, which is the number of mainnet blocks per hour.", DefaultValue = "297")]
-    long MaxUnpersistedBlockCount { get; set; }
+    ulong MaxUnpersistedBlockCount { get; set; }
 
     [ConfigItem(Description = "Minimum number of block worth of unpersisted state in memory. Prevent memory pruning too often due to insufficient dirty cache memory.", DefaultValue = "8")]
-    long MinUnpersistedBlockCount { get; set; }
+    ulong MinUnpersistedBlockCount { get; set; }
 
     [ConfigItem(Description = "Maximum number of block in commit buffer before blocking.", DefaultValue = "128", HiddenFromDocs = true)]
     int MaxBufferedCommitCount { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Simulate long finalization by not moving finalized block pointer until after this depth.", DefaultValue = "0", HiddenFromDocs = true)]
-    int SimulateLongFinalizationDepth { get; set; }
+    ulong SimulateLongFinalizationDepth { get; set; }
 
     [ConfigItem(Description = "If in-memory pruning is scheduled, the duration between `newPayload` and the GC trigger. If too short, it may clash with fork choice; if too long, it may overlap with GC.", DefaultValue = "75", HiddenFromDocs = true)]
     int PruneDelayMilliseconds { get; set; }

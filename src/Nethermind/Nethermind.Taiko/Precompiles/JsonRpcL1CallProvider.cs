@@ -17,7 +17,7 @@ public class JsonRpcL1CallProvider(IJsonRpcClient rpcClient, ILogManager logMana
 {
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcL1CallProvider>();
 
-    public L1CallResult ExecuteTraceCall(Address contractAddress, UInt256 blockNumber, byte[] calldata, long gasLimit)
+    public L1CallResult ExecuteTraceCall(Address contractAddress, UInt256 blockNumber, byte[] calldata, ulong gasLimit)
     {
         try
         {
@@ -43,7 +43,7 @@ public class JsonRpcL1CallProvider(IJsonRpcClient rpcClient, ILogManager logMana
             }
 
             // Clamp to gasLimit — the L1 node must not cause us to charge more than we budgeted.
-            long gasUsed = Math.Min(response.Gas, gasLimit);
+            ulong gasUsed = Math.Min((ulong)response.Gas, gasLimit);
 
             if (response.Failed)
             {

@@ -16,9 +16,9 @@ public static class LegacyTransactionForRpcTests
     [
         BuildALegacyTransaction.TestObject,
 
-        BuildALegacyTransaction.WithNonce(UInt256.Zero).TestObject,
-        BuildALegacyTransaction.WithNonce((UInt256)123).TestObject,
-        BuildALegacyTransaction.WithNonce(UInt256.MaxValue).TestObject,
+        BuildALegacyTransaction.WithNonce(0UL).TestObject,
+        BuildALegacyTransaction.WithNonce(123UL).TestObject,
+        BuildALegacyTransaction.WithNonce(ulong.MaxValue).TestObject,
 
         BuildALegacyTransaction.WithTo(null).TestObject,
         BuildALegacyTransaction.WithTo(TestItem.AddressA).TestObject,

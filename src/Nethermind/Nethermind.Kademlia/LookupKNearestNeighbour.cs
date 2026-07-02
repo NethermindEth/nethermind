@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -22,12 +24,22 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
     IKademliaDistance<TKadKey> distance,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager? logManager = null) : ILookupAlgo<TNode, TKadKey>
+    ILoggerFactory loggerFactory) : ILookupAlgo<TNode, TKadKey>
     where TNode : notnull
     where TKadKey : notnull
 {
+    public LookupKNearestNeighbour(
+        IRoutingTable<TNode, TKadKey> routingTable,
+        INodeHashProvider<TNode, TKadKey> nodeHashProvider,
+        IKademliaDistance<TKadKey> distance,
+        INodeHealthTracker<TNode> nodeHealthTracker,
+        KademliaConfig<TNode> config)
+        : this(routingTable, nodeHashProvider, distance, nodeHealthTracker, config, NullLoggerFactory.Instance)
+    {
+    }
+
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimeout;
-    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<LookupKNearestNeighbour<TKey, TNode, TKadKey>>();
+    private readonly ILogger _logger = loggerFactory.CreateLogger<LookupKNearestNeighbour<TKey, TNode, TKadKey>>();
 
     public async Task<TNode[]> Lookup(
         TKadKey targetHash,
@@ -126,10 +138,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         CancellationToken token
     )
     {
-        if (_logger.IsDebug)
-        {
-            _logger.Debug($"Initiate lookup for hash {targetHash}");
-        }
+        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initiate lookup for hash {targetHash}");
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
@@ -190,7 +199,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                         }
 
                         // No node to query and running query.
-                        if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
+                        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No node to query.");
                         break;
                     }
 
@@ -198,7 +207,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                     {
                         if (ShouldStopDueToNoBetterResult(out int round))
                         {
-                            if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
+                            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No better result.");
                             break;
                         }
 
@@ -266,7 +275,13 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                if (_logger.IsWarn) _logger.Warn($"Find neighbour op failed: {e}");
+                // Transport failures (e.g. unreachable host) are expected during discovery, so log them quietly.
+                bool shouldWarn = e is not SocketException && e.InnerException is not SocketException;
+                if (shouldWarn)
+                {
+                    if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogWarning($"Find neighbour op failed: {e}");
+                }
+                else if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Find neighbour op failed: {e.Message}");
                 return null;
             }
         }
@@ -362,7 +377,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                     // Why not just _alpha?
                     // Because there could be currently running work that may increase closestNodeRound.
                     // So including this worker, assume no more
-                    if (_logger.IsTrace) _logger.Trace($"No more closer node. Round: {round}, closestNodeRound {closestNodeRound}");
+                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"No more closer node. Round: {round}, closestNodeRound {closestNodeRound}");
                     return true;
                 }
 

@@ -30,7 +30,7 @@ namespace Nethermind.Facade.Eth
 
         public SyncingResult GetFullInfo()
         {
-            (bool isSyncing, long headNumberOrZero, long bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
+            (bool isSyncing, ulong headNumberOrZero, ulong bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
             SyncMode syncMode = _syncModeSelector.Current;
 
             if (_logger.IsTrace) _logger.Trace($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_syncPointers.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_syncPointers.LowestInsertedReceiptBlockNumber}");
@@ -63,7 +63,7 @@ namespace Nethermind.Facade.Eth
             return SyncingResult.NotSyncing;
         }
 
-        private static SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode) => new()
+        private static SyncingResult ReturnSyncing(ulong headNumberOrZero, ulong bestSuggestedNumber, SyncMode syncMode) => new()
         {
             CurrentBlock = headNumberOrZero,
             HighestBlock = bestSuggestedNumber,

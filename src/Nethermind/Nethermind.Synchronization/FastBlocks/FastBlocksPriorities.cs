@@ -9,6 +9,6 @@ namespace Nethermind.Synchronization.FastBlocks
         /// Batches that are so close to the lowest inserted header will be prioritized
         /// </summary>
         // public const long ForHeaders = 16 * 1024;
-        public const long ForHeaders = 16 * 1024;
+        public const ulong ForHeaders = 16 * 1024;
     }
 }

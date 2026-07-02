@@ -11,7 +11,7 @@ namespace Nethermind.Xdc.RLP;
 
 internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapshot
 {
-    protected TResult DecodeBase<TResult>(ref RlpReader decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
+    protected TResult DecodeBase<TResult>(ref RlpReader decoderContext, Func<ulong, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -20,7 +20,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         }
 
         decoderContext.ReadSequenceLength();
-        long number = decoderContext.DecodeLong();
+        ulong number = decoderContext.DecodeULong();
         Hash256 hash256 = decoderContext.DecodeKeccak();
         Address[] candidates = DecodeAddressArray(ref decoderContext);
         return createSnapshot(number, hash256, candidates);

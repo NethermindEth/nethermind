@@ -37,10 +37,10 @@ public class NodeRecordTests
     }
 
     [Test]
-    public void Cannot_get_enr_string_when_signature_missing()
+    public void Cannot_encode_to_string_when_signature_missing()
     {
         NodeRecord nodeRecord = new();
-        Assert.Throws<Exception>(() => _ = nodeRecord.EnrString);
+        Assert.Throws<Exception>(() => _ = nodeRecord.ToString());
     }
 
     [TestCase("192.0.2.1", "", -1, 30304, "", -1)]
