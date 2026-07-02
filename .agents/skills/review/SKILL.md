@@ -20,6 +20,8 @@ Nethermind is an Ethereum execution client built on .NET. Consensus correctness 
 **Only comment when you have HIGH CONFIDENCE (>80%) that a real issue exists.**
 Be concise: one sentence per comment when possible. If uncertain, stay silent.
 
+**EIP implementation?** If the PR implements or modifies an EIP, also invoke the `eip-implementation-reviewer` skill for spec compliance checking. It cross-references the diff against the actual EIP spec text — something this skill cannot do.
+
 **Subagent warning:** Subagents do not inherit full review context automatically. If you launch subagents for this review, you **must** paste the `Codebase Rules` and all applicable domain review sections from this skill into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
 
 ---
