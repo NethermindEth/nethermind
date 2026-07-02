@@ -55,7 +55,7 @@ public static partial class EvmInstructions
         // If storage tracing is enabled, record the operation.
         if (vm.TxTracer.IsTracingStorage)
         {
-            if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
+            if (TGasPolicy.IsOutOfGas(in gas)) goto OutOfGas;
             vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
         }
 
@@ -106,7 +106,7 @@ public static partial class EvmInstructions
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
         if (vm.TxTracer.IsTracingStorage)
         {
-            if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
+            if (TGasPolicy.IsOutOfGas(in gas)) goto OutOfGas;
             ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
             vm.TxTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -383,7 +383,7 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = spec.GasCosts.SClearRefund;
+        long sClearRefunds = (long)spec.GasCosts.SClearRefund;
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -500,7 +500,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = gasCosts.SClearRefund;
+        long sClearRefunds = (long)gasCosts.SClearRefund;
 
         if (newSameAsCurrent)
         {
@@ -536,7 +536,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                long netMeteredStoreCost = gasCosts.NetMeteredSStoreCost;
+                ulong netMeteredStoreCost = gasCosts.NetMeteredSStoreCost;
                 if (!TGasPolicy.UpdateGas(ref gas, netMeteredStoreCost))
                     goto OutOfGas;
 
@@ -566,14 +566,14 @@ public static partial class EvmInstructions
                     // regular charge taken on the first change; a freshly-created slot (original 0)
                     // additionally refunds its state gas in-frame.
                     long refundFromReversal = spec.IsEip8038Enabled
-                        ? Eip8038Constants.StorageWrite
-                        : gasCosts.RefundFromReversal(originalIsZero);
+                        ? (long)Eip8038Constants.StorageWrite
+                        : (long)gasCosts.RefundFromReversal(originalIsZero);
 
                     if (TEip8037.IsActive && originalIsZero)
                     {
                         vm.CreditStateGasRefund(ref gas, TGasPolicy.GetStorageSetStateCost(in gas));
                         if (!spec.IsEip8038Enabled)
-                            refundFromReversal = GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
+                            refundFromReversal = (long)(GasCostOf.SSetRegular - GasCostOf.WarmStateRead);
                     }
 
                     vmState.Refund += refundFromReversal;

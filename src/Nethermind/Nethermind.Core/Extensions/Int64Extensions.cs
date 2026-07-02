@@ -88,27 +88,12 @@ public static class Int64Extensions
         return bytes.ToHexString(true, skipLeadingZeros, false);
     }
 
-    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
-    {
-        if (bytes.IsEmpty)
-        {
-            return 0L;
-        }
+    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this ReadOnlySpan<byte> bytes) =>
+        (long)UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
 
-        ulong u = UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
-        return unchecked((long)u);
-    }
+    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this Span<byte> bytes) =>
+        (long)UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
 
-    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this Span<byte> bytes)
-        => ToLongFromBigEndianByteArrayWithoutLeadingZeros((ReadOnlySpan<byte>)bytes);
-
-    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes)
-    {
-        if (bytes is null)
-        {
-            return 0L;
-        }
-
-        return ToLongFromBigEndianByteArrayWithoutLeadingZeros(bytes.AsSpan());
-    }
+    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes) =>
+        (long)UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
 }

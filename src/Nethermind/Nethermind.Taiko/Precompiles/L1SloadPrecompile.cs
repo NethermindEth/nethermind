@@ -39,10 +39,10 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePr
     public static IL1StorageProvider? L1StorageProvider { get; set; }
     public static ILogger Logger { get; set; }
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.L1SloadFixedGasCost;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.L1SloadFixedGasCost;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength ? 0L : L1PrecompileConstants.L1SloadPerLoadGasCost;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength ? 0UL : L1PrecompileConstants.L1SloadPerLoadGasCost;
 
     /// <summary>
     /// Non-context-aware fallback. Used by callers outside the Taiko VM (caching layer, tooling)
@@ -51,13 +51,13 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePr
     /// </summary>
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Result<(byte[] returnValue, long gasConsumed)> result = Run(inputData, releaseSpec, in PrecompileExtras.None);
+        Result<(byte[] returnValue, ulong gasConsumed)> result = Run(inputData, releaseSpec, in PrecompileExtras.None);
         // Implicit string→Result<byte[]> conversion fills Data with Array.Empty<byte>() on failure,
         // which the IPrecompile contract expects (callers deconstruct result and assert .IsEmpty).
         return result ? Result<byte[]>.Success(result.Data.returnValue) : result.Error!;
     }
 
-    public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, in PrecompileExtras extras)
+    public Result<(byte[] returnValue, ulong gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, in PrecompileExtras extras)
     {
         L1PrecompileMetrics.L1SloadPrecompile++;
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: precompile called, input_len={inputData.Length}");
@@ -65,13 +65,13 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePr
         if (inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength)
         {
             if (Logger.IsWarn) Logger.Warn($"L1SLOAD: rejected invalid input length {inputData.Length}, expected {L1PrecompileConstants.L1SloadExpectedInputLength}");
-            return Result<(byte[] returnValue, long gasConsumed)>.Fail(Errors.InvalidInputLength);
+            return Result<(byte[] returnValue, ulong gasConsumed)>.Fail(Errors.InvalidInputLength);
         }
 
         if (L1StorageProvider is null)
         {
             if (Logger.IsWarn) Logger.Warn("L1SLOAD: no L1StorageProvider configured");
-            return Result<(byte[] returnValue, long gasConsumed)>.Fail(L1StorageAccessFailed);
+            return Result<(byte[] returnValue, ulong gasConsumed)>.Fail(L1StorageAccessFailed);
         }
 
         Address contractAddress = new(inputData.Span[..Address.Size]);
@@ -83,7 +83,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePr
         if (extras.L1Origin is { } origin && !L1PrecompileConstants.IsBlockInRange(blockNumber, origin))
         {
             if (Logger.IsWarn) Logger.Warn($"L1SLOAD: block {blockNumber} outside [{origin}-{L1PrecompileConstants.MaxBlockLookback}, {origin}]");
-            return Result<(byte[] returnValue, long gasConsumed)>.Fail(BlockOutOfRange);
+            return Result<(byte[] returnValue, ulong gasConsumed)>.Fail(BlockOutOfRange);
         }
 
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: request contract={contractAddress}, key={storageKey}, block={blockNumber}");
@@ -92,7 +92,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePr
         if (storageValue is null)
         {
             if (Logger.IsWarn) Logger.Warn($"L1SLOAD: storage access returned null for contract={contractAddress}, key={storageKey}, block={blockNumber}");
-            return Result<(byte[] returnValue, long gasConsumed)>.Fail(L1StorageAccessFailed);
+            return Result<(byte[] returnValue, ulong gasConsumed)>.Fail(L1StorageAccessFailed);
         }
 
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: success contract={contractAddress}, key={storageKey}, block={blockNumber}, value={storageValue.Value}");
@@ -100,7 +100,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePr
         byte[] output = new byte[32];
         storageValue.Value.ToBigEndian().CopyTo(output.AsSpan());
 
-        return (output, 0L);
+        return (output, 0UL);
     }
 
     private UInt256? GetL1StorageValue(Address contractAddress, UInt256 blockNumber, UInt256 storageKey)

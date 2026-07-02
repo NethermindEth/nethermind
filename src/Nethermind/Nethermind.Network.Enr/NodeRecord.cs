@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Text;
@@ -32,7 +32,7 @@ public class NodeRecord
 
     /// <summary>
     /// Represents the version / id / sequence of the node record data. It should be increased by one with each
-    /// update to the node data. Setting sequence on this class wipes out <see cref="EnrString"/> and
+    /// update to the node data. Setting sequence on this class wipes out <see cref="ToString"/> and
     /// <see cref="ContentHash"/>.
     /// </summary>
     public ulong EnrSequence
@@ -51,16 +51,9 @@ public class NodeRecord
     }
 
     /// <summary>
-    /// A base64 string representing a node record with the 'enr:' prefix
-    /// enr:-IS4QHCYrYZbAK(...)WM0xOIN1ZHCCdl8
+    /// Returns a base64 string representing a signed node record with the <c>enr:</c> prefix.
     /// </summary>
-    public string EnrString
-    {
-        get
-        {
-            return _enrString ??= CreateEnrString();
-        }
-    }
+    public override string ToString() => _enrString ??= CreateEnrString();
 
     /// <summary>
     /// Hash of the content, i.e. Keccak([seq, k, v, ...]) as defined in https://eips.ethereum.org/EIPS/eip-778
@@ -394,4 +387,5 @@ public class NodeRecord
             throw new Exception("Cannot encode a node record with an empty signature.");
         }
     }
+
 }

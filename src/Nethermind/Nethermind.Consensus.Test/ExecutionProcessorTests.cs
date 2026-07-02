@@ -134,7 +134,7 @@ public class ExecutionProcessorTests
         return ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(requests.ToArray());
     }
 
-    private Hash256 ProcessBlockAndGetRequestsHash(long blockNumber, TxReceipt[] txReceipts)
+    private Hash256 ProcessBlockAndGetRequestsHash(ulong blockNumber, TxReceipt[] txReceipts)
     {
         Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
         ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);

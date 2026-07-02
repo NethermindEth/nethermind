@@ -16,7 +16,7 @@ public static class IContainerSynchronizerTestExtensions
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
-        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree.FindHeader(Arg.Any<ulong>()).Returns(header);
         blockTree.BestSuggestedHeader.Returns(header);
 
         builder.AddSingleton(blockTree);

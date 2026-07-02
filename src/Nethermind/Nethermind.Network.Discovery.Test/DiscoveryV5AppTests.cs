@@ -3,7 +3,9 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -52,6 +54,11 @@ public class DiscoveryV5AppTests
         IEnode enode = new Enode(nodeKey.PublicKey, externalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
         IIPResolver ipResolver = new FixedIpResolver(networkConfig);
         EthereumEcdsa ecdsa = new(0);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        Block head = Build.A.Block.Genesis.TestObject;
+        blockTree.Head.Returns(head);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.GetForkId(head.Header.Number, head.Header.Timestamp).Returns(new Nethermind.Network.ForkId(0, 0));
         ContainerBuilder builder = new();
         builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
         builder.RegisterInstance(networkConfig).As<INetworkConfig>();
@@ -59,6 +66,9 @@ public class DiscoveryV5AppTests
         builder.RegisterInstance(ipResolver).As<IIPResolver>();
         builder.RegisterInstance(nodeKey).Keyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey);
         builder.RegisterInstance(ecdsa).As<IEthereumEcdsa>().As<IEcdsa>();
+        builder.RegisterInstance(blockTree).As<IBlockTree>();
+        builder.RegisterInstance(forkInfo).As<IForkInfo>();
+        builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
         builder.RegisterInstance(new CryptoRandom()).As<ICryptoRandom>();
         builder.RegisterInstance(new NetworkStorage(_discoveryDb, LimboLogs.Instance)).Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);
         builder.RegisterInstance(Substitute.For<INodeStatsManager>()).As<INodeStatsManager>();
@@ -189,7 +199,7 @@ public class DiscoveryV5AppTests
     public void Should_Reject_Consensus_Only_Enr()
     {
         NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), includeEth2: true);
-        NodeRecord decoded = NodeRecord.FromEnrString(enr.EnrString);
+        NodeRecord decoded = NodeRecord.FromEnrString(enr.ToString());
 
         bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(decoded, out Node? node);
 
@@ -231,7 +241,7 @@ public class DiscoveryV5AppTests
         NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 30304);
         Node node = new(TestItem.PrivateKeyA.PublicKey, "1.1.1.1", 30303)
         {
-            Enr = enr.EnrString
+            Enr = enr
         };
 
         try
@@ -242,7 +252,7 @@ public class DiscoveryV5AppTests
                 added.Id.Equals(TestItem.PrivateKeyA.PublicKey) &&
                 added.Host == "8.8.8.8" &&
                 added.Port == 30304 &&
-                added.Enr == enr.EnrString));
+                added.Enr == enr));
         }
         finally
         {
@@ -260,7 +270,7 @@ public class DiscoveryV5AppTests
         NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
         Node node = new(TestItem.PrivateKeyB.PublicKey, "8.8.8.8", 30303)
         {
-            Enr = enr.EnrString
+            Enr = enr
         };
 
         try
@@ -318,7 +328,7 @@ public class DiscoveryV5AppTests
         NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 9001, includeTcp: false);
         NetworkConfig networkConfig = new()
         {
-            Bootnodes = [new NetworkNode(enr.EnrString)]
+            Bootnodes = [new NetworkNode(enr.ToString())]
         };
         DiscoveryConfig discoveryConfig = new()
         {
@@ -331,7 +341,7 @@ public class DiscoveryV5AppTests
         {
             Assert.That(bootNodes, Has.Count.EqualTo(1));
             Assert.That(bootNodes[0].Port, Is.EqualTo(9001));
-            Assert.That(bootNodes[0].Enr, Is.EqualTo(enr.EnrString));
+            Assert.That(bootNodes[0].Enr?.ToString(), Is.EqualTo(enr.ToString()));
         }
     }
 

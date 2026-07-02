@@ -160,7 +160,7 @@ public class BlockAccessListBasedWorldStateTests
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            Assert.That(bws.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)3));
+            Assert.That(bws.GetNonce(TestItem.AddressA), Is.EqualTo(3UL));
         }
     }
 
@@ -441,7 +441,7 @@ public class BlockAccessListBasedWorldStateTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(account.Balance, Is.EqualTo((UInt256)200));
-                Assert.That(account.Nonce, Is.EqualTo((UInt256)8));
+                Assert.That(account.Nonce, Is.EqualTo(8UL));
                 Assert.That(account.CodeHash, Is.EqualTo(ValueKeccak.Compute(priorCode)));
             }
         }

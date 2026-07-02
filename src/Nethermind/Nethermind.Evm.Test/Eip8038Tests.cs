@@ -31,7 +31,7 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
     private readonly ISpecProvider _specProvider =
         new TestSpecProvider(new OverridableReleaseSpec(Cancun.Instance) { IsEip8038Enabled = eip8038Enabled });
 
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
     protected override ISpecProvider SpecProvider => _specProvider;
 

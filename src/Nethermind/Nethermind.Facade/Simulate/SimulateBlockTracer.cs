@@ -45,7 +45,7 @@ public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : Block
     {
         _txIndex = 0;
         _logIndex = 0;
-        _blockNumber = (ulong)block.Number;
+        _blockNumber = block.Number;
         _blockTimestamp = block.Timestamp;
         _isTracingLogs &= !spec.GetSpec(block.Header).IsEip7708Enabled;
         base.StartNewBlockTrace(block);

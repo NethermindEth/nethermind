@@ -31,14 +31,14 @@ namespace Nethermind.Evm.Test
 
         public byte[]? ReturnValue { get; private set; }
 
-        public long GasSpent { get; private set; }
+        public ulong GasSpent { get; private set; }
 
         public string? Error { get; private set; }
 
         public byte StatusCode { get; private set; }
 
         public GasConsumed GasConsumedResult { get; private set; }
-        public long CumulativeRegularGasUsed { get; private set; }
+        public ulong CumulativeRegularGasUsed { get; private set; }
 
         public long Refund { get; private set; }
 
@@ -71,7 +71,7 @@ namespace Nethermind.Evm.Test
 
         public override void ReportRefund(long refund) => Refund += refund;
 
-        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
             => Actions.Add(new ActionTrace(gas, value, from, to, callType, isPrecompileCall));
 
     }

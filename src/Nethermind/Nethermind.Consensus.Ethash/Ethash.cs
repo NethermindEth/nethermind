@@ -40,14 +40,14 @@ namespace Nethermind.Consensus.Ethash
         public static uint CacheBytesInit = 1U << 24; // bytes in cache at genesis
         public static uint CacheBytesGrowth = 1U << 17; // cache growth per epoch
         public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
-        public const long EpochLength = 30000; // blocks per epoch
+        public const ulong EpochLength = 30000; // blocks per epoch
         public const uint MixBytes = 128; // width of mix
         public const int HashBytes = 64; // hash length in bytes
         public const uint DataSetParents = 256; // blockNumber of parents of each dataset element
         public const int CacheRounds = 3; // blockNumber of rounds in cache production
         public const int Accesses = 64; // blockNumber of accesses in hashimoto loop
 
-        public static uint GetEpoch(long blockNumber) => (uint)(blockNumber / EpochLength);
+        public static uint GetEpoch(ulong blockNumber) => (uint)(blockNumber / EpochLength);
 
         /// Improvement from @AndreaLanfranchi
         public static ulong GetDataSize(uint epoch)
@@ -193,7 +193,7 @@ namespace Nethermind.Consensus.Ethash
 
         private static uint GetUInt(byte[] bytes, uint offset) => BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
 
-        public void HintRange(Guid guid, long start, long end) => _hintBasedCache.Hint(guid, start, end);
+        public void HintRange(Guid guid, ulong start, ulong end) => _hintBasedCache.Hint(guid, start, end);
 
         private readonly Guid _hintBasedCacheUser = Guid.Empty;
 

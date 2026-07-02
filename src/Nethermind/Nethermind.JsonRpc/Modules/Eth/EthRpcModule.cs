@@ -71,6 +71,7 @@ public partial class EthRpcModule(
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
     ILogIndexConfig? logIndexConfig,
+    IReceiptConfig receiptConfig,
     ulong? secondsPerSlot,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider) : IEthRpcModule
@@ -97,6 +98,7 @@ public partial class EthRpcModule(
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
+    private readonly IReceiptConfig _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
     private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
@@ -154,7 +156,7 @@ public partial class EthRpcModule(
         return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
     }
 
-    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
+    public ResultWrapper<FeeHistoryResults> eth_feeHistory(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
 
     public ResultWrapper<IEnumerable<Address>> eth_accounts()
     {
@@ -168,10 +170,10 @@ public partial class EthRpcModule(
         }
     }
 
-    public Task<ResultWrapper<long?>> eth_blockNumber()
+    public Task<ResultWrapper<ulong?>> eth_blockNumber()
     {
-        long number = _blockchainBridge.HeadBlock?.Number ?? 0;
-        return Task.FromResult(ResultWrapper<long?>.Success(number));
+        ulong number = _blockchainBridge.HeadBlock?.Number ?? 0;
+        return Task.FromResult(ResultWrapper<ulong?>.Success(number));
     }
 
     public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter? blockParameter = null)
@@ -855,7 +857,7 @@ public partial class EthRpcModule(
         {
             CancellationToken cancellationToken = timeout.Token;
 
-            long? headNumber = _blockFinder.Head?.Number;
+            ulong? headNumber = _blockFinder.Head?.Number;
             if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
             {
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
@@ -891,6 +893,9 @@ public partial class EthRpcModule(
 
             BlockHeader fromBlockHeader = fromResult.Object!;
             BlockHeader toBlockHeader = toResult.Object!;
+
+            if (EnsureBlockRangeWithinLimit(fromBlockHeader, toBlockHeader) is { } rangeError)
+                return rangeError;
 
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
@@ -1134,11 +1139,11 @@ public partial class EthRpcModule(
     public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash)
         => GetBlockAccessList(blockHash, null);
 
-    public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(long blockNumber)
+    public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(ulong blockNumber)
         => GetBlockAccessList(null, blockNumber);
-    private ResultWrapper<ReadOnlyBlockAccessList?> GetBlockAccessList(Hash256? blockHash, long? blockNumber)
+    private ResultWrapper<ReadOnlyBlockAccessList?> GetBlockAccessList(Hash256? blockHash, ulong? blockNumber)
     {
-        Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber.Value) : _blockFinder.FindBlock(blockHash);
+        Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber!.Value) : _blockFinder.FindBlock(blockHash);
         if (block is null)
         {
             return ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
@@ -1183,5 +1188,24 @@ public partial class EthRpcModule(
                 );
             }
         }
+    }
+
+    // cap block range of a logs query against unbounded sequential scans, skip if log index is enabled
+    private ResultWrapper<IEnumerable<FilterLog>>? EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock)
+    {
+        int maxBlockDepth = _receiptConfig.MaxBlockDepth;
+        if (logIndexConfig?.Enabled is true || maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
+            return null;
+
+        ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
+        if (rangeSize > (ulong)maxBlockDepth)
+        {
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(
+                $"Block range {rangeSize} exceeds the maximum of {maxBlockDepth} blocks per logs request. " +
+                $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.",
+                ErrorCodes.InvalidParams);
+        }
+
+        return null;
     }
 }

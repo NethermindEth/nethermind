@@ -30,18 +30,18 @@ namespace Nethermind.AuRa.Test.Transactions
             IStateReader stateReader = Substitute.For<IStateReader>();
             Address nodeAddress = TestItem.AddressA;
 
-            UInt256 expectedNonce = 10;
+            ulong expectedNonce = 10;
             stateReader.TryGetAccount(blockHeader, nodeAddress, out Arg.Any<AccountStruct>())
                 .Returns(x =>
                 {
-                    x[2] = new AccountStruct(expectedNonce, UInt256.Zero);
+                    x[2] = new AccountStruct(expectedNonce, 0UL);
                     return true;
                 });
 
             ulong expectedTimeStamp = 100;
             timestamper.UnixTime.Returns(UnixTime.FromSeconds(expectedTimeStamp));
 
-            int gasLimit = 200;
+            ulong gasLimit = 200;
             ITxSource innerTxSource = Substitute.For<ITxSource>();
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] { tx1, tx2 });
 
