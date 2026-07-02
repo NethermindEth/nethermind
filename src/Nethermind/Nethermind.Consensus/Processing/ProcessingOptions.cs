@@ -57,14 +57,6 @@ namespace Nethermind.Consensus.Processing
         ForceSameBlock = 1 << 8,
 
         /// <summary>
-        /// Skips per-block state-trie updates and root computation; the header state root is taken from the
-        /// suggested (known-canonical) block. Set by <see cref="BranchProcessor"/> for interior blocks of a
-        /// multi-block branch when deferred root verification is enabled; the last block of the branch is always
-        /// processed without this flag, applying the accumulated changes and verifying the root against the header.
-        /// </summary>
-        DeferredStateRoots = 1 << 9,
-
-        /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.
         /// </summary>
         ProducingBlock = NoValidation | ReadOnlyChain | ForceProcessing | DoNotUpdateHead,

@@ -54,7 +54,7 @@ public class PrewarmerScopeProvider(
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !isPrewarmer;
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope, IDeferredRootScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
@@ -115,12 +115,6 @@ public class PrewarmerScopeProvider(
         }
 
         public Hash256 RootHash => baseScope.RootHash;
-
-        public bool BeginDeferredRootBlock() =>
-            baseScope is IDeferredRootScope deferrable && deferrable.BeginDeferredRootBlock();
-
-        public void CommitDeferred(ulong blockNumber, Hash256 knownStateRoot) =>
-            ((IDeferredRootScope)baseScope).CommitDeferred(blockNumber, knownStateRoot);
 
         public void UpdateRootHash()
         {

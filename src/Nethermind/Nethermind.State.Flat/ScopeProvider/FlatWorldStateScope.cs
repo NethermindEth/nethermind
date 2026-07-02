@@ -18,7 +18,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer, IDeferredRootScope
+public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
@@ -44,11 +44,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
-
-    // Deferred-root window state (see IDeferredRootScope): while the flag is set, block write batches accumulate
-    // dirty accounts here instead of applying them to the state trie; the first non-deferred batch flushes them.
-    private bool _deferRootsForNextCommit;
-    private Dictionary<AddressAsKey, Account?>? _deferredDirtyAccounts;
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
@@ -154,24 +149,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void UpdateRootHash()
     {
-        if (!_trieless && !_deferRootsForNextCommit) _stateTree.UpdateRootHash();
-    }
-
-    public bool BeginDeferredRootBlock()
-    {
-        // VerifyWithTrie reads the trie on every account access; a deferred (stale) trie would produce false mismatches.
-        if (_trieless || _isReadOnly || _configuration.VerifyWithTrie) return false;
-        _deferRootsForNextCommit = true;
-        return true;
-    }
-
-    public void CommitDeferred(ulong blockNumber, Hash256 knownStateRoot)
-    {
-        if (!_deferRootsForNextCommit)
-            throw new InvalidOperationException($"{nameof(CommitDeferred)} requires a preceding {nameof(BeginDeferredRootBlock)}.");
-
-        _deferRootsForNextCommit = false;
-        DoCommit(blockNumber, knownStateRoot);
+        if (!_trieless) _stateTree.UpdateRootHash();
     }
 
     public Account? Get(Address address)
@@ -400,24 +378,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void Commit(ulong blockNumber)
     {
-        if (_deferRootsForNextCommit)
-            throw new InvalidOperationException($"Block began deferred ({nameof(BeginDeferredRootBlock)}) but was committed via {nameof(Commit)}; use {nameof(CommitDeferred)}.");
-
-        DoCommit(blockNumber, knownStateRoot: null);
-    }
-
-    private void DoCommit(ulong blockNumber, Hash256? knownStateRoot)
-    {
         _pausePrewarmer = true;
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        // A deferred commit (known root) touched no state-trie nodes, so there is nothing to commit.
-        if (!_trieless && knownStateRoot is null) _stateTree.Commit();
+        if (!_trieless) _stateTree.Commit();
 
         _storages.Clear();
 
-        StateId newStateId = new(blockNumber, knownStateRoot ?? RootHash);
+        StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
 
@@ -502,36 +471,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // The per-account flat writes above (scope._snapshotBundle.SetAccount) already carry intra-block state
                 // for subsequent txs; normal scopes additionally bulk-apply the dirty accounts into the state trie.
                 // Trie-less scopes keep the known root on _stateTree and never touch trie nodes, so they skip this.
-                // A deferred-root block accumulates its dirty accounts instead (last write per account wins); the
-                // first non-deferred block flushes the accumulated set together with its own, so repeated writes to
-                // hot accounts collapse into a single trie update per window.
                 if (!scope._trieless)
                 {
-                    if (scope._deferRootsForNextCommit)
+                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                     {
-                        Dictionary<AddressAsKey, Account?> deferred = scope._deferredDirtyAccounts ??= new(_dirtyAccounts.Count);
-                        foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                        {
-                            deferred[kv.Key] = kv.Value;
-                        }
-                    }
-                    else
-                    {
-                        Dictionary<AddressAsKey, Account?>? deferred = scope._deferredDirtyAccounts;
-                        int deferredCount = deferred?.Count ?? 0;
-                        using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count + deferredCount);
-                        if (deferredCount != 0)
-                        {
-                            foreach (KeyValuePair<AddressAsKey, Account?> kv in deferred!)
-                            {
-                                if (!_dirtyAccounts.ContainsKey(kv.Key)) stateSetter.Set(kv.Key, kv.Value);
-                            }
-                            deferred.Clear();
-                        }
-                        foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                        {
-                            stateSetter.Set(kv.Key, kv.Value);
-                        }
+                        stateSetter.Set(kv.Key, kv.Value);
                     }
                 }
             }

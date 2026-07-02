@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -24,8 +23,7 @@ public class BranchProcessor(
     IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
-    IBlockCachePreWarmer? preWarmer = null,
-    IBlocksConfig? blocksConfig = null)
+    IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
@@ -44,12 +42,6 @@ public class BranchProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {block.ToString(BlockHeader.Format.Short)} state root {block.StateRoot}");
         stateProvider.CommitTree(block.Number);
-    }
-
-    private void DeferredCommitBlock(BlockHeader block)
-    {
-        if (_logger.IsTrace) _logger.Trace($"Committing the branch (deferred root) - {block.ToString(BlockHeader.Format.Short)} known state root {block.StateRoot}");
-        ((IDeferredRootWorldState)stateProvider).CommitTreeDeferred((ulong)block.Number, block.StateRoot!);
     }
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
@@ -103,14 +95,6 @@ public class BranchProcessor(
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
 
-            // Interior blocks of a known-canonical branch can defer state-trie updates and root computation to the
-            // branch boundary (the last block, and every scope-reopen commit point, which must flush before the
-            // scope's in-memory trie state is discarded).
-            bool deferRootsInBranch = blocksCount > 1
-                && notReadOnly
-                && blocksConfig?.DeferBranchStateRoots == true
-                && stateProvider is IDeferredRootWorldState { SupportsDeferredRoots: true };
-
             for (int i = 0; i < blocksCount; i++)
             {
                 WaitForCacheClear();
@@ -146,16 +130,7 @@ public class BranchProcessor(
                     }
                 }
 
-                bool isBranchBoundary = i == blocksCount - 1 || (i != 0 && i % MaxUncommittedBlocks == 0);
-                bool deferThisBlock = deferRootsInBranch
-                    && !isBranchBoundary
-                    && suggestedBlock.StateRoot is not null
-                    && ((IDeferredRootWorldState)stateProvider).BeginDeferredRootBlock();
-
-                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
-                    suggestedBlock,
-                    deferThisBlock ? options | ProcessingOptions.DeferredStateRoots : options,
-                    blockTracer, spec, token);
+                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
@@ -163,8 +138,7 @@ public class BranchProcessor(
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
-                if (deferThisBlock) DeferredCommitBlock(suggestedBlock.Header);
-                else PreCommitBlock(suggestedBlock.Header);
+                PreCommitBlock(suggestedBlock.Header);
                 QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
