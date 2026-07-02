@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -63,7 +64,7 @@ public partial class DebugRpcModuleTests
         Address freshA = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshA}", to = $"{TestItem.AddressC}", value = 50.Ether.ToString("X") },
-            "tracing failed: insufficient funds for gas * price + value: address ",
+            $"tracing failed: {TxErrorMessages.InsufficientFundsForGas}: address ",
             ErrorCodes.InvalidInput)
         { TestName = "InsufficientFundsForTransfer" };
 
@@ -77,7 +78,7 @@ public partial class DebugRpcModuleTests
         Address freshC = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshC}", to = $"{TestItem.AddressC}", maxFeePerGas = "0x1", maxPriorityFeePerGas = "0x1" },
-            "tracing failed: insufficient funds for gas * price + value: address ",
+            $"tracing failed: {TxErrorMessages.InsufficientFundsForGas}: address ",
             ErrorCodes.InvalidInput)
         { TestName = "InsufficientFundsForGasPriceValue" };
     }

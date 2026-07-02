@@ -19,16 +19,13 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
     WitnessRendezvous rendezvous,
-    ILogManager? logManager = null) : INewPayloadWithWitnessHandler
+    ILogManager? logManager = null) : IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
 
-    public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(
-        ExecutionPayloadV4 executionPayload,
-        Hash256?[] blobVersionedHashes,
-        Hash256? parentBeaconBlockRoot,
-        byte[][]? executionRequests)
+    public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(ExecutionPayloadParams<ExecutionPayloadV4> request)
     {
+        ExecutionPayloadV4 executionPayload = request.ExecutionPayload;
         Hash256? blockHash = executionPayload.BlockHash;
 
         if (blockHash is null)
@@ -38,22 +35,22 @@ public sealed class NewPayloadWithWitnessHandler(
                 "executionPayload.blockHash is required", ErrorCodes.InvalidParams);
         }
 
-        using WitnessRequest request = rendezvous.RequestWitness(blockHash);
+        using WitnessRequest witnessRequest = rendezvous.RequestWitness(blockHash);
 
         using ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
-            executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+            executionPayload, request.BlobVersionedHashes ?? [], request.ParentBeaconBlockRoot, request.ExecutionRequests);
 
         // engine_newPayloadV5 returns only after ProcessOne has run, so the registration is already in its
         // final state — a synchronous check suffices (the using-Dispose cancels it otherwise). Drain any
         // produced witness up front so every early-return path below disposes it rather than leaking its
         // pooled buffers (Release is a no-op once the processor has claimed and completed the slot).
-        Witness? capturedWitness = request.Task.IsCompletedSuccessfully ? request.Task.Result : null;
+        Witness? capturedWitness = witnessRequest.Task.IsCompletedSuccessfully ? witnessRequest.Task.Result : null;
 
         if (statusResult.Result.ResultType != ResultType.Success)
         {
             capturedWitness?.Dispose();
             return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
-                statusResult.Result.Error ?? "engine_newPayloadV5 failed",
+                statusResult.Result.Error ?? "engine_newPayloadWithWitness: payload processing failed",
                 statusResult.ErrorCode);
         }
 

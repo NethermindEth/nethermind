@@ -32,7 +32,7 @@ public partial class EngineRpcModule(
     IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
     IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
-    INewPayloadWithWitnessHandler newPayloadWithWitnessHandler,
+    IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandler,
     IEngineRequestsTracker engineRequestsTracker,
     ISpecProvider specProvider,
     GCKeeper gcKeeper,

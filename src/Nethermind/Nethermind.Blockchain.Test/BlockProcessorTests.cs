@@ -408,13 +408,9 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        // After Process returns, the event handler should be unsubscribed.
-        // Verify by checking that firing the event doesn't cause issues
-        // (if still subscribed, it would try to cancel a disposed CTS).
         int externalHandlerCallCount = 0;
         processor.TransactionsExecuted += () => externalHandlerCallCount++;
 
-        // Process another block to trigger the event — only our handler should fire
         using IDisposable scope = stateProvider.BeginScope(null);
         Block block2 = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block2.Header);
@@ -446,7 +442,6 @@ public class BlockProcessorTests
     {
         IBlockProcessor processor = NullBlockProcessor.Instance;
 
-        // Should not throw
         Action handler = () => { };
         processor.TransactionsExecuted += handler;
         processor.TransactionsExecuted -= handler;
@@ -1065,8 +1060,6 @@ public class BlockProcessorTests
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching,
-            // Supplying the parent-reader factory enables parallel execution (as the production DI path
-            // does); without it _hasParentReaderPool is false and the manager runs sequentially.
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)

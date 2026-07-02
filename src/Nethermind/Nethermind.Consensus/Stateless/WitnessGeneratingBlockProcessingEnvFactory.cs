@@ -33,16 +33,8 @@ public interface IWitnessGeneratingBlockProcessingEnvFactory
     IWitnessGeneratingBlockProcessingEnvScope CreateScope();
 }
 
-/// <summary>
-/// Builds a <see cref="IWitnessGeneratingBlockProcessingEnv"/> on demand and pools entries for reuse.
-/// </summary>
-/// <remarks>
-/// Each rent returns a fully-wired env (own WorldState stack, capturing trie-store wrapper, header
-/// finder, Autofac child scope). The first rent on an
-/// empty pool pays full construction cost; subsequent rents reuse a pooled entry. Entries are reset on
-/// return (so a pooled entry never pins its last call's witness buffers) and the pool is soft-capped —
-/// surplus and poisoned entries are disposed rather than pooled. Disposing the factory drains the pool.
-/// </remarks>
+/// <summary>Builds a <see cref="IWitnessGeneratingBlockProcessingEnv"/> on demand and pools fully-wired entries for reuse.</summary>
+/// <remarks>Entries are reset on return; the pool is soft-capped, with surplus and poisoned entries disposed rather than pooled.</remarks>
 public class WitnessGeneratingBlockProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
     IWorldStateManager worldStateManager,
@@ -78,9 +70,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
 
-        // Per-entry session + recorders. The session is armed once for the entry's lifetime (the env's
-        // components are wired directly, not via the main-pipeline proxy); Reset() clears the recorder
-        // data between rents while leaving the session armed at the same recorder instances.
         WitnessHeaderRecorder headerRecorder = new();
 
         IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();
@@ -90,8 +79,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
         WitnessCapturingHeaderFinder capturingHeaderFinder = new(headerStore, headerRecorder);
-        // Proof-collection walks go through the global (non-capturing) reader; the capturing trieStore
-        // serves execution-path reads (not account proof collection). headerStore is the undecorated source BuildHeaders walks.
+        // Proof-collection walks go through the global (non-capturing) reader; the trieStore serves execution-path reads.
         WitnessGeneratingWorldState witnessWorldState = new(
             baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
 
@@ -121,17 +109,14 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     private void Return(PooledEntry entry)
     {
-        // Past the soft cap (or after the factory is disposed): dispose rather than pool, so burst
-        // traffic can't pin surplus WorldState stacks until root-scope shutdown. A small overshoot is
-        // tolerated when threads race past the check; root-scope disposal still reclaims any straggler.
+        // Past the soft cap (or disposed): dispose rather than pool, so burst traffic can't pin surplus WorldState stacks.
         if (_disposed || Volatile.Read(ref _poolCount) >= MaxPoolSize)
         {
             entry.Dispose();
             return;
         }
 
-        // Reset before pooling so a returned entry never pins its last call's witness buffers. A reset
-        // that throws (e.g. a DB disposed mid-shutdown) poisons the entry — dispose it rather than pool.
+        // Reset before pooling so an entry never pins its last call's buffers; a throwing reset poisons it — dispose instead.
         try
         {
             entry.Reset();
@@ -145,8 +130,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         Interlocked.Increment(ref _poolCount);
         _pool.Push(entry);
 
-        // A Dispose that drained between our guard and this push would leave the entry orphaned;
-        // re-check and drain ourselves.
+        // A Dispose that drained between the guard and this push would orphan the entry; re-check and drain.
         if (_disposed)
         {
             while (_pool.TryPop(out PooledEntry? stale))
@@ -179,8 +163,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         public ILifetimeScope Scope { get; } = scope;
         public IWitnessGeneratingBlockProcessingEnv Env { get; } = env;
 
-        /// <summary>Tears down the entry: the Autofac scope (and everything it owns) first, then the
-        /// manually-created read-only trie store the scope's components borrowed.</summary>
+        /// <summary>Tears down the Autofac scope first, then the manually-created read-only trie store it borrowed.</summary>
         public void Dispose()
         {
             Scope.Dispose();
@@ -188,12 +171,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         }
 
         /// <summary>Wipes per-call accumulators so the entry is safe for the next rent.</summary>
-        /// <remarks>
-        /// The inner WorldState's per-call caches are already cleared by <c>WorldState.BeginScope</c>'s
-        /// scope-exit <c>Reset(true)</c>; only the witness-specific accumulators are cleared here. The
-        /// session stays armed at the same recorder instances — clearing the recorders is enough. The
-        /// blockhash cache is content-addressed (never stale) but grows per entry, so it's cleared too.
-        /// </remarks>
+        /// <remarks>The inner WorldState's caches are already cleared by <c>WorldState.BeginScope</c>'s scope-exit reset; only the witness-specific accumulators (and the per-entry-growing blockhash cache) are cleared here.</remarks>
         public void Reset()
         {
             headerRecorder.Reset();
@@ -212,9 +190,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         public void Dispose()
         {
-            // Idempotent: a second Dispose (defensive double-using, programmer error, exception cleanup
-            // racing with a finally block) MUST NOT re-pool the same entry — that would let two
-            // subsequent rents observe the same instance and race on the witness accumulators.
+            // Idempotent: a second Dispose must not re-pool the entry, or two rents would share it and race on the accumulators.
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
             {
                 factory.Return(entry);

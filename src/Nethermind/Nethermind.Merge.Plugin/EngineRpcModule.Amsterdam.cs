@@ -18,7 +18,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IAsyncHandler<byte[], GetPayloadV6Result?> _getPayloadHandlerV6 = getPayloadHandlerV6;
     private readonly IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> _executionGetPayloadBodiesByHashV2Handler = getPayloadBodiesByHashV2Handler;
     private readonly IGetPayloadBodiesByRangeV2Handler _executionGetPayloadBodiesByRangeV2Handler = getPayloadBodiesByRangeV2Handler;
-    private readonly INewPayloadWithWitnessHandler _newPayloadWithWitnessHandler = newPayloadWithWitnessHandler;
+    private readonly IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> _newPayloadWithWitnessHandler = newPayloadWithWitnessHandler;
 
     private readonly IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> _getBlobsHandlerV4 = getBlobsHandlerV4;
 
@@ -34,7 +34,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         Hash256? parentBeaconBlockRoot,
         byte[][]? executionRequests)
         => _newPayloadWithWitnessHandler.HandleAsync(
-            executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+            new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
     {

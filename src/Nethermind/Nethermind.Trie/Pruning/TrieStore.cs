@@ -30,6 +30,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 {
     private const double PruningEfficiencyWarningThreshold = 0.9;
     private readonly int _shardedDirtyNodeCount = 256;
+    private readonly uint _shardMask = 255;
     private readonly int _shardBit = 8;
     private readonly int _maxBufferedCommitCount;
     private readonly ulong _maxDepth;
@@ -105,6 +106,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys && _pastKeyTrackingEnabled;
         _shardBit = pruningConfig.DirtyNodeShardBit;
         _shardedDirtyNodeCount = 1 << _shardBit;
+        _shardMask = (uint)(_shardedDirtyNodeCount - 1);
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
         _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
         _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
@@ -258,7 +260,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             ? path.GetHashCode()
             : hash.GetHashCode());
 
-        return (int)(hashCode % _shardedDirtyNodeCount);
+        return (int)(hashCode & _shardMask);
     }
 
     private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key.Path, key.Keccak)];

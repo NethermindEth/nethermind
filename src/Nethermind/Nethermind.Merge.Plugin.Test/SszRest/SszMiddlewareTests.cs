@@ -116,7 +116,7 @@ public class SszMiddlewareTests
             new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
             new CapabilitiesSszHandler(_specProvider),
 
-            new NewPayloadWithWitnessSszHandler(_engineModule),
+            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV1, NewPayloadV5RequestWire>(_engineModule),
         ];
 
         return new SszMiddleware(
@@ -525,13 +525,19 @@ public class SszMiddlewareTests
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
-    [Test]
-    public async Task Malformed_ssz_body_returns_400_without_propagating_exception()
+    private static readonly string[] MalformedSszBodyPaths =
+    [
+        $"/engine/v2/{ParisUrl}/payloads",
+        WitnessPath,
+    ];
+
+    [TestCaseSource(nameof(MalformedSszBodyPaths))]
+    public async Task Malformed_ssz_body_returns_400_without_propagating_exception(string path)
     {
         byte[] garbage = new byte[64];
         new Random(42).NextBytes(garbage);
 
-        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{ParisUrl}/payloads", garbage);
+        DefaultHttpContext ctx = MakePostContext(path, garbage);
 
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
@@ -1051,16 +1057,19 @@ public class SszMiddlewareTests
 
     private static string WitnessPath => $"/engine/v2/{AmsterdamUrl}/payloads/witness";
 
-    [Test]
-    public async Task NewPayloadWithWitness_returns_200_with_octet_stream_and_decodable_ssz_for_valid_status()
+    [TestCase(true, TestName = "NewPayloadWithWitness_valid_with_generated_witness_encodes_witness_present")]
+    [TestCase(false, TestName = "NewPayloadWithWitness_valid_without_witness_encodes_witness_absent")]
+    public async Task NewPayloadWithWitness_valid_status_encodes_witness_presence(bool withWitness)
     {
-        Witness stubWitness = new()
-        {
-            State = new ArrayPoolList<byte[]>(1) { new byte[] { 0xDE, 0xAD, 0xBE, 0xEF } },
-            Codes = new ArrayPoolList<byte[]>(0),
-            Keys = new ArrayPoolList<byte[]>(0),
-            Headers = new ArrayPoolList<byte[]>(0),
-        };
+        Witness? stubWitness = withWitness
+            ? new Witness
+            {
+                State = new ArrayPoolList<byte[]>(1) { new byte[] { 0xDE, 0xAD, 0xBE, 0xEF } },
+                Codes = new ArrayPoolList<byte[]>(0),
+                Keys = new ArrayPoolList<byte[]>(0),
+                Headers = new ArrayPoolList<byte[]>(0),
+            }
+            : null;
 
         NewPayloadWithWitnessV1Result witnessResult = NewPayloadWithWitnessV1Result.FromPayloadStatus(
             new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
@@ -1078,7 +1087,7 @@ public class SszMiddlewareTests
         await _engineModule.Received(1).engine_newPayloadWithWitness(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
-            "VALID with a successfully generated witness must return 200 OK");
+            "a VALID status must return 200 OK whether or not a witness was produced");
         Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream),
             "successful SSZ responses must use application/octet-stream");
 
@@ -1089,36 +1098,8 @@ public class SszMiddlewareTests
         Assert.That(decodedStatus, Is.EqualTo(0), "decoded status byte must match VALID");
         Assert.That(decodedLvh, Is.EqualTo(TestItem.KeccakA),
             "latest_valid_hash Union Some variant must round-trip the hash correctly");
-        Assert.That(witnessPresent, Is.True,
-            "a VALID response with a generated witness must encode the witness as Union Some (selector 0x01)");
-    }
-
-    [Test]
-    public async Task NewPayloadWithWitness_valid_status_but_witness_generation_fails_returns_200_with_null_witness()
-    {
-        NewPayloadWithWitnessV1Result witnessResult = NewPayloadWithWitnessV1Result.FromPayloadStatus(
-            new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
-            witness: null);
-
-        _engineModule.engine_newPayloadWithWitness(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
-            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
-
-        byte[] body = BuildMinimalWitnessRequestBody();
-        DefaultHttpContext ctx = MakePostContext(WitnessPath, body);
-
-        await _middleware.InvokeAsync(ctx);
-
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
-            "the block is accepted even when witness generation fails; CL must not see 500");
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
-
-        byte[] responseBody = ResponseBytes(ctx);
-        Assert.That(responseBody, Is.Not.Empty);
-        (byte decodedStatus, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(responseBody);
-        Assert.That(decodedStatus, Is.EqualTo(0));
-        Assert.That(witnessPresent, Is.False,
-            "when witness generation fails the witness Union field must be None (selector 0x00)");
+        Assert.That(witnessPresent, Is.EqualTo(withWitness),
+            "the witness Union must be Some iff a witness was generated");
     }
 
     [Test]
@@ -1157,20 +1138,6 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task NewPayloadWithWitness_malformed_ssz_returns_400()
-    {
-        byte[] garbage = new byte[64];
-        new Random(42).NextBytes(garbage);
-        DefaultHttpContext ctx = MakePostContext(WitnessPath, garbage);
-
-        Func<Task> act = () => _middleware.InvokeAsync(ctx);
-
-        Assert.That(async () => await act(), Throws.Nothing);
-        // Per execution-apis #793: malformed SSZ encoding maps to 400 Bad Request.
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
-    }
-
-    [Test]
     public async Task NewPayloadWithWitness_non_post_method_returns_404()
     {
         DefaultHttpContext ctx = MakeGetContext(WitnessPath);
@@ -1196,42 +1163,29 @@ public class SszMiddlewareTests
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
     }
 
-    [Test]
-    public async Task NewPayloadWithWitness_unsupported_fork_returns_400_with_correct_type()
+    private static readonly object[] WitnessEngineErrorCases =
+    [
+        new object[] { MergeErrorCodes.UnsupportedFork, "Unsupported fork", StatusCodes.Status400BadRequest, "/engine-api/errors/unsupported-fork" },
+        new object[] { ErrorCodes.InternalError, "Something exploded", StatusCodes.Status500InternalServerError, "/engine-api/errors/internal" },
+    ];
+
+    [TestCaseSource(nameof(WitnessEngineErrorCases))]
+    public async Task NewPayloadWithWitness_engine_error_maps_to_http_status(
+        int errorCode, string error, int expectedStatus, string expectedTypeUri)
     {
         _engineModule.engine_newPayloadWithWitness(
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
-            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail("Unsupported fork", MergeErrorCodes.UnsupportedFork));
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(error, errorCode));
 
         byte[] body = BuildMinimalWitnessRequestBody();
         DefaultHttpContext ctx = MakePostContext(WitnessPath, body);
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
         Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
         string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-        Assert.That(responseBody, Does.Contain("/engine-api/errors/unsupported-fork"),
-            "the RFC 7807 type URI for unsupported-fork must be present in the error body");
-    }
-
-    [Test]
-    public async Task NewPayloadWithWitness_non_UnsupportedFork_engine_error_returns_500()
-    {
-        _engineModule.engine_newPayloadWithWitness(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
-            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail("Something exploded", ErrorCodes.InternalError));
-
-        byte[] body = BuildMinimalWitnessRequestBody();
-        DefaultHttpContext ctx = MakePostContext(WitnessPath, body);
-
-        await _middleware.InvokeAsync(ctx);
-
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status500InternalServerError),
-            "non-UnsupportedFork engine errors must map to 500 Internal Server Error");
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
-        string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-        Assert.That(responseBody, Does.Contain("/engine-api/errors/internal"));
+        Assert.That(responseBody, Does.Contain(expectedTypeUri));
     }
 
     private static byte[] BuildMinimalWitnessRequestBody() =>

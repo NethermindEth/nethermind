@@ -69,7 +69,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public void Rendezvous_RequestWitness_returns_incomplete_task_until_completed()
     {
         WitnessRendezvous rendezvous = new();
@@ -81,7 +80,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public void Rendezvous_disposing_request_cancels_task_and_clears_slot()
     {
         WitnessRendezvous rendezvous = new();
@@ -99,7 +97,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public void Rendezvous_disposing_request_twice_is_safe()
     {
         WitnessRendezvous rendezvous = new();
@@ -111,7 +108,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public void Rendezvous_second_request_while_one_outstanding_is_declined()
     {
         WitnessRendezvous rendezvous = new();
@@ -129,7 +125,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task BlockProcessor_completes_rendezvous_task_synchronously_inside_newPayloadV5()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -151,7 +146,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task BlockProcessor_does_not_capture_when_no_request_pending()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -166,7 +160,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task BlockProcessor_multi_block_branch_captures_independent_witnesses()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -192,7 +185,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task BlockProcessor_uncaptured_block_between_two_captured_blocks_leaves_clean_state()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -239,11 +231,11 @@ public partial class EngineModuleTests
         return module;
     }
 
-    [Test]
-    [Category("WitnessCapture")]
-    public async Task Handler_returns_witness_from_rendezvous_on_valid_status()
+    [TestCase(true, TestName = "Handler_returns_witness_from_rendezvous_on_valid_status")]
+    [TestCase(false, TestName = "Handler_valid_status_with_null_witness_yields_null_witness")]
+    public async Task Handler_returns_rendezvous_witness_on_valid_status(bool withWitness)
     {
-        using Witness expectedWitness = MakeStubWitness();
+        using Witness? expectedWitness = withWitness ? MakeStubWitness() : null;
         WitnessRendezvous rendezvous = new();
 
         NewPayloadWithWitnessHandler handler = new(
@@ -254,32 +246,14 @@ public partial class EngineModuleTests
             rendezvous);
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
+            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(result.Data.ExecutionWitness, Is.SameAs(expectedWitness));
-    }
-
-    [Test]
-    [Category("WitnessCapture")]
-    public async Task Handler_valid_status_with_null_witness_yields_null_witness()
-    {
-        WitnessRendezvous rendezvous = new();
-
-        NewPayloadWithWitnessHandler handler = new(
-            new Lazy<IEngineRpcModule>(() => PublishingEngineModule(
-                rendezvous,
-                witness: null,
-                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB })),
-            rendezvous);
-
-        ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
-
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(result.Data.ExecutionWitness, Is.Null);
+        if (withWitness)
+            Assert.That(result.Data.ExecutionWitness, Is.SameAs(expectedWitness));
+        else
+            Assert.That(result.Data.ExecutionWitness, Is.Null);
     }
 
     private static IEnumerable<TestCaseData> NonValidOutcomes()
@@ -296,21 +270,19 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(NonValidOutcomes))]
-    [Category("WitnessCapture")]
     public async Task Handler_cancels_rendezvous_when_not_valid(Func<IEngineRpcModule> moduleFactory)
     {
         WitnessRendezvous rendezvous = new();
 
         NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(moduleFactory), rendezvous);
 
-        await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
+        await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
         Assert.That(rendezvous.HasPendingRequest(TestItem.KeccakA), Is.False,
             "the handler must cancel the rendezvous entry on every non-VALID outcome");
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task Handler_rejects_null_blockHash_with_InvalidParams_and_does_not_register()
     {
         WitnessRendezvous rendezvous = new();
@@ -325,7 +297,7 @@ public partial class EngineModuleTests
             BlockHash = null!
         };
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await handler.HandleAsync(payload, [], TestItem.KeccakA, []);
+            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(payload, [], TestItem.KeccakA, []));
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
             "a null blockHash is a malformed payload — return InvalidParams instead of forwarding");
@@ -333,7 +305,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task E2E_empty_Amsterdam_block_produces_VALID_with_non_null_witness()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -345,7 +316,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task E2E_block_with_ETH_transfer_produces_multi_node_witness()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -366,7 +336,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task E2E_witness_state_nodes_satisfy_spec_size_constraints()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -385,7 +354,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task E2E_sequential_blocks_produce_independent_witness_instances()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -414,7 +382,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task E2E_non_VALID_response_has_null_witness_and_no_rendezvous_leak()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -460,7 +427,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task Regression_ProcessOne_called_exactly_once_during_engine_newPayloadWithWitness()
     {
         int processCount = 0;
@@ -487,7 +453,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task Regression_plain_engine_newPayloadV5_unaffected_by_witness_infrastructure()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -506,7 +471,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task Witness_headers_contain_parent_and_are_well_formed()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -526,13 +490,11 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task Witness_State_proves_the_touched_accounts_against_the_parent_state()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         BlockHeader parent = chain.BlockTree.Head!.Header;
 
-        // Transfer between two genesis-funded accounts (sender AddressA, recipient AddressB).
         Transaction tx = Build.A.Transaction
             .WithValue(UInt256.One)
             .WithTo(TestItem.AddressB)
@@ -549,7 +511,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Category("WitnessCapture")]
     public async Task Witness_includes_bytecode_and_storage_proof_for_a_called_contract()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);

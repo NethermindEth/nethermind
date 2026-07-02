@@ -20,27 +20,16 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// Owns the second, statically witness-wired <see cref="IBlockProcessor"/> graph that the
-/// <see cref="WitnessCapturingBlockProcessor"/> selector delegates a witnessed block to. The graph
-/// shares the main pipeline's writable <see cref="IWorldState"/> through a transparent
-/// <see cref="WitnessGeneratingWorldState"/> recorder, so processing through it is the real block
-/// import — recorded as a side effect rather than re-executed.
+/// Owns the second, witness-wired <see cref="IBlockProcessor"/> graph that the
+/// <see cref="WitnessCapturingBlockProcessor"/> selector delegates a witnessed block to, recording the
+/// real block import as a side effect via a <see cref="WitnessGeneratingWorldState"/> recorder.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The graph is built off the <em>root</em> lifetime scope (never the main-processing child scope) so
-/// it does not inherit that scope's <see cref="IBlockProcessor"/> selector decorator — building off the
-/// main scope would make the witness processor resolve back through the selector and form a cycle. The
-/// recorder still wraps the exact main-pipeline <see cref="IWorldState"/> instance (taken from
-/// <see cref="IMainProcessingContext.WorldState"/>) so the <see cref="Processing.BranchProcessor"/>'s
-/// scope/commit on that instance and the witness execution stay coherent.
-/// </para>
-/// <para>
-/// Construction is deferred to the first witnessed block: nodes on an EIP-7928 chain that never receive
-/// an <c>engine_newPayloadWithWitness</c> request never pay for a second processing graph. The selector
-/// drives blocks serially on the processing loop, so the recorder is reused across blocks — cleared via
-/// <see cref="ResetForBlock"/> before each capture.
-/// </para>
+/// Built off the <em>root</em> lifetime scope (not the main-processing child scope) to avoid inheriting
+/// the selector decorator and forming a cycle, while the recorder still wraps the exact main-pipeline
+/// <see cref="IWorldState"/> instance so scope/commit and witness execution stay coherent. Construction
+/// is deferred to the first witnessed block; the recorder is reused across serially-processed blocks,
+/// cleared via <see cref="ResetForBlock"/>.
 /// </remarks>
 public sealed class WitnessCapturingBlockProcessingEnv(
     ILifetimeScope rootLifetimeScope,
@@ -77,10 +66,8 @@ public sealed class WitnessCapturingBlockProcessingEnv(
         IHeaderStore headerStore,
         IBlockValidationModule[] validationModules)
     {
-        // The exact main-pipeline world state the BranchProcessor scopes/commits; the recorder wraps it.
         IWorldState parentWorldState = rootLifetimeScope.Resolve<IMainProcessingContext>().WorldState;
 
-        // Read-only trie store for the post-execution witness walk at the parent state root.
         IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();
         WitnessHeaderRecorder headerRecorder = new();
         WitnessGeneratingWorldState recorder = new(
@@ -92,10 +79,8 @@ public sealed class WitnessCapturingBlockProcessingEnv(
         WitnessCapturingHeaderFinder recordingFinder = new(headerStore, headerRecorder);
 
         ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
-            // Recorder over the shared writable state — registered by instance, so the decorator wraps
-            // the captured parent instance rather than re-resolving itself (no cycle).
+            // Registered by instance, so the decorator wraps the captured parent instance rather than re-resolving itself (no cycle).
             .AddScoped<IWorldState>(recorder)
-            // Recording header finder + scoped blockhash cache so BLOCKHASH header reads are captured.
             .AddScoped<IHeaderFinder>(recordingFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
@@ -107,9 +92,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
                 codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness))
-            // The validation transaction executor; everything else (BlockProcessor, validators, beacon
-            // root/blockhash/withdrawal/exec-requests processors, VM, tx processor) is inherited from the
-            // root registrations and re-resolved here against the overridden world state.
+            // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
             .AddModule(validationModules));
 
         IBlockProcessor processor = scope.Resolve<IBlockProcessor>();
@@ -117,10 +100,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
         return new Graph(scope, trieStore, recorder, headerRecorder, processor, blockhashCache);
     }
 
-    /// <summary>
-    /// The witness bundle plus the resources whose lifetime it owns: the witness scope and the
-    /// externally-owned witness-walk trie store, both disposed when the env is disposed.
-    /// </summary>
+    /// <summary>The witness bundle plus the scope and witness-walk trie store whose lifetime it owns.</summary>
     private sealed class Graph(
         ILifetimeScope scope,
         IReadOnlyTrieStore trieStore,

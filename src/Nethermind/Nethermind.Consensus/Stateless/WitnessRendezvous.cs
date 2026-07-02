@@ -8,15 +8,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Stateless;
 
-/// <summary>
-/// Cross-thread coordination between the JSON-RPC handler that requests a witness for a block hash
-/// and the block-processing thread that produces one. The handler awaits a <see cref="Task{T}"/>;
-/// the processor completes it once the matching <c>ProcessOne</c> finishes.
-/// </summary>
-/// <remarks>
-/// Only one witness is ever in flight (block processing is serialized), so this is a single
-/// hash-validated slot rather than a registry.
-/// </remarks>
+/// <summary>Cross-thread coordination between the JSON-RPC handler requesting a witness for a block hash and the processing thread producing one.</summary>
+/// <remarks>Only one witness is ever in flight (block processing is serialized), so this is a single hash-validated slot rather than a registry.</remarks>
 public sealed class WitnessRendezvous(ILogManager? logManager = null)
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessRendezvous>();
@@ -24,11 +17,7 @@ public sealed class WitnessRendezvous(ILogManager? logManager = null)
     private Hash256? _requestedHash;
     private TaskCompletionSource<Witness?>? _pending;
 
-    /// <summary>
-    /// Handler-side: register a pending witness request for <paramref name="blockHash"/> and return a
-    /// disposable registration whose <see cref="WitnessRequest.Task"/> completes when the block is
-    /// processed (or is cancelled when the registration is disposed).
-    /// </summary>
+    /// <summary>Registers a pending witness request for <paramref name="blockHash"/>, returning a disposable registration whose <see cref="WitnessRequest.Task"/> completes when the block is processed.</summary>
     /// <remarks>If a request is already outstanding, the registration is declined: its task yields <c>null</c>.</remarks>
     public WitnessRequest RequestWitness(Hash256 blockHash)
     {
@@ -56,10 +45,7 @@ public sealed class WitnessRendezvous(ILogManager? logManager = null)
         }
     }
 
-    /// <summary>
-    /// Recorder-side: atomically take the pending TCS for <paramref name="blockHash"/> so the caller
-    /// can complete it. Returns <c>false</c> when no request is pending for that hash.
-    /// </summary>
+    /// <summary>Atomically takes the pending TCS for <paramref name="blockHash"/> so the caller can complete it; <c>false</c> when none is pending for that hash.</summary>
     public bool TryClaim(Hash256 blockHash, out TaskCompletionSource<Witness?>? tcs)
     {
         lock (_lock)
@@ -77,15 +63,11 @@ public sealed class WitnessRendezvous(ILogManager? logManager = null)
         }
     }
 
-    /// <summary>
-    /// Releases the slot held by <paramref name="tcs"/> (cancelling its task) if it is still the
-    /// current pending request. Idempotent and safe to call after the recorder has claimed it.
-    /// </summary>
+    /// <summary>Releases the slot held by <paramref name="tcs"/> (cancelling its task) if it still owns the current pending request. Idempotent.</summary>
     internal void Release(Hash256 blockHash, TaskCompletionSource<Witness?> tcs)
     {
         lock (_lock)
         {
-            // Only clear the slot if this registration still owns it (no-op once claimed).
             if (!ReferenceEquals(_pending, tcs)) return;
 
             _pending = null;
@@ -97,11 +79,7 @@ public sealed class WitnessRendezvous(ILogManager? logManager = null)
     }
 }
 
-/// <summary>
-/// A handler-side registration for a witness request. Holds the awaitable <see cref="Task"/> and,
-/// on <see cref="Dispose"/>, removes the rendezvous slot and cancels the task (idempotent). Hold it
-/// in a <c>using</c> so cleanup happens on every exit path.
-/// </summary>
+/// <summary>A handler-side witness-request registration holding the awaitable <see cref="Task"/>; <see cref="Dispose"/> removes the rendezvous slot and cancels the task (idempotent).</summary>
 public sealed class WitnessRequest : IDisposable
 {
     private readonly WitnessRendezvous? _rendezvous;
