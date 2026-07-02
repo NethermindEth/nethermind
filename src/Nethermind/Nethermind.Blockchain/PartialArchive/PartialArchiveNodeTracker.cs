@@ -55,6 +55,10 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
     private static readonly byte[] LastSnapshotBlockKey = [2];
     private static readonly byte[] PoisonedKey = [3];
 
+    // Written to both the state DB and tracker metadata; full pruning/resync drops the state-side
+    // copy, signalling that the tracking data is stale and must be reset.
+    internal static readonly byte[] StateStampKey = Keccak.Compute("PartialArchiveStateStamp").BytesToArray();
+
     private readonly IColumnsDb<PartialArchiveColumns> _db;
     private readonly IDb _mapDb;
     private readonly IDb _supersededDb;
@@ -85,6 +89,7 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
 
     public PartialArchiveNodeTracker(
         IColumnsDb<PartialArchiveColumns> db,
+        IDbProvider dbProvider,
         INodeStorage nodeStorage,
         ILogManager logManager)
     {
@@ -95,6 +100,8 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
         _metadataDb = db.GetColumnDb(PartialArchiveColumns.Metadata);
         _nodeStorage = nodeStorage;
         _logger = logManager.GetClassLogger<PartialArchiveNodeTracker>();
+
+        EnsureStateDatabaseIdentity(dbProvider.StateDb);
 
         _lastSnapshotBlock = ReadMetadataUlong(LastSnapshotBlockKey) ?? 0;
         _oldestRetainedBlock = ReadMetadataUlong(FloorKey) ?? 0;
@@ -537,6 +544,26 @@ public sealed class PartialArchiveNodeTracker : IPersistedNodeObserver, IDisposa
         {
             if (_logger.IsError) _logger.Error("Failed to persist the partial archive poison marker.", e);
         }
+    }
+
+    private void EnsureStateDatabaseIdentity(IKeyValueStore stateDb)
+    {
+        byte[]? stateStamp = stateDb[StateStampKey];
+        byte[]? trackedStamp = _metadataDb.Get(StateStampKey);
+        if (stateStamp is not null && trackedStamp is not null && Bytes.AreEqual(stateStamp, trackedStamp)) return;
+
+        if (trackedStamp is not null || _metadataDb.Get(FloorKey) is not null || _metadataDb.Get(LastSnapshotBlockKey) is not null)
+        {
+            _mapDb.Clear();
+            _supersededDb.Clear();
+            _journalDb.Clear();
+            _metadataDb.Clear();
+            if (_logger.IsInfo) _logger.Info("State database changed since partial archive tracking data was written (full pruning or resync); tracking was reset.");
+        }
+
+        byte[] stamp = stateStamp ?? Guid.NewGuid().ToByteArray();
+        stateDb[StateStampKey] = stamp;
+        _metadataDb.Set(StateStampKey, stamp);
     }
 
     private ulong? ReadMetadataUlong(byte[] key)

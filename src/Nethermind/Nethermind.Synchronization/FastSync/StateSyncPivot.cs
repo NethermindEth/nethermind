@@ -54,7 +54,15 @@ namespace Nethermind.Synchronization.FastSync
             BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {
-                if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
+                if (_bestHeader?.Number != bestHeader.Number)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
+                }
+                else if (_logger.IsDebug)
+                {
+                    _logger.Debug($"Snap - {msg} - pivot kept at {bestHeader.Number}");
+                }
+
                 _bestHeader = bestHeader;
             }
             else if (syncConfig.StaticSnapPivot && _logger.IsDebug)

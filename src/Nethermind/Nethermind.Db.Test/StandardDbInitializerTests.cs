@@ -17,6 +17,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using NUnit.Framework;
 using Testably.Abstractions;
 

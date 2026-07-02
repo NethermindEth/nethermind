@@ -53,7 +53,7 @@ public class PartialArchiveStateWindowTests
         using MemDb stateDb = new();
         NodeStorage nodeStorage = new(stateDb);
         using MemColumnsDb<PartialArchiveColumns> archiveDb = new();
-        using PartialArchiveNodeTracker tracker = new(archiveDb, nodeStorage, LimboLogs.Instance);
+        using PartialArchiveNodeTracker tracker = new(archiveDb, new SingleStateDbProvider(stateDb), nodeStorage, LimboLogs.Instance);
         RecordingFinalizedStateProvider finalized = new();
         PruningConfig pruningConfig = new()
         {

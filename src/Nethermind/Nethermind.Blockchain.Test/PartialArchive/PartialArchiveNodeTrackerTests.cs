@@ -31,7 +31,7 @@ public class PartialArchiveNodeTrackerTests
         _archiveDb = new MemColumnsDb<PartialArchiveColumns>();
         _stateDb = new MemDb();
         _nodeStorage = new NodeStorage(_stateDb);
-        _tracker = new PartialArchiveNodeTracker(_archiveDb, _nodeStorage, LimboLogs.Instance);
+        _tracker = CreateTracker();
     }
 
     [TearDown]
@@ -41,6 +41,9 @@ public class PartialArchiveNodeTrackerTests
         _archiveDb.Dispose();
         _stateDb.Dispose();
     }
+
+    private PartialArchiveNodeTracker CreateTracker() =>
+        new(_archiveDb, new SingleStateDbProvider(_stateDb), _nodeStorage, LimboLogs.Instance);
 
     private void PersistNode(Hash256? address, in TreePath path, Hash256 keccak, ulong blockNumber)
     {
@@ -198,13 +201,31 @@ public class PartialArchiveNodeTrackerTests
         Assert.That(floor, Is.EqualTo(4UL));
 
         _tracker.Dispose();
-        _tracker = new PartialArchiveNodeTracker(_archiveDb, _nodeStorage, LimboLogs.Instance);
+        _tracker = CreateTracker();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_tracker.OldestRetainedBlock, Is.EqualTo(floor));
             Assert.That(_tracker.LastSnapshotBlock, Is.EqualTo(10UL));
         }
+    }
+
+    [Test]
+    public void Resets_tracking_when_state_database_identity_changes()
+    {
+        PersistNode(null, in PathA, V1, 1);
+        PersistNode(null, in PathA, V2, 2);
+        _tracker.OnSnapshotPersisted(5);
+        _tracker.Dispose();
+
+        // Full pruning / resync drops the stamp from the state DB.
+        _stateDb.Remove(PartialArchiveNodeTracker.StateStampKey);
+        _tracker = CreateTracker();
+
+        Assert.That(_tracker.LastSnapshotBlock, Is.EqualTo(0UL));
+
+        PruneAndDrain(cutoff: 10, barrierBlock: 10);
+        Assert.That(NodeExists(null, in PathA, V1), Is.True, "stale journal must be discarded, not applied");
     }
 
     [Test]
