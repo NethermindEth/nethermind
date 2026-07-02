@@ -461,23 +461,28 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [TestCase(4, 0, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(4, 11, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(4, 12, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(5, 0, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(5, 10, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(5, 11, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(9, 0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(9, 6, nameof(AcceptTxResult.Accepted))]
-        [TestCase(9, 7, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(9, 45, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(11, 0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11, 4, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11, 5, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(15, 0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(16, 0, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(16, 90, nameof(AcceptTxResult.InsufficientFunds))]
-        public void should_handle_adding_tx_to_full_txPool_properly(int gasPrice, int value, string expected)
+        private static IEnumerable<TestCaseData> FullTxPoolCases()
+        {
+            yield return new TestCaseData(4, 0, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(4, 11, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(4, 12, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(5, 0, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(5, 10, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(5, 11, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(9, 0, AcceptTxResult.Accepted);
+            yield return new TestCaseData(9, 6, AcceptTxResult.Accepted);
+            yield return new TestCaseData(9, 7, AcceptTxResult.InsufficientFunds);
+            yield return new TestCaseData(9, 45, AcceptTxResult.InsufficientFunds);
+            yield return new TestCaseData(11, 0, AcceptTxResult.Accepted);
+            yield return new TestCaseData(11, 4, AcceptTxResult.Accepted);
+            yield return new TestCaseData(11, 5, AcceptTxResult.InsufficientFunds);
+            yield return new TestCaseData(15, 0, AcceptTxResult.Accepted);
+            yield return new TestCaseData(16, 0, AcceptTxResult.InsufficientFunds);
+            yield return new TestCaseData(16, 90, AcceptTxResult.InsufficientFunds);
+        }
+
+        [TestCaseSource(nameof(FullTxPoolCases))]
+        public void should_handle_adding_tx_to_full_txPool_properly(int gasPrice, int value, AcceptTxResult expected)
         {
             _txPool = CreatePool(new TxPoolConfig() { Size = 30 });
             Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
@@ -506,23 +511,28 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx.SenderAddress, (UInt256)(15UL * tx.GasLimit));
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(30));
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
-            Assert.That(result.ToString(), Does.Contain(expected));
+            Assert.That(result, Is.EqualTo(expected));
         }
 
-        [TestCase(5, 10, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(5, 11, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(10, 0, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(10, 5, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(10, 6, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(11, 0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11, 4, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11, 5, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(15, 0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(15, 1, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(16, 0, nameof(AcceptTxResult.Invalid))]
-        [TestCase(16, 15, nameof(AcceptTxResult.Invalid))]
-        [TestCase(50, 16, nameof(AcceptTxResult.Invalid))]
-        public void should_handle_adding_1559_tx_to_full_txPool_properly(int gasPremium, int value, string expected)
+        private static IEnumerable<TestCaseData> Full1559TxPoolCases()
+        {
+            yield return new TestCaseData(5, 10, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(5, 11, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(10, 0, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(10, 5, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(10, 6, AcceptTxResult.FeeTooLow);
+            yield return new TestCaseData(11, 0, AcceptTxResult.Accepted);
+            yield return new TestCaseData(11, 4, AcceptTxResult.Accepted);
+            yield return new TestCaseData(11, 5, AcceptTxResult.InsufficientFunds);
+            yield return new TestCaseData(15, 0, AcceptTxResult.Accepted);
+            yield return new TestCaseData(15, 1, AcceptTxResult.InsufficientFunds);
+            yield return new TestCaseData(16, 0, AcceptTxResult.Invalid);
+            yield return new TestCaseData(16, 15, AcceptTxResult.Invalid);
+            yield return new TestCaseData(50, 16, AcceptTxResult.Invalid);
+        }
+
+        [TestCaseSource(nameof(Full1559TxPoolCases))]
+        public void should_handle_adding_1559_tx_to_full_txPool_properly(int gasPremium, int value, AcceptTxResult expected)
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
             _txPool = CreatePool(new TxPoolConfig() { Size = 30 }, specProvider);
@@ -550,7 +560,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(30));
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(30));
-            Assert.That(result.ToString(), Does.Contain(expected));
+            Assert.That(result, Is.EqualTo(expected));
         }
 
         [TestCase(true)]
@@ -583,7 +593,7 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(30));
             Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(isLocal ? 1 : 0));
-            Assert.That(result.ToString(), Does.Contain(isLocal ? nameof(AcceptTxResult.Accepted) : nameof(AcceptTxResult.FeeTooLow)));
+            Assert.That(result, Is.EqualTo(isLocal ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow));
         }
 
         [TestCase(0)]

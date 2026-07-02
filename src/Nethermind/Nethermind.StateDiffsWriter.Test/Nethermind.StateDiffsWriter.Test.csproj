@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../tests.props" />
+  <ItemGroup>
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.StateDiff.Core\Nethermind.StateDiff.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.StateDiffsWriter\Nethermind.StateDiffsWriter.csproj" />
+  </ItemGroup>
+</Project>

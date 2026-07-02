@@ -94,8 +94,7 @@ public class DebugModuleTests
         RpcTest.AssertSuccess<byte[]>(response);
     }
 
-    [TestCase(1)]
-    [TestCase(0x1)]
+    [TestCase("0x1")]
     public async Task DebugGetChainLevel_WhenLevelExists_ReturnsChainLevel(object parameter)
     {
         _debugBridge.GetLevelInfo(1).Returns(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1000), new BlockInfo(TestItem.KeccakB, 1001)));
