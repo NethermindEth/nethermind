@@ -290,11 +290,11 @@ namespace Nethermind.Evm.Test
         // recipient cold/warm touch + value STATE_UPDATE), matching the spec's reference-case table.
         public enum Recipient { NewAccount, ExistingEoa, Contract, Precompile, SelfTransfer, EmptyZeroValue }
 
-        private const long TxBaseEip2780 = GasCostOf.TransactionEip2780;        // 4500
-        private const long TransferLogEip2780 = GasCostOf.TransferLogEip2780;   // 1756
-        private const long ColdNoCode = GasCostOf.ColdAccountAccessNoCodeEip2780; // 500
-        private const long ColdCode = GasCostOf.ColdAccountAccess;              // 2600
-        private const long StateUpdate = GasCostOf.StateUpdateEip2780;          // 1000
+        private const ulong TxBaseEip2780 = GasCostOf.TransactionEip2780;        // 4500
+        private const ulong TransferLogEip2780 = GasCostOf.TransferLogEip2780;   // 1756
+        private const ulong ColdNoCode = GasCostOf.ColdAccountAccessNoCodeEip2780; // 500
+        private const ulong ColdCode = GasCostOf.ColdAccountAccess;              // 2600
+        private const ulong StateUpdate = GasCostOf.StateUpdateEip2780;          // 1000
 
         public static IEnumerable<TestCaseData> Eip2780IntrinsicCases()
         {

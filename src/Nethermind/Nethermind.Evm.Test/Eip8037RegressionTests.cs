@@ -28,7 +28,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Nonexistent
     }
 
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
 
     private static Prepare BuildCreateFactory(byte[] initCode, UInt256 value, bool create2, byte[]? salt = null) =>

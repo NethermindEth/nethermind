@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test;
 [TestFixture(true)]
 public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
 
     private static readonly EthereumEcdsa _ecdsa = new(0);
