@@ -123,6 +123,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         if (timeoutCertificate.Round >= _consensusContext.CurrentRound)
         {
+            _logger.Info($"Timeout certificate for round {timeoutCertificate.Round} received. Advancing round to {timeoutCertificate.Round + 1}.");
             _consensusContext.SetNewRound(timeoutCertificate.Round + 1);
         }
 
@@ -194,11 +195,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             if (!AllowedToSend())
                 return;
 
-            SendTimeout();
+            ulong currentRound = _consensusContext.CurrentRound;
+            if (_logger.IsDebug) _logger.Debug($"Internal timeout for round {currentRound}.");
+
+            SendTimeout(currentRound);
             _consensusContext.TimeoutCounter++;
 
             XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _consensusContext.CurrentRound);
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, currentRound);
 
             if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
             {
@@ -253,7 +257,9 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeout.GapNumber);
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
 
-        // Verify msg signature
+        if (timeout.Signature is null || !timeout.Signature.HasLowS())
+            return false;
+
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeout.Round, timeout.GapNumber);
         Address signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
         timeout.Signer = signer;
@@ -263,11 +269,10 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     internal SyncInfo GetSyncInfo() => new(_consensusContext.HighestQC, _consensusContext.HighestTC);
 
-    private void SendTimeout()
+    private void SendTimeout(ulong currentRound)
     {
         XdcBlockHeader currentHeader = (XdcBlockHeader)_blockTree.Head?.Header
             ?? throw new InvalidOperationException("Failed to retrieve current header");
-        ulong currentRound = _consensusContext.CurrentRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, currentRound);
 
         ulong gapNumber;
@@ -294,6 +299,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
         Timeout timeoutMsg = new(currentRound, signedHash, gapNumber, isMyVote: true);
         timeoutMsg.Signer = _signer.Address;
+        if (_logger.IsDebug) _logger.Debug($"Sending my timeout vote round={timeoutMsg.Round} gap={timeoutMsg.GapNumber}.");
 
         HandleTimeoutVote(timeoutMsg);
     }

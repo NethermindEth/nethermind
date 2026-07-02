@@ -237,7 +237,9 @@ internal class VotesManager(
 
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(vote.GapNumber);
         if (snapshot is null) return false;
-        // Verify message signature
+        if (vote.Signature is null || !vote.Signature.HasLowS())
+            return false;
+
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
         return snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
     }
@@ -283,6 +285,9 @@ internal class VotesManager(
         List<Signature> signatures = [];
         foreach (Vote vote in votes)
         {
+            if (vote.Signature is null || !vote.Signature.HasLowS())
+                continue;
+
             vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
 
             if (masternodeSet.Contains(vote.Signer))
@@ -316,6 +321,13 @@ internal class VotesManager(
         string? localError = null; // concurrent "overwrite" is ok, no need to synchronize
         Parallel.ForEach(signatures, (s, state) =>
         {
+            if (!s.HasLowS())
+            {
+                localError = "Certificate contains a malleable signature";
+                state.Stop();
+                return;
+            }
+
             Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
             ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 

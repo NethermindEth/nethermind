@@ -94,8 +94,7 @@ public class DebugModuleTests
         RpcTest.AssertSuccess<byte[]>(response);
     }
 
-    [TestCase(1)]
-    [TestCase(0x1)]
+    [TestCase("0x1")]
     public async Task DebugGetChainLevel_WhenLevelExists_ReturnsChainLevel(object parameter)
     {
         _debugBridge.GetLevelInfo(1).Returns(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1000), new BlockInfo(TestItem.KeccakB, 1001)));
@@ -139,6 +138,15 @@ public class DebugModuleTests
 
         string serialized = await SerializedRequest("debug_getRawTransaction", transaction.Hash!);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task DebugGetRawTransaction_WhenTransactionNotFound_ReturnsNull()
+    {
+        _debugBridge.GetTransactionFromHash(Keccak.Zero).ReturnsNull();
+
+        string serialized = await SerializedRequest("debug_getRawTransaction", Keccak.Zero);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
     [Test]
@@ -484,10 +492,6 @@ public class DebugModuleTests
             (Action<IDebugBridge>)(b => b.GetBlock(new BlockParameter(Keccak.Zero)).ReturnsNull()),
             "debug_getRawBlock", (object)Keccak.Zero)
         { TestName = "RawBlock_ByHash" };
-        yield return new TestCaseData(
-            (Action<IDebugBridge>)(b => b.GetTransactionFromHash(Keccak.Zero).ReturnsNull()),
-            "debug_getRawTransaction", (object)Keccak.Zero)
-        { TestName = "RawTransaction" };
     }
 
     private static IEnumerable<TestCaseData> RawBlockAccessListErrorCases()
