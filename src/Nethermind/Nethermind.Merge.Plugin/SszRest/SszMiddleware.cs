@@ -42,6 +42,11 @@ public sealed class SszMiddleware
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _postLookup;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _getLookup;
 
+    // Verb-agnostic set of resources whose registered name spans several path segments ("payloads/witness",
+    // "bodies/hash"). Used to decide whether a request path is a whole resource or a resource + path extra.
+    private readonly FrozenSet<string> _multiSegmentResources;
+    private readonly FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> _multiSegmentLookup;
+
     private enum SszRequestKind { NotEngine, EngineWrongMediaType, EngineOk }
 
     public SszMiddleware(
@@ -60,6 +65,12 @@ public sealed class SszMiddleware
         (_postRoutes, _getRoutes) = BuildRoutes(handlers);
         _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
+
+        HashSet<string> multiSegment = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string resource in _postRoutes.Keys) if (resource.Contains('/')) multiSegment.Add(resource);
+        foreach (string resource in _getRoutes.Keys) if (resource.Contains('/')) multiSegment.Add(resource);
+        _multiSegmentResources = multiSegment.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        _multiSegmentLookup = _multiSegmentResources.GetAlternateLookup<ReadOnlySpan<char>>();
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
@@ -327,31 +338,18 @@ public sealed class SszMiddleware
         bool isGet = !isPost && HttpMethods.IsGet(method);
         if (!isPost && !isGet) return false;
 
-        FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
-            lookup = isPost ? _postLookup : _getLookup;
+        ReadOnlyMemory<char> resource = pathSegment;
+        ReadOnlyMemory<char> extraMem = default;
 
-        // Prefer the whole path as a route key so a handler can own a multi-segment resource (e.g. "payloads/witness")
-        // without a special case; membership is method-agnostic so it stays whole under the wrong verb (→ 404, not misread
-        // as "payloads/{payload_id}"). Otherwise the first segment is the resource and the rest a path extra.
-        ReadOnlyMemory<char> resource;
-        ReadOnlyMemory<char> extraMem;
-        if (_postLookup.ContainsKey(pathSegment.Span) || _getLookup.ContainsKey(pathSegment.Span))
-        {
-            resource = pathSegment;
-            extraMem = default;
-        }
-        else
+        // Multi-segment resources ("payloads/witness", "bodies/hash") stay whole;
+        // anything else splits into resource + path extra ("payloads/{id}")
+        if (!_multiSegmentLookup.Contains(pathSegment.Span))
         {
             int firstSlash = pathSegment.Span.IndexOf('/');
             if (firstSlash > 0)
             {
                 resource = pathSegment[..firstSlash];
                 extraMem = pathSegment[(firstSlash + 1)..];
-            }
-            else
-            {
-                resource = pathSegment;
-                extraMem = default;
             }
         }
 
@@ -361,6 +359,9 @@ public sealed class SszMiddleware
             if (mappedVersion is null) return false;
             version = mappedVersion.Value;
         }
+
+        FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
+            lookup = isPost ? _postLookup : _getLookup;
 
         if (lookup.TryGetValue(resource.Span, out List<ISszEndpointHandler>? exactList))
         {
