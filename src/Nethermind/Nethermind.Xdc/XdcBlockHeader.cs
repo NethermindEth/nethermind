@@ -144,8 +144,6 @@ public class XdcBlockHeader(
         header.Nonce = Nonce;
         header.TxRoot = TxRoot;
         header.TotalDifficulty = TotalDifficulty;
-        header.AuRaStep = AuRaStep;
-        header.AuRaSignature = AuRaSignature;
         header.ReceiptsRoot = ReceiptsRoot;
         header.BaseFeePerGas = BaseFeePerGas;
         header.WithdrawalsRoot = WithdrawalsRoot;
