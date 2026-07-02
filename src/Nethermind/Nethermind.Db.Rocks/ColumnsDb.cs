@@ -61,6 +61,20 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
     }
 
+    // The base Flush only flushes WAL + the default column family; on a full flush we must also
+    // materialize every named column family's memtable (esp. for DisableWAL writes that have no WAL).
+    public override void Flush(bool onlyWal = false)
+    {
+        base.Flush(onlyWal);
+        if (!onlyWal)
+        {
+            foreach (T key in ColumnKeys)
+            {
+                _columnDbs[key].Flush(onlyWal);
+            }
+        }
+    }
+
     private static IReadOnlyList<T> GetEnumKeys(IReadOnlyList<T> keys)
     {
         if (typeof(T).IsEnum && keys.Count == 0)
