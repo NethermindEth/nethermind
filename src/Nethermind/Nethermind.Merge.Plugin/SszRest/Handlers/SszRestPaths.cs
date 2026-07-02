@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Forks = Nethermind.Specs.Forks;
@@ -136,9 +137,9 @@ public static class SszRestPaths
     public static int? MapForkToVersion(string fork, ReadOnlySpan<char> resource, string httpMethod, out bool recognizedResource)
     {
         Func<Forks.NamedReleaseSpec, int?>? selectVersion = null;
-        if (string.Equals(httpMethod, "POST", StringComparison.Ordinal))
+        if (HttpMethods.IsPost(httpMethod))
             _postVersionLookup.TryGetValue(resource, out selectVersion);
-        else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
+        else if (HttpMethods.IsGet(httpMethod))
             _getVersionLookup.TryGetValue(resource, out selectVersion);
 
         recognizedResource = selectVersion is not null;
