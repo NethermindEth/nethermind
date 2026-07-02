@@ -454,6 +454,69 @@ public partial class EthRpcModule(
         return ResultWrapper<SignTransactionResult>.Fail(message, ErrorCodes.InvalidInput);
     }
 
+    public virtual async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(TransactionForRpc rpcTx)
+    {
+        BlockHeader? head = _blockFinder.Head?.Header;
+        if (head is null)
+            return ResultWrapper<FillTransactionResult>.Fail("No head block available", ErrorCodes.ResourceUnavailable);
+
+        IReleaseSpec spec = _specProvider.GetSpec(head);
+        ulong chainId = _blockchainBridge.GetChainId();
+        Address from = (rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero;
+
+        // Fill the sender nonce from the pending-pool view so back-to-back fills chain correctly.
+        if (rpcTx is LegacyTransactionForRpc { Nonce: null } nonceless)
+            nonceless.Nonce = _txPool.GetLatestPendingNonce(from);
+
+        // Estimate gas before defaulting fees: while the fee fields are unset ShouldSetBaseFee is
+        // false, so estimation runs with the base fee zeroed and a zero-balance sender still resolves.
+        if (rpcTx.Gas is null)
+        {
+            ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(rpcTx, BlockParameter.Latest);
+            if (gasEstimate.Result.ResultType != ResultType.Success)
+                return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
+
+            // eth_estimateGas mutates rpcTx.Gas to the block gas limit as a binary-search bound;
+            // overwrite it with the actual estimate.
+            rpcTx.Gas = (ulong)gasEstimate.Data!.Value;
+        }
+
+        switch (rpcTx)
+        {
+            case EIP1559TransactionForRpc eip1559Tx:
+                eip1559Tx.MaxPriorityFeePerGas ??= _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+                eip1559Tx.MaxFeePerGas ??= BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)) * 2 + eip1559Tx.MaxPriorityFeePerGas.Value;
+                break;
+            case LegacyTransactionForRpc legacyTx:
+                legacyTx.GasPrice ??= await _gasPriceOracle.GetGasPriceEstimate();
+                break;
+        }
+
+        if (rpcTx is BlobTransactionForRpc blobTx)
+            FillBlobFields(blobTx, head, spec);
+
+        if (rpcTx is LegacyTransactionForRpc chainless)
+            chainless.ChainId ??= chainId;
+
+        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+        if (!txResult.Success(out Transaction tx, out string error))
+            return ResultWrapper<FillTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
+
+        tx.ChainId = chainId;
+
+        // Carry a caller-supplied blob sidecar through so the filled tx can be signed and submitted as-is.
+        if (rpcTx is BlobTransactionForRpc { Blobs: not null } withSidecar
+            && withSidecar.TryAttachSidecar(tx, spec.BlobProofVersion) is { } attachError)
+        {
+            return ResultWrapper<FillTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
+        }
+
+        return ResultWrapper<FillTransactionResult>.Success(new FillTransactionResult
+        {
+            Tx = TransactionForRpc.FromTransaction(tx)
+        });
+    }
+
     public async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)
     {
         int waitMs = ResolveSyncTimeoutMs(timeoutMs);
@@ -1207,5 +1270,36 @@ public partial class EthRpcModule(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Fills the blob-specific fields of an EIP-4844 transaction: the blob base fee and, when the
+    /// caller supplied raw <c>blobs</c> but omitted the KZG sidecar, the derived commitments, proofs
+    /// and versioned hashes.
+    /// </summary>
+    /// <remarks>
+    /// Raw blobs are the caller's payload and are never synthesized. The proof shape follows the head
+    /// fork: one KZG proof per blob pre-PeerDAS, cell proofs (128 per blob) post-PeerDAS. Deriving
+    /// proofs and commitments requires the KZG trusted setup, which is loaded on any 4844-enabled node.
+    /// </remarks>
+    private static void FillBlobFields(BlobTransactionForRpc blobTx, BlockHeader head, IReleaseSpec spec)
+    {
+        if (blobTx.MaxFeePerBlobGas is null
+            && head.ExcessBlobGas is not null
+            && BlobGasCalculator.TryCalculateFeePerBlobGas(head.ExcessBlobGas.Value, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
+        {
+            blobTx.MaxFeePerBlobGas = feePerBlobGas;
+        }
+
+        bool sidecarComplete = blobTx.Commitments is not null && blobTx.Proofs is not null && blobTx.BlobVersionedHashes is { Length: > 0 };
+        if (blobTx.Blobs is not { Length: > 0 } || sidecarComplete)
+            return;
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(spec.BlobProofVersion);
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blobTx.Blobs);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
+        blobTx.Commitments = wrapper.Commitments;
+        blobTx.Proofs = wrapper.Proofs;
+        blobTx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
     }
 }
