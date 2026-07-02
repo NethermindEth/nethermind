@@ -175,10 +175,10 @@ public class GCKeeper : IDisposable
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {
                 ulong forcedGcCount = Interlocked.Increment(ref _forcedGcCount);
-                ulong collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
+                int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
 
                 GCCollectionMode mode = GCCollectionMode.Forced;
-                if (collectionsPerDecommit == 0 || (forcedGcCount % collectionsPerDecommit == 0))
+                if (collectionsPerDecommit == 0 || (forcedGcCount % (ulong)collectionsPerDecommit == 0))
                 {
                     // Also decommit memory back to O/S
                     mode = GCCollectionMode.Aggressive;

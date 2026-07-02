@@ -301,6 +301,28 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
     }
 
+    [TestCase(32)]
+    [TestCase(64)]
+    [TestCase(1024)]
+    [TestCase(4096)]
+    public void IncrementalGrowth_preserves_written_data_and_zeroes_new_regions(int step)
+    {
+        EvmPooledMemory memory = new();
+        byte[] word = TestItem.KeccakA.BytesToArray();
+
+        Assert.That(memory.TrySaveWord(0, word), Is.True);
+
+        for (int offset = step; offset <= 64 * 1024; offset += step)
+        {
+            Assert.That(memory.TryLoadSpan((UInt256)offset, (UInt256)EvmPooledMemory.WordSize, out Span<byte> read), Is.True);
+            Assert.That(read.ToArray(), Is.EqualTo(new byte[EvmPooledMemory.WordSize]),
+                $"memory at offset {offset} must read as zero after growth to {memory.Size}");
+        }
+
+        Assert.That(memory.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> first), Is.True);
+        Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive re-rent");
+    }
+
     [Test]
     public void GetTrace_should_not_throw_on_not_initialized_memory()
     {

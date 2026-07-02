@@ -215,12 +215,14 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     // When the LowestInsertedHeader is set in blockTree initializer, its TD is not set from block info.
                     // So here we explicitly try to fetch it again.
-                    lowestInserted = _blockTree.FindHeader(lowestInserted.Number, BlockTreeLookupOptions.RequireCanonical);
+                    ulong lowestInsertedNumber = lowestInserted.Number;
+                    lowestInserted = _blockTree.FindHeader(lowestInsertedNumber, BlockTreeLookupOptions.RequireCanonical);
 
-                    // In case of some strange corruption, we will have to reset the whole sync.
-                    if (lowestInserted!.TotalDifficulty is null)
+                    // In case of some strange corruption (including a missing chain level, in which case the header
+                    // is not found at all), we will have to reset the whole sync.
+                    if (lowestInserted?.TotalDifficulty is null)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Missing total difficulty on lowest inserted header: {lowestInserted!.ToString(BlockHeader.Format.Short)}. Resetting header sync.");
+                        if (_logger.IsWarn) _logger.Warn($"Missing canonical header or total difficulty on lowest inserted header: {lowestInserted?.ToString(BlockHeader.Format.Short) ?? $"block {lowestInsertedNumber}"}. Resetting header sync.");
                         _blockTree.LowestInsertedHeader = null;
                     }
                 }
@@ -238,8 +240,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_pivotNumber == _syncConfig.PivotNumber)
                 return _syncConfig.PivotTotalDifficultyParsed; // Pivot is the same as in config
 
-            // Got from header
-            BlockHeader? pivotHeader = _blockTree.FindHeader(headerHash, BlockTreeLookupOptions.RequireCanonical);
+            BlockHeader? pivotHeader = _blockTree.FindHeader(headerHash, BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (pivotHeader?.TotalDifficulty is not null) return pivotHeader.TotalDifficulty.Value;
 
             // Probably PoS

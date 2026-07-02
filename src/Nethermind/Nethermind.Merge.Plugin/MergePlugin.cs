@@ -189,18 +189,10 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         if (MergeEnabled)
         {
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-
-            InitializeMergeFinalization();
         }
 
         return Task.CompletedTask;
     }
-
-    /// <summary>
-    /// Hook for derived plugins (e.g. AuRaMergePlugin) to set up merge-transition lifecycle
-    /// (e.g. disposing AuRa's finalization manager at terminal block). Default: no-op.
-    /// </summary>
-    protected virtual void InitializeMergeFinalization() { }
 
     public bool MustInitialize { get => true; }
 
