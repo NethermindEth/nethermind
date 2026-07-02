@@ -222,4 +222,10 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = $"The number of blocks between partial archive pruning passes when `{nameof(PartialArchiveEnabled)}` is `true`.", DefaultValue = "64")]
     ulong PartialArchivePruneInterval { get; set; }
+
+    [ConfigItem(Description = $"How long, in minutes, a fresh partial archive node looks for a peer able to serve snap state at `head - {nameof(PartialArchiveRange)}` before falling back to the regular head pivot. Syncing from such an old pivot fills the whole historical window at sync completion instead of growing it forward one block per slot. `0` disables the fast fill.", DefaultValue = "60")]
+    ulong PartialArchiveFastFillWaitMinutes { get; set; }
+
+    [ConfigItem(Description = $"A comma-separated list of trusted feeder node URLs expected to serve historical snap state for the partial archive fast fill (e.g. archive or partial archive nodes with a raised `{nameof(SnapServingMaxDepth)}`). Added to static peers.", DefaultValue = "null")]
+    string? PartialArchiveFeeders { get; set; }
 }

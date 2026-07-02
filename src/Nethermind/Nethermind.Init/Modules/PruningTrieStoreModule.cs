@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.State;
 using Nethermind.State.Healing;
 using Nethermind.Synchronization.FastSync;
@@ -26,7 +27,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
-public class PruningTrieStoreModule(IInitConfig initConfig, ISyncConfig syncConfig) : Module
+public class PruningTrieStoreModule(IInitConfig initConfig, ISyncConfig syncConfig, INetworkConfig networkConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -35,6 +36,14 @@ public class PruningTrieStoreModule(IInitConfig initConfig, ISyncConfig syncConf
             builder
                 .AddSingleton<PartialArchiveNodeTracker>()
                 .Bind<IPersistedNodeObserver, PartialArchiveNodeTracker>();
+
+            if (!string.IsNullOrEmpty(syncConfig.PartialArchiveFeeders))
+            {
+                // Feeders must be persistent connections so the fast-fill pivot probe can reach them.
+                networkConfig.StaticPeers = string.IsNullOrEmpty(networkConfig.StaticPeers)
+                    ? syncConfig.PartialArchiveFeeders
+                    : $"{networkConfig.StaticPeers},{syncConfig.PartialArchiveFeeders}";
+            }
         }
 
         builder

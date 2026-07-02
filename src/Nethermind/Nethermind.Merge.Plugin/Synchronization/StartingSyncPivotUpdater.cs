@@ -8,10 +8,12 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -44,6 +46,17 @@ public class StartingSyncPivotUpdater(
     private int _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
     private int _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
     private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
+
+    private DateTimeOffset _fastFillDeadline;
+    private bool _fastFillAbandoned;
+    private BlockHeader? _fastFillTarget;
+
+    private enum FastFillAttemptResult
+    {
+        PivotSet,
+        KeepWaiting,
+        GiveUp,
+    }
 
     public async Task EnsureSyncPivot(CancellationToken cancellationToken)
     {
@@ -108,7 +121,162 @@ public class StartingSyncPivotUpdater(
             return false;
         }
 
+        if (PartialArchiveFastFillActive)
+        {
+            switch (await TrySetPartialArchiveFastFillPivot(potentialPivotData.Value.Number, cancellationToken))
+            {
+                case FastFillAttemptResult.PivotSet:
+                    return true;
+                case FastFillAttemptResult.KeepWaiting:
+                    return false;
+                case FastFillAttemptResult.GiveUp:
+                    _fastFillAbandoned = true;
+                    break;
+            }
+        }
+
         return TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
+    }
+
+    private bool PartialArchiveFastFillActive =>
+        !_fastFillAbandoned
+        && _syncConfig.PartialArchiveEnabled
+        && _syncConfig.PartialArchiveFastFillWaitMinutes > 0
+        && _syncConfig.SnapSync
+        && !_syncConfig.StaticSnapPivot;
+
+    /// <summary>
+    /// Attempts to pin the sync pivot <see cref="ISyncConfig.PartialArchiveRange"/> blocks behind
+    /// the CL anchor so the whole historical window is filled at sync completion. Requires a peer
+    /// (typically a configured feeder) able to serve snap state at that old root; falls back to
+    /// the regular head pivot after <see cref="ISyncConfig.PartialArchiveFastFillWaitMinutes"/>.
+    /// </summary>
+    private async Task<FastFillAttemptResult> TrySetPartialArchiveFastFillPivot(ulong anchorNumber, CancellationToken cancellationToken)
+    {
+        ulong range = _syncConfig.PartialArchiveRange;
+        if (anchorNumber <= range)
+        {
+            if (_logger.IsInfo) _logger.Info($"Partial archive fast fill: chain head ({anchorNumber}) is within the archive range ({range}); using the regular pivot.");
+            return FastFillAttemptResult.GiveUp;
+        }
+
+        if (_fastFillDeadline == default)
+        {
+            _fastFillDeadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(_syncConfig.PartialArchiveFastFillWaitMinutes);
+            if (_logger.IsInfo) _logger.Info($"Partial archive fast fill: looking for a peer serving snap state at block {anchorNumber - range} (head - {range}) for up to {_syncConfig.PartialArchiveFastFillWaitMinutes} minutes before falling back to forward filling.");
+        }
+
+        ulong targetNumber = anchorNumber - range;
+        BlockHeader? target = _fastFillTarget;
+        if (target is null || target.Number != targetNumber)
+        {
+            target = await TryGetFastFillTargetHeader(targetNumber, cancellationToken);
+            _fastFillTarget = target;
+        }
+
+        if (target?.StateRoot is not null)
+        {
+            ISyncPeer? servingPeer = await TryFindPeerServingStateAt(target, cancellationToken);
+            if (servingPeer is not null)
+            {
+                if (_logger.IsInfo) _logger.Info($"Partial archive fast fill: peer {servingPeer.Node?.ClientId} serves historical state at block {target.Number} ({target.Hash}); pinning it as a static snap pivot. The full {range}-block window will be available once forward sync reaches the head.");
+                _syncConfig.PivotNumber = target.Number;
+                _syncConfig.PivotHash = target.Hash!.ToString();
+                _syncConfig.StaticSnapPivot = true;
+                UpdateConfigValues(target.Hash!, target.Number);
+                return FastFillAttemptResult.PivotSet;
+            }
+        }
+
+        if (DateTimeOffset.UtcNow >= _fastFillDeadline)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Partial archive fast fill: no peer served snap state at block {targetNumber} within {_syncConfig.PartialArchiveFastFillWaitMinutes} minutes; falling back to the regular head pivot. The historical window will fill forward, one block per slot.");
+            return FastFillAttemptResult.GiveUp;
+        }
+
+        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0)
+        {
+            TimeSpan left = _fastFillDeadline - DateTimeOffset.UtcNow;
+            _logger.Info($"Partial archive fast fill: still probing for a peer serving state at block {targetNumber} (target header {(target is null ? "not resolved yet" : "resolved")}, {_syncPeerPool.InitializedPeersCount} peers connected, fallback in {left.TotalMinutes:F0}m).");
+        }
+
+        return FastFillAttemptResult.KeepWaiting;
+    }
+
+    /// <summary>
+    /// Resolves the fast-fill target header by number, requiring two distinct peers to agree on
+    /// the hash (a single peer is trusted only when it is the only one connected, e.g. a feeder).
+    /// A wrong header cannot corrupt state — snap data is verified against its state root — but
+    /// would waste the fast-fill attempt.
+    /// </summary>
+    private async Task<BlockHeader?> TryGetFastFillTargetHeader(ulong targetNumber, CancellationToken cancellationToken)
+    {
+        BlockHeader? candidate = null;
+        int agreements = 0;
+        int peersAsked = 0;
+
+        foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+        {
+            if (cancellationToken.IsCancellationRequested) return null;
+            try
+            {
+                using IOwnedReadOnlyList<BlockHeader>? headers = await peer.SyncPeer.GetBlockHeaders(targetNumber, 1, 0, cancellationToken);
+                peersAsked++;
+                BlockHeader? header = headers is { Count: > 0 } ? headers[0] : null;
+                if (header is null || header.Number != targetNumber || !HeaderValidator.ValidateHash(header)) continue;
+
+                if (candidate is null)
+                {
+                    candidate = header;
+                    agreements = 1;
+                }
+                else if (candidate.Hash == header.Hash)
+                {
+                    agreements++;
+                }
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Partial archive fast fill: peers disagree on block {targetNumber} ({candidate.Hash} vs {header.Hash}); retrying.");
+                    return null;
+                }
+
+                if (agreements >= 2) return candidate;
+            }
+            catch (Exception e) when (e is TimeoutException or OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: peer {peer.SyncPeer.Node.ClientId} did not answer the header request for {targetNumber}. {e.Message}");
+            }
+        }
+
+        // With a single connected peer (e.g. only the feeder) accept its answer.
+        return peersAsked == 1 && agreements == 1 ? candidate : null;
+    }
+
+    private async Task<ISyncPeer?> TryFindPeerServingStateAt(BlockHeader target, CancellationToken cancellationToken)
+    {
+        foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+        {
+            if (cancellationToken.IsCancellationRequested) return null;
+            if (!peer.SyncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapPeer)) continue;
+
+            try
+            {
+                AccountRange probe = new(target.StateRoot!, ValueKeccak.Zero, ValueKeccak.Zero, target.Number);
+                using AccountsAndProofs response = await snapPeer.GetAccountRange(probe, cancellationToken);
+                if (response.PathAndAccounts.Count > 0 || response.Proofs.Count > 0)
+                {
+                    return peer.SyncPeer;
+                }
+
+                if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: peer {peer.SyncPeer.Node.ClientId} returned no data for state root {target.StateRoot} at block {target.Number}.");
+            }
+            catch (Exception e) when (e is TimeoutException or OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Partial archive fast fill: snap probe to {peer.SyncPeer.Node.ClientId} failed. {e.Message}");
+            }
+        }
+
+        return null;
     }
 
     protected virtual async Task<(Hash256 Hash, ulong Number)?> TryGetPivotData(CancellationToken cancellationToken)

@@ -86,7 +86,7 @@ public class StandardDbInitializerTests
             {
                 DownloadReceiptsInFastSync = useReceipts
             }))
-            .AddModule(new PruningTrieStoreModule(initConfig, new SyncConfig())) // For the full pruning db
+            .AddModule(new PruningTrieStoreModule(initConfig, new SyncConfig(), new NetworkConfig())) // For the full pruning db
             .AddSingleton<IPruningConfig>(new PruningConfig())
             .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<IInitConfig>(initConfig)
