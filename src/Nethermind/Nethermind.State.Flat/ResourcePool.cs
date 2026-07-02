@@ -125,6 +125,7 @@ public class ResourcePool : IResourcePool
     {
         private readonly ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
+        private readonly bool _forBlockProcessing = usage is Usage.MainBlockProcessing or Usage.PostMainBlockProcessing;
         private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
@@ -139,7 +140,7 @@ public class ResourcePool : IResourcePool
             }
 
             Metrics.CreatedPooledResource.AddBy(_snapshotLabel, 1);
-            return new SnapshotContent();
+            return new SnapshotContent(_forBlockProcessing);
         }
 
         public void ReturnSnapshotContent(SnapshotContent snapshotContent)

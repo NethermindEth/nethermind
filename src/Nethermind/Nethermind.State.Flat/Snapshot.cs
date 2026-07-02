@@ -65,13 +65,42 @@ public sealed class SnapshotContent : IDisposable, IResettable
 {
     private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
 
+    // Block-processing contents take bucket-lock writes from the main thread (account hints) and the
+    // parallel trie commit; fixed wide lock arrays exceed the growLockArray ceiling (1024) the default
+    // ctor converges to, and avoid its per-resize full-lock acquisitions from birth.
+    private const int NodeConcurrencyLevel = 2048;
+    private const int FlatConcurrencyLevel = 1024;
+    private const int InitialCapacity = 1024;
+
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
-    public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
-    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
+    public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts;
+    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages;
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
-    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new();
+    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes;
+    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes;
+
+    public SnapshotContent() : this(forBlockProcessing: false)
+    {
+    }
+
+    public SnapshotContent(bool forBlockProcessing)
+    {
+        if (forBlockProcessing)
+        {
+            Accounts = new(FlatConcurrencyLevel, InitialCapacity);
+            Storages = new(FlatConcurrencyLevel, InitialCapacity);
+            StateNodes = new(NodeConcurrencyLevel, InitialCapacity);
+            StorageNodes = new(NodeConcurrencyLevel, InitialCapacity);
+        }
+        else
+        {
+            Accounts = new();
+            Storages = new();
+            StateNodes = new();
+            StorageNodes = new();
+        }
+    }
 
     public void Reset()
     {
