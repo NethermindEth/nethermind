@@ -593,6 +593,7 @@ public class SszCodecTests
     public void DecodeFcuV4Request_spec_layout_roundtrips_parent_beacon_block_root_and_slot_number()
     {
         ulong expectedSlot = 0xAABBCCDD_11223344UL;
+        ulong expectedTargetGasLimit = 0x0123456789ABCDEFUL;
 
         ForkchoiceUpdatedRequestWire wire = new()
         {
@@ -612,6 +613,7 @@ public class SszCodecTests
                     Withdrawals = [],
                     ParentBeaconBlockRoot = TestItem.KeccakE,
                     SlotNumber = expectedSlot,
+                    TargetGasLimit = expectedTargetGasLimit,
                 }
             ]
         };
@@ -627,6 +629,7 @@ public class SszCodecTests
         Assert.That(attrs, Is.Not.Null);
         Assert.That(attrs!.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakE), "parent_beacon_block_root must round-trip in V4 as a fixed Bytes32");
         Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot), "slot_number must be decoded from the fixed uint64 that follows parent_beacon_block_root");
+        Assert.That(attrs.TargetGasLimit, Is.EqualTo((long)expectedTargetGasLimit), "target_gas_limit must be decoded from the fixed uint64 that follows slot_number");
         Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
     }
 
