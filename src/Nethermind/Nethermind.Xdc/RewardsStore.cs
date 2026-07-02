@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Consensus.Rewards;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Text.Json;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Xdc;
@@ -22,27 +23,25 @@ internal sealed class RewardsStore(
     private const byte EpochRewardsPrefix = 0x10;
     private const byte SequenceToEpochPrefix = 0x11;
     private const byte EpochToSequencePrefix = 0x12;
+    private const byte EpochNumberToHashPrefix = 0x13;
     private static readonly byte[] OldestSequenceKey = [0x01];
     private static readonly byte[] NewestSequenceKey = [0x02];
     private static readonly byte[] RetainedCountKey = [0x03];
-    private const int AddressByteLength = 20;
-    private const int UInt256ByteLength = 32;
 
-    public void SaveEpochRewards(ulong epochBlockNumber, BlockReward[] rewards)
+    public void SaveEpochRewards(Hash256 epochBlockHash, ulong epochBlockNumber, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
     {
-        Dictionary<Address, UInt256> rewardsByAccount = [];
-        foreach (BlockReward reward in rewards)
+        using IWriteBatch batch = _rewardsDb.StartWriteBatch();
+
+        byte[]? existingHashBytes = _rewardsDb.Get(BuildEpochNumberToHashKey(epochBlockNumber));
+        if (existingHashBytes is not null && !existingHashBytes.AsSpan().SequenceEqual(epochBlockHash.Bytes))
         {
-            if (!rewardsByAccount.TryAdd(reward.Address, reward.Value))
-            {
-                rewardsByAccount[reward.Address] += reward.Value;
-            }
+            batch.Remove(BuildEpochRewardsKey(new Hash256(existingHashBytes)));
         }
 
-        using IWriteBatch batch = _rewardsDb.StartWriteBatch();
-        byte[] epochRewardsKey = BuildEpochRewardsKey(epochBlockNumber);
-        byte[] rewardBytes = SerializeEpochRewards(rewardsByAccount);
+        byte[] epochRewardsKey = BuildEpochRewardsKey(epochBlockHash);
+        byte[] rewardBytes = JsonSerializer.SerializeToUtf8Bytes(rewards);
         batch[epochRewardsKey] = rewardBytes;
+        batch[BuildEpochNumberToHashKey(epochBlockNumber)] = epochBlockHash.Bytes.ToArray();
 
         ulong oldestSequence = TryReadUInt64(OldestSequenceKey, out ulong oldestSequenceValue) ? oldestSequenceValue : 0;
         ulong newestSequence = TryReadUInt64(NewestSequenceKey, out ulong newestSequenceValue) ? newestSequenceValue : 0;
@@ -75,19 +74,32 @@ internal sealed class RewardsStore(
         batch[RetainedCountKey] = ToBigEndian(retainedCount);
     }
 
-    public bool HasEpochRewards(ulong epochBlockNumber) => _rewardsDb.KeyExists(BuildEpochRewardsKey(epochBlockNumber));
+    public bool HasEpochRewards(Hash256 epochBlockHash) => _rewardsDb.KeyExists(BuildEpochRewardsKey(epochBlockHash));
 
-    public bool TryGetAccountReward(Address account, ulong epochBlockNumber, out UInt256 reward)
+    public bool TryGetEpochRewards(Hash256 epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards)
     {
-        byte[]? epochRewardsBytes = _rewardsDb.Get(BuildEpochRewardsKey(epochBlockNumber));
-        if (epochRewardsBytes is null)
+        byte[]? bytes = _rewardsDb.Get(BuildEpochRewardsKey(epochBlockHash));
+        if (bytes is null)
+        {
+            rewards = null;
+            return false;
+        }
+
+        rewards = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>(bytes);
+        return rewards is not null;
+    }
+
+    public bool TryGetAccountReward(Address account, Hash256 epochBlockHash, out UInt256 reward)
+    {
+        if (!TryGetEpochRewards(epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? breakdown)
+            || breakdown is null)
         {
             reward = UInt256.Zero;
             return false;
         }
 
-        Dictionary<Address, UInt256> rewards = DeserializeEpochRewards(epochRewardsBytes);
-        return rewards.TryGetValue(account, out reward);
+        reward = SumAccountReward(breakdown, account);
+        return reward > UInt256.Zero;
     }
 
     public bool TryGetRetainedRange(out ulong oldestEpochBlockNumber, out ulong newestEpochBlockNumber)
@@ -129,7 +141,13 @@ internal sealed class RewardsStore(
             }
             ulong oldestEpoch = BinaryPrimitives.ReadUInt64BigEndian(oldestEpochBytes);
 
-            batch.Remove(BuildEpochRewardsKey(oldestEpoch));
+            byte[]? hashBytes = _rewardsDb.Get(BuildEpochNumberToHashKey(oldestEpoch));
+            if (hashBytes is not null)
+            {
+                batch.Remove(BuildEpochRewardsKey(new Hash256(hashBytes)));
+                batch.Remove(BuildEpochNumberToHashKey(oldestEpoch));
+            }
+
             batch.Remove(BuildEpochToSequenceKey(oldestEpoch));
             batch.Remove(BuildSequenceToEpochKey(oldestSequence));
 
@@ -138,10 +156,40 @@ internal sealed class RewardsStore(
         }
     }
 
-    private static byte[] BuildEpochRewardsKey(ulong epochBlockNumber)
+    private static UInt256 SumAccountReward(
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> breakdown,
+        Address account)
+    {
+        string accountKey = account.ToString();
+        UInt256 total = UInt256.Zero;
+
+        foreach (Dictionary<string, Dictionary<string, string>> section in breakdown.Values)
+        {
+            foreach (Dictionary<string, string> holdersBySigner in section.Values)
+            {
+                if (holdersBySigner.TryGetValue(accountKey, out string? valueStr)
+                    && UInt256.TryParse(valueStr, out UInt256 value))
+                {
+                    total += value;
+                }
+            }
+        }
+
+        return total;
+    }
+
+    private static byte[] BuildEpochRewardsKey(Hash256 epochBlockHash)
+    {
+        byte[] key = new byte[1 + Hash256.Size];
+        key[0] = EpochRewardsPrefix;
+        epochBlockHash.Bytes.CopyTo(key.AsSpan(1));
+        return key;
+    }
+
+    private static byte[] BuildEpochNumberToHashKey(ulong epochBlockNumber)
     {
         byte[] key = new byte[1 + sizeof(ulong)];
-        key[0] = EpochRewardsPrefix;
+        key[0] = EpochNumberToHashPrefix;
         BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(1), epochBlockNumber);
         return key;
     }
@@ -200,46 +248,5 @@ internal sealed class RewardsStore(
         byte[] bytes = new byte[sizeof(int)];
         BinaryPrimitives.WriteInt32BigEndian(bytes, value);
         return bytes;
-    }
-
-    private static byte[] SerializeEpochRewards(Dictionary<Address, UInt256> rewardsByAccount)
-    {
-        int entryLength = AddressByteLength + UInt256ByteLength;
-        byte[] bytes = new byte[sizeof(int) + rewardsByAccount.Count * entryLength];
-        Span<byte> span = bytes;
-        BinaryPrimitives.WriteInt32BigEndian(span, rewardsByAccount.Count);
-
-        int offset = sizeof(int);
-        foreach ((Address account, UInt256 reward) in rewardsByAccount)
-        {
-            account.Bytes.CopyTo(span.Slice(offset, AddressByteLength));
-            offset += AddressByteLength;
-
-            reward.ToBigEndian(span.Slice(offset, UInt256ByteLength));
-            offset += UInt256ByteLength;
-        }
-
-        return bytes;
-    }
-
-    private static Dictionary<Address, UInt256> DeserializeEpochRewards(byte[] bytes)
-    {
-        ReadOnlySpan<byte> span = bytes;
-        int count = BinaryPrimitives.ReadInt32BigEndian(span);
-        Dictionary<Address, UInt256> rewardsByAccount = new(count);
-
-        int offset = sizeof(int);
-        for (int i = 0; i < count; i++)
-        {
-            Address address = new(span.Slice(offset, AddressByteLength));
-            offset += AddressByteLength;
-
-            UInt256 reward = new(span.Slice(offset, UInt256ByteLength), isBigEndian: true);
-            offset += UInt256ByteLength;
-
-            rewardsByAccount[address] = reward;
-        }
-
-        return rewardsByAccount;
     }
 }
