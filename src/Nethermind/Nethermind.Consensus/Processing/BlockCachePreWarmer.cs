@@ -35,6 +35,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
 
+    // Lookahead warming executes FUTURE blocks purely for read side effects (heating the database caches).
+    // It gets its own env pool over its own scratch PreBlockCaches instance so nothing it reads can ever be
+    // served to real block processing, whose caches are per-block coherent with the processed base state.
+    private readonly ObjectPool<IReadOnlyTxProcessorSource>? _lookaheadEnvPool;
+
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
@@ -48,7 +53,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        if (blocksConfig.LookaheadPreWarmBlocks > 0)
+        {
+            _lookaheadEnvPool = new DefaultObjectPoolProvider { MaximumRetained = Environment.ProcessorCount }
+                .Create(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, new PreBlockCaches()));
+        }
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -107,6 +120,42 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
+    // At most this many future blocks are warmed concurrently; blocks arriving while saturated are skipped
+    // (the executor then pays the cold read cost it would have paid anyway). Deliberately small so lookahead
+    // never competes with real processing for cores — it exists to parallelize IO latency, not to burn CPU.
+    private const int MaxLookaheadInFlight = 2;
+    private const int LookaheadParallelism = 2;
+    private int _lookaheadInFlight;
+
+    public void PreWarmLookahead(Block futureBlock, BlockHeader baseBlock, IReleaseSpec spec, CancellationToken cancellationToken)
+    {
+        if (_lookaheadEnvPool is null || cancellationToken.IsCancellationRequested) return;
+        if (Interlocked.Increment(ref _lookaheadInFlight) > MaxLookaheadInFlight)
+        {
+            Interlocked.Decrement(ref _lookaheadInFlight);
+            return;
+        }
+
+        Task.Run(() =>
+        {
+            try
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+                BlockState blockState = new(this, futureBlock, baseBlock, spec);
+                ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = LookaheadParallelism, CancellationToken = cancellationToken };
+                WarmupTransactions(blockState, parallelOptions, _lookaheadEnvPool);
+            }
+            catch (Exception ex)
+            {
+                _logger.DebugWarn($"Error lookahead-warming {futureBlock.Number}. {ex}");
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _lookaheadInFlight);
+            }
+        });
+    }
+
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
@@ -116,7 +165,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return cachesCleared;
     }
 
-    public void Dispose() => (_envPool as IDisposable)?.Dispose();
+    public void Dispose()
+    {
+        (_envPool as IDisposable)?.Dispose();
+        (_lookaheadEnvPool as IDisposable)?.Dispose();
+    }
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
@@ -128,7 +181,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (!addressWarmer.HasBal)
             {
-                WarmupTransactions(blockState, parallelOptions);
+                WarmupTransactions(blockState, parallelOptions, _envPool);
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
 
@@ -185,7 +238,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
+    private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
@@ -208,14 +261,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     0,
                     groupArray.Count,
                     parallelOptions,
-                    (blockState, groupArray, parallelOptions.CancellationToken),
+                    (blockState, groupArray, envPool, parallelOptions.CancellationToken),
                     static (groupIndex, tupleState) =>
                     {
-                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
+                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, ObjectPool<IReadOnlyTxProcessorSource> pool, CancellationToken token) = tupleState;
                         ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
 
                         // Get thread-local processing state for this sender's transactions
-                        IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
+                        IReadOnlyTxProcessorSource env = pool.Get();
                         try
                         {
                             using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
@@ -231,7 +284,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         }
                         finally
                         {
-                            blockState.PreWarmer._envPool.Return(env);
+                            pool.Return(env);
                         }
 
                         return tupleState;

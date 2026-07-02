@@ -16,4 +16,14 @@ public interface IBlockCachePreWarmer : IDisposable
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
     CacheType ClearCaches();
     bool IsBalReadWarmingEnabled(IReleaseSpec spec);
+
+    /// <summary>
+    /// Speculatively executes a future block's transactions against <paramref name="baseBlock"/>'s state, purely
+    /// for the read side effects: the touched state is pulled into the database caches ahead of the executor.
+    /// Runs in the background on a separate environment pool that never feeds the per-block caches, so it cannot
+    /// affect processing correctness. Fire-and-forget; cancelled via <paramref name="cancellationToken"/>.
+    /// </summary>
+    void PreWarmLookahead(Block futureBlock, BlockHeader baseBlock, IReleaseSpec spec, CancellationToken cancellationToken)
+    {
+    }
 }
