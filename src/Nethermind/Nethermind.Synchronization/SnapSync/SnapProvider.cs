@@ -120,6 +120,7 @@ namespace Nethermind.Synchronization.SnapSync
                     AddRangeResult.InvalidOrder => $"SNAP - AddAccountRange failed, accounts are not in sorted order, startingHash:{startingHash}",
                     AddRangeResult.OutOfBounds => $"SNAP - AddAccountRange failed, accounts are out of bounds, startingHash:{startingHash}",
                     AddRangeResult.EmptyRange => $"SNAP - AddAccountRange failed, empty accounts, startingHash:{startingHash}",
+                    AddRangeResult.InvalidProof => $"SNAP - AddAccountRange failed, invalid proof, startingHash:{startingHash}",
                     _ => null
                 };
                 if (message is not null)
@@ -225,6 +226,7 @@ namespace Nethermind.Synchronization.SnapSync
                         AddRangeResult.InvalidOrder => $"SNAP - AddStorageRange failed, slots are not in sorted order, startingHash:{request.StartingHash}",
                         AddRangeResult.OutOfBounds => $"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}",
                         AddRangeResult.EmptyRange => $"SNAP - AddStorageRange failed, slots list is empty, startingHash:{request.StartingHash}",
+                        AddRangeResult.InvalidProof => $"SNAP - AddStorageRange failed, invalid proof, startingHash:{request.StartingHash}",
                         _ => null
                     };
                     if (message is not null)

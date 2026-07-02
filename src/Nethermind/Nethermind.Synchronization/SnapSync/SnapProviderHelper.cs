@@ -93,8 +93,18 @@ namespace Nethermind.Synchronization.SnapSync
 
             ValueHash256 lastPath = entries[entries.Count - 1].Path;
 
-            (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
-                FillBoundaryTree(tree, startingHash, lastPath, limitHash, expectedRootHash, proofs);
+            AddRangeResult result;
+            List<(TrieNode, TreePath)> sortedBoundaryList;
+            bool moreChildrenToRight;
+            try
+            {
+                (result, sortedBoundaryList, moreChildrenToRight) =
+                    FillBoundaryTree(tree, startingHash, lastPath, limitHash, expectedRootHash, proofs);
+            }
+            catch (Exception)
+            {
+                return (AddRangeResult.InvalidProof, true, false);
+            }
 
             if (result != AddRangeResult.OK)
                 return (result, true, false);

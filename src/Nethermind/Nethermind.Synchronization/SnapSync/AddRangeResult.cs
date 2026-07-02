@@ -12,6 +12,7 @@ namespace Nethermind.Synchronization.SnapSync
         InvalidProofNode,
         InvalidOrder,
         OutOfBounds,
-        EmptyRange
+        EmptyRange,
+        InvalidProof
     }
 }
