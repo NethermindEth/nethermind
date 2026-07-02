@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
 using System;
 using Nethermind.Core.Messages;
@@ -47,11 +48,33 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         GasPrice = 0,
     };
 
+    private readonly SystemCall _builderDepositTransaction = new()
+    {
+        Value = UInt256.Zero,
+        Data = Array.Empty<byte>(),
+        To = Eip8282Constants.BuilderDepositRequestPredeployAddress,
+        SenderAddress = Address.SystemUser,
+        GasLimit = GasLimit,
+        GasPrice = UInt256.Zero,
+    };
+
+    private readonly SystemCall _builderExitTransaction = new()
+    {
+        Value = UInt256.Zero,
+        Data = Array.Empty<byte>(),
+        To = Eip8282Constants.BuilderExitRequestPredeployAddress,
+        SenderAddress = Address.SystemUser,
+        GasLimit = GasLimit,
+        GasPrice = UInt256.Zero,
+    };
+
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
     {
         _transactionProcessor = transactionProcessor;
         _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
+        _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
+        _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
     }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
@@ -76,6 +99,19 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                 ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests, _consolidationTransaction,
                     ExecutionRequestType.ConsolidationRequest,
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
+            }
+
+            // EIP-8282: builder deposit and builder exit requests, dequeued after the
+            // withdrawal/consolidation requests so the flat encoding stays in request-type order.
+            if (spec.BuilderRequestsEnabled)
+            {
+                ReadRequests(block, state, Eip8282Constants.BuilderDepositRequestPredeployAddress, ref requests, _builderDepositTransaction,
+                    ExecutionRequestType.BuilderDepositRequest,
+                    BlockErrorMessages.BuilderDepositsContractEmpty, BlockErrorMessages.BuilderDepositsContractFailed);
+
+                ReadRequests(block, state, Eip8282Constants.BuilderExitRequestPredeployAddress, ref requests, _builderExitTransaction,
+                    ExecutionRequestType.BuilderExitRequest,
+                    BlockErrorMessages.BuilderExitsContractEmpty, BlockErrorMessages.BuilderExitsContractFailed);
             }
 
             block.ExecutionRequests = [.. requests];

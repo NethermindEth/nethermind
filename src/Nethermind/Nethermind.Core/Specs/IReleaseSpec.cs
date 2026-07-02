@@ -322,6 +322,11 @@ namespace Nethermind.Core.Specs
         bool IsEip8246Enabled { get; }
 
         /// <summary>
+        /// EIP-8282: builder execution requests (builder deposit + builder exit predeploys).
+        /// </summary>
+        bool IsEip8282Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }
