@@ -16,6 +16,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -292,6 +293,10 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
+
+                .AddSingleton<InclusionListTxSource>()
+                .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
+                .AddSingleton<IHandler<Hash256, InclusionListBytes>, GetInclusionListTransactionsHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>

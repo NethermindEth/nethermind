@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -24,7 +27,18 @@ namespace Nethermind.Consensus.Processing
 
         public void RecoverData(Block block)
         {
-            Transaction[] txs = block.Transactions;
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            RecoverData(block.Transactions, spec);
+            if (block.InclusionListTransactions is not null)
+            {
+                // FOCIL: skip-errors so an adversarial IL tx with valid RLP but invalid signature
+                // leaves SenderAddress null (validator treats as not-appendable) rather than throwing.
+                RecoverData(block.InclusionListTransactions, spec, skipErrors: true);
+            }
+        }
+
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false)
+        {
             if (txs.Length == 0)
                 return;
 
@@ -34,7 +48,6 @@ namespace Nethermind.Consensus.Processing
                 // so we assume the rest of txs in the block are already recovered
                 return;
 
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
             {
@@ -43,14 +56,20 @@ namespace Nethermind.Consensus.Processing
                     0,
                     txs.Length,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (recover: this, txs, releaseSpec, useSignatureChainId),
+                    (recover: this, txs, releaseSpec, useSignatureChainId, skipErrors),
                     static (i, state) =>
                 {
                     Transaction tx = state.txs[i];
-
-                    tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
-                    state.recover.RecoverAuthorities(tx, state.releaseSpec);
-                    if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                    try
+                    {
+                        tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
+                        state.recover.RecoverAuthorities(tx, state.releaseSpec);
+                        if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                    }
+                    catch (Exception e) when (state.skipErrors && e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
+                    {
+                        if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
+                    }
 
                     return state;
                 });
@@ -59,9 +78,16 @@ namespace Nethermind.Consensus.Processing
             {
                 foreach (Transaction tx in txs)
                 {
-                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
-                    RecoverAuthorities(tx, releaseSpec);
-                    if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                    try
+                    {
+                        tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
+                        RecoverAuthorities(tx, releaseSpec);
+                        if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                    }
+                    catch (Exception e) when (skipErrors && e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
+                    }
                 }
             }
         }

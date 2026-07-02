@@ -26,6 +26,8 @@ public class PayloadAttributes
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    public byte[][]? InclusionListTransactions { get; set; }
+
     public ulong? SlotNumber { get; set; }
 
     public virtual ulong? GetGasLimit() => null;
@@ -84,7 +86,7 @@ public class PayloadAttributes
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
         + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
-        ;
+        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list digest
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -129,7 +131,28 @@ public class PayloadAttributes
             position += sizeof(ulong);
         }
 
+        if (InclusionListTransactions is not null)
+        {
+            ComputeInclusionListDigest(InclusionListTransactions).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
         return position;
+    }
+
+    private static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
+    {
+        // Length-prefix each entry so [empty, tx1] and [tx1] don't collide on the same payload-id.
+        Span<byte> lengthPrefix = stackalloc byte[sizeof(uint)];
+        KeccakHash hash = KeccakHash.Create();
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+        {
+            byte[] entry = inclusionListTransactions[i] ?? [];
+            BinaryPrimitives.WriteUInt32BigEndian(lengthPrefix, (uint)entry.Length);
+            hash.Update(lengthPrefix);
+            if (entry.Length > 0) hash.Update(entry);
+        }
+        return hash.GenerateValueHash();
     }
 
     /// <summary>
@@ -231,6 +254,7 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V2 when Withdrawals is null => $"{nameof(Withdrawals)} must be provided",
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
+            >= PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
             _ => null
         };
     }
@@ -243,6 +267,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
+            { InclusionListTransactions: not null } => PayloadAttributesVersions.V5,
             { SlotNumber: not null } => PayloadAttributesVersions.V4,
             { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
             { Withdrawals: not null } => PayloadAttributesVersions.V2,
@@ -252,6 +277,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip7805Enabled: true } => PayloadAttributesVersions.V5,
             { IsEip7843Enabled: true } => PayloadAttributesVersions.V4,
             { IsEip4844Enabled: true } => PayloadAttributesVersions.V3,
             { WithdrawalsEnabled: true } => PayloadAttributesVersions.V2,
@@ -265,4 +291,5 @@ public static class PayloadAttributesVersions
     public const int V2 = 2; // Shanghai
     public const int V3 = 3; // Cancun/Prague/Osaka
     public const int V4 = 4; // Amsterdam
+    public const int V5 = 5; // Bogota
 }

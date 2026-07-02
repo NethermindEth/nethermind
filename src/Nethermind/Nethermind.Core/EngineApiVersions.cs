@@ -18,7 +18,8 @@ public static class EngineApiVersions
         public const int V2 = 2; // Shanghai
         public const int V3 = 3; // Cancun/Prague/Osaka
         public const int V4 = 4; // Amsterdam
-        public const int Latest = V4;
+        public const int V5 = 5; // Bogota
+        public const int Latest = V5;
     }
 
     /// <summary>engine_newPayload method versions.</summary>
@@ -29,7 +30,8 @@ public static class EngineApiVersions
         public const int V3 = 3; // Cancun
         public const int V4 = 4; // Prague/Osaka
         public const int V5 = 5; // Amsterdam
-        public const int Latest = V5;
+        public const int V6 = 6; // Bogota
+        public const int Latest = V6;
     }
 
     /// <summary>engine_getPayload method versions.</summary>
@@ -68,5 +70,12 @@ public static class EngineApiVersions
         public const int V1 = 1; // Shanghai
         public const int V2 = 2; // Amsterdam
         public const int Latest = V2;
+    }
+
+    /// <summary>engine_getInclusionList method versions (EIP-7805).</summary>
+    public static class GetInclusionList
+    {
+        public const int V1 = 1; // Bogota
+        public const int Latest = V1;
     }
 }

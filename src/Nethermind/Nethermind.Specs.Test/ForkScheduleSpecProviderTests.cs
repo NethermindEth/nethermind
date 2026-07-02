@@ -71,6 +71,7 @@ public class ForkScheduleSpecProviderTests
                 MainnetSpecProvider.BPO1Activation,
                 MainnetSpecProvider.BPO2Activation,
                 MainnetSpecProvider.AmsterdamActivation,
+                MainnetSpecProvider.BogotaActivation,
             ])
             { TestName = "Mainnet" };
 

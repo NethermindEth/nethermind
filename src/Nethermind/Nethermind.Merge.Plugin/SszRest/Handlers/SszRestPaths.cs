@@ -18,6 +18,7 @@ public static class SszRestPaths
     private static readonly string _prague = Forks.Prague.Instance.EngineApiUrlSegment!;
     private static readonly string _osaka = Forks.Osaka.Instance.EngineApiUrlSegment!;
     private static readonly string _amsterdam = Forks.Amsterdam.Instance.EngineApiUrlSegment!;
+    private static readonly string _bogota = Forks.Bogota.Instance.EngineApiUrlSegment!;
 
     /// <summary>
     /// Single source of truth: URL fork segment → <see cref="Forks.NamedReleaseSpec"/>. Built by
@@ -30,7 +31,7 @@ public static class SszRestPaths
     /// engine-API version overrides and update the <c>latest</c> argument here.
     /// </remarks>
     private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl =
-        BuildForkSpecsByUrl(Forks.Amsterdam.Instance);
+        BuildForkSpecsByUrl(Forks.Bogota.Instance);
 
     private static Dictionary<string, Forks.NamedReleaseSpec> BuildForkSpecsByUrl(Forks.NamedReleaseSpec latest)
     {
@@ -108,6 +109,11 @@ public static class SszRestPaths
     public static readonly string PostV2PayloadBodiesByHash = $"POST /engine/v2/{_amsterdam}/bodies/hash";
     public static readonly string GetV2PayloadBodiesByRange = $"GET /engine/v2/{_amsterdam}/bodies";
     public const string PostV4Blobs = "POST /engine/v2/blobs/v4";
+
+    // Bogota — EIP-7805 (FOCIL)
+    public static readonly string PostV6Payloads = $"POST /engine/v2/{_bogota}/payloads";
+    public static readonly string PostV5Forkchoice = $"POST /engine/v2/{_bogota}/forkchoice";
+    public static readonly string GetV1InclusionList = $"GET /engine/v2/{_bogota}/inclusion_list/{{block_hash}}";
 
     /// <summary>
     /// Resolves the per-fork engine API method version for the given <paramref name="resource"/>

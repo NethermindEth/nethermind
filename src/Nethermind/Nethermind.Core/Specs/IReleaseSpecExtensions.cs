@@ -58,6 +58,7 @@ public static class IReleaseSpecExtensions
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled;
+        public bool InclusionListsEnabled => spec.IsEip7805Enabled;
         /// <summary>
         /// Determines whether the specified address is a precompiled contract for this release specification.
         /// </summary>

@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -12,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -145,6 +147,15 @@ public class BlockValidator(
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) =>
         ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
+
+    /// <inheritdoc/>
+    public bool ValidateInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options)
+    {
+        if (options.ContainsFlag(ProcessingOptions.NoValidation)) return true;
+        IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
+        // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
+        return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec);
+    }
 
     /// <summary>
     /// Processed block validation is comparing the block hashes (which include all other results).

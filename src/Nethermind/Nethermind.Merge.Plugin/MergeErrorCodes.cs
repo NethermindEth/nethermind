@@ -39,4 +39,10 @@ public static class MergeErrorCodes
     /// Reorg depth exceeds the EL's limit.
     /// </summary>
     public const int ReorgTooDeep = -38006;
+
+    /// <summary>
+    /// EIP-7805 (FOCIL): the parent block referenced by <c>engine_getInclusionListV1</c>
+    /// is unknown to the node.
+    /// </summary>
+    public const int UnknownParent = -38007;
 }

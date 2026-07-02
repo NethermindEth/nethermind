@@ -170,6 +170,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7708Enabled { get; set; }
     public bool IsEip7954Enabled { get; set; }
 
+    public bool IsEip7805Enabled { get; set; }
+
     private ReleaseSpec? _systemSpec;
 
     internal ReleaseSpec SystemSpec => _systemSpec ??= CreateSystemSpec();

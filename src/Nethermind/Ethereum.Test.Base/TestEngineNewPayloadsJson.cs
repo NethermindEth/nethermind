@@ -11,6 +11,12 @@ namespace Ethereum.Test.Base
         public string? NewPayloadVersion { get; set; }
         public string? ForkChoiceUpdatedVersion { get; set; }
         public string? ValidationError { get; set; }
+        // EIP-7805: emitted by the test fixture out-of-band from `params` (rather than as a 5th
+        // positional arg) so we append it explicitly when V6 is the target.
+        public JsonElement? InclusionListTransactions { get; set; }
+        // Expected PayloadStatusV1.Status returned by engine_newPayloadVN — defaults to VALID
+        // when absent (existing behaviour). FOCIL fixtures use this to assert INCLUSION_LIST_UNSATISFIED.
+        public string? Status { get; set; }
 
         public class ParamsExecutionPayload
         {

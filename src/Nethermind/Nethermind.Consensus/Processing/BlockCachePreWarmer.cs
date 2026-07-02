@@ -399,6 +399,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         return state;
                     },
                     WarmingState<Block>.FinallyAction);
+
+                    // Prewarm inclusion list transaction senders too — they may be promoted into the block.
+                    if (block.InclusionListTransactions is { Length: > 0 } inclusionList)
+                    {
+                        WarmingState<Transaction[]> ilState = new(envPool, inclusionList, parent);
+                        ParallelUnbalancedWork.For(
+                            0,
+                            inclusionList.Length,
+                            parallelOptions,
+                            ilState.InitThreadState,
+                        static (i, state) =>
+                        {
+                            Transaction tx = state.Payload[i];
+                            WarmupSender(tx.SenderAddress, to: null, state.Scope!.WorldState);
+
+                            return state;
+                        },
+                        WarmingState<Transaction[]>.FinallyAction);
+                    }
                 }
             }
             catch (OperationCanceledException)

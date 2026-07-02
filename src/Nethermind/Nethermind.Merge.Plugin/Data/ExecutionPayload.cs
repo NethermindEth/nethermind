@@ -121,6 +121,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    [JsonIgnore]
+    public virtual byte[][]? InclusionListTransactions { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
@@ -204,31 +211,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return _transactions;
 
-        IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
-        if (rlpDecoder is null) return $"{nameof(Transaction)} decoder is not registered";
-
-        int i = 0;
-        try
-        {
-            byte[][] txData = Transactions;
-            Transaction[] transactions = new Transaction[txData.Length];
-
-            for (i = 0; i < transactions.Length; i++)
-            {
-                RlpReader ctx = new(txData[i]);
-                transactions[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-            }
-
-            return _transactions = transactions;
-        }
-        catch (RlpException e)
-        {
-            return $"Transaction {i} is not valid: {e.Message}";
-        }
-        catch (ArgumentException)
-        {
-            return $"Transaction {i} is not valid";
-        }
+        TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions, skipErrors: false);
+        if (res.Error is not null) return res.Error;
+        return _transactions = res.Transactions;
     }
 
     /// <summary>
