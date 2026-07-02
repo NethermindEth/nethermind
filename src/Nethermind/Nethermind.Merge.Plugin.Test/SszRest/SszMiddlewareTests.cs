@@ -923,16 +923,19 @@ public class SszMiddlewareTests
         }
     }
 
-    [Test]
-    public async Task Trailing_slash_on_capabilities_resolves_normally()
+    // Unscoped endpoints are exact paths: a trailing slash is rejected just like an extra segment,
+    // so /capabilities/ behaves consistently with /capabilities/foo (both 404).
+    [TestCase("/engine/v2/capabilities/")]
+    [TestCase("/engine/v2/identity/")]
+    public async Task Trailing_slash_on_unscoped_endpoint_returns_404(string path)
     {
-        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v2/capabilities/", AuthenticatedPort);
+        DefaultHttpContext ctx = MakeBaseContext("GET", path, AuthenticatedPort);
         ctx.Request.Headers.Accept = "application/json";
         ctx.Request.Body = Stream.Null;
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
     }
 
     [Test]

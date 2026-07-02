@@ -275,7 +275,8 @@ public sealed class SszMiddleware
         // Collapse a trailing slash so `/foo` and `/foo/` route identically; `pathLen` then
         // bounds every subsequent `path.AsMemory(...)` slice so the slash never reaches `extra`.
         int pathLen = path.Length;
-        if (pathLen > EnginePrefix.Length && path[pathLen - 1] == '/')
+        bool hadTrailingSlash = pathLen > EnginePrefix.Length && path[pathLen - 1] == '/';
+        if (hadTrailingSlash)
         {
             pathLen--;
             span = span[..pathLen];
@@ -293,8 +294,9 @@ public sealed class SszMiddleware
         switch (SszRestPaths.GetScoping(resource))
         {
             case SszRestPaths.ResourceScoping.Unscoped:
-                // No fork, no version, no extra segments (e.g. /capabilities, /identity).
-                if (!rest.IsEmpty) return false;
+                // Exact fixed paths (e.g. /capabilities, /identity): reject any extra segment or
+                // trailing slash so /capabilities and /capabilities/ don't diverge from /capabilities/foo.
+                if (!rest.IsEmpty || hadTrailingSlash) return false;
                 pathSegment = path.AsMemory(offset, pathLen - offset);
                 return true;
 
