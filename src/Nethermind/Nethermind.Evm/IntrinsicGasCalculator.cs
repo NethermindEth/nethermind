@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
@@ -16,7 +17,7 @@ public readonly record struct EthereumIntrinsicGas(ulong Standard, ulong FloorGa
     public ulong MinimalGas { get; } = Math.Max(Standard, FloorGas);
     public static explicit operator ulong(EthereumIntrinsicGas gas) => gas.MinimalGas;
     public static implicit operator EthereumIntrinsicGas(IntrinsicGas<EthereumGasPolicy> gas) =>
-        new(gas.Standard.Value + gas.Standard.StateReservoir, gas.FloorGas.Value);
+        new(gas.Standard.Value + (ulong)gas.Standard.StateReservoir, gas.FloorGas.Value);
 }
 
 public static class IntrinsicGasCalculator
@@ -24,15 +25,16 @@ public static class IntrinsicGasCalculator
     /// <summary>
     /// Calculates intrinsic gas with TGasPolicy type, allowing MultiGas breakdown for Arbitrum.
     /// </summary>
-    private static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit = 0)
+    private static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit = 0, IReadOnlyStateProvider? worldState = null)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-        TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
+        TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit, worldState);
 
     /// <summary>
     /// Non-generic backward-compatible Calculate method.
     /// </summary>
-    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit = 0) =>
-        Calculate<EthereumGasPolicy>(transaction, releaseSpec, blockGasLimit);
+    /// <param name="worldState">Pre-execution state used by EIP-2780 to price the new-account surcharge; optional.</param>
+    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit = 0, IReadOnlyStateProvider? worldState = null) =>
+        Calculate<EthereumGasPolicy>(transaction, releaseSpec, blockGasLimit, worldState);
 
     public static ulong AccessListCost(Transaction transaction, IReleaseSpec releaseSpec) =>
         IGasPolicy<EthereumGasPolicy>.AccessListCost(transaction, releaseSpec,

@@ -52,22 +52,29 @@ public class Eip7954Tests : VirtualMachineTestsBase
     [Test]
     public void Eip8037_floor_gas_enforced_in_validate_gas()
     {
-        // Craft a calldata-heavy tx where floor gas exceeds regular + state gas.
-        // 100 non-zero bytes: tokens = 100*4 = 400
-        // regularGas = 21000 + 400*4 = 22600, stateGas = 0, floorGas = 21000 + 400*10 = 25000
-        // gasLimit = 23000 is between regularGas and floorGas — must be rejected.
+        // Craft a calldata-heavy tx whose calldata floor gas exceeds the standard intrinsic, then
+        // give it one gas less than the floor: above the standard intrinsic (so this is a floor
+        // rejection, not an intrinsic-gas one) but unable to cover the calldata floor. The floor is
+        // read from the spec-driven intrinsic calculator so the test tracks the EIP-7623/7976
+        // reprice (and the EIP-2780 reduced base cost) automatically.
         byte[] calldata = new byte[100];
         for (int i = 0; i < calldata.Length; i++) calldata[i] = 0xFF;
 
+        IReleaseSpec spec = SpecProvider.GetSpec(Activation);
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
 
-        (Block block, Transaction transaction) = PrepareTx(Activation, 23000, null);
-        transaction.Data = calldata;
-        transaction.To = TestItem.AddressC;
+        // Probe tx (generous gas) to read the spec-correct floor/standard intrinsic for this calldata.
+        (Block probeBlock, Transaction probeTx) = PrepareTx(Activation, 1_000_000, code: null, input: calldata, value: 0);
+        EthereumIntrinsicGas intrinsic = IntrinsicGasCalculator.Calculate(probeTx, spec, probeBlock.Header.GasLimit);
+        Assert.That(intrinsic.FloorGas, Is.GreaterThan(intrinsic.Standard),
+            "the calldata floor must exceed the standard intrinsic for this calldata-heavy tx");
+        long gasLimit = intrinsic.FloorGas - 1;
+
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code: null, input: calldata, value: 0);
 
         TransactionResult result = _processor.Execute(
             transaction,
-            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            new BlockExecutionContext(block.Header, spec),
             NullTxTracer.Instance);
 
         Assert.That(result, Is.EqualTo(TransactionResult.GasLimitBelowFloorGas));

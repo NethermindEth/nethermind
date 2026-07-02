@@ -18,9 +18,7 @@ public static class Eip8037BlockGasInclusionCheck
         ulong blockGasLimit,
         ulong cumulativeBlockRegular,
         ulong cumulativeBlockState,
-        ulong txGas,
-        ulong intrinsicRegular,
-        ulong intrinsicState)
+        ulong txGas)
     {
         // A cumulative dimension that already exceeded the block limit must reject — silent saturation
         // would otherwise let the worst-case check pass and admit a tx that block-end validation rejects.
@@ -30,38 +28,28 @@ public static class Eip8037BlockGasInclusionCheck
         ulong regularAvailable = blockGasLimit - cumulativeBlockRegular;
         ulong stateAvailable = blockGasLimit - cumulativeBlockState;
 
-        // Keep below-intrinsic txs from producing a negative worst-case regular dimension.
-        ulong worstCaseRegular = txGas.SaturatingSub(intrinsicState);
-        if (worstCaseRegular > Eip7825Constants.DefaultTxGasLimitCap)
-            worstCaseRegular = Eip7825Constants.DefaultTxGasLimitCap;
+        // EIP-8037: the inclusion check reserves the transaction's full gas limit in each dimension
+        // (no intrinsic subtraction). The regular dimension is additionally bounded by EIP-7825's
+        // per-tx gas limit cap, since regular execution can never exceed it; the state dimension has
+        // no such cap, as state-heavy work may be funded by the state reservoir above it.
+        ulong worstCaseRegular = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
         if (worstCaseRegular > regularAvailable)
             return Outcome.RegularDimensionExceeded;
 
-        // The state dimension has no per-tx equivalent of EIP-7825's DefaultTxGasLimitCap;
-        // state-heavy work may be funded by the state reservoir above that regular-dimension cap.
-        ulong worstCaseState = txGas.SaturatingSub(intrinsicRegular);
-        if (worstCaseState > stateAvailable)
+        if (txGas > stateAvailable)
             return Outcome.StateDimensionExceeded;
 
         return Outcome.Ok;
     }
 
-    public static ulong CalculateBlockRegularGas(
-        ulong intrinsicRegularGas,
-        ulong initialRegularGas,
-        ulong remainingRegularGas,
-        ulong stateGasSpill,
-        ulong stateGasSpillReclassified,
-        ulong floorGas)
-    {
-        // SaturatingSub preserves the master-side defense-in-depth: any upstream
-        // accounting flaw clamps to 0 and Math.Max below falls back to floorGas,
-        // rather than wrapping to a giant value and corrupting header.GasUsed.
-        ulong executionRegularGasUsed = initialRegularGas
-            .SaturatingSub(remainingRegularGas)
-            .SaturatingSub(stateGasSpill)
-            + stateGasSpillReclassified;
-        ulong blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
-        return Math.Max(blockRegularGas, floorGas);
-    }
+    // EIP-8037 (EELS amsterdam/fork.py): tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas).
+    // The block's regular-gas dimension is the pre-refund gas charged minus the state-gas component,
+    // which is accounted independently in the state dimension; block gasUsed = max(ΣregularPreRefund,
+    // Σstate). Deriving it from gas_left/reservoir/spill deltas instead diverges once spilled state gas
+    // is refunded back to gas_left (a clearing-frame SSTORE refund that funds a later CREATE) and can
+    // even go negative when the reservoir survives, so subtract the state component directly. The
+    // EIP-7623/7976 calldata floor is a sender-only minimum (tx_gas_used / receipts) and must NOT
+    // inflate the block's regular-gas dimension.
+    public static ulong CalculateBlockRegularGas(ulong preRefundGas, ulong blockStateGas)
+        => preRefundGas.SaturatingSub(blockStateGas);
 }

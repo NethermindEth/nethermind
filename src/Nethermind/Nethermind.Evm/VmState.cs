@@ -26,11 +26,11 @@ public class VmState<TGasPolicy> : IDisposable
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
-    public ulong InitialStateGasUsed;
-    public ulong StateGasRefundPending;
+    public long InitialStateGasUsed;
+    public long StateGasRefundPending;
     // State-gas refund already made spendable in this frame while its accounting correction
     // still has to reach the ancestor frame that originally paid the state gas.
-    public ulong StateGasRefundAdvanced;
+    public long StateGasRefundAdvanced;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -42,6 +42,13 @@ public class VmState<TGasPolicy> : IDisposable
     public bool IsStatic { get; private set; } // TODO: move to CallEnv
     public bool IsContinuation { get; set; } // TODO: move to CallEnv
     public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
+
+    /// <summary>
+    /// EIP-8037/EIP-8038: the parent <c>*CALL</c> charged NEW_ACCOUNT state gas up-front for a value
+    /// transfer materialising this (previously dead) recipient. If this frame errors or reverts the
+    /// account is not created, so the parent refunds that state gas on the frame's failure path.
+    /// </summary>
+    public bool NewAccountCharged { get; private set; } // TODO: move to CallEnv
 
     private bool _isDisposed = true;
 
@@ -69,6 +76,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: true,
             isStatic: false,
             isCreateOnPreExistingAccount: false,
+            newAccountCharged: false,
             env: env,
             stateForAccessLists: accessedItems,
             snapshot: snapshot);
@@ -88,7 +96,8 @@ public class VmState<TGasPolicy> : IDisposable
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
-        bool isTopLevel = false)
+        bool isTopLevel = false,
+        bool newAccountCharged = false)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -99,6 +108,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: isTopLevel,
             isStatic: isStatic,
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            newAccountCharged: newAccountCharged,
             env: env,
             stateForAccessLists: stateForAccessLists,
             snapshot: snapshot);
@@ -117,6 +127,7 @@ public class VmState<TGasPolicy> : IDisposable
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
+        bool newAccountCharged,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
@@ -146,6 +157,7 @@ public class VmState<TGasPolicy> : IDisposable
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+        NewAccountCharged = newAccountCharged;
 
         if (!_isDisposed)
         {
