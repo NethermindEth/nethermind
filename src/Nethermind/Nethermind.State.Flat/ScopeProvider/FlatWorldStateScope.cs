@@ -454,10 +454,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
-                using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                // bulkset disabled (diagnostic): set each account individually; the root is recomputed
+                // by the subsequent _stateTree.Commit()/RootHash instead of by PatriciaTree.BulkSet.
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    scope._stateTree.Set(kv.Key, kv.Value);
                 }
             }
             finally
