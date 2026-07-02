@@ -763,7 +763,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             BlockCommitSet blockCommitSet = candidateSets[index];
             if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
             maxPersistedBlock = Math.Max(maxPersistedBlock, blockCommitSet.BlockNumber);
-            ParallelPersistBlockCommitSet(blockCommitSet, ComposeRecorderWithObserver(persistedNodeRecorder, blockCommitSet.BlockNumber));
+            ParallelPersistBlockCommitSet(blockCommitSet, ComposeRecorderWithObserver(persistedNodeRecorder, blockCommitSet));
         }
 
         if (candidateSets.Count > 0)
@@ -923,14 +923,28 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     /// <summary>
     /// Wraps a persisted-node recorder so <see cref="IPersistedNodeObserver.OnNodePersisted"/> also
-    /// fires for every stored node of the commit set being persisted at <paramref name="blockNumber"/>.
+    /// fires for every stored node of the commit set being persisted.
     /// </summary>
+    /// <remarks>
+    /// Only provably canonical sets are reported: non-canonical (reorged) sets are persisted too,
+    /// and registering their nodes as superseding would let the window pruner delete versions the
+    /// canonical chain still references. When canonicality cannot be confirmed the set is skipped,
+    /// which at worst leaks keys.
+    /// </remarks>
     private Action<TreePath, Hash256?, TrieNode> ComposeRecorderWithObserver(
-        Action<TreePath, Hash256?, TrieNode> recorder, ulong blockNumber)
+        Action<TreePath, Hash256?, TrieNode> recorder, BlockCommitSet commitSet)
     {
         IPersistedNodeObserver? observer = _persistedNodeObserver;
         if (observer is null) return recorder;
 
+        Hash256? canonicalRoot = _finalizedStateProvider.GetFinalizedStateRootAt(commitSet.BlockNumber);
+        if (canonicalRoot is null || canonicalRoot != commitSet.StateRoot)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Not reporting persisted nodes of block {commitSet.BlockNumber} ({commitSet.StateRoot}) to the partial archive: {(canonicalRoot is null ? "canonicality unknown" : "not canonical")}.");
+            return recorder;
+        }
+
+        ulong blockNumber = commitSet.BlockNumber;
         return (path, address, tn) =>
         {
             recorder(path, address, tn);
@@ -1331,7 +1345,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             BlockCommitSet blockCommitSet = candidateSets[index];
             if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
             maxPersistedBlock = Math.Max(maxPersistedBlock, blockCommitSet.BlockNumber);
-            ParallelPersistBlockCommitSet(blockCommitSet, ComposeRecorderWithObserver(_persistedNodeRecorderNoop, blockCommitSet.BlockNumber));
+            ParallelPersistBlockCommitSet(blockCommitSet, ComposeRecorderWithObserver(_persistedNodeRecorderNoop, blockCommitSet));
         }
 
         if (candidateSets.Count > 0)

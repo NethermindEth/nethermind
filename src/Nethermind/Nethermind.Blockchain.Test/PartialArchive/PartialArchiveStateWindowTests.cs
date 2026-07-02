@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.PartialArchive;
 using Nethermind.Core;
@@ -122,6 +124,64 @@ public class PartialArchiveStateWindowTests
         }
 
         AssertHistoricalReads(nodeStorage, roots, slotKey, togglingKey, toggleValues, cutoff, lastPersistedBlock);
+    }
+
+    private sealed class RecordingObserver : IPersistedNodeObserver
+    {
+        public readonly ConcurrentBag<ulong> PersistedBlocks = [];
+        public void OnNodePersisted(Hash256? address, in TreePath path, Hash256 keccak, ulong blockNumber) => PersistedBlocks.Add(blockNumber);
+        public void OnNodeRecommitted(Hash256? address, in TreePath path, Hash256 keccak, ulong blockNumber) { }
+        public void OnSnapshotPersisted(ulong lastPersistedBlockNumber) { }
+    }
+
+    [Test]
+    public async Task Does_not_report_non_canonical_commit_sets_to_the_observer()
+    {
+        using MemDb stateDb = new();
+        NodeStorage nodeStorage = new(stateDb);
+        RecordingObserver observer = new();
+        RecordingFinalizedStateProvider finalized = new();
+        using TrieStore trieStore = new(
+            nodeStorage,
+            new PruneEveryCommitStrategy(),
+            Persist.EveryNBlock(1),
+            finalized,
+            new PruningConfig { TrackPastKeys = false, PruningBoundary = 2, PruneDelayMilliseconds = 0 },
+            LimboLogs.Instance,
+            observer);
+
+        PatriciaTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+        byte[] slotKey = TestItem.KeccakA.BytesToArray();
+        const ulong nonCanonicalBlock = 5;
+
+        BlockHeader? baseBlock = null;
+        for (ulong i = 1; i <= 10; i++)
+        {
+            using (trieStore.BeginScope(baseBlock))
+            {
+                tree.Set(slotKey, ValueFor(i));
+                using (trieStore.BeginBlockCommit(i))
+                {
+                    tree.Commit();
+                }
+
+                // A reorged (non-canonical) set is simulated by registering a different root as
+                // the canonical one at that height; the set is still persisted, but must not be
+                // reported as superseding — the canonical chain may still need the old versions.
+                finalized.MarkFinalized(i, i == nonCanonicalBlock ? TestItem.KeccakF : tree.RootHash);
+                baseBlock = Build.A.BlockHeader.WithParentOptional(baseBlock).WithStateRoot(tree.RootHash).TestObject;
+            }
+
+            await Task.Yield();
+            trieStore.WaitForPruning();
+        }
+
+        ulong[] reportedBlocks = [.. observer.PersistedBlocks.Distinct().Order()];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reportedBlocks, Does.Not.Contain(nonCanonicalBlock), "non-canonical set must not be reported");
+            Assert.That(reportedBlocks, Does.Contain(4UL).And.Contain(6UL), "canonical sets must be reported");
+        }
     }
 
     private static byte[] ValueFor(ulong blockNumber) => TestItem.Keccaks[(int)blockNumber].BytesToArray();
