@@ -20,7 +20,12 @@ public struct EvmPooledMemory
     internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
     internal const long MaxMemoryWords = (int.MaxValue - WordSize + 1L) / WordSize;
 
+    // [0, _lastZeroedSize) holds valid EVM memory content. EnsureRented guarantees Size <= _lastZeroedSize
+    // before every access, so writes never land above it.
     private ulong _lastZeroedSize;
+
+    // Upper bound of garbage left by a previous frame; bytes in [max(_lastZeroedSize, _dirtyBound), Length) are zero.
+    private ulong _dirtyBound;
 
     private byte[]? _memory;
     public ulong Size { get; private set; }
@@ -399,7 +404,11 @@ public struct EvmPooledMemory
     {
         ulong size = Size;
         ClearForTracing(size);
-        return new(size, _memory);
+        byte[]? memory = _memory;
+        // Expose only [0, Size): the tail may hold a previous frame's garbage; TraceMemory zero-pads beyond.
+        return memory is null
+            ? new(size, default)
+            : new(size, memory.AsMemory(0, (int)Math.Min(size, (ulong)memory.Length)));
     }
 
     public void Dispose()
@@ -409,7 +418,10 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
+            // No zeroing here: record the dirty prefix and let the next renter zero only what it uses.
+            ulong written = Math.Min(Size, _lastZeroedSize);
+            ulong dirty = Math.Max(written, Math.Min(_dirtyBound, (ulong)memory.Length));
+            ReturnDirty(memory, (int)dirty);
         }
     }
 
@@ -456,22 +468,28 @@ public struct EvmPooledMemory
     private const int MinRentSize = 1_024;
     private const int MaxCachedArrayLength = 1 << 16;
     private const int CleanCacheSlots = 16;
+    // Floor for the lazy-zeroing chunk so small memories are established in a single Array.Clear.
+    private const ulong MinZeroChunk = 4_096;
 
-    [ThreadStatic] private static byte[]?[]? _cleanArrays;
-    [ThreadStatic] private static int _cleanArrayCount;
+    [ThreadStatic] private static byte[]?[]? _cachedArrays;
+    [ThreadStatic] private static int[]? _cachedDirtyLengths;
+    [ThreadStatic] private static int _cachedArrayCount;
 
-    private static byte[] RentClean(int minLength)
+    private static byte[] RentMaybeDirty(int minLength, out int dirtyLength)
     {
-        byte[]?[]? cache = _cleanArrays;
-        int cleanArrayCount = _cleanArrayCount - 1;
-        for (int i = cleanArrayCount; i >= 0; i--)
+        byte[]?[]? cache = _cachedArrays;
+        int cachedArrayCount = _cachedArrayCount - 1;
+        for (int i = cachedArrayCount; i >= 0; i--)
         {
             byte[] candidate = cache![i]!;
             if (candidate.Length >= minLength)
             {
-                _cleanArrayCount = cleanArrayCount;
-                cache[i] = cache[cleanArrayCount];
-                cache[cleanArrayCount] = null;
+                int[] dirtyLengths = _cachedDirtyLengths!;
+                dirtyLength = dirtyLengths[i];
+                _cachedArrayCount = cachedArrayCount;
+                cache[i] = cache[cachedArrayCount];
+                dirtyLengths[i] = dirtyLengths[cachedArrayCount];
+                cache[cachedArrayCount] = null;
                 return candidate;
             }
         }
@@ -479,14 +497,16 @@ public struct EvmPooledMemory
         if (minLength > MaxCachedArrayLength)
         {
             byte[] pooled = RentLarge(minLength);
-            Array.Clear(pooled);
+            // Unknown provenance: treat as fully dirty; lazy zeroing clears only the prefix actually used.
+            dirtyLength = pooled.Length;
             return pooled;
         }
 
+        dirtyLength = 0;
         return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
     }
 
-    private static void ReturnClean(byte[] array, int dirtyLength)
+    private static void ReturnDirty(byte[] array, int dirtyLength)
     {
         if (array.Length > MaxCachedArrayLength)
         {
@@ -494,11 +514,12 @@ public struct EvmPooledMemory
             return;
         }
 
-        byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
-        if (_cleanArrayCount < CleanCacheSlots)
+        byte[]?[] cache = _cachedArrays ??= new byte[CleanCacheSlots][];
+        int[] dirtyLengths = _cachedDirtyLengths ??= new int[CleanCacheSlots];
+        if (_cachedArrayCount < CleanCacheSlots)
         {
-            Array.Clear(array, 0, dirtyLength);
-            cache[_cleanArrayCount++] = array;
+            cache[_cachedArrayCount] = array;
+            dirtyLengths[_cachedArrayCount++] = dirtyLength;
         }
     }
 
@@ -530,19 +551,53 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
-        if (_memory is null)
+        byte[]? memory = _memory;
+        if (memory is null)
         {
-            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
+            _memory = memory = RentMaybeDirty((int)Math.Max((uint)Size, MinRentSize), out int dirtyLength);
+            _dirtyBound = (ulong)dirtyLength;
+            _lastZeroedSize = 0;
         }
-        else if (Size > (ulong)_memory.LongLength)
+        else if (Size > (ulong)memory.LongLength)
         {
-            byte[] beforeResize = _memory;
-            _memory = RentClean(TruncateToInt32(Size));
-            Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            ReturnClean(beforeResize, beforeResize.Length);
+            byte[] beforeResize = memory;
+            _memory = memory = RentMaybeDirty(TruncateToInt32(Size), out int dirtyLength);
+            Array.Copy(beforeResize, 0, memory, 0, beforeResize.Length);
+            ReturnDirty(beforeResize, (int)Math.Max(_lastZeroedSize, Math.Min(_dirtyBound, (ulong)beforeResize.Length)));
+            // The copy transplants the old dirty window; the new array adds its own dirty prefix.
+            _dirtyBound = Math.Max(_dirtyBound, (ulong)dirtyLength);
         }
 
-        _lastZeroedSize = (ulong)_memory.Length;
+        ZeroUpToSize(memory);
+    }
+
+    /// <summary>
+    /// Lazily establishes the "valid up to <see cref="Size"/>" invariant, zeroing only the still-dirty
+    /// portion in geometrically-growing chunks so repeated small expansions do not re-enter.
+    /// </summary>
+    private void ZeroUpToSize(byte[] memory)
+    {
+        ulong lastZeroed = _lastZeroedSize;
+        ulong size = Math.Min(Size, (ulong)memory.Length);
+        if (size <= lastZeroed) return;
+
+        ulong target = Math.Min((ulong)memory.Length, Math.Max(BitOperations.RoundUpToPowerOf2(size), MinZeroChunk));
+        ulong dirtyBound = _dirtyBound;
+        if (target >= dirtyBound)
+        {
+            // Beyond dirtyBound is already zero: one clear of the dirty window establishes the whole array.
+            if (dirtyBound > lastZeroed)
+            {
+                Array.Clear(memory, (int)lastZeroed, (int)(dirtyBound - lastZeroed));
+            }
+            _lastZeroedSize = (ulong)memory.Length;
+            _dirtyBound = 0;
+        }
+        else
+        {
+            Array.Clear(memory, (int)lastZeroed, (int)(target - lastZeroed));
+            _lastZeroedSize = target;
+        }
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a

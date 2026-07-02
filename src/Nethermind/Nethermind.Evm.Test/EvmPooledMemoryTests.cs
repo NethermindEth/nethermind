@@ -97,6 +97,49 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         clean.Dispose();
     }
 
+    [TestCase(1024)]
+    [TestCase(32 * 1024)]
+    public void Small_cached_buffer_is_zeroed_on_reuse(int size)
+    {
+        EvmPooledMemory dirty = new();
+        UInt256 zero = UInt256.Zero;
+        Span<byte> pattern = new byte[size];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(in zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory clean = new();
+        Assert.That(clean.TrySaveWord(in zero, TestItem.KeccakA.BytesToArray()), Is.True);
+        UInt256 length = (UInt256)size;
+        Assert.That(clean.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
+        Assert.That(data[..EvmPooledMemory.WordSize].ToArray(), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+        Assert.That(data[EvmPooledMemory.WordSize..].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "cached buffer leaked stale data");
+        clean.Dispose();
+    }
+
+    [Test]
+    public void Resize_from_dirty_buffer_preserves_data_and_zeroes_tail()
+    {
+        const int dirtySize = 16 * 1024;
+        EvmPooledMemory dirty = new();
+        UInt256 zero = UInt256.Zero;
+        Span<byte> pattern = new byte[dirtySize];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(in zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory memory = new();
+        byte[] word = TestItem.KeccakA.BytesToArray();
+        Assert.That(memory.TrySaveWord(in zero, word), Is.True);
+
+        // Grow past the reused buffer to force the resize path while the tail is still dirty.
+        UInt256 grownLength = (UInt256)(2 * dirtySize);
+        Assert.That(memory.TryLoadSpan(in zero, in grownLength, out Span<byte> data), Is.True);
+        Assert.That(data[..EvmPooledMemory.WordSize].ToArray(), Is.EqualTo(word));
+        Assert.That(data[EvmPooledMemory.WordSize..].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "resized buffer leaked stale data");
+        memory.Dispose();
+    }
+
     [Test]
     public void CalculateMemoryCost_LengthExceedsLongMax_ShouldReturnOutOfGas()
     {

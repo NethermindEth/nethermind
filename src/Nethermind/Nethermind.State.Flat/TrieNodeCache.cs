@@ -218,6 +218,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         public void Reset()
         {
+            // Set/GetOrAdd always bump _count on a null->non-null transition, so 0 means all slots are null.
+            if (_count == 0) return;
+
             if (_count / UtilRatio > ShardCount * _shardSize)
             {
                 int newTarget = (int)(_count / UtilRatio);
