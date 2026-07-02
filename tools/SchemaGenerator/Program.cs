@@ -3,6 +3,7 @@ using NJsonSchema;
 using System.Reflection;
 using System.Reflection.Emit;
 using Nethermind.Config;
+using Nethermind.Core.Collections;
 
 Type iConfigType = typeof(IConfig);
 
@@ -31,10 +32,7 @@ foreach (KeyValuePair<string, JsonSchema> def in schema.Definitions)
     {
         def.Value.Type = JsonObjectType.String;
         def.Value.Enumeration.Clear();
-        foreach (object? enumerationName in def.Value.EnumerationNames)
-        {
-            def.Value.Enumeration.Add(enumerationName);
-        }
+        def.Value.Enumeration.AddRange(def.Value.EnumerationNames);
     }
 }
 
@@ -58,6 +56,7 @@ void CreateProperty(TypeBuilder typeBuilder, Type classType)
     getIL.Emit(OpCodes.Ldfld, fieldBuilder);
     getIL.Emit(OpCodes.Ret);
 
+    // Define the 'set' accessor method
     MethodBuilder setMethodBuilder = typeBuilder.DefineMethod($"set_{propertyName}",
         MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig,
         null,
@@ -69,6 +68,7 @@ void CreateProperty(TypeBuilder typeBuilder, Type classType)
     setIL.Emit(OpCodes.Stfld, fieldBuilder);
     setIL.Emit(OpCodes.Ret);
 
+    // Map the get and set methods to the property
     propertyBuilder.SetGetMethod(getMethodBuilder);
     propertyBuilder.SetSetMethod(setMethodBuilder);
 }

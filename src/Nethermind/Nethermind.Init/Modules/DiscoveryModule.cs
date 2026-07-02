@@ -131,5 +131,4 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             if (networkConfig.EnableEnrDiscovery) builder.Bind<INodeSource, EnrDiscovery>();
         }
     }
-
 }
