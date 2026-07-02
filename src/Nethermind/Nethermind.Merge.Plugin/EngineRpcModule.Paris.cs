@@ -93,7 +93,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                Task<IDisposable> regionTask = _gcKeeper.TryStartNoGCRegionAsync();
+                Task<IDisposable> regionTask = _gcKeeper.TryStartNoGCRegionAsync((long)executionPayload.BlockNumber);
                 try
                 {
                     return await _newPayloadV1Handler.HandleAsync(executionPayload);

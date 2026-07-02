@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Globalization;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,32 +15,37 @@ namespace Nethermind.Merge.Plugin.GC;
 
 using Nethermind.Core.Extensions;
 
-public class GCKeeper : IDisposable
+public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposable
 {
     private static ulong _forcedGcCount = 0;
     private readonly Lock _lock = new();
-    private readonly IGCStrategy _gcStrategy;
-    private readonly int _postBlockDelayMs;
-    private readonly ILogger _logger;
+    private readonly IGCStrategy _gcStrategy = gcStrategy;
+    private readonly int _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
+    private readonly ILogger _logger = logManager.GetClassLogger<GCKeeper>();
     private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
-    private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
     private CancellationTokenSource? _shutdownCts = new();
-
-    public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
-    {
-        _gcStrategy = gcStrategy;
-        _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
-        _logger = logManager.GetClassLogger<GCKeeper>();
-        _tryStartNoGCRegionFunc = TryStartNoGCRegion;
-    }
 
     public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
 
-    public Task<IDisposable> TryStartNoGCRegionAsync() => Task.Run(_tryStartNoGCRegionFunc);
+    public Task<IDisposable> TryStartNoGCRegionAsync(long blockNumber = -1) => Task.Run(() => TryStartNoGCRegion(blockNumber));
 
-    private IDisposable TryStartNoGCRegion()
+    /// <summary>
+    /// Point-in-time GC counters captured at NoGC-region start; deltas are logged at region end for per-block GC diagnostics.
+    /// </summary>
+    private readonly record struct GCDiagSnapshot(long AllocatedBytes, int Gen0, int Gen1, int Gen2, TimeSpan PauseDuration)
     {
+        public static GCDiagSnapshot Capture() => new(
+            System.GC.GetTotalAllocatedBytes(precise: false),
+            System.GC.CollectionCount(0),
+            System.GC.CollectionCount(1),
+            System.GC.CollectionCount(2),
+            System.GC.GetTotalPauseDuration());
+    }
+
+    private IDisposable TryStartNoGCRegion(long blockNumber)
+    {
+        GCDiagSnapshot diagStart = GCDiagSnapshot.Capture();
         long size = _defaultSize;
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
         if (_gcStrategy.CanStartNoGCRegion())
@@ -66,10 +73,10 @@ public class GCKeeper : IDisposable
                 if (_logger.IsError) _logger.Error($"{nameof(System.GC.TryStartNoGCRegion)} failed with exception.", e);
             }
 
-            return new NoGCRegion(this, failCause, size, pausedGCScheduler, _logger);
+            return new NoGCRegion(this, failCause, size, pausedGCScheduler, blockNumber, diagStart, _logger);
         }
 
-        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, pausedGCScheduler, _logger);
+        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, pausedGCScheduler, blockNumber, diagStart, _logger);
     }
 
     private enum FailCause
@@ -89,18 +96,44 @@ public class GCKeeper : IDisposable
         private readonly long? _size;
         private readonly ILogger _logger;
         private readonly bool _pausedGCScheduler;
+        private readonly long _blockNumber;
+        private readonly GCDiagSnapshot _diagStart;
 
-        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, bool pausedGCScheduler, ILogger logger)
+        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, bool pausedGCScheduler, long blockNumber, GCDiagSnapshot diagStart, ILogger logger)
         {
             _gcKeeper = gcKeeper;
             _failCause = failCause;
             _size = size;
             _pausedGCScheduler = pausedGCScheduler;
+            _blockNumber = blockNumber;
+            _diagStart = diagStart;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Logs per-block GC activity (alloc bytes, collections by generation, total STW pause) and whether the NoGC region held.
+        /// </summary>
+        /// <remarks>
+        /// Must run before <see cref="System.GC.EndNoGCRegion"/> so that region-exit collections are not attributed to the block,
+        /// and so <see cref="GCSettings.LatencyMode"/> still reflects whether the region survived the whole block.
+        /// </remarks>
+        private void LogDiag()
+        {
+            if (!_logger.IsInfo) return;
+
+            GCDiagSnapshot end = GCDiagSnapshot.Capture();
+            string region = _failCause == FailCause.None
+                ? (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion ? "Held" : "Blown")
+                : $"NotStarted-{_failCause.FastToString()}";
+            double allocMB = (end.AllocatedBytes - _diagStart.AllocatedBytes) / 1_000_000.0;
+            double pauseMs = (end.PauseDuration - _diagStart.PauseDuration).TotalMilliseconds;
+            _logger.Info(string.Create(CultureInfo.InvariantCulture,
+                $"[GCDIAG] block={_blockNumber} region={region} allocMB={allocMB:F1} gen0={end.Gen0 - _diagStart.Gen0} gen1={end.Gen1 - _diagStart.Gen1} gen2={end.Gen2 - _diagStart.Gen2} pauseMs={pauseMs:F2}"));
         }
 
         public void Dispose()
         {
+            LogDiag();
             if (_pausedGCScheduler)
             {
                 GCScheduler.MarkGCResumed();
@@ -192,7 +225,14 @@ public class GCKeeper : IDisposable
                     GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
                 }
 
-                GCScheduler.Instance.GCCollect((int)generation, mode, blocking: true, compacting: compacting > 0);
+                long startTimestamp = Stopwatch.GetTimestamp();
+                bool performed = GCScheduler.Instance.GCCollect((int)generation, mode, blocking: true, compacting: compacting > 0);
+                if (_logger.IsInfo) _logger.Info(string.Create(CultureInfo.InvariantCulture,
+                    $"[GCDIAG] forcedGC gen={(int)generation} mode={mode} performed={performed} ms={Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds:F1}"));
+            }
+            else if (_logger.IsInfo)
+            {
+                _logger.Info("[GCDIAG] forcedGC skipped reason=InNoGCRegion");
             }
         }
     }
