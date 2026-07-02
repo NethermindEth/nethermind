@@ -139,12 +139,30 @@ public static partial class EvmInstructions
             ? codeSource
             : env.ExecutingAccount;
 
-        // Add extra gas cost if value is transferred.
-        if (hasValueTransfer && !TGasPolicy.ConsumeCallValueTransfer(ref gas))
-            goto OutOfGas;
-
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
+
+        // Add extra gas cost if value is transferred. EIP-2780 reprices this into a three-tier
+        // charge keyed on self-call and recipient existence, subsuming the new-account surcharge.
+        if (hasValueTransfer)
+        {
+            bool valueOutOfGas;
+            if (spec.IsEip2780Enabled)
+            {
+                // EIP-8038 prices the value transfer as a flat charge independent of the recipient's
+                // liveness, so do not read the target here: the spec performs the static gas check
+                // before any state access, and a CALL that runs out of gas before the target access
+                // must not record the target in the block access list. The recipient-empty surcharge
+                // only applies to the older EIP-2780 tiered model (no BAL), so read lazily for it.
+                bool recipientEmpty = !spec.IsEip8038Enabled && state.IsDeadAccount(target);
+                valueOutOfGas = !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas, caller == target, recipientEmpty, spec);
+            }
+            else
+            {
+                valueOutOfGas = !TGasPolicy.ConsumeCallValueTransfer(ref gas);
+            }
+            if (valueOutOfGas) goto OutOfGas;
+        }
 
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
@@ -153,8 +171,10 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
+        // EIP-2780 charges a cold code-less account less; delegated accounts always carry code.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
+                vm.TxTracer.IsTracingAccess, codeSource,
+                hasCode: !spec.IsEip2780Enabled || spec.IsEip8038Enabled || state.IsContract(codeSource))) goto OutOfGas;
 
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
@@ -164,11 +184,16 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.
-        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
-        {
-            false => !state.AccountExists(target),
-            true => hasValueTransfer && state.IsDeadAccount(target),
-        };
+        // EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost (separate
+        // from the flat CALL_VALUE above). The earlier EIP-2780 draft folded creation into the
+        // value-transfer tier, so it charges nothing extra here.
+        bool chargesNewAccount = spec.IsEip8038Enabled
+            ? hasValueTransfer && state.IsDeadAccount(target)
+            : !spec.IsEip2780Enabled && (spec.ClearEmptyAccountWhenTouched switch
+            {
+                false => !state.AccountExists(target),
+                true => hasValueTransfer && state.IsDeadAccount(target),
+            });
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
 
@@ -238,6 +263,11 @@ public static partial class EvmInstructions
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            // EIP-8037: a value transfer to a new account charges NEW_ACCOUNT state gas up-front; when the
+            // call cannot proceed (call depth exceeded or caller balance too low) no account is created, so
+            // refund it. No-op pre-EIP-8037 (CreditStateGasRefund self-gates), matching legacy semantics.
+            if (chargesNewAccount)
+                vm.CreditStateGasRefund(ref gas, TGasPolicy.GetNewAccountStateCost(in gas));
             if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
@@ -271,7 +301,7 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
+        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType CreateFullCallFrame(
@@ -287,7 +317,8 @@ public static partial class EvmInstructions
             Address codeSource,
             ExecutionEnvironment env,
             in UInt256 callValue,
-            long gasLimitUl)
+            long gasLimitUl,
+            bool newAccountCharged)
         {
             IWorldState state = vm.WorldState;
             // Take a snapshot of the state for potential rollback.
@@ -325,7 +356,10 @@ public static partial class EvmInstructions
                 isCreateOnPreExistingAccount: false,
                 env: callEnv,
                 stateForAccessLists: in vm.VmState.AccessTracker,
-                snapshot: in snapshot);
+                snapshot: in snapshot,
+                // EIP-8037/EIP-8038: a value transfer to a dead recipient charged NEW_ACCOUNT state gas up-front;
+                // refunded on this frame's failure path (revert/halt) since the account is then not created.
+                newAccountCharged: newAccountCharged);
 
             return EvmExceptionType.None;
         }

@@ -633,21 +633,26 @@ public partial class EthRpcModuleTests
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor4.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: mixed calldata returns floor");
 
-        // EIP-7981: access list with 1 address, no calldata — standard wins
-        long eip7981Standard = GasCostOf.Transaction + GasCostOf.AccessAccountListEntry
+        // EIP-7981: access list with 1 address, no calldata — standard wins. Devnet-6 prices the
+        // access-list address at the spec's AccessAccountListEntry (the EIP-8038 cold cost), not the
+        // legacy EIP-2930 value, plus the 80 access-list floor tokens.
+        long eip7981Standard = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
             + 80 * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7981Spec, Array.Empty<byte>(), 100_000L,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Standard.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7981: standard wins with access list");
 
-        // EIP-7981: 100 zero bytes + 1 address — floor wins
-        long eip7981Floor = GasCostOf.Transaction
-            + (100 * Eip7981Spec.GasCosts.TxDataNonZeroMultiplier + 80) * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
+        // EIP-7981: modest calldata (100 zero bytes) on top of an access list — the standard cost
+        // (TX_BASE + access-entry + per-zero-byte standard cost + access floor tokens) still exceeds
+        // the calldata floor, so standard wins. (Floor-wins is covered by the data-heavy cases above.)
+        long eip7981StandardWithCalldata = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
+            + 100 * GasCostOf.TxDataZero
+            + 80 * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7981Spec, new byte[100], 100_000L,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
-                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Floor.ToHexString(true)}\",\"id\":67}}")
-            .SetName("EIP-7981: floor wins with calldata and access list");
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981StandardWithCalldata.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-7981: standard wins with calldata and access list");
     }
 
     [TestCaseSource(nameof(EstimateGasFloorCostCases))]

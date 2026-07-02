@@ -77,7 +77,7 @@ public class GasEstimator(
         if (CheckFunds(tx, spec, gasTracer, senderBalance, out UInt256 available) is { } fundsResult)
             return fundsResult;
 
-        long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit).MinimalGas;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit, stateProvider).MinimalGas;
         long leftBound = Math.Max(gasTracer.GasSpent - 1, intrinsicGas - 1);
         long rightBound = Math.Min(
             tx.GasLimit != 0 && tx.GasLimit >= intrinsicGas ? tx.GasLimit : header.GasLimit,

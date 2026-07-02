@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
@@ -71,7 +72,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        AccountAccessKind kind = AccountAccessKind.Default);
+        AccountAccessKind kind = AccountAccessKind.Default,
+        bool hasCode = true);
 
     static abstract bool ConsumeStorageAccessGas(ref TSelf gas,
         ref readonly StackAccessTracker accessTracker,
@@ -130,13 +132,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         TSelf.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
 
     static abstract bool ConsumeCallValueTransfer(ref TSelf gas);
+
+    // EIP-2780 three-tier value-moving call cost replacing the legacy CallValue + NewAccount charges.
+    static abstract bool ConsumeCallValueTransferEip2780(ref TSelf gas, bool isSelfCall, bool recipientEmpty, IReleaseSpec spec);
     static abstract bool ConsumeNewAccountCreation<TEip8037>(ref TSelf gas) where TEip8037 : struct, IFlag;
     static abstract bool ConsumeLogEmission(ref TSelf gas, long topicCount, long dataSize);
     static abstract TSelf Max(in TSelf a, in TSelf b);
 
     static virtual IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
         TSelf.CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
-    static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit);
+    // EIP-2780 needs the pre-execution state to price the new-account surcharge; worldState is
+    // optional so callers without state (and pre-2780 specs) keep working.
+    static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit, IReadOnlyStateProvider? worldState = null);
 
     static abstract TSelf CreateAvailableFromIntrinsic(long gasLimit, in TSelf intrinsicGas, IReleaseSpec spec);
 
@@ -172,8 +179,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         }
 
         (int addressesCount, int storageKeysCount) = accessList.Count;
-        return addressesCount * GasCostOf.AccessAccountListEntry
-            + storageKeysCount * GasCostOf.AccessStorageListEntry
+        // EIP-8038 realigns access-list entry costs with the cold-access costs they pre-warm.
+        long addressCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListAddressCost : GasCostOf.AccessAccountListEntry;
+        long storageKeyCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListStorageKeyCost : GasCostOf.AccessStorageListEntry;
+        return addressesCount * addressCost
+            + storageKeysCount * storageKeyCost
             + spec.GasCosts.TotalCostFloorPerToken * floorTokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
@@ -195,9 +205,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         }
 
         long authCount = authList.Length;
+        // EIP-8038 reprices the per-authorization regular cost (ACCOUNT_WRITE + auth-base).
+        long perAuthRegular = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular;
         return spec.IsEip8037Enabled
             ? (
-                authCount * GasCostOf.PerAuthBaseRegular,
+                authCount * perAuthRegular,
                 authCount * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
             )
             : (authCount * GasCostOf.NewAccount, 0);
@@ -210,12 +222,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     private static long CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
         transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
 
-    protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData, long floorTokensInAccessList) => spec switch
+    protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData, long floorTokensInAccessList)
     {
-        { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
-        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
-        _ => 0L
-    };
+        // EIP-2780 reduces the intrinsic base; the calldata floor must track it, otherwise the
+        // legacy 21,000 floor would dominate and negate the reduction for value transfers.
+        long floorBase = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        return spec switch
+        {
+            { IsEip7976Enabled: true } => floorBase + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
+            { IsEip7623Enabled: true } => floorBase + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
+            _ => 0L
+        };
+    }
 }
 
 public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGasPolicy FloorGas)

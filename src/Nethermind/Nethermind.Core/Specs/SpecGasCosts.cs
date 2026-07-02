@@ -57,8 +57,11 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             ? GasCostOf.SReset - GasCostOf.ColdSLoad
             : GasCostOf.SReset;
 
+        // EIP-8038 folds the warm-access charge into the SSTORE access cost itself (see
+        // ConsumeStorageAccessGas), so no separate net-metered charge is added on top.
         long netMeteredSStoreCost = NetMeteredSStoreCost =
-            hotCold ? GasCostOf.WarmStateRead
+            spec.IsEip8038Enabled ? GasCostOf.Free
+            : hotCold ? GasCostOf.WarmStateRead
             : netIstanbul ? GasCostOf.SStoreNetMeteredEip2200
             : netConstantinople ? GasCostOf.SStoreNetMeteredEip1283
             : GasCostOf.Free;
@@ -108,9 +111,11 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
                 ? GasCostOf.TotalCostFloorPerTokenEip7623
                 : GasCostOf.Free;
 
-        SClearRefund = spec.IsEip3529Enabled
-            ? RefundOf.SClearAfterEip3529
-            : RefundOf.SClearBeforeEip3529;
+        SClearRefund = spec.IsEip8038Enabled
+            ? Eip8038Constants.StorageClearRefund // 12480
+            : spec.IsEip3529Enabled
+                ? RefundOf.SClearAfterEip3529
+                : RefundOf.SClearBeforeEip3529;
 
         DestroyRefund = spec.IsEip3529Enabled
             ? RefundOf.DestroyAfterEip3529

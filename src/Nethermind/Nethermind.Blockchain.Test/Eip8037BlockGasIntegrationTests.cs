@@ -107,15 +107,18 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// Creation tx is accepted at inclusion because the EIP-8037 formula subtracts
-    /// <c>intrinsic.state</c>. With actual post-execution gas modest
-    /// (the create succeeds well under cap), <c>IncrementalValidation</c> also accepts.
-    /// This test verifies acceptance.
+    /// Creation tx is accepted at inclusion when its full <c>tx.gas</c> fits the remaining
+    /// regular budget. EIP-8037 (EELS fork.py) reserves <c>min(TX_MAX_GAS_LIMIT, tx.gas)</c> in
+    /// the regular dimension with NO <c>intrinsic.state</c> subtraction, so the block must leave
+    /// room for the whole <c>tx.gas</c>. With actual post-execution gas modest (the create succeeds
+    /// well under cap), <c>IncrementalValidation</c> also accepts. This test verifies acceptance.
     /// </summary>
     [Test]
     public void Eip8037_creation_tx_regular_check_actual_usage_modest_accepts()
     {
-        long blockGasLimit = 16_777_216 + 53_000 + 1; // cap + intrinsic_regular + 1
+        // cap (filler) + the create's full tx.gas (intrinsic_regular + intrinsic_state) so the
+        // regular-dimension reservation of min(TX_MAX, tx.gas) exactly fits.
+        long blockGasLimit = 16_777_216 + 53_000 + IntrinsicNewAccountState;
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
         Transaction createTx = Build.A.Transaction.WithHash(TestItem.KeccakB)
             .WithCode([])

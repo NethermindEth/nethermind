@@ -11,6 +11,7 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
     public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Amsterdam";
+        spec.IsEip2780Enabled = true;
         spec.IsEip7976Enabled = true;
         spec.IsEip7981Enabled = true;
         spec.IsEip7708Enabled = true;
@@ -21,15 +22,24 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
         spec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
         spec.IsEip8024Enabled = true;
         spec.IsEip8037Enabled = true;
+        spec.IsEip8038Enabled = true;
+        spec.IsEip8246Enabled = true;
         spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V5;
         spec.EngineApiGetPayloadVersion = EngineApiVersions.GetPayload.V6;
         spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V4;
         spec.EngineApiPayloadBodiesByHashVersion = EngineApiVersions.PayloadBodiesByHash.V2;
         spec.EngineApiPayloadBodiesByRangeVersion = EngineApiVersions.PayloadBodiesByRange.V2;
-        // EIP-8246 is implemented but stays off here: it is still a Draft and not part of the
-        // EEST `for_amsterdam` fixtures, so enabling it would diverge from conformance tests.
-        // It can be activated via the Eip8246Transition chainspec parameter when scheduled.
     }
 
+    /// <summary>
+    /// Test-only Amsterdam variant with the EIP-8037 two-dimensional gas model disabled.
+    /// </summary>
+    /// <remarks>
+    /// This combines EIP-8038 access repricing with the single-dimension gas model, which is an
+    /// intentionally inconsistent spec: EIP-8038 access costs apply, but paths gated on the
+    /// <c>TEip8037</c> flag fall back to legacy values (e.g. the SSTORE write component charges
+    /// <c>SSet</c> rather than the EIP-8038 <c>StorageWrite</c>). It exists only to isolate
+    /// EIP-8037 behavior in tests and is not a semantically valid Amsterdam configuration.
+    /// </remarks>
     public static IReleaseSpec NoEip8037Instance { get; } = new Amsterdam { IsEip8037Enabled = false };
 }

@@ -168,7 +168,12 @@ public static partial class EvmInstructions
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address,
+                hasCode: !spec.IsEip2780Enabled || spec.IsEip8038Enabled || vm.WorldState.IsContract(address)))
+            goto OutOfGas;
+
+        // EIP-8038 charges an extra warm access for the second DB read EXTCODECOPY performs.
+        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
 
         if (!result.IsZero)
@@ -242,7 +247,12 @@ public static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address,
+                hasCode: !spec.IsEip2780Enabled || spec.IsEip8038Enabled || vm.WorldState.IsContract(address)))
+            goto OutOfGas;
+
+        // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
+        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
 
         vm.WorldState.AddAccountRead(address);

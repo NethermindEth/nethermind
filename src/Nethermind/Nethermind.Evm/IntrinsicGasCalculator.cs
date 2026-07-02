@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
@@ -24,15 +25,16 @@ public static class IntrinsicGasCalculator
     /// <summary>
     /// Calculates intrinsic gas with TGasPolicy type, allowing MultiGas breakdown for Arbitrum.
     /// </summary>
-    private static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit = 0)
+    private static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit = 0, IReadOnlyStateProvider? worldState = null)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-        TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
+        TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit, worldState);
 
     /// <summary>
     /// Non-generic backward-compatible Calculate method.
     /// </summary>
-    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit = 0) =>
-        Calculate<EthereumGasPolicy>(transaction, releaseSpec, blockGasLimit);
+    /// <param name="worldState">Pre-execution state used by EIP-2780 to price the new-account surcharge; optional.</param>
+    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit = 0, IReadOnlyStateProvider? worldState = null) =>
+        Calculate<EthereumGasPolicy>(transaction, releaseSpec, blockGasLimit, worldState);
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec) =>
         IGasPolicy<EthereumGasPolicy>.AccessListCost(transaction, releaseSpec,

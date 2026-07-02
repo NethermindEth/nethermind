@@ -92,5 +92,15 @@ namespace Nethermind.Core
         public const long MinModExpEip2565 = 200; // eip-2565
         public const long MinModExpEip7883 = 500; // eip-7883
 
+        // eip-2780: reduce intrinsic transaction gas and reprice state-touching primitives.
+        public const long TransactionEip2780 = 12000; // TX_BASE_COST: ECDSA recovery + sender account access + sender account write
+        public const long TxValueCostEip2780 = 4244; // recipient balance write for a value-bearing transfer (non-create)
+        public const long StateUpdateEip2780 = 1000; // one account-leaf write (nonce/balance coalesced)
+        public const long ColdAccountAccessNoCodeEip2780 = 500; // cold touch of an account known to have no code
+        public const long TransferLogEip2780 = 1756; // eip-7708 LOG3 transfer event: 375 + 3*375 + 32*8
+        // CALL value-transfer cost tiers replacing the legacy CallValue (9000) + NewAccount (25000).
+        public const long CallValueSelfEip2780 = StateUpdateEip2780; // 1000
+        public const long CallValueExistingEip2780 = 2 * StateUpdateEip2780 + TransferLogEip2780; // 3756
+        public const long CallValueNewAccountEip2780 = StateUpdateEip2780 + NewAccount + TransferLogEip2780; // 27756
     }
 }
