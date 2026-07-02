@@ -28,9 +28,6 @@ public sealed class NewPayloadSszHandler<TVersion, TWire>(IEngineRpcModule engin
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         TWire.Decode(body, out TWire wire);
-        // Unlike forkchoiceUpdated, no explicit Eth-Execution-Version-vs-payload-fork check here:
-        // a mismatched header selects the wrong wire type (→ ssz-decode-error) and engine_newPayloadV{N}
-        // performs its own timestamp/fork validation on the decoded payload.
         ResultWrapper<PayloadStatusV1> result = await TVersion.Call(engineModule, wire);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodePayloadStatus);
     }

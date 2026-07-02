@@ -38,9 +38,15 @@ public static class SszRestPaths
 
         Dictionary<string, Forks.NamedReleaseSpec> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (Forks.NamedReleaseSpec spec in ordered)
-            result[spec.EngineApiForkName!] = spec;
+            result[ForkName(spec)!] = spec;
         return result;
     }
+
+    /// <summary>Lowercase fork name used as the <c>Eth-Execution-Version</c> header value.</summary>
+    private static string? ForkName(Forks.NamedReleaseSpec spec) => spec.Name?.ToLowerInvariant();
+
+    private static bool ResourceEquals(ReadOnlySpan<char> resource, string name) =>
+        resource.Equals(name.AsSpan(), StringComparison.OrdinalIgnoreCase);
 
     public static readonly IReadOnlyList<string> SupportedForksOrdered = [.. _forkSpecByUrl.Keys];
 
@@ -61,11 +67,25 @@ public static class SszRestPaths
 
     public const string Blobs = "blobs";
 
-    // Documentation strings for the SSZ-REST routes — used by EngineRpcCapabilitiesProvider
-    // (registration) and EngineModuleTests (coverage assertions). Since execution-apis#793 moved
-    // the fork out of the path and into the Eth-Execution-Version header, each fork-scoped route is
-    // advertised once: fork selection is a request header, not a distinct path. Blobs remain
-    // independently path-versioned, and identity/capabilities stay unscoped.
+    /// <summary>How a resource's fork and version are determined by <c>SszMiddleware</c>.</summary>
+    public enum ResourceScoping
+    {
+        /// <summary>Fork (and thus method version) comes from the <c>Eth-Execution-Version</c> header.</summary>
+        ForkScoped,
+        /// <summary>Version comes from a trailing <c>/v{N}</c> path segment; no fork header (blobs).</summary>
+        PathVersioned,
+        /// <summary>No fork and no version — a single endpoint (capabilities, identity).</summary>
+        Unscoped
+    }
+
+    /// <summary>Classifies how the given first path <paramref name="resource"/> segment is routed.</summary>
+    public static ResourceScoping GetScoping(ReadOnlySpan<char> resource)
+    {
+        if (ResourceEquals(resource, Capabilities) || ResourceEquals(resource, ClientVersion)) return ResourceScoping.Unscoped;
+        if (ResourceEquals(resource, Blobs)) return ResourceScoping.PathVersioned;
+        return ResourceScoping.ForkScoped;
+    }
+
     public const string PostPayloads = "POST /engine/v2/payloads";
     public const string GetPayloads = "GET /engine/v2/payloads/{payload_id}";
     public const string PostForkchoice = "POST /engine/v2/forkchoice";
@@ -92,26 +112,42 @@ public static class SszRestPaths
     /// </param>
     public static int? MapForkToVersion(string fork, ReadOnlySpan<char> resource, string httpMethod, out bool recognizedResource)
     {
-        recognizedResource = false;
-        if (!_forkSpecByUrl.TryGetValue(fork, out Forks.NamedReleaseSpec? spec)) return null;
+        ForkScopedMethod method = ClassifyMethod(resource, httpMethod);
+        recognizedResource = method != ForkScopedMethod.None;
+        if (!recognizedResource || !_forkSpecByUrl.TryGetValue(fork, out Forks.NamedReleaseSpec? spec))
+            return null;
 
-        // Resource comparisons are case-insensitive (fork names are lowercase per spec,
+        return method switch
+        {
+            ForkScopedMethod.NewPayload => spec.EngineApiNewPayloadVersion,
+            ForkScopedMethod.GetPayload => spec.EngineApiGetPayloadVersion,
+            ForkScopedMethod.Forkchoice => spec.EngineApiForkchoiceVersion,
+            ForkScopedMethod.BodiesByHash => spec.EngineApiPayloadBodiesByHashVersion,
+            ForkScopedMethod.BodiesByRange => spec.EngineApiPayloadBodiesByRangeVersion,
+            _ => null
+        };
+    }
+
+    private enum ForkScopedMethod { None, NewPayload, GetPayload, Forkchoice, BodiesByHash, BodiesByRange }
+
+    /// <summary>Maps a fork-scoped (<paramref name="resource"/>, <paramref name="httpMethod"/>) pair
+    /// to the engine method it targets, or <see cref="ForkScopedMethod.None"/> if unrecognized.</summary>
+    private static ForkScopedMethod ClassifyMethod(ReadOnlySpan<char> resource, string httpMethod)
+    {
+        // Resource comparisons are case-insensitive (fork/resource names are lowercase per spec,
         // but routing accepts any case).
         if (string.Equals(httpMethod, "POST", StringComparison.Ordinal))
         {
-            if (Eq(resource, Payloads)) { recognizedResource = true; return spec.EngineApiNewPayloadVersion; }
-            if (Eq(resource, Forkchoice)) { recognizedResource = true; return spec.EngineApiForkchoiceVersion; }
-            if (Eq(resource, PayloadBodiesByHash)) { recognizedResource = true; return spec.EngineApiPayloadBodiesByHashVersion; }
+            if (ResourceEquals(resource, Payloads)) return ForkScopedMethod.NewPayload;
+            if (ResourceEquals(resource, Forkchoice)) return ForkScopedMethod.Forkchoice;
+            if (ResourceEquals(resource, PayloadBodiesByHash)) return ForkScopedMethod.BodiesByHash;
         }
         else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
         {
-            if (Eq(resource, Payloads)) { recognizedResource = true; return spec.EngineApiGetPayloadVersion; }
-            if (Eq(resource, PayloadBodiesByRange)) { recognizedResource = true; return spec.EngineApiPayloadBodiesByRangeVersion; }
+            if (ResourceEquals(resource, Payloads)) return ForkScopedMethod.GetPayload;
+            if (ResourceEquals(resource, PayloadBodiesByRange)) return ForkScopedMethod.BodiesByRange;
         }
-
-        return null;
-
-        static bool Eq(ReadOnlySpan<char> a, string b) => a.Equals(b.AsSpan(), StringComparison.OrdinalIgnoreCase);
+        return ForkScopedMethod.None;
     }
 
     /// <summary>
@@ -123,7 +159,7 @@ public static class SszRestPaths
     {
         for (Forks.NamedReleaseSpec? n = spec as Forks.NamedReleaseSpec; n is not null; n = n.Parent)
         {
-            if (n.EngineApiForkName is { } forkName && _forkSpecByUrl.ContainsKey(forkName))
+            if (ForkName(n) is { } forkName && _forkSpecByUrl.ContainsKey(forkName))
                 return forkName;
         }
         return null;

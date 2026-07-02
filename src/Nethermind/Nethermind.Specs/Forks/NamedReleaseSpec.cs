@@ -55,14 +55,6 @@ public abstract class NamedReleaseSpec : ReleaseSpec
     /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
     public int? EngineApiPayloadBodiesByRangeVersion { get; set; }
 
-    /// <summary>
-    /// Fork name for the SSZ-REST Engine API surface — the lowercase fork class name
-    /// (e.g. <c>"paris"</c>), used as the <c>Eth-Execution-Version</c> header value per
-    /// execution-apis#793. Whether the fork is actually served is decided by the engine-API
-    /// layer's supported-fork set, not here.
-    /// </summary>
-    public string? EngineApiForkName => Name?.ToLowerInvariant();
-
     protected NamedReleaseSpec(NamedReleaseSpec? parent)
     {
         Parent = parent;

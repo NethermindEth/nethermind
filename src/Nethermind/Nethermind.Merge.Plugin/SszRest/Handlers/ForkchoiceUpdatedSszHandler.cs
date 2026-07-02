@@ -47,9 +47,7 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     /// </summary>
     private string? GetForkMismatchMessage(HttpContext ctx, ulong? timestamp)
     {
-        if (!timestamp.HasValue
-            || !ctx.Items.TryGetValue(SszMiddleware.RouteForkItemKey, out object? forkObj)
-            || forkObj is not string requestedFork)
+        if (!timestamp.HasValue || GetRequestedFork(ctx) is not { } requestedFork)
             return null;
 
         IReleaseSpec payloadSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp.Value));

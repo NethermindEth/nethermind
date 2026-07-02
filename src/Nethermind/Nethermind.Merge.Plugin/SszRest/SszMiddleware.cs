@@ -168,8 +168,6 @@ public sealed class SszMiddleware
         else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, fork, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra, out bool endpointNotAvailableForFork))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
-            // intermediate string; appending the span goes straight into the format buffer.
             if (endpointNotAvailableForFork)
             {
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
@@ -287,40 +285,35 @@ public sealed class SszMiddleware
         span = span[offset..];
         if (span.IsEmpty) return false;
 
-        if (span.Equals("identity".AsSpan(), StringComparison.OrdinalIgnoreCase)
-            || span.Equals("capabilities".AsSpan(), StringComparison.OrdinalIgnoreCase))
-        {
-            pathSegment = path.AsMemory(offset, pathLen - offset);
-            return true;
-        }
-        // Unscoped endpoints don't accept path extras — reject "/identity/foo" / "/capabilities/foo"
-        // as 404 method-not-found rather than letting them fall through to resource parsing.
-        if (span.StartsWith("identity/".AsSpan(), StringComparison.OrdinalIgnoreCase)
-            || span.StartsWith("capabilities/".AsSpan(), StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
+        // The first path segment is the resource; its scoping decides how fork/version are found.
+        int slash = span.IndexOf('/');
+        ReadOnlySpan<char> resource = slash < 0 ? span : span[..slash];
+        ReadOnlySpan<char> rest = slash < 0 ? default : span[(slash + 1)..];
 
-        if (span.StartsWith("blobs/".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        switch (SszRestPaths.GetScoping(resource))
         {
-            ReadOnlySpan<char> sub = span["blobs/".Length..];
-            if (sub.StartsWith("v", StringComparison.OrdinalIgnoreCase))
-            {
-                if (int.TryParse(sub[1..], out int blobVer))
+            case SszRestPaths.ResourceScoping.Unscoped:
+                // No fork, no version, no extra segments (e.g. /capabilities, /identity).
+                if (!rest.IsEmpty) return false;
+                pathSegment = path.AsMemory(offset, pathLen - offset);
+                return true;
+
+            case SszRestPaths.ResourceScoping.PathVersioned:
+                // Version travels in a trailing /v{N} segment (e.g. /blobs/v1); no fork header.
+                if (rest.StartsWith("v", StringComparison.OrdinalIgnoreCase) && int.TryParse(rest[1..], out int parsed))
                 {
-                    version = blobVer;
-                    pathSegment = path.AsMemory(offset, "blobs".Length);
+                    version = parsed;
+                    pathSegment = path.AsMemory(offset, resource.Length);
                     return true;
                 }
-            }
-            return false;
-        }
+                return false;
 
-        // Everything remaining is a fork-scoped resource: /{resource}[/{extra}]. The fork (and thus
-        // the method version) is resolved from the Eth-Execution-Version header, not the path.
-        forkScoped = true;
-        pathSegment = path.AsMemory(offset, pathLen - offset);
-        return true;
+            default:
+                // Fork-scoped: fork (and thus version) is resolved later from the Eth-Execution-Version header.
+                forkScoped = true;
+                pathSegment = path.AsMemory(offset, pathLen - offset);
+                return true;
+        }
     }
 
     /// <summary>
