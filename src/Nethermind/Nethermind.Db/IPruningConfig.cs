@@ -83,7 +83,7 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
     ulong PruningBoundary { get; set; }
 
-    [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]
+    [ConfigItem(Description = "Number of dirty node shards as a base-2 exponent; the shard count is 2^DirtyNodeShardBit. Must be between 1 and 30.", DefaultValue = "8")]
     int DirtyNodeShardBit { get; set; }
 
     [ConfigItem(Description = "Portion of persisted node to be prune at a time", DefaultValue = "0.05")]

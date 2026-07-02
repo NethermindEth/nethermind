@@ -909,8 +909,7 @@
       "nethermind.kademlia": {
         "type": "Project",
         "dependencies": {
-          "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )"
+          "Collections.Pooled": "[1.0.82, )"
         }
       },
       "nethermind.keystore": {
@@ -993,12 +992,13 @@
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Facade": "[1.40.0-unstable, )",
-          "Nethermind.Kademlia": "[1.40.0-unstable, )",
-          "Nethermind.Network": "[1.40.0-unstable, )",
-          "Nethermind.Network.Enr": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[1.39.0-unstable, )",
+          "Nethermind.Crypto": "[1.39.0-unstable, )",
+          "Nethermind.Facade": "[1.39.0-unstable, )",
+          "Nethermind.Kademlia": "[1.39.0-unstable, )",
+          "Nethermind.Logging.Microsoft": "[1.39.0-unstable, )",
+          "Nethermind.Network": "[1.39.0-unstable, )",
+          "Nethermind.Network.Enr": "[1.39.0-unstable, )"
         }
       },
       "nethermind.network.dns": {

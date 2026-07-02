@@ -183,8 +183,8 @@ public class Eth70ProtocolHandlerTests
     public void Should_return_expected_receipts_for_first_block_receipt_index(
         long firstBlockReceiptIndex,
         int expectedLength,
-        int expectedFirstReceiptIndex,
-        int expectedLastReceiptIndex)
+        int? expectedFirstReceiptIndex,
+        int? expectedLastReceiptIndex)
     {
         TxReceipt[] receipts = BuildSequentialReceipts(3);
 
@@ -197,8 +197,8 @@ public class Eth70ProtocolHandlerTests
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
             m.TxReceipts.Count == 1 &&
             m.TxReceipts[0].Length == expectedLength &&
-            m.TxReceipts[0][0].GasUsedTotal == receipts[expectedFirstReceiptIndex].GasUsedTotal &&
-            m.TxReceipts[0][expectedLength - 1].GasUsedTotal == receipts[expectedLastReceiptIndex].GasUsedTotal &&
+            (expectedLength == 0 || m.TxReceipts[0][0].GasUsedTotal == receipts[expectedFirstReceiptIndex!.Value].GasUsedTotal) &&
+            (expectedLength == 0 || m.TxReceipts[0][expectedLength - 1].GasUsedTotal == receipts[expectedLastReceiptIndex!.Value].GasUsedTotal) &&
             !m.LastBlockIncomplete));
     }
 
@@ -936,6 +936,34 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_include_next_block_after_empty_first_block_completion()
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 1;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = 1000;
+
+        TxReceipt[] block1Receipts = BuildSequentialReceipts(1);
+        TxReceipt[] block2Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] }
+        ];
+
+        _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns(block2Receipts);
+
+        using GetReceiptsMessage70 request = new(1111, block1Receipts.Length, new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.TxReceipts.Count == 2 &&
+            m.TxReceipts[0].Length == 0 &&
+            m.TxReceipts[1].Length == block2Receipts.Length &&
+            !m.LastBlockIncomplete));
+    }
+
+    [Test]
     public void Should_send_single_large_block_above_soft_limit_when_below_hard_limit()
     {
         SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 300;
@@ -1157,6 +1185,8 @@ public class Eth70ProtocolHandlerTests
             .SetName("Should_return_receipts_when_first_block_receipt_index_is_zero");
         yield return new TestCaseData(2L, 1, 2, 2)
             .SetName("Should_return_last_receipt_when_first_block_receipt_index_is_last");
+        yield return new TestCaseData(3L, 0, null, null)
+            .SetName("Should_return_empty_block_when_first_block_receipt_index_equals_receipts_count");
     }
 
     public sealed record InvalidPartialContinuationCase(
@@ -1196,12 +1226,22 @@ public class Eth70ProtocolHandlerTests
             SecondBlockGasUsed: GasCostOf.Transaction,
             ExpectedExceptionMessage: "Block gas used mismatch between receipts and header"))
             .SetName("Rejects partial continuation that completes below header gas before continuing");
+
+        yield return new TestCaseData(new InvalidPartialContinuationCase(
+            [Keccak.Zero, TestItem.KeccakA],
+            new Dictionary<long, ReceiptsPageResponse>
+            {
+                [0] = new([firstShortPage], LastBlockIncomplete: true),
+                [1] = new([Array.Empty<TxReceipt>(), nextBlock], LastBlockIncomplete: false)
+            },
+            FirstBlockGasUsed: GasCostOf.Transaction * 2,
+            SecondBlockGasUsed: GasCostOf.Transaction,
+            ExpectedExceptionMessage: "Block gas used mismatch between receipts and header"))
+            .SetName("Rejects empty partial continuation that completes below header gas before continuing");
     }
 
     private static IEnumerable<TestCaseData> InvalidFirstBlockReceiptIndexCases()
     {
-        yield return new TestCaseData(2L)
-            .SetName("Should_disconnect_when_first_block_receipt_index_equals_receipts_count");
         yield return new TestCaseData(3L)
             .SetName("Should_disconnect_when_first_block_receipt_index_exceeds_receipts_count");
     }
