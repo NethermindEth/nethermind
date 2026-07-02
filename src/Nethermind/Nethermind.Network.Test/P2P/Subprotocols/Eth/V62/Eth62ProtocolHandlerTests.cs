@@ -830,28 +830,29 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 txs[i] = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
-            int sizeOfOneTx = txs[0].GetLength();
-            int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
-            int nonFullMsgTxsCount = txCount % numberOfTxsInOneMsg;
-            int messagesCount = txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
+            List<(int Count, int SerializedSize)> deliveries = [];
+            CountdownEvent delivered = new(txCount);
 
-            CountdownEvent delivered = new(messagesCount);
-            int matchingDeliveries = 0;
             _session.When(s => s.DeliverMessage(Arg.Any<TransactionsMessage>()))
                 .Do(call =>
                 {
                     TransactionsMessage msg = (TransactionsMessage)call[0];
-                    if (msg.Transactions.Count == numberOfTxsInOneMsg || msg.Transactions.Count == nonFullMsgTxsCount)
-                    {
-                        Interlocked.Increment(ref matchingDeliveries);
-                        if (!delivered.IsSet) delivered.Signal();
-                    }
+                    int serializedSize = msg.Transactions.Sum(static tx => tx.GetLength());
+                    lock (deliveries) deliveries.Add((msg.Transactions.Count, serializedSize));
+                    delivered.Signal(msg.Transactions.Count);
                 });
 
             _handler.SendNewTransactions(txs);
 
             Assert.That(delivered.Wait(TimeSpan.FromSeconds(30)), Is.True, "Not all expected messages were delivered within 30s");
-            Assert.That(matchingDeliveries, Is.EqualTo(messagesCount));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deliveries.Sum(static d => d.Count), Is.EqualTo(txCount), "Every transaction must be delivered exactly once");
+                Assert.That(deliveries, Is.All.Matches<(int Count, int SerializedSize)>(
+                    static d => d.Count == 1 || d.SerializedSize <= TransactionsMessage.MaxPacketSize),
+                    "Each message must fit within MaxPacketSize unless it carries a single transaction");
+            }
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
