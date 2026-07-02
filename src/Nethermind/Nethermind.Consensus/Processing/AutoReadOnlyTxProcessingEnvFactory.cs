@@ -13,9 +13,15 @@ namespace Nethermind.Consensus.Processing;
 
 public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, IWorldStateManager worldStateManager) : IReadOnlyTxProcessingEnvFactory
 {
+    /// <summary>
+    /// Hook for decorating the read-only world state (e.g. with a head state cache). The base
+    /// implementation returns it unchanged.
+    /// </summary>
+    protected virtual IWorldStateScopeProvider DecorateWorldState(IWorldStateScopeProvider worldState) => worldState;
+
     public IReadOnlyTxProcessorSource Create()
     {
-        IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
+        IWorldStateScopeProvider worldState = DecorateWorldState(worldStateManager.CreateResettableWorldState());
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder

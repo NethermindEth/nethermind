@@ -109,5 +109,13 @@ namespace Nethermind.Config
         public long SlowBlockPerTxThresholdMs { get; set; } = -1;
 
         public ulong MaxGasLimit { get; set; } = 1_000_000_000;
+
+        public bool EnableHeadStateCache { get; set; } = false;
+
+        public int HeadStateCacheDepth { get; set; } = 2;
+
+        public int HeadStateCacheAccountSetsBits { get; set; } = 14;
+
+        public int HeadStateCacheStorageSetsBits { get; set; } = 17;
     }
 }

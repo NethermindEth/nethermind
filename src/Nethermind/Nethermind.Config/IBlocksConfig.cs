@@ -96,4 +96,28 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "1000000000",
         HiddenFromDocs = true)]
     ulong MaxGasLimit { get; set; }
+
+    [ConfigItem(
+        Description = "Whether to keep a coherent, cross-block cache of state at the chain head (and the most recent ancestors) to speed up read-only RPC calls such as eth_call and debug_trace on top of the head. Experimental.",
+        DefaultValue = "false",
+        HiddenFromDocs = true)]
+    bool EnableHeadStateCache { get; set; }
+
+    [ConfigItem(
+        Description = "How many blocks behind the head the head state cache can serve directly (the X in head-X). Reads deeper than this fall back to the trie. Only used when EnableHeadStateCache is true.",
+        DefaultValue = "2",
+        HiddenFromDocs = true)]
+    int HeadStateCacheDepth { get; set; }
+
+    [ConfigItem(
+        Description = "Number of set-index bits for the head state cache account map (entries = 2^(bits+1)). Only used when EnableHeadStateCache is true.",
+        DefaultValue = "14",
+        HiddenFromDocs = true)]
+    int HeadStateCacheAccountSetsBits { get; set; }
+
+    [ConfigItem(
+        Description = "Number of set-index bits for the head state cache storage map (entries = 2^(bits+1)). Only used when EnableHeadStateCache is true.",
+        DefaultValue = "17",
+        HiddenFromDocs = true)]
+    int HeadStateCacheStorageSetsBits { get; set; }
 }
