@@ -396,7 +396,7 @@ public abstract class BlockchainTestBase
                     }
                     else
                     {
-                        CompareWitnessSets(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
+                        CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
                     }
 
                     AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
@@ -814,7 +814,7 @@ public abstract class BlockchainTestBase
     /// <summary>
     /// For each test block that publishes a reference executionWitness, regenerate the client's
     /// witness by re-executing the imported block in the witness-generating sandbox and compare
-    /// codes/state/headers as sets. Mismatches are appended to <paramref name="differences"/>.
+    /// codes/state/headers as ordered arrays. Mismatches are appended to <paramref name="differences"/>.
     /// </summary>
     private static void VerifyWitnesses(
         BlockchainTest test,
@@ -862,46 +862,47 @@ public abstract class BlockchainTestBase
             IExistingBlockWitnessCollector collector = scope.Env.CreateExistingBlockWitnessCollector();
             using Witness actual = collector.GetWitnessForExistingBlock(parent, block);
 
-            CompareWitnessSets(blockHash, expected, actual, differences);
+            CompareWitnesses(blockHash, expected, actual, differences);
         }
     }
 
-    private static void CompareWitnessSets(
+    private static void CompareWitnesses(
         Hash256 blockHash,
         ExecutionWitnessJson expected,
         Witness actual,
         List<string> differences)
     {
-        DiffSet(blockHash, "state", ToByteSet(expected.State), ToByteSet(actual.State), differences);
-        DiffSet(blockHash, "codes", ToByteSet(expected.Codes), ToByteSet(actual.Codes), differences);
-        DiffSet(blockHash, "headers", ToByteSet(expected.Headers), ToByteSet(actual.Headers), differences);
+        ComputeDiff(blockHash, "state", expected.State, actual.State, differences);
+        ComputeDiff(blockHash, "codes", expected.Codes, actual.Codes, differences);
+        ComputeDiff(blockHash, "headers", expected.Headers, actual.Headers, differences);
     }
 
-    private static HashSet<byte[]> ToByteSet(string[]? hex)
-    {
-        HashSet<byte[]> set = new(Bytes.EqualityComparer);
-        if (hex is null) return set;
-        foreach (string h in hex) set.Add(Bytes.FromHexString(h));
-        return set;
-    }
-
-    private static HashSet<byte[]> ToByteSet(IOwnedReadOnlyList<byte[]> list)
-    {
-        HashSet<byte[]> set = new(Bytes.EqualityComparer);
-        for (int i = 0; i < list.Count; i++) set.Add(list[i]);
-        return set;
-    }
-
-    private static void DiffSet(
+    /// <summary>
+    /// Compares the reference and produced witness sections element-by-element in order. The witness is
+    /// order-sensitive — a stateless verifier replays it as an ordered sequence — so ordering and duplication
+    /// must match exactly; a set diff would mask both.
+    /// </summary>
+    private static void ComputeDiff(
         Hash256 blockHash,
         string section,
-        HashSet<byte[]> expected,
-        HashSet<byte[]> actual,
+        string[]? expected,
+        IOwnedReadOnlyList<byte[]> actual,
         List<string> differences)
     {
-        foreach (byte[] e in expected.Except(actual, Bytes.EqualityComparer))
-            differences.Add($"witness {section} (block {blockHash}): expected element not produced: 0x{e.ToHexString()}");
-        foreach (byte[] a in actual.Except(expected, Bytes.EqualityComparer))
-            differences.Add($"witness {section} (block {blockHash}): produced element not in expected: 0x{a.ToHexString()}");
+        int expectedCount = expected?.Length ?? 0;
+        if (expectedCount != actual.Count)
+            differences.Add($"witness {section} (block {blockHash}): count mismatch: expected {expectedCount}, produced {actual.Count}");
+
+        int common = expectedCount < actual.Count ? expectedCount : actual.Count;
+        for (int i = 0; i < common; i++)
+        {
+            byte[] e = Bytes.FromHexString(expected![i]);
+            if (!e.AsSpan().SequenceEqual(actual[i]))
+                differences.Add($"witness {section} (block {blockHash}) at index {i}: expected 0x{e.ToHexString()}, produced 0x{actual[i].ToHexString()}");
+        }
+        for (int i = common; i < expectedCount; i++)
+            differences.Add($"witness {section} (block {blockHash}) at index {i}: expected 0x{Bytes.FromHexString(expected![i]).ToHexString()}, none produced");
+        for (int i = common; i < actual.Count; i++)
+            differences.Add($"witness {section} (block {blockHash}) at index {i}: produced 0x{actual[i].ToHexString()}, none expected");
     }
 }

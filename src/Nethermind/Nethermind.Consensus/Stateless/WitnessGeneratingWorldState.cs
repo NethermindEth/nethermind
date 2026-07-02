@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -65,10 +66,12 @@ public class WitnessGeneratingWorldState(
             codes = new ArrayPoolList<byte[]>(_bytecodes.Count);
             foreach (byte[] code in _bytecodes.Values)
                 codes.Add(code);
+            codes.AsSpan().Sort(Bytes.Comparer);
 
             state = new ArrayPoolList<byte[]>(sink.Nodes.Count);
             foreach (byte[] node in sink.Nodes.Values)
                 state.Add(node);
+            state.AsSpan().Sort(Bytes.Comparer);
 
             int totalKeysCount = _storageSlots.Count;
             foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> kvp in _storageSlots)
