@@ -30,8 +30,6 @@ public readonly struct ValueAddress
     }
 
     /// <summary>Exposes the 20 backing bytes as a read-only span over the struct's storage.</summary>
-    // Hot: hit on every Address.Equals/Bytes access. Without force-inline the JIT keeps it out-of-line,
-    // blocking the FirstByte/Bytes getters from folding into a direct ref computation.
     public ReadOnlySpan<byte> AsSpan
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
