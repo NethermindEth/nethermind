@@ -26,25 +26,25 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract ulong GetRemainingGas(in TSelf gas);
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
-    static virtual ulong GetStorageSetStateCost(in TSelf gas) => GasCostOf.SSetState;
-    static virtual ulong GetCreateStateCost(in TSelf gas) => GasCostOf.CreateState;
-    static virtual ulong GetNewAccountStateCost(in TSelf gas) => GasCostOf.NewAccountState;
-    static virtual ulong GetPerAuthBaseStateCost(in TSelf gas) => GasCostOf.PerAuthBaseState;
-    static virtual ulong GetCodeDepositStateCost(in TSelf gas, int byteCodeLength) => GasCostOf.CodeDepositState * (ulong)byteCodeLength;
-    static virtual ulong GetStorageSetReversalRefund(in TSelf gas) => RefundOf.SSetReversedEip8037;
+    static virtual long GetStorageSetStateCost(in TSelf gas) => (long)GasCostOf.SSetState;
+    static virtual long GetCreateStateCost(in TSelf gas) => (long)GasCostOf.CreateState;
+    static virtual long GetNewAccountStateCost(in TSelf gas) => (long)GasCostOf.NewAccountState;
+    static virtual long GetPerAuthBaseStateCost(in TSelf gas) => (long)GasCostOf.PerAuthBaseState;
+    static virtual long GetCodeDepositStateCost(in TSelf gas, int byteCodeLength) => (long)GasCostOf.CodeDepositState * byteCodeLength;
+    static virtual long GetStorageSetReversalRefund(in TSelf gas) => (long)RefundOf.SSetReversedEip8037;
 
     // EIP-8037 state-accounting accessors. Pre-EIP-8037 policies return 0.
-    static virtual ulong GetStateReservoir(in TSelf gas) => 0;
-    static virtual ulong GetStateGasUsed(in TSelf gas) => 0;
-    static virtual ulong GetStateGasSpill(in TSelf gas) => 0;
+    static virtual long GetStateReservoir(in TSelf gas) => 0;
+    static virtual long GetStateGasUsed(in TSelf gas) => 0;
+    static virtual long GetStateGasSpill(in TSelf gas) => 0;
     // Tx-wide cumulative spill paid via gas_left in reverted child frames; never undone.
     // Used by top-level halt to reattribute burned spill from state to regular dimension.
-    static virtual ulong GetStateGasSpillBurned(in TSelf gas) => 0;
+    static virtual long GetStateGasSpillBurned(in TSelf gas) => 0;
     // Spill from reverted children that remains in block regular after in-frame state refund.
-    static virtual ulong GetStateGasSpillReclassified(in TSelf gas) => 0;
+    static virtual long GetStateGasSpillReclassified(in TSelf gas) => 0;
     // Spill whose state side was refunded but regular side stays spent; excluded from
     // Calculate8037BlockRegularGas subtraction.
-    static virtual ulong GetStateGasSpillRefunded(in TSelf gas) => 0;
+    static virtual long GetStateGasSpillRefunded(in TSelf gas) => 0;
 
     static abstract void Consume(ref TSelf gas, ulong cost);
     static virtual bool TryConsume(ref TSelf gas, ulong cost)
@@ -102,11 +102,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract bool UpdateGas(ref TSelf gas, ulong gasCost);
 
     // Pre-EIP-8037 fallback: state gas folded into regular gas.
-    static virtual bool ConsumeStateGas(ref TSelf gas, ulong stateGasCost) => TSelf.UpdateGas(ref gas, stateGasCost);
+    static virtual bool ConsumeStateGas(ref TSelf gas, long stateGasCost) => TSelf.UpdateGas(ref gas, (ulong)stateGasCost);
 
     // Regular gas charged first to prevent state-gas spill-then-halt from inflating
     // the reservoir via the error refund path.
-    static abstract bool TryConsumeStateAndRegularGas(ref TSelf gas, ulong stateGasCost, ulong regularGasCost);
+    static abstract bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, ulong regularGasCost);
 
     static abstract void UpdateGasUp(ref TSelf gas, ulong refund);
 
@@ -115,29 +115,29 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         where TIsSlotCreation : struct, IFlag;
 
     // Pre-EIP-8037 fallback: refund into regular gas.
-    static virtual void RefundStateGas(ref TSelf gas, ulong amount, ulong stateGasFloor) => TSelf.UpdateGasUp(ref gas, amount);
-    static virtual void RefundStateGas(ref TSelf gas, ulong amount, ulong stateGasFloor, bool trackSpillRefund) =>
+    static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, (ulong)amount);
+    static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor, bool trackSpillRefund) =>
         TSelf.RefundStateGas(ref gas, amount, stateGasFloor);
 
     // Drop state-gas from block-state accounting without refunding to the gas budget;
     // reverted state charges stay paid by the tx but don't contribute to committed state gas.
-    static virtual ulong DiscardStateGas(ref TSelf gas, ulong amount, ulong stateGasFloor, bool trackSpillRefund) => amount;
+    static virtual long DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor, bool trackSpillRefund) => amount;
 
-    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, ulong amount, bool trackSpillRefund) =>
-        TSelf.UpdateGasUp(ref gas, amount);
+    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund) =>
+        TSelf.UpdateGasUp(ref gas, (ulong)amount);
 
-    static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, ulong amount) { }
+    static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
 
     // EIP-8037 top-level halt: snap state-gas back to (R0, intrinsicStateUsed, 0); the
     // post-reset StateGasUsed feeds SpentGas so the user doesn't pay for uncommitted state.
-    static virtual void ResetForHalt(ref TSelf gas, ulong initialStateReservoir, ulong initialStateGasUsed) { }
+    static virtual void ResetForHalt(ref TSelf gas, long initialStateReservoir, long initialStateGasUsed) { }
 
     // EIP-7702 code-insert refund regular-gas portion. Pre-EIP-8037: (NewAccount - PerAuthBaseCost) each.
     static virtual ulong GetCodeInsertRegularRefund(ulong codeInsertRefunds, IReleaseSpec spec) =>
         codeInsertRefunds > 0UL ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds : 0UL;
 
     // EIP-8037: replenishes tx state reservoir before exec (intrinsic state gas already charged).
-    static virtual ulong ApplyCodeInsertRefunds(ref TSelf gas, ulong codeInsertRefunds, IReleaseSpec spec, ulong stateGasFloor) =>
+    static virtual ulong ApplyCodeInsertRefunds(ref TSelf gas, ulong codeInsertRefunds, IReleaseSpec spec, long stateGasFloor) =>
         TSelf.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
 
     static abstract bool ConsumeCallValueTransfer(ref TSelf gas);

@@ -13,17 +13,17 @@ namespace Nethermind.Evm
         private const byte InvalidStartingCodeByte = 0xEF;
 
         public static ulong CalculateCost(IReleaseSpec spec, int byteCodeLength) =>
-            CalculateCost(spec, byteCodeLength, out ulong regularCost, out ulong stateCost)
-                ? regularCost + stateCost
+            CalculateCost(spec, byteCodeLength, out ulong regularCost, out long stateCost)
+                ? regularCost + (ulong)stateCost
                 : ulong.MaxValue;
 
         public static ulong CalculateCost<TGasPolicy>(IReleaseSpec spec, int byteCodeLength, in TGasPolicy gas)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-            CalculateCost(spec, byteCodeLength, in gas, out ulong regularCost, out ulong stateCost)
-                ? regularCost + stateCost
+            CalculateCost(spec, byteCodeLength, in gas, out ulong regularCost, out long stateCost)
+                ? regularCost + (ulong)stateCost
                 : ulong.MaxValue;
 
-        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out ulong regularCost, out ulong stateCost)
+        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out ulong regularCost, out long stateCost)
         {
             stateCost = 0;
 
@@ -44,16 +44,16 @@ namespace Nethermind.Evm
             if (outOfGas)
             {
                 regularCost = ulong.MaxValue;
-                stateCost = ulong.MaxValue;
+                stateCost = long.MaxValue;
                 return false;
             }
 
             regularCost = GasCostOf.CodeDepositRegularPerWord * words;
-            stateCost = GasCostOf.CodeDepositState * length;
+            stateCost = (long)(GasCostOf.CodeDepositState * length);
             return true;
         }
 
-        public static bool CalculateCost<TGasPolicy>(IReleaseSpec spec, int byteCodeLength, in TGasPolicy gas, out ulong regularCost, out ulong stateCost)
+        public static bool CalculateCost<TGasPolicy>(IReleaseSpec spec, int byteCodeLength, in TGasPolicy gas, out ulong regularCost, out long stateCost)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         {
             stateCost = 0;
@@ -75,7 +75,7 @@ namespace Nethermind.Evm
             if (outOfGas)
             {
                 regularCost = ulong.MaxValue;
-                stateCost = ulong.MaxValue;
+                stateCost = long.MaxValue;
                 return false;
             }
 
