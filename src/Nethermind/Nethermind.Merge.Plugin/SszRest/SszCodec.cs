@@ -211,10 +211,10 @@ public static class SszCodec
         return wire.BlockHashes ?? [];
     }
 
-    public static (long start, long count) DecodeGetPayloadBodiesByRangeRequest(ReadOnlySequence<byte> buf)
+    public static (ulong start, ulong count) DecodeGetPayloadBodiesByRangeRequest(ReadOnlySequence<byte> buf)
     {
         GetPayloadBodiesByRangeRequestWire.Decode(buf, out GetPayloadBodiesByRangeRequestWire wire);
-        return (SszNumericChecks.CheckedLong(wire.Start), SszNumericChecks.CheckedLong(wire.Count));
+        return (wire.Start, wire.Count);
     }
 
     public static int EncodePayloadBodiesV1Response(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies, IBufferWriter<byte> writer)
@@ -346,7 +346,7 @@ public static class SszCodec
             withdrawals: pa.Withdrawals.ToDomain(),
             parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
             slotNumber: pa.SlotNumber,
-            targetGasLimit: (long)pa.TargetGasLimit);
+            targetGasLimit: pa.TargetGasLimit);
 
     private static PayloadAttributes BuildPayloadAttributes(
         ulong timestamp,
@@ -355,7 +355,7 @@ public static class SszCodec
         Withdrawal[]? withdrawals = null,
         Hash256? parentBeaconBlockRoot = null,
         ulong? slotNumber = null,
-        long? targetGasLimit = null) => new()
+        ulong? targetGasLimit = null) => new()
         {
             Timestamp = timestamp,
             PrevRandao = prevRandao,

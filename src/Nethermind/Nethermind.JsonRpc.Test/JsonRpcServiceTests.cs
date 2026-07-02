@@ -91,7 +91,7 @@ public class JsonRpcServiceTests
             nameof(IEthRpcModule.eth_feeHistory),
             """[{},"latest"]""",
             "missing value for required argument 2",
-            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_feeHistory(Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>())))
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_feeHistory(Arg.Any<ulong>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>())))
             .SetName("Missing required argument");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBlockByNumber),
@@ -206,15 +206,15 @@ public class JsonRpcServiceTests
         return response;
     }
 
-    [TestCase(false, 2L, TestName = "Number")]
-    [TestCase(true, 513L, TestName = "Size")]
-    public void Eth_module_populates_block_data(bool assertSize, long expected)
+    [TestCase(false, 2UL, TestName = "Number")]
+    [TestCase(true, 513UL, TestName = "Size")]
+    public void Eth_module_populates_block_data(bool assertSize, ulong expected)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
         BlockForRpc result = RpcTest.AssertSuccess<BlockForRpc>(TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true"));
-        Assert.That(assertSize ? result.Size : result.Number, Is.EqualTo(expected));
+        Assert.That(assertSize ? (ulong)result.Size : result.Number!.Value, Is.EqualTo(expected));
     }
 
     [Test]
@@ -487,7 +487,7 @@ public class JsonRpcServiceTests
 
     [Test]
     public void IncorrectMethodNameTest() =>
-        AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound);
+        AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound("incorrect_method"));
 
     [Test]
     public void NetVersionTest()

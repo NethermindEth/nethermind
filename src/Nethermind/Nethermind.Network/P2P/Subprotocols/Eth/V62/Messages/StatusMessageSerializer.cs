@@ -68,7 +68,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             StatusMessage statusMessage = new();
             ctx.ReadSequenceLength();
             statusMessage.ProtocolVersion = ctx.DecodeByte();
-            statusMessage.NetworkId = ctx.DecodeUInt256();
+            statusMessage.NetworkId = ctx.DecodeULong();
             statusMessage.TotalDifficulty = ctx.DecodeUInt256();
             statusMessage.BestHash = ctx.DecodeKeccak();
             statusMessage.GenesisHash = ctx.DecodeKeccak();

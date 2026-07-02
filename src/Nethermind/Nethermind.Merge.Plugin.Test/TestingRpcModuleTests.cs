@@ -153,7 +153,7 @@ public class TestingRpcModuleTests
     {
         Transaction mempoolTx = BuildSignedTransactions(1)[0];
         ITxSource txSource = Substitute.For<ITxSource>();
-        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns(new[] { mempoolTx });
 
         (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(txSource: txSource);
@@ -166,9 +166,9 @@ public class TestingRpcModuleTests
         Assert.That(((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Length, Is.EqualTo(expectedTxCount));
 
         if (useNull)
-            txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), true);
+            txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), true);
         else
-            txSource.DidNotReceive().GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
+            txSource.DidNotReceive().GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
     }
 
     [Test]
@@ -503,10 +503,10 @@ public class TestingRpcModuleTests
     {
         Transaction[] transactions = new Transaction[count];
 
-        for (int i = 0; i < count; i++)
+        for (uint i = 0; i < count; i++)
         {
             transactions[i] = Core.Test.Builders.Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce(i)
                 .WithTimestamp((UInt256)(1_000 + i))
                 .WithTo(Core.Test.Builders.TestItem.AddressC)
                 .WithValue(i + 1)

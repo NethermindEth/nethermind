@@ -29,7 +29,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
 
     private string? _taikoPayloadId;
 
-    public override long GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator) => BlockMetadata!.GasLimit;
+    public override ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator) => BlockMetadata!.GasLimit;
 
     /// <summary>
     /// Computes the Taiko-canonical payload id so it matches the <c>buildPayloadArgsId</c> stored

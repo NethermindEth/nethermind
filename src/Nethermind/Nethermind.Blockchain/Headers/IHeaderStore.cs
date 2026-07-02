@@ -12,11 +12,11 @@ public interface IHeaderStore : IHeaderFinder
 {
     void Insert(BlockHeader header);
     void BulkInsert(IReadOnlyList<BlockHeader> headers);
-    BlockHeader? Get(Hash256 blockHash, bool shouldCache, long? blockNumber = null);
+    BlockHeader? Get(Hash256 blockHash, bool shouldCache, ulong? blockNumber = null);
     void Cache(BlockHeader header);
     void Delete(Hash256 blockHash);
-    void InsertBlockNumber(Hash256 blockHash, long blockNumber);
-    long? GetBlockNumber(Hash256 blockHash);
+    void InsertBlockNumber(Hash256 blockHash, ulong blockNumber);
+    ulong? GetBlockNumber(Hash256 blockHash);
 
     /// <summary>
     /// Returns up to <paramref name="count"/> consecutive headers ending at <paramref name="endBlockHash"/>,
@@ -25,5 +25,5 @@ public interface IHeaderStore : IHeaderFinder
     /// The returned list is ordered oldest-first. If the chain breaks, the returned list is shorter.
     /// Returns an empty list when <paramref name="endBlockHash"/> is not found.
     /// </summary>
-    IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count);
+    IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(ulong endBlockNumber, Hash256 endBlockHash, int count);
 }

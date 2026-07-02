@@ -91,7 +91,8 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.MinerPremiumNegative;
             }
 
-            if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
+            UInt256 txValue = tx.ValueRef;
+            if (UInt256.SubtractUnderflow(in senderBalance, in txValue, out UInt256 balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
                 return TransactionResult.InsufficientSenderBalance;
@@ -142,7 +143,7 @@ public class OptimismTransactionProcessor(
         tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, int statusCode)
+        in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, int statusCode)
     {
         if (!tx.IsDeposit())
         {
@@ -173,7 +174,7 @@ public class OptimismTransactionProcessor(
     }
 
     protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, in EthereumGasPolicy floorGas, in EthereumGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir, bool createdTargetAlive = false)
+        in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds, in EthereumGasPolicy floorGas, in EthereumGasPolicy intrinsicGasStandard, ulong postIntrinsicStateReservoir, bool createdTargetAlive = false)
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
@@ -181,7 +182,7 @@ public class OptimismTransactionProcessor(
         {
             // Record deposits as using all their gas
             // System Transactions are special & are not recorded as using any gas (anywhere)
-            long gas = tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
+            ulong gas = tx.IsOPSystemTransaction ? 0UL : tx.GasLimit;
             return gas;
         }
 

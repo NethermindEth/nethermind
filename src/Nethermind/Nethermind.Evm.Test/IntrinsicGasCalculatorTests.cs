@@ -32,37 +32,37 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class IntrinsicGasCalculatorTests
     {
-        public static IEnumerable<(Transaction Tx, long cost, string Description)> TestCaseSource()
+        public static IEnumerable<(Transaction Tx, ulong cost, string Description)> TestCaseSource()
         {
-            yield return (Build.A.Transaction.SignedAndResolved().TestObject, 21000, "empty");
+            yield return (Build.A.Transaction.SignedAndResolved().TestObject, 21000UL, "empty");
         }
 
-        public static IEnumerable<(List<object> orderQueue, long Cost)> AccessTestCaseSource()
+        public static IEnumerable<(List<object> orderQueue, ulong Cost)> AccessTestCaseSource()
         {
-            yield return (new List<object> { }, 0);
-            yield return (new List<object> { Address.Zero }, 2400);
-            yield return (new List<object> { Address.Zero, (UInt256)1 }, 4300);
-            yield return (new List<object> { Address.Zero, (UInt256)1, TestItem.AddressA, (UInt256)1 }, 8600);
-            yield return (new List<object> { Address.Zero, (UInt256)1, Address.Zero, (UInt256)1 }, 8600);
+            yield return (new List<object> { }, 0UL);
+            yield return (new List<object> { Address.Zero }, 2400UL);
+            yield return (new List<object> { Address.Zero, (UInt256)1 }, 4300UL);
+            yield return (new List<object> { Address.Zero, (UInt256)1, TestItem.AddressA, (UInt256)1 }, 8600UL);
+            yield return (new List<object> { Address.Zero, (UInt256)1, Address.Zero, (UInt256)1 }, 8600UL);
         }
 
-        public static IEnumerable<(byte[] Data, int OldCost, int NewCost, int FloorCost)> DataTestCaseSource()
+        public static IEnumerable<(byte[] Data, ulong OldCost, ulong NewCost, ulong FloorCost)> DataTestCaseSource()
         {
-            yield return ([0], 4, 4, 21010);
-            yield return ([1], 68, 16, 21040);
-            yield return ([0, 0, 1], 76, 24, 21060);
-            yield return ([1, 1, 0], 140, 36, 21090);
-            yield return ([0, 0, 1, 1], 144, 40, 21100);
+            yield return ([0], 4UL, 4UL, 21010UL);
+            yield return ([1], 68UL, 16UL, 21040UL);
+            yield return ([0, 0, 1], 76UL, 24UL, 21060UL);
+            yield return ([1, 1, 0], 140UL, 36UL, 21090UL);
+            yield return ([0, 0, 1, 1], 144UL, 40UL, 21100UL);
         }
         [TestCaseSource(nameof(TestCaseSource))]
-        public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
+        public void Intrinsic_cost_is_calculated_properly((Transaction Tx, ulong Cost, string Description) testCase)
         {
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance);
             Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(Standard: testCase.Cost, FloorGas: 0)));
         }
 
         [TestCaseSource(nameof(AccessTestCaseSource))]
-        public void Intrinsic_cost_is_calculated_properly((List<object> orderQueue, long Cost) testCase)
+        public void Intrinsic_cost_is_calculated_properly((List<object> orderQueue, ulong Cost) testCase)
         {
             AccessList.Builder accessListBuilder = new();
             foreach (object o in testCase.orderQueue)
@@ -106,7 +106,7 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCaseSource(nameof(DataTestCaseSource))]
-        public void Intrinsic_cost_of_data_is_calculated_properly((byte[] Data, int OldCost, int NewCost, int FloorCost) testCase)
+        public void Intrinsic_cost_of_data_is_calculated_properly((byte[] Data, ulong OldCost, ulong NewCost, ulong FloorCost) testCase)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved().WithData(testCase.Data).TestObject;
 
@@ -118,12 +118,12 @@ namespace Nethermind.Evm.Test
                 bool isAfterRepricing = options.HasFlag(GasOptions.AfterRepricing);
                 bool floorCostEnabled = options.HasFlag(GasOptions.FloorCostEnabled);
 
-                Assert.That(gas.Standard, Is.EqualTo(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost)), $"{spec.Name}: {testCase.Data.ToHexString()}");
-                Assert.That(gas.FloorGas, Is.EqualTo(floorCostEnabled ? testCase.FloorCost : 0));
+                Assert.That(gas.Standard, Is.EqualTo(21000UL + (isAfterRepricing ? testCase.NewCost : testCase.OldCost)), $"{spec.Name}: {testCase.Data.ToHexString()}");
+                Assert.That(gas.FloorGas, Is.EqualTo(floorCostEnabled ? testCase.FloorCost : 0UL));
 
                 Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(
-                        Standard: 21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost),
-                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0)), $"{spec.Name}: {testCase.Data.ToHexString()}");
+                        Standard: 21000UL + (isAfterRepricing ? testCase.NewCost : testCase.OldCost),
+                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0UL)), $"{spec.Name}: {testCase.Data.ToHexString()}");
             }
 
             Test(Homestead.Instance, GasOptions.None);
@@ -142,10 +142,10 @@ namespace Nethermind.Evm.Test
             Test(Prague.Instance, GasOptions.AfterRepricing | GasOptions.FloorCostEnabled);
         }
 
-        public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> AuthorizationListTestCaseSource()
+        public static IEnumerable<(AuthorizationTuple[] contractCode, ulong expectedCost)> AuthorizationListTestCaseSource()
         {
             yield return (
-                [], 0);
+                [], 0UL);
             yield return (
                 [new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
@@ -199,7 +199,7 @@ namespace Nethermind.Evm.Test
                GasCostOf.NewAccount * 3);
         }
         [TestCaseSource(nameof(AuthorizationListTestCaseSource))]
-        public void Calculate_TxHasAuthorizationList_ReturnsExpectedCostOfTx((AuthorizationTuple[] AuthorizationList, long ExpectedCost) testCase)
+        public void Calculate_TxHasAuthorizationList_ReturnsExpectedCostOfTx((AuthorizationTuple[] AuthorizationList, ulong ExpectedCost) testCase)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
                 .WithAuthorizationCode(testCase.AuthorizationList)
@@ -252,8 +252,8 @@ namespace Nethermind.Evm.Test
 
             // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000, create regular = CREATE_ACCESS (+ TRANSFER_LOG
             // for the value endowment), create state = NEW_ACCOUNT.
-            long expectedRegular = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780;
-            long expectedState = GasCostOf.CreateState;
+            ulong expectedRegular = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780;
+            ulong expectedState = GasCostOf.CreateState;
             Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
             Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
         }
@@ -267,9 +267,9 @@ namespace Nethermind.Evm.Test
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
             // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000; value-bearing recipient touch + authorization.
-            long recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
-            long expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular;
-            long expectedState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
+            ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+            ulong expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular;
+            ulong expectedState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
             Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
         }
 
@@ -282,7 +282,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            long regularPlusState = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780 + GasCostOf.CreateState;
+            ulong regularPlusState = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780 + GasCostOf.CreateState;
             Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regularPlusState));
         }
 
@@ -290,11 +290,11 @@ namespace Nethermind.Evm.Test
         // recipient cold/warm touch + value STATE_UPDATE), matching the spec's reference-case table.
         public enum Recipient { NewAccount, ExistingEoa, Contract, Precompile, SelfTransfer, EmptyZeroValue }
 
-        private const long TxBaseEip2780 = GasCostOf.TransactionEip2780;        // 4500
-        private const long TransferLogEip2780 = GasCostOf.TransferLogEip2780;   // 1756
-        private const long ColdNoCode = GasCostOf.ColdAccountAccessNoCodeEip2780; // 500
-        private const long ColdCode = GasCostOf.ColdAccountAccess;              // 2600
-        private const long StateUpdate = GasCostOf.StateUpdateEip2780;          // 1000
+        private const ulong TxBaseEip2780 = GasCostOf.TransactionEip2780;        // 4500
+        private const ulong TransferLogEip2780 = GasCostOf.TransferLogEip2780;   // 1756
+        private const ulong ColdNoCode = GasCostOf.ColdAccountAccessNoCodeEip2780; // 500
+        private const ulong ColdCode = GasCostOf.ColdAccountAccess;              // 2600
+        private const ulong StateUpdate = GasCostOf.StateUpdateEip2780;          // 1000
 
         public static IEnumerable<TestCaseData> Eip2780IntrinsicCases()
         {

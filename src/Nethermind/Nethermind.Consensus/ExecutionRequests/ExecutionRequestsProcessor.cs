@@ -12,8 +12,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Evm.TransactionProcessing;
 using System;
 using Nethermind.Core.Messages;
 
@@ -24,28 +24,28 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    private const long GasLimit = Eip8037Constants.SystemCallGasLimit;
+    private const ulong GasLimit = Eip8037Constants.SystemCallGasLimit;
 
     private readonly ITransactionProcessor _transactionProcessor;
 
     private readonly SystemCall _withdrawalTransaction = new()
     {
-        Value = UInt256.Zero,
+        Value = 0,
         Data = Array.Empty<byte>(),
         To = Eip7002Constants.WithdrawalRequestPredeployAddress,
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
-        GasPrice = UInt256.Zero,
+        GasPrice = 0,
     };
 
     private readonly SystemCall _consolidationTransaction = new()
     {
-        Value = UInt256.Zero,
+        Value = 0,
         Data = Array.Empty<byte>(),
         To = Eip7251Constants.ConsolidationRequestPredeployAddress,
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
-        GasPrice = UInt256.Zero,
+        GasPrice = 0,
     };
 
     private readonly SystemCall _builderDepositTransaction = new()
@@ -146,6 +146,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         using ArrayPoolListRef<byte> depositRequests = new(receipts.Length * 2 + 1);
         depositRequests.Add((byte)ExecutionRequestType.Deposit);
 
+        Span<byte> depositRequestBuffer = stackalloc byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
         for (int i = 0; i < receipts.Length; i++)
         {
             LogEntry[]? logEntries = receipts[i].Logs;
@@ -156,9 +157,8 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     LogEntry log = logEntries[j];
                     if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
                     {
-                        Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
                         DecodeDepositRequest(block, log, depositRequestBuffer);
-                        depositRequests.AddRange(depositRequestBuffer.ToArray());
+                        depositRequests.AddRange(depositRequestBuffer);
                     }
                 }
             }

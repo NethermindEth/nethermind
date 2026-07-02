@@ -28,9 +28,9 @@ public class PayloadAttributes
 
     public ulong? SlotNumber { get; set; }
 
-    public long? TargetGasLimit { get; set; }
+    public ulong? TargetGasLimit { get; set; }
 
-    public virtual long GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator)
+    public virtual ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator)
         => gasLimitCalculator.GetGasLimit(parent, TargetGasLimit);
 
     public override string ToString() => ToString(string.Empty);
@@ -139,8 +139,8 @@ public class PayloadAttributes
 
         if (TargetGasLimit is not null)
         {
-            BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(position, sizeof(long)), TargetGasLimit.Value);
-            position += sizeof(long);
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), TargetGasLimit.Value);
+            position += sizeof(ulong);
         }
 
         return position;

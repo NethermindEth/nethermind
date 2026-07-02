@@ -469,10 +469,10 @@ public class BlockValidator(
     {
         // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
         // validation reaches this helper after execution with only GeneratedBlockAccessList.
-        int itemCount = block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0;
-        long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
+        ulong itemCount = (ulong)(block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0);
+        ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
-        if (itemCount > maxBalItems)
+        if (itemCount > 0 && itemCount > maxBalItems)
         {
             error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");

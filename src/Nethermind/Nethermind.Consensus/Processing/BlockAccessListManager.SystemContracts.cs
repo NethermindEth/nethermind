@@ -46,8 +46,8 @@ public partial class BlockAccessListManager
             return;
         }
 
-        stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, UInt256.Zero);
-        stateProvider.CreateAccount(withdrawalContractAddress, UInt256.Zero, UInt256.Zero);
+        stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
+        stateProvider.CreateAccount(withdrawalContractAddress, UInt256.Zero);
         stateProvider.Commit(spec.ForSystemTransaction(true, false), commitRoots: false);
     }
 
