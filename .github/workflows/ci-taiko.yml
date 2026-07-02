@@ -138,6 +138,8 @@ jobs:
 
             yq eval '.services.l2_nmc.pull_policy = "never"' -i "$docker_compose_file"
 
+            yq eval '.services.l2_nmc.command += ["--JsonRpc.StrictHexFormat", "false"]' -i "$docker_compose_file"
+
             echo "Updated image in docker-compose.yml:"
             yq eval '.services.l2_nmc.image' "$docker_compose_file"
 
