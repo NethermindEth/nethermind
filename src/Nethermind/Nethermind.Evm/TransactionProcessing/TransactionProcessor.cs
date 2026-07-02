@@ -316,7 +316,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     int count = destroyList.Count;
                     bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                     bool tracingRefunds = tracer.IsTracingRefunds;
-                    long destroyRefund = spec.GasCosts.DestroyRefund;
+                    long destroyRefund = (long)spec.GasCosts.DestroyRefund;
                     if (count > 1)
                     {
                         Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
