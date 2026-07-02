@@ -41,39 +41,8 @@ internal class XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blo
 
     protected override Block PrepareBlockForProcessing(Block suggestedBlock)
     {
-        //TODO find a better way to do this copy
         XdcBlockHeader bh = suggestedBlock.Header as XdcBlockHeader;
-        XdcBlockHeader headerForProcessing = new(
-            bh.ParentHash,
-            bh.UnclesHash,
-            bh.Beneficiary,
-            bh.Difficulty,
-            bh.Number,
-            bh.GasLimit,
-            bh.Timestamp,
-            bh.ExtraData,
-            bh.IsSelfMined
-        )
-        {
-            Bloom = Bloom.Empty,
-            Author = bh.Author,
-            Hash = bh.Hash,
-            MixHash = bh.MixHash,
-            Nonce = bh.Nonce,
-            TxRoot = bh.TxRoot,
-            TotalDifficulty = bh.TotalDifficulty,
-            ReceiptsRoot = bh.ReceiptsRoot,
-            BaseFeePerGas = bh.BaseFeePerGas,
-            WithdrawalsRoot = bh.WithdrawalsRoot,
-            RequestsHash = bh.RequestsHash,
-            IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
-            ExcessBlobGas = bh.ExcessBlobGas,
-            BlobGasUsed = bh.BlobGasUsed,
-            Validator = bh.Validator,
-            Validators = bh.Validators,
-            Penalties = bh.Penalties,
-        };
+        XdcBlockHeader headerForProcessing = bh.CreateHeaderForProcessing();
 
         if (!ShouldComputeStateRoot(bh))
         {

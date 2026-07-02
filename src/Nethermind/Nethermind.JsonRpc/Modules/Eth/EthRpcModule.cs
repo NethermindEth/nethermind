@@ -196,7 +196,7 @@ public partial class EthRpcModule(
         return Task.FromResult(ResultWrapper<UInt256?>.Success(account.Balance));
     }
 
-    public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
+    public ResultWrapper<byte[]> eth_getStorageAt(Address address, StorageIndex positionIndex,
         BlockParameter? blockParameter = null)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
@@ -928,7 +928,7 @@ public partial class EthRpcModule(
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
     {
         if (storageKeys.Count > GetProofStorageKeyLimit)
         {
