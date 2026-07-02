@@ -21,7 +21,8 @@ internal class XdcSealValidator(
     ISpecProvider specProvider) : ISealValidator
 {
     private readonly EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here
-    private readonly XdcHeaderDecoder _headerDecoder = new();
+
+    protected virtual RlpDecoder<BlockHeader> HeaderDecoder { get; } = new XdcHeaderDecoder();
 
     protected IMasternodesCalculator MasternodesCalculator { get; } = masternodesCalculator;
     protected ISpecProvider SpecProvider { get; } = specProvider;
@@ -142,7 +143,7 @@ internal class XdcSealValidator(
                 return false;
 
             KeccakRlpWriter writer = new();
-            _headerDecoder.Encode(ref writer, xdcHeader, RlpBehaviors.ForSealing);
+            HeaderDecoder.Encode(ref writer, xdcHeader, RlpBehaviors.ForSealing);
             ValueHash256 hash = writer.GetValueHash();
             Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), in hash);
 
