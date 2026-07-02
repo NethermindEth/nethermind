@@ -20,7 +20,6 @@ public class BlockTreeTestDouble : IBlockTree
 {
     private Block? _head;
     private BlockHeader? _bestSuggestedHeader;
-    private ulong? _bestPersistedState;
     private BlockHeader? _lowestInsertedHeader;
     private BlockHeader? _lowestInsertedBeaconHeader;
     private (ulong BlockNumber, Hash256 BlockHash) _syncPivot;
@@ -97,11 +96,6 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual Hash256? FinalizedHash => Inner?.FinalizedHash;
     public virtual Hash256? SafeHash => Inner?.SafeHash;
     public virtual ulong LastFinalizedBlockLevel => Inner?.LastFinalizedBlockLevel ?? 0UL;
-    public virtual ulong? BestPersistedState
-    {
-        get => Inner?.BestPersistedState ?? _bestPersistedState;
-        set => _bestPersistedState = value;
-    }
 
     public virtual BlockHeader FindBestSuggestedHeader() =>
         Inner?.FindBestSuggestedHeader() ?? throw new NotImplementedException();

@@ -242,7 +242,7 @@ public class TestBlockchain : IDisposable
     /// <remarks>
     /// Backend-agnostic tests can leave this at the default. Pin to <c>false</c> for tests that assert
     /// patricia-specific behaviour (trie structure, state root consistency across reorgs, full pruning, trie
-    /// healing, <c>BestPersistedState</c>, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix.
+    /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix.
     /// </remarks>
     public bool UseFlatDb { get; set; } = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
 

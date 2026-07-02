@@ -34,6 +34,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
+            .AddSingleton<FlatStateBoundary>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.
             .AddSingleton<PruningTrieStateAdminRpcModuleStub>()

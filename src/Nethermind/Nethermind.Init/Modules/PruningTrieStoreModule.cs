@@ -90,9 +90,19 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
             .AddSingleton<PruningTrieStateFactory>()
             .AddSingleton<PruningTrieStateFactoryOutput>()
 
-            // IStateBoundaryWriter is trie-specific (flat tracks state via PersistenceManager directly).
-            // Mapped from the trie factory output so it stays unresolved when flat is active.
-            .Map<IStateBoundaryWriter, PruningTrieStateFactoryOutput>((o) => (IStateBoundaryWriter)o.WorldStateManager)
+            // The trie backend's IStateBoundary. Registered here (not off IWorldStateManager) so it
+            // can be injected into the block tree, whose constructor runs before the manager graph.
+            .AddSingleton<StateBoundaryStore>(ctx =>
+            {
+                IPruningConfig pruningConfig = ctx.Resolve<IPruningConfig>();
+                ulong? retentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null;
+                return new StateBoundaryStore(
+                    ctx.ResolveKeyed<IDb>(DbNames.State),
+                    ctx.ResolveKeyed<IDb>(DbNames.BlockInfos),
+                    retentionWindowBlocks,
+                    ctx.Resolve<ILogManager>());
+            })
+            .Map<IStateBoundaryWriter, StateBoundaryStore>((store) => store)
 
             // Sync components backed by the patricia trie store
             .AddSingleton<FullStateFinder>()

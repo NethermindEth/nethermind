@@ -197,6 +197,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         public TestFullPruningDb FullPruningDb { get; }
         public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
         public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
+        public IStateBoundary StateBoundary { get; } = Substitute.For<IStateBoundary>();
         public IStateReader StateReader { get; }
         public FullPruner Pruner { get; }
         public MemDb TrieDb { get; }
@@ -247,6 +248,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 },
                 BlockTree,
                 Substitute.For<IStateBoundaryWriter>(),
+                StateBoundary,
                 StateReader,
                 ProcessExitSource,
                 _chainEstimations,
@@ -305,7 +307,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             for (int i = 0; i < count; i++)
             {
                 ulong number = _head + 1ul;
-                BlockTree.BestPersistedState.Returns(_head);
+                StateBoundary.BestPersistedState.Returns(_head);
                 Block head = Build.A.Block.WithStateRoot(_stateRoot).WithNumber(number).TestObject;
                 BlockTree.Head.Returns(head);
                 BlockTree.FindHeader(number).Returns(head.Header);

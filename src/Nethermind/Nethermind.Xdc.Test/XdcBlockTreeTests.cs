@@ -153,6 +153,7 @@ internal class XdcBlockTreeTests
             builder.ChainLevelInfoRepository,
             MainnetSpecProvider.Instance,
             builder.SyncConfig,
+            builder.StateBoundary,
             LimboLogs.Instance);
 
         return (blockTree, consensus);
