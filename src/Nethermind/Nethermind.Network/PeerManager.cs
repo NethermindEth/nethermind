@@ -881,6 +881,16 @@ namespace Nethermind.Network
                 => _logger.Trace($"PROCESS OUTGOING {id}");
         }
 
+        public void OnP2PProtocolInitialized(ISession session)
+        {
+            // The margin-admitted overflow is shed here, now that the P2P protocol can carry a proper
+            // disconnect message. Trusted peers are exempt via the session-level disconnect suppression.
+            if (ActivePeersCount > MaxActivePeers)
+            {
+                session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{ActivePeersCount}");
+            }
+        }
+
         private void ProcessIncomingConnection(ISession session)
         {
             if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))

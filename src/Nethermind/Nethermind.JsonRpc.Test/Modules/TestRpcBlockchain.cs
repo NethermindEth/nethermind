@@ -240,6 +240,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IRlpxHost>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<IProtocolValidator>(),
+                Substitute.For<IPeerManager>(),
                 Substitute.For<INetworkStorage>(),
                 Array.Empty<IProtocolHandlerFactory>(),
                 [new DefaultP2PCapabilityResolver()],

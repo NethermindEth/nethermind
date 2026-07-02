@@ -304,6 +304,34 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(21), "trusted peers are additive on top of the limit (geth)");
         }
 
+        // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,
+        // applied when a session completes the P2P Hello exchange.
+        [TestCase(11, 10, true)]
+        [TestCase(10, 10, false)]
+        [TestCase(9, 10, false)]
+        public async Task On_max_active_peer_limit(int activePeerCount, int maxActivePeer, bool shouldDisconnect)
+        {
+            await using Context ctx = new(maxActivePeers: maxActivePeer);
+            PrivateKeyGenerator keyGenerator = new();
+            for (int i = 0; i < activePeerCount; i++)
+            {
+                PublicKey key = keyGenerator.Generate().PublicKey;
+                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.4", 30303));
+            }
+
+            ISession session = Substitute.For<ISession>();
+            ctx.PeerManager.OnP2PProtocolInitialized(session);
+
+            if (shouldDisconnect)
+            {
+                session.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            }
+            else
+            {
+                session.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            }
+        }
+
         [TestCase(true, ConnectionDirection.In)]
         [TestCase(false, ConnectionDirection.In)]
         // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test
