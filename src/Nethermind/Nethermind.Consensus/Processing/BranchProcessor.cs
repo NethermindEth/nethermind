@@ -68,6 +68,8 @@ public class BranchProcessor(
         else
         {
             worldStateCloser = stateProvider.BeginScope(baseBlock);
+            // DIAGNOSTIC: log the base header the main processing scope is opened on (esp. on restart re-run).
+            if (_logger.IsInfo) _logger.Info($"[MAIN-SCOPE-OPEN] base #{baseBlock?.Number} {baseBlock?.Hash} stateRoot {baseBlock?.StateRoot}");
         }
 
         CancellationTokenSource? backgroundCancellation = new();
