@@ -4,4 +4,8 @@
     <RootNamespace>Nethermind.RpcTests.Common</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Numerics.Int256" />
+  </ItemGroup>
+
 </Project>

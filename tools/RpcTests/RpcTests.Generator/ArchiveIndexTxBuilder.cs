@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
+using Nethermind.Int256;
 
 namespace Nethermind.RpcTests.Generator;
 
@@ -146,7 +144,12 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
         if (response["result"]?.GetValue<string>() is not { } hex) return null;
         ReadOnlySpan<char> chars = hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? hex.AsSpan(2) : hex;
         if (chars.Length != ArchiveProbeReturn.Size * 2) return null;
-        return MemoryMarshal.Read<ArchiveProbeReturn>(Convert.FromHexString(chars));
+        ReadOnlySpan<byte> bytes = Convert.FromHexString(chars);
+        return new ArchiveProbeReturn(
+            new UInt256(bytes[0..32], isBigEndian: true),
+            new UInt256(bytes[32..64], isBigEndian: true),
+            new UInt256(bytes[64..96], isBigEndian: true),
+            new UInt256(bytes[96..128], isBigEndian: true));
     }
 
     private async Task<long> ResolveBlockAsync(CancellationToken ct)
@@ -499,65 +502,15 @@ internal sealed record ArchiveIndexProbeResult(
 /// <summary>The fixed 4-word struct the probe bytecode <c>RETURN</c>s: XOR fingerprints and non-zero counters for
 /// accounts and storage. Byte-identical structs from two nodes mean their archive indices resolved the whole read
 /// set identically.</summary>
-[StructLayout(LayoutKind.Sequential)]
-internal readonly struct ArchiveProbeReturn : IEquatable<ArchiveProbeReturn>
+internal readonly record struct ArchiveProbeReturn(
+    UInt256 AccountFingerprint,
+    UInt256 StorageFingerprint,
+    UInt256 NonZeroAccounts,
+    UInt256 NonZeroSlots
+)
 {
-    public const int Size = 4 * EvmWord.Length;
+    public const int Size = 4 * 32;
 
-    public readonly EvmWord AccountFingerprint;
-    public readonly EvmWord StorageFingerprint;
-    private readonly EvmWord _nonZeroAccounts;
-    private readonly EvmWord _nonZeroSlots;
-
-    public ulong NonZeroAccounts => _nonZeroAccounts.AsCount();
-    public ulong NonZeroSlots => _nonZeroSlots.AsCount();
-
-    public bool Equals(ArchiveProbeReturn other) =>
-        AccountFingerprint.Equals(other.AccountFingerprint) &&
-        StorageFingerprint.Equals(other.StorageFingerprint) &&
-        _nonZeroAccounts.Equals(other._nonZeroAccounts) &&
-        _nonZeroSlots.Equals(other._nonZeroSlots);
-
-    public override bool Equals(object? obj) => obj is ArchiveProbeReturn other && Equals(other);
-    public override int GetHashCode() => HashCode.Combine(AccountFingerprint, StorageFingerprint, _nonZeroAccounts, _nonZeroSlots);
     public override string ToString() =>
-        $"acctFpr={AccountFingerprint.ToHex()} storageFpr={StorageFingerprint.ToHex()} nonZeroAccts={NonZeroAccounts} nonZeroSlots={NonZeroSlots}";
-}
-
-/// <summary>A 256-bit EVM word (big-endian), blittable so a call's return data marshals straight into
-/// <see cref="ArchiveProbeReturn"/>.</summary>
-[InlineArray(Length)]
-internal struct EvmWord : IEquatable<EvmWord>
-{
-    public const int Length = 32;
-    private byte _element;
-
-    public readonly string ToHex()
-    {
-        ReadOnlySpan<byte> bytes = this;
-        return "0x" + Convert.ToHexString(bytes).ToLowerInvariant();
-    }
-
-    /// <summary>The low 64 bits as an unsigned integer, used for the small counters (fingerprints ignore it).</summary>
-    public readonly ulong AsCount()
-    {
-        ReadOnlySpan<byte> bytes = this;
-        return BinaryPrimitives.ReadUInt64BigEndian(bytes[24..]);
-    }
-
-    public readonly bool Equals(EvmWord other)
-    {
-        ReadOnlySpan<byte> a = this, b = other;
-        return a.SequenceEqual(b);
-    }
-
-    public readonly override bool Equals(object? obj) => obj is EvmWord other && Equals(other);
-
-    public readonly override int GetHashCode()
-    {
-        ReadOnlySpan<byte> bytes = this;
-        HashCode hash = new();
-        hash.AddBytes(bytes);
-        return hash.ToHashCode();
-    }
+        $"acctFpr=0x{Convert.ToHexString(AccountFingerprint.ToBigEndian()).ToLowerInvariant()} storageFpr=0x{Convert.ToHexString(StorageFingerprint.ToBigEndian()).ToLowerInvariant()} nonZeroAccts={NonZeroAccounts} nonZeroSlots={NonZeroSlots}";
 }
