@@ -1,16 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Find;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
 [RpcModule(ModuleType.Admin)]
-public interface IPruningTrieStateAdminRpcModule : IRpcModule
+public interface IVerifyTrieAdminRpcModule : IRpcModule
 {
-    [JsonRpcMethod(Description = "Runs full pruning if enabled.",
+    [JsonRpcMethod(Description = "Runs VerifyTrie.",
         EdgeCaseHint = "",
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
-    ResultWrapper<PruningStatus> admin_prune();
+    ResultWrapper<string> admin_verifyTrie(BlockParameter block);
 }
