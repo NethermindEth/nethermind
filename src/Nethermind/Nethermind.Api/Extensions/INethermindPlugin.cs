@@ -18,8 +18,6 @@ public interface INethermindPlugin
 
     Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
-    Task InitNetworkProtocol() => Task.CompletedTask;
-
     Task InitRpcModules() => Task.CompletedTask;
     bool MustInitialize => false;
     bool Enabled { get; }
