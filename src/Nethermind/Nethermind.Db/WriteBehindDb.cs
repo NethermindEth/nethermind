@@ -123,9 +123,13 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
 
     private void FlushKey(scoped ReadOnlySpan<byte> key)
     {
-        if (_buffer.TryRemove(GetKey(key), out byte[]? v))
+        byte[] k = GetKey(key);
+        if (_buffer.TryGetValue(k, out byte[]? v))
         {
+            // Write to inner FIRST, then drop from the buffer, so the key is always readable from one or the
+            // other — never a window where it is in neither (which a concurrent newPayload read could hit).
             if (v is null) _inner.Remove(key); else _inner.Set(key, v);
+            _buffer.TryRemove(new KeyValuePair<byte[], byte[]?>(k, v)); // remove only if still the same value
         }
     }
 
@@ -148,13 +152,21 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
     private void DrainAll()
     {
         if (_buffer.IsEmpty) return;
-        using IWriteBatch batch = _inner.StartWriteBatch();
-        foreach (KeyValuePair<byte[], byte[]?> kv in _buffer)
+        // Write-before-remove: stage all pending entries into the batch, commit them to the inner db, and only
+        // THEN remove them from the buffer. Until removal the buffer still serves reads, so a key is never
+        // simultaneously absent from both the buffer and the inner db (no read-miss window vs. the next block).
+        List<KeyValuePair<byte[], byte[]?>> drained = [];
+        using (IWriteBatch batch = _inner.StartWriteBatch())
         {
-            if (_buffer.TryRemove(kv.Key, out byte[]? v))
+            foreach (KeyValuePair<byte[], byte[]?> kv in _buffer)
             {
-                if (v is null) batch.Remove(kv.Key); else batch.Set(kv.Key, v);
+                if (kv.Value is null) batch.Remove(kv.Key); else batch.Set(kv.Key, kv.Value);
+                drained.Add(kv);
             }
+        } // batch is committed to the inner db here
+        foreach (KeyValuePair<byte[], byte[]?> kv in drained)
+        {
+            _buffer.TryRemove(kv); // remove only if unchanged; inner now holds the value
         }
     }
 
