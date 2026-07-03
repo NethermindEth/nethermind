@@ -51,7 +51,7 @@ namespace Nethermind.Db
                 // 30 because of the 1 << 31 become negative
                 if (value is <= 0 or > 30)
                 {
-                    throw new InvalidOperationException($"Shard bit count must be between 0 and 30.");
+                    throw new InvalidOperationException($"{nameof(DirtyNodeShardBit)} must be between 1 and 30 (the dirty node shard count is 2^{nameof(DirtyNodeShardBit)}).");
                 }
 
                 _dirtyNodeShardBit = value;

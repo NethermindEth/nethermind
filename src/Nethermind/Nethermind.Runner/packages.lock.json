@@ -908,8 +908,7 @@
       "nethermind.kademlia": {
         "type": "Project",
         "dependencies": {
-          "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )"
+          "Collections.Pooled": "[1.0.82, )"
         }
       },
       "nethermind.keystore": {
@@ -996,6 +995,7 @@
           "Nethermind.Crypto": "[1.40.0-unstable, )",
           "Nethermind.Facade": "[1.40.0-unstable, )",
           "Nethermind.Kademlia": "[1.40.0-unstable, )",
+          "Nethermind.Logging.Microsoft": "[1.40.0-unstable, )",
           "Nethermind.Network": "[1.40.0-unstable, )",
           "Nethermind.Network.Enr": "[1.40.0-unstable, )"
         }
