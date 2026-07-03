@@ -373,6 +373,29 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         };
     }
 
+    public long EstimatedCount
+    {
+        get
+        {
+            if (_isDisposed)
+            {
+                return 0;
+            }
+
+            try
+            {
+                return FetchTotalPropertyValue("rocksdb.estimate-num-keys");
+            }
+            catch (RocksDbSharpException e)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Failed to read DB key count estimate {e.Message}");
+            }
+
+            return 0;
+        }
+    }
+
     private long GetSize()
     {
         try
