@@ -167,34 +167,15 @@ public class BackgroundTaskSchedulerTests
         Assert.That(waitSignal.WaitOne(TimeSpan.FromSeconds(5)), Is.True);
     }
 
-    [Test]
-    public async Task Test_branch_completion_without_block_processed_restores_uncancelled_token()
+    [TestCase(false, TestName = "Test_branch_completion_without_block_processed_restores_uncancelled_token")]
+    [TestCase(true, TestName = "Test_branch_completion_with_fresh_args_restores_uncancelled_token")]
+    public async Task Test_branch_completion_restores_uncancelled_token(bool useFreshCompletionArgs)
     {
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
         BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
-        RaiseBlocksProcessed(branchProcessing);
-
-        bool wasCancelled = true;
-        ManualResetEvent waitSignal = new(false);
-        Assert.That(scheduler.TryScheduleTask(1, (_, token) =>
-        {
-            wasCancelled = token.IsCancellationRequested;
-            waitSignal.Set();
-            return Task.CompletedTask;
-        }), Is.True);
-
-        Assert.That(waitSignal.WaitOne(TimeSpan.FromSeconds(5)), Is.True);
-        Assert.That(wasCancelled, Is.False);
-    }
-
-    [Test]
-    public async Task Test_branch_completion_with_fresh_args_restores_uncancelled_token()
-    {
-        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
-        RaiseBlocksProcessing();
-
-        RaiseBlocksProcessed(new BlocksProcessingEventArgs(null));
+        BlocksProcessingEventArgs completionArgs = useFreshCompletionArgs ? new BlocksProcessingEventArgs(null) : branchProcessing;
+        RaiseBlocksProcessed(completionArgs);
 
         bool wasCancelled = true;
         ManualResetEvent waitSignal = new(false);

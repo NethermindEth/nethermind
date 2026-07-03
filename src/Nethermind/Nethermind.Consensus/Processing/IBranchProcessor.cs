@@ -28,17 +28,17 @@ public interface IBranchProcessor
         CancellationToken token = default);
 
     /// <summary>
-    /// Fired after a block has been processed.
+    /// Fired after a single block has been processed.
     /// </summary>
     event EventHandler<BlockProcessedEventArgs> BlockProcessed;
 
     /// <summary>
-    /// Fired when a branch is being processed.
+    /// Fired before processing a branch, which may contain multiple blocks.
     /// </summary>
     event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
 
     /// <summary>
-    /// Fired after branch processing finishes.
+    /// Fired after processing a branch, which may contain multiple blocks, regardless of the processing result.
     /// </summary>
     event EventHandler<BlocksProcessingEventArgs> BlocksProcessed;
 

@@ -109,7 +109,7 @@ public class BlockchainProcessorTests
                     {
                         lock (_gate)
                         {
-                            bool notYet = false;
+                            bool done = true;
                             for (int i = nextBlock; i < suggestedBlocks.Count; i++)
                             {
                                 Block suggestedBlock = suggestedBlocks[i];
@@ -123,7 +123,7 @@ public class BlockchainProcessorTests
                                         throw new InvalidBlockException(suggestedBlock, "allowed to fail");
                                     }
 
-                                    notYet = true;
+                                    done = false;
                                     break;
                                 }
 
@@ -131,15 +131,13 @@ public class BlockchainProcessorTests
                                 nextBlock = i + 1;
                             }
 
-                            if (notYet)
-                            {
-                                Monitor.Wait(_gate, MockRecheckInterval);
-                            }
-                            else
+                            if (done)
                             {
                                 _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
                                 return suggestedBlocks.ToArray();
                             }
+
+                            Monitor.Wait(_gate, MockRecheckInterval);
                         }
                     }
                 }
