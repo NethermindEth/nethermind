@@ -25,17 +25,21 @@ namespace Nethermind.Consensus.Processing
         public void RecoverData(Block block)
         {
             Transaction[] txs = block.Transactions;
-            if (txs.Length == 0 || AllSendersRecovered(txs))
+            if (txs.Length == 0)
                 return;
 
-            RecoverData(txs, _specProvider.GetSpec(block.Header));
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+                return;
+
+            RecoverData(txs, releaseSpec);
         }
 
         /// <summary>
-        /// Exact per-tx check (senders and EIP-7702 authorities) so a partially recovered block is
-        /// completed rather than skipped by a first-tx heuristic.
+        /// Exact per-tx check (senders and, when enabled, EIP-7702 authorities) so a partially
+        /// recovered block is completed rather than skipped by a first-tx heuristic.
         /// </summary>
-        private static bool AllSendersRecovered(Transaction[] txs)
+        private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)
         {
             foreach (Transaction tx in txs)
             {
@@ -45,7 +49,7 @@ namespace Nethermind.Consensus.Processing
                 if (tx.SenderAddress is null)
                     return false;
 
-                if (tx.HasAuthorizationList)
+                if (checkAuthorities && tx.HasAuthorizationList)
                 {
                     foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
                     {
@@ -66,6 +70,8 @@ namespace Nethermind.Consensus.Processing
         /// Lets callers overlap recovery with other block-assembly work (e.g. transaction-root
         /// computation on the engine <c>newPayload</c> path). Already-recovered transactions are skipped.
         /// </remarks>
+        /// <param name="txs">The transactions to recover senders and authorities for.</param>
+        /// <param name="releaseSpec">The spec of the block the transactions belong to.</param>
         public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec)
         {
             if (txs.Length == 0)

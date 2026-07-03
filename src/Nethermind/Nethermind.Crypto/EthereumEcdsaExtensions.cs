@@ -17,6 +17,9 @@ public static class EthereumEcdsaExtensions
     /// Cross-context cache of recovered senders keyed by transaction hash: a transaction recovered
     /// on mempool ingress becomes a lookup on block arrival. Legacy transactions are excluded —
     /// their signing hash depends on the ambient chain id, so the hash alone is not a safe global key.
+    /// The key is sound only while <see cref="Transaction.Hash"/> matches the signed content; all
+    /// ingress paths derive it from the raw bytes, and callers must not mutate a transaction's
+    /// content or signature after the hash is set.
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
     private static readonly ClockCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);

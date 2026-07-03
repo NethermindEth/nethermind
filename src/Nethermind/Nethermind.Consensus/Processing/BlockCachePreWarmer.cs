@@ -286,11 +286,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         try
         {
-            if (tx.SenderAddress is not Address senderAddress)
-            {
-                return;
-            }
-
+            // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
+            Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 
             if (!worldState.AccountExists(senderAddress))

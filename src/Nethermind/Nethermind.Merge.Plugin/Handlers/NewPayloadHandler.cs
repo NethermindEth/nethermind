@@ -349,8 +349,18 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return parentProcessed || processTerminalBlock;
     }
 
+    /// <summary>Slack above head within which early recovery is worthwhile, mirroring the
+    /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
+    private const ulong NearHeadRecoveryDistance = 8;
+
     private Task StartSenderRecovery(ExecutionPayload request)
     {
+        // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
+        // the senders; they recover in the processing queue as before. On rejected payloads the
+        // task is deliberately fire-and-forget — see the catch below.
+        if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
+            return Task.CompletedTask;
+
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
             // TryGetBlock reports the decoding error; nothing to recover otherwise.

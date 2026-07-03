@@ -76,7 +76,7 @@ public class RecoverSignaturesTest
 
         sut.RecoverData(block);
 
-        Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+        Assert.That(tx.AuthorizationList[0].Authority, Is.EqualTo(authority.Address));
     }
 
     [Test]

@@ -217,7 +217,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             return _transactions = decoded;
         }
 
-        // Serial path doubles as the error-reporting fallback: it pinpoints the first invalid transaction.
+        // Serial path doubles as the failure fallback: it reproduces the exact single-threaded
+        // behavior, pinpointing the first invalid transaction.
         int i = 0;
         try
         {
@@ -225,8 +226,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
             for (i = 0; i < transactions.Length; i++)
             {
-                RlpReader ctx = new(txData[i]);
-                transactions[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                transactions[i] = DecodeTransaction(rlpDecoder, txData[i]);
             }
 
             return _transactions = transactions;
@@ -241,10 +241,16 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         }
     }
 
+    private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp)
+    {
+        RlpReader ctx = new(rlp);
+        return rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+    }
+
     private static bool TryDecodeTransactionsParallel(IRlpDecoder<Transaction> rlpDecoder, byte[][] txData, out Transaction[] transactions)
     {
         Transaction[] decoded = new Transaction[txData.Length];
-        int[] failed = { 0 };
+        bool[] failed = new bool[1];
 
         ParallelUnbalancedWork.For(
             0,
@@ -255,19 +261,20 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             {
                 try
                 {
-                    RlpReader ctx = new(state.txData[i]);
-                    state.decoded[i] = state.rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                    state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i]);
                 }
-                catch (Exception e) when (e is RlpException or ArgumentException)
+                catch
                 {
-                    Volatile.Write(ref state.failed[0], 1);
+                    // Any failure defers to the serial fallback, which reproduces the exact
+                    // single-threaded error behavior (first invalid index, exception surface).
+                    Volatile.Write(ref state.failed[0], true);
                 }
 
                 return state;
             });
 
         transactions = decoded;
-        return Volatile.Read(ref failed[0]) == 0;
+        return !Volatile.Read(ref failed[0]);
     }
 
     /// <summary>

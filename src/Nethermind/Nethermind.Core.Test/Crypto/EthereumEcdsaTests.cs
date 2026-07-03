@@ -91,52 +91,33 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(address, Is.EqualTo(key.Address));
         }
 
-        [Test]
-        public void RecoverAddress_typed_tx_repeat_is_served_from_sender_cache()
+        // Typed txs are served from the hash-keyed sender cache on repeat recovery; legacy txs
+        // are excluded (signing hash depends on the ambient chain id)
+        [TestCase(TxType.EIP1559, true)]
+        [TestCase(TxType.Legacy, false)]
+        public void RecoverAddress_repeat_recovery_uses_sender_cache_for_typed_tx_only(TxType txType, bool servedFromCache)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             PrivateKey keyA = TestItem.PrivateKeyA;
             PrivateKey keyB = TestItem.PrivateKeyB;
-            // Unique content so the process-wide cache cannot collide with other tests
-            static Transaction Create() => Build.A.Transaction
-                .WithType(TxType.EIP1559)
-                .WithNonce(0xC0FFEE)
+            // Unique content per case so the process-wide cache cannot collide across tests
+            static Transaction Create(TxType txType) => Build.A.Transaction
+                .WithType(txType)
+                .WithNonce(txType == TxType.Legacy ? 0xBEEFUL : 0xC0FFEEUL)
                 .TestObject;
 
-            Transaction txA = Create();
+            Transaction txA = Create(txType);
             ecdsa.Sign(keyA, txA);
             txA.Hash = txA.CalculateHash();
             Assert.That(ecdsa.RecoverAddress(txA), Is.EqualTo(keyA.Address));
 
-            // Same hash, different signature: a cache hit returns the previously recovered sender,
-            // a recompute would return keyB's address
-            Transaction txB = Create();
+            // Same hash, different signature: a cache hit returns the previously recovered
+            // sender, a recompute returns keyB's address
+            Transaction txB = Create(txType);
             ecdsa.Sign(keyB, txB);
             txB.Hash = txA.Hash;
 
-            Assert.That(ecdsa.RecoverAddress(txB), Is.EqualTo(keyA.Address));
-        }
-
-        [Test]
-        public void RecoverAddress_legacy_tx_is_not_served_from_sender_cache()
-        {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
-            PrivateKey keyA = TestItem.PrivateKeyA;
-            PrivateKey keyB = TestItem.PrivateKeyB;
-            static Transaction Create() => Build.A.Transaction
-                .WithNonce(0xBEEF)
-                .TestObject;
-
-            Transaction txA = Create();
-            ecdsa.Sign(keyA, txA);
-            txA.Hash = txA.CalculateHash();
-            Assert.That(ecdsa.RecoverAddress(txA), Is.EqualTo(keyA.Address));
-
-            Transaction txB = Create();
-            ecdsa.Sign(keyB, txB);
-            txB.Hash = txA.Hash;
-
-            Assert.That(ecdsa.RecoverAddress(txB), Is.EqualTo(keyB.Address));
+            Assert.That(ecdsa.RecoverAddress(txB), Is.EqualTo(servedFromCache ? keyA.Address : keyB.Address));
         }
 
         [Test]
