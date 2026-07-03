@@ -3,9 +3,11 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
@@ -196,6 +198,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
+    private const int MinTxsForParallelDecoding = 32;
+
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
@@ -207,10 +211,16 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
         if (rlpDecoder is null) return $"{nameof(Transaction)} decoder is not registered";
 
+        byte[][] txData = Transactions;
+        if (txData.Length >= MinTxsForParallelDecoding && TryDecodeTransactionsParallel(rlpDecoder, txData, out Transaction[] decoded))
+        {
+            return _transactions = decoded;
+        }
+
+        // Serial path doubles as the error-reporting fallback: it pinpoints the first invalid transaction.
         int i = 0;
         try
         {
-            byte[][] txData = Transactions;
             Transaction[] transactions = new Transaction[txData.Length];
 
             for (i = 0; i < transactions.Length; i++)
@@ -229,6 +239,35 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         {
             return $"Transaction {i} is not valid";
         }
+    }
+
+    private static bool TryDecodeTransactionsParallel(IRlpDecoder<Transaction> rlpDecoder, byte[][] txData, out Transaction[] transactions)
+    {
+        Transaction[] decoded = new Transaction[txData.Length];
+        int[] failed = { 0 };
+
+        ParallelUnbalancedWork.For(
+            0,
+            txData.Length,
+            ParallelUnbalancedWork.DefaultOptions,
+            (rlpDecoder, txData, decoded, failed),
+            static (i, state) =>
+            {
+                try
+                {
+                    RlpReader ctx = new(state.txData[i]);
+                    state.decoded[i] = state.rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                }
+                catch (Exception e) when (e is RlpException or ArgumentException)
+                {
+                    Volatile.Write(ref state.failed[0], 1);
+                }
+
+                return state;
+            });
+
+        transactions = decoded;
+        return Volatile.Read(ref failed[0]) == 0;
     }
 
     /// <summary>
