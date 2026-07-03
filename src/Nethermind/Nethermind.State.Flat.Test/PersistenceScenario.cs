@@ -765,9 +765,13 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         using (Assert.EnterMultipleScope())
+        {
             foreach ((string p, bool del) in RangeDeleteNodes)
-                Assert.That(reader.TryLoadStateRlp(TreePath.FromHexString(p), ReadFlags.None),
-                    del ? Is.Null : Is.EqualTo(rlp), p);
+            {
+                byte[]? node = reader.TryLoadStateRlp(TreePath.FromHexString(p), ReadFlags.None);
+                Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
+            }
+        }
     }
 
     [Test]
@@ -784,9 +788,13 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         using (Assert.EnterMultipleScope())
+        {
             foreach ((string p, bool del) in RangeDeleteNodes)
-                Assert.That(reader.TryLoadStorageRlp(account, TreePath.FromHexString(p), ReadFlags.None),
-                    del ? Is.Null : Is.EqualTo(rlp), p);
+            {
+                byte[]? node = reader.TryLoadStorageRlp(account, TreePath.FromHexString(p), ReadFlags.None);
+                Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
+            }
+        }
     }
 
     [Test]
