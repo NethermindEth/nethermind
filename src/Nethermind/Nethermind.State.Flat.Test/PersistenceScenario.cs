@@ -750,7 +750,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         ("aa".PadRight(64,'0'), false), ("ac".PadRight(64, '0'), false),
     ];
     private static readonly TreePath RangeDeleteFrom = TreePath.FromHexString("ab".PadRight(64, '0'));
-    private static readonly TreePath RangeDeleteTo   = TreePath.FromHexString("ab".PadRight(64, 'f'));
+    private static readonly TreePath RangeDeleteTo = TreePath.FromHexString("ab".PadRight(64, 'f'));
 
     [Test]
     public void TestDeleteStateTrieNodeRange()
