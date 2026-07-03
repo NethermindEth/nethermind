@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -24,8 +23,7 @@ public class BranchProcessor(
     IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
-    IBlockCachePreWarmer? preWarmer = null,
-    IBlocksConfig? blocksConfig = null)
+    IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
@@ -71,12 +69,6 @@ public class BranchProcessor(
         {
             worldStateCloser = stateProvider.BeginScope(baseBlock);
         }
-
-        // Lookahead warming spans the whole branch (unlike backgroundCancellation, which is cancelled per block).
-        int lookaheadDepth = blocksConfig?.LookaheadPreWarmBlocks ?? 0;
-        using CancellationTokenSource? lookaheadCancellation = lookaheadDepth > 0 && preWarmer is not null
-            ? CancellationTokenSource.CreateLinkedTokenSource(token)
-            : null;
 
         CancellationTokenSource? backgroundCancellation = new();
         Task? preWarmTask = null;
@@ -135,18 +127,6 @@ public class BranchProcessor(
                     if (result != default)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
-                    }
-                }
-
-                if (lookaheadCancellation is not null && notReadOnly && preBlockBaseBlock is not null)
-                {
-                    // Sliding window: the first block warms the whole window, every later one warms the single
-                    // block entering it. PreWarmLookahead drops work when saturated, so this never queues up.
-                    int windowEnd = Math.Min(i + lookaheadDepth, blocksCount - 1);
-                    for (int j = i == 0 ? 1 : i + lookaheadDepth; j <= windowEnd; j++)
-                    {
-                        Block futureBlock = suggestedBlocks[j];
-                        preWarmer!.PreWarmLookahead(futureBlock, preBlockBaseBlock, specProvider.GetSpec(futureBlock.Header), lookaheadCancellation.Token);
                     }
                 }
 
@@ -209,7 +189,6 @@ public class BranchProcessor(
         }
         finally
         {
-            lookaheadCancellation?.Cancel();
             blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
             worldStateCloser?.Dispose();
         }

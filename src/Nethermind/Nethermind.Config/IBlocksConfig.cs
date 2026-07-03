@@ -96,12 +96,4 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "1000000000",
         HiddenFromDocs = true)]
     ulong MaxGasLimit { get; set; }
-
-    [ConfigItem(
-        Description = "The number of upcoming blocks to speculatively pre-warm while processing a multi-block " +
-                      "branch during sync. Idle cores execute future blocks' transactions against the current " +
-                      "state, pulling the state they touch into the database caches ahead of the executor. " +
-                      "`0` to disable. Only affects catch-up sync; single-block (tip) processing is unaffected.",
-        DefaultValue = "0")]
-    int LookaheadPreWarmBlocks { get; set; }
 }
