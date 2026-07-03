@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.GasPolicy;
@@ -745,9 +747,37 @@ public static partial class EvmInstructions
 
         // Retrieve the block hash for the given block number.
         BlockHeader header = vm.BlockExecutionContext.Header;
-        Hash256? blockHash = !a.IsUint64 || a.u0 >= header.Number
-            ? null // Current block, future block, or unrepresentable block number
-            : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
+        IReleaseSpec spec = vm.Spec;
+        Hash256? blockHash;
+        if (spec.IsEip7709Enabled)
+        {
+            // EIP-7709: in-window queries are served from the EIP-2935 history contract with
+            // full SLOAD semantics — cold/warm storage charge plus slot warming — while
+            // out-of-window queries return zero and charge only the base cost.
+            if (!a.IsUint64 || a.u0 >= header.Number || a.u0 + Eip7709Constants.BlockHashServeWindow < header.Number)
+            {
+                blockHash = null;
+            }
+            else
+            {
+                StorageCell blockHashCell = new(
+                    spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
+                    new UInt256(a.u0 % spec.Eip2935RingBufferSize));
+                if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in blockHashCell, StorageAccessType.SLOAD, spec))
+                    goto OutOfGas;
+
+                // Read through the VM worldstate so the access lands in the same journaling,
+                // block-access-list, and witness capture as a regular SLOAD.
+                ReadOnlySpan<byte> data = vm.WorldState.Get(in blockHashCell);
+                blockHash = data.IsZero() ? null : Hash256.FromBytesWithPadding(data);
+            }
+        }
+        else
+        {
+            blockHash = !a.IsUint64 || a.u0 >= header.Number
+                ? null // Current block, future block, or unrepresentable block number
+                : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
+        }
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
@@ -760,6 +790,8 @@ public static partial class EvmInstructions
 
         return pushResult;
         // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
