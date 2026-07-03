@@ -14,52 +14,52 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     public static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
     public static readonly TimeSpan PingRetryTimeout = TimeSpan.FromMinutes(10);
     public const int AuthenticatedRequestFailureLimit = 5;
-    private const int MaxEndpointReceiptsPerSession = 16;
+    private const int MaxRememberedEndpointsPerSession = 16;
 
     private int _authenticatedRequestFailureCount;
     private long _lastPingSentTicks;
     private long _lastPingToken;
-    private readonly Dictionary<EndpointKey, long> _pingReceipts = [];
-    private readonly Dictionary<EndpointKey, long> _pongProofs = [];
-    private readonly Dictionary<EndpointKey, long> _pendingEndpointProofs = [];
-    private readonly object _endpointStateLock = new();
-    private TaskCompletionSource _endpointProofChanged = NewEndpointProofChangedSource();
+    private readonly Dictionary<EndpointKey, long> _receivedPingsByEndpoint = [];
+    private readonly Dictionary<EndpointKey, long> _receivedPongsByEndpoint = [];
+    private readonly Dictionary<EndpointKey, long> _pendingBondingPingsByEndpoint = [];
+    private readonly object _endpointBondLock = new();
+    private TaskCompletionSource _endpointBondChanged = NewEndpointBondChangedSource();
 
-    public bool HasReceivedPing => HasValidReceipt(_pingReceipts);
+    public bool HasReceivedPing => HasFreshEndpoint(_receivedPingsByEndpoint);
     public bool NotTooManyFailure => Volatile.Read(ref _authenticatedRequestFailureCount) <= AuthenticatedRequestFailureLimit;
-    public bool HasReceivedPong => HasValidReceipt(_pongProofs);
+    public bool HasReceivedPong => HasFreshEndpoint(_receivedPongsByEndpoint);
     public bool HasTriedPingRecently => Volatile.Read(ref _lastPingSentTicks) + PingRetryTimeout.Ticks > Timestamper.UtcNow.Ticks;
-    public bool HasReceivedPingFrom(IPEndPoint endpoint) => HasValidReceipt(_pingReceipts, endpoint);
+    public bool HasReceivedPingFrom(IPEndPoint endpoint) => HasFreshEndpoint(_receivedPingsByEndpoint, endpoint);
 
-    public bool HasPendingEndpointProof(IPEndPoint endpoint)
+    public bool HasPendingBondingPing(IPEndPoint endpoint)
     {
         EndpointKey endpointKey = new(endpoint);
-        lock (_endpointStateLock)
+        lock (_endpointBondLock)
         {
-            return _pendingEndpointProofs.ContainsKey(endpointKey);
+            return _pendingBondingPingsByEndpoint.ContainsKey(endpointKey);
         }
     }
 
-    public bool HasEndpointProof(IPEndPoint endpoint) => HasValidReceipt(_pongProofs, endpoint);
+    public bool HasEndpointBond(IPEndPoint endpoint) => HasFreshEndpoint(_receivedPongsByEndpoint, endpoint);
 
     public void ResetAuthenticatedRequestFailure() => Interlocked.Exchange(ref _authenticatedRequestFailureCount, 0);
     public void OnAuthenticatedRequestFailure() => Interlocked.Increment(ref _authenticatedRequestFailureCount);
 
     public void OnPongReceived(IPEndPoint endpoint)
     {
-        lock (_endpointStateLock)
+        lock (_endpointBondLock)
         {
-            RecordEndpointReceipt(_pongProofs, endpoint, Timestamper.UtcNow.Ticks);
+            RecordEndpointTimestamp(_receivedPongsByEndpoint, endpoint, Timestamper.UtcNow.Ticks);
         }
 
-        SignalEndpointProofChanged();
+        SignalEndpointBondChanged();
     }
 
     public void OnPingReceived(IPEndPoint endpoint)
     {
-        lock (_endpointStateLock)
+        lock (_endpointBondLock)
         {
-            RecordEndpointReceipt(_pingReceipts, endpoint, Timestamper.UtcNow.Ticks);
+            RecordEndpointTimestamp(_receivedPingsByEndpoint, endpoint, Timestamper.UtcNow.Ticks);
         }
     }
 
@@ -90,12 +90,12 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     {
         OnPingSent();
         long token = Interlocked.Increment(ref _lastPingToken);
-        lock (_endpointStateLock)
+        lock (_endpointBondLock)
         {
-            _pendingEndpointProofs[new EndpointKey(endpoint)] = token;
+            _pendingBondingPingsByEndpoint[new EndpointKey(endpoint)] = token;
         }
 
-        SignalEndpointProofChanged();
+        SignalEndpointBondChanged();
         return token;
     }
 
@@ -103,52 +103,52 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     {
         EndpointKey endpointKey = new(endpoint);
         bool removed;
-        lock (_endpointStateLock)
+        lock (_endpointBondLock)
         {
-            removed = _pendingEndpointProofs.TryGetValue(endpointKey, out long pendingToken)
+            removed = _pendingBondingPingsByEndpoint.TryGetValue(endpointKey, out long pendingToken)
                 && pendingToken == token
-                && _pendingEndpointProofs.Remove(endpointKey);
+                && _pendingBondingPingsByEndpoint.Remove(endpointKey);
         }
 
         if (removed)
         {
-            SignalEndpointProofChanged();
+            SignalEndpointBondChanged();
         }
     }
 
-    public async ValueTask<bool> WaitForEndpointProof(IPEndPoint endpoint, TimeSpan timeout, CancellationToken token)
+    public async ValueTask<bool> WaitForEndpointBond(IPEndPoint endpoint, TimeSpan timeout, CancellationToken token)
     {
         using CancellationTokenSource timeoutCts = new(timeout);
         using CancellationTokenSource waitCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
 
-        while (!HasEndpointProof(endpoint))
+        while (!HasEndpointBond(endpoint))
         {
-            if (!HasPendingEndpointProof(endpoint)) return false;
+            if (!HasPendingBondingPing(endpoint)) return false;
 
-            Task proofChanged = Volatile.Read(ref _endpointProofChanged).Task;
-            if (HasEndpointProof(endpoint)) return true;
-            if (!HasPendingEndpointProof(endpoint)) return false;
+            Task bondChanged = Volatile.Read(ref _endpointBondChanged).Task;
+            if (HasEndpointBond(endpoint)) return true;
+            if (!HasPendingBondingPing(endpoint)) return false;
 
             try
             {
-                await proofChanged.WaitAsync(waitCts.Token);
+                await bondChanged.WaitAsync(waitCts.Token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested && timeoutCts.IsCancellationRequested)
             {
-                return HasEndpointProof(endpoint);
+                return HasEndpointBond(endpoint);
             }
         }
 
         return true;
     }
 
-    private bool HasValidReceipt(Dictionary<EndpointKey, long> receipts)
+    private bool HasFreshEndpoint(Dictionary<EndpointKey, long> endpoints)
     {
-        lock (_endpointStateLock)
+        lock (_endpointBondLock)
         {
             long nowTicks = Timestamper.UtcNow.Ticks;
-            PruneExpiredReceipts(receipts, nowTicks);
-            foreach (long ticks in receipts.Values)
+            PruneExpiredEndpoints(endpoints, nowTicks);
+            foreach (long ticks in endpoints.Values)
             {
                 if (IsValid(ticks, nowTicks)) return true;
             }
@@ -157,28 +157,28 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
         }
     }
 
-    private bool HasValidReceipt(Dictionary<EndpointKey, long> receipts, IPEndPoint endpoint)
+    private bool HasFreshEndpoint(Dictionary<EndpointKey, long> endpoints, IPEndPoint endpoint)
     {
         EndpointKey endpointKey = new(endpoint);
-        lock (_endpointStateLock)
+        lock (_endpointBondLock)
         {
             long nowTicks = Timestamper.UtcNow.Ticks;
-            PruneExpiredReceipts(receipts, nowTicks);
-            return receipts.TryGetValue(endpointKey, out long ticks) && IsValid(ticks, nowTicks);
+            PruneExpiredEndpoints(endpoints, nowTicks);
+            return endpoints.TryGetValue(endpointKey, out long ticks) && IsValid(ticks, nowTicks);
         }
     }
 
-    private void RecordEndpointReceipt(Dictionary<EndpointKey, long> receipts, IPEndPoint endpoint, long nowTicks)
+    private void RecordEndpointTimestamp(Dictionary<EndpointKey, long> endpoints, IPEndPoint endpoint, long nowTicks)
     {
-        PruneExpiredReceipts(receipts, nowTicks);
-        receipts[new EndpointKey(endpoint)] = nowTicks;
-        TrimEndpointReceipts(receipts);
+        PruneExpiredEndpoints(endpoints, nowTicks);
+        endpoints[new EndpointKey(endpoint)] = nowTicks;
+        TrimRememberedEndpoints(endpoints);
     }
 
-    private static void PruneExpiredReceipts(Dictionary<EndpointKey, long> receipts, long nowTicks)
+    private static void PruneExpiredEndpoints(Dictionary<EndpointKey, long> endpoints, long nowTicks)
     {
         List<EndpointKey>? expiredEndpoints = null;
-        foreach ((EndpointKey endpoint, long ticks) in receipts)
+        foreach ((EndpointKey endpoint, long ticks) in endpoints)
         {
             if (!IsValid(ticks, nowTicks))
             {
@@ -189,35 +189,35 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
         if (expiredEndpoints is null) return;
         foreach (EndpointKey endpoint in expiredEndpoints)
         {
-            receipts.Remove(endpoint);
+            endpoints.Remove(endpoint);
         }
     }
 
-    private static void TrimEndpointReceipts(Dictionary<EndpointKey, long> receipts)
+    private static void TrimRememberedEndpoints(Dictionary<EndpointKey, long> endpoints)
     {
-        while (receipts.Count > MaxEndpointReceiptsPerSession)
+        while (endpoints.Count > MaxRememberedEndpointsPerSession)
         {
             EndpointKey oldestEndpoint = default;
             long oldestTicks = long.MaxValue;
-            foreach ((EndpointKey endpoint, long ticks) in receipts)
+            foreach ((EndpointKey endpoint, long ticks) in endpoints)
             {
                 if (ticks >= oldestTicks) continue;
                 oldestEndpoint = endpoint;
                 oldestTicks = ticks;
             }
 
-            receipts.Remove(oldestEndpoint);
+            endpoints.Remove(oldestEndpoint);
         }
     }
 
     private static bool IsValid(long ticks, long nowTicks) =>
         ticks + BondTimeout.Ticks > nowTicks;
 
-    private static TaskCompletionSource NewEndpointProofChangedSource() =>
+    private static TaskCompletionSource NewEndpointBondChangedSource() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private void SignalEndpointProofChanged() =>
-        Interlocked.Exchange(ref _endpointProofChanged, NewEndpointProofChangedSource()).TrySetResult();
+    private void SignalEndpointBondChanged() =>
+        Interlocked.Exchange(ref _endpointBondChanged, NewEndpointBondChangedSource()).TrySetResult();
 
     private readonly record struct EndpointKey(IPAddress Address, int Port)
     {

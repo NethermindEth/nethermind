@@ -73,7 +73,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        public void HasReceivedPingFrom_keeps_receipts_for_each_endpoint()
+        public void HasReceivedPingFrom_keeps_received_pings_for_each_endpoint()
         {
             IPEndPoint otherEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
 
@@ -85,26 +85,26 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        public void HasEndpointProof_keeps_proofs_for_each_endpoint()
+        public void HasEndpointBond_keeps_bonds_for_each_endpoint()
         {
             IPEndPoint otherEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
 
             _nodeSession.OnPongReceived(TestEndpoint);
             _nodeSession.OnPongReceived(otherEndpoint);
 
-            Assert.That(_nodeSession.HasEndpointProof(TestEndpoint), Is.True);
-            Assert.That(_nodeSession.HasEndpointProof(otherEndpoint), Is.True);
+            Assert.That(_nodeSession.HasEndpointBond(TestEndpoint), Is.True);
+            Assert.That(_nodeSession.HasEndpointBond(otherEndpoint), Is.True);
         }
 
         [Test]
-        public void HasReceivedPingFrom_caps_retained_endpoint_receipts()
+        public void HasReceivedPingFrom_caps_remembered_endpoints()
         {
-            const int MaxEndpointReceiptsPerSession = 16;
+            const int MaxRememberedEndpointsPerSession = 16;
             IPEndPoint oldestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
             IPEndPoint newestEndpoint = null!;
 
             _nodeSession.OnPingReceived(oldestEndpoint);
-            for (int i = 0; i < MaxEndpointReceiptsPerSession; i++)
+            for (int i = 0; i < MaxRememberedEndpointsPerSession; i++)
             {
                 _timestamper.Add(TimeSpan.FromTicks(1));
                 newestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port + i + 1);
@@ -116,12 +116,12 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        public async Task WaitForEndpointProof_completes_when_matching_pong_is_received()
+        public async Task WaitForEndpointBond_completes_when_matching_pong_is_received()
         {
             _nodeSession.OnPingSent(TestEndpoint);
 
             Task<bool> waitTask = _nodeSession
-                .WaitForEndpointProof(TestEndpoint, TimeSpan.FromSeconds(1), CancellationToken.None)
+                .WaitForEndpointBond(TestEndpoint, TimeSpan.FromSeconds(1), CancellationToken.None)
                 .AsTask();
 
             Assert.That(waitTask.IsCompleted, Is.False);
@@ -132,7 +132,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        public async Task WaitForEndpointProof_keeps_pending_proofs_for_each_endpoint()
+        public async Task WaitForEndpointBond_keeps_pending_bonding_pings_for_each_endpoint()
         {
             IPEndPoint otherEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
 
@@ -140,7 +140,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _nodeSession.OnPingSent(otherEndpoint);
 
             Task<bool> waitTask = _nodeSession
-                .WaitForEndpointProof(TestEndpoint, TimeSpan.FromSeconds(1), CancellationToken.None)
+                .WaitForEndpointBond(TestEndpoint, TimeSpan.FromSeconds(1), CancellationToken.None)
                 .AsTask();
 
             Assert.That(waitTask.IsCompleted, Is.False);

@@ -207,7 +207,7 @@ public sealed class KademliaAdapter(
             if (response.Value.FarAddress is not { } pongEndpoint) return false;
 
             session.OnPongReceived(pongEndpoint);
-            if (!session.HasEndpointProof(receiver.Address)) return false;
+            if (!session.HasEndpointBond(receiver.Address)) return false;
 
             await RefreshRemoteRecordIfNewer(receiver, response.Value.EnrSequence, token);
             return true;
@@ -263,11 +263,11 @@ public sealed class KademliaAdapter(
 
     private async Task<bool> HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg, CancellationToken token)
     {
-        await WaitForEndpointProofIfBonding(node.Address, session, token);
+        await WaitForPendingEndpointBond(node.Address, session, token);
 
-        if (!session.HasEndpointProof(node.Address))
+        if (!session.HasEndpointBond(node.Address))
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request from unbonded peer {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request from unbonded endpoint {node.Address} for peer {node.Id}");
             return false;
         }
 
@@ -283,11 +283,11 @@ public sealed class KademliaAdapter(
 
     private async Task<bool> HandleFindNode(Node node, NodeSession session, FindNodeMsg msg, CancellationToken token)
     {
-        await WaitForEndpointProofIfBonding(node.Address, session, token);
+        await WaitForPendingEndpointBond(node.Address, session, token);
 
-        if (!session.HasEndpointProof(node.Address))
+        if (!session.HasEndpointBond(node.Address))
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting findNode request from unbonded peer {node}");
+            if (Logger.IsDebug) Logger.Debug($"Rejecting findNode request from unbonded endpoint {node.Address} for peer {node.Id}");
             return false;
         }
 
@@ -308,11 +308,11 @@ public sealed class KademliaAdapter(
         return true;
     }
 
-    private async ValueTask WaitForEndpointProofIfBonding(IPEndPoint endpoint, NodeSession session, CancellationToken token)
+    private async ValueTask WaitForPendingEndpointBond(IPEndPoint endpoint, NodeSession session, CancellationToken token)
     {
-        if (!session.HasEndpointProof(endpoint) && session.HasReceivedPingFrom(endpoint) && session.HasPendingEndpointProof(endpoint))
+        if (!session.HasEndpointBond(endpoint) && session.HasReceivedPingFrom(endpoint) && session.HasPendingBondingPing(endpoint))
         {
-            await session.WaitForEndpointProof(endpoint, _pingTimeout, token);
+            await session.WaitForEndpointBond(endpoint, _pingTimeout, token);
         }
     }
 
@@ -328,14 +328,14 @@ public sealed class KademliaAdapter(
         PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc, (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
         session.OnPingReceived(node.Address);
         await SendMessage(session, msg, token, isResponse: true);
-        if (session.HasEndpointProof(node.Address))
+        if (session.HasEndpointBond(node.Address))
         {
             await RefreshRemoteRecordIfNewer(node, ping.EnrSequence, token);
         }
 
-        if (!session.HasEndpointProof(node.Address))
+        if (!session.HasEndpointBond(node.Address))
         {
-            // If this endpoint has no recent pong proof, it is not bonded and we should not respond to auth requests.
+            // If this endpoint has no recent pong, it is not bonded and we should not respond to auth requests.
             // Send a ping to bond the peer.
             _ = await Ping(node, token);
         }

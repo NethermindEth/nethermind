@@ -239,7 +239,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
-        public async Task Ping_should_not_record_endpoint_proof_for_requested_endpoint_when_pong_source_differs(CancellationToken token)
+        public async Task Ping_should_not_bond_requested_endpoint_when_pong_source_differs(CancellationToken token)
         {
             IPEndPoint pongFarAddress = new(IPAddress.Parse("192.168.1.4"), _receiver.Address.Port);
             ConfigureBondCallback(pongFarAddress, pongEnrSequence: 42);
@@ -546,7 +546,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
-        public async Task OnIncomingMsg_ping_from_bonded_node_at_unproven_endpoint_should_send_bonding_ping(CancellationToken token)
+        public async Task OnIncomingMsg_ping_from_bonded_node_at_unbonded_endpoint_should_send_bonding_ping(CancellationToken token)
         {
             ConfigureBondCallback();
             await BondReceiver(token);
@@ -648,7 +648,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
-        public async Task OnIncomingMsg_enr_request_after_inbound_ping_without_endpoint_proof_should_not_respond(CancellationToken token)
+        public async Task OnIncomingMsg_enr_request_after_inbound_ping_without_endpoint_bond_should_not_respond(CancellationToken token)
         {
             _adapter.GetSession(_receiver).OnPingReceived(_receiver.Address);
 
