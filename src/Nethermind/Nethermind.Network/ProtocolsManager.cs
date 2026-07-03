@@ -34,6 +34,7 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IProtocolValidator _protocolValidator;
+        private readonly IPeerManager _peerManager;
         private readonly INetworkStorage _peerStorage;
         private readonly ILogger _logger;
         private readonly IProtocolHandlerFactory[] _factories;
@@ -51,6 +52,7 @@ namespace Nethermind.Network
             IRlpxHost rlpxHost,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
+            IPeerManager peerManager,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             IProtocolHandlerFactory[] factories,
             IP2PCapabilityResolver[] capabilityResolvers,
@@ -61,6 +63,7 @@ namespace Nethermind.Network
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _logger = logManager?.GetClassLogger<ProtocolsManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -257,7 +260,11 @@ namespace Nethermind.Network
 
             AddNodeToDiscovery(session, args);
 
-            _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
+            bool isValid = _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
+            if (isValid)
+            {
+                _peerManager.OnP2PProtocolInitialized(session);
+            }
 
             if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
         }

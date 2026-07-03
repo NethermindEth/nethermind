@@ -64,6 +64,7 @@ namespace Nethermind.Network.Rlpx
             IDisconnectsAnalyzer disconnectsAnalyzer,
             INetworkConfig networkConfig,
             IIPResolver ipResolver,
+            IPrivilegedIpProvider privilegedIpProvider,
             ILogManager logManager,
             IChannelFactory? channelFactory = null)
         {
@@ -104,7 +105,7 @@ namespace Nethermind.Network.Rlpx
             _markDisconnectedAfterCloseDelay = MarkDisconnectedAfterCloseDelay;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
-            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
+            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp, privilegedIpProvider);
         }
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.TryAccept(ip, exactOnly);

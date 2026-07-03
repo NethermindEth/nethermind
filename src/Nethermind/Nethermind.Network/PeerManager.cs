@@ -97,7 +97,7 @@ namespace Nethermind.Network
         public IReadOnlyCollection<Peer> CandidatePeers => _peerPool.Peers.Select(static kvp => kvp.Value).ToList();
         public IReadOnlyCollection<Peer> ConnectedPeers => _peerPool.ActivePeers.Select(static kvp => kvp.Value).Where(IsConnected).ToList();
 
-        public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount;
+        public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount + _peerPool.TrustedPeerCount;
         public int ActivePeersCount => _peerPool.ActivePeerCount;
         public int ConnectedPeersCount => _peerPool.ActivePeers.Count(static kvp => IsConnected(kvp.Value));
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;
@@ -695,7 +695,7 @@ namespace Nethermind.Network
                 int failedValidationCandidatesCount = 0;
                 foreach ((PublicKey key, Peer peer) in _peerPool.Peers)
                 {
-                    if (!peer.Node.IsStatic)
+                    if (!peer.Node.IsStatic && !peer.Node.IsTrusted)
                     {
                         bool hasFailedValidation = _stats.HasFailedValidation(peer.Node);
                         if (hasFailedValidation)
@@ -881,12 +881,23 @@ namespace Nethermind.Network
                 => _logger.Trace($"PROCESS OUTGOING {id}");
         }
 
+        public void OnP2PProtocolInitialized(ISession session)
+        {
+            // The margin-admitted overflow is shed here, now that the P2P protocol can carry a proper
+            // disconnect message. Static and trusted peers are must-keep and exempt from the capacity cap.
+            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount > MaxActivePeers)
+            {
+                session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{ActivePeersCount}");
+            }
+        }
+
         private void ProcessIncomingConnection(ISession session)
         {
             if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
             {
                 // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
                 session.Node.IsStatic = existingPeer.Node.IsStatic;
+                session.Node.IsTrusted = existingPeer.Node.IsTrusted;
             }
 
             if (_logger.IsTrace) TraceProcessingIncoming();
@@ -898,7 +909,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            if (!session.Node.IsStatic && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
+            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
             {
                 if (_logger.IsTrace) TraceHardLimitDisconnect();
                 session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");

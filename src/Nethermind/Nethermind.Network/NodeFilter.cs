@@ -24,18 +24,20 @@ public sealed class NodeFilter
     public static readonly NodeFilter AcceptAll = new();
 
     private readonly ClockCache<IpSubnetKey, long>? _cache;
+    private readonly IPrivilegedIpProvider? _privilegedIpProvider;
     private readonly bool _exactMatchOnly;
     private readonly ParsedIPAddress? _parsedCurrentIp;
     private readonly long _timeoutMs;
 
     private NodeFilter() { }
 
-    public NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp)
-        : this(size, exactMatchOnly, currentIp, DefaultTimeoutMs) { }
+    public NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, IPrivilegedIpProvider? privilegedIpProvider)
+        : this(size, exactMatchOnly, currentIp, DefaultTimeoutMs, privilegedIpProvider) { }
 
-    internal NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, long timeoutMs)
+    internal NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, long timeoutMs, IPrivilegedIpProvider? privilegedIpProvider)
     {
         _cache = new(size);
+        _privilegedIpProvider = privilegedIpProvider;
         _exactMatchOnly = exactMatchOnly;
         _parsedCurrentIp = currentIp is not null ? ParsedIPAddress.Parse(currentIp) : null;
         _timeoutMs = timeoutMs;
@@ -44,14 +46,14 @@ public sealed class NodeFilter
     /// <summary>
     /// Creates a <see cref="NodeFilter"/> from common parameters, returning <see cref="AcceptAll"/> when disabled.
     /// </summary>
-    public static NodeFilter Create(int maxActivePeers, bool filterEnabled, bool subnetBucketing, IPAddress? currentIp)
-        => filterEnabled ? new NodeFilter(maxActivePeers * 4, !subnetBucketing, currentIp) : AcceptAll;
+    public static NodeFilter Create(int maxActivePeers, bool filterEnabled, bool subnetBucketing, IPAddress? currentIp, IPrivilegedIpProvider? privilegedIpProvider)
+        => filterEnabled ? new NodeFilter(maxActivePeers * 4, !subnetBucketing, currentIp, privilegedIpProvider) : AcceptAll;
 
     /// <summary>
     /// Creates an exact-match filter with a custom timeout window.
     /// </summary>
     public static NodeFilter CreateExact(int size, TimeSpan timeout)
-        => new(size, exactMatchOnly: true, currentIp: null, (long)timeout.TotalMilliseconds);
+        => new(size, exactMatchOnly: true, currentIp: null, (long)timeout.TotalMilliseconds, privilegedIpProvider: null);
 
     /// <summary>
     /// Checks whether <paramref name="ipAddress"/> should be accepted.
@@ -60,6 +62,9 @@ public sealed class NodeFilter
     public bool TryAccept(IPAddress ipAddress, bool exactOnly = false)
     {
         if (_cache is null) return true;
+
+        // Privileged addresses (static nodes) are never rate-limited so they can always connect.
+        if (_privilegedIpProvider?.IsPrivileged(ipAddress) == true) return true;
 
         long now = Environment.TickCount64;
         IpSubnetKey key = GetKey(ipAddress, exactOnly);
