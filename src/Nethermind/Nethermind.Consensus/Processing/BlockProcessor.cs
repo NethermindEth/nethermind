@@ -155,10 +155,7 @@ public partial class BlockProcessor(
         Task<Hash256>? receiptsRootTask = null;
         if (ShouldCalculateReceiptsRootInParallel(receipts.Length))
         {
-            using (ExecutionContext.SuppressFlow())
-            {
-                receiptsRootTask = Task.Run(() => CalculateReceiptsRoot(receipts, spec, block));
-            }
+            receiptsRootTask = Task.Run(() => CalculateReceiptsRoot(receipts, spec, block));
         }
         else
         {
