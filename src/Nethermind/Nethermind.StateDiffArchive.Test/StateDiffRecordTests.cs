@@ -121,6 +121,53 @@ public class StateDiffRecordTests
     }
 
     [Test]
+    public void Dedupes_repeated_slot_writes_and_clear_drops_earlier_slots()
+    {
+        StateDiffRecordBuilder builder = new();
+
+        // A: same slot written twice (as pre-Byzantium per-tx flushes would) -> last value wins, single entry.
+        builder.SetSlot(TestItem.AddressA, (UInt256)1, Bytes.FromHexString("0x01"));
+        builder.SetSlot(TestItem.AddressA, (UInt256)1, Bytes.FromHexString("0x02"));
+
+        // B: slot set, then storage cleared (self-destruct), then a new slot set -> only the post-clear slot.
+        builder.SetSlot(TestItem.AddressB, (UInt256)7, Bytes.FromHexString("0xaa"));
+        builder.ClearStorage(TestItem.AddressB);
+        builder.SetSlot(TestItem.AddressB, (UInt256)8, Bytes.FromHexString("0xbb"));
+
+        // Same code recorded twice -> single entry.
+        byte[] code = Bytes.FromHexString("0x60016002");
+        builder.AddCode(Keccak.Compute(code).ValueHash256, code);
+        builder.AddCode(Keccak.Compute(code).ValueHash256, code);
+
+        using StateDiffRecord record = Build(builder, 1, TestItem.KeccakA);
+
+        foreach (StateDiffRecord.AccountView account in record.Accounts)
+        {
+            if (account.Address.Equals(TestItem.AddressA))
+            {
+                Assert.That(account.StorageCleared, Is.False);
+                Assert.That(account.Slots.Count(), Is.EqualTo(1));
+                foreach (StateDiffRecord.SlotView slot in account.Slots)
+                    Assert.That(slot.Value.ToArray(), Is.EqualTo(Bytes.FromHexString("0x02")));
+            }
+            else if (account.Address.Equals(TestItem.AddressB))
+            {
+                Assert.That(account.StorageCleared, Is.True);
+                Assert.That(account.Slots.Count(), Is.EqualTo(1));
+                foreach (StateDiffRecord.SlotView slot in account.Slots)
+                {
+                    Assert.That(slot.Index, Is.EqualTo((UInt256)8)); // slot 7 dropped by the clear
+                    Assert.That(slot.Value.ToArray(), Is.EqualTo(Bytes.FromHexString("0xbb")));
+                }
+            }
+        }
+
+        int codes = 0;
+        foreach (StateDiffRecord.CodeView _ in record.Codes) codes++;
+        Assert.That(codes, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Concurrent_storage_writes_are_recorded_safely()
     {
         // Mirrors the world state's parallel per-contract storage flush: many addresses written concurrently.

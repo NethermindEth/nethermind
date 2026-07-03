@@ -19,6 +19,11 @@ namespace Nethermind.StateDiffArchive.Data;
 /// so the address map is a <see cref="ConcurrentDictionary{TKey,TValue}"/>. Each address is touched by a single
 /// thread within a phase (one storage write batch per contract; the account/code phases run after the storage
 /// join), so a per-entry lock is unnecessary.
+///
+/// Writes are deduped to the net per-block change: a slot written in several flushes (pre-Byzantium blocks
+/// commit per transaction to produce intermediate receipt roots) keeps only its last value, since a
+/// duplicate key would break the trie bulk-set on replay. A storage clear (self-destruct) also drops the
+/// slots accumulated before it, so a mid-block self-destruct-then-recreate records only the post-clear slots.
 /// </remarks>
 /// <remarks>
 /// Wire format (positional; the leading version byte allows forward-compatible additions):
@@ -41,7 +46,7 @@ public sealed class StateDiffRecordBuilder
     private static readonly AccountDecoder AccountRlp = AccountDecoder.Instance;
 
     private readonly ConcurrentDictionary<Address, Entry> _accounts = new();
-    private readonly List<(ValueHash256 Hash, byte[] Code)> _codes = [];
+    private readonly Dictionary<ValueHash256, byte[]> _codes = [];
 
     public void SetAccount(Address address, Account? account)
     {
@@ -50,12 +55,17 @@ public sealed class StateDiffRecordBuilder
         entry.Account = account;
     }
 
-    public void ClearStorage(Address address) => GetOrAdd(address).StorageCleared = true;
+    public void ClearStorage(Address address)
+    {
+        Entry entry = GetOrAdd(address);
+        entry.StorageCleared = true;
+        entry.Slots?.Clear(); // a self-destruct wipes the slots written before it this block
+    }
 
     public void SetSlot(Address address, in UInt256 index, byte[] value)
-        => (GetOrAdd(address).Slots ??= []).Add((index, value));
+        => (GetOrAdd(address).Slots ??= [])[index] = value; // last write of a slot wins
 
-    public void AddCode(in ValueHash256 codeHash, byte[] code) => _codes.Add((codeHash, code));
+    public void AddCode(in ValueHash256 codeHash, byte[] code) => _codes[codeHash] = code;
 
     public void Reset()
     {
@@ -127,7 +137,7 @@ public sealed class StateDiffRecordBuilder
         return length;
     }
 
-    private static int GetSlotsContentLength(List<(UInt256 Index, byte[] Value)>? slots)
+    private static int GetSlotsContentLength(Dictionary<UInt256, byte[]>? slots)
     {
         if (slots is null) return 0;
         int total = 0;
@@ -153,6 +163,6 @@ public sealed class StateDiffRecordBuilder
         public AccountChangeKind Change = AccountChangeKind.None;
         public Account? Account;
         public bool StorageCleared;
-        public List<(UInt256 Index, byte[] Value)>? Slots;
+        public Dictionary<UInt256, byte[]>? Slots;
     }
 }
