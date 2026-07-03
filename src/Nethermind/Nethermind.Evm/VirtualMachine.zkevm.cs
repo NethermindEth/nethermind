@@ -14,24 +14,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 {
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
 
-    // Select and lazily build the opcode dispatch table for the active tracing mode, caching each
-    // mode separately on the spec. Mirrors the std build minus its periodic PGO-driven cache refresh,
-    // which is moot for the AOT-compiled guest.
-    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
-    {
-        if (!TTracingInst.IsActive)
-        {
-            _opcodeMethods =
-                (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])
-                (spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
-        }
-        else
-        {
-            _opcodeMethods =
-                (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])
-                (spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
-        }
-    }
+    // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
+    // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
+    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? _opcodesNoTrace;
+    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? _opcodesTraced;
+
+    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
+        _opcodeMethods = !TTracingInst.IsActive
+            ? _opcodesNoTrace ??= GenerateOpCodes<TTracingInst>(spec)
+            : _opcodesTraced ??= GenerateOpCodes<TTracingInst>(spec);
 
     protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
@@ -102,7 +93,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             ZeroPaddedSpan outSlice = callResult.Output.Span
                 .SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)outputLength));
             UInt256 dest = (ulong)outputDestination;
-            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)outSlice.Length, parent))
+            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)outSlice.Length, ref parent.Memory))
             {
                 push = EvmExceptionType.OutOfGas;
             }
