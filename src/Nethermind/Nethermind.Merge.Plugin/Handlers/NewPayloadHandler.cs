@@ -50,6 +50,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
+    private readonly ISpecProvider _specProvider;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
@@ -91,6 +92,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _specProvider = specProvider;
         _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -116,6 +118,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
+        // Start ECDSA sender recovery on the already-decoded transactions (ValidateParams decodes
+        // and caches them) before TryGetBlock, so ecrecover overlaps transaction/withdrawal-root
+        // computation, hash validation and block tree insertion; the RecoverSignatures preprocessor
+        // in the processing queue then short-circuits on the already-recovered senders.
+        Task senderRecoveryTask = StartSenderRecovery(request);
+
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
         {
@@ -141,11 +149,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // while computed hashes could incorrectly blacklist a valid block.
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
-
-        // Overlap ECDSA sender recovery with the rest of the pre-processing pipeline (validation,
-        // block tree insertion); the RecoverSignatures preprocessor in the processing queue then
-        // short-circuits on the already-recovered senders.
-        Task senderRecoveryTask = StartSenderRecovery(block);
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
@@ -348,20 +351,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return parentProcessed || processTerminalBlock;
     }
 
-    private Task StartSenderRecovery(Block block) =>
-        Task.Run(() =>
+    private Task StartSenderRecovery(ExecutionPayload request)
+    {
+        Result<Transaction[]> transactions = request.TryGetTransactions();
+        if (transactions.IsError || transactions.Data.Length == 0)
+            // TryGetBlock reports the decoding error; nothing to recover otherwise.
+            return Task.CompletedTask;
+
+        Transaction[] txs = transactions.Data;
+        IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
+        return Task.Run(() =>
         {
             try
             {
-                _senderRecovery.RecoverData(block);
+                _senderRecovery.RecoverData(txs, spec);
             }
             catch (Exception e)
             {
                 // Losing the overlap is harmless: the processing queue preprocessor recovers any
                 // sender still missing, and unrecoverable signatures fail the block there either way.
-                if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for {block.ToString(Block.Format.FullHashAndNumber)}: {e}");
+                if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
             }
         });
+    }
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
     {

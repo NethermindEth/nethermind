@@ -34,7 +34,22 @@ namespace Nethermind.Consensus.Processing
                 // so we assume the rest of txs in the block are already recovered
                 return;
 
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            RecoverData(txs, _specProvider.GetSpec(block.Header));
+        }
+
+        /// <summary>
+        /// Recovers senders (and EIP-7702 authorities) for transactions that are not yet part of a
+        /// constructed <see cref="Block"/>.
+        /// </summary>
+        /// <remarks>
+        /// Lets callers overlap recovery with other block-assembly work (e.g. transaction-root
+        /// computation on the engine <c>newPayload</c> path). Already-recovered transactions are skipped.
+        /// </remarks>
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec)
+        {
+            if (txs.Length == 0)
+                return;
+
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
             {
