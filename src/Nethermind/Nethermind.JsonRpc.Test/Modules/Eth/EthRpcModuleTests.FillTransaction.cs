@@ -118,6 +118,49 @@ public partial class EthRpcModuleTests
         Assert.That(filled.BlobVersionedHashes!.Length, Is.EqualTo(1), "one versioned hash per blob");
     }
 
+    [Test]
+    public async Task FillTransaction_WhenFromMissing_ReturnsInvalidInput()
+    {
+        EIP1559TransactionForRpc rpcTx = new()
+        {
+            From = null,
+            To = TestItem.AddressB,
+            Value = 1,
+        };
+
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", rpcTx);
+
+        Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
+            "a fill without a sender cannot be completed - nonce and gas are account-specific");
+        Assert.That(response, Does.Contain("from address not specified"),
+            "error must name the missing field so callers know what to add");
+    }
+
+    [Test]
+    public async Task FillTransaction_WhenChainIdMismatchesNode_ReturnsInvalidInput()
+    {
+        EIP1559TransactionForRpc rpcTx = new()
+        {
+            From = TestItem.AddressC,
+            To = TestItem.AddressB,
+            Value = 1,
+            Nonce = 0UL,
+            Gas = 0x5208UL,
+            MaxFeePerGas = (UInt256)0x9184e72a000,
+            MaxPriorityFeePerGas = (UInt256)0x3b9aca00,
+            ChainId = 999_999UL,
+        };
+
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", rpcTx);
+
+        Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
+            "a chain id that doesn't match the node makes the fill unusable");
+        Assert.That(response, Does.Contain("invalid chain id"),
+            "error must indicate the chain id mismatch");
+    }
+
     private async Task<TransactionForRpc> FillTransactionForResult(TransactionForRpc rpcTx)
     {
         using Context ctx = await Context.CreateWithCancunEnabled();
