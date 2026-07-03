@@ -736,11 +736,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         }
     }
 
-    // Two nodes per column (low/high inside the "ab" subtree, below/above outside).
-    // Lengths cover all storage columns: 4 → StateNodesTop, 10 → StateNodes/StorageNodes,
-    // 32 and 64 → FallbackNodes. The 64-nibble pair sits at the exact from/to boundaries
-    // (MPT leaf-path length), exercising the same lower-bound encoding that the 32-nibble
-    // regression caught.
+    // Nodes across all columns (lengths 4/10/32/64), in-range pairs under "ab" and
+    // out-of-range neighbours (aa/ac), to verify the range bounds delete only in-range nodes.
     private static readonly (string Path, bool Deleted)[] RangeDeleteNodes =
     [
         ("ab00",                true),  ("abffff",               true),
