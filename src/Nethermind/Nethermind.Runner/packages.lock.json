@@ -1033,6 +1033,7 @@
           "Nethermind.Config": "[1.39.0-unstable, )",
           "Nethermind.Core": "[1.39.0-unstable, )",
           "Nethermind.Evm": "[1.39.0-unstable, )",
+          "Nethermind.Init": "[1.39.0-unstable, )",
           "Nethermind.Logging": "[1.39.0-unstable, )",
           "Nethermind.Synchronization": "[1.39.0-unstable, )"
         }
