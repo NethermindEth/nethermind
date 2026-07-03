@@ -27,8 +27,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     {
         ulong intrinsicRegularGas = TSelf.GetRemainingGas(in intrinsic);
         ulong intrinsicStateGas = TSelf.GetStateReservoir(in intrinsic);
-        ulong totalCap = intrinsicStateGas + Eip7825Constants.DefaultTxGasLimitCap;
-        ulong initialReservoir = txGasLimit.SaturatingSub(totalCap);
+        ulong initialReservoir = Eip8037BlockGasInclusionCheck.CalculateInitialStateReservoir(txGasLimit, intrinsicStateGas);
         ulong totalSub = intrinsicRegularGas + intrinsicStateGas + initialReservoir;
         ulong initialRegularGas = txGasLimit.SaturatingSub(totalSub);
         return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(

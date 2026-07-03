@@ -46,6 +46,9 @@ public static class Eip8037BlockGasInclusionCheck
         return Outcome.Ok;
     }
 
+    public static ulong CalculateInitialStateReservoir(ulong txGasLimit, ulong intrinsicStateGas) =>
+        txGasLimit.SaturatingSub(intrinsicStateGas + Eip7825Constants.DefaultTxGasLimitCap);
+
     public static ulong CalculateBlockRegularGas(
         ulong intrinsicRegularGas,
         ulong initialRegularGas,

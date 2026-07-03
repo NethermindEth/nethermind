@@ -1589,12 +1589,8 @@ namespace Nethermind.Evm.TransactionProcessing
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong CalculateInitialStateReservoir(
             ulong txGasLimit,
-            in TGasPolicy intrinsicGasStandard)
-        {
-            ulong intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-            ulong totalCap = intrinsicStateGas + Eip7825Constants.DefaultTxGasLimitCap;
-            return txGasLimit.SaturatingSub(totalCap);
-        }
+            in TGasPolicy intrinsicGasStandard) =>
+            Eip8037BlockGasInclusionCheck.CalculateInitialStateReservoir(txGasLimit, TGasPolicy.GetStateReservoir(in intrinsicGasStandard));
 
         private (ulong spentGas, long refund) CalculateSpentGasAndRefund(
             Transaction tx,
