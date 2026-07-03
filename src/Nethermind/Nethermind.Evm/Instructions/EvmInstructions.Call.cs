@@ -269,11 +269,19 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
+        return CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
 
+        // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
+        // has no icache and counts instructions, so the NoInlining call and its wide argument
+        // marshalling are pure overhead on every CALL; inline it, pulling the hot precompile path in too.
+#if ZK_EVM
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#else
         [MethodImpl(MethodImplOptions.NoInlining)]
+#endif
         static EvmExceptionType CreateFullCallFrame(
             VirtualMachine<TGasPolicy> vm,
+            ref EvmStack stack,
             ref TGasPolicy gas,
             in UInt256 dataOffset,
             UInt256 dataLength,
@@ -313,9 +321,28 @@ public static partial class EvmInstructions
                 outputOffset = default;
             }
 
+            TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
+
+#if ZK_EVM
+            // Precompiles run no bytecode: handle them inline, skipping the child
+            // frame's round trip through the ExecuteTransaction dispatch loop.
+            if (codeInfo.IsPrecompile)
+            {
+                return vm.InlinePrecompileCall<TTracingInst>(
+                    callEnv,
+                    childGas,
+                    outputOffset.ToLong(),
+                    outputLength.ToLong(),
+                    TOpCall.ExecutionType,
+                    TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
+                    in snapshot,
+                    ref stack);
+            }
+#endif
+
             // Rent a new call frame for executing the call.
             vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-                gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
+                gas: childGas,
                 outputDestination: outputOffset.ToLong(),
                 outputLength: outputLength.ToLong(),
                 executionType: TOpCall.ExecutionType,

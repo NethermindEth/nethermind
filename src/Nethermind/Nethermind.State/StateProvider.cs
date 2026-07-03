@@ -25,7 +25,7 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
 
-internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
+internal partial class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
 {
     private static readonly UInt256 _zero = UInt256.Zero;
 
@@ -53,6 +53,28 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
+
+    // Invalidates the guest front cache when a restore/commit/reset recycles the change stacks; elided on
+    // mainline, which has no front cache (no implementing declaration).
+    partial void InvalidateFrontCache();
+#if ZK_EVM
+    // Single-entry cache in front of _intraTxCache: the EVM accesses the same
+    // account many times in a row. A cheap return when the address' change
+    // stack is unchanged (stack.Count); a push for any *other* address leaves
+    // it valid. Invalidated when a restore/commit/reset recycles the stacks (epoch).
+    private Address? _cachedAddress;
+    private StackList<int>? _cachedStack;
+    private Account? _cachedAccount;
+    private int _cachedStackCount;
+    private int _cachedEpoch = -1;
+    private int _epoch;
+
+    partial void InvalidateFrontCache() => _epoch++;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsFrontCacheHit(Address address) =>
+        _cachedEpoch == _epoch && _cachedAddress is not null && _cachedAddress.Equals(address);
+#endif
 
     public void RecalculateStateRoot()
     {
@@ -360,6 +382,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         if (_logger.IsTrace) Trace(snapshot);
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
+        InvalidateFrontCache();
 
         int stepsBack = lastIndex - snapshot;
         // Reserve capacity up‐front (avoid grows)
@@ -611,6 +634,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
         trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
 
+        InvalidateFrontCache();
         _changes.Clear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
@@ -719,10 +743,14 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
     public bool WarmUp(Address address)
         => GetState(address) is not null;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref ChangeTrace GetOrAddBlockChange(AddressAsKey key, out bool exists)
+        => ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, key, out exists);
+
     private Account? GetState(Address address)
     {
         AddressAsKey addressAsKey = address;
-        ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(addressAsKey, out bool exists);
         if (!exists)
         {
             _metrics.IncrementStateTreeReads();
@@ -745,7 +773,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
             _metrics.IncrementAccountDeleted();
         }
 
-        ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }
@@ -768,10 +796,35 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         return account;
     }
 
-    internal Account? GetThroughCache(Address address) =>
-        _intraTxCache.TryGetValue(address, out StackList<int> value)
+    internal Account? GetThroughCache(Address address)
+    {
+#if ZK_EVM
+        if (IsFrontCacheHit(address))
+        {
+            StackList<int> s = _cachedStack;
+            int count = s.Count;
+
+            if (count == _cachedStackCount)
+                return _cachedAccount;
+
+            _cachedStackCount = count;
+            return _cachedAccount = _changes[s.Peek()].Account;
+        }
+        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        {
+            _cachedAddress = address;
+            _cachedStack = value;
+            _cachedStackCount = value.Count;
+            _cachedEpoch = _epoch;
+            return _cachedAccount = _changes[value.Peek()].Account;
+        }
+        return GetAndAddToCache(address);
+#else
+        return _intraTxCache.TryGetValue(address, out StackList<int> value)
             ? _changes[value.Peek()].Account
             : GetAndAddToCache(address);
+#endif
+    }
 
     private void PushJustCache(Address address, Account account)
         => Push(address, account, ChangeType.JustCache);
@@ -816,6 +869,12 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
 
     private StackList<int> SetupCache(Address address)
     {
+#if ZK_EVM
+        // A push almost always follows a read of the same account; the front
+        // cache already holds that account's (live) change stack.
+        if (IsFrontCacheHit(address))
+            return _cachedStack;
+#endif
         ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
         if (!exists)
         {
@@ -855,6 +914,7 @@ internal class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJo
         _intraTxCache.ResetAndClear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
+        InvalidateFrontCache();
         _changes.Clear();
         _needsStateRootUpdate = false;
 

@@ -632,13 +632,34 @@ jobs:
           err_opt=()
           [ -n "$REFERENCE_URL" ] && [ "$IGNORE_ERROR_MESSAGES" == "true" ] && err_opt=(-E)
 
+          # Default pass: historical (non-latest) tests, which pin explicit block numbers.
           set +e
           ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
             "${exclude[@]}" "${err_opt[@]}" -M "$MAX_FAILURES" -c -f -R rpc-results/report.csv | tee rpc-results/output.txt
           rc=${PIPESTATUS[0]}
           set -e
           echo "rpc_int exit code: $rc"
-          exit $rc
+
+          # Latest-block pass (-L): head-dependent tests (eth_baseFee, eth_gasPrice,
+          # eth_blockNumber, eth_maxPriorityFeePerGas, ...). rpc_int first waits until the node
+          # under test and the reference agree on the latest block (GetConsistentLatestBlock),
+          # then queries both at that same head, so the comparison is deterministic instead of
+          # racing on a one-block head skew. Only meaningful against a live reference, so it is
+          # skipped in regression mode (no REFERENCE_URL; latest fixtures carry no expected result).
+          rc_latest=0
+          if [ -n "$REFERENCE_URL" ]; then
+            set +e
+            ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
+              "${exclude[@]}" "${err_opt[@]}" -L -M "$MAX_FAILURES" -c -f -R rpc-results/report-latest.csv | tee rpc-results/output-latest.txt
+            rc_latest=${PIPESTATUS[0]}
+            set -e
+            echo "rpc_int (latest) exit code: $rc_latest"
+          fi
+
+          if [ "$rc" -ne 0 ] || [ "$rc_latest" -ne 0 ]; then
+            echo "rpc_int failed (default=$rc, latest=$rc_latest)"
+            exit 1
+          fi
 
       - name: Upload rpc_int results
         if: always()
