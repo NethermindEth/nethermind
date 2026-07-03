@@ -299,7 +299,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas);
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
-                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
                         }
                         // Revert state changes for the previous call frame when a revert condition is signaled.
                         HandleRevert(previousState, callResult, ref previousCallOutput);
@@ -460,7 +460,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas);
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(), trackSpillRefund: false);
             RemoveAdvancedStateGasRefund(previousState, ref _currentState.Gas);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
@@ -599,7 +599,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(), trackSpillRefund: false);
         }
 
         shouldExit = false;
@@ -780,7 +780,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(), trackSpillRefund: false);
         }
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
@@ -991,8 +991,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        ulong baseGasCost = precompile.BaseGasCost(spec);
-        ulong dataGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
 
@@ -1012,9 +1010,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        // Guard against ulong overflow before summing into UpdateGas.
-        if (baseGasCost > ulong.MaxValue - dataGasCost ||
-            !TGasPolicy.UpdateGas(ref gas, baseGasCost + dataGasCost))
+        // The policy reads the precompile's own base/data cost (with the overflow guard inside).
+        if (!TGasPolicy.ConsumePrecompileGas(ref gas, precompile, callData, spec))
         {
             return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
@@ -1176,7 +1173,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             UInt256 localPreviousDest = previousCallOutputDestination;
 
             // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, vmState))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, ref vmState.Memory))
             {
                 goto OutOfGas;
             }

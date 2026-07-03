@@ -18,12 +18,12 @@ public static partial class EvmInstructions
     /// Interface for two-parameter mathematical operations on 256-bit unsigned integers.
     /// Implementers define a specific binary math operation (e.g. addition, subtraction).
     /// </summary>
-    public interface IOpMath2Param
+    public interface IOpMath2Param : IGasCost
     {
         /// <summary>
         /// The gas cost for executing this math operation.
         /// </summary>
-        virtual static ulong GasCost => GasCostOf.VeryLow;
+        static ulong IGasCost.GasCost => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the math operation on two 256-bit operands.
         /// </summary>
@@ -55,7 +55,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the specific math operation.
-        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
+        TGasPolicy.Consume<TOpMath>(ref gas);
 
         return Math2ParamCore<TOpMath, TTracingInst>(ref stack);
     }
@@ -107,7 +107,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpMul : IOpMath2Param
     {
-        public static ulong GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Multiply(in a, in b, out result);
     }
@@ -118,7 +118,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpDiv : IOpMath2Param
     {
-        public static ulong GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -142,7 +142,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSDiv : IOpMath2Param
     {
-        public static ulong GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -173,7 +173,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpMod : IOpMath2Param
     {
-        public static ulong GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -195,7 +195,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSMod : IOpMath2Param
     {
-        public static ulong GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -275,7 +275,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        TGasPolicy.Consume(ref gas, GasCostOf.Exp);
+        TGasPolicy.Consume<ExpGasCost>(ref gas);
 
         // Pop the base value and exponent from the stack.
         if (!stack.PopUInt256(out UInt256 a, out UInt256 exponent))
@@ -293,7 +293,7 @@ public static partial class EvmInstructions
 
         ulong expSize = (ulong)(32 - leadingZeros);
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-        TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
+        TGasPolicy.ConsumeExpBytes(ref gas, vm.Spec, expSize);
 
         if (a.IsZero)
         {
