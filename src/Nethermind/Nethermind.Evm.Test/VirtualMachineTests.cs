@@ -3,11 +3,14 @@
 
 using System.Linq;
 using System.Numerics;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Evm.Test.Tracing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using Nethermind.Specs;
 
@@ -130,12 +133,21 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(entry.Depth, Is.EqualTo(1), nameof(entry.Depth));
             Assert.That(entry.Gas, Is.EqualTo(79000 - GasCostOf.VeryLow), nameof(entry.Gas));
             Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
-            Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
-            Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
-            Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(0), nameof(entry.Storage));
+            Assert.That(entry.MemoryWordCount(), Is.EqualTo(0), nameof(entry.Memory));
+            Assert.That(entry.StackWordCount(), Is.EqualTo(1), nameof(entry.Stack));
+            Assert.That(entry.Storage, Is.Null, nameof(entry.Storage));
+            Assert.That(trace.Entries[4].Opcode, Is.EqualTo("SSTORE"), "SSTORE opcode");
             Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
             Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
         }
+
+        // Storage is populated lazily during serialization; verify via JSON.
+        using JsonDocument doc = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        JsonElement sstoreEntry = doc.RootElement.GetProperty("structLogs")[4];
+        JsonElement storage = sstoreEntry.GetProperty("storage");
+        const string zero32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        Assert.That(storage.EnumerateObject().Count(), Is.EqualTo(1), "SSTORE storage has one slot");
+        Assert.That(storage.GetProperty(zero32).GetString(), Is.EqualTo(zero32), "SSTORE storage[0x0]=0x0");
     }
 
     [Test]
@@ -489,8 +501,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        string copied = traces.Entries.Last().Memory[0];
-        string origin = traces.Entries.Last().Memory[1];
+        UInt256 copied = traces.Entries.Last().GetMemoryWord(0);
+        UInt256 origin = traces.Entries.Last().GetMemoryWord(1);
 
         using (Assert.EnterMultipleScope())
         {
@@ -516,12 +528,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        string result = traces.Entries.Last().Memory[0];
+        UInt256 result = traces.Entries.Last().GetMemoryWord(0);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)(SLICE_SIZE + 31) / 32), "gas");
-            Assert.That(result, Is.EqualTo("0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
+            Assert.That(result, Is.EqualTo(new UInt256(Bytes.FromHexString("0x0101020304050607080000000000000000000000000000000000000000000000"), isBigEndian: true)), "memory state");
         }
     }
 
@@ -543,7 +555,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)((data.Length + 31) / 32)), "gas");
-            Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
+            Assert.That(traces.Entries.Last().MemoryWordCount(), Is.EqualTo(1));
         }
     }
 
@@ -576,12 +588,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        string result = traces.Entries.Last().Memory[0];
+        UInt256 result = traces.Entries.Last().GetMemoryWord(0);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)(SLICE_SIZE + 31) / 32), "gas");
-            Assert.That(result, Is.EqualTo("0102030405060708080000000000000000000000000000000000000000000000"), "memory state");
+            Assert.That(result, Is.EqualTo(new UInt256(Bytes.FromHexString("0x0102030405060708080000000000000000000000000000000000000000000000"), isBigEndian: true)), "memory state");
         }
     }
 

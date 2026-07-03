@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
             }
-            catch (JsonException)
+            catch (Exception e) when (e is JsonException or FormatException or OverflowException)
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams);
             }

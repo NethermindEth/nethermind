@@ -744,6 +744,7 @@ namespace Nethermind.TxPool
             int i = 0;
             UInt256 cumulativeCost = 0;
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+            bool isEip1559 = headSpec.IsEip1559Enabled;
             bool evictNextTxs = false;
 
             foreach (Transaction tx in transactions)
@@ -767,7 +768,7 @@ namespace Nethermind.TxPool
                     }
 
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(
-                        _specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
+                        isEip1559,
                         _headInfo.CurrentBaseFee, balance);
 
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null, so check is skipped
@@ -778,7 +779,7 @@ namespace Nethermind.TxPool
                     else if (tx.Nonce == currentNonce + (ulong)i)
                     {
                         UInt256 effectiveGasPrice =
-                            tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
+                            tx.CalculateEffectiveGasPrice(isEip1559,
                                 _headInfo.CurrentBaseFee);
 
                         if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))

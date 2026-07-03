@@ -59,7 +59,6 @@ public interface IBlockAccessListManager
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
-    void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress);
 }
 
 /// <summary>

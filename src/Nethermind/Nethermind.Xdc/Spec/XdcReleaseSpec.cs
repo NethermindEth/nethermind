@@ -53,6 +53,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
     public bool IsTIPXDCXMiner { get; set; }
+    public bool IsTIPXDCXReceiver { get; set; }
     public bool IsDynamicGasLimitBlock { get; set; }
     public ulong RangeReturnSigner { get; set; }
 
@@ -139,6 +140,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
     public bool IsTIPXDCXMiner { get; set; }
+    public bool IsTIPXDCXReceiver { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsDynamicGasLimitBlock { get; set; }
     public ulong TIP2019Block { get; set; }

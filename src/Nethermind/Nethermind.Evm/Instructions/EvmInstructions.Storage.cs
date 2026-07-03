@@ -53,7 +53,7 @@ public static partial class EvmInstructions
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
 
         // If storage tracing is enabled, record the operation.
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             if (TGasPolicy.IsOutOfGas(in gas)) goto OutOfGas;
             vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
@@ -104,7 +104,7 @@ public static partial class EvmInstructions
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             if (TGasPolicy.IsOutOfGas(in gas)) goto OutOfGas;
             ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
@@ -418,7 +418,7 @@ public static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -591,7 +591,7 @@ public static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -657,7 +657,7 @@ public static partial class EvmInstructions
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
         }

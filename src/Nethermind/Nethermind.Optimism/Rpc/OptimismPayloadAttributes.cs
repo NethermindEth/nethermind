@@ -74,7 +74,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         base.ComputePayloadIdMembersSize()
         + sizeof(bool) // noTxPool
         + (Keccak.Size * TransactionsLength) // Txs
-        + sizeof(long) // gasLimit
+        + sizeof(ulong) // gasLimit
         + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)

@@ -13,7 +13,7 @@ namespace Nethermind.Serialization.Rlp
     public interface IBlockHeaderDecoder<T> : IRlpDecoder<T> where T : BlockHeader { }
 
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
-    public sealed class HeaderDecoder() : RlpDecoder<BlockHeader>, IHeaderDecoder
+    public class HeaderDecoder() : RlpDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
 
@@ -44,34 +44,14 @@ namespace Nethermind.Serialization.Rlp
             ulong timestamp = decoderContext.DecodeULong();
             byte[]? extraData = decoderContext.DecodeByteArray();
 
-            BlockHeader blockHeader = new(
-                parentHash,
-                unclesHash,
-                beneficiary,
-                difficulty,
-                number,
-                gasLimit,
-                timestamp,
-                extraData)
-            {
-                StateRoot = stateRoot,
-                TxRoot = transactionsRoot,
-                ReceiptsRoot = receiptsRoot,
-                Bloom = bloom,
-                GasUsed = gasUsed,
-                Hash = Keccak.Compute(headerRlp)
-            };
-
-            if (decoderContext.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
-            {
-                blockHeader.MixHash = decoderContext.DecodeKeccak();
-                blockHeader.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
-            }
-            else
-            {
-                blockHeader.AuRaStep = decoderContext.DecodeULong();
-                blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
-            }
+            BlockHeader blockHeader = DecodeSealAndCreateHeader(
+                ref decoderContext, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData!);
+            blockHeader.StateRoot = stateRoot;
+            blockHeader.TxRoot = transactionsRoot;
+            blockHeader.ReceiptsRoot = receiptsRoot;
+            blockHeader.Bloom = bloom;
+            blockHeader.GasUsed = gasUsed;
+            blockHeader.Hash = Keccak.Compute(headerRlp);
 
             if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
@@ -89,6 +69,48 @@ namespace Nethermind.Serialization.Rlp
 
             return blockHeader;
         }
+
+        /// <summary>
+        /// Decodes the seal section of the header and materialises the header instance.
+        /// </summary>
+        /// <remarks>
+        /// The seal is the only header section whose shape depends on the consensus engine, and it also
+        /// dictates the runtime header type, so decoding it and creating the instance is a single hook.
+        /// The base implementation reads the Ethash/PoS <c>mixHash</c> + <c>nonce</c> pair; consensus
+        /// plugins with a different seal shape override this (and <see cref="EncodeSeal"/> +
+        /// <see cref="GetSealLength"/>) and register their decoder for <see cref="BlockHeader"/>.
+        /// </remarks>
+        protected virtual BlockHeader DecodeSealAndCreateHeader(
+            ref RlpReader decoderContext,
+            Hash256? parentHash,
+            Hash256? unclesHash,
+            Address? beneficiary,
+            in UInt256 difficulty,
+            ulong number,
+            ulong gasLimit,
+            ulong timestamp,
+            byte[] extraData)
+        {
+            Hash256? mixHash = decoderContext.DecodeKeccak();
+            ulong nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
+            return new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
+            {
+                MixHash = mixHash,
+                Nonce = nonce,
+            };
+        }
+
+        /// <summary>Encodes the seal section. The base implementation writes <c>mixHash</c> + <c>nonce</c>.</summary>
+        protected virtual void EncodeSeal<TWriter>(ref TWriter writer, BlockHeader header)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        {
+            writer.Encode(header.MixHash);
+            writer.Encode(header.Nonce, NonceLength);
+        }
+
+        /// <summary>RLP length of the seal section written by <see cref="EncodeSeal"/>.</summary>
+        protected virtual int GetSealLength(BlockHeader header) =>
+            Rlp.LengthOf(header.MixHash) + Rlp.LengthOfNonce(header.Nonce);
 
         public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -116,17 +138,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = header.AuRaSignature is not null;
-                if (isAuRa)
-                {
-                    writer.Encode(header.AuRaStep!.Value);
-                    writer.Encode(header.AuRaSignature);
-                }
-                else
-                {
-                    writer.Encode(header.MixHash);
-                    writer.Encode(header.Nonce, NonceLength);
-                }
+                EncodeSeal(ref writer, header);
             }
 
             Span<bool> requiredItems = stackalloc bool[8];
@@ -168,7 +180,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(bytes);
         }
 
-        private static int GetContentLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
+        private int GetContentLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -193,19 +205,8 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = item.AuRaSignature is not null;
-                if (isAuRa)
-                {
-                    contentLength += Rlp.LengthOf(item.AuRaStep!.Value);
-                    contentLength += Rlp.LengthOf(item.AuRaSignature);
-                }
-                else
-                {
-                    contentLength += Rlp.LengthOf(item.MixHash);
-                    contentLength += Rlp.LengthOfNonce(item.Nonce);
-                }
+                contentLength += GetSealLength(item);
             }
-
 
             Span<bool> requiredItems = stackalloc bool[8];
             requiredItems[0] = !item.BaseFeePerGas.IsZero;

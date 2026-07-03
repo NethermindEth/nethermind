@@ -31,7 +31,10 @@ public readonly struct ValueAddress
 
     /// <summary>Exposes the 20 backing bytes as a read-only span over the struct's storage.</summary>
     public ReadOnlySpan<byte> AsSpan
-        => MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Bytes20, byte>(ref Unsafe.AsRef(in _bytes)), Address.Size);
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Bytes20, byte>(ref Unsafe.AsRef(in _bytes)), Address.Size);
+    }
 
     /// <summary>Materializes a managed <see cref="Address"/> from this value-typed address.</summary>
     public Address ToAddress() => new(AsSpan);

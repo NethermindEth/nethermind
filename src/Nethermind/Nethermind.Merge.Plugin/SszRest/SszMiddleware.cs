@@ -11,6 +11,7 @@ using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
@@ -32,9 +33,28 @@ public sealed class SszMiddleware
     private readonly ILogger _logger;
     private readonly CancellationToken _processExitToken;
 
+    // Path: /engine/v2/{resource}[/{extra}]. Since execution-apis#793 the fork is no longer a
+    // path segment — fork-scoped endpoints select their container shape via the request header below.
     private const string EnginePrefix = "/engine/v2/";
 
-    /// <summary>Maximum allowed request body size in bytes (64 MiB), mirroring the spec's <c>payload.max_bytes</c> (execution-apis#793).</summary>
+    /// <summary>
+    /// Request header that selects the fork (and thus the SSZ container shape) for fork-scoped
+    /// endpoints, per execution-apis#793 (e.g. <c>Eth-Execution-Version: cancun</c>).
+    /// </summary>
+    public const string ForkHeaderName = "Eth-Execution-Version";
+
+    /// <summary>
+    /// <see cref="HttpContext.Items"/> key under which the resolved fork is stashed for fork-scoped
+    /// endpoints, so handlers can read it back without re-parsing the request. A typo in a reader
+    /// would silently disable fork filtering, hence the single shared constant.
+    /// </summary>
+    internal const string RouteForkItemKey = "SszRouteFork";
+
+    /// <summary>
+    /// Maximum allowed request body size in bytes (64 MiB).
+    /// Mirrors the <c>payload.max_bytes</c> example value advertised in the Engine API
+    /// SSZ-REST spec capabilities response (see https://github.com/ethereum/execution-apis/pull/793).
+    /// </summary>
     public const int MaxBodySize = 0x4000000;
 
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
@@ -134,6 +154,8 @@ public sealed class SszMiddleware
 
     private async Task ProcessSszRequestAsync(HttpContext ctx)
     {
+        string? fork = null;
+        Task? forkError = null;
         string? authHeader = ctx.Request.Headers.Authorization;
         if (authHeader is null || !await _auth.Authenticate(authHeader))
         {
@@ -141,34 +163,39 @@ public sealed class SszMiddleware
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
                 "Authentication error");
         }
-        else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out string? fork,
-                     out ReadOnlyMemory<char> pathSegment, out bool unsupportedFork))
+        else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version,
+                     out ReadOnlyMemory<char> pathSegment, out bool forkScoped))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            if (unsupportedFork)
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+                "Unknown SSZ endpoint", SszRestErrorCodes.MethodNotFound);
+        }
+        else if (forkScoped && !TryResolveFork(ctx, out fork, out forkError))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            await forkError!;
+        }
+        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, fork, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra, out bool endpointNotAvailableForFork))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            if (endpointNotAvailableForFork)
             {
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                    $"Fork '{fork}' is not supported by this EL",
+                    $"Fork '{fork}' does not support {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
                     MergeErrorCodes.UnsupportedFork);
             }
             else
             {
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                    "Unknown SSZ endpoint", SszRestErrorCodes.MethodNotFound);
+                    $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
+                    SszRestErrorCodes.MethodNotFound);
             }
-        }
-        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, fork, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
-        {
-            Metrics.SszRestRequestsClientErrorTotal++;
-            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
-                SszRestErrorCodes.MethodNotFound);
         }
         else
         {
             if (fork is not null)
             {
-                ctx.Items["SszRouteFork"] = fork;
+                ctx.Items[RouteForkItemKey] = fork;
             }
 
             if (_logger.IsTrace)
@@ -239,13 +266,12 @@ public sealed class SszMiddleware
         }
     }
 
-    private static bool TryRoute(string path, out int version, out string? fork,
-        out ReadOnlyMemory<char> pathSegment, out bool unsupportedFork)
+    private static bool TryRoute(string path, out int version,
+        out ReadOnlyMemory<char> pathSegment, out bool forkScoped)
     {
         version = 1;
-        fork = null;
         pathSegment = default;
-        unsupportedFork = false;
+        forkScoped = false;
 
         ReadOnlySpan<char> span = path.AsSpan();
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
@@ -253,7 +279,8 @@ public sealed class SszMiddleware
 
         // Collapse a trailing slash so `/foo` and `/foo/` route identically; pathLen bounds every later slice so the slash never reaches `extra`.
         int pathLen = path.Length;
-        if (pathLen > EnginePrefix.Length && path[pathLen - 1] == '/')
+        bool hadTrailingSlash = pathLen > EnginePrefix.Length && path[pathLen - 1] == '/';
+        if (hadTrailingSlash)
         {
             pathLen--;
             span = span[..pathLen];
@@ -263,76 +290,72 @@ public sealed class SszMiddleware
         span = span[offset..];
         if (span.IsEmpty) return false;
 
-        if (span.Equals("identity".AsSpan(), StringComparison.OrdinalIgnoreCase)
-            || span.Equals("capabilities".AsSpan(), StringComparison.OrdinalIgnoreCase))
-        {
-            pathSegment = path.AsMemory(offset, pathLen - offset);
-            return true;
-        }
-        // Unscoped endpoints don't accept path extras — reject "/identity/foo" / "/capabilities/foo" as 404.
-        if (span.StartsWith("identity/".AsSpan(), StringComparison.OrdinalIgnoreCase)
-            || span.StartsWith("capabilities/".AsSpan(), StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
+        // The first path segment is the resource; its scoping decides how fork/version are found.
+        int slash = span.IndexOf('/');
+        ReadOnlySpan<char> resource = slash < 0 ? span : span[..slash];
+        ReadOnlySpan<char> rest = slash < 0 ? default : span[(slash + 1)..];
 
-        if (span.StartsWith("blobs/".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        switch (SszRestPaths.GetScoping(resource))
         {
-            ReadOnlySpan<char> sub = span["blobs/".Length..];
-            if (sub.StartsWith("v", StringComparison.OrdinalIgnoreCase))
-            {
-                if (int.TryParse(sub[1..], out int blobVer))
+            case SszRestPaths.ResourceScoping.Unscoped:
+                if (!rest.IsEmpty || hadTrailingSlash) return false;
+                pathSegment = path.AsMemory(offset, pathLen - offset);
+                return true;
+
+            case SszRestPaths.ResourceScoping.PathVersioned:
+                // Version travels in a trailing /v{N} segment (e.g. /blobs/v1); no fork header.
+                if (rest.StartsWith("v", StringComparison.OrdinalIgnoreCase) && int.TryParse(rest[1..], out int parsed))
                 {
-                    version = blobVer;
-                    pathSegment = path.AsMemory(offset, "blobs".Length);
+                    version = parsed;
+                    pathSegment = path.AsMemory(offset, resource.Length);
                     return true;
                 }
-            }
-            return false;
-        }
-
-        // Fork-scoped path: /{fork}/{resource}[/{extra}]
-        int nextSlash = span.IndexOf('/');
-        if (nextSlash <= 0)
-        {
-            nextSlash = span.Length;
-        }
-
-        ReadOnlySpan<char> forkSpan = span[..nextSlash];
-        if (!SszRestPaths.SupportedForksSpanLookup.Contains(forkSpan))
-        {
-            // Reject `/engine/v2/v<N>/...` as 404 rather than an unsupported-fork error.
-            if (forkSpan.Length > 1
-                && (forkSpan[0] == 'v' || forkSpan[0] == 'V')
-                && int.TryParse(forkSpan[1..], out _))
-            {
                 return false;
-            }
 
-            fork = forkSpan.ToString();
-            unsupportedFork = true;
+            default:
+                // Fork-scoped: fork (and thus version) is resolved later from the Eth-Execution-Version header.
+                forkScoped = true;
+                pathSegment = path.AsMemory(offset, pathLen - offset);
+                return true;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the fork for a fork-scoped endpoint from the <see cref="ForkHeaderName"/> request
+    /// header. Returns <c>false</c> and sets <paramref name="error"/> to a ready-to-await 400
+    /// response when the header is missing or names a fork this EL does not support.
+    /// </summary>
+    private static bool TryResolveFork(HttpContext ctx, out string? fork, out Task? error)
+    {
+        fork = null;
+        error = null;
+
+        StringValues headerValues = ctx.Request.Headers[ForkHeaderName];
+        string? headerValue = headerValues.Count == 1 ? headerValues[0] : null;
+        if (string.IsNullOrEmpty(headerValue))
+        {
+            error = SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                $"Request must carry exactly one '{ForkHeaderName}' header", SszRestErrorCodes.InvalidRequest);
             return false;
         }
 
-        fork = forkSpan.ToString();
-        if (nextSlash < span.Length)
+        if (!SszRestPaths.SupportedForks.Contains(headerValue))
         {
-            offset += nextSlash + 1;
-            pathSegment = path.AsMemory(offset, pathLen - offset);
-        }
-        else
-        {
-            // Recognised fork but missing resource segment (e.g. /engine/v2/cancun) — 404, not unsupported-fork.
+            error = SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                $"Fork '{headerValue}' is not supported by this EL", MergeErrorCodes.UnsupportedFork);
             return false;
         }
+
+        fork = headerValue;
         return true;
     }
 
     private bool TryResolveHandler(string method, ReadOnlyMemory<char> pathSegment, int version, string? fork,
-        out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra)
+        out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra, out bool endpointNotAvailableForFork)
     {
         handler = null;
         extra = default;
+        endpointNotAvailableForFork = false;
 
         bool isPost = HttpMethods.IsPost(method);
         bool isGet = !isPost && HttpMethods.IsGet(method);
@@ -355,8 +378,14 @@ public sealed class SszMiddleware
 
         if (fork is not null)
         {
-            int? mappedVersion = SszRestPaths.MapForkToVersion(fork, resource.Span, method);
-            if (mappedVersion is null) return false;
+            int? mappedVersion = SszRestPaths.MapForkToVersion(fork, resource.Span, method, out bool recognizedResource);
+            if (mappedVersion is null)
+            {
+                // Known endpoint the requested fork predates (e.g. paris + bodies) → let the caller
+                // emit 400 unsupported-fork; a genuinely unknown resource stays 404 method-not-found.
+                endpointNotAvailableForFork = recognizedResource;
+                return false;
+            }
             version = mappedVersion.Value;
         }
 
