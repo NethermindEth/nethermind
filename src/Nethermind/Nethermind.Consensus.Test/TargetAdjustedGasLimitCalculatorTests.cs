@@ -27,9 +27,9 @@ namespace Nethermind.Consensus.Test
             TestSpecProvider specProvider = new(spec);
             TargetAdjustedGasLimitCalculator calculator = new(
                 specProvider,
-                new BlocksConfig { TargetBlockGasLimit = configTarget });
-            BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber - 1).WithGasLimit(parentGasLimit).TestObject;
-            return calculator.GetGasLimit(header, overrideTarget);
+                new BlocksConfig { TargetBlockGasLimit = (ulong?)configTarget });
+            BlockHeader header = Build.A.BlockHeader.WithNumber((ulong)(blockNumber - 1)).WithGasLimit((ulong)parentGasLimit).TestObject;
+            return (long)calculator.GetGasLimit(header, (ulong?)overrideTarget);
         }
 
         [Test]

@@ -78,7 +78,7 @@ public class AuRaContractGasLimitOverrideTests
         (AuRaContractGasLimitOverride calculator, IGasLimitCalculator inner) = BuildOverride(contractGasLimit: 42_000_000, innerResult: innerGasLimit);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).TestObject;
 
-        long result = calculator.GetGasLimit(parent, targetGasLimit: overrideTarget);
+        ulong result = calculator.GetGasLimit(parent, targetGasLimit: overrideTarget);
 
         Assert.That(result, Is.EqualTo(innerGasLimit));
         inner.Received(1).GetGasLimit(parent, overrideTarget);
@@ -97,7 +97,7 @@ public class AuRaContractGasLimitOverrideTests
             LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(parentGasLimit).TestObject;
 
-        bool inRange = calculator.IsGasLimitValid(parent, parentGasLimit + 29_000, out long? expected);
+        bool inRange = calculator.IsGasLimitValid(parent, parentGasLimit + 29_000, out ulong? expected);
         bool outOfRange = calculator.IsGasLimitValid(parent, parentGasLimit + 10_000_000, out _);
 
         using (Assert.EnterMultipleScope())
@@ -116,16 +116,16 @@ public class AuRaContractGasLimitOverrideTests
         (AuRaContractGasLimitOverride calculator, IGasLimitCalculator inner) = BuildOverride(contractGasLimit: null, innerResult: innerGasLimit);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).TestObject;
 
-        long result = calculator.GetGasLimit(parent, targetGasLimit: overrideTarget);
+        ulong result = calculator.GetGasLimit(parent, targetGasLimit: overrideTarget);
 
         Assert.That(result, Is.EqualTo(innerGasLimit));
         inner.Received(1).GetGasLimit(parent, overrideTarget);
     }
 
-    private static (AuRaContractGasLimitOverride calculator, IGasLimitCalculator inner) BuildOverride(long? contractGasLimit, long innerResult)
+    private static (AuRaContractGasLimitOverride calculator, IGasLimitCalculator inner) BuildOverride(long? contractGasLimit, ulong innerResult)
     {
         IGasLimitCalculator inner = Substitute.For<IGasLimitCalculator>();
-        inner.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<long?>()).Returns(innerResult);
+        inner.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<ulong?>()).Returns(innerResult);
 
         IBlockGasLimitContract[] contracts = contractGasLimit is { } limit ? [StubContract(limit)] : [];
         AuRaContractGasLimitOverride calculator = new(
@@ -140,7 +140,7 @@ public class AuRaContractGasLimitOverrideTests
     private static IBlockGasLimitContract StubContract(long gasLimit)
     {
         IBlockGasLimitContract contract = Substitute.For<IBlockGasLimitContract>();
-        contract.ActivationBlock.Returns(0L);
+        contract.ActivationBlock.Returns(0UL);
         contract.BlockGasLimit(Arg.Any<BlockHeader>()).Returns((UInt256)gasLimit);
         return contract;
     }

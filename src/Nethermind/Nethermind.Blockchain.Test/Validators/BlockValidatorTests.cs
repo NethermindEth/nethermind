@@ -273,7 +273,7 @@ public class BlockValidatorTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBal(bal)
@@ -356,7 +356,7 @@ public class BlockValidatorTests
 
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBlockAccessListHash(balHash)
@@ -364,7 +364,7 @@ public class BlockValidatorTests
 
         Block processedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBlockAccessListHash(balHash)

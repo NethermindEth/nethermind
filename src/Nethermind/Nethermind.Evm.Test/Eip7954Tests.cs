@@ -22,7 +22,7 @@ public class Eip7954Tests : VirtualMachineTestsBase
     public void MaxCodeSize_and_MaxInitCodeSize_are_correct()
     {
         Assert.That(Spec.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
-        Assert.That(Spec.MaxInitCodeSize, Is.EqualTo(2L * CodeSizeConstants.MaxCodeSizeEip7954));
+        Assert.That(Spec.MaxInitCodeSize, Is.EqualTo(2UL * CodeSizeConstants.MaxCodeSizeEip7954));
     }
 
     [TestCase(true, 55000, ExpectedResult = false, TestName = "InitCode_between_old_and_new_limit_accepted")]
@@ -68,7 +68,7 @@ public class Eip7954Tests : VirtualMachineTestsBase
         EthereumIntrinsicGas intrinsic = IntrinsicGasCalculator.Calculate(probeTx, spec, probeBlock.Header.GasLimit);
         Assert.That(intrinsic.FloorGas, Is.GreaterThan(intrinsic.Standard),
             "the calldata floor must exceed the standard intrinsic for this calldata-heavy tx");
-        long gasLimit = intrinsic.FloorGas - 1;
+        ulong gasLimit = intrinsic.FloorGas - 1;
 
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code: null, input: calldata, value: 0);
 

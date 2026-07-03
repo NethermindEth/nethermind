@@ -58,7 +58,7 @@ public partial class EngineModuleTests
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         const ulong slotNumber = 1;
-        long targetGasLimit = chain.BlockTree.Head!.GasLimit;
+        ulong targetGasLimit = chain.BlockTree.Head!.GasLimit;
         var fcuState = new
         {
             headBlockHash = startingHead.ToString(),

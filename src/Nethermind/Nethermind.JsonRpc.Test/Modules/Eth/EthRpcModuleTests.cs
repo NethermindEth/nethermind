@@ -1780,7 +1780,7 @@ public partial class EthRpcModuleTests
             Recipient = TestItem.AddressA,
             Sender = TestItem.AddressB,
             BlockHash = TestItem.KeccakA,
-            BlockNumber = blockNumber,
+            BlockNumber = (ulong)blockNumber,
             ContractAddress = TestItem.AddressC,
             GasUsed = 1000,
             TxHash = TestItem.KeccakA,
@@ -1796,7 +1796,7 @@ public partial class EthRpcModuleTests
             Recipient = TestItem.AddressC,
             Sender = TestItem.AddressD,
             BlockHash = TestItem.KeccakA,
-            BlockNumber = blockNumber,
+            BlockNumber = (ulong)blockNumber,
             ContractAddress = TestItem.AddressC,
             GasUsed = 1000,
             TxHash = TestItem.KeccakB,
@@ -2114,7 +2114,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_createAccessList_cannot_exceed_gas_cap()
     {
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
-        long gasCap = 60_000;
+        ulong gasCap = 60_000;
         test.RpcConfig.GasCap = gasCap;
 
         // Contract creation with infinite loop; gas 200K should be capped to 60K
@@ -2132,8 +2132,8 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-        long blockGasLimit = ctx.Test.BlockTree.FindHeadBlock()!.Header.GasLimit;
-        long gasCap = blockGasLimit + 500_000;
+        ulong blockGasLimit = ctx.Test.BlockTree.FindHeadBlock()!.Header.GasLimit;
+        ulong gasCap = blockGasLimit + 500_000;
         ctx.Test.RpcConfig.GasCap = gasCap;
 
         // Inject infinite-loop contract — with no gas field it should consume all of gasCap, not blockGasLimit
@@ -2274,13 +2274,13 @@ public partial class EthRpcModuleTests
 
     [TestCase(null)]
     [TestCase(0L)]
-    public static void ToTransaction_uses_long_max_when_gasCap_is_null_or_zero(long? gasCap)
+    public static void ToTransaction_uses_ulong_max_when_gasCap_is_null_or_zero(long? gasCap)
     {
         LegacyTransactionForRpc rpcTx = new();
 
-        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: gasCap);
+        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: (ulong?)gasCap);
 
-        Assert.That(tx.GasLimit, Is.EqualTo(long.MaxValue), "GasLimit must default to long.MaxValue when gasCap is null or 0");
+        Assert.That(tx.GasLimit, Is.EqualTo(ulong.MaxValue), "GasLimit must default to ulong.MaxValue when gasCap is null or 0");
     }
 
     [Test]
@@ -2293,20 +2293,20 @@ public partial class EthRpcModuleTests
         Assert.That(tx.SenderAddress, Is.EqualTo(Address.Zero), "SenderAddress must default to Address.Zero when From is null");
     }
 
-    [TestCase(null, null, long.MaxValue)]
-    [TestCase(null, 0L, long.MaxValue)]
-    [TestCase(null, 1_000_000L, 1_000_000L)]
-    [TestCase(0L, null, 0L)]
-    [TestCase(0L, 1_000_000L, 0L)]
-    [TestCase(50_000L, null, 50_000L)]
-    [TestCase(50_000L, 0L, 50_000L)]
-    [TestCase(50_000L, 100_000L, 50_000L)]
-    [TestCase(200_000L, 100_000L, 100_000L)]
-    public static void ToTransaction_caps_and_defaults_gas(long? gas, long? gasCap, long expectedGasLimit)
+    [TestCase(null, null, ulong.MaxValue)]
+    [TestCase(null, 0L, ulong.MaxValue)]
+    [TestCase(null, 1_000_000L, 1_000_000UL)]
+    [TestCase(0L, null, 0UL)]
+    [TestCase(0L, 1_000_000L, 0UL)]
+    [TestCase(50_000L, null, 50_000UL)]
+    [TestCase(50_000L, 0L, 50_000UL)]
+    [TestCase(50_000L, 100_000L, 50_000UL)]
+    [TestCase(200_000L, 100_000L, 100_000UL)]
+    public static void ToTransaction_caps_and_defaults_gas(long? gas, long? gasCap, ulong expectedGasLimit)
     {
-        LegacyTransactionForRpc rpcTx = new() { Gas = gas };
+        LegacyTransactionForRpc rpcTx = new() { Gas = (ulong?)gas };
 
-        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: gasCap);
+        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: (ulong?)gasCap);
 
         Assert.That(tx.GasLimit, Is.EqualTo(expectedGasLimit));
     }
@@ -2739,7 +2739,7 @@ public partial class EthRpcModuleTests
         {
             builder.AddDecorator<ISyncConfig>((_, config) =>
             {
-                long cutBlock = blockNumber;
+                ulong cutBlock = (ulong)blockNumber;
                 config.AncientBodiesBarrier = cutBlock;
                 config.AncientReceiptsBarrier = cutBlock;
                 config.PivotNumber = cutBlock;
