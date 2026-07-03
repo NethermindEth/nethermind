@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 
 namespace Nethermind.RpcTests.Generator;
@@ -18,6 +21,12 @@ namespace Nethermind.RpcTests.Generator;
 /// contract's own execution context (there is no <c>EXTSLOAD</c>), so each contract's <c>code</c> is replaced
 /// via <c>stateOverride</c> with a slot-reader and the driver <c>STATICCALL</c>s into it. A <c>stateOverride</c>
 /// swaps code only, leaving historical storage intact, so the reads still resolve through the archive index.
+///
+/// Every read value is folded into an XOR fingerprint and every non-zero value bumps a counter, and the call
+/// <c>RETURN</c>s a fixed <see cref="ArchiveProbeReturn"/> (account/storage fingerprints + non-zero counts).
+/// That makes the result meaningful (proves the loop ran, and how much resolved) and turns it into an index
+/// validity oracle: since both nodes execute identical bytecode, a byte-identical struct means their archive
+/// indices agreed on the whole read set; any divergence is an index (or node) bug — see <see cref="RunAsync"/>.
 ///
 /// The driver bytecode is injected as runtime code at a synthetic address (not run as init-code), so it is
 /// subject to neither the EIP-3860 init-code cap nor the EIP-170 deployed-code cap and scales to a full block.
@@ -50,24 +59,55 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
     private const string DriverAddress = "0x0000000000000000000000000000000000c0ffee";
     private const string FallbackDriverAddress = "0x000000000000000000000000000000000000dead";
 
+    // Driver memory layout. The first four words are RETURNed as the ArchiveProbeReturn struct; the scratch
+    // words hold each STATICCALL's return data (the contract's own fingerprint + count) before it is folded in.
+    private const byte AccountFprOffset = 0x00;   // XOR of every BALANCE read
+    private const byte StorageFprOffset = 0x20;   // XOR of every contract's returned storage fingerprint
+    private const byte AccountCountOffset = 0x40; // count of non-zero balances
+    private const byte SlotCountOffset = 0x60;    // count of non-zero storage slots
+    private const byte RetOffset = 0x80;          // STATICCALL return scratch: contract fingerprint
+    private const byte RetCountOffset = 0xA0;     // STATICCALL return scratch: contract non-zero count
+    private const byte ReturnSize = 0x80;         // the four result words returned to the caller
+
+    // Slot-reader memory layout (its own execution frame), RETURNed to the driver as two words.
+    private const byte SlotFprOffset = 0x00;
+    private const byte SlotCounterOffset = 0x20;
+    private const byte SlotReturnSize = 0x40;
+
     // EVM opcodes
-    private const byte OpStop = 0x00;
+    private const byte OpAdd = 0x01;
+    private const byte OpIsZero = 0x15;
+    private const byte OpXor = 0x18;
     private const byte OpBalance = 0x31;
     private const byte OpPop = 0x50;
+    private const byte OpMload = 0x51;
+    private const byte OpMstore = 0x52;
     private const byte OpSload = 0x54;
     private const byte OpGas = 0x5A;
     private const byte OpPush1 = 0x60;
     private const byte OpPush20 = 0x73;
     private const byte OpPush32 = 0x7F;
+    private const byte OpDup1 = 0x80;
     private const byte OpStaticCall = 0xFA;
+    private const byte OpReturn = 0xF3;
 
-    public async Task<IReadOnlyList<ArchiveIndexProbeResult>> RunAsync(long? block = null, CancellationToken ct = default)
+    /// <summary>
+    /// Builds and sends the ladder against the testee. When <paramref name="reference"/> is given, each request is
+    /// also sent to it and the two returned structs compared (<see cref="ArchiveIndexProbeResult.Matches"/>) to
+    /// validate the archive index, not just time it.
+    /// </summary>
+    public async Task<IReadOnlyList<ArchiveIndexProbeResult>> RunAsync(long? block = null, RpcClient? reference = null, CancellationToken ct = default)
     {
         IReadOnlyList<ArchiveIndexRequest> requests = await BuildRequestsAsync(block, ct);
 
         List<ArchiveIndexProbeResult> results = new(requests.Count);
         foreach (ArchiveIndexRequest request in requests)
-            results.Add(await ProbeAsync(request, ct));
+        {
+            (TimeSpan elapsed, JsonNode response, ArchiveProbeReturn? parsed) = await SendTimedAsync(client, request.Request, ct);
+            ArchiveProbeReturn? referenceReturn = reference is null ? null : (await SendTimedAsync(reference, request.Request, ct)).Return;
+            results.Add(new ArchiveIndexProbeResult(
+                request.QueryBlock, request.Offset, request.AccountCount, request.SlotCount, request.Source, elapsed, response, parsed, referenceReturn));
+        }
 
         return results;
     }
@@ -92,13 +132,21 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
             queryBlock, sourceBlock - queryBlock, sweep.Accounts.Count, sweep.SlotCount, sweep.Source, BuildCallRequest(queryBlock, sweep)))];
     }
 
-    private async Task<ArchiveIndexProbeResult> ProbeAsync(ArchiveIndexRequest request, CancellationToken ct)
+    private static async Task<(TimeSpan Elapsed, JsonNode Response, ArchiveProbeReturn? Return)> SendTimedAsync(RpcClient rpc, JsonObject request, CancellationToken ct)
     {
         long start = Stopwatch.GetTimestamp();
-        JsonNode response = await client.RetrySendAsync(request.Request, ct);
-        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+        JsonNode response = await rpc.RetrySendAsync(request, ct);
+        return (Stopwatch.GetElapsedTime(start), response, ParseReturn(response));
+    }
 
-        return new ArchiveIndexProbeResult(request.QueryBlock, request.Offset, request.AccountCount, request.SlotCount, request.Source, elapsed, response);
+    /// <summary>Parses the call result into the fixed 4-word struct, or null if the call errored or returned an
+    /// unexpected length.</summary>
+    private static ArchiveProbeReturn? ParseReturn(JsonNode response)
+    {
+        if (response["result"]?.GetValue<string>() is not { } hex) return null;
+        ReadOnlySpan<char> chars = hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? hex.AsSpan(2) : hex;
+        if (chars.Length != ArchiveProbeReturn.Size * 2) return null;
+        return MemoryMarshal.Read<ArchiveProbeReturn>(Convert.FromHexString(chars));
     }
 
     private async Task<long> ResolveBlockAsync(CancellationToken ct)
@@ -137,6 +185,7 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
         //
         // Console.Error.WriteLine($"prestateTracer unavailable ({traceResponse["error"]?.ToCompactString() ?? "no result"}); " +
         //                         "falling back to eth_createAccessList");
+
         await SourceViaAccessListAsync(block, sweep, ct);
         return sweep.Build("accessList");
     }
@@ -248,46 +297,97 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
     }
 
     /// <summary>
-    /// Driver runtime code: BALANCE every account (account-record lookup) and STATICCALL every contract that
-    /// has slots (its overridden code performs the storage lookups).
+    /// Driver runtime code: BALANCE every account (folding each into the account fingerprint/counter) and
+    /// STATICCALL every contract with slots (its overridden code reads the storage and returns its own
+    /// fingerprint/count, which are folded into the storage accumulators). Ends by RETURNing the 4-word struct.
     /// </summary>
     private static string BuildDriverCode(Sweep sweep)
     {
-        List<byte> code = new(sweep.Accounts.Count * 23 + sweep.Contracts.Count * 30 + 1);
+        List<byte> code = new(sweep.Accounts.Count * 40 + sweep.Contracts.Count * 64 + 8);
 
         foreach (byte[] account in sweep.Accounts)
         {
             code.Add(OpPush20); code.AddRange(account);
-            code.Add(OpBalance); code.Add(OpPop);
+            code.Add(OpBalance);
+            EmitXorFold(code, AccountFprOffset, AccountCountOffset);
         }
 
         foreach (Contract contract in sweep.Contracts)
         {
-            // STATICCALL(gas, to, argsOffset=0, argsLength=0, retOffset=0, retLength=0)
-            code.Add(OpPush1); code.Add(0x00); // retLength
-            code.Add(OpPush1); code.Add(0x00); // retOffset
-            code.Add(OpPush1); code.Add(0x00); // argsLength
-            code.Add(OpPush1); code.Add(0x00); // argsOffset
+            // Clear the return scratch first: memory persists across STATICCALLs, so a failed call (which copies
+            // no return data) would otherwise re-fold the previous contract's values.
+            EmitStoreZero(code, RetOffset);
+            EmitStoreZero(code, RetCountOffset);
+
+            // STATICCALL(gas, to, argsOffset=0, argsLength=0, retOffset=RetOffset, retLength=SlotReturnSize)
+            code.Add(OpPush1); code.Add(SlotReturnSize); // retLength: fingerprint + count
+            code.Add(OpPush1); code.Add(RetOffset);      // retOffset
+            code.Add(OpPush1); code.Add(0x00);           // argsLength
+            code.Add(OpPush1); code.Add(0x00);           // argsOffset
             code.Add(OpPush20); code.AddRange(contract.Address); // to
-            code.Add(OpGas); // forward all remaining gas
-            code.Add(OpStaticCall); code.Add(OpPop);
+            code.Add(OpGas);                             // forward all remaining gas
+            code.Add(OpStaticCall);
+            code.Add(OpPop); // ignore success; a failed call left the scratch zeroed above
+
+            EmitMemFold(code, OpXor, StorageFprOffset, RetOffset);   // storageFpr ^= contract fingerprint
+            EmitMemFold(code, OpAdd, SlotCountOffset, RetCountOffset); // slotCount += contract non-zero count
         }
 
-        code.Add(OpStop);
+        code.Add(OpPush1); code.Add(ReturnSize); // length
+        code.Add(OpPush1); code.Add(0x00);       // offset
+        code.Add(OpReturn);
         return ToHex(code);
     }
 
-    /// <summary>Per-contract override code: SLOAD each of the contract's slots, then STOP.</summary>
+    /// <summary>Per-contract override code: SLOAD each slot (folding into a local fingerprint/counter), then
+    /// RETURN those two words to the driver.</summary>
     private static string BuildSlotReaderCode(IReadOnlyList<byte[]> slots)
     {
-        List<byte> code = new(slots.Count * 35 + 1);
+        List<byte> code = new(slots.Count * 52 + 8);
         foreach (byte[] slot in slots)
         {
             code.Add(OpPush32); code.AddRange(slot);
-            code.Add(OpSload); code.Add(OpPop);
+            code.Add(OpSload);
+            EmitXorFold(code, SlotFprOffset, SlotCounterOffset);
         }
-        code.Add(OpStop);
+
+        code.Add(OpPush1); code.Add(SlotReturnSize); // length
+        code.Add(OpPush1); code.Add(0x00);           // offset
+        code.Add(OpReturn);
         return ToHex(code);
+    }
+
+    /// <summary>Consumes the 256-bit value on top of the stack: XORs it into the fingerprint at
+    /// <paramref name="fprOffset"/> and, when it is non-zero, increments the counter at <paramref name="cntOffset"/>.</summary>
+    private static void EmitXorFold(List<byte> code, byte fprOffset, byte cntOffset)
+    {
+        // mem[fpr] ^= value
+        code.Add(OpDup1);
+        code.Add(OpPush1); code.Add(fprOffset); code.Add(OpMload);
+        code.Add(OpXor);
+        code.Add(OpPush1); code.Add(fprOffset); code.Add(OpMstore);
+        // mem[cnt] += (value != 0)
+        code.Add(OpIsZero); code.Add(OpIsZero);
+        code.Add(OpPush1); code.Add(cntOffset); code.Add(OpMload);
+        code.Add(OpAdd);
+        code.Add(OpPush1); code.Add(cntOffset); code.Add(OpMstore);
+    }
+
+    /// <summary>Combines mem[<paramref name="srcOffset"/>] into mem[<paramref name="dstOffset"/>] with the given
+    /// binary op (<see cref="OpXor"/> or <see cref="OpAdd"/>).</summary>
+    private static void EmitMemFold(List<byte> code, byte op, byte dstOffset, byte srcOffset)
+    {
+        code.Add(OpPush1); code.Add(srcOffset); code.Add(OpMload);
+        code.Add(OpPush1); code.Add(dstOffset); code.Add(OpMload);
+        code.Add(op);
+        code.Add(OpPush1); code.Add(dstOffset); code.Add(OpMstore);
+    }
+
+    private static void EmitStoreZero(List<byte> code, byte offset)
+    {
+        code.Add(OpPush1); code.Add(0x00);
+        code.Add(OpPush1); code.Add(offset);
+        code.Add(OpMstore);
     }
 
     #endregion
@@ -382,7 +482,74 @@ internal sealed record ArchiveIndexRequest(long QueryBlock, long Offset, int Acc
 
 /// <summary>Result of one ladder rung: the read set replayed at <paramref name="QueryBlock"/> (which is
 /// <paramref name="Offset"/> blocks behind the source block).</summary>
-internal sealed record ArchiveIndexProbeResult(long QueryBlock, long Offset, int AccountCount, int SlotCount, string Source, TimeSpan Elapsed, JsonNode Response)
+/// <param name="Return">The parsed 4-word struct the testee returned, or null if the call errored/malformed.</param>
+/// <param name="Reference">The reference node's struct when one was probed, otherwise null.</param>
+internal sealed record ArchiveIndexProbeResult(
+    long QueryBlock, long Offset, int AccountCount, int SlotCount, string Source,
+    TimeSpan Elapsed, JsonNode Response, ArchiveProbeReturn? Return, ArchiveProbeReturn? Reference = null)
 {
-    public bool Failed => Response["error"] is not null;
+    /// <summary>The call errored or did not return the expected 4-word struct.</summary>
+    public bool Failed => Return is null;
+
+    /// <summary>When a reference node was probed and both succeeded: whether their structs are byte-identical
+    /// (the archive index validity verdict). Null if no reference was probed or either side failed.</summary>
+    public bool? Matches => Reference is { } reference && Return is { } value ? value.Equals(reference) : null;
+}
+
+/// <summary>The fixed 4-word struct the probe bytecode <c>RETURN</c>s: XOR fingerprints and non-zero counters for
+/// accounts and storage. Byte-identical structs from two nodes mean their archive indices resolved the whole read
+/// set identically.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct ArchiveProbeReturn : IEquatable<ArchiveProbeReturn>
+{
+    public const int Size = 4 * EvmWord.Length;
+
+    public readonly EvmWord AccountFingerprint;
+    public readonly EvmWord StorageFingerprint;
+    private readonly EvmWord _nonZeroAccounts;
+    private readonly EvmWord _nonZeroSlots;
+
+    public ulong NonZeroAccounts => _nonZeroAccounts.AsCount();
+    public ulong NonZeroSlots => _nonZeroSlots.AsCount();
+
+    public bool Equals(ArchiveProbeReturn other) =>
+        AccountFingerprint.Equals(other.AccountFingerprint) &&
+        StorageFingerprint.Equals(other.StorageFingerprint) &&
+        _nonZeroAccounts.Equals(other._nonZeroAccounts) &&
+        _nonZeroSlots.Equals(other._nonZeroSlots);
+
+    public override bool Equals(object? obj) => obj is ArchiveProbeReturn other && Equals(other);
+    public override int GetHashCode() => HashCode.Combine(AccountFingerprint, StorageFingerprint, _nonZeroAccounts, _nonZeroSlots);
+}
+
+/// <summary>A 256-bit EVM word (big-endian), blittable so a call's return data marshals straight into
+/// <see cref="ArchiveProbeReturn"/>.</summary>
+[InlineArray(Length)]
+internal struct EvmWord : IEquatable<EvmWord>
+{
+    public const int Length = 32;
+    private byte _element;
+
+    /// <summary>The low 64 bits as an unsigned integer, used for the small counters (fingerprints ignore it).</summary>
+    public readonly ulong AsCount()
+    {
+        ReadOnlySpan<byte> bytes = this;
+        return BinaryPrimitives.ReadUInt64BigEndian(bytes[24..]);
+    }
+
+    public readonly bool Equals(EvmWord other)
+    {
+        ReadOnlySpan<byte> a = this, b = other;
+        return a.SequenceEqual(b);
+    }
+
+    public override readonly bool Equals(object? obj) => obj is EvmWord other && Equals(other);
+
+    public override readonly int GetHashCode()
+    {
+        ReadOnlySpan<byte> bytes = this;
+        HashCode hash = new();
+        hash.AddBytes(bytes);
+        return hash.ToHashCode();
+    }
 }
