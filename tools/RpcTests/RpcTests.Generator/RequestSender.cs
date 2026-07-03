@@ -18,6 +18,8 @@ public class RequestSender(Uri clientUrl, HttpClient httpClient)
             await Console.Out.WriteLineAsync($"Sending request #{_requestN}");
 
         JsonNode response = await SendToClientAsync(test.Data, ct);
+        if (ArchiveIndexTxBuilder.ParseReturn(response) is { } probe)
+            await Console.Out.WriteLineAsync($"  {Path.GetFileNameWithoutExtension(test.Pos.FilePath)}: {probe}");
         return new TestCase(test, response);
     }
 

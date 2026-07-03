@@ -141,7 +141,7 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
 
     /// <summary>Parses the call result into the fixed 4-word struct, or null if the call errored or returned an
     /// unexpected length.</summary>
-    private static ArchiveProbeReturn? ParseReturn(JsonNode response)
+    internal static ArchiveProbeReturn? ParseReturn(JsonNode response)
     {
         if (response["result"]?.GetValue<string>() is not { } hex) return null;
         ReadOnlySpan<char> chars = hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? hex.AsSpan(2) : hex;
@@ -520,6 +520,8 @@ internal readonly struct ArchiveProbeReturn : IEquatable<ArchiveProbeReturn>
 
     public override bool Equals(object? obj) => obj is ArchiveProbeReturn other && Equals(other);
     public override int GetHashCode() => HashCode.Combine(AccountFingerprint, StorageFingerprint, _nonZeroAccounts, _nonZeroSlots);
+    public override string ToString() =>
+        $"acctFpr={AccountFingerprint.ToHex()} storageFpr={StorageFingerprint.ToHex()} nonZeroAccts={NonZeroAccounts} nonZeroSlots={NonZeroSlots}";
 }
 
 /// <summary>A 256-bit EVM word (big-endian), blittable so a call's return data marshals straight into
@@ -529,6 +531,12 @@ internal struct EvmWord : IEquatable<EvmWord>
 {
     public const int Length = 32;
     private byte _element;
+
+    public readonly string ToHex()
+    {
+        ReadOnlySpan<byte> bytes = this;
+        return "0x" + Convert.ToHexString(bytes).ToLowerInvariant();
+    }
 
     /// <summary>The low 64 bits as an unsigned integer, used for the small counters (fingerprints ignore it).</summary>
     public readonly ulong AsCount()
@@ -543,9 +551,9 @@ internal struct EvmWord : IEquatable<EvmWord>
         return a.SequenceEqual(b);
     }
 
-    public override readonly bool Equals(object? obj) => obj is EvmWord other && Equals(other);
+    public readonly override bool Equals(object? obj) => obj is EvmWord other && Equals(other);
 
-    public override readonly int GetHashCode()
+    public readonly override int GetHashCode()
     {
         ReadOnlySpan<byte> bytes = this;
         HashCode hash = new();
