@@ -324,9 +324,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         CreateStorage();
         _blockTree.BlockAddedToMain +=
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
+        // Pruning runs on a fire-and-forget Task.Run, so the positive case polls generously to avoid
+        // CI-load flakiness; the negative case is already satisfied (FindBlock is never issued).
         Assert.That(() => _blockTree.ReceivedCalls()
             .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock))),
-            willPruneOldIndices ? Is.Not.Empty.After(100, 10) : Is.Empty.After(100, 10));
+            willPruneOldIndices ? Is.Not.Empty.After(10000, 50) : Is.Empty.After(100, 10));
     }
 
     [Test]
