@@ -66,7 +66,7 @@ public class ReadOnlySnapshotBundleBenchmark
         // Track storage account ranges per snapshot for hit distribution
         List<(int AddressStart, int StorageCount, int SlotsPerAccount)> storageRanges = [];
 
-        for (int block = 0; block < SnapshotCount; block++)
+        for (ulong block = 0; block < SnapshotCount; block++)
         {
             int multiplier = block < 6 ? 16 : 1;
             int accountCount = 1000 * multiplier;

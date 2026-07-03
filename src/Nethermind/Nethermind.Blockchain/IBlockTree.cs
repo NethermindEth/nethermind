@@ -55,9 +55,9 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
-        long BestKnownNumber { get; }
+        ulong BestKnownNumber { get; }
 
-        long BestKnownBeaconNumber { get; }
+        ulong BestKnownBeaconNumber { get; }
 
         /// <summary>
         /// Inserts a disconnected block header (without body)
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain
 
         void UpdateHeadBlock(Hash256 blockHash);
 
-        void NewOldestBlock(long oldestBlock);
+        void NewOldestBlock(ulong oldestBlock);
 
         /// <summary>
         /// Suggests block for inclusion in the block tree.
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
-        bool IsKnownBlock(long number, Hash256 blockHash);
+        bool IsKnownBlock(ulong number, Hash256 blockHash);
 
         /// <summary>
         /// Checks if beacon block was inserted and the block RLP is in the DB
@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
-        bool IsKnownBeaconBlock(long number, Hash256 blockHash);
+        bool IsKnownBeaconBlock(ulong number, Hash256 blockHash);
 
         /// <summary>
         /// Checks if the state changes of the block can be found in the state tree.
@@ -132,15 +132,24 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if processed, otherwise <value>False</value></returns>
-        bool WasProcessed(long number, Hash256 blockHash);
+        bool WasProcessed(ulong number, Hash256 blockHash);
 
         /// <summary>
-        /// Marks all <paramref name="blocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
+        /// Reorgs the main chain to <paramref name="newHead"/>: walks back from it to the current main chain
+        /// building the branch of headers, marks them as processed, moves the head, and updates all chain levels.
         /// </summary>
-        /// <param name="blocks">Blocks that will now be at the top of the chain</param>
-        /// <param name="wereProcessed"></param>
-        /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
-        void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false);
+        /// <remarks>
+        /// Only headers are walked, and the full blocks needed for events/storage are loaded one at a time, so peak
+        /// memory stays bounded regardless of reorg depth. Callers that already hold the blocks (e.g. just processed
+        /// or downloaded them) should pass them via <paramref name="preloadedBlocks"/> to avoid re-reading from the
+        /// store; callers that would only re-read from the store (e.g. FCU) should leave it null.
+        /// </remarks>
+        /// <param name="newHead">The block header that will become the new chain head.</param>
+        /// <param name="wereProcessed">Whether the branch blocks have been processed (full sync) or not (fast sync).</param>
+        /// <param name="forceUpdateHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> regardless of <see cref="Block.TotalDifficulty"/>.</param>
+        /// <param name="preloadedBlocks">Optional blocks the caller already holds, used as a hash→block cache during the walk.</param>
+        /// <returns><value>True</value> if the chain was updated; <value>False</value> if the branch could not be walked back to the main chain (a predecessor was missing) — in which case nothing is mutated.</returns>
+        bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks);
 
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
 
@@ -148,18 +157,17 @@ namespace Nethermind.Blockchain
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
-        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash);
+        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash);
 
-        ChainLevelInfo? FindLevel(long number);
+        ChainLevelInfo? FindLevel(ulong number);
 
-        BlockInfo FindCanonicalBlockInfo(long blockNumber);
+        BlockInfo FindCanonicalBlockInfo(ulong blockNumber);
 
-        Hash256? FindHash(long blockNumber);
+        Hash256? FindHash(ulong blockNumber);
 
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
-
         /// <summary>
         /// Records <paramref name="badBlock"/> as invalid without altering the canonical chain.
         /// </summary>
@@ -172,9 +180,20 @@ namespace Nethermind.Blockchain
         /// </remarks>
         void ReportBadBlock(Block badBlock);
 
-        void DeleteOldBlock(long blockNumber, Hash256 blockHash);
+        void DeleteOldBlock(ulong blockNumber, Hash256 blockHash);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
+
+        /// <summary>
+        /// Block number of the most recent finalized block; 0 if none.
+        /// </summary>
+        ulong LastFinalizedBlockLevel { get; }
+
+        /// <summary>
+        /// Fires when <see cref="ForkChoiceUpdated"/> advances <see cref="IBlockFinder.FinalizedHash"/>
+        /// to a new block (and the corresponding header is locally available).
+        /// </summary>
+        event EventHandler<FinalizeEventArgs> BlocksFinalized;
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
@@ -196,11 +215,11 @@ namespace Nethermind.Blockchain
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
         event EventHandler<ForkChoiceUpdateEventArgs> OnForkChoiceUpdated;
 
-        int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false);
+        int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false);
 
         bool IsBetterThanHead(BlockHeader? header);
 
-        void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint);
+        void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, ulong clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
 
@@ -211,13 +230,13 @@ namespace Nethermind.Blockchain
         /// for blocks before sync pivot.
         /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
         /// </summary>
-        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+        (ulong BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
 
-        public readonly struct ForkChoiceUpdateEventArgs(Block? head, long safe, long finalized)
+        public readonly struct ForkChoiceUpdateEventArgs(Block? head, ulong safe, ulong finalized)
         {
             public Block? Head => head;
-            public long Safe => safe;
-            public long Finalized => finalized;
+            public ulong Safe => safe;
+            public ulong Finalized => finalized;
         }
         bool IsProcessingBlock { get; set; }
     }

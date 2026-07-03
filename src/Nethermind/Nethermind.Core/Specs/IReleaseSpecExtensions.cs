@@ -7,7 +7,7 @@ namespace Nethermind.Core.Specs;
 /// Extension members for <see cref="IReleaseSpec"/> providing computed properties
 /// and helper methods based on EIP enablement flags.
 /// </summary>
-public static class IReleaseSpecExtensions
+public static partial class IReleaseSpecExtensions
 {
     extension(IReleaseSpec spec)
     {
@@ -16,20 +16,15 @@ public static class IReleaseSpecExtensions
         public bool DepositsEnabled => spec.IsEip6110Enabled;
         public bool WithdrawalRequestsEnabled => spec.IsEip7002Enabled;
         public bool ConsolidationRequestsEnabled => spec.IsEip7251Enabled;
-        // STATE related
-        public bool ClearEmptyAccountWhenTouched => spec.IsEip158Enabled;
-        // VM
         public bool LimitCodeSize => spec.IsEip170Enabled;
-        public bool UseHotAndColdStorage => spec.IsEip2929Enabled;
+
         public bool UseTxAccessLists => spec.IsEip2930Enabled;
         public bool AddCoinbaseToTxAccessList => spec.IsEip3651Enabled;
         public bool ModExpEnabled => spec.IsEip198Enabled;
         public bool BN254Enabled => spec.IsEip196Enabled && spec.IsEip197Enabled;
         public bool BlakeEnabled => spec.IsEip152Enabled;
         public bool Bls12381Enabled => spec.IsEip2537Enabled;
-        public bool ChargeForTopLevelCreate => spec.IsEip2Enabled;
-        public bool FailOnOutOfGasCodeDeposit => spec.IsEip2Enabled;
-        public bool UseShanghaiDDosProtection => spec.IsEip150Enabled;
+
         public bool UseExpDDosProtection => spec.IsEip160Enabled;
         public bool UseLargeStateDDosProtection => spec.IsEip1884Enabled;
         public bool ReturnDataOpcodesEnabled => spec.IsEip211Enabled;
@@ -41,12 +36,9 @@ public static class IReleaseSpecExtensions
         public bool RevertOpcodeEnabled => spec.IsEip140Enabled;
         public bool ExtCodeHashOpcodeEnabled => spec.IsEip1052Enabled;
         public bool SelfBalanceOpcodeEnabled => spec.IsEip1884Enabled;
-        public bool UseConstantinopleNetGasMetering => spec.IsEip1283Enabled;
-        public bool UseIstanbulNetGasMetering => spec.IsEip2200Enabled;
-        public bool UseNetGasMetering => spec.UseConstantinopleNetGasMetering || spec.UseIstanbulNetGasMetering;
-        public bool UseNetGasMeteringWithAStipendFix => spec.UseIstanbulNetGasMetering;
-        public bool Use63Over64Rule => spec.UseShanghaiDDosProtection;
+
         public bool BaseFeeEnabled => spec.IsEip3198Enabled;
+
         // EVM Related
         public bool IncludePush0Instruction => spec.IsEip3855Enabled;
         public bool TransientStorageEnabled => spec.IsEip1153Enabled;
@@ -58,12 +50,7 @@ public static class IReleaseSpecExtensions
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled;
-        /// <summary>
-        /// Determines whether the specified address is a precompiled contract for this release specification.
-        /// </summary>
-        /// <param name="address">The address to check for precompile status.</param>
-        /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
-        public bool IsPrecompile(Address address) => spec.Precompiles.Contains(address);
+
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
@@ -73,5 +60,12 @@ public static class IReleaseSpecExtensions
         /// </summary>
         public IReleaseSpec WithoutEip158() =>
             spec.IsEip158Enabled ? new NoEip158Spec(spec) : spec;
+
+        /// <summary>
+        /// Returns a spec with EIP-3607 disabled, allowing contract addresses to act as transaction senders.
+        /// Used in <c>eth_simulateV1</c> where state-overridden contracts may be the <c>from</c> address.
+        /// </summary>
+        public IReleaseSpec WithoutEip3607() =>
+            spec.IsEip3607Enabled ? new NoEip3607Spec(spec) : spec;
     }
 }

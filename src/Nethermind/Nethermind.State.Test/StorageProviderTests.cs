@@ -219,6 +219,55 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Storage_root_collect_recomputes_all_changed_contracts_amid_warm_reads()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        Address[] written =
+        [
+            new(Keccak.Compute("w1")),
+            new(Keccak.Compute("w2")),
+            new(Keccak.Compute("w3")),
+            new(Keccak.Compute("w4")),
+        ];
+
+        Hash256 stateRoot;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            foreach (Address address in written)
+            {
+                provider.CreateAccount(address, 1);
+            }
+            provider.Commit(Frontier.Instance);
+
+            for (int i = 0; i < written.Length; i++)
+            {
+                provider.Set(new StorageCell(written[i], 1), _values[i + 1]);
+            }
+
+            for (int i = 0; i < 64; i++)
+            {
+                provider.Get(new StorageCell(new Address(Keccak.Compute($"r{i}")), 1));
+            }
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            stateRoot = provider.StateRoot;
+        }
+
+        BlockHeader head = Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject;
+        using (provider.BeginScope(head))
+        {
+            for (int i = 0; i < written.Length; i++)
+            {
+                Assert.That(provider.Get(new StorageCell(written[i], 1)).ToArray(), Is.EqualTo(_values[i + 1]),
+                    $"storage for written contract {i} was not persisted");
+            }
+        }
+    }
+
+    [Test]
     public void Can_commit_when_exactly_at_capacity_regression()
     {
         using Context ctx = new(useFlat);
@@ -798,7 +847,7 @@ public class StorageProviderTests(bool useFlat)
 
         public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock), writtenData);
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData);
 
         private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
         {
@@ -821,7 +870,7 @@ public class StorageProviderTests(bool useFlat)
 
             public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatchDecorator(baseScope.StartWriteBatch(estimatedAccountNum), writtenData);
 
-            public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
+            public void Commit(ulong blockNumber) => baseScope.Commit(blockNumber);
         }
 
         private class WriteBatchDecorator(

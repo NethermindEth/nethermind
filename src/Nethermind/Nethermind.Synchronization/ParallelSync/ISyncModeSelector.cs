@@ -19,6 +19,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         event EventHandler<SyncModeChangedEventArgs> Changed;
 
+        Task StartAsync();
+
         void Update();
 
         async Task WaitUntilMode(Func<SyncMode, bool> predicate, CancellationToken cancellationToken)

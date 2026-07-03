@@ -42,6 +42,8 @@ public class PayloadAttributesValidateTests
         new object[] { /* isAmsterdam */ true,  /* withSlot */ true,  /* fcu */ PayloadAttributesVersions.V4,
             PayloadAttributesValidationResult.Success, null!, null! },
         new object[] { /* isAmsterdam */ false, /* withSlot */ true,  /* fcu */ PayloadAttributesVersions.V3,
+            PayloadAttributesValidationResult.InvalidPayloadAttributes, null!, null! },
+        new object[] { /* isAmsterdam */ true, /* withSlot */ false, /* fcu */ PayloadAttributesVersions.V3,
             PayloadAttributesValidationResult.UnsupportedFork, null!, null! },
     ];
 

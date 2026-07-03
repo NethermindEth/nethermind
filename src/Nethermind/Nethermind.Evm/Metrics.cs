@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Threading;
+using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 [assembly: InternalsVisibleTo("Nethermind.State")]
@@ -27,18 +29,16 @@ namespace Nethermind.Evm;
 /// <see cref="BlocksConfig.SlowBlockThresholdMs"/>. The threshold gates slow-block JSON
 /// emission only, not the exported counter increments.</para>
 /// <para>To eliminate the counter overhead entirely (e.g. for performance-critical benchmark
-/// builds), rebuild with the <c>NETHERMIND_NO_EXECUTION_METRICS</c> symbol defined: the JIT
+/// builds), rebuild with the <c>NO_EXEC_METRICS</c> symbol defined: the JIT
 /// folds <see cref="IsActive"/> to <c>false</c>, every <c>if (!ExecutionMetricsFlag.IsActive)
 /// return;</c> guard becomes an unconditional early return, and with
 /// <c>AggressiveInlining</c> the empty bodies are inlined into callers — eliminating both
 /// the call and the atomic write.</para>
-/// <para>Pre-existing counters (Calls, SLoad/SStore, CodeDbCache, …) are not gated by this
-/// flag; their cost is unaffected by the symbol.</para>
 /// </remarks>
 public readonly struct ExecutionMetricsFlag : IFlag
 {
     public static bool IsActive =>
-#if NETHERMIND_NO_EXECUTION_METRICS
+#if NO_EXEC_METRICS
         false;
 #else
         true;
@@ -51,226 +51,239 @@ public class Metrics
 
     [CounterMetric]
     [Description("Number of Code DB cache reads.")]
-    public static long CodeDbCache => _mainCodeDbCache + _otherCodeDbCache;
-    private static long _mainCodeDbCache;
-    private static long _otherCodeDbCache;
+    public static long CodeDbCache => _mainCodeDbCache.Value + _otherCodeDbCache.Value;
+    private static CacheLinePaddedLong _mainCodeDbCache;
+    private static CacheLinePaddedLong _otherCodeDbCache;
     [Description("Number of Code DB cache reads on main processing thread.")]
-    public static long MainThreadCodeDbCache => _mainCodeDbCache;
-    internal static void IncrementCodeDbCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache : ref _otherCodeDbCache);
+    public static long MainThreadCodeDbCache => _mainCodeDbCache.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void IncrementCodeDbCache()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache.Value : ref _otherCodeDbCache.Value);
+    }
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
     public static long EvmExceptions { get; set; }
 
     [CounterMetric]
     [Description("Number of opcodes executed.")]
-    public static long OpCodes => _mainOpCodes + _otherOpCodes;
-    private static long _mainOpCodes;
-    private static long _otherOpCodes;
+    public static long OpCodes => _mainOpCodes.Value + _otherOpCodes.Value;
+    private static CacheLinePaddedLong _mainOpCodes;
+    private static CacheLinePaddedLong _otherOpCodes;
     [Description("Number of opcodes executed on main processing thread.")]
-    public static long MainThreadOpCodes => _mainOpCodes;
-    public static void IncrementOpCodes(int count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainOpCodes : ref _otherOpCodes, count);
+    public static long MainThreadOpCodes => _mainOpCodes.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementOpCodes(int count)
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainOpCodes.Value : ref _otherOpCodes.Value, count);
+    }
 
     [CounterMetric]
     [Description("Number of SELFDESTRUCT calls.")]
-    public static long SelfDestructs => _mainSelfDestructs + _otherSelfDestructs;
-    private static long _mainSelfDestructs;
-    private static long _otherSelfDestructs;
+    public static long SelfDestructs => _mainSelfDestructs.Value + _otherSelfDestructs.Value;
+    private static CacheLinePaddedLong _mainSelfDestructs;
+    private static CacheLinePaddedLong _otherSelfDestructs;
     [Description("Number of SELFDESTRUCT calls on main processing thread.")]
-    public static long MainThreadSelfDestructs => _mainSelfDestructs;
-    public static void IncrementSelfDestructs() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSelfDestructs : ref _otherSelfDestructs);
+    public static long MainThreadSelfDestructs => _mainSelfDestructs.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementSelfDestructs()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSelfDestructs.Value : ref _otherSelfDestructs.Value);
+    }
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
-    public static long Calls => _mainCalls + _otherCalls;
-    private static long _mainCalls;
-    private static long _otherCalls;
+    public static long Calls => _mainCalls.Value + _otherCalls.Value;
+    private static CacheLinePaddedLong _mainCalls;
+    private static CacheLinePaddedLong _otherCalls;
     [Description("Number of calls to other contracts on main processing thread.")]
-    public static long MainThreadCalls => _mainCalls;
-    public static void IncrementCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCalls : ref _otherCalls);
+    public static long MainThreadCalls => _mainCalls.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementCalls()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCalls.Value : ref _otherCalls.Value);
+    }
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
-    public static long SloadOpcode => _mainSLoadOpcode + _otherSLoadOpcode;
-    private static long _mainSLoadOpcode;
-    private static long _otherSLoadOpcode;
+    public static long SloadOpcode => _mainSLoadOpcode.Value + _otherSLoadOpcode.Value;
+    private static CacheLinePaddedLong _mainSLoadOpcode;
+    private static CacheLinePaddedLong _otherSLoadOpcode;
     [Description("Number of SLOAD opcodes executed on main processing thread.")]
-    public static long MainThreadSLoadOpcode => _mainSLoadOpcode;
-    public static void IncrementSLoadOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSLoadOpcode : ref _otherSLoadOpcode);
+    public static long MainThreadSLoadOpcode => _mainSLoadOpcode.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementSLoadOpcode()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSLoadOpcode.Value : ref _otherSLoadOpcode.Value);
+    }
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
-    public static long SstoreOpcode => _mainSStoreOpcode + _otherSStoreOpcode;
-    private static long _mainSStoreOpcode;
-    private static long _otherSStoreOpcode;
+    public static long SstoreOpcode => _mainSStoreOpcode.Value + _otherSStoreOpcode.Value;
+    private static CacheLinePaddedLong _mainSStoreOpcode;
+    private static CacheLinePaddedLong _otherSStoreOpcode;
     [Description("Number of SSTORE opcodes executed on main processing thread.")]
-    public static long MainThreadSStoreOpcode => _mainSStoreOpcode;
-    public static void IncrementSStoreOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode : ref _otherSStoreOpcode);
-
-    [Description("Number of TLOAD opcodes executed.")]
-    public static long TloadOpcode { get; set; }
-
-    [Description("Number of TSTORE opcodes executed.")]
-    public static long TstoreOpcode { get; set; }
-
-    [Description("Number of MCOPY opcodes executed.")]
-    public static long MCopyOpcode { get; set; }
-
-    [Description("Number of EXP opcodes executed.")]
-    public static long ExpOpcode { get; set; }
+    public static long MainThreadSStoreOpcode => _mainSStoreOpcode.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementSStoreOpcode()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode.Value : ref _otherSStoreOpcode.Value);
+    }
 
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
-    public static long EmptyCalls => _mainEmptyCalls + _otherEmptyCalls;
-    private static long _mainEmptyCalls;
-    private static long _otherEmptyCalls;
+    public static long EmptyCalls => _mainEmptyCalls.Value + _otherEmptyCalls.Value;
+    private static CacheLinePaddedLong _mainEmptyCalls;
+    private static CacheLinePaddedLong _otherEmptyCalls;
     [Description("Number of calls made to addresses without code on main processing thread.")]
-    public static long MainThreadEmptyCalls => _mainEmptyCalls;
-    public static void IncrementEmptyCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEmptyCalls : ref _otherEmptyCalls);
+    public static long MainThreadEmptyCalls => _mainEmptyCalls.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementEmptyCalls()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEmptyCalls.Value : ref _otherEmptyCalls.Value);
+    }
 
     [CounterMetric]
     [Description("Number of contract create calls.")]
-    public static long Creates => _mainCreates + _otherCreates;
-    private static long _mainCreates;
-    private static long _otherCreates;
+    public static long Creates => _mainCreates.Value + _otherCreates.Value;
+    private static CacheLinePaddedLong _mainCreates;
+    private static CacheLinePaddedLong _otherCreates;
     [Description("Number of contract create calls on main processing thread.")]
-    public static long MainThreadCreates => _mainCreates;
-    public static void IncrementCreates() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCreates : ref _otherCreates);
+    public static long MainThreadCreates => _mainCreates.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementCreates()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCreates.Value : ref _otherCreates.Value);
+    }
 
     [Description("Number of contracts' code analysed for jump destinations.")]
-    public static long ContractsAnalysed => _mainContractsAnalysed + _otherContractsAnalysed;
-    private static long _mainContractsAnalysed;
-    private static long _otherContractsAnalysed;
+    public static long ContractsAnalysed => _mainContractsAnalysed.Value + _otherContractsAnalysed.Value;
+    private static CacheLinePaddedLong _mainContractsAnalysed;
+    private static CacheLinePaddedLong _otherContractsAnalysed;
     [Description("Number of contracts' code analysed for jump destinations on main processing thread.")]
-    public static long MainThreadContractsAnalysed => _mainContractsAnalysed;
-    public static void IncrementContractsAnalysed() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainContractsAnalysed : ref _otherContractsAnalysed);
+    public static long MainThreadContractsAnalysed => _mainContractsAnalysed.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementContractsAnalysed()
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainContractsAnalysed.Value : ref _otherContractsAnalysed.Value);
+    }
 
     // Cross-client execution metrics gated by ExecutionMetricsFlag.
     // Each Increment* method short-circuits when ExecutionMetricsFlag.IsActive is false:
     // since IsActive is a static property folded to a constant by the JIT, flipping the flag to
     // false elides the Interlocked.Increment / Interlocked.Add when inlined.
 
-    private static long _mainCodeReads;
-    internal static long MainThreadCodeReads => _mainCodeReads;
+    private static CacheLinePaddedLong _mainCodeReads;
+    internal static long MainThreadCodeReads => _mainCodeReads.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementCodeReads()
     {
         if (!ExecutionMetricsFlag.IsActive) return;
         if (!IsBlockProcessingThread) return;
-        Interlocked.Increment(ref _mainCodeReads);
+        Interlocked.Increment(ref _mainCodeReads.Value);
     }
 
-    private static long _mainCodeBytesRead;
-    internal static long MainThreadCodeBytesRead => _mainCodeBytesRead;
+    private static CacheLinePaddedLong _mainCodeBytesRead;
+    internal static long MainThreadCodeBytesRead => _mainCodeBytesRead.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementCodeBytesRead(int bytes)
     {
         if (!ExecutionMetricsFlag.IsActive) return;
         if (!IsBlockProcessingThread) return;
-        Interlocked.Add(ref _mainCodeBytesRead, bytes);
+        Interlocked.Add(ref _mainCodeBytesRead.Value, bytes);
     }
 
     [CounterMetric]
     [Description("Number of account writes during execution.")]
-    public static long AccountWrites => _mainAccountWrites + _otherAccountWrites;
-    private static long _mainAccountWrites;
-    private static long _otherAccountWrites;
-    internal static long MainThreadAccountWrites => _mainAccountWrites;
+    public static long AccountWrites => _mainAccountWrites.Value + _otherAccountWrites.Value;
+    private static CacheLinePaddedLong _mainAccountWrites;
+    private static CacheLinePaddedLong _otherAccountWrites;
+    internal static long MainThreadAccountWrites => _mainAccountWrites.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementAccountWrites()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountWrites : ref _otherAccountWrites);
-    }
+    internal static void AddAccountWrites(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainAccountWrites.Value : ref _otherAccountWrites.Value, count);
 
     [CounterMetric]
     [Description("Number of accounts deleted during execution.")]
-    public static long AccountDeleted => _mainAccountDeleted + _otherAccountDeleted;
-    private static long _mainAccountDeleted;
-    private static long _otherAccountDeleted;
-    internal static long MainThreadAccountDeleted => _mainAccountDeleted;
+    public static long AccountDeleted => _mainAccountDeleted.Value + _otherAccountDeleted.Value;
+    private static CacheLinePaddedLong _mainAccountDeleted;
+    private static CacheLinePaddedLong _otherAccountDeleted;
+    internal static long MainThreadAccountDeleted => _mainAccountDeleted.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementAccountDeleted()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountDeleted : ref _otherAccountDeleted);
-    }
+    internal static void AddAccountDeleted(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainAccountDeleted.Value : ref _otherAccountDeleted.Value, count);
 
     [CounterMetric]
     [Description("Number of storage slot writes during execution.")]
-    public static long StorageWrites => _mainStorageWrites + _otherStorageWrites;
-    private static long _mainStorageWrites;
-    private static long _otherStorageWrites;
-    internal static long MainThreadStorageWrites => _mainStorageWrites;
+    public static long StorageWrites => _mainStorageWrites.Value + _otherStorageWrites.Value;
+    private static CacheLinePaddedLong _mainStorageWrites;
+    private static CacheLinePaddedLong _otherStorageWrites;
+    internal static long MainThreadStorageWrites => _mainStorageWrites.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementStorageWrites()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageWrites : ref _otherStorageWrites);
-    }
+    internal static void AddStorageWrites(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageWrites.Value : ref _otherStorageWrites.Value, count);
 
     [CounterMetric]
     [Description("Number of storage slots deleted during execution.")]
-    public static long StorageDeleted => _mainStorageDeleted + _otherStorageDeleted;
-    private static long _mainStorageDeleted;
-    private static long _otherStorageDeleted;
-    internal static long MainThreadStorageDeleted => _mainStorageDeleted;
+    public static long StorageDeleted => _mainStorageDeleted.Value + _otherStorageDeleted.Value;
+    private static CacheLinePaddedLong _mainStorageDeleted;
+    private static CacheLinePaddedLong _otherStorageDeleted;
+    internal static long MainThreadStorageDeleted => _mainStorageDeleted.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementStorageDeleted()
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageDeleted : ref _otherStorageDeleted);
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageDeleted.Value : ref _otherStorageDeleted.Value);
     }
 
     [CounterMetric]
     [Description("Number of code writes during execution.")]
-    public static long CodeWrites => _mainCodeWrites + _otherCodeWrites;
-    private static long _mainCodeWrites;
-    private static long _otherCodeWrites;
-    internal static long MainThreadCodeWrites => _mainCodeWrites;
+    public static long CodeWrites => _mainCodeWrites.Value + _otherCodeWrites.Value;
+    private static CacheLinePaddedLong _mainCodeWrites;
+    private static CacheLinePaddedLong _otherCodeWrites;
+    internal static long MainThreadCodeWrites => _mainCodeWrites.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementCodeWrites()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeWrites : ref _otherCodeWrites);
-    }
+    internal static void AddCodeWrites(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeWrites.Value : ref _otherCodeWrites.Value, count);
 
     [CounterMetric]
     [Description("Total bytes of code written during execution.")]
-    public static long CodeBytesWritten => _mainCodeBytesWritten + _otherCodeBytesWritten;
-    private static long _mainCodeBytesWritten;
-    private static long _otherCodeBytesWritten;
-    internal static long MainThreadCodeBytesWritten => _mainCodeBytesWritten;
+    public static long CodeBytesWritten => _mainCodeBytesWritten.Value + _otherCodeBytesWritten.Value;
+    private static CacheLinePaddedLong _mainCodeBytesWritten;
+    private static CacheLinePaddedLong _otherCodeBytesWritten;
+    internal static long MainThreadCodeBytesWritten => _mainCodeBytesWritten.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementCodeBytesWritten(int bytes)
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeBytesWritten : ref _otherCodeBytesWritten, bytes);
-    }
+    internal static void AddCodeBytesWritten(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeBytesWritten.Value : ref _otherCodeBytesWritten.Value, count);
 
     [CounterMetric]
     [Description("Number of EIP-7702 delegations set during execution.")]
-    public static long Eip7702DelegationsSet => _mainEip7702DelegationsSet + _otherEip7702DelegationsSet;
-    private static long _mainEip7702DelegationsSet;
-    private static long _otherEip7702DelegationsSet;
-    internal static long MainThreadEip7702DelegationsSet => _mainEip7702DelegationsSet;
+    public static long Eip7702DelegationsSet => _mainEip7702DelegationsSet.Value + _otherEip7702DelegationsSet.Value;
+    private static CacheLinePaddedLong _mainEip7702DelegationsSet;
+    private static CacheLinePaddedLong _otherEip7702DelegationsSet;
+    internal static long MainThreadEip7702DelegationsSet => _mainEip7702DelegationsSet.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementEip7702DelegationsSet()
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEip7702DelegationsSet : ref _otherEip7702DelegationsSet);
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEip7702DelegationsSet.Value : ref _otherEip7702DelegationsSet.Value);
     }
 
     [CounterMetric]
     [Description("Number of EIP-7702 delegations cleared during execution.")]
-    public static long Eip7702DelegationsCleared => _mainEip7702DelegationsCleared + _otherEip7702DelegationsCleared;
-    private static long _mainEip7702DelegationsCleared;
-    private static long _otherEip7702DelegationsCleared;
-    internal static long MainThreadEip7702DelegationsCleared => _mainEip7702DelegationsCleared;
+    public static long Eip7702DelegationsCleared => _mainEip7702DelegationsCleared.Value + _otherEip7702DelegationsCleared.Value;
+    private static CacheLinePaddedLong _mainEip7702DelegationsCleared;
+    private static CacheLinePaddedLong _otherEip7702DelegationsCleared;
+    internal static long MainThreadEip7702DelegationsCleared => _mainEip7702DelegationsCleared.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementEip7702DelegationsCleared()
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEip7702DelegationsCleared : ref _otherEip7702DelegationsCleared);
+        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEip7702DelegationsCleared.Value : ref _otherEip7702DelegationsCleared.Value);
     }
 
     // Timing counters below accumulate elapsed <see cref="TimeSpan"/> ticks (100 ns), as produced
@@ -279,156 +292,125 @@ public class Metrics
     // <see cref="TimeSpan.TicksPerMillisecond"/>.
 
     [Description("Time spent on state hashing/merkleization (TimeSpan ticks). Sum of storage merkle + state root.")]
-    public static long StateHashTime => _mainStateHashTime + _otherStateHashTime;
-    private static long _mainStateHashTime;
-    private static long _otherStateHashTime;
-    internal static long MainThreadStateHashTime => _mainStateHashTime;
+    public static long StateHashTime => _mainStateHashTime.Value + _otherStateHashTime.Value;
+    private static CacheLinePaddedLong _mainStateHashTime;
+    private static CacheLinePaddedLong _otherStateHashTime;
+    internal static long MainThreadStateHashTime => _mainStateHashTime.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementStateHashTime(long ticks)
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateHashTime : ref _otherStateHashTime, ticks);
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateHashTime.Value : ref _otherStateHashTime.Value, ticks);
     }
 
     [Description("Time spent committing state to storage (ticks).")]
-    public static long CommitTime => _mainCommitTime + _otherCommitTime;
-    private static long _mainCommitTime;
-    private static long _otherCommitTime;
-    internal static long MainThreadCommitTime => _mainCommitTime;
+    public static long CommitTime => _mainCommitTime.Value + _otherCommitTime.Value;
+    private static CacheLinePaddedLong _mainCommitTime;
+    private static CacheLinePaddedLong _otherCommitTime;
+    internal static long MainThreadCommitTime => _mainCommitTime.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementCommitTime(long ticks)
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCommitTime : ref _otherCommitTime, ticks);
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCommitTime.Value : ref _otherCommitTime.Value, ticks);
     }
 
     [Description("Time spent on storage trie merkleization — Commit(commitRoots: true) (ticks).")]
-    public static long StorageMerkleTime => _mainStorageMerkleTime + _otherStorageMerkleTime;
-    private static long _mainStorageMerkleTime;
-    private static long _otherStorageMerkleTime;
-    internal static long MainThreadStorageMerkleTime => _mainStorageMerkleTime;
+    public static long StorageMerkleTime => _mainStorageMerkleTime.Value + _otherStorageMerkleTime.Value;
+    private static CacheLinePaddedLong _mainStorageMerkleTime;
+    private static CacheLinePaddedLong _otherStorageMerkleTime;
+    internal static long MainThreadStorageMerkleTime => _mainStorageMerkleTime.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementStorageMerkleTime(long ticks)
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageMerkleTime : ref _otherStorageMerkleTime, ticks);
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageMerkleTime.Value : ref _otherStorageMerkleTime.Value, ticks);
     }
 
     [Description("Time spent on state root recalculation + commit tree (ticks).")]
-    public static long StateRootTime => _mainStateRootTime + _otherStateRootTime;
-    private static long _mainStateRootTime;
-    private static long _otherStateRootTime;
-    internal static long MainThreadStateRootTime => _mainStateRootTime;
+    public static long StateRootTime => _mainStateRootTime.Value + _otherStateRootTime.Value;
+    private static CacheLinePaddedLong _mainStateRootTime;
+    private static CacheLinePaddedLong _otherStateRootTime;
+    internal static long MainThreadStateRootTime => _mainStateRootTime.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementStateRootTime(long ticks)
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateRootTime : ref _otherStateRootTime, ticks);
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateRootTime.Value : ref _otherStateRootTime.Value, ticks);
     }
 
     [Description("Time spent calculating bloom filters (ticks).")]
-    public static long BloomsTime => _mainBloomsTime + _otherBloomsTime;
-    private static long _mainBloomsTime;
-    private static long _otherBloomsTime;
-    internal static long MainThreadBloomsTime => _mainBloomsTime;
+    public static long BloomsTime => _mainBloomsTime.Value + _otherBloomsTime.Value;
+    private static CacheLinePaddedLong _mainBloomsTime;
+    private static CacheLinePaddedLong _otherBloomsTime;
+    internal static long MainThreadBloomsTime => _mainBloomsTime.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementBloomsTime(long ticks)
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainBloomsTime : ref _otherBloomsTime, ticks);
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainBloomsTime.Value : ref _otherBloomsTime.Value, ticks);
     }
 
     [Description("Time spent calculating receipts root (ticks).")]
-    public static long ReceiptsRootTime => _mainReceiptsRootTime + _otherReceiptsRootTime;
-    private static long _mainReceiptsRootTime;
-    private static long _otherReceiptsRootTime;
-    internal static long MainThreadReceiptsRootTime => _mainReceiptsRootTime;
+    public static long ReceiptsRootTime => _mainReceiptsRootTime.Value + _otherReceiptsRootTime.Value;
+    private static CacheLinePaddedLong _mainReceiptsRootTime;
+    private static CacheLinePaddedLong _otherReceiptsRootTime;
+    internal static long MainThreadReceiptsRootTime => _mainReceiptsRootTime.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementReceiptsRootTime(long ticks)
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainReceiptsRootTime : ref _otherReceiptsRootTime, ticks);
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainReceiptsRootTime.Value : ref _otherReceiptsRootTime.Value, ticks);
     }
 
     [GaugeMetric]
     [Description("The number of tasks currently scheduled in the background.")]
     public static long NumberOfBackgroundTasksScheduled { get; set; }
 
-    private static long _totalBackgroundTasksQueued;
+    private static CacheLinePaddedLong _totalBackgroundTasksQueued;
     [GaugeMetric]
     [Description("Total number of tasks queued for background execution.")]
-    public static long TotalBackgroundTasksQueued => _totalBackgroundTasksQueued;
-    public static void IncrementTotalBackgroundTasksQueued() => Interlocked.Increment(ref _totalBackgroundTasksQueued);
+    public static long TotalBackgroundTasksQueued => _totalBackgroundTasksQueued.Value;
+    public static void IncrementTotalBackgroundTasksQueued() => Interlocked.Increment(ref _totalBackgroundTasksQueued.Value);
 
-    private static long _totalBackgroundTasksDropped;
+    private static CacheLinePaddedLong _totalBackgroundTasksDropped;
     [GaugeMetric]
     [Description("Total number of background tasks dropped because queue was full.")]
-    public static long TotalBackgroundTasksDropped => _totalBackgroundTasksDropped;
-    public static void IncrementTotalBackgroundTasksDropped() => Interlocked.Increment(ref _totalBackgroundTasksDropped);
+    public static long TotalBackgroundTasksDropped => _totalBackgroundTasksDropped.Value;
+    public static void IncrementTotalBackgroundTasksDropped() => Interlocked.Increment(ref _totalBackgroundTasksDropped.Value);
 
-    private static long _totalBackgroundTasksExecuted;
+    private static CacheLinePaddedLong _totalBackgroundTasksExecuted;
     [GaugeMetric]
     [Description("Total number of background tasks executed.")]
-    public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted;
-    public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted);
+    public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted.Value;
+    public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted.Value);
 
-    internal static long BlockTransactions { get; set; }
-
-    private static float _blockAveGasPrice;
-    internal static float BlockAveGasPrice
-    {
-        get => _blockAveGasPrice;
-        set
-        {
-            _blockAveGasPrice = value;
-            if (value != 0)
-            {
-                GasPriceAve = value;
-            }
-        }
-    }
-
-    private static float _blockMinGasPrice = float.MaxValue;
-    internal static float BlockMinGasPrice
-    {
-        get => _blockMinGasPrice;
-        set
-        {
-            _blockMinGasPrice = value;
-            if (_blockMinGasPrice != float.MaxValue)
-            {
-                GasPriceMin = value;
-            }
-        }
-    }
-
-    private static float _blockMaxGasPrice;
-    internal static float BlockMaxGasPrice
-    {
-        get => _blockMaxGasPrice;
-        set
-        {
-            _blockMaxGasPrice = value;
-            if (value != 0)
-            {
-                GasPriceMax = value;
-            }
-        }
-    }
-
+    // Lock-free per-tx block gas-price aggregates: each packs two interdependent values into one long
+    // CAS'd atomically - (min, max) and (count, running average). Not cache-line padded: they are
+    // true-shared (every worker CASes all three per tx), so padding cannot reduce the inherent contention.
+    private static long _minMaxGasPriceBits = PackFloats(float.MaxValue, 0f);
+    private static long _countAveGasPriceBits;
+    // Order-dependent streaming estimate (already non-deterministic under parallelism); its own CAS.
     private static float _blockEstMedianGasPrice;
-    internal static float BlockEstMedianGasPrice
-    {
-        get => _blockEstMedianGasPrice;
-        set
-        {
-            _blockEstMedianGasPrice = value;
-            if (value != 0)
-            {
-                GasPriceMedian = value;
-            }
-        }
-    }
+
+    internal static long BlockTransactions => LoInt(Volatile.Read(ref _countAveGasPriceBits));
+    internal static float BlockAveGasPrice => HiFloat(Volatile.Read(ref _countAveGasPriceBits));
+    internal static float BlockMinGasPrice => LoFloat(Volatile.Read(ref _minMaxGasPriceBits));
+    internal static float BlockMaxGasPrice => HiFloat(Volatile.Read(ref _minMaxGasPriceBits));
+    internal static float BlockEstMedianGasPrice => Volatile.Read(ref _blockEstMedianGasPrice);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long PackFloats(float lo, float hi)
+        => (uint)BitConverter.SingleToInt32Bits(lo) | ((long)(uint)BitConverter.SingleToInt32Bits(hi) << 32);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long PackCountAve(int count, float ave)
+        => (uint)count | ((long)(uint)BitConverter.SingleToInt32Bits(ave) << 32);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float LoFloat(long bits) => BitConverter.Int32BitsToSingle((int)bits);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float HiFloat(long bits) => BitConverter.Int32BitsToSingle((int)(bits >> 32));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int LoInt(long bits) => (int)bits;
 
     /// <summary>
     /// Gets block gas price data for external access. Returns (min, estMedian, ave, max).
@@ -436,10 +418,8 @@ public class Metrics
     /// </summary>
     public static (float Min, float EstMedian, float Ave, float Max)? GetBlockGasPrices()
     {
-        if (_blockMinGasPrice == float.MaxValue)
-            return null;
-
-        return (_blockMinGasPrice, _blockEstMedianGasPrice, _blockAveGasPrice, _blockMaxGasPrice);
+        float min = BlockMinGasPrice;
+        return min == float.MaxValue ? null : (min, BlockEstMedianGasPrice, BlockAveGasPrice, BlockMaxGasPrice);
     }
 
     [GaugeMetric]
@@ -460,10 +440,88 @@ public class Metrics
 
     public static void ResetBlockStats()
     {
-        BlockTransactions = 0;
-        BlockAveGasPrice = 0.0f;
-        BlockMaxGasPrice = 0.0f;
-        BlockEstMedianGasPrice = 0.0f;
-        BlockMinGasPrice = float.MaxValue;
+        Volatile.Write(ref _minMaxGasPriceBits, PackFloats(float.MaxValue, 0f));
+        Volatile.Write(ref _countAveGasPriceBits, 0L);
+        Volatile.Write(ref _blockEstMedianGasPrice, 0f);
+    }
+
+    /// <summary>Folds a transaction's effective gas price into the per-block aggregates (lock-free).</summary>
+    /// <remarks>
+    /// Prices >= <see cref="ulong.MaxValue"/> wei/gas (~18.4 ETH) are not meaningful and are skipped,
+    /// avoiding the multi-limb <see cref="UInt256"/>-to-<see cref="double"/> conversion.
+    /// </remarks>
+    internal static void UpdateBlockGasPrice(in UInt256 effectiveGasPrice)
+    {
+        if (!effectiveGasPrice.IsUint64) return;
+
+        float gasPrice = (float)(effectiveGasPrice.u0 / 1_000_000_000.0);
+
+        long mm = Volatile.Read(ref _minMaxGasPriceBits);
+        while (true)
+        {
+            long updated = PackFloats(MathF.Min(LoFloat(mm), gasPrice), MathF.Max(HiFloat(mm), gasPrice));
+            if (updated == mm) break;
+            long prev = Interlocked.CompareExchange(ref _minMaxGasPriceBits, updated, mm);
+            if (prev == mm) break;
+            mm = prev;
+        }
+
+        float newAve;
+        long ca = Volatile.Read(ref _countAveGasPriceBits);
+        while (true)
+        {
+            int count = LoInt(ca);
+            newAve = (HiFloat(ca) * count + gasPrice) / (count + 1);
+            long prev = Interlocked.CompareExchange(ref _countAveGasPriceBits, PackCountAve(count + 1, newAve), ca);
+            if (prev == ca) break;
+            ca = prev;
+        }
+
+        float median = Volatile.Read(ref _blockEstMedianGasPrice);
+        while (true)
+        {
+            float updated = median + newAve * 0.01f * float.Sign(gasPrice - median);
+            if (updated == median) break;
+            float prev = Interlocked.CompareExchange(ref _blockEstMedianGasPrice, updated, median);
+            if (prev == median) break;
+            median = prev;
+        }
+        // Gauges published once by PublishBlockGasPriceGauges after workers join, not here (a slow
+        // worker could otherwise leave a stale value).
+    }
+
+    /// <summary>
+    /// Seeds the gas-price aggregates with the block base fee when no transaction contributed (empty /
+    /// system-only block). Skips zero base fee (pre-EIP-1559, genesis) - "0.000" is less useful than blank.
+    /// </summary>
+    internal static void SeedBlockGasPriceIfEmpty(in UInt256 baseFee)
+    {
+        if (!baseFee.IsUint64 || baseFee.IsZero) return;
+
+        float gasPrice = (float)(baseFee.u0 / 1_000_000_000.0);
+
+        long empty = PackFloats(float.MaxValue, 0f);
+        if (Interlocked.CompareExchange(ref _minMaxGasPriceBits, PackFloats(gasPrice, gasPrice), empty) != empty)
+            return; // a transaction already contributed
+
+        // Only ever called after all tx workers have joined, so no concurrent UpdateBlockGasPrice can
+        // observe the gap between the CAS above and these non-atomic seed writes.
+        Volatile.Write(ref _countAveGasPriceBits, PackCountAve(0, gasPrice));
+        Volatile.Write(ref _blockEstMedianGasPrice, gasPrice);
+    }
+
+    /// <summary>
+    /// Publishes the latest-block gas-price gauges from the final aggregates. Call once after all
+    /// (possibly parallel) transactions are processed, so a slow worker cannot leave a stale value.
+    /// </summary>
+    internal static void PublishBlockGasPriceGauges()
+    {
+        float min = BlockMinGasPrice;
+        if (min == float.MaxValue) return; // no data this block; keep previous gauge values
+
+        GasPriceMin = min;
+        GasPriceMax = BlockMaxGasPrice;
+        GasPriceAve = BlockAveGasPrice;
+        GasPriceMedian = BlockEstMedianGasPrice;
     }
 }

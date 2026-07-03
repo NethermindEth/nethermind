@@ -192,6 +192,7 @@ public class TestBlockchain : IDisposable
         public bool AddBlockOnStart = true;
         public UInt256 AccountInitialValue = InitialValue;
         public long SlotTime = 1;
+        public string? SealEngineType;
     }
 
     // Please don't add any new parameter to this method. Pass any customization via autofac's configuration
@@ -207,6 +208,7 @@ public class TestBlockchain : IDisposable
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
         configurer?.Invoke(builder);
+        builder.ConfigureTestConfiguration(conf => conf.SealEngineType = SealEngineType);
 
         Container = builder.Build();
         _fromContainer = Container.Resolve<FromContainer>();
@@ -362,11 +364,6 @@ public class TestBlockchain : IDisposable
 
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
 
-            if (specProvider.SealEngine == Core.SealEngineType.AuRa)
-            {
-                genesisBlockBuilder.WithAura(0, new byte[65]);
-            }
-
             if (specProvider.GenesisSpec.IsEip4844Enabled)
             {
                 genesisBlockBuilder.WithBlobGasUsed(0);
@@ -501,7 +498,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
+        ulong nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)
@@ -513,7 +510,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
+        ulong nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)

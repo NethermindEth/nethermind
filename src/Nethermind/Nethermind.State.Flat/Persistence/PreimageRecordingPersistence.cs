@@ -74,7 +74,7 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
             {
                 Address addr = new(addrPreimage);
                 UInt256 slot = new(slotPreimage, isBigEndian: true);
-                Rlp.ValueDecoderContext ctx = new(rlpValue);
+                RlpReader ctx = new(rlpValue);
                 inner.SetStorage(addr, slot, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
             }
             else

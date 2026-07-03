@@ -1087,12 +1087,12 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 position, out UInt256 length)) goto StackUnderflow;
 
         // The number of topics is defined by the generic parameter.
-        long topicsCount = TOpCount.Count;
+        ulong topicsCount = (ulong)TOpCount.Count;
 
         // Ensure that the memory expansion for the log data is accounted for.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, vmState)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
-        long dataSize = (long)length;
+        ulong dataSize = (ulong)length;
         if (!TGasPolicy.ConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
 
         // Load the log data from memory.
@@ -1100,16 +1100,17 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
-        Hash256[] topics = new Hash256[topicsCount];
+        Hash256[] topics = topicsCount == 0 ? [] : new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)
         {
-            topics[i] = new Hash256(stack.PopWord256());
+            if (!stack.PopWord256(out Span<byte> topic)) goto StackUnderflow;
+            topics[i] = new Hash256(topic);
         }
 
         // Create a new log entry with the executing account, log data, and topics.
         LogEntry logEntry = new(
             vmState.Env.ExecutingAccount,
-            data.ToArray(),
+            data.Length == 0 ? [] : data.ToArray(),
             topics);
 
         vm.AddLog(logEntry);

@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
@@ -78,6 +79,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<IAdminRpcModule>(CreateAdminRpcModule)
 
             // Eth and its dependencies
+            .AddSingleton<IBlockForRpcFactory, BlockForRpcFactory>()
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
                     (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
@@ -120,5 +122,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<ChainSpec>().Parameters,
             ctx.Resolve<ITrustedNodesManager>(),
             ctx.Resolve<ISubscriptionManager>(),
-            ctx.Resolve<IJsonRpcConfig>());
+            ctx.Resolve<IJsonRpcConfig>(),
+            ctx.Resolve<IBlockProcessingPauseControl>());
 }

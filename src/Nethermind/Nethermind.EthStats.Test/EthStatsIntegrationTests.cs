@@ -23,26 +23,22 @@ namespace Nethermind.EthStats.Test;
 
 public class EthStatsIntegrationTests
 {
-    [TestCase(3, 1, true, 1, 3, TestName = "TryNormalizeHistoryRange_swaps_min_and_max")]
-    [TestCase(-3, -1, false, 0, 0, TestName = "TryNormalizeHistoryRange_rejects_negative_range")]
-    [TestCase(-3, 3, true, 0, 3, TestName = "TryNormalizeHistoryRange_clamps_negative_min")]
-    [TestCase(0, 100, true, 37, 100, TestName = "TryNormalizeHistoryRange_limits_oversized_range")]
-    [TestCase(0, long.MaxValue, true, long.MaxValue - 63, long.MaxValue, TestName = "TryNormalizeHistoryRange_handles_max_long_without_overflow")]
-    public void TryNormalizeHistoryRange_handles_edges(
-        long requestMin,
-        long requestMax,
-        bool expectedResult,
-        long expectedMin,
-        long expectedMax)
+    [TestCase(3UL, 1UL, 1UL, 3UL, TestName = "NormalizeHistoryRange_swaps_min_and_max")]
+    [TestCase(0UL, 100UL, 37UL, 100UL, TestName = "NormalizeHistoryRange_limits_oversized_range")]
+    [TestCase(ulong.MaxValue - 63, ulong.MaxValue, ulong.MaxValue - 63, ulong.MaxValue, TestName = "NormalizeHistoryRange_handles_max_ulong_without_overflow")]
+    public void NormalizeHistoryRange_handles_edges(
+        ulong requestMin,
+        ulong requestMax,
+        ulong expectedMin,
+        ulong expectedMax)
     {
-        bool result = EthStatsIntegration.TryNormalizeHistoryRange(
+        EthStatsIntegration.NormalizeHistoryRange(
             new EthStatsHistoryRequest(requestMin, requestMax),
-            out long min,
-            out long max);
+            out ulong min,
+            out ulong max);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(expectedResult));
             Assert.That(min, Is.EqualTo(expectedMin));
             Assert.That(max, Is.EqualTo(expectedMax));
         }
@@ -57,8 +53,8 @@ public class EthStatsIntegrationTests
         CoreBlock firstBlock = Build.A.Block.WithNumber(1).TestObject;
         CoreBlock secondBlock = Build.A.Block.WithNumber(2).TestObject;
 
-        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
-        blockTree.FindBlock(2, BlockTreeLookupOptions.RequireCanonical).Returns(secondBlock);
+        blockTree.FindBlock(1UL, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
+        blockTree.FindBlock(2UL, BlockTreeLookupOptions.RequireCanonical).Returns(secondBlock);
         sender.SendAsync(Arg.Any<IWebsocketClient>(), Arg.Any<HistoryMessage>(), Arg.Any<string>())
             .Returns(Task.CompletedTask);
 
@@ -93,9 +89,9 @@ public class EthStatsIntegrationTests
             TimeSpan.FromSeconds(1),
             LimboLogs.Instance);
 
-    private static bool HasHistoryBlocks(HistoryMessage message, long firstBlockNumber, long secondBlockNumber)
+    private static bool HasHistoryBlocks(HistoryMessage message, ulong firstBlockNumber, ulong secondBlockNumber)
     {
-        List<long> numbers = [];
+        List<ulong> numbers = [];
         foreach (EthStatsBlock block in message.History)
         {
             numbers.Add(block.Number);

@@ -131,7 +131,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     {
         public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
         {
             StateId currentState = new(baseBlock);
             SnapshotBundle snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);

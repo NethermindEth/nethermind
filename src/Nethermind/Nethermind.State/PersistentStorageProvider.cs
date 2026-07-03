@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -17,7 +18,6 @@ using Nethermind.Core.Resettables;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
-using EvmMetrics = Nethermind.Evm.Metrics;
 using Nethermind.Logging;
 
 namespace Nethermind.State;
@@ -26,11 +26,12 @@ namespace Nethermind.State;
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
 /// </summary>
-internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager)
+internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
     : PartialStorageProviderBase(logManager)
 {
     private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
+    private readonly LocalMetrics _metrics = metrics;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
@@ -51,6 +52,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
+            InvalidateStorageMemo();
             _toUpdateRoots.Clear();
         }
     }
@@ -59,7 +61,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
-        EvmMetrics.IncrementStorageWrites();
+        _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
     }
 
@@ -234,23 +236,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+        foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
         {
-            if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
+            if (!kvp.Value) continue;
+
+            if (!_storages.TryGetValue(kvp.Key, out PerContractState contractState))
             {
-                // Wasn't updated don't recalculate
+                Debug.Fail($"Storage root marked changed for {kvp.Key} but no contract state is present");
                 continue;
             }
 
-            PerContractState contractState = kvp.Value;
-
             (int writes, int skipped) = contractState.ProcessStorageChanges(
-                writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
+                writeBatch.CreateStorageWriteBatch(kvp.Key, contractState.EstimatedChanges));
 
             ReportMetrics(writes, skipped);
         }
     }
 
+    // Static + atomic on purpose: called from ParallelUnbalancedWork worker finalizers
+    // (see PersistentStorageProvider.std.cs), so it must not touch the non-atomic per-scope LocalMetrics.
     private static void ReportMetrics(int writes, int skipped)
     {
         if (skipped > 0)
@@ -260,19 +264,41 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
-    public void ClearStorageMap() => _storages.Clear();
+    public void ClearStorageMap()
+    {
+        _storages.Clear();
+        InvalidateStorageMemo();
+    }
+
+    private Address? _lastStorageAddress;
+    private PerContractState? _lastStorage;
+
+    private void InvalidateStorageMemo()
+    {
+        _lastStorageAddress = null;
+        _lastStorage = null;
+    }
 
     private PerContractState GetOrCreateStorage(Address address)
     {
+        if (_lastStorageAddress == address)
+        {
+            return _lastStorage!;
+        }
+
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
+        _lastStorageAddress = address;
+        _lastStorage = value;
         return value;
     }
 
     public void WarmUp(in StorageCell storageCell, bool isEmpty)
     {
         if (!isEmpty)
+        {
             LoadFromTree(in storageCell);
+        }
     }
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
@@ -480,7 +506,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                Db.Metrics.IncrementStorageTreeCache();
+                _provider._metrics.IncrementStorageTreeCache();
             }
 
             if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
@@ -489,7 +515,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
-            Db.Metrics.IncrementStorageTreeReads();
+            _provider._metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
             return !storageCell.IsHash

@@ -92,7 +92,7 @@ public class XdcHeaderValidatorTests
         sealValidator.ValidateParams(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
-        releaseSpec.GasLimitBoundDivisor.Returns(1);
+        releaseSpec.GasLimitBoundDivisor.Returns(1UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         quorumCertificateManager.VerifyCertificate(Arg.Any<QuorumCertificate>(), Arg.Any<XdcBlockHeader>(), out _).Returns(true);

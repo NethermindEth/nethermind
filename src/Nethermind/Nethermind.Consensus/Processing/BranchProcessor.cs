@@ -170,7 +170,11 @@ public class BranchProcessor(
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
                 // Though we still want to release the memory even if syncing rather than processing live
-                TxHashCalculator.CalculateInBackground(suggestedBlock);
+                // Empty blocks have nothing to hash, so skip the ThreadPool dispatch entirely.
+                if (suggestedBlock.Transactions.Length > 0)
+                {
+                    TxHashCalculator.CalculateInBackground(suggestedBlock);
+                }
             }
 
             return processedBlocks;
@@ -219,12 +223,13 @@ public class BranchProcessor(
     {
         if (preWarmTask is not null)
         {
-            // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
+            // Clear caches after prewarm completes; run inline to avoid ThreadPool scheduling jitter.
+            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.ExecuteSynchronously);
         }
         else if (preWarmer is not null)
         {
-            _clearTask = Task.Run(preWarmer.ClearCaches);
+            preWarmer.ClearCaches();
+            _clearTask = Task.CompletedTask;
         }
     }
 
@@ -237,7 +242,7 @@ public class BranchProcessor(
 
         void IThreadPoolWorkItem.Execute()
         {
-            // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
+            // Hashes will be required for PersistentReceiptStorage in TryUpdateMainChain ForkchoiceUpdatedHandler
             // Which occurs after the block has been processed; however the block is stored in cache and picked up
             // from there so we can calculate the hashes now for that later use.
             foreach (Transaction tx in suggestedBlock.Transactions)

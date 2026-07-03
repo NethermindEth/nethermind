@@ -89,6 +89,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 _container.Resolve<IProtocolsManager>(),
                 _container.Resolve<IForkInfo>(),
                 new LogIndexConfig(),
+                new ReceiptConfig(),
                 new BlocksConfig().SecondsPerSlot,
                 _headBlockSignal,
                 new EthCapabilitiesProvider(
@@ -97,7 +98,8 @@ namespace Nethermind.JsonRpc.Benchmark
                     _container.Resolve<ISyncConfig>(),
                     Substitute.For<ISyncPointers>(),
                     Substitute.For<IHistoryConfig>(),
-                    Substitute.For<IHistoryPruner>()));
+                    Substitute.For<IHistoryPruner>()),
+                new BlockForRpcFactory());
         }
 
         [GlobalCleanup]

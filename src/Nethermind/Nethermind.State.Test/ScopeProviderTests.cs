@@ -17,6 +17,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
 
+internal static class ScopeProviderTestExtensions
+{
+    // Test convenience overload: begins a scope with a throwaway metrics accumulator for tests that
+    // call the scope provider directly and do not assert on the folded counters.
+    public static IWorldStateScopeProvider.IScope BeginScope(this IWorldStateScopeProvider provider, BlockHeader baseBlock)
+        => provider.BeginScope(baseBlock, new LocalMetrics());
+}
+
 [TestFixture(false)]
 [TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
@@ -87,10 +95,8 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
 
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
-                {
-                    storageSet.Set(1, [1, 2, 3]);
-                }
+                using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageSet.Set(1, [1, 2, 3]);
             }
 
             scope.Commit(1);
@@ -114,10 +120,8 @@ public class ScopeProviderTests(bool useFlat)
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
-            using (IWorldStateScopeProvider.ICodeSetter writer = scope.CodeDb.BeginCodeWrite())
-            {
-                writer.Set(TestItem.KeccakA, [1, 2, 3]);
-            }
+            using IWorldStateScopeProvider.ICodeSetter writer = scope.CodeDb.BeginCodeWrite();
+            writer.Set(TestItem.KeccakA, [1, 2, 3]);
         }
 
         if (!useFlat)
@@ -140,15 +144,13 @@ public class ScopeProviderTests(bool useFlat)
         // Simulates the EIP-161 scenario: storage is flushed for an account that was
         // then deleted (set to null) during state commit. The write batch Dispose should
         // skip the storage root update for the deleted account instead of throwing.
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
         {
-            using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
-            {
-                storageSet.Set(1, [1, 2, 3]);
-            }
-
-            writeBatch.Set(TestItem.AddressA, null);
+            storageSet.Set(1, [1, 2, 3]);
         }
+
+        writeBatch.Set(TestItem.AddressA, null);
     }
 
     [Test]
@@ -171,10 +173,8 @@ public class ScopeProviderTests(bool useFlat)
                     storageA.Set(2, [30, 40]);
                 }
 
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageB = writeBatch.CreateStorageWriteBatch(TestItem.AddressB, 1))
-                {
-                    storageB.Set(5, [50, 60]);
-                }
+                using IWorldStateScopeProvider.IStorageWriteBatch storageB = writeBatch.CreateStorageWriteBatch(TestItem.AddressB, 1);
+                storageB.Set(5, [50, 60]);
             }
 
             scope.Commit(1);
@@ -283,10 +283,8 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 writeBatch.Set(TestItem.AddressB, new Account(200, 200));
 
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
-                {
-                    storageA.Set(1, [10, 20]);
-                }
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
             }
 
             scope.Commit(1);
@@ -317,10 +315,8 @@ public class ScopeProviderTests(bool useFlat)
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
-                {
-                    storageA.Set(1, [10, 20]);
-                }
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
             }
 
             scope.Commit(1);

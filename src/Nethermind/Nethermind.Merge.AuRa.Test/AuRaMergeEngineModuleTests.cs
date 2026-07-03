@@ -17,7 +17,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Contracts;
@@ -29,9 +28,10 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
-using Nethermind.TxPool;
+using Nethermind.AuRa.Test;
 using NSubstitute;
 using NUnit.Framework;
+using Builders = Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -163,11 +163,6 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                         provider.SealEngine = SealEngineType;
                     return specProvider;
                 })
-                .WithGenesisPostProcessor((block, _) =>
-                {
-                    block.Header.AuRaStep = 0;
-                    block.Header.AuRaSignature = new byte[65];
-                })
 
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                 // as normally, test blockchain don't use INethermindApi at all.
@@ -176,7 +171,6 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 .AddDecorator<AuRaNethermindApi>((_, api) =>
                 {
                     api.EngineSigner = NullSigner.Instance;
-                    api.NonceManager = Substitute.For<INonceManager>();
                     return api;
                 })
                 .AddModule(new AuRaMergeModule())
@@ -192,19 +186,24 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
 
+                .AddSingleton<IAuRaBlockFinalizationManager>(Substitute.For<IAuRaBlockFinalizationManager>())
+
                 .AddDecorator<AuRaNethermindApi>((_, api) =>
                 {
                     // Yes getting from `TestBlockchain` itself, since steps are not run
                     // and some of these are not from DI. you know... chicken and egg, but don't forget about the rooster.
                     api.TxPool = TxPool;
                     api.TransactionComparerProvider = TransactionComparerProvider;
-                    api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
                     return api;
                 });
 
         protected override ChainSpec CreateChainSpec()
         {
             ChainSpec baseChainSpec = base.CreateChainSpec();
+            baseChainSpec.Genesis = Builders.Build.A.Block
+                .WithDifficulty(0)
+                .WithAura(0, new byte[65])
+                .TestObject;
             AuRaChainSpecEngineParameters.AuRaValidatorJson validatorsJson = new()
             {
                 List = [Address.Zero]

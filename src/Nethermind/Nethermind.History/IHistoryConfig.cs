@@ -30,7 +30,7 @@ public interface IHistoryConfig : IConfig
     [ConfigItem(
         Description = "Number of epochs to wait between each history pruning.",
         DefaultValue = "8")]
-    uint PruningInterval { get; set; }
+    ulong PruningInterval { get; set; }
 
     [ConfigItem(
         Description = "Maximum time in seconds allowed for a single history pruning pass. Set to 0 to disable the timeout.",

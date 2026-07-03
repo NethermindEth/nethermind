@@ -60,7 +60,7 @@ public class PersistenceManagerTests
     {
     }
 
-    private StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    private StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
@@ -118,7 +118,7 @@ public class PersistenceManagerTests
         StateId latest = CreateStateId(100);
 
         // Vary target block and compaction based on parameter
-        int targetBlock = useCompacted ? 16 : 1; // compacted uses 16, fallback uses 1
+        ulong targetBlock = useCompacted ? 16UL : 1UL; // compacted uses 16, fallback uses 1
         StateId target = CreateStateId(targetBlock);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -131,6 +131,40 @@ public class PersistenceManagerTests
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.From, Is.EqualTo(persisted));
+        Assert.That(result.To, Is.EqualTo(target));
+
+        result.Dispose();
+    }
+
+    #endregion
+
+    #region Fresh DB (nothing persisted) Tests
+
+    [Test]
+    public void DetermineSnapshotToPersist_FreshDbBelowForceLimit_PersistsFinalizedBoundary()
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(StateId.PreGenesis);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        ICompactionSchedule scheduler = ScheduleHelper.CreateWithOffset(_config, 0);
+        PersistenceManager pm = new(_config, scheduler, _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+
+        // Depth 101 is past MinReorgDepth + CompactSize (80) but below the MaxReorgDepth force limit (256),
+        // so only the finalized branch can produce a snapshot here.
+        StateId target = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(StateId.PreGenesis, target, compacted: true);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.From, Is.EqualTo(StateId.PreGenesis));
         Assert.That(result.To, Is.EqualTo(target));
 
         result.Dispose();
@@ -165,7 +199,7 @@ public class PersistenceManagerTests
         StateId latest = CreateStateId(300);
 
         // Vary target block and compaction based on parameter
-        int targetBlock = useCompacted ? 16 : 1; // compacted uses 16, fallback uses 1
+        ulong targetBlock = useCompacted ? 16UL : 1UL; // compacted uses 16, fallback uses 1
         StateId target = CreateStateId(targetBlock);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
@@ -178,6 +212,64 @@ public class PersistenceManagerTests
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.From, Is.EqualTo(persisted));
         Assert.That(result.To, Is.EqualTo(target));
+
+        result.Dispose();
+    }
+
+    [Test]
+    public void DetermineSnapshotToPersist_UnfinalizedForkAtBoundary_PersistsHeadReachableFork()
+    {
+        // Two unfinalized forks at the boundary block 16, both starting from Block0. The head's chain runs
+        // through target2 (the higher root, not the arbitrary "first"). The forced persist must follow the
+        // head's chain (target2), otherwise persisting target1 would orphan the head.
+        StateId persisted = Block0;
+        StateId target1 = CreateStateId(16, rootByte: 1); // arbitrary "first" (lowest root)
+        StateId target2 = CreateStateId(16, rootByte: 2); // on the head's chain
+        StateId head = CreateStateId(300);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(10); // unfinalized at the boundary
+
+        using Snapshot fork1 = CreateSnapshot(persisted, target1, compacted: true);
+        using Snapshot fork2 = CreateSnapshot(persisted, target2, compacted: true);
+        using Snapshot toHead = CreateSnapshot(target2, head, compacted: true); // head reachable only via target2
+        _snapshotRepository.SetLastCommittedStateId(head);
+
+        Snapshot? result = _persistenceManager.DetermineSnapshotToPersist(head);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.From, Is.EqualTo(persisted));
+        Assert.That(result.To, Is.EqualTo(target2));
+
+        result.Dispose();
+    }
+
+    [Test]
+    public void DetermineSnapshotToPersist_LongerNonCanonicalFork_PersistsCommittedHeadChain()
+    {
+        // The longest in-memory chain runs through target1 up to block 300, but the committed head is the
+        // shorter chain through target2 (at block 32). The forced persist must follow the committed head
+        // (target2), not the longer fork (target1) that GetLastSnapshotId would pick.
+        StateId persisted = Block0;
+        StateId target1 = CreateStateId(16, rootByte: 1); // boundary state on the longer, non-canonical fork
+        StateId target2 = CreateStateId(16, rootByte: 2); // boundary state on the committed head's chain
+        StateId longHead = CreateStateId(300); // longest chain (the max), but not committed
+        StateId committedHead = CreateStateId(32, rootByte: 2);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(0); // unfinalized at the boundary
+
+        using Snapshot fork1 = CreateSnapshot(persisted, target1, compacted: true);
+        using Snapshot fork2 = CreateSnapshot(persisted, target2, compacted: true);
+        using Snapshot toLongHead = CreateSnapshot(target1, longHead, compacted: true); // makes target1 the max chain
+        using Snapshot toCommittedHead = CreateSnapshot(target2, committedHead, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(committedHead);
+
+        // latestSnapshot at 300 (the longest chain) makes the in-memory depth exceed MaxReorgDepth (256),
+        // triggering the force-persist branch.
+        Snapshot? result = _persistenceManager.DetermineSnapshotToPersist(longHead);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.From, Is.EqualTo(persisted));
+        Assert.That(result.To, Is.EqualTo(target2));
 
         result.Dispose();
     }
@@ -242,6 +334,37 @@ public class PersistenceManagerTests
         Assert.That(result!.To.StateRoot.Bytes.ToArray(), Is.EqualTo(target2.StateRoot.Bytes.ToArray())); // Should select finalized one
 
         result.Dispose();
+    }
+
+    [Test]
+    public void DetermineSnapshotToPersist_LatestSnapshotBelowPersistedBlock_ReturnsNullWithoutUnderflow()
+    {
+        // A deep reorg below a force-persisted unfinalized block can leave the latest snapshot
+        // behind the last persisted block. The in-memory depth must saturate to 0 (not underflow to ~2^64),
+        // so the keep-in-memory guard returns null early instead of force-persisting a stale head ancestor.
+        StateId persisted = CreateStateId(100);
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persisted);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        PersistenceManager pm = new(_config, ScheduleHelper.CreateWithOffset(_config, 0), _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+
+        // Latest snapshot (50) is below the persisted block (100); finalized far behind so the force-persist
+        // branch would be taken on underflow. Stage a head-ancestor snapshot the buggy path would return.
+        StateId latest = CreateStateId(50);
+        StateId headAncestor = CreateStateId(101);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+
+        using Snapshot staged = CreateSnapshot(persisted, headAncestor, compacted: false);
+        _snapshotRepository.SetLastCommittedStateId(headAncestor);
+
+        Snapshot? result = pm.DetermineSnapshotToPersist(latest);
+        using Snapshot? _ = result; // dispose if the buggy underflow path returned a snapshot
+
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -390,10 +513,10 @@ public class PersistenceManagerTests
 
     #region Offset Behavior
 
-    [TestCase(3, 13)]
-    [TestCase(5, 11)]
-    [TestCase(0, 16)]
-    public void DetermineSnapshotToPersist_WithOffset_FirstBoundaryShifted(int offset, int expectedTargetBlock)
+    [TestCase(3, 13UL)]
+    [TestCase(5, 11UL)]
+    [TestCase(0, 16UL)]
+    public void DetermineSnapshotToPersist_WithOffset_FirstBoundaryShifted(int offset, ulong expectedTargetBlock)
     {
         // Fresh DB: currentPersistedState = Block0 (block 0).
         // With CompactSize=16 and offset=N, the next full compaction boundary is at block 16-N.
@@ -483,6 +606,62 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void FlushToPersistence_UnfinalizedForkAtBoundary_PersistsHeadReachableFork()
+    {
+        // Two unfinalized forks at the boundary block 16; the head's chain runs through target2. The flush
+        // must persist target2 (head-reachable), not the arbitrary first fork target1.
+        StateId target1 = CreateStateId(16, rootByte: 1); // arbitrary "first" (lowest root)
+        StateId target2 = CreateStateId(16, rootByte: 2); // on the head's chain
+        StateId head = CreateStateId(32);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(0); // nothing finalized
+
+        using Snapshot fork1 = CreateSnapshot(Block0, target1, compacted: true);
+        using Snapshot fork2 = CreateSnapshot(Block0, target2, compacted: true);
+        using Snapshot toHead = CreateSnapshot(target2, head, compacted: true); // head reachable only via target2
+        _snapshotRepository.SetLastCommittedStateId(head);
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        Assert.That(result, Is.EqualTo(head));
+        _persistence.Received().CreateWriteBatch(Block0, target2);
+        _persistence.DidNotReceive().CreateWriteBatch(Block0, target1);
+    }
+
+    [Test]
+    public void FlushToPersistence_LongerNonCanonicalFork_PersistsCommittedHeadChain()
+    {
+        // The longest in-memory chain runs through target1 to block 300, but the committed head is the
+        // shorter chain through target2 (at block 32). The flush must follow the committed head (target2),
+        // stopping at its block, not chase the longer non-canonical fork through target1.
+        StateId target1 = CreateStateId(16, rootByte: 1); // boundary state on the longer, non-canonical fork
+        StateId target2 = CreateStateId(16, rootByte: 2); // boundary state on the committed head's chain
+        StateId longHead = CreateStateId(300); // longest chain (the max), but not committed
+        StateId committedHead = CreateStateId(32, rootByte: 2);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(0); // nothing finalized
+
+        using Snapshot fork1 = CreateSnapshot(Block0, target1, compacted: true);
+        using Snapshot fork2 = CreateSnapshot(Block0, target2, compacted: true);
+        // Not `using`: the flush prunes this orphaned non-canonical descendant and disposes it itself.
+        Snapshot toLongHead = CreateSnapshot(target1, longHead, compacted: true);
+        using Snapshot toCommittedHead = CreateSnapshot(target2, committedHead, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(committedHead);
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        Assert.That(result, Is.EqualTo(committedHead));
+        _persistence.Received().CreateWriteBatch(Block0, target2);
+        _persistence.DidNotReceive().CreateWriteBatch(Block0, target1);
+    }
+
+    [Test]
     public void FlushToPersistence_PrefersFinalizedOverUnfinalized()
     {
         // Arrange - two snapshots at same block, one finalized
@@ -543,16 +722,16 @@ public class PersistenceManagerTests
 
     private class TestFinalizedStateProvider : IFinalizedStateProvider
     {
-        private long _finalizedBlockNumber;
-        private readonly Dictionary<long, Hash256> _finalizedStateRoots = [];
+        private ulong _finalizedBlockNumber;
+        private readonly Dictionary<ulong, Hash256> _finalizedStateRoots = [];
 
-        public long FinalizedBlockNumber => _finalizedBlockNumber;
+        public ulong FinalizedBlockNumber => _finalizedBlockNumber;
 
-        public void SetFinalizedBlockNumber(long blockNumber) => _finalizedBlockNumber = blockNumber;
+        public void SetFinalizedBlockNumber(ulong blockNumber) => _finalizedBlockNumber = blockNumber;
 
-        public void SetFinalizedStateRootAt(long blockNumber, Hash256 stateRoot) => _finalizedStateRoots[blockNumber] = stateRoot;
+        public void SetFinalizedStateRootAt(ulong blockNumber, Hash256 stateRoot) => _finalizedStateRoots[blockNumber] = stateRoot;
 
-        public Hash256? GetFinalizedStateRootAt(long blockNumber) =>
+        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) =>
             _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
     }
 

@@ -30,6 +30,7 @@ using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Consensus.Rewards;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -53,7 +54,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private bool? _previousStrictHexFormat;
 
-        public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
+        public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig() { Timeout = -1 };
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
         public IDebugRpcModule DebugRpcModule => Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         public ITraceRpcModule TraceRpcModule => Container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
@@ -65,6 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
         public ILogIndexConfig LogIndexConfig { get; } = new LogIndexConfig();
+        public IReceiptConfig ReceiptConfig { get; private set; } = new ReceiptConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -127,6 +129,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             public Builder<T> WithConfig(IJsonRpcConfig config)
             {
                 _blockchain.RpcConfig = config;
+                return this;
+            }
+
+            public Builder<T> WithReceiptConfig(IReceiptConfig receiptConfig)
+            {
+                _blockchain.ReceiptConfig = receiptConfig;
                 return this;
             }
 
@@ -196,6 +204,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.LogIndexConfig,
+            @this.ReceiptConfig,
             @this.BlocksConfig.SecondsPerSlot,
             new HeadBlockSignal(@this.BlockTree),
             new EthCapabilitiesProvider(
@@ -204,7 +213,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 @this.Container.Resolve<ISyncConfig>(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
-                Substitute.For<IHistoryPruner>()));
+                Substitute.For<IHistoryPruner>()),
+            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory());
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
@@ -213,6 +223,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+                if (SealEngineType == Core.SealEngineType.AuRa) builder.AddModule(new AuRaHeaderModule());
+                builder.AddSingleton<IJsonRpcConfig>(RpcConfig);
                 configurer?.Invoke(builder);
             });
 
@@ -233,6 +245,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IProtocolValidator>(),
                 Substitute.For<INetworkStorage>(),
                 Array.Empty<IProtocolHandlerFactory>(),
+                [new DefaultP2PCapabilityResolver()],
                 LimboLogs.Instance
             );
 

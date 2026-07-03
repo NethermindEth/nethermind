@@ -13,20 +13,22 @@ namespace Nethermind.Consensus.AuRa
 
         static AuraDifficultyCalculator() => MaxDifficulty = UInt256.UInt128MaxValue;
 
-        public static UInt256 CalculateDifficulty(long parentStep, long currentStep, long emptyStepsCount = 0L)
+        public static UInt256 CalculateDifficulty(ulong parentStep, ulong currentStep, ulong emptyStepsCount = 0UL)
         {
-            long mod = parentStep - currentStep + emptyStepsCount;
-            if (mod > 0)
+            ulong parentStepWithEmpty = parentStep + emptyStepsCount;
+            if (parentStepWithEmpty >= currentStep)
             {
-                return MaxDifficulty + (UInt256)mod;
+                ulong diff = parentStepWithEmpty - currentStep;
+                return MaxDifficulty + (UInt256)diff;
             }
             else
             {
-                return MaxDifficulty - (UInt256)(-mod);
+                ulong diff = currentStep - parentStepWithEmpty;
+                return MaxDifficulty - (UInt256)diff;
             }
         }
 
         public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
-            CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);
+            CalculateDifficulty(parent.GetAuRaStepOrZero(), _auRaStepCalculator.CurrentStep);
     }
 }

@@ -28,7 +28,7 @@ public class PayloadAttributes
 
     public ulong? SlotNumber { get; set; }
 
-    public virtual long? GetGasLimit() => null;
+    public virtual ulong? GetGasLimit() => null;
 
     public override string ToString() => ToString(string.Empty);
 
@@ -163,9 +163,8 @@ public class PayloadAttributes
         if (actualVersion != timestampVersion)
         {
             error = $"{methodName}{timestampVersion} expected";
-            // FCU also doesn't support this fork → UnsupportedFork (post-Paris only)
-            bool unsupportedFork = timestampVersion >= PayloadAttributesVersions.V2 &&
-                (actualVersion > timestampVersion || fcuVersion != timestampVersion);
+            bool unsupportedFork = timestampVersion >= PayloadAttributesVersions.V2
+                && !IsSupportedFcuForkCombination(fcuVersion, timestampVersion);
             return unsupportedFork
                 ? PayloadAttributesValidationResult.UnsupportedFork
                 : PayloadAttributesValidationResult.InvalidPayloadAttributes;

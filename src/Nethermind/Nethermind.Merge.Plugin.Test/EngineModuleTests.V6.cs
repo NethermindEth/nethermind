@@ -412,7 +412,8 @@ public partial class EngineModuleTests
 
         if (customWithdrawalContractAddress is not null)
         {
-            expectedBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress))]);
+            // The AuRa withdrawal-contract system tx surfaces SYSTEM_ADDRESS in the BAL.
+            expectedBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress)), new(Address.SystemUser)]);
         }
 
         ReadOnlyBlockAccessList expected = expectedBalBuilder.TestObject;
@@ -763,7 +764,7 @@ public partial class EngineModuleTests
         }
     }
 
-    private static (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) BuildTestTransactionsAndWithdrawal(ulong gasPrice, long gasLimit)
+    private static (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) BuildTestTransactionsAndWithdrawal(ulong gasPrice, ulong gasLimit)
     {
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
@@ -921,7 +922,7 @@ public partial class EngineModuleTests
                 UInt256[] extraReads = new UInt256[100];
                 for (int i = 0; i < extraReads.Length; i++)
                 {
-                    extraReads[i] = new UInt256((ulong)(1_000_000 + i));
+                    extraReads[i] = 1_000_000UL + (ulong)i;
                 }
                 modifiedAccounts[senderAddress] = CloneAccountChanges(entry, storageReadsOverride: [.. entry.StorageReads, .. extraReads]);
             }

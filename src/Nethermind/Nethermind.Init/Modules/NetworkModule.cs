@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -16,6 +15,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -46,6 +46,10 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<ITxGossipPolicySource, TxGossipPolicySource>()
             .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>(singleInstance: true)
             .AddSingleton<IIPResolver, IPResolver>()
+
+            .AddSingleton<EnodeProvider>()
+            .Map<IEnode, EnodeProvider>(provider => provider.Enode)
+
             .AddSingleton<IForkInfo, ForkInfo>()
 
             // Rlpxhost
@@ -63,6 +67,9 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IMessageSerializationService, MessageSerializationService>()
             .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
+            .AddSingleton<IProtocolsManager, ProtocolsManager>()
+            .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
+            .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()
@@ -86,6 +93,12 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<Snap.GetTrieNodesMessage, Snap.GetTrieNodesMessageSerializer>()
             .AddMessageSerializer<Snap.StorageRangeMessage, Snap.StorageRangesMessageSerializer>()
             .AddMessageSerializer<Snap.TrieNodesMessage, Snap.TrieNodesMessageSerializer>()
+
+            // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
+            // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
+            .AddSingleton<IHeaderDecoder, HeaderDecoder>()
+            .AddSingleton(new BlockDecoder())
+            .AddSingleton(BlockBodyDecoder.Instance)
 
             // V62
             .AddMessageSerializer<V62.BlockBodiesMessage, V62.BlockBodiesMessageSerializer>()
@@ -139,7 +152,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V71.BlockAccessListsMessage, V71.BlockAccessListsMessageSerializer>()
 
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
-            .Map<PublicKey, IRlpxHost>(rlpx => rlpx.LocalNodeId)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
 
             .AddSingleton<State.SnapServer.ISnapServer, State.IWorldStateManager>(wsm => wsm.SnapServer)

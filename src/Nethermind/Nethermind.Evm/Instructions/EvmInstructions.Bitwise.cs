@@ -20,7 +20,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing the bitwise operation.
         /// </summary>
-        static virtual long GasCost => GasCostOf.VeryLow;
+        static virtual ulong GasCost => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the bitwise operation.
         /// </summary>
@@ -49,6 +49,15 @@ public static partial class EvmInstructions
         // Deduct the operation's gas cost.
         TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
 
+        return BitwiseCore<TOpBitwise>(ref stack);
+    }
+
+    /// <summary>Gas-free body of <see cref="InstructionBitwise{TGasPolicy, TOpBitwise}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType BitwiseCore<TOpBitwise>(ref EvmStack stack)
+        where TOpBitwise : struct, IOpBitwise
+    {
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
@@ -101,7 +110,7 @@ public static partial class EvmInstructions
     public struct OpBitwiseEq : IOpBitwise
     {
         // Precomputed vector used as a marker for equality (only the last byte is set to 1).
-        public static EvmWord One = Vector256.Create(
+        public static readonly EvmWord One = Vector256.Create(
             (byte)
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -110,6 +119,22 @@ public static partial class EvmInstructions
         );
 
         // Returns a non-zero marker vector if the operands are equal.
+#if ZK_EVM
+        // The zkVM has no hardware SIMD, so Vector256<byte> == falls back to an 8-iteration element loop.
+        // EQ is hot, so compare as flat 4x ulong (endianness-agnostic for an equality test).
+        public static EvmWord Operation(in EvmWord a, in EvmWord b)
+        {
+            ref ulong pa = ref As<EvmWord, ulong>(ref AsRef(in a));
+            ref ulong pb = ref As<EvmWord, ulong>(ref AsRef(in b));
+            ulong diff = (pa ^ pb)
+                | (Add(ref pa, 1) ^ Add(ref pb, 1))
+                | (Add(ref pa, 2) ^ Add(ref pb, 2))
+                | (Add(ref pa, 3) ^ Add(ref pb, 3));
+
+            return diff == 0UL ? One : default;
+        }
+#else
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => a == b ? One : default;
+#endif
     }
 }

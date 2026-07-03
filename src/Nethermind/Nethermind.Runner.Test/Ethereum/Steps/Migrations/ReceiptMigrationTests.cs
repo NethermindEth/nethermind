@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -26,15 +27,15 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
     public class ReceiptMigrationTests
     {
-        [TestCase(null, 0, false, false, false, false)] // No change to migrate
-        [TestCase(5, 5, false, false, false, true)] // Explicit command and partially migrated
-        [TestCase(null, 5, true, false, false, true)] // Partially migrated
-        [TestCase(5, 0, false, false, false, true)] // Explicit command
-        [TestCase(null, 0, true, false, false, true)] // Force reset
-        [TestCase(null, 0, false, false, true, true)] // Encoding mismatch
-        [TestCase(null, 0, false, true, false, true)] // Encoding mismatch
-        [TestCase(null, 0, false, true, true, false)] // Encoding match
-        public async Task RunMigration(int? commandStartBlockNumber, long currentMigratedBlockNumber, bool forceReset, bool receiptIsCompact, bool useCompactEncoding, bool wasMigrated)
+        [TestCase(null, 0UL, false, false, false, false)] // No change to migrate
+        [TestCase(5UL, 5UL, false, false, false, true)] // Explicit command and partially migrated
+        [TestCase(null, 5UL, true, false, false, true)] // Partially migrated
+        [TestCase(5UL, 0UL, false, false, false, true)] // Explicit command
+        [TestCase(null, 0UL, true, false, false, true)] // Force reset
+        [TestCase(null, 0UL, false, false, true, true)] // Encoding mismatch
+        [TestCase(null, 0UL, false, true, false, true)] // Encoding mismatch
+        [TestCase(null, 0UL, false, true, true, false)] // Encoding match
+        public async Task RunMigration(ulong? commandStartBlockNumber, ulong currentMigratedBlockNumber, bool forceReset, bool receiptIsCompact, bool useCompactEncoding, bool wasMigrated)
         {
             int chainLength = 10;
             IReceiptConfig receiptConfig = new ReceiptConfig()
@@ -59,7 +60,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             // Insert the blocks
             int txIndex = 0;
-            for (int i = 1; i < chainLength; i++)
+            for (ulong i = 1; i < (ulong)chainLength; i++)
             {
                 Block block = blockTree.FindBlock(i);
                 inMemoryReceiptStorage.Insert(block, new[] {
@@ -74,11 +75,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             TestMemDb defaultDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Default);
 
             // Put the last block receipt encoding
-            Block lastBlock = blockTree.FindBlock(chainLength - 1);
+            Block lastBlock = blockTree.FindBlock((ulong)(chainLength - 1));
             TxReceipt[] receipts = inMemoryReceiptStorage.Get(lastBlock);
-            using (NettyRlpStream nettyStream = receiptArrayStorageDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage))
+            using (ArrayPoolSpan<byte> encodedReceipts = receiptArrayStorageDecoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage))
             {
-                ((IKeyValueStoreWithBatching)blocksDb).PutSpan(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()).AsSpan(), nettyStream.AsSpan());
+                ((IKeyValueStoreWithBatching)blocksDb).PutSpan(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()).AsSpan(), encodedReceipts);
             }
 
             ReceiptMigration migration = new(
@@ -105,7 +106,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             if (wasMigrated)
             {
-                int blockNum = commandStartBlockNumber ?? (chainLength - 1);
+                int blockNum = commandStartBlockNumber.HasValue ? (int)commandStartBlockNumber.Value : (chainLength - 1);
                 int txCount = blockNum * 2;
                 defaultDb.KeyWasWritten((item => item.Item2 is null), txCount);
                 ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
@@ -119,7 +120,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
         [TestCaseSource(nameof(PointerTrackerScenarios))]
         public void MigrationPointerTracker_advances_pointer_only_across_contiguously_completed_blocks(
-            long to, long[] completionOrder, long[] expectedPointerAfterEachCompletion)
+            ulong to, ulong[] completionOrder, ulong[] expectedPointerAfterEachCompletion)
         {
             InMemoryReceiptStorage receiptStorage = new() { MigratedBlockNumber = to + 1 };
             ReceiptMigration.MigrationPointerTracker tracker = new(receiptStorage, to);
@@ -134,11 +135,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
         private static IEnumerable<TestCaseData> PointerTrackerScenarios()
         {
-            yield return new TestCaseData(3L, new[] { 3L, 2L, 1L, 0L }, new[] { 3L, 2L, 1L, 0L })
+            yield return new TestCaseData(3UL, new ulong[] { 3UL, 2UL, 1UL, 0UL }, new ulong[] { 3UL, 2UL, 1UL, 0UL })
                 .SetName("DescendingCompletionAdvancesOneByOne");
-            yield return new TestCaseData(10L, new[] { 10L, 9L, 7L, 8L }, new[] { 10L, 9L, 9L, 7L })
+            yield return new TestCaseData(10UL, new ulong[] { 10UL, 9UL, 7UL, 8UL }, new ulong[] { 10UL, 9UL, 9UL, 7UL })
                 .SetName("GapHoldsPointerUntilFilledThenJumps");
-            yield return new TestCaseData(3L, new[] { 0L, 1L, 2L, 3L }, new[] { 4L, 4L, 4L, 0L })
+            yield return new TestCaseData(3UL, new ulong[] { 0UL, 1UL, 2UL, 3UL }, new ulong[] { 4UL, 4UL, 4UL, 0UL })
                 .SetName("UnfinishedHighestBlockHoldsPointerUntilItCompletes");
         }
 
@@ -152,19 +153,19 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inStorage.Get(blockHash, recover);
 
-            public bool CanGetReceiptsByHash(long blockNumber) => inStorage.CanGetReceiptsByHash(blockNumber);
-            public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            public bool CanGetReceiptsByHash(ulong blockNumber) => inStorage.CanGetReceiptsByHash(blockNumber);
+            public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
-            public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => outStorage.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
-            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
+            public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber) => outStorage.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
+            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber) => outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
 
-            public long MigratedBlockNumber
+            public ulong MigratedBlockNumber
             {
                 get => outStorage.MigratedBlockNumber;
                 set => outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(long blockNumber, Hash256 hash) => outStorage.HasBlock(blockNumber, hash);
+            public bool HasBlock(ulong blockNumber, Hash256 hash) => outStorage.HasBlock(blockNumber, hash);
 
             public void EnsureCanonical(Block block)
             {

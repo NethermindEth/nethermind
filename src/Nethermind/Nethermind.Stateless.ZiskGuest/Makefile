@@ -11,6 +11,7 @@ BFLAT_REFS := \
   -r {std}/System.Diagnostics.Tracing.dll \
   -r {std}/System.Memory.dll \
   -r {std}/System.Runtime.dll \
+  -r {std}/System.Runtime.InteropServices.dll \
   -r $(BIN_DIR)/BouncyCastle.Cryptography.dll \
   -r $(BIN_DIR)/Microsoft.Extensions.ObjectPool.dll \
   -r $(BIN_DIR)/Nethermind.Abi.dll \
@@ -59,7 +60,7 @@ build: dotnet-build
 run:
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
-		nethermindeth/zisk:0.18.0 \
+		nethermindeth/zisk:1.0.0-alpha \
 		ziskemu -e /n/nethermind -i /n/$(INPUT)
 
 build-run: build run

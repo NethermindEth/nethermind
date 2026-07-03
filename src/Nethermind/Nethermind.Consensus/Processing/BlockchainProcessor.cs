@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -30,15 +31,13 @@ using static Nethermind.Core.Threading.ProcessingThread;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
+public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue, IBlockProcessingPauseControl
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
 
     public static bool IsMainProcessingThread => IsBlockProcessingThread;
     public bool IsMainProcessor { get; init; }
-
-    public ITracerBag Tracers => _compositeBlockTracer;
 
     private readonly IBranchProcessor _branchProcessor;
     private readonly IBlockPreprocessorStep _recoveryStep;
@@ -79,6 +78,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private const int MaxBranchSize = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
+    private readonly BlockProcessingPauseGate _pauseGate = new();
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
     public event EventHandler<BlockStatistics>? NewProcessingStatistics;
@@ -93,6 +93,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="logManager"></param>
     /// <param name="options"></param>
     /// <param name="processingStats"></param>
+    /// <param name="blockTracers">Tracers seeded into the processor's composite tracer at construction.</param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
@@ -100,7 +101,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         IStateReader stateReader,
         ILogManager logManager,
         Options options,
-        IProcessingStats processingStats)
+        IProcessingStats processingStats,
+        IEnumerable<IBlockTracer>? blockTracers = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
@@ -112,6 +114,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
+        if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
     }
 
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
@@ -203,6 +206,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         static void ThrowAlreadyStarted() => throw new InvalidOperationException($"{nameof(BlockchainProcessor)} already started");
     }
 
+    public bool IsPaused => _pauseGate.IsPaused;
+
+    public void Pause()
+    {
+        if (_pauseGate.Pause() && _logger.IsInfo) _logger.Info("Block processing paused.");
+    }
+
+    public void Resume()
+    {
+        if (_pauseGate.Resume() && _logger.IsInfo) _logger.Info("Block processing resumed.");
+    }
+
     public async Task StopAsync(bool processRemainingBlocks = false)
     {
         if (_disposed) return;
@@ -218,6 +233,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _recoveryComplete = true;
         if (processRemainingBlocks)
         {
+            _pauseGate.Resume();
             _recoveryQueue.Writer.TryComplete();
             await (_recoveryTask ?? Task.CompletedTask);
             _blockQueue.Writer.TryComplete();
@@ -325,6 +341,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
+            await _pauseGate.WaitWhilePausedAsync(CancellationToken);
+
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
@@ -356,7 +374,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
-        while (_blockQueue.Reader.TryRead(out BlockRef blockRef))
+        while (!_pauseGate.IsPaused && _blockQueue.Reader.TryRead(out BlockRef blockRef))
         {
             try
             {
@@ -498,7 +516,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (updateHead)
         {
             if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
-            _blockTree.UpdateMainChain(processingBranch.Blocks, true);
+            // Pass the just-processed blocks as a cache; TryUpdateMainChain walks the rest of the branch
+            // (any deeper blocks that already had state) on its own, loading them one at a time.
+            if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks.AsSpan()) && _logger.IsWarn)
+                _logger.Warn($"Failed to update main chain to {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing.");
         }
 
         if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
@@ -517,8 +538,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public bool IsProcessingBlocks(ulong? maxProcessingInterval) =>
         _processorTask?.IsCompleted == false && _recoveryTask?.IsCompleted == false &&
-        // user does not setup interval and we cannot set interval time based on chainspec
-        (maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow);
+        (_pauseGate.IsPaused || maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow);
 
     private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
     {
@@ -730,19 +750,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
-            // then on restart we would find 14 as the branch head (since 14 is on the main chain)
-            // we need to dig deeper to go all the way to the false (reorg boundary) head
-            // otherwise some nodes would be missing
-            // we also need to go deeper if we already pruned state for that block
-            bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-            bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header!);
+            // We only walk back far enough to find a base block that still has state: those are the blocks
+            // that actually need (re)processing. Blocks deeper than that already have state and must not be
+            // reprocessed - moving them onto the main chain (down to the real reorg boundary) is handled by
+            // BlockTree.TryUpdateMainChain, which walks headers there cheaply. Hence MaxBranchSize now bounds
+            // only the blocks-without-state we collect here, not the whole reorg depth.
+            bool hasState = toBeProcessed.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
-            branchingCondition =
-                (notFoundTheBranchingPointYet || !hasState)
-                && notInForceProcessing;
+            branchingCondition = !hasState && notInForceProcessing;
 
-            if (isTrace) TraceBranchingConditions(branchingPoint, notFoundTheBranchingPointYet, hasState, notInForceProcessing);
+            // notFoundTheBranchingPointYet no longer gates the loop; compute the IsMainChain lookup only for the trace.
+            if (isTrace) TraceBranchingConditions(branchingPoint, !_blockTree.IsMainChain(branchingPoint.Hash!), hasState, notInForceProcessing);
 
         } while (branchingCondition);
 

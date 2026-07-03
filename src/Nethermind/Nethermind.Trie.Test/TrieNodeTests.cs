@@ -642,20 +642,6 @@ public class TrieNodeTests
     public void Size_of_keccak_is_correct() => Assert.That(Hash256.MemorySize, Is.EqualTo(48));
 
     [Test]
-    public void Size_of_rlp_stream_is_correct()
-    {
-        RlpStream rlpStream = new(100);
-        Assert.That(rlpStream.MemorySize, Is.EqualTo(160));
-    }
-
-    [Test]
-    public void Size_of_rlp_stream_7_is_correct()
-    {
-        RlpStream rlpStream = new(7);
-        Assert.That(rlpStream.MemorySize, Is.EqualTo(64));
-    }
-
-    [Test]
     public void Size_of_rlp_unaligned_is_correct()
     {
         Rlp rlp = new(new byte[1]);
@@ -931,11 +917,9 @@ public class TrieNodeTests
 
         using (IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0))
         {
-            using (ICommitter? committer = trieStore.BeginCommit(leaf2))
-            {
-                committer.CommitNode(ref path, leaf1);
-                committer.CommitNode(ref path, leaf2);
-            }
+            using ICommitter? committer = trieStore.BeginCommit(leaf2);
+            committer.CommitNode(ref path, leaf1);
+            committer.CommitNode(ref path, leaf2);
         }
 
         TrieNode trieNode = new(NodeType.Branch);

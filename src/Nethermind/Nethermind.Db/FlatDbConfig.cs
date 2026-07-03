@@ -14,13 +14,14 @@ public class FlatDbConfig : IFlatDbConfig
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
-    public int CompactSize { get; set; } = 32;
+    public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
-    public int MaxReorgDepth { get; set; } = 256;
-    public int MinReorgDepth { get; set; } = 128;
+    public ulong MaxReorgDepth { get; set; } = 256;
+    public ulong MinReorgDepth { get; set; } = 128;
+    public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public int WarmReadConcurrency { get; set; } = -1;
-    public long BlockCacheSizeBudget { get; set; } = 1.GiB;
+    public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;
-    public long TrieCacheMemoryBudget { get; set; } = 512.MiB;
+    public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
 }
