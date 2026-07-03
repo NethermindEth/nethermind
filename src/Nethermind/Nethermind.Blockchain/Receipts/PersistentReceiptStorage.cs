@@ -57,7 +57,8 @@ namespace Nethermind.Blockchain.Receipts
 
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
-            _receiptsDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
+            // Defer the receipts-blob write off the newPayload path (ethrex #6905 port); reads stay buffer-first.
+            _receiptsDb = new WriteBehindDb(_database.GetColumnDb(ReceiptsColumns.Blocks));
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));

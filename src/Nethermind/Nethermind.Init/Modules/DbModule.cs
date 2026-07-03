@@ -62,8 +62,8 @@ public class DbModule(
             .AddDatabase(DbNames.Metadata)
             .AddDatabase(DbNames.BlockNumbers)
             .AddDatabase(DbNames.BadBlocks)
-            .AddDatabase(DbNames.Blocks)
-            .AddDatabase(DbNames.Headers)
+            .AddWriteBehindDatabase(DbNames.Blocks)
+            .AddWriteBehindDatabase(DbNames.Headers)
             .AddDatabase(DbNames.BlockInfos)
             .AddDatabase(DbNames.BlockAccessLists)
 
