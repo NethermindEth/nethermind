@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -12,22 +13,21 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Db;
 
 /// <summary>
-/// Write-behind <see cref="IDb"/> decorator: buffers writes in memory (readable immediately) and flushes them to the
-/// inner db on a background worker, taking the RocksDB write off the calling (e.g. <c>engine_newPayload</c>) path.
-/// Ported from ethrex's "defer block data persistence" (#6905); intended for write-once stores (blocks, headers,
-/// receipts) where a given key is written exactly once, which keeps the buffer→drain path race-free.
+/// Write-behind <see cref="IDb"/> decorator: writes land in an in-memory buffer (readable immediately) and are
+/// flushed to the inner db by a background worker, taking the RocksDB write off the caller's (e.g.
+/// <c>engine_newPayload</c>) critical path.
 /// </summary>
 /// <remarks>
-/// Reads are buffer-first for <see cref="Get"/>/<see cref="GetOwnedMemory"/>/<see cref="KeyExists"/> (managed values).
-/// Span/native reads of a still-buffered key synchronously flush just that key to the inner db first, so native-memory
-/// ownership stays with the inner db and <see cref="DangerousReleaseMemory"/> can delegate unconditionally.
-/// Durability is best-effort for a benchmark: buffered-but-unflushed entries are lost on an unclean crash (the block
-/// would be re-requested from the CL); <see cref="Flush"/>/<see cref="Dispose"/> drain the buffer.
+/// Reads are buffer-first; span/native reads of a still-buffered key flush that key synchronously first, so returned
+/// native memory is always owned by the inner db. Batch entries become visible when the batch is disposed. Durability
+/// is relaxed: entries not yet drained are lost on an unclean crash and must be re-derivable (e.g. re-requested from
+/// the CL). <see cref="Flush"/> and <see cref="Dispose"/> drain the buffer.
 /// </remarks>
 public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
 {
     private readonly IDb _inner;
-    private readonly ConcurrentDictionary<byte[], byte[]?> _buffer = new(Bytes.EqualityComparer);
+    private readonly ConcurrentDictionary<byte[], byte[]?> _buffer = new((IEqualityComparer<byte[]>)Bytes.EqualityComparer);
+    private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _bufferLookup;
     private readonly SemaphoreSlim _signal = new(0);
     private readonly CancellationTokenSource _cts = new();
     private readonly Thread _worker;
@@ -36,44 +36,35 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
     public WriteBehindDb(IDb inner)
     {
         _inner = inner;
+        _bufferLookup = _buffer.GetAlternateLookup<ReadOnlySpan<byte>>();
         _worker = new Thread(FlushLoop) { IsBackground = true, Name = $"WriteBehind:{inner.Name}" };
         _worker.Start();
     }
 
     public string Name => _inner.Name;
 
-    // ---- writes: buffer + signal, return immediately ----
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
-        _buffer[key.ToArray()] = value;
+        _bufferLookup[key] = value;
         _signal.Release();
     }
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-    {
-        _buffer[key.ToArray()] = value.IsNull() ? null : value.ToArray();
-        _signal.Release();
-    }
+        => Set(key, value.IsNull() ? null : value.ToArray(), flags);
 
-    public void Remove(ReadOnlySpan<byte> key)
-    {
-        _buffer[key.ToArray()] = null;
-        _signal.Release();
-    }
+    public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
 
-    // ---- reads: buffer-first (managed) ----
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        => _buffer.TryGetValue(GetKey(key), out byte[]? v) ? v : _inner.Get(key, flags);
+        => _bufferLookup.TryGetValue(key, out byte[]? v) ? v : _inner.Get(key, flags);
 
     public bool KeyExists(ReadOnlySpan<byte> key)
-        => _buffer.TryGetValue(GetKey(key), out byte[]? v) ? v is not null : _inner.KeyExists(key);
+        => _bufferLookup.TryGetValue(key, out byte[]? v) ? v is not null : _inner.KeyExists(key);
 
     public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        => _buffer.TryGetValue(GetKey(key), out byte[]? v)
+        => _bufferLookup.TryGetValue(key, out byte[]? v)
             ? (v is null ? null : new ManagedMemoryManager(v))
             : _inner.GetOwnedMemory(key, flags);
 
-    // span / native reads: flush this key first so the inner db owns the returned native memory
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         FlushKey(key);
@@ -105,13 +96,10 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
         }
     }
 
-    // ---- enumeration / batch / meta: drain first, then delegate ----
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) { DrainAll(); return _inner.GetAll(ordered); }
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false) { DrainAll(); return _inner.GetAllKeys(ordered); }
     public IEnumerable<byte[]> GetAllValues(bool ordered = false) { DrainAll(); return _inner.GetAllValues(ordered); }
 
-    // Batches buffer too (entries become readable on Dispose, matching RocksDB batch visibility), so
-    // batch-based writers (e.g. chain-level info) are equally taken off the caller's path.
     public IWriteBatch StartWriteBatch() => new WriteBehindBatch(this);
 
     public void Flush(bool onlyWal = false) { DrainAll(); _inner.Flush(onlyWal); }
@@ -120,18 +108,13 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
     public void SetWriteBuffer(long sizeBytes) => _inner.SetWriteBuffer(sizeBytes);
     public IDbMeta.DbMetric GatherMetric() => _inner.GatherMetric();
 
-    // ---- flush machinery ----
-    private static byte[] GetKey(scoped ReadOnlySpan<byte> key) => key.ToArray();
-
     private void FlushKey(scoped ReadOnlySpan<byte> key)
     {
-        byte[] k = GetKey(key);
-        if (_buffer.TryGetValue(k, out byte[]? v))
+        // Inner is written before the buffer entry is dropped so the key is always readable from one of the two.
+        if (_bufferLookup.TryGetValue(key, out byte[]? actualKey, out byte[]? v))
         {
-            // Write to inner FIRST, then drop from the buffer, so the key is always readable from one or the
-            // other — never a window where it is in neither (which a concurrent newPayload read could hit).
             if (v is null) _inner.Remove(key); else _inner.Set(key, v);
-            _buffer.TryRemove(new KeyValuePair<byte[], byte[]?>(k, v)); // remove only if still the same value
+            _buffer.TryRemove(new KeyValuePair<byte[], byte[]?>(actualKey, v));
         }
     }
 
@@ -143,8 +126,7 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
             while (!token.IsCancellationRequested)
             {
                 _signal.Wait(token);
-                // coalesce: one drain pass handles all pending signals
-                while (_signal.CurrentCount > 0) _signal.Wait(0);
+                while (_signal.CurrentCount > 0) _signal.Wait(0); // coalesce pending signals into one drain
                 DrainAll();
             }
         }
@@ -154,9 +136,7 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
     private void DrainAll()
     {
         if (_buffer.IsEmpty) return;
-        // Write-before-remove: stage all pending entries into the batch, commit them to the inner db, and only
-        // THEN remove them from the buffer. Until removal the buffer still serves reads, so a key is never
-        // simultaneously absent from both the buffer and the inner db (no read-miss window vs. the next block).
+        // Batch-commit to inner first, remove from the buffer after, so reads never miss a key mid-flush.
         List<KeyValuePair<byte[], byte[]?>> drained = [];
         using (IWriteBatch batch = _inner.StartWriteBatch())
         {
@@ -165,10 +145,10 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
                 if (kv.Value is null) batch.Remove(kv.Key); else batch.Set(kv.Key, kv.Value);
                 drained.Add(kv);
             }
-        } // batch is committed to the inner db here
+        }
         foreach (KeyValuePair<byte[], byte[]?> kv in drained)
         {
-            _buffer.TryRemove(kv); // remove only if unchanged; inner now holds the value
+            _buffer.TryRemove(kv); // compare-remove: keeps a concurrent overwrite for the next drain
         }
     }
 
@@ -198,8 +178,7 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
-            // Merge needs the native merge operator, so it cannot be applied to the managed buffer. None of the
-            // wrapped stores use merge; keep ordering for the key and delegate straight to the inner db.
+            // Merge needs the native operator so it cannot be buffered; flush the key to keep write ordering.
             db.FlushKey(key);
             using IWriteBatch inner = db._inner.StartWriteBatch();
             inner.Merge(key, value, flags);
@@ -219,7 +198,7 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
         public override Memory<byte> Memory => array;
         public override MemoryHandle Pin(int elementIndex = 0)
         {
-            System.Runtime.InteropServices.GCHandle handle = System.Runtime.InteropServices.GCHandle.Alloc(array, System.Runtime.InteropServices.GCHandleType.Pinned);
+            GCHandle handle = GCHandle.Alloc(array, GCHandleType.Pinned);
             unsafe { return new MemoryHandle((byte*)handle.AddrOfPinnedObject() + elementIndex, handle); }
         }
         public override void Unpin() { }
