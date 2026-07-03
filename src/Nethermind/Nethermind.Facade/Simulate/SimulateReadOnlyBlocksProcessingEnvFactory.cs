@@ -18,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Repositories;
 
@@ -37,7 +38,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
+        // Registry-resolved decoder so AuRa headers decode with step + signature under eth_simulateV1.
+        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb, (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>());
         SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
 
         IBlockAccessListStore mainBalStore = new BlockAccessListStore(editableDbProvider.BlockAccessListDb);
