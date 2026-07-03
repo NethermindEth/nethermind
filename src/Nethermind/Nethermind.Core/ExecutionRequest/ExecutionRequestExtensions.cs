@@ -26,7 +26,8 @@ public static class ExecutionRequestExtensions
 
     public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
-    public const int MaxRequestsCount = 3;
+    // Deposit, withdrawal, consolidation, and the two EIP-8282 builder request types.
+    public const int MaxRequestsCount = 5;
 
     public static readonly byte[][] EmptyRequests = [];
     public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
@@ -34,7 +35,6 @@ public static class ExecutionRequestExtensions
     [SkipLocalsInit]
     public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
     {
-        // TODO: Make sure that length <= 3
         ArgumentNullException.ThrowIfNull(flatEncodedRequests);
 
         using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
@@ -128,6 +128,10 @@ public static class ExecutionRequestExtensions
                 case ExecutionRequestType.ConsolidationRequest:
                     consolidationRequests = DecodeRequests(encoded, ConsolidationRequestsBytesSize, type, nameof(ExecutionRequestType.ConsolidationRequest), nameof(requests));
                     break;
+                case ExecutionRequestType.BuilderDepositRequest:
+                case ExecutionRequestType.BuilderExitRequest:
+                    throw new NotSupportedException(
+                        $"EIP-8282 builder requests (type {type}) are not representable in the stateless input format (tests-zkevm v0.5.0).");
                 default:
                     throw new ArgumentOutOfRangeException(nameof(requests), type, "Unknown execution request type.");
             }
