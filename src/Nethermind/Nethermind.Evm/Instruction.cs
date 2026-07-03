@@ -159,6 +159,11 @@ public enum Instruction : byte
     LOG3 = 0xa3,
     LOG4 = 0xa4,
 
+    // EIP-7979 (opcode values TBD in the spec; placeholders)
+    CALLSUB = 0xb0,
+    ENTERSUB = 0xb1,
+    RETURNSUB = 0xb2,
+
     DUPN = 0xe6,
     SWAPN = 0xe7,
     EXCHANGE = 0xe8,

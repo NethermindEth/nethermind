@@ -139,6 +139,10 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public bool ValidateJump(int destination)
         => _analyzer?.ValidateJump(destination) ?? false;
 
+    /// <summary>EIP-7979: whether <paramref name="destination"/> is a valid CALLSUB target (an ENTERSUB outside push data).</summary>
+    public bool ValidateEnterSub(int destination)
+        => _analyzer?.ValidateEnterSub(destination) ?? false;
+
     void IThreadPoolWorkItem.Execute()
         => _analyzer?.Execute();
 

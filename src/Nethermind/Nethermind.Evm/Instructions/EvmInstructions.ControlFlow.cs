@@ -283,6 +283,79 @@ public static partial class EvmInstructions
         return EvmExceptionType.StaticCallViolation;
     }
 
+    /// <summary>Upper bound for the EIP-7979 return stack depth.</summary>
+    private const int MaxReturnStackDepth = 1024;
+
+    /// <summary>
+    /// Executes the CALLSUB opcode (EIP-7979).
+    /// Pops the subroutine destination, pushes the return address (the instruction after
+    /// CALLSUB) onto the frame's return stack, and jumps to the destination, which must be a
+    /// valid ENTERSUB (outside push data).
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionCallSub<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.Mid);
+        if (!stack.PopUInt256(out UInt256 destination)) goto StackUnderflow;
+
+        VmState<TGasPolicy> vmState = vm.VmState;
+        if (!destination.IsUint64 || destination.u0 > int.MaxValue || !vmState.Env.CodeInfo.ValidateEnterSub((int)destination.u0))
+            goto InvalidJumpDestination;
+
+        if (vmState.ReturnStackHead >= MaxReturnStackDepth)
+            goto StackOverflow;
+
+        // programCounter is already advanced past CALLSUB, i.e. it holds PC + 1.
+        (vmState.ReturnStack ??= new int[MaxReturnStackDepth])[vmState.ReturnStackHead++] = programCounter;
+        programCounter = (int)destination.u0;
+
+        return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    InvalidJumpDestination:
+        return EvmExceptionType.InvalidJumpDestination;
+    StackOverflow:
+        return EvmExceptionType.StackOverflow;
+    }
+
+    /// <summary>
+    /// Executes the ENTERSUB opcode (EIP-7979).
+    /// Marks a valid CALLSUB destination; at runtime it only charges the jump-destination cost.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionEnterSub<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.JumpDest);
+
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
+    /// Executes the RETURNSUB opcode (EIP-7979).
+    /// Pops the frame's return stack into the program counter; halts exceptionally when the
+    /// return stack is empty.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionReturnSub<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.Low);
+
+        VmState<TGasPolicy> vmState = vm.VmState;
+        if (vmState.ReturnStackHead == 0)
+            goto StackUnderflow;
+
+        programCounter = vmState.ReturnStack![--vmState.ReturnStackHead];
+
+        return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
     /// <summary>
     /// Handles invalid opcodes by deducting a high gas cost and returning a BadInstruction error.
     /// </summary>

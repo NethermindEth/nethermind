@@ -318,6 +318,13 @@ public static unsafe partial class EvmInstructions
             lookup[(int)Instruction.REVERT] = &InstructionRevert;
         }
 
+        if (spec.IsEip7979Enabled)
+        {
+            lookup[(int)Instruction.CALLSUB] = &InstructionCallSub<TGasPolicy>;
+            lookup[(int)Instruction.ENTERSUB] = &InstructionEnterSub<TGasPolicy>;
+            lookup[(int)Instruction.RETURNSUB] = &InstructionReturnSub<TGasPolicy>;
+        }
+
         // Final opcodes.
         lookup[(int)Instruction.INVALID] = &InstructionInvalid;
         lookup[(int)Instruction.SELFDESTRUCT] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
