@@ -39,6 +39,9 @@ public sealed class TestWriter(Filter filter, Format outputFormat) : IAsyncDispo
         _currentOutFile = outputPath;
         OutputCount++;
 
+        string? dir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
         _fileStream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true);
         _jsonWriter = new Utf8JsonWriter(_fileStream, new JsonWriterOptions { Indented = true });
 

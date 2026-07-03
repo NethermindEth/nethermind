@@ -169,22 +169,22 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
     {
         SweepBuilder sweep = new();
 
-        // JsonObject traceRequest = Rpc("debug_traceBlockByNumber", Hex(block), new JsonObject { ["tracer"] = "prestateTracer" });
-        // JsonNode traceResponse = await client.RetrySendAsync(traceRequest, ct);
-        //
-        // if (traceResponse["error"] is null && traceResponse["result"] is JsonArray txTraces)
-        // {
-        //     foreach (JsonNode? txTrace in txTraces)
-        //     {
-        //         if (txTrace?["result"] is JsonObject prestate)
-        //             MergePrestate(sweep, prestate);
-        //     }
-        //
-        //     return sweep.Build("prestate");
-        // }
-        //
-        // Console.Error.WriteLine($"prestateTracer unavailable ({traceResponse["error"]?.ToCompactString() ?? "no result"}); " +
-        //                         "falling back to eth_createAccessList");
+        JsonObject traceRequest = Rpc("debug_traceBlockByNumber", Hex(block), new JsonObject { ["tracer"] = "prestateTracer" });
+        JsonNode traceResponse = await client.RetrySendAsync(traceRequest, ct);
+
+        if (traceResponse["error"] is null && traceResponse["result"] is JsonArray txTraces)
+        {
+            foreach (JsonNode? txTrace in txTraces)
+            {
+                if (txTrace?["result"] is JsonObject prestate)
+                    MergePrestate(sweep, prestate);
+            }
+
+            return sweep.Build("prestate");
+        }
+
+        Console.Error.WriteLine($"prestateTracer unavailable ({traceResponse["error"]?.ToCompactString() ?? "no result"}); " +
+                                "falling back to eth_createAccessList");
 
         await SourceViaAccessListAsync(block, sweep, ct);
         return sweep.Build("accessList");

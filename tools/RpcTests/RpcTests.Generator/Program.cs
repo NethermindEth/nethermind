@@ -87,4 +87,55 @@ rootCommand.SetAction(async (parseResult, ct) =>
     );
 });
 
+Option<string> archiveClientOption = new("--client", "-c")
+{
+    Description = "Archive node URL to source account/slot sets from and capture expected responses",
+    Required = true
+};
+
+Option<long[]> blocksOption = new("--blocks", "-b")
+{
+    Description = "Base block number(s) to generate archive-index probe tests for",
+    AllowMultipleArgumentsPerToken = true,
+    Required = true
+};
+
+Option<string> archiveOutOption = new("--out", "-o")
+{
+    Description = "Output directory; one file per request as archive-index-<baseBlock>-<queryBlock>.test.json",
+    DefaultValueFactory = _ => "."
+};
+
+Option<int> archiveParallelismOption = new("--parallelism", "-p")
+{
+    Description = "Client request concurrency",
+    DefaultValueFactory = static _ => 1
+};
+
+Command archiveCommand = new("archive-index", "Generates archive-index floor-seek probe tests for the given base block(s)")
+{
+    archiveClientOption,
+    blocksOption,
+    archiveOutOption,
+    archiveParallelismOption
+};
+
+archiveCommand.SetAction(async (parseResult, ct) =>
+{
+    Uri client = new(parseResult.GetRequiredValue(archiveClientOption));
+    long[] blocks = parseResult.GetRequiredValue(blocksOption);
+    string outDir = parseResult.GetValue(archiveOutOption)!;
+    int parallelism = parseResult.GetValue(archiveParallelismOption);
+
+    Console.WriteLine($"Generating archive-index tests for {blocks.Length} block(s)...");
+    int outputCount = await TestGenerator.GenerateArchiveIndexAsync(client, blocks, outDir, parallelism, ct);
+
+    Console.WriteLine(outputCount == 0
+        ? "No tests generated"
+        : $"Generated {outputCount} test files"
+    );
+});
+
+rootCommand.Subcommands.Add(archiveCommand);
+
 return await rootCommand.Parse(args).InvokeAsync();
