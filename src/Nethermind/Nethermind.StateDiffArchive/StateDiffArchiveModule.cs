@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.StateDiffArchive.Recording;
@@ -39,7 +40,14 @@ public class StateDiffArchiveModule(IStateDiffArchiveConfig config) : Module
             // Scoped, not singleton: each processing env (main, prewarmer, ...) gets its own tracker so a
             // prewarmer scope cannot clobber the scope the main env is replaying into.
             builder.AddScoped<ReplayScopeTracker>();
-            builder.AddDecorator<IBlockProcessor, ReplayBlockProcessor>();
+
+            // Parallel account warmup is only safe on the flat backend (concurrency-safe scope.Get).
+            builder.AddDecorator<IBlockProcessor>((ctx, inner) => new ReplayBlockProcessor(
+                inner,
+                ctx.Resolve<StateDiffStore>(),
+                ctx.Resolve<ReplayScopeTracker>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IFlatDbConfig>().Enabled));
         }
     }
 

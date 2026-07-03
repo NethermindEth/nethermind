@@ -24,11 +24,17 @@ namespace Nethermind.StateDiffArchive.Replay;
 /// transactions through the EVM. Blocks without a record (genesis, or beyond the archive) fall through to
 /// the inner processor for normal execution.
 /// </summary>
+/// <param name="parallelAccountRead">
+/// When set, the touched accounts are read in parallel to warm the backend cache around the storage apply.
+/// Only safe on a backend whose <c>scope.Get</c> is concurrency-safe (the flat DB); the legacy trie scope
+/// resolves trie nodes in place on shared state, so it must stay <c>false</c> there.
+/// </param>
 public sealed class ReplayBlockProcessor(
     IBlockProcessor inner,
     StateDiffStore store,
     ReplayScopeTracker tracker,
-    ILogManager logManager) : IBlockProcessor
+    ILogManager logManager,
+    bool parallelAccountRead) : IBlockProcessor
 {
     private static readonly TxReceipt[] EmptyReceipts = [];
     private readonly ILogger _logger = logManager.GetClassLogger<ReplayBlockProcessor>();
@@ -69,7 +75,7 @@ public sealed class ReplayBlockProcessor(
                 ?? throw new InvalidOperationException(
                     $"No active world-state scope to replay block {suggestedBlock.Number}; the replay scope provider is not registered.");
 
-            ApplyRecord(scope, record);
+            ApplyRecord(scope, record, parallelAccountRead);
 
             // The scope provider verifies the recomputed root against this on commit.
             tracker.ExpectedRoot = suggestedBlock.Header.StateRoot;
@@ -119,7 +125,7 @@ public sealed class ReplayBlockProcessor(
     // Initial pooled-list capacity for the per-block storage work; grows if a block touches more contracts.
     private const int InitialStorageCapacity = 64;
 
-    private static void ApplyRecord(IWorldStateScopeProvider.IScope scope, StateDiffRecord record)
+    private static void ApplyRecord(IWorldStateScopeProvider.IScope scope, StateDiffRecord record, bool parallelAccountRead)
     {
         if (record.HasCodes)
         {
@@ -131,7 +137,7 @@ public sealed class ReplayBlockProcessor(
 
         // Storage first: each contract's storage is an independent trie, so it commits before the account
         // flush (writeBatch.Dispose) folds the recomputed storage root back into the account.
-        ApplyStorage(record, writeBatch);
+        ApplyStorage(scope, record, writeBatch, parallelAccountRead);
 
         foreach (StateDiffRecord.AccountView account in record.Accounts)
         {
@@ -147,34 +153,98 @@ public sealed class ReplayBlockProcessor(
         }
     }
 
-    private static void ApplyStorage(StateDiffRecord record, IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+    // Warms the backend cache for the storage-touched accounts by reading them in parallel, so the serial
+    // storage-batch open (which reads each account for its storage root) hits warm entries. Only called when
+    // the backend's scope.Get is concurrency-safe — the legacy trie scope resolves nodes in place on shared state.
+    private static void ReadStorageAccounts(IWorldStateScopeProvider.IScope scope, StateDiffRecord record)
     {
-        // Opening a storage write batch mutates the scope's per-address tree map and must stay single-threaded,
-        // so open them serially. Each work item keeps only the record-backed slot region; the slots are parsed
-        // and written by the worker, so nothing is materialized here.
-        using ArrayPoolList<StorageWork> work = new(InitialStorageCapacity);
+        using ArrayPoolList<Address> addresses = new(InitialStorageCapacity);
         foreach (StateDiffRecord.AccountView account in record.Accounts)
-        {
-            if (!account.StorageCleared && !account.HasSlots) continue;
+            if (account.StorageCleared || account.HasSlots) addresses.Add(account.Address);
 
-            // Count the slots once (a light length-prefix walk) to size the storage batch and to key the sort;
-            // the slots themselves are parsed and written by the worker.
-            StateDiffRecord.SlotSet slots = account.Slots;
-            int slotCount = slots.Count();
-            work.Add(new StorageWork(writeBatch.CreateStorageWriteBatch(account.Address, slotCount), account.StorageCleared, slots, slotCount));
-        }
-
-        if (work.Count == 0) return;
-
-        // Independent tries, so process the opened batches concurrently. Schedule the largest first to help balance.
-        if (work.Count >= MultiThreadThreshold)
-        {
-            work.AsSpan().Sort(static (a, b) => b.SlotCount.CompareTo(a.SlotCount));
-            ParallelUnbalancedWork.For(0, work.Count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, i => ApplyOneStorage(work[i]));
-        }
+        if (addresses.Count >= MultiThreadThreshold)
+            ParallelUnbalancedWork.For(0, addresses.Count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, i => scope.Get(addresses[i]));
         else
+            foreach (Address address in addresses) scope.Get(address);
+    }
+
+    // Reads the accounts with no storage work (the ones ReadStorageAccounts skips) to trigger the trie warmer for
+    // their state-trie paths, overlapping the storage compile/apply. Best-effort: honors cancellation, so it stops
+    // as soon as the storage apply completes and the account writes take over. Flat backend only.
+    private static void WarmNonStorageAccounts(IWorldStateScopeProvider.IScope scope, StateDiffRecord record, CancellationToken token)
+    {
+        using ArrayPoolList<Address> addresses = new(InitialStorageCapacity);
+        foreach (StateDiffRecord.AccountView account in record.Accounts)
+            if (!account.StorageCleared && !account.HasSlots) addresses.Add(account.Address);
+
+        if (addresses.Count == 0) return;
+
+        ParallelOptions options = new()
         {
-            foreach (StorageWork w in work) ApplyOneStorage(w);
+            CancellationToken = token,
+            MaxDegreeOfParallelism = RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16.MaxDegreeOfParallelism
+        };
+
+        try
+        {
+            ParallelUnbalancedWork.For(0, addresses.Count, options, i => scope.Get(addresses[i]));
+        }
+        catch (OperationCanceledException)
+        {
+            // Stopped once the storage apply finished; the remaining accounts are read by the state-apply flush.
+        }
+    }
+
+    private static void ApplyStorage(IWorldStateScopeProvider.IScope scope, StateDiffRecord record, IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, bool parallelAccountRead)
+    {
+        // Opening a storage write batch below reads the account for its storage root; that read can be warmed
+        // ahead of time by reading the touched accounts in parallel (flat backend only — see ReadStorageAccounts).
+        if (parallelAccountRead) ReadStorageAccounts(scope, record);
+
+        // While the (serial) compile and (parallel) apply run, warm the non-storage accounts in the background so
+        // the state-tree flush that follows hits warm trie paths. Cancelled and joined before returning, since the
+        // account writes then take over the same accounts. Flat backend only (concurrency-safe scope.Get).
+        CancellationTokenSource? warmupCts = parallelAccountRead ? new CancellationTokenSource() : null;
+        Task? warmup = warmupCts is null ? null : Task.Run(() => WarmNonStorageAccounts(scope, record, warmupCts.Token));
+
+        try
+        {
+            // Opening a storage write batch mutates the scope's per-address tree map and must stay single-threaded,
+            // so open them serially. Each work item keeps only the record-backed slot region; the slots are parsed
+            // and written by the worker, so nothing is materialized here.
+            using ArrayPoolList<StorageWork> work = new(InitialStorageCapacity);
+            foreach (StateDiffRecord.AccountView account in record.Accounts)
+            {
+                if (!account.StorageCleared && !account.HasSlots) continue;
+
+                // Count the slots once (a light length-prefix walk) to size the storage batch and to key the sort;
+                // the slots themselves are parsed and written by the worker.
+                StateDiffRecord.SlotSet slots = account.Slots;
+                int slotCount = slots.Count();
+                work.Add(new StorageWork(writeBatch.CreateStorageWriteBatch(account.Address, slotCount), account.StorageCleared, slots, slotCount));
+            }
+
+            if (work.Count == 0) return;
+
+            // Independent tries, so process the opened batches concurrently. Schedule the largest first to help balance.
+            if (work.Count >= MultiThreadThreshold)
+            {
+                work.AsSpan().Sort(static (a, b) => b.SlotCount.CompareTo(a.SlotCount));
+                ParallelUnbalancedWork.For(0, work.Count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, i => ApplyOneStorage(work[i]));
+            }
+            else
+            {
+                foreach (StorageWork w in work) ApplyOneStorage(w);
+            }
+        }
+        finally
+        {
+            if (warmup is not null)
+            {
+                warmupCts!.Cancel();
+                warmup.GetAwaiter().GetResult();
+                warmupCts.Dispose();
+            }
         }
     }
 

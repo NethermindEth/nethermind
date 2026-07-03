@@ -122,7 +122,7 @@ public class RecordReplayTests
             WorldState ws = new(provider, LimboLogs.Instance);
 
             IBlockProcessor inner = Substitute.For<IBlockProcessor>();
-            ReplayBlockProcessor replay = new(inner, store, tracker, LimboLogs.Instance);
+            ReplayBlockProcessor replay = new(inner, store, tracker, LimboLogs.Instance, parallelAccountRead: true);
 
             BlockHeader? parent = null;
             foreach ((ulong number, Hash256 root) in blocks)
