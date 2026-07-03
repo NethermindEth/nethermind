@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -13,9 +12,9 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
-public class PruningTrieStateAdminModuleTests
+public class VerifyTrieAdminRpcModuleTests
 {
-    private IPruningTrieStateAdminRpcModule _adminRpcModuleModule = null!;
+    private IVerifyTrieAdminRpcModule _adminRpcModule = null!;
     private IBlockTree _blockTree = null!;
     private IVerifyTrieStarter _verifyTrieStarter = null!;
     private IStateReader _stateReader = null!;
@@ -27,8 +26,7 @@ public class PruningTrieStateAdminModuleTests
         _verifyTrieStarter = Substitute.For<IVerifyTrieStarter>();
         _stateReader = Substitute.For<IStateReader>();
 
-        _adminRpcModuleModule = new PruningTrieStateAdminRpcModule(
-            new ManualPruningTrigger(),
+        _adminRpcModule = new VerifyTrieAdminRpcModule(
             _blockTree,
             _stateReader,
             _verifyTrieStarter);
@@ -37,9 +35,9 @@ public class PruningTrieStateAdminModuleTests
     [Test]
     public async Task Test_admin_verifyTrie()
     {
-        Assert.That((await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")), Does.Contain("Unable to start verify trie"));
+        Assert.That((await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie", "latest")), Does.Contain("Unable to start verify trie"));
         _stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         _verifyTrieStarter.TryStartVerifyTrie(Arg.Any<BlockHeader>()).Returns(true);
-        Assert.That((await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")), Does.Contain("Starting"));
+        Assert.That((await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie", "latest")), Does.Contain("Starting"));
     }
 }

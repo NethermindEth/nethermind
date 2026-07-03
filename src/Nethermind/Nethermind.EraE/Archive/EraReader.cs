@@ -22,8 +22,8 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
 {
     private readonly EraSlimReceiptDecoder _slimReceiptDecoder = new();
     private readonly ReceiptMessageDecoder _fullReceiptDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
-    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly IRlpDecoder<BlockBody> _blockBodyDecoder = Rlp.GetDecoderOrThrow<BlockBody>();
+    private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
 
     public ulong FirstBlock => e2.First;
     public ulong LastBlock => e2.LastBlock;

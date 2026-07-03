@@ -373,7 +373,6 @@ namespace Nethermind.Core.Test.Builders
             {
                 currentBlock.Header.StateRoot = _stateRootGen(currentBlock);
             }
-            currentBlock.Header.AuRaStep = (ulong)blockIndex;
 
             return currentBlock;
         }

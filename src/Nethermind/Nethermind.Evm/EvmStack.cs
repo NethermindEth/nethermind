@@ -1577,8 +1577,33 @@ public ref struct EvmStack
         return true;
     }
 
+#if ZK_EVM
+    // Reads one big-endian 32-byte stack word into a UInt256. RISC-V has no byte-swap
+    // instruction, so reversing endianness is a software shuffle. Words produced by
+    // PUSH0/PUSH1/PUSH2 and the like have their high 24 bytes zero, so the common case
+    // swaps only the low limb instead of all four.
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static UInt256 ReadBeWord(ref byte bytes)
+    {
+        ulong r0 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+        ulong r1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
+        ulong r2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
+        ulong r3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
+        ulong low = ZkEvmBitOperations.Bswap64(r3);
+        return (r0 | r1 | r2) == 0
+            ? new UInt256(low, 0, 0, 0)
+            : new UInt256(
+                low,
+                ZkEvmBitOperations.Bswap64(r2),
+                ZkEvmBitOperations.Bswap64(r1),
+                ZkEvmBitOperations.Bswap64(r0)
+            );
+    }
+#endif
+
     /// <summary>
-    /// Pops an Uint256 written in big endian.
+    /// Pops an UInt256 written in big endian.
     /// </summary>
     /// <remarks>
     /// This method does its own calculations to create the <paramref name="result"/>. It knows that 32 bytes were popped with <see cref="PopBytesByRef"/>. It doesn't have to check the size of span or slice it.
@@ -1617,6 +1642,9 @@ public ref struct EvmStack
         }
         else
         {
+#if ZK_EVM
+            result = ReadBeWord(ref bytes);
+#else
             // Combine read and switch endianness to movbe reg, mem
             ulong u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
             ulong u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
@@ -1624,6 +1652,7 @@ public ref struct EvmStack
             ulong u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
 
             result = new UInt256(u0, u1, u2, u3);
+#endif
         }
 
         return true;
@@ -1682,6 +1711,10 @@ public ref struct EvmStack
         }
         else
         {
+#if ZK_EVM
+            b = ReadBeWord(ref bytes);
+            a = ReadBeWord(ref Unsafe.Add(ref bytes, 32));
+#else
             // Scalar path - interleave loads across both values
             ulong b3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
             ulong a3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
@@ -1697,6 +1730,7 @@ public ref struct EvmStack
 
             b = new UInt256(b0, b1, b2, b3);
             a = new UInt256(a0, a1, a2, a3);
+#endif
         }
 
         return true;
@@ -1765,6 +1799,11 @@ public ref struct EvmStack
         }
         else
         {
+#if ZK_EVM
+            c = ReadBeWord(ref bytes);
+            b = ReadBeWord(ref Unsafe.Add(ref bytes, 32));
+            a = ReadBeWord(ref Unsafe.Add(ref bytes, 64));
+#else
             // Scalar path - interleave loads across all three values
             // to break dependency chains and hide load-to-use latency.
             // Modern CPUs can have 10+ loads in flight simultaneously.
@@ -1791,6 +1830,7 @@ public ref struct EvmStack
             c = new UInt256(c0, c1, c2, c3);
             b = new UInt256(b0, b1, b2, b3);
             a = new UInt256(a0, a1, a2, a3);
+#endif
         }
 
         return true;
@@ -1867,6 +1907,12 @@ public ref struct EvmStack
         }
         else
         {
+#if ZK_EVM
+            d = ReadBeWord(ref bytes);
+            c = ReadBeWord(ref Unsafe.Add(ref bytes, 32));
+            b = ReadBeWord(ref Unsafe.Add(ref bytes, 64));
+            a = ReadBeWord(ref Unsafe.Add(ref bytes, 96));
+#else
             // Scalar path - interleave loads across all four values
             // to maximise load unit utilisation and hide latency
             // Round 1: high qwords (u3)
@@ -1897,6 +1943,7 @@ public ref struct EvmStack
             c = new UInt256(c0, c1, c2, c3);
             b = new UInt256(b0, b1, b2, b3);
             a = new UInt256(a0, a1, a2, a3);
+#endif
         }
 
         return true;
