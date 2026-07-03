@@ -44,14 +44,12 @@ public sealed class PrivilegedIpProvider : IPrivilegedIpProvider
         // Mirror NodesLoader: only enode entries from config become static peers.
         _configStaticIps = NetworkNode.ParseNodes(networkConfig.StaticPeers, logger)
             .Where(static n => n.IsEnode)
-            .Select(static n => Normalize(n.HostIp))
-            .ToHashSet();
+            .Select(static n => n.HostIp)
+            .ToHashSet(NormalizingIpAddressComparer.Instance);
     }
 
     public bool IsPrivileged(IPAddress ip) =>
-        _configStaticIps.Contains(Normalize(ip))
+        _configStaticIps.Contains(ip)
         || _staticNodesManager.ContainsIp(ip)
         || _trustedNodesManager.ContainsIp(ip);
-
-    private static IPAddress Normalize(IPAddress ip) => ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip;
 }

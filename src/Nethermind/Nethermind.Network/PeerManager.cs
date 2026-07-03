@@ -97,7 +97,7 @@ namespace Nethermind.Network
         public IReadOnlyCollection<Peer> CandidatePeers => _peerPool.Peers.Select(static kvp => kvp.Value).ToList();
         public IReadOnlyCollection<Peer> ConnectedPeers => _peerPool.ActivePeers.Select(static kvp => kvp.Value).Where(IsConnected).ToList();
 
-        public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount + _peerPool.TrustedPeerCount;
+        public int MaxActivePeers => _networkConfig.MaxActivePeers;
         public int ActivePeersCount => _peerPool.ActivePeerCount;
         public int ConnectedPeersCount => _peerPool.ActivePeers.Count(static kvp => IsConnected(kvp.Value));
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;

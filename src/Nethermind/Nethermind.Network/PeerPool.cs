@@ -36,16 +36,12 @@ namespace Nethermind.Network
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
-        private int _staticPeerCount;
-        private int _trustedPeerCount;
 
         public IEnumerable<Peer> NonStaticPeers => Peers.Select(static kvp => kvp.Value).Where(static p => !p.Node.IsStatic);
         public IEnumerable<Peer> StaticPeers => Peers.Select(static kvp => kvp.Value).Where(static p => p.Node.IsStatic);
 
         public int PeerCount => Peers.Count;
         public int ActivePeerCount => ActivePeers.Count;
-        public int StaticPeerCount => Volatile.Read(ref _staticPeerCount);
-        public int TrustedPeerCount => Volatile.Read(ref _trustedPeerCount);
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
 
@@ -85,8 +81,6 @@ namespace Nethermind.Network
                 {
                     removed = peer.InSession is null && peer.OutSession is null && !peer.IsAwaitingConnection
                               && Peers.TryRemove(e.Node.Id, out _);
-                    if (removed && peer.Node.IsStatic) Interlocked.Decrement(ref _staticPeerCount);
-                    if (removed && peer.Node.IsTrusted) Interlocked.Decrement(ref _trustedPeerCount);
                 }
                 if (removed) PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
                 return;
@@ -100,13 +94,11 @@ namespace Nethermind.Network
             if (Peers.TryGetValue(node.Id, out Peer? existing)) return existing;
 
             // ConcurrentDictionary may run the factory on a losing thread; only the thread whose value is
-            // actually inserted (reference-equal) maintains the static count and fires PeerAdded.
+            // actually inserted (reference-equal) fires PeerAdded.
             Peer created = new(node, _stats.GetOrAdd(node));
             Peer peer = Peers.GetOrAdd(node.Id, created);
             if (ReferenceEquals(peer, created))
             {
-                if (node.IsStatic) Interlocked.Increment(ref _staticPeerCount);
-                if (node.IsTrusted) Interlocked.Increment(ref _trustedPeerCount);
                 if ((node.IsBootnode || node.IsStatic) && _logger.IsDebug) DebugAddingCandidatePeer(node);
                 PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             }
@@ -126,7 +118,6 @@ namespace Nethermind.Network
             Peer peer = Peers.GetOrAdd(node.Id, created);
             if (ReferenceEquals(peer, created))
             {
-                if (node.IsTrusted) Interlocked.Increment(ref _trustedPeerCount);
                 PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             }
             return peer;
@@ -139,8 +130,6 @@ namespace Nethermind.Network
             if (!Peers.TryRemove(id, out peer))
                 return false;
 
-            if (peer.Node.IsStatic) Interlocked.Decrement(ref _staticPeerCount);
-            if (peer.Node.IsTrusted) Interlocked.Decrement(ref _trustedPeerCount);
             lock (peer.SessionLock)
             {
                 peer.InSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
@@ -160,15 +149,8 @@ namespace Nethermind.Network
                 if (previousPeer.InSession == session || previousPeer.OutSession == session)
                 {
                     // (what with the other session?)
-
-                    if (previousPeer.Node.IsStatic) Interlocked.Decrement(ref _staticPeerCount);
-                    if (previousPeer.Node.IsTrusted) Interlocked.Decrement(ref _trustedPeerCount);
-
-                    if (previousPeer is not null)
-                    {
-                        previousPeer.InSession = null;
-                        previousPeer.OutSession = null;
-                    }
+                    previousPeer.InSession = null;
+                    previousPeer.OutSession = null;
                 }
                 else
                 {

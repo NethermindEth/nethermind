@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -15,10 +14,10 @@ namespace Nethermind.Network.Test;
 public class NodeFilterTests
 {
     private static NodeFilter CreateFilter(int size = 100, bool exactMatchOnly = false,
-        IPAddress? currentIp = null, long timeoutMs = 0, IPrivilegedIpProvider? privilegedIpProvider = null) =>
+        IPAddress? currentIp = null, long timeoutMs = 0) =>
         timeoutMs > 0
-            ? new NodeFilter(size, exactMatchOnly, currentIp, timeoutMs, privilegedIpProvider)
-            : new NodeFilter(size, exactMatchOnly, currentIp, privilegedIpProvider);
+            ? new NodeFilter(size, exactMatchOnly, currentIp, timeoutMs)
+            : new NodeFilter(size, exactMatchOnly, currentIp);
 
     [TestCase("192.0.2.1", Description = "IPv4 exact match blocks same address")]
     [TestCase("::1", Description = "IPv6 loopback treated as exact match")]
@@ -166,24 +165,8 @@ public class NodeFilterTests
     [Test]
     public void Create_WhenDisabled_ReturnsAcceptAll()
     {
-        NodeFilter filter = NodeFilter.Create(50, filterEnabled: false, subnetBucketing: true, currentIp: null, privilegedIpProvider: null);
+        NodeFilter filter = NodeFilter.Create(50, filterEnabled: false, subnetBucketing: true, currentIp: null);
         Assert.That(filter, Is.SameAs(NodeFilter.AcceptAll));
-    }
-
-    [Test]
-    public void PrivilegedIp_IsNeverRateLimited()
-    {
-        IPAddress privileged = IPAddress.Parse("192.0.2.1");
-        IPAddress normal = IPAddress.Parse("192.0.2.2");
-        IPrivilegedIpProvider provider = Substitute.For<IPrivilegedIpProvider>();
-        provider.IsPrivileged(privileged).Returns(true);
-
-        NodeFilter filter = CreateFilter(exactMatchOnly: true, privilegedIpProvider: provider);
-
-        Assert.That(filter.TryAccept(privileged), Is.True);
-        Assert.That(filter.TryAccept(privileged), Is.True, "privileged IP is always accepted");
-        Assert.That(filter.TryAccept(normal), Is.True);
-        Assert.That(filter.TryAccept(normal), Is.False, "non-privileged IP is still rate-limited");
     }
 
     [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]

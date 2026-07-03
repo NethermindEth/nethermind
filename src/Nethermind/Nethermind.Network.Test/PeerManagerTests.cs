@@ -292,16 +292,15 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task MaxActivePeers_is_inflated_by_static_and_trusted()
+        public async Task MaxActivePeers_is_not_inflated_by_static_or_trusted()
         {
             await using Context ctx = new(maxActivePeers: 20);
             Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20));
 
             ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1) { IsStatic = true });
-            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(21), "static peers are additive on top of the limit");
-
             ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1) { IsTrusted = true });
-            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(22), "trusted peers are additive too");
+
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20), "static and trusted peers do not inflate the limit");
         }
 
         // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,

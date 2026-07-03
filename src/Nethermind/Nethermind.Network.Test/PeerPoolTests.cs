@@ -246,51 +246,10 @@ public class PeerPoolTests
         Peer replacedPeer = pool.Replace(session);
 
         Assert.That(replacedPeer.Node.IsStatic, Is.False);
-        Assert.That(pool.StaticPeerCount, Is.EqualTo(0), "replacing a static node decrements the static count");
     }
 
     [Test]
-    public void StaticPeerCount_tracks_add_and_remove()
-    {
-        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        TestNodeSource nodeSource = new();
-        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
-
-        Assert.That(pool.StaticPeerCount, Is.EqualTo(0));
-
-        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234, isStatic: true));
-        pool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1234)); // non-static
-        Assert.That(pool.StaticPeerCount, Is.EqualTo(1), "only the static node counts");
-
-        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234, isStatic: true)); // same id
-        Assert.That(pool.StaticPeerCount, Is.EqualTo(1), "re-adding the same id does not double-count");
-
-        pool.TryRemove(TestItem.PublicKeyA, out _);
-        Assert.That(pool.StaticPeerCount, Is.EqualTo(0), "removal decrements");
-    }
-
-    [Test]
-    public void TrustedPeerCount_tracks_add_and_remove()
-    {
-        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        TestNodeSource nodeSource = new();
-        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
-
-        Assert.That(pool.TrustedPeerCount, Is.EqualTo(0));
-
-        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234) { IsTrusted = true });
-        pool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1234)); // not trusted
-        Assert.That(pool.TrustedPeerCount, Is.EqualTo(1), "only the trusted node counts");
-
-        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234) { IsTrusted = true }); // same id
-        Assert.That(pool.TrustedPeerCount, Is.EqualTo(1), "re-adding the same id does not double-count");
-
-        pool.TryRemove(TestItem.PublicKeyA, out _);
-        Assert.That(pool.TrustedPeerCount, Is.EqualTo(0), "removal decrements");
-    }
-
-    [Test]
-    public void TrustedPeerCount_counts_through_NetworkNode_path()
+    public void GetOrAdd_NetworkNode_sets_trusted_flag_from_manager()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(true);
@@ -300,11 +259,7 @@ public class PeerPoolTests
         string enode = new Enode(TestItem.PublicKeyA, IPAddress.Parse("1.2.3.4"), 30303).ToString();
         Peer peer = pool.GetOrAdd(new NetworkNode(enode));
 
-        Assert.That(peer.Node.IsTrusted, Is.True);
-        Assert.That(pool.TrustedPeerCount, Is.EqualTo(1), "GetOrAdd(NetworkNode) counts trusted via the manager");
-
-        pool.TryRemove(TestItem.PublicKeyA, out _);
-        Assert.That(pool.TrustedPeerCount, Is.EqualTo(0));
+        Assert.That(peer.Node.IsTrusted, Is.True, "GetOrAdd(NetworkNode) marks trusted via the manager");
     }
 
     private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
