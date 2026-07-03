@@ -38,7 +38,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-        // Registry-resolved decoder so AuRa headers decode with step + signature under eth_simulateV1.
         IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb, (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>());
         SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
 
