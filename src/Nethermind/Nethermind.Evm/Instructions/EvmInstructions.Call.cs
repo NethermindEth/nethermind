@@ -142,6 +142,12 @@ public static partial class EvmInstructions
         if (hasValueTransfer && !TGasPolicy.ConsumeCallValueTransfer(ref gas))
             goto OutOfGas;
 
+        // EIP-8279: a value transfer to a different account contributes the balance-change
+        // value bytes to the BAL floor.
+        if (hasValueTransfer && !target.Equals(caller)
+            && vm.VmState.AccessTracker.BalFloorMeter is { } balMeter && !balMeter.TryMeter(Eip8279Constants.BalBytesPerStorageValue))
+            goto OutOfGas;
+
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 

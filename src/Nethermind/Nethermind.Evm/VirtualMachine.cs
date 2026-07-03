@@ -437,6 +437,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + stateSpill;
         bool chargedCodeDeposit = false;
 
+        // EIP-8279: deployed code bytes contribute to the BAL floor; when they push the floor
+        // past the gas limit the deposit fails like an out-of-gas code deposit.
+        if (hasEnoughGas && !invalidCode && code.Length > 0
+            && _currentState.AccessTracker.BalFloorMeter is { } balMeter
+            && !balMeter.TryMeter((ulong)code.Length))
+        {
+            hasEnoughGas = false;
+        }
+
         if (hasEnoughGas && !invalidCode)
         {
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;

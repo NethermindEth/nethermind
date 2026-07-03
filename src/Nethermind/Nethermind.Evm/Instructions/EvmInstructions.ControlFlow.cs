@@ -237,6 +237,12 @@ public static partial class EvmInstructions
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
 
+        // EIP-8279: a SELFDESTRUCT sweep to a different beneficiary contributes the
+        // balance-change value bytes to the BAL floor.
+        if (!result.IsZero && !inheritor.Equals(executingAccount)
+            && vmState.AccessTracker.BalFloorMeter is { } balMeter && !balMeter.TryMeter(Eip8279Constants.BalBytesPerStorageValue))
+            goto OutOfGas;
+
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 

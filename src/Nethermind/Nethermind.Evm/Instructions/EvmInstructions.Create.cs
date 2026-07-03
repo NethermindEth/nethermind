@@ -190,6 +190,12 @@ public static partial class EvmInstructions
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
+        // EIP-8279: the new account's nonce (and endowment balance change, when non-zero)
+        // contribute their BAL bytes to the floor.
+        if (vm.VmState.AccessTracker.BalFloorMeter is { } balMeter
+            && !balMeter.TryMeter(Eip8279Constants.BalBytesPerNonce + (value.IsZero ? 0 : Eip8279Constants.BalBytesPerStorageValue)))
+            goto OutOfGas;
+
         // Increment the nonce of the executing account to reflect the contract creation.
         state.IncrementNonce(env.ExecutingAccount);
 

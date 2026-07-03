@@ -514,6 +514,11 @@ public static partial class EvmInstructions
 
             if (currentSameAsOriginal)
             {
+                // EIP-8279: the first change of this slot from its pre-transaction value
+                // contributes the storage value bytes to the BAL floor.
+                if (vmState.AccessTracker.BalFloorMeter is { } balMeter && !balMeter.TryMeter(Eip8279Constants.BalBytesPerStorageValue))
+                    goto OutOfGas;
+
                 if (currentIsZero)
                 {
                     bool ssetOutOfGas = !TGasPolicy.ConsumeStorageWrite<TEip8037, OnFlag>(ref gas, spec);
@@ -560,6 +565,10 @@ public static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
+                    // EIP-8279: the slot returns to its pre-transaction value — refund its
+                    // value bytes, matching EIP-7928's no-op-write deduplication.
+                    vmState.AccessTracker.BalFloorMeter?.Refund(Eip8279Constants.BalBytesPerStorageValue);
+
                     long refundFromReversal = (long)gasCosts.RefundFromReversal(originalIsZero);
 
                     if (TEip8037.IsActive && originalIsZero)

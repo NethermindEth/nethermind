@@ -285,6 +285,13 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.IsContractCreation) Metrics.IncrementCreates();
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
+            if (spec.IsEip8279Enabled)
+            {
+                // EIP-8279: the static floor is the EIP-8131 tx floor (which already prices the
+                // per-authorization BAL bytes when EIP-8279 is active).
+                accessTracker.SetBalFloorMeter(new BalFloorMeter(
+                    TGasPolicy.GetRemainingGas(intrinsicGas.FloorGas), (ulong)tx.GasLimit));
+            }
             ulong delegationRefunds = 0UL;
             ulong delegationAuthBaseRefunds = 0UL;
             TransactionResult result;
@@ -1288,7 +1295,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas, gas.Standard, postIntrinsicStateReservoir);
+            // EIP-8279: the dynamic BAL byte floor supersedes the static floor in spent-gas accounting.
+            TGasPolicy floorGas = accessedItems.BalFloorMeter is { } balFloorMeter
+                ? TGasPolicy.FromULong(balFloorMeter.FloorGasUsed)
+                : gas.FloorGas;
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, floorGas, gas.Standard, postIntrinsicStateReservoir);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");

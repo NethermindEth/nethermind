@@ -28,6 +28,11 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private int _destroyListSnapshots;
     private int _logsSnapshots;
 
+    /// <summary>EIP-8279 per-transaction BAL byte meter; <c>null</c> when the EIP is not active.</summary>
+    public readonly BalFloorMeter? BalFloorMeter => _trackingState.BalFloorMeter;
+
+    public readonly void SetBalFloorMeter(BalFloorMeter meter) => _trackingState.BalFloorMeter = meter;
+
     public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
@@ -112,6 +117,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public BalFloorMeter? BalFloorMeter { get; set; }
 
         private void Clear()
         {
@@ -120,6 +126,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
+            BalFloorMeter = null;
         }
     }
 }

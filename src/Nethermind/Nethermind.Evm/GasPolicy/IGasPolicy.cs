@@ -244,10 +244,19 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return contentBytes;
     }
 
+    // EIP-8279: BAL bytes statically attributable to the transaction — per-authorization
+    // authority address, delegation designator code, and nonce — priced into the static floor.
+    private static ulong CalculateStaticBalBytesEip8279(Transaction transaction, IReleaseSpec spec) =>
+        spec.IsEip8279Enabled && transaction.AuthorizationList is { } authorizationList
+            ? (ulong)authorizationList.Length * Eip8279Constants.AuthorizationBalBytes
+            : 0;
+
     protected static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList) => spec switch
     {
         // EIP-8131 replaces the EIP-7623/EIP-7976/EIP-7981 floor rules with one per-byte rule.
-        { IsEip8131Enabled: true } => GasCostOf.Transaction + CalculateContentBytesEip8131(transaction) * GasCostOf.FloorGasPerByteEip8131,
+        // EIP-8279 shares the same per-byte price for its statically known BAL bytes.
+        { IsEip8131Enabled: true } => GasCostOf.Transaction
+            + (CalculateContentBytesEip8131(transaction) + CalculateStaticBalBytesEip8279(transaction, spec)) * GasCostOf.FloorGasPerByteEip8131,
         { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
         { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
         _ => 0

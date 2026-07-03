@@ -471,6 +471,13 @@ namespace Nethermind.Core.Specs
         public bool IsEip8131Enabled { get; }
 
         /// <summary>
+        /// EIP-8279: Block Access List Byte Floor.
+        /// Runtime metering of the bytes a transaction contributes to the EIP-7928 block
+        /// access list, priced into the transaction gas floor.
+        /// </summary>
+        public bool IsEip8279Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.

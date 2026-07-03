@@ -256,7 +256,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         return (!spec.IsPrecompile(address) && accessTracker.WarmUp(address)) switch
         {
-            true => UpdateGas(ref gas, GasCostOf.ColdAccountAccess),
+            // EIP-8279: a cold account access contributes the address bytes to the BAL floor.
+            true => (accessTracker.BalFloorMeter?.TryMeter(Eip8279Constants.BalBytesPerAddress) ?? true)
+                && UpdateGas(ref gas, GasCostOf.ColdAccountAccess),
             false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
             false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
         };
@@ -277,7 +279,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
 
         if (accessTracker.WarmUp(in storageCell))
-            return UpdateGas(ref gas, GasCostOf.ColdSLoad);
+        {
+            // EIP-8279: a cold storage access contributes the storage key bytes to the BAL floor.
+            return (accessTracker.BalFloorMeter?.TryMeter(Eip8279Constants.BalBytesPerStorageKey) ?? true)
+                && UpdateGas(ref gas, GasCostOf.ColdSLoad);
+        }
+
         if (storageAccessType == StorageAccessType.SLOAD)
             return UpdateGas(ref gas, GasCostOf.WarmStateRead);
         return true;
