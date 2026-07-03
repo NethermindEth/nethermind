@@ -464,6 +464,13 @@ namespace Nethermind.Core.Specs
         public bool IsEip7954Enabled { get; }
 
         /// <summary>
+        /// EIP-8131: Unified Transaction Content Floor.
+        /// One per-byte floor rule across calldata, access lists, authorizations, and blob
+        /// versioned hashes, replacing the EIP-7623/EIP-7976/EIP-7981 floor rules.
+        /// </summary>
+        public bool IsEip8131Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.
