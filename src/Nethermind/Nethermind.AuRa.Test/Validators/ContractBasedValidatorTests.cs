@@ -507,7 +507,7 @@ public class ContractBasedValidatorTests
 
             _block.Header.Number = blockNumber;
             _block.Header.Beneficiary = currentValidators[blockNumber % (ulong)currentValidators.Length];
-            _block.Header.AuRaStep = blockNumber;
+            _block.Header.RequireAuRa().AuRaStep = blockNumber;
             _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
             _block.Header.ParentHash = blockNumber == test.StartBlockNumber
                 ? Keccak.Zero
@@ -588,7 +588,9 @@ public class ContractBasedValidatorTests
 
         _blockFinalizationManager.GetLastLevelFinalizedBy(blockTree.Head.ParentHash).Returns((ulong)lastLevelFinalized);
 
-        validator.OnBlockProcessingStart(blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None));
+        // The generic BlockTreeBuilder produces plain headers; AuRa always processes AuRaBlockHeaders.
+        Block head = blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None);
+        validator.OnBlockProcessingStart(head.WithReplacedHeader(AuRaBlockHeader.UpgradeFrom(head.Header)));
 
         PendingValidators pendingValidators = null;
         if (expectedBlockValidators.HasValue)

@@ -4,10 +4,10 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Db;
-using Nethermind.Xdc.RLP;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc;
 
-internal class XdcBlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : BlockStore(blockDb, new XdcHeaderDecoder())
+internal class XdcBlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder headerDecoder) : BlockStore(blockDb, headerDecoder)
 {
 }

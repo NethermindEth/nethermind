@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -86,8 +87,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Restore(Snapshot snapshot)
         => State.Restore(snapshot);
 
-    public virtual void WarmUp(AccessList? accessList)
-        => State.WarmUp(accessList);
+    public virtual void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
+        => State.WarmUp(accessList, cancellationToken);
 
     public virtual void WarmUp(Address address)
         => State.WarmUp(address);

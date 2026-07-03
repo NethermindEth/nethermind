@@ -210,6 +210,27 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.EmptyBlockStateCalls));
     }
 
+    [Test]
+    public async Task Test_eth_simulateV1_gap_expansion_exceeding_cap_returns_error()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new() { BlockOverrides = new BlockOverride { Number = checked(chain.Bridge.HeadBlock.Number + 130) }, Calls = [] },
+                new() { BlockOverrides = new BlockOverride { Number = checked(chain.Bridge.HeadBlock.Number + 260) }, Calls = [] }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.False);
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ClientLimitExceededError));
+    }
+
     /// <summary>
     ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
     ///     We test on blocks before current head and after it,
