@@ -192,7 +192,7 @@ public class GasEstimator(
                              EstimateGasTracer gasTracer, CancellationToken token, out bool isGasRelatedFailure)
     {
         Transaction txClone = new();
-        transaction.CopyTo(txClone);
+        transaction.CopyTo(txClone, copyHash: false);
         txClone.GasLimit = gasLimit;
 
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));

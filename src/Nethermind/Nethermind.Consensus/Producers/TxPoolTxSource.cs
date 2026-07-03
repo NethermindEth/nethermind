@@ -124,13 +124,26 @@ namespace Nethermind.Consensus.Producers
                     return false;
                 }
 
-                if (wrapper.Blobs.Length != blobTx.BlobVersionedHashes.Length)
+                int blobCount = blobTx.BlobVersionedHashes?.Length ?? 0;
+                if (blobCount == 0)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
                     return false;
                 }
 
-                return true;
+                if (wrapper.HasFullBlobs())
+                {
+                    if (wrapper.Blobs.Length != blobCount)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
+                        return false;
+                    }
+
+                    return true;
+                }
+
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, blob data is only sampled locally.");
+                return false;
             }
         }
 

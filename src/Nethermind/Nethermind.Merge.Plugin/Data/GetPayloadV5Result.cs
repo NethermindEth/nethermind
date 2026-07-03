@@ -8,10 +8,14 @@ using Nethermind.Int256;
 namespace Nethermind.Merge.Plugin.Data;
 
 public class GetPayloadV5Result<TVersionedExecutionPayload>(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder)
-    : GetPayloadV4Result<TVersionedExecutionPayload>(block, blockFees, null!, executionRequests, shouldOverrideBuilder)
+    : GetPayloadV2Result<TVersionedExecutionPayload>(block, blockFees)
     where TVersionedExecutionPayload : ExecutionPayloadV3, IExecutionPayloadParams, IExecutionPayloadFactory<TVersionedExecutionPayload>
 {
-    public new BlobsBundleV2 BlobsBundle { get; } = blobsBundle;
+    public BlobsBundleV2 BlobsBundle { get; } = blobsBundle;
+
+    public byte[][]? ExecutionRequests { get; } = executionRequests;
+
+    public bool ShouldOverrideBuilder { get; } = shouldOverrideBuilder;
 
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";

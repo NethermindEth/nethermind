@@ -19,7 +19,6 @@ public partial struct SszTransaction
 {
     [SszList(0x4000_0000)] public byte[]? Bytes { get; set; }
 }
-
 [SszContainer]
 public partial struct SszWithdrawal
 {
@@ -97,6 +96,7 @@ public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
     [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
+    public ulong TargetGasLimit { get; set; }
 }
 
 [SszContainer]
