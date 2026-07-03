@@ -93,7 +93,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             ZeroPaddedSpan outSlice = callResult.Output.Span
                 .SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)outputLength));
             UInt256 dest = (ulong)outputDestination;
-            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)outSlice.Length, parent))
+            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)outSlice.Length, ref parent.Memory))
             {
                 push = EvmExceptionType.OutOfGas;
             }
