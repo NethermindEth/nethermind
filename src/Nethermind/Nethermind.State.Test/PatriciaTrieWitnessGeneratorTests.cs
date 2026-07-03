@@ -60,7 +60,6 @@ public class PatriciaTrieWitnessGeneratorTests
             Assert.That(value, Is.EqualTo(readValues[key]), $"read mismatch for {key}");
         }
 
-        // Replay in the witness's order — upserts before deletes — to reproduce the post-state root.
         foreach ((Hash256 key, byte[] value) in scenario.Writes) tree.Set(key.Bytes, value);
         foreach (Hash256 key in scenario.Deletes) tree.Set(key.Bytes, (byte[])null);
         tree.UpdateRootHash();
@@ -68,15 +67,11 @@ public class PatriciaTrieWitnessGeneratorTests
         Assert.That(tree.RootHash, Is.EqualTo(expectedRoot));
     }
 
-    /// <summary>
-    /// Regression for the EEST <c>witness_state_replay_order</c> tests: deleting one leaf of a branch while inserting a
-    /// fresh sibling must NOT pull in the collapse sibling, because the verifier replays the upsert before the delete.
-    /// Re-tagging the fresh key <see cref="PatriciaTrieWitnessGenerator.AccessType.Read"/> (path-only) then does capture it.
-    /// </summary>
+    /// <summary>Regression for the EEST <c>witness_state_replay_order</c> tests.</summary>
     [Test]
     public void Upsert_before_delete_does_not_capture_collapse_sibling()
     {
-        // a and b share prefix "12" then branch (nibble 3 vs 5); c shares "12" and takes a fresh slot (nibble 7).
+        // a and b branch at nibble 3 vs 5 under prefix "12"; c takes a fresh slot (nibble 7).
         Hash256 a = Hash("1234000000000000000000000000000000000000000000000000000000000000");
         Hash256 b = Hash("1256000000000000000000000000000000000000000000000000000000000000");
         Hash256 c = Hash("1278000000000000000000000000000000000000000000000000000000000000");
@@ -84,18 +79,14 @@ public class PatriciaTrieWitnessGeneratorTests
 
         (TestMemDb db, Hash256 root) = BuildTrie([(a, Bytes.FromHexString("aa")), (b, Bytes.FromHexString("bb"))]);
 
-        // Ground truth captured by replaying the two orders against a read-capturing store. Upsert-first (the verifier's
-        // order) never collapses the branch; delete-first transiently does, pulling in b's leaf.
         HashSet<Hash256AsKey> upsertFirst = CaptureOrdered(db, root, (c, valC), (a, null));
         HashSet<Hash256AsKey> deleteFirst = CaptureOrdered(db, root, (a, null), (c, valC));
         Assert.That(deleteFirst.Count, Is.GreaterThan(upsertFirst.Count), "scenario must be order-sensitive");
 
-        // c tagged Upsert reproduces the minimal upsert-before-delete witness (no collapse sibling).
         Assert.That(RunGenerator(db, root,
             [new(a, PatriciaTrieWitnessGenerator.AccessType.Delete), new(c, PatriciaTrieWitnessGenerator.AccessType.Upsert)]),
             Is.EquivalentTo(upsertFirst));
 
-        // c tagged Read is path-only and does not refill the slot, so the branch collapses and the sibling is captured.
         Assert.That(RunGenerator(db, root,
             [new(a, PatriciaTrieWitnessGenerator.AccessType.Delete), new(c, PatriciaTrieWitnessGenerator.AccessType.Read)]),
             Is.EquivalentTo(deleteFirst));
@@ -108,7 +99,6 @@ public class PatriciaTrieWitnessGeneratorTests
         return [.. sink.Nodes.Keys];
     }
 
-    /// <summary>Replays the given key/value ops in order against a read-capturing store and returns the loaded nodes.</summary>
     private static HashSet<Hash256AsKey> CaptureOrdered(TestMemDb db, Hash256 root, params (Hash256 key, byte[] value)[] ops)
     {
         CapturingScopedTrieStore store = new(new RawScopedTrieStore(db));
@@ -136,8 +126,6 @@ public class PatriciaTrieWitnessGeneratorTests
 
     private static PatriciaTrieWitnessGenerator.PathEntry[] BuildEntries(Scenario scenario)
     {
-        // A read is path-only; a non-deleting write is an upsert that occupies its slot (replayed before deletes);
-        // only a delete can collapse a branch.
         List<PatriciaTrieWitnessGenerator.PathEntry> entries = [];
         foreach (Hash256 key in scenario.Reads) entries.Add(new(key, PatriciaTrieWitnessGenerator.AccessType.Read));
         foreach ((Hash256 key, byte[] _) in scenario.Writes) entries.Add(new(key, PatriciaTrieWitnessGenerator.AccessType.Upsert));
@@ -152,8 +140,6 @@ public class PatriciaTrieWitnessGeneratorTests
         return [.. store.Captured.Keys];
     }
 
-    /// <summary>Reads first (on the pristine trie), then applies the mutations, returning the post-state root.</summary>
-    /// <remarks>Writes are applied before deletes: the canonical replay order the generator models.</remarks>
     private static Hash256 ApplyWrites(IScopedTrieStore store, Hash256 root, Scenario scenario, out Dictionary<Hash256AsKey, byte[]> readValues)
     {
         PatriciaTree tree = new(store, LimboLogs.Instance) { RootHash = root };
@@ -240,8 +226,6 @@ public class PatriciaTrieWitnessGeneratorTests
         yield return Case(new Scenario("absent read/delete", populated,
             [Hash("dd")], [Hash("ee")], []));
 
-        // Off-key insert branching off a deleted leaf's key keeps the sibling (2b) OUT of the witness: the insert is
-        // replayed before the delete, so the branch never collapses to a lone child.
         List<(Hash256, byte[])> splitBase =
         [
             (Hash("1a"), Bytes.FromHexString("01")),

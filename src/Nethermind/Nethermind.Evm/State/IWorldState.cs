@@ -149,11 +149,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public void AddAccountRead(Address address) { }
 
-    /// <summary>
-    /// Records that <paramref name="address"/>'s account is logically read here, so its trie path lands in the
-    /// stateless witness. Distinct from <see cref="AddAccountRead"/>, which only feeds the BAL generator.
-    /// </summary>
-    /// <remarks>No-op default; only witness-generating world states record it.</remarks>
     public void RecordAccountAccess(Address address) { }
 
     public void RecordBytecodeAccess(Address address) { }

@@ -27,14 +27,11 @@ public class WitnessGeneratingWorldState(
     : WorldStateDecorator(state)
 {
     private readonly Dictionary<AddressAsKey, HashSet<UInt256>> _storageSlots = [];
-    // Codes touched by execution, minus currently-live in-block deploys (see RecordBytecode).
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes =
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
-    // In-block code deploys (CREATE), excluded from the witness because the verifier reconstructs them by replaying
-    // the CREATE (EELS reads such codes from code_writes, not pre_state). Rollback-aware: Restore drops a reverted
-    // deploy so a later read of it falls through to pre-state and IS captured. _deployOrder is the ordered, deduped
-    // journal; _deployFrames maps each live snapshot to the deploy count at that point so Restore can truncate to it.
+    // In-block CREATE deploys, excluded from the witness (the verifier replays the CREATE). Rollback-aware:
+    // _deployOrder/_deployFrames let Restore drop deploys made after a reverted snapshot.
     private readonly HashSet<ValueHash256> _inBlockDeployed =
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());
     private readonly List<ValueHash256> _deployOrder = [];
@@ -118,8 +115,6 @@ public class WitnessGeneratingWorldState(
             using ArrayPoolListRef<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
             foreach (AddressAsKey address in _storageSlots.Keys)
             {
-                // Survivor => Upsert (occupies its post-state slot), removed => Delete. Upsert rather than Read so a
-                // sibling deletion in the same branch cannot falsely collapse it (see the generator's upsert-before-delete model).
                 PatriciaTrieWitnessGenerator.AccessType access = base.AccountExists(address)
                     ? PatriciaTrieWitnessGenerator.AccessType.Upsert
                     : PatriciaTrieWitnessGenerator.AccessType.Delete;
@@ -141,7 +136,6 @@ public class WitnessGeneratingWorldState(
                 {
                     ValueHash256 slotKey = default;
                     StorageTree.ComputeKeyWithLookup(slot, ref slotKey);
-                    // Non-zero post-state slot => Upsert (occupied), zero => Delete. Same reasoning as the account tagging above.
                     bool deleted = base.Get(new StorageCell(address, slot)).IndexOfAnyExcept((byte)0) < 0;
                     slotEntries.Add(new(slotKey, deleted ? PatriciaTrieWitnessGenerator.AccessType.Delete : PatriciaTrieWitnessGenerator.AccessType.Upsert));
                 }
@@ -281,8 +275,6 @@ public class WitnessGeneratingWorldState(
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         RecordEmptySlots(address);
-        // Journal the deploy (see _inBlockDeployed) so a later read of its code is excluded from the witness. Deduped
-        // by hash, mirroring EELS code_writes; the deployed code itself is never added to _bytecodes.
         if (_inBlockDeployed.Add(codeHash)) _deployOrder.Add(codeHash);
         return base.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
@@ -384,10 +376,7 @@ public class WitnessGeneratingWorldState(
 
     private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
     {
-        // Skip empty code and currently-live in-block deploys (see _inBlockDeployed): EELS serves those from
-        // code_writes, not pre_state.
-        if (code is not { Length: > 0 }) return;
-        if (!_inBlockDeployed.Contains(codeHash))
-            _bytecodes.TryAdd(codeHash, code);
+        if (code is not { Length: > 0 } || _inBlockDeployed.Contains(codeHash)) return;
+        _bytecodes.TryAdd(codeHash, code);
     }
 }
