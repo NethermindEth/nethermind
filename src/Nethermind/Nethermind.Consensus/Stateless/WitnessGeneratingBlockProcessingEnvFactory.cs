@@ -17,6 +17,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -98,7 +99,8 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness))
+                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
+                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
 
