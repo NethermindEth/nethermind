@@ -146,7 +146,6 @@ public class MergePluginTests
         _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
         Assert.DoesNotThrow(() => container.Resolve<IBlockProducerFactory>().InitBlockProducer());
     }
 
@@ -189,7 +188,6 @@ public class MergePluginTests
         INethermindApi api = container.Resolve<INethermindApi>();
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         await _plugin.Init(api);
-        await _plugin.InitNetworkProtocol();
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
