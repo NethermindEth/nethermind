@@ -164,7 +164,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // the parent. Move the child's state usage back into the reservoir and remove it from
         // parent state usage because no child state growth persisted.
         parentGas.StateReservoir += childGas.StateGasUsed;
-        parentGas.StateGasUsed -= childGas.StateGasUsed;
+        parentGas.StateGasUsed = parentGas.StateGasUsed.SaturatingSub(childGas.StateGasUsed);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -497,14 +497,18 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateAvailableFromIntrinsic(ulong gasLimit, in EthereumGasPolicy intrinsicGas, IReleaseSpec spec)
     {
-        // Callers must validate intrinsic gas against gasLimit (ValidateIntrinsicGas / Eip8037.ExceedsCap)
-        // before calling; if they don't, the subtraction wraps silently.
-        Debug.Assert(gasLimit >= intrinsicGas.Value + intrinsicGas.StateReservoir,
-            $"gasLimit ({gasLimit}) < intrinsicRegular ({intrinsicGas.Value}) + intrinsicState ({intrinsicGas.StateReservoir})");
+        // Guard the subtraction: an unvalidated caller (e.g. the SkipValidation warmup path) must get an
+        // out-of-gas frame, not a wrapped budget.
+        ulong intrinsicTotal = intrinsicGas.Value + intrinsicGas.StateReservoir;
+        if (gasLimit < intrinsicTotal)
+        {
+            return new EthereumGasPolicy { Value = 0, OutOfGas = true };
+        }
+
         Debug.Assert(!spec.IsEip8037Enabled || Eip7825Constants.DefaultTxGasLimitCap >= intrinsicGas.Value,
             "Eip8037 enabled but intrinsicRegular exceeds tx gas cap.");
 
-        ulong executionGas = gasLimit - intrinsicGas.Value - intrinsicGas.StateReservoir;
+        ulong executionGas = gasLimit - intrinsicTotal;
         ulong reservoir = 0;
 
         if (spec.IsEip8037Enabled)

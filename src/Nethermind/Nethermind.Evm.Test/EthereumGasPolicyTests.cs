@@ -26,4 +26,30 @@ public class EthereumGasPolicyTests
         ulong expected = baseCost + GasCostOf.Memory * words;
         Assert.That(initial - EthereumGasPolicy.GetRemainingGas(in gas), Is.EqualTo(expected));
     }
+
+    [Test]
+    public void CreateAvailableFromIntrinsic_returns_out_of_gas_when_gas_limit_below_intrinsic()
+    {
+        // gasLimit sits between intrinsic regular and intrinsic regular + state reservoir, so the
+        // regular-only static check would pass but the reservoir is unaffordable.
+        EthereumGasPolicy intrinsic = new() { Value = 30_000, StateReservoir = 183_600 };
+
+        EthereumGasPolicy available = EthereumGasPolicy.CreateAvailableFromIntrinsic(30_000, in intrinsic, Amsterdam.Instance);
+
+        Assert.That(EthereumGasPolicy.IsOutOfGas(in available), Is.True);
+        Assert.That(EthereumGasPolicy.GetRemainingGas(in available), Is.EqualTo(0UL));
+        Assert.That(EthereumGasPolicy.GetStateReservoir(in available), Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void RevertRefundToHalt_saturates_state_gas_used_instead_of_wrapping()
+    {
+        EthereumGasPolicy parent = new() { StateGasUsed = 100 };
+        EthereumGasPolicy child = new() { StateGasUsed = 250 };
+
+        EthereumGasPolicy.RevertRefundToHalt(ref parent, in child);
+
+        Assert.That(EthereumGasPolicy.GetStateGasUsed(in parent), Is.EqualTo(0UL));
+        Assert.That(EthereumGasPolicy.GetStateReservoir(in parent), Is.EqualTo(250UL));
+    }
 }
