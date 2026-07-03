@@ -14,6 +14,21 @@ namespace Nethermind.Specs.Test;
 public class ForkTests
 {
     [Test]
+    public void Hegota_Inherits_Amsterdam_And_Is_Parseable()
+    {
+        NamedReleaseSpec hegota = Hegota.Instance;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hegota.Name, Is.EqualTo("Hegota"));
+            Assert.That(hegota.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(hegota.IsEip7928Enabled, Is.True, "must inherit Amsterdam EIPs");
+            Assert.That(hegota.IntroducesEngineApiChange(), Is.False, "no engine API delta scheduled yet");
+            Assert.That(SpecNameParser.Parse("Hegota"), Is.SameAs(hegota));
+        }
+    }
+
+    [Test]
     public void GetLatest_Matches_FoundationJson()
     {
         // Load foundation.json — source of truth for mainnet forks

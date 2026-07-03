@@ -62,6 +62,7 @@ namespace Nethermind.Specs
                 "BPO4" => BPO4.Instance,
                 "BPO5" => BPO5.Instance,
                 "Amsterdam" => Amsterdam.Instance,
+                "Hegota" => Hegota.Instance,
                 _ => throw new NotSupportedException()
             };
         }
