@@ -54,6 +54,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         private IMessageSerializationService _receiverSerializationManager;
         private Node _receiver;
+        private CancellationTokenSource _shutdownCts = null!;
 
         private void ConfigureBondCallback() =>
             _msgSender
@@ -116,6 +117,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _nodeStatsManager = Substitute.For<INodeStatsManager>();
             _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
+            _shutdownCts = new CancellationTokenSource();
+            IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+            processExitSource.Token.Returns(_ => _shutdownCts.Token);
+
             _adapter = new KademliaAdapter(
                 new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
                 new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
@@ -130,7 +135,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 nodeRecordProvider,
                 _nodeStatsManager,
                 _timestamper,
-                Substitute.For<IProcessExitSource>(),
+                processExitSource,
                 _logManager
             );
             _adapter.MsgSender = _msgSender;
@@ -148,7 +153,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         }
 
         [TearDown]
-        public async Task TearDown() => await _adapter.DisposeAsync();
+        public async Task TearDown()
+        {
+            await _adapter.DisposeAsync();
+            _shutdownCts.Dispose();
+        }
 
         private T AddReceiverFarAddress<T>(T msg) where T : DiscoveryMsg
         {
@@ -451,6 +460,29 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _adapter.OnIncomingMsg(response);
 
             _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_should_complete_gracefully_when_shutdown_during_enr_refresh(CancellationToken token)
+        {
+            const ulong advertisedSequence = 2;
+            ConfigureRemoteEnrRefresh(advertisedSequence, advertisedSequence);
+
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
+                .Do(_ => _shutdownCts.Cancel());
+
+            PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address)
+            {
+                EnrSequence = advertisedSequence
+            };
+            pingMsg.FarAddress = _receiver.Address;
+            pingMsg = AddReceiverFarAddress(pingMsg);
+
+            await _adapter.OnIncomingMsg(pingMsg);
+
+            _nodeHealthTracker.DidNotReceive().OnRequestFailed(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
         }
 
         [Test]

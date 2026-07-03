@@ -76,7 +76,7 @@ public sealed class KademliaAdapter(
         {
             session.ResetAuthenticatedRequestFailure();
         }
-        else
+        else if (!token.IsCancellationRequested)
         {
             session.OnAuthenticatedRequestFailure();
         }
@@ -142,7 +142,7 @@ public sealed class KademliaAdapter(
         using CancellationTokenSource timeoutCts = new(timeout);
         using CancellationTokenSource sendCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
         using CancellationTokenRegistration cancelRegistration = token.Register(
-            static state => ((TaskCompletionSource<DiscoveryResponse<T>>)state!).TrySetCanceled(),
+            static state => ((TaskCompletionSource<DiscoveryResponse<T>>)state!).TrySetResult(DiscoveryResponse<T>.None),
             messageHandler.TaskCompletionSource);
         using CancellationTokenRegistration timeoutRegistration = timeoutCts.Token.Register(
             static state => ((TaskCompletionSource<DiscoveryResponse<T>>)state!).TrySetResult(DiscoveryResponse<T>.None),
@@ -163,11 +163,19 @@ public sealed class KademliaAdapter(
             DiscoveryResponse<T> response = await messageHandler.TaskCompletionSource.Task;
             if (!response.HasResponse)
             {
-                token.ThrowIfCancellationRequested();
+                if (token.IsCancellationRequested)
+                {
+                    return DiscoveryResponse<T>.None;
+                }
+
                 nodeHealthTracker.Value.OnRequestFailed(receiver);
             }
 
             return response;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return DiscoveryResponse<T>.None;
         }
         finally
         {
@@ -190,6 +198,7 @@ public sealed class KademliaAdapter(
 
     public async Task<bool> Ping(Node receiver, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         NodeSession session = GetSession(receiver);
 
         PingMsg msg = new(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address)
@@ -207,6 +216,7 @@ public sealed class KademliaAdapter(
 
     public async Task<Node[]?> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         NodeSession session = GetSession(receiver);
         DiscoveryResponse<Node[]> response = await RunAuthenticatedRequest(receiver, session, token =>
         {
@@ -237,6 +247,7 @@ public sealed class KademliaAdapter(
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         NodeSession session = GetSession(receiver);
         DiscoveryResponse<EnrResponseMsg> response = await RunAuthenticatedRequest(receiver, session, token =>
         {
@@ -360,9 +371,8 @@ public sealed class KademliaAdapter(
                     return;
             }
         }
-        catch (TaskCanceledException e)
+        catch (OperationCanceledException) when (processExitSource.Token.IsCancellationRequested)
         {
-            if (Logger.IsDebug) Logger.Debug($"Error during msg handling. {e}");
         }
         catch (Exception e)
         {
