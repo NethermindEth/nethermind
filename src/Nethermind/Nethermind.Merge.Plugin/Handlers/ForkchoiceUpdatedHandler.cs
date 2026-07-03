@@ -140,6 +140,24 @@ public class ForkchoiceUpdatedHandler(
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
+            // The head header is not resolvable yet (e.g. no peers right after a restart), but the forkchoice
+            // state must still be recorded so that StartingSyncPivotUpdater can derive a fresh pivot from the
+            // finalized hash once peers appear, instead of waiting forever for an FCU with a resolvable head.
+            blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+            blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
+
+            // The cache does not survive a restart, and a node killed in this window restarts with no FCU
+            // data at all, so persist the forkchoice hashes the same way the resolved-head paths below do.
+            // Safe while the finalized header is still unknown: finalized blocks cannot reorg and
+            // TryUpdateSyncPivot no-ops on an unresolvable hash; OnForkChoiceUpdated fires with finalized/safe
+            // numbers of 0 (headers unknown), a monitoring-only blip. The zero guard is deliberate here
+            // (unlike the resolved paths): a zero finalized hash must not overwrite one already persisted that
+            // a restart relies on.
+            if (forkchoiceState.FinalizedBlockHash != Keccak.Zero)
+            {
+                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
+            }
+
             if (_logger.IsInfo) _logger.Info($"Syncing Unknown ForkChoiceState head hash Request: {simpleRequestStr}.");
             return ForkchoiceUpdatedV1Result.Syncing;
         }

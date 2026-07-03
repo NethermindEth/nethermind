@@ -107,8 +107,24 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return null;
         }
 
-        public Hash256? GetFinalizedHash() => _blockCacheService.FinalizedHash;
+        /// <remarks>
+        /// Falls back to the finalized hash persisted by the block tree so that a node restarted before its
+        /// first pivot update can make progress before any forkchoice update arrives. Safe because finalized
+        /// blocks cannot be reorged and pivot updates enforce monotonicity, so a stale persisted value can
+        /// only produce an older-but-valid pivot.
+        /// </remarks>
+        public Hash256? GetFinalizedHash()
+        {
+            // A cached Keccak.Zero (CL sent an FCU with no finalized yet) is non-null and would otherwise
+            // shadow a previously-persisted finalized hash, so treat it as "not set" and fall back.
+            Hash256? cached = _blockCacheService.FinalizedHash;
+            return cached is not null && cached != Keccak.Zero ? cached : _blockTree.FinalizedHash;
+        }
 
+        /// <remarks>
+        /// Unlike <see cref="GetFinalizedHash"/>, there is no block tree fallback: a head can be reorged away,
+        /// and the block tree's own head reflects local processing progress, not the CL forkchoice target.
+        /// </remarks>
         public Hash256? GetHeadBlockHash() => _blockCacheService.HeadBlockHash;
     }
 
