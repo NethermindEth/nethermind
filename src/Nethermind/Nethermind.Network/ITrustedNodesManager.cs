@@ -17,6 +17,5 @@ public interface ITrustedNodesManager : INodeSource
     Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default);
     bool IsTrusted(Enode enode);
 
-    /// <summary>Returns <see langword="true"/> when a trusted node is reachable at the given IP (O(1) lookup).</summary>
     bool ContainsIp(IPAddress ip);
 }

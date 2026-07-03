@@ -17,6 +17,5 @@ public interface IStaticNodesManager : INodeSource
     Task<bool> RemoveAsync(NetworkNode node, bool updateFile = true, CancellationToken cancellationToken = default);
     bool IsStatic(NetworkNode node);
 
-    /// <summary>Returns <see langword="true"/> when a static node is reachable at the given IP (O(1) lookup).</summary>
     bool ContainsIp(IPAddress ip);
 }
