@@ -3,6 +3,7 @@
 
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -11,6 +12,16 @@ namespace Nethermind.Crypto;
 public static class EthereumEcdsaExtensions
 {
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+
+    /// <remarks>
+    /// Cross-context cache of recovered senders keyed by transaction hash. A transaction is
+    /// typically recovered more than once — on mempool ingress and again on block arrival — and
+    /// the repeat becomes a lookup. Sized for a few minutes of mainnet transactions. Legacy
+    /// transactions are excluded: their signing hash depends on the ambient chain id and the
+    /// <c>useSignatureChainId</c> flag, so the transaction hash alone is not a safe global key.
+    /// </remarks>
+    private const int SenderCacheCapacity = 1 << 15;
+    private static readonly ClockCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
     public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
         KeccakRlpWriter writer = new();
@@ -60,9 +71,22 @@ public static class EthereumEcdsaExtensions
     {
         Signature signature = tx.Signature
             ?? throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
-        ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
 
-        return ecdsa.RecoverAddress(signature, in hash);
+        bool cacheable = tx.Type != TxType.Legacy && tx.Hash is not null;
+        if (cacheable && _senderCache.TryGet(tx.Hash!.ValueHash256, out Address cached))
+        {
+            return cached;
+        }
+
+        ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
+        Address? recovered = ecdsa.RecoverAddress(signature, in hash);
+
+        if (cacheable && recovered is not null)
+        {
+            _senderCache.Set(tx.Hash!.ValueHash256, recovered);
+        }
+
+        return recovered;
     }
 
     /// <summary>

@@ -49,4 +49,38 @@ public class RecoverSignaturesTest
         Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
         Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
     }
+
+    [Test]
+    public void RecoverData_FirstSenderAlreadyRecovered_RecoversRemainingSenders()
+    {
+        PrivateKey signerA = TestItem.PrivateKeyA;
+        PrivateKey signerB = TestItem.PrivateKeyB;
+        Transaction recovered = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithNonce(0)
+            .SignedAndResolved(signerA)
+            .TestObject;
+        Transaction notRecovered = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithNonce(1)
+            .SignedAndResolved(signerB)
+            .WithSenderAddress(null)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithTransactions([recovered, notRecovered])
+            .TestObject;
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        RecoverSignatures sut = new(
+            _ecdsa,
+            specProvider,
+            Substitute.For<ILogManager>());
+
+        sut.RecoverData(block);
+
+        Assert.That(notRecovered.SenderAddress, Is.EqualTo(signerB.Address));
+    }
 }

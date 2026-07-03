@@ -25,16 +25,38 @@ namespace Nethermind.Consensus.Processing
         public void RecoverData(Block block)
         {
             Transaction[] txs = block.Transactions;
-            if (txs.Length == 0)
-                return;
-
-            Transaction firstTx = txs[0];
-            if (firstTx.IsSigned && firstTx.SenderAddress is not null)
-                // already recovered a sender for a signed tx in this block,
-                // so we assume the rest of txs in the block are already recovered
+            if (txs.Length == 0 || AllSendersRecovered(txs))
                 return;
 
             RecoverData(txs, _specProvider.GetSpec(block.Header));
+        }
+
+        /// <summary>
+        /// Exact per-tx check replacing the previous first-tx heuristic, so a partially recovered
+        /// block (e.g. an interrupted early recovery on the newPayload path) is always completed
+        /// rather than skipped.
+        /// </summary>
+        private static bool AllSendersRecovered(Transaction[] txs)
+        {
+            foreach (Transaction tx in txs)
+            {
+                if (!tx.IsSigned)
+                    continue;
+
+                if (tx.SenderAddress is null)
+                    return false;
+
+                if (tx.HasAuthorizationList)
+                {
+                    foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
+                    {
+                        if (tuple.Authority is null)
+                            return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         /// <summary>

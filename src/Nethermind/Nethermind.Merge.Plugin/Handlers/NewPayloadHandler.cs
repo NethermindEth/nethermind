@@ -447,8 +447,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                // Senders must be fully recovered before the queue sees the block, so its
-                // preprocessor's first-tx short-circuit never races an in-flight recovery.
+                // Senders must be fully recovered before the queue sees the block: the
+                // preprocessor's recovered-check must not race an in-flight recovery, and the
+                // prewarmer groups transactions BY sender at ProcessBranch start, so it needs
+                // every sender up front — recovery must never leak past this barrier, or the
+                // prewarmer would block on (or mis-group) unrecovered transactions.
                 await senderRecoveryTask;
                 await _processingQueue.Enqueue(block, processingOptions);
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
