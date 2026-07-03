@@ -21,10 +21,17 @@ namespace Nethermind.State.Flat;
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
-    bool recordDetailedMetrics)
+    bool recordDetailedMetrics,
+    bool isHistorical = false)
     : RefCountingDisposable
 {
     public int SnapshotCount => snapshots.Count;
+
+    /// <summary>
+    /// True when this bundle is backed by the finalized history index (trie-less): it serves account/storage values
+    /// only and has no trie nodes, so post-block state-root recomputation must not traverse it.
+    /// </summary>
+    public bool IsHistorical { get; } = isHistorical;
     private bool _isDisposed;
 
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");

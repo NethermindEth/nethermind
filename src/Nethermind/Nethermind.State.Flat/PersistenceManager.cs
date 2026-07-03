@@ -26,7 +26,8 @@ public class PersistenceManager(
     IFinalizedStateProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
-    ILogManager logManager) : IPersistenceManager
+    ILogManager logManager,
+    IFlatPersistenceCaptureHook? captureHook = null) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly ulong _minReorgDepth = configuration.MinReorgDepth;
@@ -175,7 +176,7 @@ public class PersistenceManager(
         {
             Snapshot? snapshotToSave = DetermineSnapshotToPersist(latestSnapshot);
 
-            if (snapshotToSave is null) return;
+            if (snapshotToSave is null) break;
             using Snapshot _ = snapshotToSave; // dispose
 
             snapshotRepository.RemoveSiblingAndDescendents(snapshotToSave.To);
@@ -183,6 +184,14 @@ public class PersistenceManager(
             // Add the canon snapshot
             PersistSnapshot(snapshotToSave);
             _currentPersistedStateId = snapshotToSave.To;
+        }
+
+        // Capture the just-finalized per-block changesets here, where the persisted block is known exactly, while
+        // their per-block snapshots are still in memory; the caller only prunes them after this returns. The hook is
+        // absent unless an external module (e.g. historical state) registers one.
+        if (captureHook is not null && _currentPersistedStateId != StateId.PreGenesis)
+        {
+            captureHook.CaptureUpTo(_currentPersistedStateId, snapshotRepository);
         }
     }
 

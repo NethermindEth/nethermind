@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -714,6 +715,32 @@ public class PersistenceManagerTests
             _persistence.CreateWriteBatch(state1, state2);
             _persistence.CreateWriteBatch(state2, state3);
         });
+    }
+
+    [Test]
+    public void AddToPersistence_CapturesHistoryUpToPersistedBlock()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> historyDb = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
+        HistoryWriter historyWriter = new(historyDb, historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
+
+        IPersistence persistence = Substitute.For<IPersistence>();
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(CreateStateId(5));
+        persistence.CreateReader().Returns(reader);
+
+        PersistenceManager manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            persistence,
+            _snapshotRepository,
+            LimboLogs.Instance,
+            historyWriter);
+
+        manager.AddToPersistence(CreateStateId(5));
+
+        Assert.That(historyWriter.LastCapturedBlock, Is.EqualTo(5UL));
     }
 
     #endregion

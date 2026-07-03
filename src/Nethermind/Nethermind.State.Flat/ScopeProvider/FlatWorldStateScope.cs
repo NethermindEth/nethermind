@@ -27,6 +27,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
+    private readonly bool _trieless;
 
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
@@ -45,6 +46,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private Task? _hintBalTask;
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
+
+    // A history-backed scope is trie-less: it performs flat reads/writes (overlay + columns) but ZERO trie node
+    // loads, writes or hashing. Read by FlatStorageTree to skip storage-trie bulk writes/root computation.
+    internal bool Trieless => _trieless;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -86,6 +91,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
+
+        // A history-backed scope is trie-less: its persistence reader serves account/storage values only and throws
+        // for trie-node access. Post-block state-root recomputation must therefore not traverse the state trie.
+        _trieless = snapshotBundle.IsHistorical;
+
     }
 
     public void Dispose()
@@ -136,7 +146,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
-    public void UpdateRootHash() => _stateTree.UpdateRootHash();
+
+    public void UpdateRootHash()
+    {
+        if (!_trieless) _stateTree.UpdateRootHash();
+    }
 
     public Account? Get(Address address)
     {
@@ -368,7 +382,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        _stateTree.Commit();
+        if (!_trieless) _stateTree.Commit();
 
         _storages.Clear();
 
@@ -454,10 +468,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
-                using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                // The per-account flat writes above (scope._snapshotBundle.SetAccount) already carry intra-block state
+                // for subsequent txs; normal scopes additionally bulk-apply the dirty accounts into the state trie.
+                // Trie-less scopes keep the known root on _stateTree and never touch trie nodes, so they skip this.
+                if (!scope._trieless)
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                    {
+                        stateSetter.Set(kv.Key, kv.Value);
+                    }
                 }
             }
             finally

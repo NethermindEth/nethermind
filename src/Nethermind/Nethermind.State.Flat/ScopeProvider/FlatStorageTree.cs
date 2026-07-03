@@ -139,35 +139,41 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch = new(
-                estimatedEntries,
-                _tree,
-                onRootUpdated,
-                _address,
-                commit: true);
+        // A trie-less (history-backed) scope can't maintain the storage trie (its persistence reader throws on
+        // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
+        if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        return new StorageTreeBulkWriteBatch(
-            storageTreeBulkWriteBatch,
-            this
-        );
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, _tree, onRootUpdated, _address, commit: true);
+        return new StorageTreeBulkWriteBatch(trieBatch, this);
     }
 
-    private class StorageTreeBulkWriteBatch(
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
+    // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
+    private sealed class StorageTreeBulkWriteBatch(
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, byte[] value)
         {
-            storageTreeBulkWriteBatch.Set(in index, value);
+            trieBatch.Set(in index, value);
             storageTree.Set(index, value);
         }
 
         public void Clear()
         {
-            storageTreeBulkWriteBatch.Clear();
+            trieBatch.Clear();
             storageTree.SelfDestruct();
         }
 
-        public void Dispose() => storageTreeBulkWriteBatch.Dispose();
+        public void Dispose() => trieBatch.Dispose();
+    }
+
+    // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.
+    private sealed class FlatOverlayStorageWriteBatch(FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Set(in UInt256 index, byte[] value) => storageTree.Set(index, value);
+
+        public void Clear() => storageTree.SelfDestruct();
+
+        public void Dispose() { }
     }
 }

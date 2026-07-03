@@ -410,6 +410,18 @@ public class DbConfig : IDbConfig
         "";
     public string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
+    // History columns (archival queries). As-of-block reads are iterator floor-seeks, which don't consult the point
+    // bloom filter, so optimize_filters_for_hits drops the last-level bloom — its memory cost is linear in key count
+    // and prohibitive on a full archive. A large write buffer cuts flushes during the from-genesis replay.
+    const string FlatHistoryCommonOptions =
+        "optimize_filters_for_hits=true;" +
+        "write_buffer_size=256000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+
+    public string FlatHistoryDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
+    public string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
+
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 }

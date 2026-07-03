@@ -13,3 +13,13 @@ public enum FlatDbColumns
     StorageNodes,
     FallbackNodes,
 }
+
+public enum FlatHistoryColumns
+{
+    AccountHistory,
+    AccountChangeSets,
+    StorageHistory,
+    StorageChangeSets,
+    AvailableBlocks,
+    StorageClears,
+}

@@ -106,6 +106,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
         }
+
+        if (flatDbConfig.HistoryEnabled)
+        {
+            builder.AddModule(new FlatHistoryModule());
+        }
     }
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
