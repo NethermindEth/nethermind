@@ -145,10 +145,15 @@ internal class VotesManager(
 
     private void CleanupVotes(ulong round)
     {
-        _votePool.EndRound(round);
+        const ulong retainedRoundCount = XdcConstants.PoolHygieneRound;
+        _votePool.RemoveRoundsOutsideRetention(round, retainedRoundCount);
 
+        if (round < retainedRoundCount)
+            return;
+
+        ulong lastRoundToRemove = round - retainedRoundCount;
         foreach (KeyValuePair<ulong, byte> kvp in _qcBuildStartedByRound)
-            if (kvp.Key <= round) _qcBuildStartedByRound.TryRemove(kvp.Key, out _);
+            if (kvp.Key <= lastRoundToRemove) _qcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
     public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>
