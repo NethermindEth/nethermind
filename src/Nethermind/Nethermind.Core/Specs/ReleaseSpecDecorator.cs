@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Frozen;
 using Nethermind.Int256;
 
@@ -108,8 +107,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
     public virtual ulong ElasticityMultiplier => spec.ElasticityMultiplier;
     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
-    Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
-    Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     public virtual bool IsEip7939Enabled => spec.IsEip7939Enabled;
     public virtual bool IsEip7928Enabled => spec.IsEip7928Enabled;
