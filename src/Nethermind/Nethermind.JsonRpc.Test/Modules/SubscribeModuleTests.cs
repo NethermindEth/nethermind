@@ -467,12 +467,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
-        [Test]
-        public async Task LogsSubscription_with_invalid_arguments_creating_result()
+        [TestCase("invalid_param")]
+        [TestCase("{\"fromBlock\":\"-1\"}")]
+        [TestCase("{\"fromBlock\":\"0x10000000000000000\"}")]
+        [TestCase("{\"toBlock\":\"notanumber\"}")]
+        [TestCase("{\"address\":\"0xzz705ae4c6f81b66cdb323c65f4e8133690fc099\"}")]
+        [TestCase("{\"blockHash\":\"0xzz783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"}")]
+        public async Task LogsSubscription_with_malformed_args_returns_invalid_params(string args)
         {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "invalid_param");
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
-            Assert.That(expectedResult, Is.EqualTo(serialized));
+            Assert.That(expectedResult, Is.EqualTo(serialized), "malformed eth_subscribe/logs args should map to InvalidParams, not InternalError");
         }
 
         [Test]
