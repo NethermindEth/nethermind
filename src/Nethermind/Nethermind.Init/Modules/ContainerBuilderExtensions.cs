@@ -52,8 +52,9 @@ public static class ContainerBuilderExtensions
 
     /// <summary>Registers a db wrapped in <see cref="WriteBehindDb"/> so its writes are flushed off the caller's path.</summary>
     public static ContainerBuilder AddWriteBehindDatabase(this ContainerBuilder builder, string dbName) => builder
-        .AddKeyedSingleton<IDb>(dbName, (ctx) => new WriteBehindDb(ctx.Resolve<IDbFactory>()
-            .CreateDb(new DbSettings(GetTitleDbName(dbName), dbName))));
+        .AddKeyedSingleton<IDb>(dbName, (ctx) => new WriteBehindDb(
+            ctx.Resolve<IDbFactory>().CreateDb(new DbSettings(GetTitleDbName(dbName), dbName)),
+            ctx.Resolve<ILogManager>()));
 
     public static ContainerBuilder AddColumnDatabase<T>(this ContainerBuilder builder, string dbName) where T : struct, Enum =>
         builder

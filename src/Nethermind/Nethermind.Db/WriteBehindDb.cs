@@ -5,47 +5,70 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Db;
 
 /// <summary>
-/// Write-behind <see cref="IDb"/> decorator: writes land in an in-memory buffer (readable immediately) and are
-/// flushed to the inner db by a background worker, taking the RocksDB write off the caller's (e.g.
-/// <c>engine_newPayload</c>) critical path.
+/// <see cref="IDb"/> decorator whose writes complete without waiting for the underlying db, while staying
+/// immediately readable through this instance.
 /// </summary>
 /// <remarks>
-/// Reads are buffer-first; span/native reads of a still-buffered key flush that key synchronously first, so returned
-/// native memory is always owned by the inner db. Batch entries become visible when the batch is disposed. Durability
-/// is relaxed: entries not yet drained are lost on an unclean crash and must be re-derivable (e.g. re-requested from
-/// the CL). <see cref="Flush"/> and <see cref="Dispose"/> drain the buffer.
+/// Writes land in an in-memory buffer drained to the inner db by a background worker, taking the RocksDB write off
+/// the caller's (e.g. <c>engine_newPayload</c>) critical path. Reads are buffer-first; span/native reads of a
+/// still-buffered key flush that key synchronously first so returned native memory is always owned by the inner db.
+/// Batch entries become visible when the batch is disposed. <see cref="WriteFlags"/> are preserved into the drain.
+/// If the buffer exceeds <see cref="MaxBufferedBytes"/> writes fall back to synchronous write-through (backpressure).
+/// Durability is relaxed: entries not yet drained are lost on an unclean crash and must be re-derivable (e.g.
+/// re-requested from the CL). <see cref="Flush"/> and <see cref="Dispose"/> drain the buffer.
 /// </remarks>
-public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
+public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore, ITunableDb, ISortedKeyValueStore
 {
+    internal const long MaxBufferedBytes = 64 * 1024 * 1024;
+
     private readonly IDb _inner;
-    private readonly ConcurrentDictionary<byte[], byte[]?> _buffer = new((IEqualityComparer<byte[]>)Bytes.EqualityComparer);
-    private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _bufferLookup;
+    private readonly bool _disposeInner;
+    private readonly ILogger _logger;
+    private readonly ConcurrentDictionary<byte[], Entry> _buffer = new((IEqualityComparer<byte[]>)Bytes.EqualityComparer);
+    private readonly ConcurrentDictionary<byte[], Entry>.AlternateLookup<ReadOnlySpan<byte>> _bufferLookup;
     private readonly SemaphoreSlim _signal = new(0);
     private readonly CancellationTokenSource _cts = new();
+    private readonly Lock _drainLock = new();
     private readonly Thread _worker;
-    private volatile bool _disposed;
+    private long _bufferedBytes;
+    private int _disposed;
 
-    public WriteBehindDb(IDb inner)
+    public WriteBehindDb(IDb inner, ILogManager? logManager = null, bool disposeInner = true)
     {
         _inner = inner;
+        _disposeInner = disposeInner;
+        _logger = logManager?.GetClassLogger<WriteBehindDb>() ?? NullLogger.Instance;
         _bufferLookup = _buffer.GetAlternateLookup<ReadOnlySpan<byte>>();
         _worker = new Thread(FlushLoop) { IsBackground = true, Name = $"WriteBehind:{inner.Name}" };
         _worker.Start();
     }
 
+    private readonly record struct Entry(byte[]? Value, WriteFlags Flags);
+
     public string Name => _inner.Name;
 
+    /// <inheritdoc/>
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
-        _bufferLookup[key] = value;
+        // Past the cap (drain fell behind, e.g. bulk sync) or once disposed, degrade to the undecorated behavior.
+        if (Volatile.Read(ref _disposed) == 1 || Interlocked.Read(ref _bufferedBytes) >= MaxBufferedBytes)
+        {
+            FlushKey(key);
+            _inner.Set(key, value, flags);
+            return;
+        }
+
+        _bufferLookup[key] = new Entry(value, flags);
+        Interlocked.Add(ref _bufferedBytes, key.Length + (value?.Length ?? 0));
         _signal.Release();
     }
 
@@ -54,17 +77,18 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
 
     public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
 
+    /// <inheritdoc/>
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        => _bufferLookup.TryGetValue(key, out byte[]? v) ? v : _inner.Get(key, flags);
+        => _bufferLookup.TryGetValue(key, out Entry e) ? e.Value : _inner.Get(key, flags);
 
     public bool KeyExists(ReadOnlySpan<byte> key)
-        => _bufferLookup.TryGetValue(key, out byte[]? v) ? v is not null : _inner.KeyExists(key);
+        => _bufferLookup.TryGetValue(key, out Entry e) ? e.Value is not null : _inner.KeyExists(key);
 
     public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        => _bufferLookup.TryGetValue(key, out byte[]? v)
-            ? (v is null ? null : new ManagedMemoryManager(v))
-            : _inner.GetOwnedMemory(key, flags);
+        => _bufferLookup.TryGetValue(key, out Entry e) ? ArrayMemoryManager.From(e.Value) : _inner.GetOwnedMemory(key, flags);
 
+    /// <inheritdoc/>
+    /// <remarks>A still-buffered key is flushed first so the returned memory is owned by the inner db.</remarks>
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         FlushKey(key);
@@ -100,108 +124,147 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false) { DrainAll(); return _inner.GetAllKeys(ordered); }
     public IEnumerable<byte[]> GetAllValues(bool ordered = false) { DrainAll(); return _inner.GetAllValues(ordered); }
 
+    /// <inheritdoc/>
+    /// <remarks>Entries become readable (and are queued for the drain) when the batch is disposed.</remarks>
     public IWriteBatch StartWriteBatch() => new WriteBehindBatch(this);
 
     public void Flush(bool onlyWal = false) { DrainAll(); _inner.Flush(onlyWal); }
-    public void Clear() { _buffer.Clear(); _inner.Clear(); }
+
+    public void Clear()
+    {
+        lock (_drainLock)
+        {
+            _buffer.Clear();
+            Interlocked.Exchange(ref _bufferedBytes, 0);
+            _inner.Clear();
+        }
+    }
+
     public void Compact() { DrainAll(); _inner.Compact(); }
     public void SetWriteBuffer(long sizeBytes) => _inner.SetWriteBuffer(sizeBytes);
     public IDbMeta.DbMetric GatherMetric() => _inner.GatherMetric();
 
+    public void Tune(ITunableDb.TuneType type)
+    {
+        if (_inner is ITunableDb tunable) tunable.Tune(type);
+    }
+
+    public byte[]? FirstKey { get { DrainAll(); return Sorted.FirstKey; } }
+    public byte[]? LastKey { get { DrainAll(); return Sorted.LastKey; } }
+
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+    {
+        DrainAll();
+        return Sorted.GetViewBetween(firstKeyInclusive, lastKeyExclusive);
+    }
+
+    private ISortedKeyValueStore Sorted => _inner as ISortedKeyValueStore
+        ?? throw new NotSupportedException($"{_inner.Name} is not an {nameof(ISortedKeyValueStore)}");
+
     private void FlushKey(scoped ReadOnlySpan<byte> key)
     {
         // Inner is written before the buffer entry is dropped so the key is always readable from one of the two.
-        if (_bufferLookup.TryGetValue(key, out byte[]? actualKey, out byte[]? v))
+        if (_bufferLookup.TryGetValue(key, out byte[]? actualKey, out Entry e))
         {
-            if (v is null) _inner.Remove(key); else _inner.Set(key, v);
-            _buffer.TryRemove(new KeyValuePair<byte[], byte[]?>(actualKey, v));
+            if (e.Value is null) _inner.Remove(key); else _inner.Set(key, e.Value, e.Flags);
+            if (_buffer.TryRemove(new KeyValuePair<byte[], Entry>(actualKey, e)))
+            {
+                Interlocked.Add(ref _bufferedBytes, -(actualKey.Length + (e.Value?.Length ?? 0)));
+            }
         }
     }
 
     private void FlushLoop()
     {
         CancellationToken token = _cts.Token;
-        try
+        while (!token.IsCancellationRequested)
         {
-            while (!token.IsCancellationRequested)
+            try
             {
                 _signal.Wait(token);
                 while (_signal.CurrentCount > 0) _signal.Wait(0); // coalesce pending signals into one drain
                 DrainAll();
             }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (Exception e)
+            {
+                // The worker must survive transient inner-db failures or the buffer would grow unbounded.
+                if (_logger.IsError) _logger.Error($"WriteBehind flush of {Name} failed, retrying", e);
+                if (token.WaitHandle.WaitOne(1000)) return;
+                _signal.Release(); // re-arm: the failed drain already consumed its signal
+            }
         }
-        catch (OperationCanceledException) { }
     }
 
     private void DrainAll()
     {
         if (_buffer.IsEmpty) return;
-        // Batch-commit to inner first, remove from the buffer after, so reads never miss a key mid-flush.
-        List<KeyValuePair<byte[], byte[]?>> drained = [];
-        using (IWriteBatch batch = _inner.StartWriteBatch())
+        lock (_drainLock)
         {
-            foreach (KeyValuePair<byte[], byte[]?> kv in _buffer)
+            if (_buffer.IsEmpty) return;
+            // Batch-commit to inner first, remove from the buffer after, so reads never miss a key mid-flush.
+            List<KeyValuePair<byte[], Entry>> drained = [];
+            using (IWriteBatch batch = _inner.StartWriteBatch())
             {
-                if (kv.Value is null) batch.Remove(kv.Key); else batch.Set(kv.Key, kv.Value);
-                drained.Add(kv);
+                foreach (KeyValuePair<byte[], Entry> kv in _buffer)
+                {
+                    if (kv.Value.Value is null) batch.Remove(kv.Key); else batch.Set(kv.Key, kv.Value.Value, kv.Value.Flags);
+                    drained.Add(kv);
+                }
             }
-        }
-        foreach (KeyValuePair<byte[], byte[]?> kv in drained)
-        {
-            _buffer.TryRemove(kv); // compare-remove: keeps a concurrent overwrite for the next drain
+            foreach (KeyValuePair<byte[], Entry> kv in drained)
+            {
+                if (_buffer.TryRemove(kv)) // compare-remove: keeps a concurrent overwrite for the next drain
+                {
+                    Interlocked.Add(ref _bufferedBytes, -(kv.Key.Length + (kv.Value.Value?.Length ?? 0)));
+                }
+            }
         }
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         _cts.Cancel();
         _worker.Join(TimeSpan.FromSeconds(30));
         DrainAll();
         _cts.Dispose();
         _signal.Dispose();
-        _inner.Dispose();
+        if (_disposeInner) _inner.Dispose();
     }
 
     private sealed class WriteBehindBatch(WriteBehindDb db) : IWriteBatch
     {
-        private readonly List<KeyValuePair<byte[], byte[]?>> _entries = [];
+        private readonly List<(byte[] Key, byte[]? Value, WriteFlags Flags)> _entries = [];
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-            => _entries.Add(new(key.ToArray(), value));
+            => _entries.Add((key.ToArray(), value, flags));
 
         public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-            => _entries.Add(new(key.ToArray(), value.IsNull() ? null : value.ToArray()));
+            => _entries.Add((key.ToArray(), value.IsNull() ? null : value.ToArray(), flags));
 
         public void Clear() => _entries.Clear();
 
+        // No merge users among the wrapped stores; buffering can't apply the native merge operator anyway.
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-        {
-            // Merge needs the native operator so it cannot be buffered; flush the key to keep write ordering.
-            db.FlushKey(key);
-            using IWriteBatch inner = db._inner.StartWriteBatch();
-            inner.Merge(key, value, flags);
-        }
+            => throw new NotSupportedException($"{nameof(WriteBehindDb)} does not support merge");
 
         public void Dispose()
         {
-            foreach (KeyValuePair<byte[], byte[]?> kv in _entries) db._buffer[kv.Key] = kv.Value;
+            foreach ((byte[] key, byte[]? value, WriteFlags flags) in _entries)
+            {
+                db._buffer[key] = new Entry(value, flags);
+                Interlocked.Add(ref db._bufferedBytes, key.Length + (value?.Length ?? 0));
+            }
             _entries.Clear();
-            db._signal.Release();
+            if (Volatile.Read(ref db._disposed) == 0) db._signal.Release();
         }
-    }
-
-    private sealed class ManagedMemoryManager(byte[] array) : MemoryManager<byte>
-    {
-        public override Span<byte> GetSpan() => array;
-        public override Memory<byte> Memory => array;
-        public override MemoryHandle Pin(int elementIndex = 0)
-        {
-            GCHandle handle = GCHandle.Alloc(array, GCHandleType.Pinned);
-            unsafe { return new MemoryHandle((byte*)handle.AddrOfPinnedObject() + elementIndex, handle); }
-        }
-        public override void Unpin() { }
-        protected override void Dispose(bool disposing) { }
     }
 }

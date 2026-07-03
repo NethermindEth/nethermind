@@ -133,6 +133,70 @@ public class WriteBehindDbTests
     }
 
     [Test]
+    public void WriteFlags_are_preserved_into_the_inner_write()
+    {
+        Nethermind.Core.Test.TestMemDb inner = new();
+        using WriteBehindDb db = new(inner);
+
+        db.Set(Key, Value, WriteFlags.DisableWAL);
+        db.GetSpan(Key); // flushes the key synchronously via FlushKey
+
+        inner.KeyWasWrittenWithFlags(Key, WriteFlags.DisableWAL);
+    }
+
+    [Test]
+    public void Flush_worker_survives_inner_failures()
+    {
+        ThrowOnceDb inner = new();
+        using WriteBehindDb db = new(inner);
+
+        db.Set(Key, Value); // first drain attempt throws inside the worker
+
+        Assert.That(() => inner.Get(Key), Is.EqualTo(Value).After(10000, 50), "worker must retry after an inner failure");
+    }
+
+    [Test]
+    public void Batch_merge_is_not_supported()
+    {
+        using WriteBehindDb db = new(new MemDb());
+        using IWriteBatch batch = db.StartWriteBatch();
+        Assert.Throws<NotSupportedException>(() => batch.Merge(Key, Value));
+    }
+
+    [Test]
+    public void Set_after_dispose_writes_through_to_inner()
+    {
+        MemDb inner = new();
+        WriteBehindDb db = new(inner, disposeInner: false);
+        db.Dispose();
+
+        db.Set(Key, Value);
+
+        Assert.That(inner.Get(Key), Is.EqualTo(Value));
+    }
+
+    [Test]
+    public void Tune_is_passed_through()
+    {
+        Nethermind.Core.Test.TestMemDb inner = new();
+        using WriteBehindDb db = new(inner);
+
+        ((ITunableDb)db).Tune(ITunableDb.TuneType.HeavyWrite);
+
+        Assert.That(inner.WasTunedWith(ITunableDb.TuneType.HeavyWrite), Is.True);
+    }
+
+    private sealed class ThrowOnceDb : MemDb
+    {
+        private int _thrown;
+
+        public override IWriteBatch StartWriteBatch()
+            => Interlocked.Exchange(ref _thrown, 1) == 0
+                ? throw new InvalidOperationException("transient inner failure")
+                : base.StartWriteBatch();
+    }
+
+    [Test]
     public void Key_is_always_readable_across_the_flush_transition()
     {
         MemDb inner = new();

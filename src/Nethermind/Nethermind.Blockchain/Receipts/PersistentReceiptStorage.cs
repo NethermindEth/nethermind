@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
+    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore, IDisposable
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
@@ -57,8 +57,8 @@ namespace Nethermind.Blockchain.Receipts
 
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
-            // Defer the receipts-blob write off the newPayload path (ethrex #6905 port); reads stay buffer-first.
-            _receiptsDb = new WriteBehindDb(_database.GetColumnDb(ReceiptsColumns.Blocks));
+            // Defer the receipts-blob write off the newPayload path; the column itself is owned by the columns db.
+            _receiptsDb = new WriteBehindDb(_database.GetColumnDb(ReceiptsColumns.Blocks), disposeInner: false);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -340,6 +340,8 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public void EnsureCanonical(Block block) => EnsureCanonical(block, null);
+
+        public void Dispose() => (_receiptsDb as IDisposable)?.Dispose(); // drains the write-behind buffer
 
         public void RemoveReceipts(Block block)
         {
