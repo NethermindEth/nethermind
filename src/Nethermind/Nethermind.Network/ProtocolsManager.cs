@@ -205,7 +205,7 @@ namespace Nethermind.Network
         {
             if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
 
-            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            bool isValid = _protocolValidator.ValidateOrDisconnect(handler.ProtocolCode, session, args);
             if (isValid)
             {
                 PeerInfo? peer = _syncPool.GetPeer(session.Node);
@@ -260,7 +260,7 @@ namespace Nethermind.Network
 
             AddNodeToDiscovery(session, args);
 
-            bool isValid = _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
+            bool isValid = _protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, args);
             if (isValid)
             {
                 _peerManager.OnP2PProtocolInitialized(session);
@@ -281,7 +281,7 @@ namespace Nethermind.Network
                 ProtocolVersion = args.ProtocolVersion,
                 TotalDifficulty = (BigInteger)args.TotalDifficulty
             });
-            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            bool isValid = _protocolValidator.ValidateOrDisconnect(handler.ProtocolCode, session, args);
             if (isValid)
             {
                 if (_syncPeers.TryAdd(session.SessionId, handler))

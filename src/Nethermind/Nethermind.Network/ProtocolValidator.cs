@@ -46,7 +46,7 @@ namespace Nethermind.Network
             _forkInfo = forkInfo;
         }
 
-        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs) => protocol switch
+        public bool ValidateOrDisconnect(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs) => protocol switch
         {
             Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
             Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,

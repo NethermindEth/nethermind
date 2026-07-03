@@ -58,7 +58,7 @@ public class ProtocolValidatorTests
 
         ISession session = CreateSession();
         IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler>();
-        protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, new P2PProtocolInitializedEventArgs(protocolHandler)
+        protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, new P2PProtocolInitializedEventArgs(protocolHandler)
         {
             ClientId = clientId,
             P2PVersion = 5
