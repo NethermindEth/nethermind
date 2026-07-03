@@ -34,8 +34,8 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class Eip8037BlockGasIntegrationTests
 {
-    private const long Cpsb = 1530;
-    private const long IntrinsicNewAccountState = 120 * Cpsb;
+    private const ulong Cpsb = 1530;
+    private const ulong IntrinsicNewAccountState = 120 * Cpsb;
 
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
@@ -49,7 +49,7 @@ public class Eip8037BlockGasIntegrationTests
             new WithdrawalProcessorFactory(LimboLogs.Instance));
     }
 
-    private static (BlockAccessListManager, Block) BuildAmsterdamBlock(long blockGasLimit, params Transaction[] txs)
+    private static (BlockAccessListManager, Block) BuildAmsterdamBlock(ulong blockGasLimit, params Transaction[] txs)
     {
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Block block = Build.A.Block
@@ -73,7 +73,7 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     private static GasValidationResult
-        GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
+        GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null)
     {
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit);
         return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
@@ -81,11 +81,11 @@ public class Eip8037BlockGasIntegrationTests
 
     // Boundary: post-tx cumulative state hits the limit exactly (must accept,
     // IncrementalValidation uses strict >) vs exceeds by 1 (must reject).
-    [TestCase(200_000L, true, TestName = "Eip8037_boundary_state_exact_fit_accepts")]
-    [TestCase(200_001L, false, TestName = "Eip8037_boundary_state_exceeded_by_one_rejects")]
-    public void Eip8037_boundary_state(long blockStateGasUsed, bool accepts)
+    [TestCase(200_000UL, true, TestName = "Eip8037_boundary_state_exact_fit_accepts")]
+    [TestCase(200_001UL, false, TestName = "Eip8037_boundary_state_exceeded_by_one_rejects")]
+    public void Eip8037_boundary_state(ulong blockStateGasUsed, bool accepts)
     {
-        long blockGasLimit = 200_000;
+        ulong blockGasLimit = 200_000;
         Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx1);
 
@@ -118,7 +118,7 @@ public class Eip8037BlockGasIntegrationTests
     {
         // cap (filler) + the create's full tx.gas (intrinsic_regular + intrinsic_state) so the
         // regular-dimension reservation of min(TX_MAX, tx.gas) exactly fits.
-        long blockGasLimit = 16_777_216 + 53_000 + IntrinsicNewAccountState;
+        ulong blockGasLimit = 16_777_216 + 53_000 + IntrinsicNewAccountState;
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
         Transaction createTx = Build.A.Transaction.WithHash(TestItem.KeccakB)
             .WithCode([])
@@ -147,7 +147,7 @@ public class Eip8037BlockGasIntegrationTests
     [Test]
     public void Eip8037_single_tx_state_check_exceeds_block_limit_rejects()
     {
-        long blockGasLimit = 16_777_216 + 100; // cap + tiny headroom
+        ulong blockGasLimit = 16_777_216 + 100; // cap + tiny headroom
         // tx.gas = blockGasLimit + intrinsic_regular + 1 -> spec inclusion check rejects on state dim.
         Transaction onlyTx = Build.A.Transaction.WithHash(TestItem.KeccakA)
             .WithGasLimit(blockGasLimit + 21_000 + 1).TestObject;
@@ -171,7 +171,7 @@ public class Eip8037BlockGasIntegrationTests
     [Test]
     public void Eip8037_creation_tx_state_check_exceeded_rejects()
     {
-        long blockGasLimit = 16_777_216 + 200_000; // cap + headroom for filler state
+        ulong blockGasLimit = 16_777_216 + 200_000; // cap + headroom for filler state
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
         Transaction createTx = Build.A.Transaction.WithHash(TestItem.KeccakB)
             .WithCode([])
@@ -198,7 +198,7 @@ public class Eip8037BlockGasIntegrationTests
     [Test]
     public void Eip8037_eip7825_cap_with_modest_actual_gas_accepts()
     {
-        long blockGasLimit = 16_777_216 + 100;
+        ulong blockGasLimit = 16_777_216 + 100;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx);
 
@@ -222,7 +222,7 @@ public class Eip8037BlockGasIntegrationTests
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance));
 
-        long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100;
+        ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)
             .WithGasLimit(blockGasLimit + 21_000 + 1)
             .TestObject;

@@ -38,8 +38,8 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
     // The EXT* target; a third address that stays cold (Sender=A, Recipient=B, Miner=D).
     private static readonly Address Target = TestItem.AddressC;
 
-    private long ExtraWarmAccess => eip8038Enabled ? Eip8038Constants.WarmAccess : 0;
-    private long ColdAccountAccess => eip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
+    private ulong ExtraWarmAccess => eip8038Enabled ? Eip8038Constants.WarmAccess : 0;
+    private ulong ColdAccountAccess => eip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
 
     [SetUp]
     public override void Setup()
@@ -71,7 +71,7 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(code);
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        long expected = GasCostOf.Transaction
+        ulong expected = GasCostOf.Transaction
                         + GasCostOf.VeryLow            // PUSH20 target
                         + ColdAccountAccess            // cold EXTCODESIZE access (EIP-8038 repriced when enabled)
                         + ExtraWarmAccess              // EIP-8038 extra access
@@ -95,7 +95,7 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(code);
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        long expected = GasCostOf.Transaction
+        ulong expected = GasCostOf.Transaction
                         + 4 * GasCostOf.VeryLow        // three PUSH1 0x00 + PUSH20 target
                         + ColdAccountAccess            // cold EXTCODECOPY access (EIP-8038 repriced when enabled)
                         + ExtraWarmAccess;             // EIP-8038 extra access
@@ -115,7 +115,7 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(code);
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        long expected = GasCostOf.Transaction
+        ulong expected = GasCostOf.Transaction
                         + 2 * GasCostOf.VeryLow        // two PUSH20 target
                         + ColdAccountAccess            // cold EXTCODESIZE access (first; EIP-8038 repriced when enabled)
                         + GasCostOf.WarmStateRead      // warm EXTCODESIZE access (second)
@@ -137,7 +137,7 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(code);
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        long expected = GasCostOf.Transaction
+        ulong expected = GasCostOf.Transaction
                         + 8 * GasCostOf.VeryLow        // two groups of three PUSH1 0x00 + PUSH20 target
                         + ColdAccountAccess            // cold EXTCODECOPY access (first; EIP-8038 repriced when enabled)
                         + GasCostOf.WarmStateRead      // warm EXTCODECOPY access (second)
@@ -156,7 +156,7 @@ public class Eip8038IntrinsicGasTests
 
     [TestCase(false, 21000 + GasCostOf.AccessAccountListEntry, TestName = "address entry, EIP-8038 off")]
     [TestCase(true, 21000 + Eip8038Constants.AccessListAddressCost, TestName = "address entry, EIP-8038 on")]
-    public void Access_list_address_entry_cost(bool eip8038Enabled, long expectedStandard)
+    public void Access_list_address_entry_cost(bool eip8038Enabled, ulong expectedStandard)
     {
         AccessList accessList = new AccessList.Builder().AddAddress(TestItem.AddressC).Build();
         Transaction tx = Build.A.Transaction.SignedAndResolved().WithAccessList(accessList).TestObject;
@@ -168,7 +168,7 @@ public class Eip8038IntrinsicGasTests
 
     [TestCase(false, 21000 + GasCostOf.AccessAccountListEntry + GasCostOf.AccessStorageListEntry, TestName = "address + key, EIP-8038 off")]
     [TestCase(true, 21000 + Eip8038Constants.AccessListAddressCost + Eip8038Constants.AccessListStorageKeyCost, TestName = "address + key, EIP-8038 on")]
-    public void Access_list_address_and_storage_key_cost(bool eip8038Enabled, long expectedStandard)
+    public void Access_list_address_and_storage_key_cost(bool eip8038Enabled, ulong expectedStandard)
     {
         AccessList accessList = new AccessList.Builder()
             .AddAddress(TestItem.AddressC)

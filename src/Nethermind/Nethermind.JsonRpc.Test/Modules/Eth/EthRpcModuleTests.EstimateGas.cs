@@ -38,7 +38,7 @@ public partial class EthRpcModuleTests
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient sender balance for transfer\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer\"},\"id\":67}"));
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
@@ -400,7 +400,7 @@ public partial class EthRpcModuleTests
         long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
         // gasCap above blockGasLimit — estimate should be bounded by blockGasLimit, not gasCap (matches Geth)
-        ctx.Test.RpcConfig.GasCap = blockGasLimit + 1_000_000;
+        ctx.Test.RpcConfig.GasCap = (ulong)(blockGasLimit + 1_000_000);
 
         await TestEstimateGasOutOfGas(ctx, null, blockGasLimit, $"gas required exceeds allowance ({blockGasLimit})");
     }
@@ -415,7 +415,7 @@ public partial class EthRpcModuleTests
         string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
         long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
-        ctx.Test.RpcConfig.GasCap = blockGasLimit + 1_000_000;
+        ctx.Test.RpcConfig.GasCap = (ulong)(blockGasLimit + 1_000_000);
 
         await TestEstimateGasOutOfGas(ctx, 0, blockGasLimit, $"gas required exceeds allowance ({blockGasLimit})");
     }
@@ -608,27 +608,27 @@ public partial class EthRpcModuleTests
     private static IEnumerable<TestCaseData> EstimateGasFloorCostCases()
     {
         // EIP-7976: 100 zero bytes → floor = 21000 + 100 * 4 * 16 = 27400
-        long eip7976Floor100 = GasCostOf.Transaction + 100 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
+        ulong eip7976Floor100 = GasCostOf.Transaction + 100 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7976Spec, new byte[100], 100_000L, null,
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor100.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: data heavy tx returns floor cost");
 
         // EIP-7623: 100 zero bytes → floor = 21000 + 100 * 10 = 22000
-        long eip7623Floor100 = GasCostOf.Transaction + 100 * Prague.Instance.GasCosts.TotalCostFloorPerToken;
+        ulong eip7623Floor100 = GasCostOf.Transaction + 100 * Prague.Instance.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Prague.Instance, new byte[100], 100_000L, null,
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7623Floor100.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7623: data heavy tx returns lower floor");
 
         // EIP-7976: gas at standard but below floor → "gas below floor data cost"
         // 1 zero byte: standard = 21000 + 4 = 21004; floor = 21000 + 1*4*16 = 21064
-        const long atStandard = GasCostOf.Transaction + GasCostOf.TxDataZero;
-        long eip7976Floor1Byte = GasCostOf.Transaction + 1 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
+        const long atStandard = (long)(GasCostOf.Transaction + GasCostOf.TxDataZero);
+        ulong eip7976Floor1Byte = GasCostOf.Transaction + 1 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7976Spec, new byte[] { 0 }, atStandard, null,
                 $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"failed with {atStandard} gas: gas below floor data cost: have {atStandard}, want {eip7976Floor1Byte}\"}},\"id\":67}}")
             .SetName("EIP-7976: gas at standard but below floor returns floor error");
 
         // EIP-7976: mixed calldata (0x00001122 = 2 zero + 2 nonzero bytes)
-        long eip7976Floor4 = GasCostOf.Transaction + 4 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
+        ulong eip7976Floor4 = GasCostOf.Transaction + 4 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7976Spec, new byte[] { 0x00, 0x00, 0x11, 0x22 }, 100_000L, null,
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor4.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: mixed calldata returns floor");
@@ -636,7 +636,7 @@ public partial class EthRpcModuleTests
         // EIP-7981: access list with 1 address, no calldata — standard wins. Devnet-6 prices the
         // access-list address at the spec's AccessAccountListEntry (the EIP-8038 cold cost), not the
         // legacy EIP-2930 value, plus the 80 access-list floor tokens.
-        long eip7981Standard = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
+        ulong eip7981Standard = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
             + 80 * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7981Spec, Array.Empty<byte>(), 100_000L,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
@@ -646,7 +646,7 @@ public partial class EthRpcModuleTests
         // EIP-7981: modest calldata (100 zero bytes) on top of an access list — the standard cost
         // (TX_BASE + access-entry + per-zero-byte standard cost + access floor tokens) still exceeds
         // the calldata floor, so standard wins. (Floor-wins is covered by the data-heavy cases above.)
-        long eip7981StandardWithCalldata = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
+        ulong eip7981StandardWithCalldata = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
             + 100 * GasCostOf.TxDataZero
             + 80 * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7981Spec, new byte[100], 100_000L,
@@ -663,7 +663,7 @@ public partial class EthRpcModuleTests
 
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithTo(TestItem.AddressB)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit((ulong)gasLimit)
             .WithData(data);
         if (accessList is not null)
             txBuilder.WithAccessList(accessList);
