@@ -299,7 +299,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             result.IsPostMerge = false;
         }
 
-        IReleaseSpec spec = specProvider.GetSpec(result);
+        IReleaseSpec spec = specProvider.GetSpec(GetSimulatedActivation(block.BlockOverrides, result));
 
         if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
         if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
@@ -322,4 +322,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         return (result, spec);
     }
+
+    private static ForkActivation GetSimulatedActivation(BlockOverride? overrides, BlockHeader header) =>
+        new(overrides?.Number ?? (ulong)header.Number, overrides?.Time ?? header.Timestamp);
 }
