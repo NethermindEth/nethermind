@@ -214,7 +214,7 @@ namespace Nethermind.Core.Extensions
         public static bool TryDecodeFromUtf8(ReadOnlySpan<byte> hexString, Span<byte> result)
         {
             int oddMod = hexString.Length % 2;
-            if (oddMod == 0 && BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+            if (oddMod == 0 && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
                 hexString.Length >= Vector128<byte>.Count)
             {
                 if (Avx512BW.IsSupported && hexString.Length >= Vector512<byte>.Count)
