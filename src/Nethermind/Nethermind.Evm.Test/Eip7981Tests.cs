@@ -151,4 +151,18 @@ public class Eip7981Tests
             Assert.That(cost.MinimalGas, Is.EqualTo(cost.FloorGas));
         }
     }
+
+    [Test]
+    public void Calldata_with_access_list_floor_equals_standard_at_exact_tie()
+    {
+        // Tie at 50*(1 + addresses + keys) zero bytes: standard 12000 + 3000 (recipient) + 400 (data)
+        // + 3000 (address) + 1280 (AL floor tokens) == floor 12000 + (400 + 80) * 16 == 19680.
+        AccessList accessList = new AccessList.Builder().AddAddress(Address.Zero).Build();
+        Transaction transaction = new() { To = Address.Zero, Data = new byte[100], AccessList = accessList };
+
+        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+
+        Assert.That(cost.Standard, Is.EqualTo(cost.FloorGas));
+        Assert.That(cost.MinimalGas, Is.EqualTo(19_680UL));
+    }
 }

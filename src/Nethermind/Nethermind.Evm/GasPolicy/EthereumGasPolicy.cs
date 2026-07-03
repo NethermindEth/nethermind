@@ -380,6 +380,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RefundStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor, bool trackSpillRefund)
     {
+        // All callers guard amount >= 0; a negative amount would wrap gas.Value via (ulong)toGasLeft below.
+        Debug.Assert(amount >= 0, $"Negative state-gas refund ({amount}).");
         long refundableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
         long appliedRefund = Math.Min(amount, refundableStateGas);
         long toGasLeft = 0;
@@ -465,7 +467,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // EIP-8038: per existing-authority EIP-7702 refund, the worst-case ACCOUNT_WRITE charged in the
         // intrinsic is returned to the regular-gas refund counter (the NEW_ACCOUNT/AUTH_BASE state refunds
         // are applied separately in Apply8037DelegationRefunds).
-        if (spec.IsEip8038Enabled) return (ulong)Eip8038Constants.AccountWrite * codeInsertRefunds;
+        if (spec.IsEip8038Enabled) return Eip8038Constants.AccountWrite * codeInsertRefunds;
         if (spec.IsEip8037Enabled) return 0;
         return (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
     }
@@ -624,13 +626,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// <remarks>
     /// Both models mirror their respective EELS <c>calculate_intrinsic_cost</c>: the recipient touch overrides
     /// EIP-2929's "all tx addresses are warm" rule and the recipient stays pre-warmed for execution. See
-    /// <see cref="Eip8038IntrinsicRecipientGas"/> and <see cref="Eip2780StandaloneExtraGas"/> for the specifics.
+    /// <see cref="Eip8038IntrinsicRecipientGas(Transaction)"/> and <see cref="Eip2780StandaloneExtraGas"/> for the specifics.
     /// </remarks>
     private static ulong Eip2780ExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
     {
         if (!spec.IsEip2780Enabled) return 0;
         return spec.IsEip8038Enabled
-            ? Eip8038IntrinsicRecipientGas(tx, spec, worldState)
+            ? Eip8038IntrinsicRecipientGas(tx)
             : Eip2780StandaloneExtraGas(tx, spec, worldState);
     }
 
@@ -638,9 +640,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     // recipient's existence or code, and a value transfer adds the EIP-7708 transfer log plus a fixed
     // value-move cost. The new-account surcharge moves to a separate NEW_ACCOUNT state charge, and the
     // EIP-7702 delegation-target touch is charged at execution time (against post-authorization state)
-    // rather than here; neither is priced in this method. worldState-independent because the EELS
+    // rather than here; neither is priced in this method. State-independent because the EELS
     // intrinsic cost does not consult state.
-    private static ulong Eip8038IntrinsicRecipientGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
+    private static ulong Eip8038IntrinsicRecipientGas(Transaction tx)
     {
         bool hasValue = !tx.Value.IsZero;
 
@@ -660,7 +662,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     // Standalone EIP-2780 (pre-EIP-8038) intrinsic recipient cost: a two-tier cold touch keyed on
     // whether the recipient carries code, plus a NEW_ACCOUNT surcharge and a STATE_UPDATE leaf write
     // for value transfers, mirroring the EIP-2780 reference table. Requires <paramref name="worldState"/>
-    // to classify the recipient; superseded by <see cref="Eip8038IntrinsicRecipientGas"/> under EIP-8038.
+    // to classify the recipient; superseded by <see cref="Eip8038IntrinsicRecipientGas(Transaction)"/> under EIP-8038.
     private static ulong Eip2780StandaloneExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
     {
         bool isCreate = tx.IsContractCreation;

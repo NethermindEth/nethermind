@@ -85,7 +85,7 @@ public class AuRaContractGasLimitOverrideTests
     }
 
     [Test]
-    public void IsGasLimitValid_accepts_within_parent_delta_when_contract_differs()
+    public void IsGasLimitValid_requires_exact_contract_value()
     {
         const long parentGasLimit = 30_000_000;
         const long contractGasLimit = 42_000_000;
@@ -97,14 +97,14 @@ public class AuRaContractGasLimitOverrideTests
             LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(parentGasLimit).TestObject;
 
-        bool inRange = calculator.IsGasLimitValid(parent, parentGasLimit + 29_000, out ulong? expected);
-        bool outOfRange = calculator.IsGasLimitValid(parent, parentGasLimit + 10_000_000, out _);
+        bool withinDeltaButNotContract = calculator.IsGasLimitValid(parent, parentGasLimit + 29_000, out ulong? expected);
+        bool exactContractValue = calculator.IsGasLimitValid(parent, contractGasLimit, out _);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(inRange, Is.True);
+            Assert.That(withinDeltaButNotContract, Is.False);
             Assert.That(expected, Is.EqualTo(contractGasLimit));
-            Assert.That(outOfRange, Is.False);
+            Assert.That(exactContractValue, Is.True);
         }
     }
 
