@@ -17,7 +17,10 @@ public readonly ref struct SpanByteReader : IByteReader<NoOpPin>
 
     public bool TryRead(long offset, scoped Span<byte> output)
     {
-        if ((ulong)offset > (ulong)(_data.Length - output.Length)) return false;
+        // Check output.Length > _data.Length first: the subtraction is int arithmetic that underflows to a
+        // huge value once widened to ulong, so an over-long read would pass the guard and throw in Slice
+        // instead of returning a clean miss (mirrors the PinBuffer bound check below).
+        if (output.Length > _data.Length || (ulong)offset > (ulong)(_data.Length - output.Length)) return false;
         _data.Slice((int)offset, output.Length).CopyTo(output);
         return true;
     }

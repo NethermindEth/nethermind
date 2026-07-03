@@ -161,9 +161,21 @@ public class PersistedSnapshotCompactor(
         }
 
         // Ascending bucket order: each sub-CompactSize layer's inputs (the previous layer's
-        // outputs) exist before it runs.
+        // outputs) exist before it runs. Each item is guarded (like RunBoundaryCompactor) so one
+        // snapshot's failure does not abort the whole Parallel.ForEach and skip the CompactSized
+        // boundary production + enqueue below, which would silently stall the persisted tier.
         foreach (KeyValuePair<int, List<StateId>> kv in buckets)
-            Parallel.ForEach(kv.Value, new ParallelOptions { CancellationToken = cancellationToken }, state => DoCompactSnapshot(state, persistedBlockNumber));
+            Parallel.ForEach(kv.Value, new ParallelOptions { CancellationToken = cancellationToken }, state =>
+            {
+                try
+                {
+                    DoCompactSnapshot(state, persistedBlockNumber);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error compacting persisted snapshot {state}. {ex}");
+                }
+            });
 
         // Every boundary — CompactSize and large alike — lands on a CompactSize multiple, so each
         // needs its CompactSized snapshot for RocksDB (persistence advances one CompactSize

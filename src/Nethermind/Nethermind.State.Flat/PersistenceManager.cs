@@ -60,18 +60,30 @@ public class PersistenceManager(
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
 
-    private StateId _currentPersistedStateId = StateId.PreGenesis;
+    // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
+    // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
+    // while the persistence worker updates it. Publish it as an immutable boxed reference and access it via
+    // Volatile — reference assignment is atomic and the box is never mutated after creation.
+    private StrongBox<StateId> _currentPersistedState = new(StateId.PreGenesis);
+
+    private StateId CurrentPersistedStateId
+    {
+        get => Volatile.Read(ref _currentPersistedState).Value;
+        set => Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(value));
+    }
 
     public IPersistence.IPersistenceReader LeaseReader() => persistence.CreateReader();
 
     public StateId GetCurrentPersistedStateId()
     {
-        if (_currentPersistedStateId == StateId.PreGenesis)
+        StateId current = CurrentPersistedStateId;
+        if (current == StateId.PreGenesis)
         {
             using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-            _currentPersistedStateId = reader.CurrentState;
+            current = reader.CurrentState;
+            CurrentPersistedStateId = current;
         }
-        return _currentPersistedStateId;
+        return current;
     }
 
     /// <summary>
@@ -237,7 +249,7 @@ public class PersistenceManager(
                     using Snapshot _ = toPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                     PersistSnapshot(toPersist);
-                    _currentPersistedStateId = toPersist.To;
+                    CurrentPersistedStateId = toPersist.To;
                     snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
                 }
                 else if (persistedToPersist is not null)
@@ -245,7 +257,7 @@ public class PersistenceManager(
                     using PersistedSnapshot _ = persistedToPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                     PersistPersistedSnapshot(persistedToPersist);
-                    _currentPersistedStateId = persistedToPersist.To;
+                    CurrentPersistedStateId = persistedToPersist.To;
                     snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
                 }
                 else if (toConvert?.Compacted is not null)
@@ -276,13 +288,16 @@ public class PersistenceManager(
     /// </summary>
     private async Task ConvertCompactedRange(Snapshot compacted)
     {
+        // Ownership of allStateIds transfers to the compactor on the EnqueueAsync handoff below; until then
+        // this method owns it and must dispose it on any early exit (e.g. Parallel.ForEach cancellation).
+        ArrayPoolList<StateId> allStateIds = new(64);
+        bool handedOff = false;
         try
         {
             // From == PreGenesis (ulong.MaxValue) wraps to 0 here, i.e. the first block after genesis.
             ulong start = compacted.From.BlockNumber + 1;
             ulong end = compacted.To.BlockNumber;
 
-            ArrayPoolList<StateId> allStateIds = new(64);
             for (ulong b = start; b <= end; b++)
             {
                 using ArrayPoolList<StateId> statesAtBlock = snapshotRepository.GetStatesAtBlockNumber(b);
@@ -315,10 +330,12 @@ public class PersistenceManager(
                 snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryBase);
             }
 
+            handedOff = true;
             await compactor.EnqueueAsync(allStateIds, GetCurrentPersistedStateId().BlockNumber, _cts.Token);
         }
         finally
         {
+            if (!handedOff) allStateIds.Dispose();
             compacted.Dispose();
         }
     }
@@ -403,8 +420,8 @@ public class PersistenceManager(
                 using PersistedSnapshot persistedScope = persisted;
                 snapshotRepository.RemoveSiblingAndDescendents(persisted.To);
                 PersistPersistedSnapshot(persisted);
-                _currentPersistedStateId = persisted.To;
-                currentPersistedState = _currentPersistedStateId;
+                CurrentPersistedStateId = persisted.To;
+                currentPersistedState = CurrentPersistedStateId;
                 snapshotRepository.RemoveStatesUntil(persisted.To.BlockNumber);
                 continue;
             }
@@ -415,8 +432,8 @@ public class PersistenceManager(
 
             snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
             PersistSnapshot(snapshotToPersist);
-            _currentPersistedStateId = snapshotToPersist.To;
-            currentPersistedState = _currentPersistedStateId;
+            CurrentPersistedStateId = snapshotToPersist.To;
+            currentPersistedState = CurrentPersistedStateId;
             snapshotRepository.RemoveStatesUntil(snapshotToPersist.To.BlockNumber);
         }
 
@@ -426,7 +443,7 @@ public class PersistenceManager(
     public void ResetPersistedStateId()
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        _currentPersistedStateId = reader.CurrentState;
+        CurrentPersistedStateId = reader.CurrentState;
     }
 
     public void Dispose()

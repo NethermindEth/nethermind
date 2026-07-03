@@ -169,14 +169,18 @@ public sealed class ArenaManager : IArenaManager
     private HashSet<int> PoolFor(ArenaFile file) => file.Small ? _mutableSmallArenas : _mutableArenas;
 
     /// <summary>
-    /// Bookkeeping after <see cref="ArenaWriter.Complete"/>. The writer has already set
-    /// <see cref="ArenaFile.Frontier"/> and (if dedicated) called <see cref="ArenaFile.Truncate"/>;
-    /// the manager does NOT touch the file here. <paramref name="hasHeadroom"/> is true for
-    /// shared writes whose post-frontier still leaves room for further packing.
+    /// Bookkeeping after <see cref="ArenaWriter.Complete"/>. Publishes the post-write
+    /// <see cref="ArenaFile.Frontier"/> (<paramref name="newFrontier"/>) under the manager lock — folding
+    /// the write in here rather than doing it off-lock in the writer serializes it against
+    /// <see cref="MarkDead(ArenaFile, long)"/>'s <c>DeadBytes</c>-vs-<c>Frontier</c> survival read, which
+    /// runs under the same lock. The writer has already done any dedicated <see cref="ArenaFile.Truncate"/>.
+    /// <paramref name="hasHeadroom"/> is true for shared writes whose post-frontier still leaves room for
+    /// further packing.
     /// </summary>
-    internal void OnWriteCompleted(ArenaFile file, bool hasHeadroom)
+    internal void OnWriteCompleted(ArenaFile file, long newFrontier, bool hasHeadroom)
     {
         using Lock.Scope scope = _lock.EnterScope();
+        file.Frontier = newFrontier;
         if (hasHeadroom) PoolFor(file).Add(file.Id);
         // Ratchet ArenaAllocatedBytes up to file.Frontier (post-write high-water): push the
         // delta since the last report and bring file.ReportedFrontier in sync.

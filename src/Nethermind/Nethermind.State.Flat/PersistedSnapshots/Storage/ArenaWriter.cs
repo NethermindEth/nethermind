@@ -46,7 +46,8 @@ public sealed class ArenaWriter : IDisposable
         long newFrontier = _dedicated
             ? dataEnd
             : Math.Min(PageLayout.RoundUpToOsPage(dataEnd), _file.MappedSize);
-        _file.Frontier = newFrontier;
+        // Frontier is published under the manager lock by OnWriteCompleted below (not written here), so it
+        // is serialized against MarkDead's DeadBytes-vs-Frontier read on a shared arena.
 
         if (_dedicated && newFrontier > 0 && newFrontier < _file.MappedSize)
         {
@@ -66,7 +67,7 @@ public sealed class ArenaWriter : IDisposable
         // Dedicated arenas are one-shot — they never return to the mutable pool. Shared
         // arenas re-enter the pool iff there's still room for the next packing scan.
         bool hasHeadroom = !_dedicated && newFrontier < _file.MappedSize;
-        _manager.OnWriteCompleted(_file, hasHeadroom);
+        _manager.OnWriteCompleted(_file, newFrontier, hasHeadroom);
         return (location, reservation);
     }
 

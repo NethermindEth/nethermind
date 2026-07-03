@@ -30,14 +30,22 @@ public sealed unsafe class WholeReadSession : IDisposable, IByteReaderSource<Who
     private readonly byte* _basePtr;
     private readonly long _size;
     private readonly bool _adviseDontNeedOnDispose;
-    private bool _disposed;
+    private int _disposed;
 
     internal WholeReadSession(ArenaReservation reservation, bool adviseDontNeedOnDispose)
     {
         _reservation = reservation;
         _adviseDontNeedOnDispose = adviseDontNeedOnDispose;
         _reservation.AcquireLease();
-        _view = _reservation.OpenWholeView(adviseDontNeedOnDispose);
+        try
+        {
+            _view = _reservation.OpenWholeView(adviseDontNeedOnDispose);
+        }
+        catch
+        {
+            _reservation.Dispose(); // release the lease acquired above if the view could not be opened
+            throw;
+        }
         _basePtr = _view.DataPtr;
         _size = _view.Size;
     }
@@ -52,8 +60,7 @@ public sealed unsafe class WholeReadSession : IDisposable, IByteReaderSource<Who
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _view.Dispose();
         if (_adviseDontNeedOnDispose)
             _reservation.ForgetTracker();
