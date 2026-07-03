@@ -138,10 +138,7 @@ public static partial class EvmInstructions
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
             ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
-            if (BitConverter.IsLittleEndian)
-            {
-                destination = BinaryPrimitives.ReverseEndianness(destination);
-            }
+            destination = BinaryPrimitives.ReverseEndianness(destination);
 
             if (nextInstruction == Instruction.JUMP)
             {

@@ -184,16 +184,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
 
     private bool HasTtd() => _api.SpecProvider?.TerminalTotalDifficulty is not null || mergeConfig.TerminalTotalDifficulty is not null;
 
-    public Task InitNetworkProtocol()
-    {
-        if (MergeEnabled)
-        {
-            ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        }
-
-        return Task.CompletedTask;
-    }
-
     public bool MustInitialize { get => true; }
 
     public virtual IModule Module => new MergePluginModule();
