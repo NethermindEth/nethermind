@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using NSubstitute;
 
@@ -33,7 +34,8 @@ internal static class FlatTestHelpers
     /// optionally pre-populating the snapshot content via <paramref name="populate"/>.
     /// </summary>
     public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, Action<SnapshotContent>? populate = null) =>
-        new(SnapshotList(MakeSnapshot(pool, populate)), Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics: false);
+        new(SnapshotList(MakeSnapshot(pool, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
+            recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 }
 
 /// <summary>
