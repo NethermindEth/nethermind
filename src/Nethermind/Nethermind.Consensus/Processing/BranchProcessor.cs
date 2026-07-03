@@ -223,8 +223,8 @@ public class BranchProcessor(
     {
         if (preWarmTask is not null)
         {
-            // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
+            // Clear caches after prewarm completes; run inline to avoid ThreadPool scheduling jitter.
+            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.ExecuteSynchronously);
         }
         else if (preWarmer is not null)
         {
