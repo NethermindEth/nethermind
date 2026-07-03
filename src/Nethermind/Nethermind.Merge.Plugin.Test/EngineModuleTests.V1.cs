@@ -2305,7 +2305,7 @@ public partial class EngineModuleTests
                 Withdrawal[]? withdrawals = null,
                 Hash256? parentBeaconBlockRoot = null,
                 ulong? slotNumber = null,
-                long? targetGasLimit = null,
+                ulong? targetGasLimit = null,
                 Action<PayloadAttributes>? mutate = null)
             {
                 PayloadAttributes attrs = new()
