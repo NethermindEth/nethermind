@@ -37,7 +37,7 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
 
     private void TruncateToMaxSize()
     {
-        int toDelete = (int)(blockDb.GatherMetric().Size - maxSize!);
+        int toDelete = (int)(blockDb.GetAllKeys().Count() - maxSize);
         if (toDelete > 0)
         {
             foreach (Block blockToDelete in GetAll().Take(toDelete))
