@@ -230,8 +230,11 @@ public static partial class EvmInstructions
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
         bool selfdestructOnlyOnSameTx = spec.SelfdestructOnlyOnSameTransaction;
+        // EIP-4758 (SENDALL): the account is never destroyed, not even when created in the
+        // same transaction — the opcode only moves the whole balance to the inheritor.
+        bool neverDestroys = spec.IsEip4758Enabled;
         // Mark the executing account for destruction if allowed.
-        if (!selfdestructOnlyOnSameTx || createInSameTx)
+        if (!neverDestroys && (!selfdestructOnlyOnSameTx || createInSameTx))
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
@@ -262,9 +265,10 @@ public static partial class EvmInstructions
             state.AddToBalance(inheritor, result, spec);
         }
 
-        // Special handling when SELFDESTRUCT is limited to the same transaction.
+        // Special handling when the account survives the opcode (EIP-6780 outside the creation
+        // transaction, or always under EIP-4758) and inherits from itself.
         // No ETH moves and no log is emitted for this no-op case.
-        if (selfdestructOnlyOnSameTx && !createInSameTx && inheritor.Equals(executingAccount))
+        if ((neverDestroys || (selfdestructOnlyOnSameTx && !createInSameTx)) && inheritor.Equals(executingAccount))
             goto Stop;
 
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
