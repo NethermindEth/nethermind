@@ -125,7 +125,7 @@ public static partial class EvmInstructions
         ulong extraCost = initCodeWordCost + create2HashCost;
         // EIP-8038 reprices the CREATE/CREATE2 account-creation regular cost to CREATE_ACCESS (11000);
         // pre-8038 EIP-8037 uses CreateRegular (9000) and legacy uses GasCostOf.Create (32000).
-        ulong createBaseCost = spec.IsEip8038Enabled ? (ulong)Eip8038Constants.CreateAccess
+        ulong createBaseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
             : TEip8037.IsActive ? GasCostOf.CreateRegular
             : GasCostOf.Create;
         ulong gasCost = createBaseCost + extraCost;

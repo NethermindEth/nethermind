@@ -78,10 +78,10 @@ public class Eip2780Tests
 
     // Whole-transaction gas (base + recipient cold touch + value STATE_UPDATE + transfer log),
     // matching the EIP-2780 reference-case table; recipient AddressF is unfunded (dead per EIP-161).
-    [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780 + GasCostOf.StateUpdateEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to existing EOA (7756)")]
-    [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780 + GasCostOf.NewAccount + GasCostOf.TransferLogEip2780, TestName = "value transfer to new account (31756)")]
-    [TestCase(false, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780, TestName = "no-transfer to existing EOA (5000)")]
-    [TestCase(true, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780, TestName = "no-transfer to empty account (5000)")]
+    [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780 + GasCostOf.StateUpdateEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to existing EOA (15256)")]
+    [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780 + GasCostOf.NewAccount + GasCostOf.TransferLogEip2780, TestName = "value transfer to new account (39256)")]
+    [TestCase(false, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780, TestName = "no-transfer to existing EOA (12500)")]
+    [TestCase(true, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780, TestName = "no-transfer to empty account (12500)")]
     public async Task Simple_transfer_spends_eip2780_total_gas(bool recipientIsNew, ulong value, ulong expectedGas)
     {
         using BasicTestBlockchain chain = await CreateChain();

@@ -189,8 +189,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
         (int addressesCount, int storageKeysCount) = accessList.Count;
         // EIP-8038 realigns access-list entry costs with the cold-access costs they pre-warm.
-        ulong addressCost = (ulong)(spec.IsEip8038Enabled ? Eip8038Constants.AccessListAddressCost : GasCostOf.AccessAccountListEntry);
-        ulong storageKeyCost = (ulong)(spec.IsEip8038Enabled ? Eip8038Constants.AccessListStorageKeyCost : GasCostOf.AccessStorageListEntry);
+        ulong addressCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListAddressCost : GasCostOf.AccessAccountListEntry;
+        ulong storageKeyCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListStorageKeyCost : GasCostOf.AccessStorageListEntry;
         return (ulong)addressesCount * addressCost
             + (ulong)storageKeysCount * storageKeyCost
             + spec.GasCosts.TotalCostFloorPerToken * floorTokensInAccessList;
@@ -215,7 +215,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
         ulong authCount = (ulong)authList.Length;
         // EIP-8038 reprices the per-authorization regular cost (ACCOUNT_WRITE + auth-base).
-        ulong perAuthRegular = (ulong)(spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular);
+        ulong perAuthRegular = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular;
         return spec.IsEip8037Enabled
             ? (
                 authCount * perAuthRegular,

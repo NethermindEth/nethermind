@@ -8,7 +8,6 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -138,12 +137,10 @@ internal class TransactionProcessorEip7702Tests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
-        // devnet-6 intrinsic split (regular = TX base + recipient + EIP-7702 per-auth regular
-        // incl ACCOUNT_WRITE; state = NEW_ACCOUNT + AUTH_BASE per auth) taken from the calculator,
-        // plus the EIP-8037 refunds: the per-authority state gas is refunded in the state dimension
-        // (expectedStateGasRefund), and existing authorities also refund the worst-case ACCOUNT_WRITE
-        // to the regular refund counter, capped at before-refund/5 (EIP-3529).
-        ulong intrinsicRegularGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance, block.Header.GasLimit).Standard.Value;
+        // devnet-6 intrinsic regular = TX base + value-bearing recipient touch (cold + transfer log +
+        // value cost) + EIP-7702 per-auth regular; existing authorities refund ACCOUNT_WRITE, capped at before/5.
+        ulong intrinsicRegularGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess
+            + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseRegular;
         ulong beforeRegularRefund = intrinsicRegularGas + intrinsicStateGas - expectedStateGasRefund;
         ulong regularRefund = authorityPreState == AuthorityPreState.Nonexistent
             ? 0

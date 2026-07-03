@@ -20,9 +20,8 @@ namespace Nethermind.Evm.Test;
 /// additional WARM_ACCESS for the extra database read they perform.
 /// </summary>
 /// <remarks>
-/// Final repriced values are TBD while the EIP is a Draft, so the cold/warm base costs are placeholders
-/// equal to their current values; the only observable change at placeholder values is the extra
-/// EXT* warm access, asserted here against both the EIP-on and EIP-off baselines.
+/// Uses the final glamsterdam-devnet-6 values (cold account/storage access 3000); the extra EXT*
+/// warm access is asserted against both the EIP-on and EIP-off baselines.
 /// </remarks>
 [TestFixture(true)]
 [TestFixture(false)]
