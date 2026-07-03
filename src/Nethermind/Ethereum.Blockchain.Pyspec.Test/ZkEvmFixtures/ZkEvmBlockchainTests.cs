@@ -19,9 +19,6 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
 {
     protected ZkEvmBlockchainTestFixture() : base(parallel: false, batchRead: false) { }
 
-    // blockchain_tests is loaded once and shared by both checks below. ExecutionWitnessMutated is stamped from
-    // the engine tree here (the RLP format has no marker) so the witness comparison can skip mutated blocks; the
-    // stateless executor check ignores that field.
     private static readonly Lazy<IReadOnlyList<BlockchainTest>> _tests = new(() =>
         ZkEvmMutatedWitnessIndex.StampMutatedBlocks(
             new TestsSourceLoader(

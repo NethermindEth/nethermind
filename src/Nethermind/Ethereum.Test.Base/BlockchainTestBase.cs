@@ -363,9 +363,8 @@ public abstract class BlockchainTestBase
             int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            // zkEVM: only an unmutated, expected-VALID reference witness exercises the witness endpoint.
-            // EIP-8025 mutated-witness payloads still validate statefully (the witness is not a newPayload
-            // input), so import them via the plain path and skip the equality compare.
+            // Only an unmutated, expected-VALID reference witness exercises engine_newPayloadWithWitness; EIP-8025
+            // mutated payloads go through the plain endpoint (their witness is a corrupted reference useful for stateless exec).
             bool expectWitness = enginePayload.ExecutionWitness is not null
                 && enginePayload.ExecutionWitnessMutated != true
                 && validationError is null;
@@ -811,11 +810,7 @@ public abstract class BlockchainTestBase
         return false;
     }
 
-    /// <summary>
-    /// For each test block that publishes a reference executionWitness, regenerate the client's
-    /// witness by re-executing the imported block in the witness-generating sandbox and compare
-    /// codes/state/headers as ordered arrays. Mismatches are appended to <paramref name="differences"/>.
-    /// </summary>
+    /// <summary>Regenerates each block's witness by re-executing it in the witness-generating sandbox and compares it to the fixture reference.</summary>
     private static void VerifyWitnesses(
         BlockchainTest test,
         IBlockTree blockTree,
@@ -827,10 +822,7 @@ public abstract class BlockchainTestBase
         {
             ExecutionWitnessJson? expected = testBlockJson.ExecutionWitness;
             if (expected is null) continue;
-            // EIP-8025 mutated-witness blocks carry a deliberately-corrupted reference, so comparison
-            // is meaningless (flag is stamped at load time from the engine tree; RLP has no marker).
             if (testBlockJson.ExecutionWitnessMutated == true) continue;
-            // Invalid-block fixtures never reach a successfully imported block; nothing to compare.
             if (testBlockJson.ExpectException is not null) continue;
             if (testBlockJson.BlockHeader is null) continue;
 
@@ -848,9 +840,8 @@ public abstract class BlockchainTestBase
                 continue;
             }
 
-            // The witness collector re-processes the block directly, bypassing the pipeline's sender-recovery
-            // step, so recover senders here first (as BlockchainBridge.GenerateExecutionWitness does): a block
-            // reloaded from the DB after cache eviction has RLP-decoded txs with no recovered sender.
+            // The collector re-processes the block directly, bypassing the pipeline's sender recovery, so a block
+            // reloaded from the DB has RLP-decoded txs with no sender. Recover here, as BlockchainBridge does.
             if (block.Transactions.Length > 0)
             {
                 EthereumEcdsa ecdsa = new(test.ChainId);
@@ -877,11 +868,6 @@ public abstract class BlockchainTestBase
         ComputeDiff(blockHash, "headers", expected.Headers, actual.Headers, differences);
     }
 
-    /// <summary>
-    /// Compares the reference and produced witness sections element-by-element in order. The witness is
-    /// order-sensitive — a stateless verifier replays it as an ordered sequence — so ordering and duplication
-    /// must match exactly; a set diff would mask both.
-    /// </summary>
     private static void ComputeDiff(
         Hash256 blockHash,
         string section,

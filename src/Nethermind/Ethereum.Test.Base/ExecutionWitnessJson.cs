@@ -5,8 +5,6 @@ namespace Ethereum.Test.Base
 {
     /// <summary>
     /// EELS-produced reference execution witness as published in EEST zkEVM fixtures.
-    /// All three sections are hex-encoded byte arrays; treat as sets when comparing
-    /// against a client-produced <see cref="Nethermind.Consensus.Stateless.Witness"/>.
     /// </summary>
     public class ExecutionWitnessJson
     {

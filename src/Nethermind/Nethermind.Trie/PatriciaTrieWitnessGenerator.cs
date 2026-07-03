@@ -208,16 +208,13 @@ public static class PatriciaTrieWitnessGenerator
                 TrieNode? child = childIterator.GetChildWithChildPath(resolver, ref path, nib);
                 if (child is null)
                 {
-                    // Absent pre-state child: no child to fold into, so this is the one place the walk still scans the
-                    // bucket for an upsert — one filling the empty slot makes it a survivor; read/delete leaves it
-                    // Untraversed (no collapse effect).
+                    // Absent slot: no child to fold into, so scan the bucket — an upsert filling it makes it a survivor;
+                    // read/delete leaves it Untraversed.
                     if (BucketHasUpsert(entries[start..end])) childState[nib] = Survived;
                     continue;
                 }
 
-                // A walked child folds any upsert in its subtree into its own "maybe emptied" answer — a keyed node
-                // reports itself occupied when its bucket holds an upsert, and a branch child's upsert surfaces a
-                // survivor in its collapse check — so an upsert here already yields Survived without a separate scan.
+                // A walked child folds any upsert in its subtree into its own "maybe emptied" answer, so no bucket scan here.
                 bool childMaybeEmptied = Walk(in ctx, resolver, child, ref path, entries[start..end], sortBuffer[start..end], flipCount, parallelize, sink);
                 childState[nib] = childMaybeEmptied ? MaybeEmptied : Survived;
             }
@@ -248,9 +245,8 @@ public static class PatriciaTrieWitnessGenerator
 
         if (node.IsLeaf)
         {
-            // The leaf's subtree is emptied only if its own key is deleted AND no upsert lands in this bucket: an
-            // upsert of the leaf's key keeps it, and an off-key upsert splits the leaf into a branch, so either way the
-            // slot stays occupied. Detecting the upsert here lets the parent branch skip a separate bucket scan.
+            // Emptied only if the leaf's own key is deleted AND no upsert lands in this bucket (an upsert keeps the
+            // key, or splits the leaf into a branch — either way the slot stays occupied).
             ValueHash256 leafKey = keyedPath.Path;
             bool deleted = false;
             bool hasUpsert = false;
@@ -263,9 +259,8 @@ public static class PatriciaTrieWitnessGenerator
             return deleted && !hasUpsert;
         }
 
-        // Extension: keep only entries within the prefix's subtree [lower, upper]; the rest branch off it and cannot
-        // empty its child. An out-of-range upsert branches off the extension and so occupies its slot, folded in
-        // below (the parent branch relies on this instead of scanning the bucket itself).
+        // Extension: keep only entries within the prefix's subtree [lower, upper]; the rest branch off it (an
+        // out-of-range upsert occupies the extension's slot, so it too keeps the node from being emptied).
         ValueHash256 lower = keyedPath.ToLowerBoundPath();
         ValueHash256 upper = keyedPath.ToUpperBoundPath();
         int m = 0;

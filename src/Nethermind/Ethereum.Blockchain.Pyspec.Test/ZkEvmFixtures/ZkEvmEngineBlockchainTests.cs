@@ -8,10 +8,8 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test.ZkEvmFixtures;
 
-// zkEVM witness assertion over the Engine API (blockchain_tests_engine) path: drives each engineNewPayloads[]
-// entry carrying a reference executionWitness through engine_newPayloadWithWitness and compares the returned
-// witness against the fixture reference. EIP-8025 executionWitnessMutated payloads instead go through plain
-// engine_newPayloadV{N} and skip the compare (handled per-payload in BlockchainTestBase.RunNewPayloads).
+// zkEVM witness assertion over the Engine API (blockchain_tests_engine) path. Per-payload dispatch between
+// engine_newPayloadWithWitness and the plain endpoint lives in BlockchainTestBase.RunNewPayloads.
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public abstract class ZkEvmEngineBlockchainTestFixture : PyspecLinuxX64BlockchainFixture

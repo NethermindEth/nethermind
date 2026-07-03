@@ -27,16 +27,14 @@ public class WitnessGeneratingWorldState(
     : WorldStateDecorator(state)
 {
     private readonly Dictionary<AddressAsKey, HashSet<UInt256>> _storageSlots = [];
-    // Codes touched by execution, minus those that are a currently-live in-block deploy (see
-    // RecordBytecode). Captured at the world-state level for both the sandbox and main-pipeline envs.
+    // Codes touched by execution, minus currently-live in-block deploys (see RecordBytecode).
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes =
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
-    // In-block code deploys (CREATE). A read of a currently-live deploy is excluded from the witness — the
-    // verifier reconstructs it from the CREATE (EELS reads such codes from code_writes, not pre_state).
-    // Rollback-aware via the snapshot/restore overrides: a reverted deploy is dropped so a later read of it
-    // falls through to pre-state and IS captured. _deployOrder is the ordered, deduped journal; _deployFrames
-    // maps each live snapshot to the deploy count when it was taken, so Restore can truncate back to it.
+    // In-block code deploys (CREATE), excluded from the witness because the verifier reconstructs them by replaying
+    // the CREATE (EELS reads such codes from code_writes, not pre_state). Rollback-aware: Restore drops a reverted
+    // deploy so a later read of it falls through to pre-state and IS captured. _deployOrder is the ordered, deduped
+    // journal; _deployFrames maps each live snapshot to the deploy count at that point so Restore can truncate to it.
     private readonly HashSet<ValueHash256> _inBlockDeployed =
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());
     private readonly List<ValueHash256> _deployOrder = [];
@@ -120,11 +118,8 @@ public class WitnessGeneratingWorldState(
             using ArrayPoolListRef<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
             foreach (AddressAsKey address in _storageSlots.Keys)
             {
-                // A surviving account occupies its state-trie slot in the post-state (an upsert); a removed one is
-                // a delete. Tagging survivors Upsert rather than Read keeps a newly-created account (absent in the
-                // pre-state trie) from being treated as non-occupying, so a sibling deletion in the same branch does
-                // not falsely collapse it — mirrors the storage-slot tagging below and the generator's
-                // upsert-before-delete model.
+                // Survivor => Upsert (occupies its post-state slot), removed => Delete. Upsert rather than Read so a
+                // sibling deletion in the same branch cannot falsely collapse it (see the generator's upsert-before-delete model).
                 PatriciaTrieWitnessGenerator.AccessType access = base.AccountExists(address)
                     ? PatriciaTrieWitnessGenerator.AccessType.Upsert
                     : PatriciaTrieWitnessGenerator.AccessType.Delete;
@@ -146,9 +141,7 @@ public class WitnessGeneratingWorldState(
                 {
                     ValueHash256 slotKey = default;
                     StorageTree.ComputeKeyWithLookup(slot, ref slotKey);
-                    // A non-zero post-state slot is occupied (an upsert); a zero one was removed (a delete). The
-                    // generator replays upserts before deletes, so a delete+insert block does not over-capture the
-                    // branch's collapse sibling.
+                    // Non-zero post-state slot => Upsert (occupied), zero => Delete. Same reasoning as the account tagging above.
                     bool deleted = base.Get(new StorageCell(address, slot)).IndexOfAnyExcept((byte)0) < 0;
                     slotEntries.Add(new(slotKey, deleted ? PatriciaTrieWitnessGenerator.AccessType.Delete : PatriciaTrieWitnessGenerator.AccessType.Upsert));
                 }
@@ -209,8 +202,6 @@ public class WitnessGeneratingWorldState(
         return code;
     }
 
-    /// <inheritdoc/>
-    /// <remarks>The code-DB wrapper captures the bytecode if this read reaches the pre-state DB.</remarks>
     public override void RecordAccountAccess(Address address) => RecordEmptySlots(address);
 
     public override void RecordBytecodeAccess(Address address) => GetCode(address);
@@ -290,17 +281,15 @@ public class WitnessGeneratingWorldState(
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         RecordEmptySlots(address);
-        // Track the deploy so a later read of its code is excluded from the witness (the verifier replays the
-        // CREATE and regenerates it). Deduped by hash so a redeploy of an already-live code is not relogged,
-        // mirroring EELS code_writes (keyed by hash). The deployed code itself is never added to _bytecodes.
+        // Journal the deploy (see _inBlockDeployed) so a later read of its code is excluded from the witness. Deduped
+        // by hash, mirroring EELS code_writes; the deployed code itself is never added to _bytecodes.
         if (_inBlockDeployed.Add(codeHash)) _deployOrder.Add(codeHash);
         return base.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
     public override Snapshot TakeSnapshot(bool newTransactionStart = false)
     {
-        // A new transaction commits the previous one's deploys (they can no longer be reverted to a point
-        // before this transaction), so drop its frames — bounding the stack to one transaction's call depth.
+        // A new transaction commits the previous one's deploys (no longer revertable), so drop its frames.
         if (newTransactionStart) _deployFrames.Clear();
         Snapshot snapshot = base.TakeSnapshot(newTransactionStart);
         _deployFrames.Add((snapshot, _deployOrder.Count));
@@ -309,9 +298,8 @@ public class WitnessGeneratingWorldState(
 
     public override void Restore(Snapshot snapshot)
     {
-        // Unwind to the frame that took `snapshot` and drop deploys made after it, so a reverted CREATE's
-        // code falls back to pre-state and is captured (rollback-aware code_writes). Every TakeSnapshot pushes
-        // a frame, so the match exists; default to keeping all deploys if it somehow doesn't.
+        // Drop deploys made after `snapshot` so a reverted CREATE's code falls back to pre-state and is captured.
+        // Default to keeping all deploys if no matching frame is found.
         int keep = _deployOrder.Count;
         for (int i = _deployFrames.Count - 1; i >= 0; i--)
         {
@@ -396,8 +384,8 @@ public class WitnessGeneratingWorldState(
 
     private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
     {
-        // Skip empty code and currently-live in-block deploys (see _inBlockDeployed): EELS get_code's read
-        // chain (tx/block code_writes → pre_state) serves those from code_writes, not pre_state.
+        // Skip empty code and currently-live in-block deploys (see _inBlockDeployed): EELS serves those from
+        // code_writes, not pre_state.
         if (code is not { Length: > 0 }) return;
         if (!_inBlockDeployed.Contains(codeHash))
             _bytecodes.TryAdd(codeHash, code);

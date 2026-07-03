@@ -198,8 +198,6 @@ public static partial class EvmInstructions
         else
         {
             vm.WorldState.AddAccountRead(address);
-            // EXTCODECOPY with size==0 copies nothing, so no code lookup happens above, but EELS still
-            // resolves the callee's code; signal the logical read so the witness includes the bytecode.
             vm.WorldState.RecordBytecodeAccess(address);
         }
 

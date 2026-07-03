@@ -47,8 +47,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (vmSpec.IsPrecompile(codeSource))
         {
             _worldState.AddAccountRead(codeSource);
-            // The precompile short-circuit skips GetCodeHash/GetCode; RecordAccountAccess is the witness
-            // signal (AddAccountRead only feeds the BAL generator) so the account's trie path is captured.
             _worldState.RecordAccountAccess(codeSource);
             return _localPrecompiles[codeSource];
         }
@@ -81,8 +79,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
-        // The single chokepoint where the EVM resolves code with both address and codeHash in scope, so the
-        // witness records the read even via a code-info loader path. No-op except on WitnessGeneratingWorldState.
+        // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.
         worldState.RecordBytecodeAccess(address);
         // When executing in parallel must get by address
         byte[]? code = worldState.GetCode(in codeHash) ?? worldState.GetCode(address);

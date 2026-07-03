@@ -60,8 +60,7 @@ public class PatriciaTrieWitnessGeneratorTests
             Assert.That(value, Is.EqualTo(readValues[key]), $"read mismatch for {key}");
         }
 
-        // Writes/deletes re-applied against the witness must reproduce the post-state root: upserts before deletes,
-        // matching the order the witness was generated for.
+        // Replay in the witness's order — upserts before deletes — to reproduce the post-state root.
         foreach ((Hash256 key, byte[] value) in scenario.Writes) tree.Set(key.Bytes, value);
         foreach (Hash256 key in scenario.Deletes) tree.Set(key.Bytes, (byte[])null);
         tree.UpdateRootHash();
@@ -70,11 +69,9 @@ public class PatriciaTrieWitnessGeneratorTests
     }
 
     /// <summary>
-    /// Regression for the EEST <c>witness_state_replay_order</c> tests: a block that deletes one leaf of a branch and
-    /// inserts a fresh sibling into the same branch must NOT pull in the branch's collapse sibling, because the
-    /// verifier replays the upsert before the delete (so the branch never transiently collapses). The contrast with
-    /// tagging the fresh key <see cref="PatriciaTrieWitnessGenerator.AccessType.Read"/> shows a read is path-only and
-    /// does not occupy the slot, so the collapse sibling is then captured.
+    /// Regression for the EEST <c>witness_state_replay_order</c> tests: deleting one leaf of a branch while inserting a
+    /// fresh sibling must NOT pull in the collapse sibling, because the verifier replays the upsert before the delete.
+    /// Re-tagging the fresh key <see cref="PatriciaTrieWitnessGenerator.AccessType.Read"/> (path-only) then does capture it.
     /// </summary>
     [Test]
     public void Upsert_before_delete_does_not_capture_collapse_sibling()
@@ -156,8 +153,7 @@ public class PatriciaTrieWitnessGeneratorTests
     }
 
     /// <summary>Reads first (on the pristine trie), then applies the mutations, returning the post-state root.</summary>
-    /// <remarks>Writes (upserts) are applied before deletes on purpose: that is the canonical replay order the
-    /// generator models, so it is the order whose touched-node set the witness must equal.</remarks>
+    /// <remarks>Writes are applied before deletes: the canonical replay order the generator models.</remarks>
     private static Hash256 ApplyWrites(IScopedTrieStore store, Hash256 root, Scenario scenario, out Dictionary<Hash256AsKey, byte[]> readValues)
     {
         PatriciaTree tree = new(store, LimboLogs.Instance) { RootHash = root };
@@ -244,9 +240,8 @@ public class PatriciaTrieWitnessGeneratorTests
         yield return Case(new Scenario("absent read/delete", populated,
             [Hash("dd")], [Hash("ee")], []));
 
-        // Upsert-before-delete: an off-key insert (a write branching off a deleted leaf's key) keeps the sibling (2b)
-        // OUT of the witness — the insert is replayed first and refills the branch before the delete, so it never
-        // collapses to a lone child.
+        // Off-key insert branching off a deleted leaf's key keeps the sibling (2b) OUT of the witness: the insert is
+        // replayed before the delete, so the branch never collapses to a lone child.
         List<(Hash256, byte[])> splitBase =
         [
             (Hash("1a"), Bytes.FromHexString("01")),

@@ -12,9 +12,6 @@ namespace Ethereum.Test.Base
         public string? ForkChoiceUpdatedVersion { get; set; }
         public string? ValidationError { get; set; }
 
-        // zkEVM-only fields (blockchain_tests_engine fixtures, null elsewhere). ExecutionWitness is the EELS
-        // reference asserted against engine_newPayloadWithWitness output; ExecutionWitnessMutated marks
-        // EIP-8025 payloads whose witness is intentionally corrupted, so comparison is skipped.
         public ExecutionWitnessJson? ExecutionWitness { get; set; }
         public bool? ExecutionWitnessMutated { get; set; }
 

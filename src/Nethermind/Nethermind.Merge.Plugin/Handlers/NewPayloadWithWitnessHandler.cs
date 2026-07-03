@@ -40,10 +40,6 @@ public sealed class NewPayloadWithWitnessHandler(
         using ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
             executionPayload, request.BlobVersionedHashes ?? [], request.ParentBeaconBlockRoot, request.ExecutionRequests);
 
-        // engine_newPayloadV5 returns only after ProcessOne has run, so the registration is already in its
-        // final state — a synchronous check suffices (the using-Dispose cancels it otherwise). Drain any
-        // produced witness up front so every early-return path below disposes it rather than leaking its
-        // pooled buffers (Release is a no-op once the processor has claimed and completed the slot).
         Witness? capturedWitness = witnessRequest.Task.IsCompletedSuccessfully ? witnessRequest.Task.Result : null;
 
         if (statusResult.Result.ResultType != ResultType.Success)
@@ -60,7 +56,6 @@ public sealed class NewPayloadWithWitnessHandler(
         if (payloadStatus.Status == PayloadStatus.Valid)
             witness = capturedWitness;
         else
-            // Non-VALID, so we won't return the witness; dispose it to avoid a leak.
             capturedWitness?.Dispose();
 
         return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(
