@@ -107,6 +107,19 @@ public class RecordReplayTests
                 ws.CommitTree(3);
                 blocks.Add((3, ws.StateRoot));
             }
+
+            // Block 4: two per-transaction commits in one block (as a pre-Byzantium block would), rewriting the
+            // same slot across both flushes -> recorded as two write batches and replayed in order.
+            using (ws.BeginScope(HeaderFor(blocks[2])))
+            {
+                ws.Set(new StorageCell(TestItem.AddressE, 7), Bytes.FromHexString("0x01"));
+                ws.Commit(spec);
+                ws.Set(new StorageCell(TestItem.AddressE, 7), Bytes.FromHexString("0x02"));
+                ws.AddToBalance(TestItem.AddressA, 1.Ether, spec);
+                ws.Commit(spec);
+                ws.CommitTree(4);
+                blocks.Add((4, ws.StateRoot));
+            }
         }
         return blocks;
     }

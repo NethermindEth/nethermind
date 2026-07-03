@@ -49,7 +49,7 @@ public sealed class RecordingScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb ??= new RecordingCodeDb(inner.CodeDb, _builder);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
-            => new RecordingWriteBatch(inner.StartWriteBatch(estimatedAccountNum), _builder);
+            => new RecordingWriteBatch(inner.StartWriteBatch(estimatedAccountNum), _builder.StartBatch());
 
         public void Commit(ulong blockNumber)
         {
@@ -75,7 +75,7 @@ public sealed class RecordingScopeProvider(
 
     private sealed class RecordingWriteBatch(
         IWorldStateScopeProvider.IWorldStateWriteBatch inner,
-        StateDiffRecordBuilder builder) : IWorldStateScopeProvider.IWorldStateWriteBatch
+        StateDiffRecordBuilder.BatchBuilder batch) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
         {
@@ -85,30 +85,30 @@ public sealed class RecordingScopeProvider(
 
         public void Set(Address key, Account? account)
         {
-            builder.SetAccount(key, account);
+            batch.SetAccount(key, account);
             inner.Set(key, account);
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
-            => new RecordingStorageWriteBatch(inner.CreateStorageWriteBatch(key, estimatedEntries), builder, key);
+            => new RecordingStorageWriteBatch(inner.CreateStorageWriteBatch(key, estimatedEntries), batch, key);
 
         public void Dispose() => inner.Dispose();
     }
 
     private sealed class RecordingStorageWriteBatch(
         IWorldStateScopeProvider.IStorageWriteBatch inner,
-        StateDiffRecordBuilder builder,
+        StateDiffRecordBuilder.BatchBuilder batch,
         Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, byte[] value)
         {
-            builder.SetSlot(address, index, value);
+            batch.SetSlot(address, index, value);
             inner.Set(index, value);
         }
 
         public void Clear()
         {
-            builder.ClearStorage(address);
+            batch.ClearStorage(address);
             inner.Clear();
         }
 

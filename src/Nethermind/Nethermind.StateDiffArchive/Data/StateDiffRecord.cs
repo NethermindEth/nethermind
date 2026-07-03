@@ -36,12 +36,12 @@ public enum AccountChangeKind : byte
 /// </remarks>
 public sealed class StateDiffRecord : IDisposable
 {
-    public const byte CurrentVersion = 1;
+    public const byte CurrentVersion = 2;
 
     private readonly IMemoryOwner<byte> _owner;
     private readonly ReadOnlyMemory<byte> _rlp;
-    private readonly int _accountsStart;
-    private readonly int _accountsEnd;
+    private readonly int _batchesStart;
+    private readonly int _batchesEnd;
     private readonly int _codesStart;
     private readonly int _codesEnd;
 
@@ -57,14 +57,18 @@ public sealed class StateDiffRecord : IDisposable
         RlpReader r = new(rlp.Span);
         r.ReadSequenceLength();
         Version = r.DecodeByte();
+        if (Version is not (1 or CurrentVersion))
+            throw new RlpException($"Unsupported StateDiffRecord version {Version}");
         BlockNumber = r.DecodeULong();
         StateRoot = r.DecodeKeccak() ?? throw new RlpException("StateDiffRecord.StateRoot must not be null");
 
-        int accountsLength = r.ReadSequenceLength();
-        _accountsStart = r.Position;
-        _accountsEnd = r.Position + accountsLength;
+        // v1: the fourth element is a single flat account list; v2: it is a list of per-flush write batches.
+        // Either way this is the region the batch enumerator walks (once for v1, per element for v2).
+        int batchesLength = r.ReadSequenceLength();
+        _batchesStart = r.Position;
+        _batchesEnd = r.Position + batchesLength;
 
-        r.Position = _accountsEnd;
+        r.Position = _batchesEnd;
         int codesLength = r.ReadSequenceLength();
         _codesStart = r.Position;
         _codesEnd = r.Position + codesLength;
@@ -72,23 +76,74 @@ public sealed class StateDiffRecord : IDisposable
 
     public bool HasCodes => _codesEnd > _codesStart;
 
-    /// <summary>Counts the changed accounts by walking their region, reading only each entry's length prefix (not decoding it).</summary>
-    public int CountAccounts()
-    {
-        RlpReader reader = new(_rlp.Span) { Position = _accountsStart };
-        int count = 0;
-        while (reader.Position < _accountsEnd)
-        {
-            reader.SkipItem();
-            count++;
-        }
-        return count;
-    }
-
-    public AccountEnumerator Accounts => new(_rlp, _accountsStart, _accountsEnd);
+    /// <summary>The block's write batches, in application order: one synthetic batch for a v1 record, the recorded list for v2.</summary>
+    public BatchEnumerator Batches => new(_rlp, _batchesStart, _batchesEnd, Version);
     public CodeEnumerator Codes => new(_rlp, _codesStart, _codesEnd);
 
     public void Dispose() => _owner.Dispose();
+
+    /// <summary>Walks the block's write batches; a v1 record yields exactly one batch over its whole account region.</summary>
+    public struct BatchEnumerator
+    {
+        private readonly ReadOnlyMemory<byte> _rlp;
+        private readonly int _end;
+        private readonly bool _singleBatch; // v1: the region is one batch's account list, not a list of batches
+        private int _position;
+        private bool _yielded;
+        private WriteBatchView _current;
+
+        internal BatchEnumerator(ReadOnlyMemory<byte> rlp, int start, int end, byte version)
+        {
+            _rlp = rlp;
+            _end = end;
+            _position = start;
+            _singleBatch = version == 1;
+        }
+
+        public readonly BatchEnumerator GetEnumerator() => this;
+        public readonly WriteBatchView Current => _current;
+
+        public bool MoveNext()
+        {
+            if (_singleBatch)
+            {
+                if (_yielded) return false;
+                _yielded = true;
+                _current = new WriteBatchView(_rlp, _position, _end);
+                return true;
+            }
+
+            if (_position >= _end) return false;
+            RlpReader r = new(_rlp.Span) { Position = _position };
+            int contentLength = r.ReadSequenceLength();
+            int contentStart = r.Position;
+            _current = new WriteBatchView(_rlp, contentStart, contentStart + contentLength);
+            _position = contentStart + contentLength;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// A storable handle to one write batch's account-change region within the record buffer; enumerating it
+    /// parses the account diffs on demand, so it can be carried into the replay's storage worker.
+    /// </summary>
+    public readonly struct WriteBatchView(ReadOnlyMemory<byte> rlp, int start, int end)
+    {
+        /// <summary>Counts the changed accounts by walking the region, reading only each entry's length prefix (not decoding it).</summary>
+        public int CountAccounts()
+        {
+            RlpReader reader = new(rlp.Span) { Position = start };
+            int count = 0;
+            while (reader.Position < end)
+            {
+                reader.SkipItem();
+                count++;
+            }
+            return count;
+        }
+
+        public AccountEnumerator Accounts => new(rlp, start, end);
+    }
 
     /// <summary>Walks the per-address change entries; reusable, allocation-free.</summary>
     public ref struct AccountEnumerator(ReadOnlyMemory<byte> rlp, int start, int end)
