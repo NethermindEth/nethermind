@@ -160,7 +160,7 @@ public class Eip8037BlockGasIntegrationTests
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None),
-            "EIP-8037 requires rejection at inclusion when tx.gas - intrinsic.regular > block_gas_limit");
+            "EIP-8037 requires rejection at inclusion when tx.gas > state_gas_available (full reservation, no intrinsic subtraction)");
     }
 
     /// <summary>

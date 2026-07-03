@@ -290,7 +290,7 @@ namespace Nethermind.Evm.Test
         // recipient cold/warm touch + value STATE_UPDATE), matching the spec's reference-case table.
         public enum Recipient { NewAccount, ExistingEoa, Contract, Precompile, SelfTransfer, EmptyZeroValue }
 
-        private const ulong TxBaseEip2780 = GasCostOf.TransactionEip2780;        // 4500
+        private const ulong TxBaseEip2780 = GasCostOf.TransactionEip2780;        // 12000
         private const ulong TransferLogEip2780 = GasCostOf.TransferLogEip2780;   // 1756
         private const ulong ColdNoCode = GasCostOf.ColdAccountAccessNoCodeEip2780; // 500
         private const ulong ColdCode = GasCostOf.ColdAccountAccess;              // 2600
@@ -299,17 +299,17 @@ namespace Nethermind.Evm.Test
         public static IEnumerable<TestCaseData> Eip2780IntrinsicCases()
         {
             yield return new TestCaseData(Recipient.NewAccount, (UInt256)1, TxBaseEip2780 + ColdNoCode + GasCostOf.NewAccount + TransferLogEip2780)
-                .SetName("Eip2780_intrinsic_value_to_new_account_31756");
+                .SetName("Eip2780_intrinsic_value_to_new_account_39256");
             yield return new TestCaseData(Recipient.ExistingEoa, (UInt256)1, TxBaseEip2780 + ColdNoCode + StateUpdate + TransferLogEip2780)
-                .SetName("Eip2780_intrinsic_value_to_existing_eoa_7756");
+                .SetName("Eip2780_intrinsic_value_to_existing_eoa_15256");
             yield return new TestCaseData(Recipient.Contract, (UInt256)1, TxBaseEip2780 + ColdCode + StateUpdate + TransferLogEip2780)
-                .SetName("Eip2780_intrinsic_value_to_contract_9856");
+                .SetName("Eip2780_intrinsic_value_to_contract_17356");
             yield return new TestCaseData(Recipient.Precompile, (UInt256)1, TxBaseEip2780 + TransferLogEip2780)
-                .SetName("Eip2780_intrinsic_value_to_precompile_6256");
+                .SetName("Eip2780_intrinsic_value_to_precompile_13756");
             yield return new TestCaseData(Recipient.SelfTransfer, (UInt256)1, TxBaseEip2780)
-                .SetName("Eip2780_intrinsic_self_transfer_4500");
+                .SetName("Eip2780_intrinsic_self_transfer_12000");
             yield return new TestCaseData(Recipient.EmptyZeroValue, (UInt256)0, TxBaseEip2780 + ColdNoCode)
-                .SetName("Eip2780_intrinsic_no_transfer_to_empty_5000");
+                .SetName("Eip2780_intrinsic_no_transfer_to_empty_12500");
         }
 
         [TestCaseSource(nameof(Eip2780IntrinsicCases))]

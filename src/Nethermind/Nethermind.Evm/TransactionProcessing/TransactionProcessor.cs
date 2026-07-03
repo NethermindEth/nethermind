@@ -1512,9 +1512,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ulong remainingRegularGas = TGasPolicy.GetRemainingGas(in gas);
             long stateReservoir = TGasPolicy.GetStateReservoir(in gas);
+            Debug.Assert(stateReservoir >= 0 && remainingRegularGas + (ulong)stateReservoir <= tx.GasLimit,
+                $"EIP-8037 fail-path invariant violated: remaining ({remainingRegularGas}) + reservoir ({stateReservoir}) exceeds gasLimit ({tx.GasLimit}).");
             ulong preRefundGas = tx.GasLimit - remainingRegularGas - (ulong)stateReservoir;
             ulong spentGas = Math.Max(preRefundGas, floorGas);
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gas);
+            Debug.Assert(blockStateGas >= 0, $"EIP-8037 fail-path invariant violated: negative block state gas ({blockStateGas}).");
             ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)blockStateGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
@@ -1543,6 +1546,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             TGasPolicy.SetOutOfGas(ref gasAfterCollision);
             long reservoirAfterCollision = TGasPolicy.GetStateReservoir(in gasAfterCollision);
+            Debug.Assert(reservoirAfterCollision >= 0 && (ulong)reservoirAfterCollision <= tx.GasLimit,
+                $"EIP-8037 collision-path invariant violated: reservoir ({reservoirAfterCollision}) exceeds gasLimit ({tx.GasLimit}).");
             ulong spentGas = Math.Max(tx.GasLimit - (ulong)reservoirAfterCollision, floorGas);
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterCollision);
 
@@ -1563,6 +1568,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 return tx.GasLimit;
 
             long stateReservoir = TGasPolicy.GetStateReservoir(in gas);
+            Debug.Assert(stateReservoir >= 0 && (ulong)stateReservoir <= tx.GasLimit,
+                $"EIP-8037 halt-path invariant violated: reservoir ({stateReservoir}) exceeds gasLimit ({tx.GasLimit}).");
             // EELS: tx_gas_used_before_refund = tx.gas - gas_left - state_gas_left; on a halt gas_left is
             // zeroed so the regular dimension is fully spent and only the state reservoir remains unused.
             ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
@@ -1580,6 +1587,8 @@ namespace Nethermind.Evm.TransactionProcessing
             // Block regular gas = before_refund - state (EELS tx_regular_gas). Neither the gas refund nor the
             // EIP-7623/7976 calldata floor touches it: both adjust only the sender charge (tx_gas_used /
             // receipts). The floor in particular must NOT inflate the block's regular-gas dimension.
+            Debug.Assert((ulong)effectiveStateGas <= preRefundGas,
+                $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
             ulong blockGas = preRefundGas - (ulong)effectiveStateGas;
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
@@ -1761,6 +1770,9 @@ namespace Nethermind.Evm.TransactionProcessing
             in TGasPolicy gasAfterExecution,
             ulong codeInsertRegularRefund)
         {
+            Debug.Assert(substate.IsError || (TGasPolicy.GetStateReservoir(in gasAfterExecution) >= 0
+                    && TGasPolicy.GetRemainingGas(in gasAfterExecution) + (ulong)TGasPolicy.GetStateReservoir(in gasAfterExecution) <= tx.GasLimit),
+                $"Gas invariant violated: remaining ({TGasPolicy.GetRemainingGas(in gasAfterExecution)}) + reservoir ({TGasPolicy.GetStateReservoir(in gasAfterExecution)}) exceeds gasLimit ({tx.GasLimit}).");
             ulong spentGas = substate.IsError
                 ? tx.GasLimit
                 : tx.GasLimit - TGasPolicy.GetRemainingGas(in gasAfterExecution) - (ulong)TGasPolicy.GetStateReservoir(in gasAfterExecution);
@@ -1786,6 +1798,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return (spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGas) : 0, 0);
 
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
+            Debug.Assert(blockStateGas >= 0, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
             ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)blockStateGas);
 
             return (blockGas, blockStateGas);
