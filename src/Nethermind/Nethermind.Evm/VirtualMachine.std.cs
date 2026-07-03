@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -13,8 +14,20 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private static long _txCount;
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
 
+    // Per-spec opcode dispatch tables; only a handful of specs are ever active (at head, the current and
+    // next fork). std-only: the zkEVM guest runs a single fork and caches in plain statics (see .zkevm).
+    private sealed unsafe class OpcodeTable
+    {
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? NoTrace;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? Traced;
+    }
+
+    private static readonly ConcurrentDictionary<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
+
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
+        OpcodeTable table = _opcodeTablesBySpec.GetOrAdd(spec, static _ => new OpcodeTable());
+
         // Check if tracing instructions are inactive.
         if (!TTracingInst.IsActive)
         {
@@ -30,15 +43,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                     _logger.Debug("Refreshing EVM instruction cache");
                 }
                 // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
-                spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
+                table.NoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = table.NoTrace ??= GenerateOpCodes<TTracingInst>(spec);
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = table.Traced ??= GenerateOpCodes<TTracingInst>(spec);
         }
     }
 
