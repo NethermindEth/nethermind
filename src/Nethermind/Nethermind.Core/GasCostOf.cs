@@ -69,6 +69,9 @@ namespace Nethermind.Core
         public const ulong PerAuthBaseCost = Eip7702Constants.PerAuthBaseCost;
         public const ulong TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const ulong TotalCostFloorPerTokenEip7976 = 16; // eip-7976
+        public const ulong FloorGasPerByteEip8131 = 64; // eip-8131
+        public const ulong AuthTupleBytesEip8131 = 108; // eip-8131
+        public const ulong BlobVersionedHashBytesEip8131 = 32; // eip-8131
 
         public const ulong CostPerStateByte = 1530; // eip-8037
         public const ulong StateBytesPerStorageSet = 64; // eip-8037

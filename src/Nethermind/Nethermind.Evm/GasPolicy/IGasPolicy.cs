@@ -164,9 +164,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return (ulong)totalZeros + (ulong)(data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-    // 0 when floor pricing is not active.
+    // 0 when floor pricing is not active. EIP-8131 replaces the EIP-7981 access-list floor
+    // surcharge, so the tokens are only counted while EIP-7981 is the prevailing floor rule.
     public static ulong CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec) =>
-        spec.IsEip7981Enabled && transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) }
+        spec.IsEip7981Enabled && !spec.IsEip8131Enabled && transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) }
             ? (ulong)(addressesCount * Address.Size + storageKeysCount * AccessList.StorageKeySize) * spec.GasCosts.TxDataNonZeroMultiplier
             : 0;
 
@@ -219,8 +220,34 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     private static ulong CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
         (ulong)transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
 
+    // EIP-8131: every floor-priced content byte of the transaction — calldata, access list
+    // entries, authorization tuples, and blob versioned hashes — under one per-byte rule.
+    private static ulong CalculateContentBytesEip8131(Transaction transaction)
+    {
+        ulong contentBytes = (ulong)transaction.Data.Length;
+
+        if (transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) })
+        {
+            contentBytes += (ulong)(addressesCount * Address.Size + storageKeysCount * AccessList.StorageKeySize);
+        }
+
+        if (transaction.AuthorizationList is { } authorizationList)
+        {
+            contentBytes += (ulong)authorizationList.Length * GasCostOf.AuthTupleBytesEip8131;
+        }
+
+        if (transaction.BlobVersionedHashes is { } blobVersionedHashes)
+        {
+            contentBytes += (ulong)blobVersionedHashes.Length * GasCostOf.BlobVersionedHashBytesEip8131;
+        }
+
+        return contentBytes;
+    }
+
     protected static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList) => spec switch
     {
+        // EIP-8131 replaces the EIP-7623/EIP-7976/EIP-7981 floor rules with one per-byte rule.
+        { IsEip8131Enabled: true } => GasCostOf.Transaction + CalculateContentBytesEip8131(transaction) * GasCostOf.FloorGasPerByteEip8131,
         { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
         { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
         _ => 0
