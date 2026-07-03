@@ -470,6 +470,13 @@ namespace Nethermind.Core.Specs
         public bool IsEip7851Enabled { get; }
 
         /// <summary>
+        /// EIP-8151: ECDSA Authority Deactivation Aware ecRecover.
+        /// ecRecover charges an account access on the recovered address and returns zero for
+        /// EIP-7851 ECDSA-disabled accounts.
+        /// </summary>
+        public bool IsEip8151Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.
