@@ -31,6 +31,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Init.Modules;
 using NUnit.Framework;
 using Nethermind.JsonRpc;
@@ -146,6 +147,12 @@ public abstract class BlockchainTestBase
             containerBuilder.AddModule(new TestMergeModule(configProvider));
         }
 
+        // Seed the optional test tracer into the main processor via the BlockchainProcessor constructor.
+        if (tracer is not null)
+        {
+            containerBuilder.AddSingleton<IBlockTracer>(tracer);
+        }
+
         await using IContainer container = containerBuilder.Build();
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
@@ -154,11 +161,6 @@ public abstract class BlockchainTestBase
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         blockchainProcessor.Start();
-
-        if (tracer is not null)
-        {
-            blockchainProcessor.Tracers.Add(tracer);
-        }
 
         try
         {
@@ -257,11 +259,10 @@ public abstract class BlockchainTestBase
             bool testPassed = differences.Count == 0;
 
             // Write test end marker if using streaming tracer (JSONL format)
-            // This must be done BEFORE removing tracer and BEFORE Assert to ensure marker is written even on failure
+            // This must be done BEFORE Assert to ensure the marker is written even on failure
             if (tracer is not null)
             {
                 tracer.TestFinished(test.Name, testPassed, test.Network, stopwatch?.Elapsed, headBlock?.StateRoot);
-                blockchainProcessor.Tracers.Remove(tracer);
             }
 
             Assert.That(differences, Is.Empty, "differences");
