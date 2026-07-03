@@ -1775,8 +1775,10 @@ namespace Nethermind.Evm.TransactionProcessing
             ulong codeInsertRegularRefund)
         {
             // The reservoir may end negative (net child spill); the ulong wrap below still yields the
-            // correct signed result. Not asserted: a pre-existing parallel-test race in Nethermind.Evm.Test
-            // flakily violates it, and a genuine wrap here already fails fixtures via receipts/state roots.
+            // correct signed result as long as the total spent stays non-negative.
+            Debug.Assert(substate.IsError
+                    || (long)tx.GasLimit - (long)TGasPolicy.GetRemainingGas(in gasAfterExecution) - TGasPolicy.GetStateReservoir(in gasAfterExecution) >= 0,
+                $"Gas invariant violated: remaining ({TGasPolicy.GetRemainingGas(in gasAfterExecution)}) + reservoir ({TGasPolicy.GetStateReservoir(in gasAfterExecution)}) exceeds gasLimit ({tx.GasLimit}).");
             ulong spentGas = substate.IsError
                 ? tx.GasLimit
                 : tx.GasLimit - TGasPolicy.GetRemainingGas(in gasAfterExecution) - (ulong)TGasPolicy.GetStateReservoir(in gasAfterExecution);
