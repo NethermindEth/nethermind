@@ -61,8 +61,13 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
     }
 
-    // The base Flush only flushes WAL + the default column family; on a full flush we must also
-    // materialize every named column family's memtable (esp. for DisableWAL writes that have no WAL).
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base implementation flushes only the WAL and the default column family. On a full flush this
+    /// additionally materializes every named column family's memtable into SST, which is required for
+    /// <see cref="WriteFlags.DisableWAL"/> writes: they have no WAL entry, so unless their memtable is
+    /// flushed they are lost on restart.
+    /// </remarks>
     public override void Flush(bool onlyWal = false)
     {
         base.Flush(onlyWal);
