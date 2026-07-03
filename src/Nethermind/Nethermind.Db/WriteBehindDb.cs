@@ -110,7 +110,9 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false) { DrainAll(); return _inner.GetAllKeys(ordered); }
     public IEnumerable<byte[]> GetAllValues(bool ordered = false) { DrainAll(); return _inner.GetAllValues(ordered); }
 
-    public IWriteBatch StartWriteBatch() { DrainAll(); return _inner.StartWriteBatch(); }
+    // Batches buffer too (entries become readable on Dispose, matching RocksDB batch visibility), so
+    // batch-based writers (e.g. chain-level info) are equally taken off the caller's path.
+    public IWriteBatch StartWriteBatch() => new WriteBehindBatch(this);
 
     public void Flush(bool onlyWal = false) { DrainAll(); _inner.Flush(onlyWal); }
     public void Clear() { _buffer.Clear(); _inner.Clear(); }
@@ -180,6 +182,35 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore
         _cts.Dispose();
         _signal.Dispose();
         _inner.Dispose();
+    }
+
+    private sealed class WriteBehindBatch(WriteBehindDb db) : IWriteBatch
+    {
+        private readonly List<KeyValuePair<byte[], byte[]?>> _entries = [];
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            => _entries.Add(new(key.ToArray(), value));
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            => _entries.Add(new(key.ToArray(), value.IsNull() ? null : value.ToArray()));
+
+        public void Clear() => _entries.Clear();
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            // Merge needs the native merge operator, so it cannot be applied to the managed buffer. None of the
+            // wrapped stores use merge; keep ordering for the key and delegate straight to the inner db.
+            db.FlushKey(key);
+            using IWriteBatch inner = db._inner.StartWriteBatch();
+            inner.Merge(key, value, flags);
+        }
+
+        public void Dispose()
+        {
+            foreach (KeyValuePair<byte[], byte[]?> kv in _entries) db._buffer[kv.Key] = kv.Value;
+            _entries.Clear();
+            db._signal.Release();
+        }
     }
 
     private sealed class ManagedMemoryManager(byte[] array) : MemoryManager<byte>
