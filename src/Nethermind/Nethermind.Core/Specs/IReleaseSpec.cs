@@ -464,6 +464,12 @@ namespace Nethermind.Core.Specs
         public bool IsEip7954Enabled { get; }
 
         /// <summary>
+        /// EIP-7851: Code-Controlled EOA Delegation.
+        /// SETSELFDELEGATE opcode and the 0xef0101 ECDSA-disabled delegation designator.
+        /// </summary>
+        public bool IsEip7851Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.

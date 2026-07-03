@@ -19,12 +19,14 @@ public interface ICodeInfoRepository
     bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
 
     /// <remarks>
-    /// Parses delegation code to extract the contained address.
+    /// Parses delegation code to extract the contained address. Accepts both the EIP-7702
+    /// (<c>0xef0100</c>) and the EIP-7851 ECDSA-disabled (<c>0xef0101</c>) designators — calls
+    /// to an ECDSA-disabled account still execute its delegate.
     /// <b>Assumes </b><paramref name="code"/> <b>is delegation code!</b>
     /// </remarks>
     static bool TryGetDelegatedAddress(ReadOnlySpan<byte> code, [NotNullWhen(true)] out Address? address)
     {
-        if (Eip7702Constants.IsDelegatedCode(code))
+        if (Eip7702Constants.IsDelegatedCode(code) || Eip7851Constants.IsEcdsaDisabledDelegatedCode(code))
         {
             address = new Address(code[Eip7702Constants.DelegationHeader.Length..]);
             return true;
