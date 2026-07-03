@@ -19,31 +19,31 @@ namespace Nethermind.Evm.Test;
 public class Eip7981Tests
 {
     private static readonly IReleaseSpec Spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
-    private static long FloorPerToken => Spec.GasCosts.TotalCostFloorPerToken;
+    private static ulong FloorPerToken => Spec.GasCosts.TotalCostFloorPerToken;
 
     private static IEnumerable<TestCaseData> AccessListOnlyCases()
     {
         // 20 bytes × 4 = 80 tokens
         yield return new TestCaseData(
-            new AccessList.Builder().AddAddress(Address.Zero).Build(), 80L
+            new AccessList.Builder().AddAddress(Address.Zero).Build(), 80UL
         ).SetName("Single zero address: 80 tokens");
 
         yield return new TestCaseData(
-            new AccessList.Builder().AddAddress(new Address("0xAB000000000000000000000000000000000000CD")).Build(), 80L
+            new AccessList.Builder().AddAddress(new Address("0xAB000000000000000000000000000000000000CD")).Build(), 80UL
         ).SetName("Address with non-zero bytes: 80 tokens");
 
         // Address (80) + storage key (32 * 4 = 128) = 208 tokens
         yield return new TestCaseData(
-            new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.Zero).Build(), 208L
+            new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.Zero).Build(), 208UL
         ).SetName("Address + zero storage key: 208 tokens");
 
         yield return new TestCaseData(
-            new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.One).Build(), 208L
+            new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.One).Build(), 208UL
         ).SetName("Address + non-zero storage key: 208 tokens");
 
         // Two addresses: 2 * 80 = 160 tokens
         yield return new TestCaseData(
-            new AccessList.Builder().AddAddress(Address.Zero).AddAddress(new Address("0x0000000000000000000000000000000000000001")).Build(), 160L
+            new AccessList.Builder().AddAddress(Address.Zero).AddAddress(new Address("0x0000000000000000000000000000000000000001")).Build(), 160UL
         ).SetName("Two addresses: 160 tokens");
 
         // 1 address (80) + 3 keys (3 × 128 = 384) = 464 tokens
@@ -53,17 +53,17 @@ public class Eip7981Tests
                 .AddStorage(UInt256.Zero)
                 .AddStorage(UInt256.One)
                 .AddStorage(new UInt256(255))
-                .Build(), 464L
+                .Build(), 464UL
         ).SetName("Address + 3 storage keys: 464 tokens");
 
         // Empty access list: no addresses, no keys → 0 tokens
         yield return new TestCaseData(
-            new AccessList.Builder().Build(), 0L
+            new AccessList.Builder().Build(), 0UL
         ).SetName("Empty access list: 0 tokens");
     }
 
     [TestCaseSource(nameof(AccessListOnlyCases))]
-    public void Access_list_token_pricing(AccessList accessList, long expectedTokens)
+    public void Access_list_token_pricing(AccessList accessList, ulong expectedTokens)
     {
         Transaction transaction = new() { To = Address.Zero, AccessList = accessList };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
@@ -72,12 +72,12 @@ public class Eip7981Tests
         // devnet-6 (EIP-2780 + EIP-8038) intrinsic: TX_BASE(12000) + recipient COLD touch (To is a
         // non-create, non-self account) + per access-list entry + EIP-7981 floor tokens. The calldata
         // floor (EIP-7976) is TX_BASE + floor tokens only — no recipient/access-entry component.
-        long expectedStandard = GasCostOf.TransactionEip2780
+        ulong expectedStandard = GasCostOf.TransactionEip2780
             + Eip8038Constants.ColdAccountAccess
-            + addressCount * Eip8038Constants.AccessListAddressCost
-            + storageKeyCount * Eip8038Constants.AccessListStorageKeyCost
+            + (ulong)addressCount * Eip8038Constants.AccessListAddressCost
+            + (ulong)storageKeyCount * Eip8038Constants.AccessListStorageKeyCost
             + FloorPerToken * expectedTokens;
-        long expectedFloor = GasCostOf.TransactionEip2780 + FloorPerToken * expectedTokens;
+        ulong expectedFloor = GasCostOf.TransactionEip2780 + FloorPerToken * expectedTokens;
 
         Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor)));
     }

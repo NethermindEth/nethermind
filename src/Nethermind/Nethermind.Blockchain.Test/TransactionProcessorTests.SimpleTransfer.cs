@@ -247,7 +247,7 @@ public partial class TransactionProcessorTests
             .WithValue(value)
             .WithGasPrice(1)
             .WithGasLimit(1_000_000)
-            .WithNonce(nonce)
+            .WithNonce((ulong)nonce)
             .WithAuthorizationCode(_ethereumEcdsa.Sign(authority, _specProvider.ChainId, Address.Zero, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, eip155Enabled)
             .TestObject;
@@ -298,7 +298,7 @@ public partial class TransactionProcessorTests
             .WithTo(recipient)
             .WithValue(value)
             .WithGasPrice(1)
-            .WithGasLimit(gasLimit);
+            .WithGasLimit((ulong)gasLimit);
 
         if (withAuthorizationList)
         {
