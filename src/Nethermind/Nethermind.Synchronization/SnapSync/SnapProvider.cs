@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
@@ -90,23 +89,17 @@ namespace Nethermind.Synchronization.SnapSync
                     _progressTracker.EnqueueAccountStorage(item);
                 }
 
-                try
+                foreach (ValueHash256 code in CollectionsMarshal.AsSpan(codeHashes))
                 {
-                    using ArrayPoolListRef<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
+                    if (_codeExistKeyCache.Get(code)) continue;
+
+                    if (_codeDb.KeyExists(code.Bytes))
                     {
-                        if (_codeExistKeyCache.Get(code)) return false;
+                        _codeExistKeyCache.Set(code);
+                        continue;
+                    }
 
-                        bool exist = _codeDb.KeyExists(code.Bytes);
-                        if (exist) _codeExistKeyCache.Set(code);
-                        return !exist;
-                    }).ToPooledListRef(codeHashes.Count);
-
-                    _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
-                }
-                catch (AggregateException ae) when (ae.Flatten().InnerExceptions is { Count: > 0 } inners
-                    && inners.All(e => e is ObjectDisposedException))
-                {
-                    ExceptionDispatchInfo.Capture(inners[0]).Throw();
+                    _progressTracker.EnqueueCodeHash(code);
                 }
 
                 ValueHash256 nextPath = accounts[^1].Path.IncrementPath();
