@@ -36,7 +36,7 @@ public enum AccountChangeKind : byte
 /// </remarks>
 public sealed class StateDiffRecord : IDisposable
 {
-    public const byte CurrentVersion = 2;
+    public const byte CurrentVersion = 1;
 
     private readonly IMemoryOwner<byte> _owner;
     private readonly ReadOnlyMemory<byte> _rlp;
@@ -57,13 +57,12 @@ public sealed class StateDiffRecord : IDisposable
         RlpReader r = new(rlp.Span);
         r.ReadSequenceLength();
         Version = r.DecodeByte();
-        if (Version is not (1 or CurrentVersion))
+        if (Version != CurrentVersion)
             throw new RlpException($"Unsupported StateDiffRecord version {Version}");
         BlockNumber = r.DecodeULong();
         StateRoot = r.DecodeKeccak() ?? throw new RlpException("StateDiffRecord.StateRoot must not be null");
 
-        // v1: the fourth element is a single flat account list; v2: it is a list of per-flush write batches.
-        // Either way this is the region the batch enumerator walks (once for v1, per element for v2).
+        // The fourth element is the list of per-flush write batches the batch enumerator walks.
         int batchesLength = r.ReadSequenceLength();
         _batchesStart = r.Position;
         _batchesEnd = r.Position + batchesLength;
@@ -76,28 +75,25 @@ public sealed class StateDiffRecord : IDisposable
 
     public bool HasCodes => _codesEnd > _codesStart;
 
-    /// <summary>The block's write batches, in application order: one synthetic batch for a v1 record, the recorded list for v2.</summary>
-    public BatchEnumerator Batches => new(_rlp, _batchesStart, _batchesEnd, Version);
+    /// <summary>The block's write batches, in application order.</summary>
+    public BatchEnumerator Batches => new(_rlp, _batchesStart, _batchesEnd);
     public CodeEnumerator Codes => new(_rlp, _codesStart, _codesEnd);
 
     public void Dispose() => _owner.Dispose();
 
-    /// <summary>Walks the block's write batches; a v1 record yields exactly one batch over its whole account region.</summary>
+    /// <summary>Walks the block's write batches in recorded order.</summary>
     public struct BatchEnumerator
     {
         private readonly ReadOnlyMemory<byte> _rlp;
         private readonly int _end;
-        private readonly bool _singleBatch; // v1: the region is one batch's account list, not a list of batches
         private int _position;
-        private bool _yielded;
         private WriteBatchView _current;
 
-        internal BatchEnumerator(ReadOnlyMemory<byte> rlp, int start, int end, byte version)
+        internal BatchEnumerator(ReadOnlyMemory<byte> rlp, int start, int end)
         {
             _rlp = rlp;
             _end = end;
             _position = start;
-            _singleBatch = version == 1;
         }
 
         public readonly BatchEnumerator GetEnumerator() => this;
@@ -105,14 +101,6 @@ public sealed class StateDiffRecord : IDisposable
 
         public bool MoveNext()
         {
-            if (_singleBatch)
-            {
-                if (_yielded) return false;
-                _yielded = true;
-                _current = new WriteBatchView(_rlp, _position, _end);
-                return true;
-            }
-
             if (_position >= _end) return false;
             RlpReader r = new(_rlp.Span) { Position = _position };
             int contentLength = r.ReadSequenceLength();

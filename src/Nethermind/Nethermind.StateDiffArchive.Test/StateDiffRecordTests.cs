@@ -231,37 +231,9 @@ public class StateDiffRecordTests
     }
 
     [Test]
-    public void Reads_v1_record_as_a_single_batch()
-    {
-        using StateDiffRecord record = Wrap(EncodeV1Deleted(7, TestItem.KeccakB, TestItem.AddressC));
-
-        Assert.That(record.Version, Is.EqualTo((byte)1));
-
-        int batches = 0, accounts = 0;
-        foreach (StateDiffRecord.WriteBatchView batch in record.Batches)
-        {
-            batches++;
-            foreach (StateDiffRecord.AccountView account in batch.Accounts)
-            {
-                accounts++;
-                Assert.That(account.Address, Is.EqualTo(TestItem.AddressC));
-                Assert.That(account.Change, Is.EqualTo(AccountChangeKind.Deleted));
-            }
-        }
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(batches, Is.EqualTo(1)); // a v1 record surfaces as exactly one batch
-            Assert.That(accounts, Is.EqualTo(1));
-            Assert.That(record.BlockNumber, Is.EqualTo(7UL));
-            Assert.That(record.StateRoot, Is.EqualTo(TestItem.KeccakB));
-        });
-    }
-
-    [Test]
     public void Rejects_unknown_version()
     {
-        byte[] rlp = EncodeHeaderOnly(version: 3, blockNumber: 0, stateRoot: TestItem.KeccakA);
+        byte[] rlp = EncodeHeaderOnly(version: 2, blockNumber: 0, stateRoot: TestItem.KeccakA);
         IMemoryOwner<byte> owner = MemoryPool<byte>.Shared.Rent(rlp.Length);
         new System.Span<byte>(rlp).CopyTo(owner.Memory.Span);
         try
@@ -326,33 +298,7 @@ public class StateDiffRecordTests
         });
     }
 
-    // A minimal legacy (v1) record: [1, blockNumber, stateRoot, [ [addr, Deleted, false, []] ], []].
-    // Uses the same RlpWriter conventions as the builder so encode/decode agree; the v1 accounts list has no
-    // per-batch wrapper, so reading it as a single batch exercises the back-compat path.
-    private static byte[] EncodeV1Deleted(ulong blockNumber, Hash256 stateRoot, Address address)
-    {
-        int diffContent = Rlp.LengthOf(address) + Rlp.LengthOf((byte)AccountChangeKind.Deleted)
-                          + Rlp.LengthOf((byte)0) + Rlp.LengthOfSequence(0);
-        int accountsContent = Rlp.LengthOfSequence(diffContent);
-        int content = Rlp.LengthOf((byte)1) + Rlp.LengthOf(blockNumber) + Rlp.LengthOf(stateRoot)
-                      + Rlp.LengthOfSequence(accountsContent) + Rlp.LengthOfSequence(0);
-
-        byte[] rlp = new byte[Rlp.LengthOfSequence(content)];
-        RlpWriter w = new(rlp);
-        w.StartSequence(content);
-        w.Encode((byte)1);
-        w.Encode(blockNumber);
-        w.Encode(stateRoot);
-        w.StartSequence(accountsContent);
-        w.StartSequence(diffContent);
-        w.Encode(address);
-        w.Encode((byte)AccountChangeKind.Deleted);
-        w.Encode(false);
-        w.StartSequence(0); // empty slots
-        w.StartSequence(0); // empty codes
-        return rlp;
-    }
-
+    // A record whose only purpose is to carry a version byte the reader must reject: [version, 0, sr, [], []].
     private static byte[] EncodeHeaderOnly(byte version, ulong blockNumber, Hash256 stateRoot)
     {
         int content = Rlp.LengthOf(version) + Rlp.LengthOf(blockNumber) + Rlp.LengthOf(stateRoot)
