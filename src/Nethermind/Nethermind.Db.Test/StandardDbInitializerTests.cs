@@ -103,11 +103,25 @@ public class StandardDbInitializerTests
 
     private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
     {
-        Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
+        AssertBlockDataDb(dbProvider.BlockInfosDb);
+        AssertBlockDataDb(dbProvider.BlocksDb);
+        AssertBlockDataDb(dbProvider.HeadersDb);
         Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
         Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));
+
+        void AssertBlockDataDb(IDb db)
+        {
+            if (dbType == typeof(ReadOnlyDb))
+            {
+                Assert.That(db, Is.TypeOf(dbType));
+            }
+            else
+            {
+                // Block-data dbs are registered behind the write-behind decorator; the factory type is inside.
+                Assert.That(db, Is.TypeOf<WriteBehindDb>());
+                Assert.That(((WriteBehindDb)db).Inner, Is.TypeOf(dbType));
+            }
+        }
     }
 
     [OneTimeTearDown]

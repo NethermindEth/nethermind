@@ -42,10 +42,12 @@ namespace Nethermind.Db.Test.Rpc
             ValidateDb<ReadOnlyColumnsDb<ReceiptsColumns>>(
                 memDbProvider.ReceiptsDb);
 
-            ValidateDb<ReadOnlyDb>(
-                memDbProvider.BlocksDb,
-                memDbProvider.HeadersDb,
-                memDbProvider.BlockInfosDb);
+            // Block-data dbs sit behind the write-behind decorator; the rpc read-only db is inside.
+            foreach (IDb db in new IDb[] { memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb })
+            {
+                Assert.That(db, Is.TypeOf<WriteBehindDb>());
+                Assert.That(((WriteBehindDb)db).Inner, Is.AssignableTo<ReadOnlyDb>());
+            }
 
             ValidateDb<ReadOnlyDb>(
                 memDbProvider.CodeDb);

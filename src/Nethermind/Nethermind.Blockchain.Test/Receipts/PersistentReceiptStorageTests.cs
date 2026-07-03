@@ -111,6 +111,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     public void Adds_should_prefix_key_with_blockNumber()
     {
         (Block block, _) = InsertBlock();
+        _storage.Dispose(); // drain the write-behind buffer so the raw column reflects the insert
 
         Span<byte> blockNumPrefixed = stackalloc byte[40];
         block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
@@ -123,6 +124,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     public void Adds_should_forward_write_flags()
     {
         (Block block, _) = InsertBlock(writeFlags: WriteFlags.DisableWAL);
+        _storage.Dispose(); // drain the write-behind buffer so the raw column reflects the insert
 
         Span<byte> blockNumPrefixed = stackalloc byte[40];
         block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...

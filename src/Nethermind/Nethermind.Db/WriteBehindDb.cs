@@ -28,6 +28,9 @@ namespace Nethermind.Db;
 /// </remarks>
 public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore, ITunableDb, ISortedKeyValueStore
 {
+    internal long BufferedBytes => Interlocked.Read(ref _bufferedBytes);
+    internal IDb Inner => _inner;
+
     internal const long MaxBufferedBytes = 64 * 1024 * 1024;
 
     private readonly IDb _inner;
@@ -62,15 +65,35 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore, ITunableD
         // Past the cap (drain fell behind, e.g. bulk sync) or once disposed, degrade to the undecorated behavior.
         if (Volatile.Read(ref _disposed) == 1 || Interlocked.Read(ref _bufferedBytes) >= MaxBufferedBytes)
         {
-            FlushKey(key);
+            // Inner gets the new value first, then the (stale) buffer entry is dropped, so the key stays readable.
             _inner.Set(key, value, flags);
+            if (_bufferLookup.TryGetValue(key, out byte[]? staleKey, out Entry stale) &&
+                _buffer.TryRemove(new KeyValuePair<byte[], Entry>(staleKey, stale)))
+            {
+                Interlocked.Add(ref _bufferedBytes, -EntrySize(staleKey, stale.Value));
+            }
             return;
         }
 
+        // Account for a replaced entry so the cap counter cannot drift upward on overwrites.
+        long delta = key.Length + (value?.Length ?? 0);
+        if (_bufferLookup.TryGetValue(key, out byte[]? existingKey, out Entry existing))
+        {
+            delta -= EntrySize(existingKey, existing.Value);
+        }
         _bufferLookup[key] = new Entry(value, flags);
-        Interlocked.Add(ref _bufferedBytes, key.Length + (value?.Length ?? 0));
-        _signal.Release();
+        Interlocked.Add(ref _bufferedBytes, delta);
+        try
+        {
+            _signal.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Disposed concurrently; the final drain in Dispose picks the entry up.
+        }
     }
+
+    private static long EntrySize(byte[] key, byte[]? value) => key.Length + (value?.Length ?? 0);
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         => Set(key, value.IsNull() ? null : value.ToArray(), flags);
@@ -169,7 +192,7 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore, ITunableD
             if (e.Value is null) _inner.Remove(key); else _inner.Set(key, e.Value, e.Flags);
             if (_buffer.TryRemove(new KeyValuePair<byte[], Entry>(actualKey, e)))
             {
-                Interlocked.Add(ref _bufferedBytes, -(actualKey.Length + (e.Value?.Length ?? 0)));
+                Interlocked.Add(ref _bufferedBytes, -EntrySize(actualKey, e.Value));
             }
         }
     }
@@ -223,7 +246,7 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore, ITunableD
             {
                 if (_buffer.TryRemove(kv)) // compare-remove: keeps a concurrent overwrite for the next drain
                 {
-                    Interlocked.Add(ref _bufferedBytes, -(kv.Key.Length + (kv.Value.Value?.Length ?? 0)));
+                    Interlocked.Add(ref _bufferedBytes, -EntrySize(kv.Key, kv.Value.Value));
                 }
             }
         }
@@ -258,13 +281,12 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore, ITunableD
 
         public void Dispose()
         {
+            // Routed through Set so batch writes get the same cap/disposed handling and counter accounting.
             foreach ((byte[] key, byte[]? value, WriteFlags flags) in _entries)
             {
-                db._buffer[key] = new Entry(value, flags);
-                Interlocked.Add(ref db._bufferedBytes, key.Length + (value?.Length ?? 0));
+                db.Set(key, value, flags);
             }
             _entries.Clear();
-            if (Volatile.Read(ref db._disposed) == 0) db._signal.Release();
         }
     }
 }

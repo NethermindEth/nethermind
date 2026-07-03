@@ -156,6 +156,17 @@ public class WriteBehindDbTests
     }
 
     [Test]
+    public void Overwrites_do_not_leak_the_buffered_size_counter()
+    {
+        using WriteBehindDb db = new(new MemDb());
+
+        for (int i = 0; i < 1_000; i++) db.Set(Key, Value);
+
+        Assert.That(db.BufferedBytes, Is.LessThanOrEqualTo(Key.Length + Value.Length),
+            "replaced entries must not accumulate in the backpressure counter");
+    }
+
+    [Test]
     public void Batch_merge_is_not_supported()
     {
         using WriteBehindDb db = new(new MemDb());
