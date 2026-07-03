@@ -237,7 +237,7 @@ namespace Nethermind.Evm.Test
 
             // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000; the value-bearing recipient touch adds
             // COLD_ACCOUNT_ACCESS + TRANSFER_LOG + TX_VALUE; the authorization adds ACCOUNT_WRITE + base.
-            long recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+            ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
             Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular));
             Assert.That(intrinsicGas.Standard.StateReservoir, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
         }
@@ -313,7 +313,7 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCaseSource(nameof(Eip2780IntrinsicCases))]
-        public void Eip2780_intrinsic_gas_is_calculated_properly(Recipient recipient, UInt256 value, long expectedStandard)
+        public void Eip2780_intrinsic_gas_is_calculated_properly(Recipient recipient, UInt256 value, ulong expectedStandard)
         {
             OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
             Address to = recipient switch
@@ -346,9 +346,9 @@ namespace Nethermind.Evm.Test
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
 
-            long warmTouch = IntrinsicGasCalculator.Calculate(tx, spec, 0, state).Standard;
+            ulong warmTouch = IntrinsicGasCalculator.Calculate(tx, spec, 0, state).Standard;
 
-            long expected = TxBaseEip2780 + GasCostOf.AccessAccountListEntry + GasCostOf.WarmStateRead + StateUpdate + TransferLogEip2780;
+            ulong expected = TxBaseEip2780 + GasCostOf.AccessAccountListEntry + GasCostOf.WarmStateRead + StateUpdate + TransferLogEip2780;
             Assert.That(warmTouch, Is.EqualTo(expected));
         }
 

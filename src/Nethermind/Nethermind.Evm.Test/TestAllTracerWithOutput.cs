@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
 
         public long Refund { get; private set; }
 
-        public readonly record struct ActionTrace(long Gas, UInt256 Value, Address From, Address To, ExecutionType CallType, bool IsPrecompileCall);
+        public readonly record struct ActionTrace(ulong Gas, UInt256 Value, Address From, Address To, ExecutionType CallType, bool IsPrecompileCall);
 
         public List<ActionTrace> Actions { get; } = [];
 

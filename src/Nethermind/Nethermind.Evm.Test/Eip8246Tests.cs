@@ -49,7 +49,7 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
     protected override ISpecProvider SpecProvider => _specProvider;
 
     // Generous limit so the EIP-8037 state-byte charges in the deferred-path fixtures don't run out of gas.
-    private const long GasLimit = 5_000_000;
+    private const ulong GasLimit = 5_000_000;
     private static readonly byte[] Salt = new UInt256(123).ToBigEndian();
 
     private EthereumEcdsa _ecdsa;
@@ -264,7 +264,7 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
         {
             Assert.That(TestState.AccountExists(address), Is.True);
             Assert.That(TestState.GetBalance(address), Is.EqualTo(expectedBalance), "balance preserved");
-            Assert.That(TestState.GetNonce(address), Is.EqualTo(UInt256.Zero), "nonce reset");
+            Assert.That(TestState.GetNonce(address), Is.EqualTo(0UL), "nonce reset");
             Assert.That(TestState.IsContract(address), Is.False, "code cleared");
             Assert.That(TestState.Get(new StorageCell(address, UInt256.Zero)).IsZero(), Is.True, "storage cleared");
         }
