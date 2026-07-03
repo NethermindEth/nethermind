@@ -151,6 +151,46 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public void HasPendingBondingPing_caps_pending_endpoints()
+        {
+            const int MaxRememberedEndpointsPerSession = 16;
+            IPEndPoint oldestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
+            IPEndPoint newestEndpoint = null!;
+
+            _nodeSession.OnPingSent(oldestEndpoint);
+            for (int i = 0; i < MaxRememberedEndpointsPerSession; i++)
+            {
+                newestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port + i + 1);
+                _nodeSession.OnPingSent(newestEndpoint);
+            }
+
+            Assert.That(_nodeSession.HasPendingBondingPing(oldestEndpoint), Is.False);
+            Assert.That(_nodeSession.HasPendingBondingPing(newestEndpoint), Is.True);
+        }
+
+        [Test]
+        public async Task WaitForEndpointBond_completes_when_pending_ping_is_evicted()
+        {
+            const int MaxRememberedEndpointsPerSession = 16;
+            IPEndPoint oldestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
+
+            _nodeSession.OnPingSent(oldestEndpoint);
+            Task<bool> waitTask = _nodeSession
+                .WaitForEndpointBond(oldestEndpoint, TimeSpan.FromMinutes(1), CancellationToken.None)
+                .AsTask();
+
+            Assert.That(waitTask.IsCompleted, Is.False);
+
+            for (int i = 0; i < MaxRememberedEndpointsPerSession; i++)
+            {
+                IPEndPoint endpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port + i + 1);
+                _nodeSession.OnPingSent(endpoint);
+            }
+
+            Assert.That(await waitTask, Is.False);
+        }
+
+        [Test]
         public void Test_NotTooManyFailures()
         {
             Assert.That(_nodeSession.NotTooManyFailure, Is.True);
