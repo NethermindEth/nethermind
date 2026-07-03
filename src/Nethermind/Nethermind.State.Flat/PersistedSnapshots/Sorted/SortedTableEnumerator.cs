@@ -97,7 +97,11 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         Block.IndexRecordHeader rec = default;
         if (!reader.TryRead(_indexPos, MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref rec)))) return false;
         int valChangedLen = rec.ValueChangedLength;
-        if (valChangedLen > 6) return false; // > u48 ⇒ corrupt
+        // A value-changed length past the u48 max is proven corruption inside an already-read record, not a
+        // read running off the end — throw with a clear message rather than silently ending the walk (which
+        // would truncate the data), matching IndexBlockReader.SeekCeiling.
+        if (valChangedLen > 6)
+            SortedTable.ThrowCorrupt($"index record at byte {_indexPos} declares value-changed length {valChangedLen} exceeding the u48 maximum of 6");
 
         long valueStart = _indexPos + Unsafe.SizeOf<Block.IndexRecordHeader>() + rec.SuffixLength;
         // A restart (cp == 0) drops the previous record's high bytes; the walk's first record is a restart,

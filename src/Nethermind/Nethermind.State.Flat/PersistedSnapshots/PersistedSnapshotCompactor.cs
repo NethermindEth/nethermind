@@ -370,10 +370,27 @@ public class PersistedSnapshotCompactor(
             // compacted entry. No blob fsync here: compaction does not write new blobs, it
             // only emits NodeRefs into existing base blob arenas (those were fsynced when
             // their respective base snapshots were converted).
-            reservation.Fsync();
+            //
+            // reservation still holds only the writer's Complete() lease and mergedBloom is owned by no
+            // snapshot yet, so a throw from Fsync / catalog.Add / the snapshot ctor (e.g. disk-full) must free
+            // both here — the outer finally disposes only the read sessions, and over repeated IO errors the
+            // leak exhausts native memory. Both disposes are safe on the ctor-internal-throw path too: the
+            // ctor releases only its own lease (not this Complete() one), and BloomFilter.Dispose is idempotent.
+            PersistedSnapshot compacted;
+            try
+            {
+                reservation.Fsync();
+                _catalog.Add(new CatalogEntry(from, to, location, tier));
+                compacted = new(from, to, reservation, blobs, tier, new RefCountedBloomFilter(mergedBloom));
+            }
+            catch
+            {
+                reservation.Dispose();
+                mergedBloom.Dispose();
+                throw;
+            }
 
-            _catalog.Add(new CatalogEntry(from, to, location, tier));
-            using (PersistedSnapshot compacted = new(from, to, reservation, blobs, tier, new RefCountedBloomFilter(mergedBloom)))
+            using (compacted)
             {
                 reservation.Dispose();
                 snapshotRepository.AddPersistedSnapshot(compacted, tier);
