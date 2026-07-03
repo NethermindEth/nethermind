@@ -226,7 +226,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                WarmupSingleTransaction(scope, tx, txIndex, blockState, token);
                             }
                         }
                         finally
@@ -277,7 +277,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
-        BlockState blockState)
+        BlockState blockState,
+        CancellationToken token)
     {
         try
         {
@@ -291,9 +292,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             // No eager tx.AccessList warmup: the Warmup below already warms the state actually accessed;
             // loading a (possibly hugely over-declared) EIP-2930 list only warms slots never read.
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            // The cancellation tracer aborts the speculative execution at opcode granularity: the main thread
+            // joins this task after processing every block, so a warm-up stuck in a long transaction would
+            // stall real processing for the remainder of that transaction.
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, new CancellationTxTracer(NullTxTracer.Instance, token));
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+        }
+        catch (OperationCanceledException)
+        {
+            // The processing thread finished the block and cancelled background work; abandon the warm-up.
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
