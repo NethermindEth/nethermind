@@ -67,9 +67,14 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         if (!reader.TryRead(_pos, MemoryMarshal.AsBytes(new Span<Block.DataRecordHeader>(ref rec)))) return false;
         int cp = rec.CommonPrefix;
         int suffixLen = rec.SuffixLength;
+        Span<byte> keyBuf = _keyBuf.AsSpan();
+        // Front-coding keeps keyBuf[0..cp) from the previous record; reject a cp beyond the previous key
+        // length (would rebuild the key from stale bytes) or a total length past the buffer.
+        if (cp > _keyLength || cp + suffixLen > keyBuf.Length)
+            SortedTable.ThrowCorrupt($"data record at byte {_pos} declares common-prefix {cp} and suffix {suffixLen} inconsistent with the previous key length {_keyLength} / {keyBuf.Length}-byte buffer");
         long keyStart = _pos + Unsafe.SizeOf<Block.DataRecordHeader>();
         // Front-coded: keep _keyBuf[0..cp) from the previous record, append this record's suffix.
-        if (!reader.TryRead(keyStart, _keyBuf.AsSpan().Slice(cp, suffixLen))) return false;
+        if (!reader.TryRead(keyStart, keyBuf.Slice(cp, suffixLen))) return false;
         _keyLength = cp + suffixLen;
 
         // The 3-byte prefix blit carried the value length, so the value is just a Bound past the key.

@@ -79,6 +79,11 @@ internal static class IndexBlockReader
         // each binary-search step reads just the one restart offset it needs rather than pinning the table.
         Block.IndexRecordHeader rec = default;
 
+        // Restart offsets are block-relative record starts; a corrupt one must land within the records region
+        // [recordsStart, RecordsEnd), not in the header/restart table or past the block.
+        long recordsStart = Unsafe.SizeOf<Header>() + (long)header.NumRestarts * sizeof(uint);
+        long recordsEnd = header.RecordsEnd;
+
         // Rightmost restart whose first key <= target (cp == 0 there, so the suffix is the full key).
         int lo = 0;
         int hi = (int)header.NumRestarts - 1;
@@ -88,7 +93,7 @@ internal static class IndexBlockReader
             int mid = lo + ((hi - lo) >> 1);
             uint offset = 0;
             if (!reader.TryRead(restartTableStart + (long)mid * sizeof(uint), MemoryMarshal.AsBytes(new Span<uint>(ref offset)))) return false;
-            long recStart = blockStart + offset;
+            long recStart = blockStart + CheckRestartOffset(offset, recordsStart, recordsEnd);
             if (!reader.TryRead(recStart, MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref rec)))) return false;
             using TPin keyPin = reader.PinBuffer(new Bound(recStart + Unsafe.SizeOf<Block.IndexRecordHeader>(), rec.SuffixLength));
             if (keyPin.Buffer.SequenceCompareTo(target) <= 0) { found = mid; lo = mid + 1; }
@@ -99,7 +104,7 @@ internal static class IndexBlockReader
         int scanRestart = found < 0 ? 0 : found;
         uint scanOffset = 0;
         if (!reader.TryRead(restartTableStart + (long)scanRestart * sizeof(uint), MemoryMarshal.AsBytes(new Span<uint>(ref scanOffset)))) return false;
-        long pos = blockStart + scanOffset;
+        long pos = blockStart + CheckRestartOffset(scanOffset, recordsStart, recordsEnd);
 
         // The value (a u48 byte offset) is stored little-endian as only the low bytes that changed from the
         // previous record; a restart (cp == 0) drops the previous high bytes by resetting to 0. Each record
@@ -107,6 +112,7 @@ internal static class IndexBlockReader
         long runningValue = 0;
 
         // Scan forward across restart boundaries (cp = 0 self-corrects) for the first key >= target.
+        int prevKeyLen = 0;
         while (pos < end)
         {
             if (!reader.TryRead(pos, MemoryMarshal.AsBytes(new Span<Block.IndexRecordHeader>(ref rec)))) return false;
@@ -115,12 +121,17 @@ internal static class IndexBlockReader
             int valChangedLen = rec.ValueChangedLength;
             if (valChangedLen > 6)
                 SortedTable.ThrowCorrupt($"index record at byte {pos} declares value-changed length {valChangedLen} exceeding the u48 maximum of 6");
+            // Front-coding keeps keyBuf[0..cp) from the previous record; reject a cp beyond the previous key
+            // length (would rebuild the key from stale bytes). A restart (cp == 0) always passes.
+            if (cp > prevKeyLen)
+                SortedTable.ThrowCorrupt($"index record at byte {pos} declares common-prefix {cp} exceeding the previous key length {prevKeyLen}");
             if (cp + suffixLen > keyBuf.Length)
                 SortedTable.ThrowCorrupt($"index record at byte {pos} declares key length {cp}+{suffixLen} exceeding the {keyBuf.Length}-byte reader buffer");
 
             long keyStart = pos + Unsafe.SizeOf<Block.IndexRecordHeader>();
             if (!reader.TryRead(keyStart, keyBuf.Slice(cp, suffixLen))) return false; // keep [0..cp) from prev
             int kLen = cp + suffixLen;
+            prevKeyLen = kLen;
             long valueStart = keyStart + suffixLen;
 
             if (cp == 0) runningValue = 0;
@@ -139,5 +150,14 @@ internal static class IndexBlockReader
             pos = valueStart + valChangedLen;
         }
         return false;
+    }
+
+    /// <summary>Validate a block-relative restart offset lands within the records region
+    /// <c>[recordsStart, recordsEnd)</c> before it is dereferenced; throws (wipe-and-resync) otherwise.</summary>
+    private static uint CheckRestartOffset(uint offset, long recordsStart, long recordsEnd)
+    {
+        if (offset < recordsStart || offset >= recordsEnd)
+            SortedTable.ThrowCorrupt($"index block restart offset {offset} is outside the records region [{recordsStart}, {recordsEnd})");
+        return offset;
     }
 }
