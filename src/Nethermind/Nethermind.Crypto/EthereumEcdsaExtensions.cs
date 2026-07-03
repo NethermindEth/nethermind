@@ -14,11 +14,9 @@ public static class EthereumEcdsaExtensions
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     /// <remarks>
-    /// Cross-context cache of recovered senders keyed by transaction hash. A transaction is
-    /// typically recovered more than once — on mempool ingress and again on block arrival — and
-    /// the repeat becomes a lookup. Sized for a few minutes of mainnet transactions. Legacy
-    /// transactions are excluded: their signing hash depends on the ambient chain id and the
-    /// <c>useSignatureChainId</c> flag, so the transaction hash alone is not a safe global key.
+    /// Cross-context cache of recovered senders keyed by transaction hash: a transaction recovered
+    /// on mempool ingress becomes a lookup on block arrival. Legacy transactions are excluded —
+    /// their signing hash depends on the ambient chain id, so the hash alone is not a safe global key.
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
     private static readonly ClockCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);

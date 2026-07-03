@@ -51,6 +51,35 @@ public class RecoverSignaturesTest
     }
 
     [Test]
+    public void RecoverData_SenderRecoveredButAuthorityMissing_RecoversAuthority()
+    {
+        PrivateKey signer = TestItem.PrivateKeyA;
+        PrivateKey authority = TestItem.PrivateKeyB;
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode(_ecdsa.Sign(authority, 0, Address.Zero, 0))
+            .SignedAndResolved(signer)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithTransactions([tx])
+            .TestObject;
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        releaseSpec.IsAuthorizationListEnabled.Returns(true);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        RecoverSignatures sut = new(
+            _ecdsa,
+            specProvider,
+            Substitute.For<ILogManager>());
+
+        sut.RecoverData(block);
+
+        Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+    }
+
+    [Test]
     public void RecoverData_FirstSenderAlreadyRecovered_RecoversRemainingSenders()
     {
         PrivateKey signerA = TestItem.PrivateKeyA;

@@ -92,6 +92,54 @@ namespace Nethermind.Core.Test.Crypto
         }
 
         [Test]
+        public void RecoverAddress_typed_tx_repeat_is_served_from_sender_cache()
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            PrivateKey keyA = TestItem.PrivateKeyA;
+            PrivateKey keyB = TestItem.PrivateKeyB;
+            // Unique content so the process-wide cache cannot collide with other tests
+            static Transaction Create() => Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithNonce(0xC0FFEE)
+                .TestObject;
+
+            Transaction txA = Create();
+            ecdsa.Sign(keyA, txA);
+            txA.Hash = txA.CalculateHash();
+            Assert.That(ecdsa.RecoverAddress(txA), Is.EqualTo(keyA.Address));
+
+            // Same hash, different signature: a cache hit returns the previously recovered sender,
+            // a recompute would return keyB's address
+            Transaction txB = Create();
+            ecdsa.Sign(keyB, txB);
+            txB.Hash = txA.Hash;
+
+            Assert.That(ecdsa.RecoverAddress(txB), Is.EqualTo(keyA.Address));
+        }
+
+        [Test]
+        public void RecoverAddress_legacy_tx_is_not_served_from_sender_cache()
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            PrivateKey keyA = TestItem.PrivateKeyA;
+            PrivateKey keyB = TestItem.PrivateKeyB;
+            static Transaction Create() => Build.A.Transaction
+                .WithNonce(0xBEEF)
+                .TestObject;
+
+            Transaction txA = Create();
+            ecdsa.Sign(keyA, txA);
+            txA.Hash = txA.CalculateHash();
+            Assert.That(ecdsa.RecoverAddress(txA), Is.EqualTo(keyA.Address));
+
+            Transaction txB = Create();
+            ecdsa.Sign(keyB, txB);
+            txB.Hash = txA.Hash;
+
+            Assert.That(ecdsa.RecoverAddress(txB), Is.EqualTo(keyB.Address));
+        }
+
+        [Test]
         [Repeat(3)]
         public void RecoverAddress_AuthorizationTupleOfDifferentSize_RecoversAddressCorrectly()
         {

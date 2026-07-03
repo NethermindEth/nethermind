@@ -44,10 +44,45 @@ public class ExecutionPayloadTests
         Assert.That(result.Error, Contains.Substring("checkpoint failed"));
     }
 
-    private static byte[] EncodeTx(TxType txType)
+    // Above the parallel-decoding threshold all txs must decode in payload order
+    [Test]
+    public void TryGetTransactions_decodes_many_txs_in_order()
+    {
+        const int count = 64;
+        byte[][] rlps = new byte[count][];
+        for (int i = 0; i < count; i++) rlps[i] = EncodeTx(TxType.EIP1559, nonce: (ulong)i);
+
+        ExecutionPayload payload = new() { Transactions = rlps };
+        Result<Transaction[]> result = payload.TryGetTransactions();
+
+        Assert.That(result.Error, Is.Null);
+        Assert.That(result.Data, Has.Length.EqualTo(count));
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(result.Data[i].Nonce, Is.EqualTo((ulong)i));
+        }
+    }
+
+    // The serial fallback must still pinpoint the first invalid tx above the parallel threshold
+    [Test]
+    public void TryGetTransactions_reports_exact_invalid_tx_above_parallel_threshold()
+    {
+        const int count = 64;
+        byte[][] rlps = new byte[count][];
+        for (int i = 0; i < count; i++) rlps[i] = EncodeTx(TxType.EIP1559, nonce: (ulong)i);
+        rlps[41] = [.. rlps[41], 0xDC, 0xAF];
+
+        ExecutionPayload payload = new() { Transactions = rlps };
+        Result<Transaction[]> result = payload.TryGetTransactions();
+
+        Assert.That(result.Error, Contains.Substring("Transaction 41"));
+    }
+
+    private static byte[] EncodeTx(TxType txType, ulong nonce = 0)
     {
         TransactionBuilder<Transaction> builder = Build.A.Transaction
             .WithType(txType)
+            .WithNonce(nonce)
             .WithChainId(TestBlockchainIds.ChainId);
 
         builder = txType switch

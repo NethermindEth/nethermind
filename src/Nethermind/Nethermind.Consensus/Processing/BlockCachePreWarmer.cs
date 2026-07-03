@@ -262,8 +262,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Transaction tx = block.Transactions[i];
             if (tx.SenderAddress is not Address sender)
             {
-                // Recovery leaves the sender null for an invalid signature; block processing
-                // rejects the block, so there is nothing useful to warm for this tx.
+                // Invalid signature leaves the sender null; the block will be rejected — nothing to warm.
                 continue;
             }
 

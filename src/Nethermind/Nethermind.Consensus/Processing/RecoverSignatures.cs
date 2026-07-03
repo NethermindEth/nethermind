@@ -32,9 +32,8 @@ namespace Nethermind.Consensus.Processing
         }
 
         /// <summary>
-        /// Exact per-tx check replacing the previous first-tx heuristic, so a partially recovered
-        /// block (e.g. an interrupted early recovery on the newPayload path) is always completed
-        /// rather than skipped.
+        /// Exact per-tx check (senders and EIP-7702 authorities) so a partially recovered block is
+        /// completed rather than skipped by a first-tx heuristic.
         /// </summary>
         private static bool AllSendersRecovered(Transaction[] txs)
         {

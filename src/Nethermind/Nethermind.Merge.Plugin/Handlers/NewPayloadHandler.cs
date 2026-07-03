@@ -118,10 +118,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        // Start ECDSA sender recovery on the already-decoded transactions (ValidateParams decodes
-        // and caches them) before TryGetBlock, so ecrecover overlaps transaction/withdrawal-root
-        // computation, hash validation and block tree insertion; the RecoverSignatures preprocessor
-        // in the processing queue then short-circuits on the already-recovered senders.
+        // Overlap ecrecover with root computation, hash validation and block tree insertion;
+        // the processing queue's RecoverSignatures then short-circuits on recovered senders.
         Task senderRecoveryTask = StartSenderRecovery(request);
 
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
@@ -368,8 +366,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             }
             catch (Exception e)
             {
-                // Losing the overlap is harmless: the processing queue preprocessor recovers any
-                // sender still missing, and unrecoverable signatures fail the block there either way.
+                // Best-effort: the processing-queue preprocessor recovers anything still missing.
                 if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
             }
         });
@@ -447,11 +444,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                // Senders must be fully recovered before the queue sees the block: the
-                // preprocessor's recovered-check must not race an in-flight recovery, and the
-                // prewarmer groups transactions BY sender at ProcessBranch start, so it needs
-                // every sender up front — recovery must never leak past this barrier, or the
-                // prewarmer would block on (or mis-group) unrecovered transactions.
+                // Invariant: recovery completes before the queue sees the block — the prewarmer
+                // groups txs by sender at ProcessBranch start, so it needs every sender up front.
                 await senderRecoveryTask;
                 await _processingQueue.Enqueue(block, processingOptions);
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
