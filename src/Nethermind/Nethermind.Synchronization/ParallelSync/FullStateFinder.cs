@@ -55,6 +55,21 @@ public class FullStateFinder(
             }
         }
 
+        if (bestFullState == 0)
+        {
+            // State synced at a deep static pivot (e.g. partial archive fast fill) lies further
+            // behind the best header than the bounded look-back reaches.
+            (ulong pivotNumber, Hash256 pivotHash) = _blockTree.SyncPivot;
+            if (pivotNumber > 0)
+            {
+                BlockHeader? pivotHeader = _blockTree.FindHeader(pivotNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (pivotHeader is not null && pivotHeader.Hash == pivotHash && IsFullySynced(pivotHeader))
+                {
+                    bestFullState = pivotHeader.Number;
+                }
+            }
+        }
+
         if (bestFullState != 0)
         {
             _lastKnownState = bestFullState;

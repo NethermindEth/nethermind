@@ -33,6 +33,22 @@ public class FullStateFinderTests
     }
 
     [Test]
+    public void TestWillCheckSyncPivotWhenStateIsDeeperThanLookback()
+    {
+        IBlockTree blockTree = Build.A.BlockTree()
+            .WithStateRoot((b) => b.Number == 100 ? _goodRoot : _badRoot)
+            .OfChainLength(1000)
+            .TestObject;
+        blockTree.SyncPivot = (100, blockTree.FindHeader(100, BlockTreeLookupOptions.None)!.Hash!);
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Is<BlockHeader>((header) => header.StateRoot == _goodRoot)).Returns(true);
+
+        FullStateFinder finder = new(blockTree, stateReader);
+        Assert.That(finder.FindBestFullState(), Is.EqualTo(100));
+    }
+
+    [Test]
     public void TestWillCheckForStateWhenItWasPreviouslyFound()
     {
         IBlockTree blockTree = Build.A.BlockTree()
