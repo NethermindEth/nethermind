@@ -1320,6 +1320,8 @@ public class BlockProcessorTests
         {
         }
 
+        public int ApplyEip8253Transition(IReleaseSpec spec) => 0;
+
         public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
         {
         }

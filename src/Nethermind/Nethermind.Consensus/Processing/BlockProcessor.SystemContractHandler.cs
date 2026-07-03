@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
@@ -18,7 +19,15 @@ public partial class BlockProcessor
 {
     public interface ISystemContractHandler
         : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor
-    { }
+    {
+        /// <summary>
+        /// Applies the EIP-8253 zero-nonce storage account transition (see <see cref="Eip8253Transition"/>),
+        /// routing the writes through the world state whose changes are recorded at the
+        /// pre-execution block access index.
+        /// </summary>
+        /// <returns>The number of accounts bumped.</returns>
+        int ApplyEip8253Transition(IWorldState worldState, IReleaseSpec spec);
+    }
 
     public sealed class SystemContractHandler(
         IBeaconBlockRootHandler beaconBlockRootHandler,
@@ -46,5 +55,8 @@ public partial class BlockProcessor
 
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
+
+        public int ApplyEip8253Transition(IWorldState worldState, IReleaseSpec spec)
+            => Eip8253Transition.Apply(worldState, spec);
     }
 }

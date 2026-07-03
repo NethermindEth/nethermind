@@ -130,6 +130,9 @@ public partial class BlockProcessor(
 
         _balManager.Setup(block);
 
+        int bumpedNonces = _systemContractHandler.ApplyEip8253Transition(_stateProvider, spec);
+        if (bumpedNonces > 0 && _logger.IsInfo) _logger.Info($"Applied the EIP-8253 transition to {bumpedNonces} zero-nonce storage accounts");
+
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);

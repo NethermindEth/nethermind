@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
@@ -36,6 +37,18 @@ public partial class BlockAccessListManager
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
+    }
+
+    /// <summary>
+    /// EIP-8253 nonce bumps routed through the pre-execution worldstate so the resulting
+    /// <c>NonceChange</c> entries are recorded at the pre-execution block access index.
+    /// </summary>
+    public int ApplyEip8253Transition(IReleaseSpec spec)
+    {
+        CheckInitialized();
+
+        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        return Eip8253Transition.Apply(preExecution.WorldState, spec);
     }
 
     public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)

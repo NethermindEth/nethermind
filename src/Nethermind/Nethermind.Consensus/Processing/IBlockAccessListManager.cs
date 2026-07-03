@@ -56,6 +56,13 @@ public interface IBlockAccessListManager
     void SetBlockAccessList(Block block);
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
+
+    /// <summary>
+    /// EIP-8253 nonce bumps routed through the pre-execution worldstate so the resulting
+    /// <c>NonceChange</c> entries are recorded at the pre-execution block access index.
+    /// </summary>
+    /// <returns>The number of accounts bumped.</returns>
+    int ApplyEip8253Transition(IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);

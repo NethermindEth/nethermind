@@ -40,5 +40,8 @@ public partial class BlockProcessor
 
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => balManager.ProcessWithdrawals(block, spec);
+
+        public int ApplyEip8253Transition(IWorldState worldState, IReleaseSpec spec)
+            => balManager.ApplyEip8253Transition(spec);
     }
 }

@@ -82,6 +82,29 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
+    [Test]
+    public void PeekNonce_DoesNotRecordAccountRead()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            ulong? nonce = tws.PeekNonce(TestItem.AddressA);
+            ulong? missing = tws.PeekNonce(TestItem.AddressB);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nonce, Is.EqualTo(0ul));
+                Assert.That(missing, Is.Null);
+                Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA), Is.Null, "peek must stay out of the BAL");
+            }
+
+            // The traced read is the contrast case: it must create the account entry the peek didn't.
+            tws.GetNonce(TestItem.AddressA);
+            Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
+        }
+    }
+
     [TestCase(true, 1ul, 1ul, TestName = "IncrementNonce")]
     [TestCase(false, 5ul, 5ul, TestName = "SetNonce")]
     public void NonceOp_RecordsNonceChange(

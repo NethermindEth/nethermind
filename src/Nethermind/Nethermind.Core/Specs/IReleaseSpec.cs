@@ -464,6 +464,12 @@ namespace Nethermind.Core.Specs
         public bool IsEip7954Enabled { get; }
 
         /// <summary>
+        /// EIP-8253: Bump nonce of zero-nonce storage accounts.
+        /// One-shot irregular state transition at fork activation.
+        /// </summary>
+        public bool IsEip8253Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.

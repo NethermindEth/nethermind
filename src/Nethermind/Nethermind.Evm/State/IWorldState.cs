@@ -132,6 +132,20 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void SetNonce(Address address, in ulong nonce);
 
+    /// <summary>
+    /// Reads an account nonce without recording the access in access-tracking decorators
+    /// (e.g. EIP-7928 block access list generation).
+    /// </summary>
+    /// <returns>The nonce, or <c>null</c> when the account does not exist.</returns>
+    /// <remarks>
+    /// Intended for protocol-internal bookkeeping (e.g. detecting whether a one-shot fork
+    /// transition has already been applied) that must stay invisible in consensus artifacts.
+    /// Decorators forward this to the wrapped state, so the read bypasses world-state-level
+    /// tracking while still reaching the underlying trie (trie-level witness capture is
+    /// unaffected).
+    /// </remarks>
+    ulong? PeekNonce(Address address) => AccountExists(address) ? GetNonce(address) : null;
+
     /* snapshots */
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
 

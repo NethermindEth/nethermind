@@ -38,6 +38,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual ulong GetNonce(Address address)
         => State.GetNonce(address);
 
+    public virtual ulong? PeekNonce(Address address)
+        => State.PeekNonce(address);
+
     public virtual bool IsStorageEmpty(Address address)
         => State.IsStorageEmpty(address);
 
