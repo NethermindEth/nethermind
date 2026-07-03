@@ -259,7 +259,7 @@ public abstract class BlockchainTestBase
             bool testPassed = differences.Count == 0;
 
             // Write test end marker if using streaming tracer (JSONL format)
-            // This must be done BEFORE removing tracer and BEFORE Assert to ensure marker is written even on failure
+            // This must be done BEFORE Assert to ensure the marker is written even on failure
             if (tracer is not null)
             {
                 tracer.TestFinished(test.Name, testPassed, test.Network, stopwatch?.Elapsed, headBlock?.StateRoot);
