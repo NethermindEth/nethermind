@@ -39,6 +39,9 @@ public sealed class StateDiffStore : IDisposable
     public bool ReplayEnabled { get; }
     public string Directory { get; }
 
+    /// <summary>Whether a diff was recorded for the block, without reading/decompressing it.</summary>
+    public bool HasRecord(ulong blockNumber) => _store.HasSlot(blockNumber);
+
     public void Write(StateDiffRecordBuilder builder, ulong blockNumber, Hash256 stateRoot)
     {
         int length = builder.GetLength(blockNumber, stateRoot);

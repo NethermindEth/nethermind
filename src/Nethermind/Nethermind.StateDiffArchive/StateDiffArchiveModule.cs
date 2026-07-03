@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -42,10 +43,14 @@ public class StateDiffArchiveModule(IStateDiffArchiveConfig config) : Module
         }
     }
 
-    /// <summary>Runs inside the main block-processing scope, the only scope where the global <see cref="IWorldStateScopeProvider"/> is registered and thus decoratable.</summary>
-    public class StateDiffArchiveMainProcessingModule : Module, IMainProcessingModule
+    /// <summary>
+    /// Runs inside the main block-processing scope, the only scope where the global <see cref="IWorldStateScopeProvider"/>
+    /// and <see cref="IBlockCachePreWarmer"/> are registered and thus decoratable.
+    /// </summary>
+    public class StateDiffArchiveMainProcessingModule(IStateDiffArchiveConfig config, IBlocksConfig blocksConfig) : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder) =>
+        protected override void Load(ContainerBuilder builder)
+        {
             builder.AddDecorator<IWorldStateScopeProvider>((ctx, inner) =>
             {
                 StateDiffStore store = ctx.Resolve<StateDiffStore>();
@@ -57,5 +62,12 @@ public class StateDiffArchiveModule(IStateDiffArchiveConfig config) : Module
                     return new ReplayScopeProvider(inner, ctx.Resolve<ReplayScopeTracker>(), logManager);
                 return inner;
             });
+
+            // During replay, skip the block cache prewarmer for blocks we will replay (no EVM to warm), keeping
+            // it for blocks past the archive. Only when prewarming is on, else IBlockCachePreWarmer is unregistered.
+            bool replay = config.ReplayEnabled && !config.RecordingEnabled;
+            if (replay && blocksConfig.PreWarmStateOnBlockProcessing)
+                builder.AddDecorator<IBlockCachePreWarmer>((ctx, inner) => new ReplayPrewarmGate(inner, ctx.Resolve<StateDiffStore>()));
+        }
     }
 }

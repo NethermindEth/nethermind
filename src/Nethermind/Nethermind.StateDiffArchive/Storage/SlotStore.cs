@@ -50,6 +50,25 @@ public sealed class SlotStore(string directory, string extension = "bin") : IDis
         }
     }
 
+    /// <summary>Whether a blob exists for the block, without reading it.</summary>
+    public bool HasSlot(ulong blockNumber)
+    {
+        ulong era = blockNumber / SlotFile.SlotsPerFile;
+        int slot = (int)(blockNumber % SlotFile.SlotsPerFile);
+        lock (_lock)
+        {
+            if (_fileEra != era)
+            {
+                string path = FilePath(era);
+                if (!File.Exists(path)) return false;
+                _file?.Dispose();
+                _file = new SlotFile(path);
+                _fileEra = era;
+            }
+            return _file!.HasSlot(slot);
+        }
+    }
+
     public bool Write(ulong blockNumber, ReadOnlySpan<byte> data, bool allowOverwrite = false)
     {
         ulong era = blockNumber / SlotFile.SlotsPerFile;
