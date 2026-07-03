@@ -1512,7 +1512,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ulong remainingRegularGas = TGasPolicy.GetRemainingGas(in gas);
             long stateReservoir = TGasPolicy.GetStateReservoir(in gas);
-            Debug.Assert(stateReservoir >= 0 && remainingRegularGas + (ulong)stateReservoir <= tx.GasLimit,
+            // The reservoir may end negative (net child spill); the ulong wrap below still yields the
+            // correct signed result as long as the total spent stays non-negative.
+            Debug.Assert((long)tx.GasLimit - (long)remainingRegularGas - stateReservoir >= 0,
                 $"EIP-8037 fail-path invariant violated: remaining ({remainingRegularGas}) + reservoir ({stateReservoir}) exceeds gasLimit ({tx.GasLimit}).");
             ulong preRefundGas = tx.GasLimit - remainingRegularGas - (ulong)stateReservoir;
             ulong spentGas = Math.Max(preRefundGas, floorGas);
@@ -1587,7 +1589,9 @@ namespace Nethermind.Evm.TransactionProcessing
             // Block regular gas = before_refund - state (EELS tx_regular_gas). Neither the gas refund nor the
             // EIP-7623/7976 calldata floor touches it: both adjust only the sender charge (tx_gas_used /
             // receipts). The floor in particular must NOT inflate the block's regular-gas dimension.
-            Debug.Assert((ulong)effectiveStateGas <= preRefundGas,
+            // System calls legitimately halt with preRefundGas 0 while intrinsic state gas remains;
+            // their GasConsumed is discarded, so the wrap below is inert for them.
+            Debug.Assert(tx.IsSystem() || (ulong)effectiveStateGas <= preRefundGas,
                 $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
             ulong blockGas = preRefundGas - (ulong)effectiveStateGas;
 
@@ -1770,8 +1774,10 @@ namespace Nethermind.Evm.TransactionProcessing
             in TGasPolicy gasAfterExecution,
             ulong codeInsertRegularRefund)
         {
-            Debug.Assert(substate.IsError || (TGasPolicy.GetStateReservoir(in gasAfterExecution) >= 0
-                    && TGasPolicy.GetRemainingGas(in gasAfterExecution) + (ulong)TGasPolicy.GetStateReservoir(in gasAfterExecution) <= tx.GasLimit),
+            // The reservoir may end negative (net child spill); the ulong wrap below still yields the
+            // correct signed result as long as the total spent stays non-negative.
+            Debug.Assert(substate.IsError
+                    || (long)tx.GasLimit - (long)TGasPolicy.GetRemainingGas(in gasAfterExecution) - TGasPolicy.GetStateReservoir(in gasAfterExecution) >= 0,
                 $"Gas invariant violated: remaining ({TGasPolicy.GetRemainingGas(in gasAfterExecution)}) + reservoir ({TGasPolicy.GetStateReservoir(in gasAfterExecution)}) exceeds gasLimit ({tx.GasLimit}).");
             ulong spentGas = substate.IsError
                 ? tx.GasLimit
