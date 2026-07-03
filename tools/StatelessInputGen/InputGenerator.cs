@@ -58,14 +58,7 @@ internal static class InputGenerator
 
         if (forZisk)
         {
-            int rem = data.Length % sizeof(ulong);
-            int len = sizeof(ulong) + data.Length + (rem == 0 ? 0 : (sizeof(ulong) - rem));
-            byte[] framedData = new byte[len];
-
-            BinaryPrimitives.WriteUInt64LittleEndian(framedData, (ulong)data.Length);
-            Buffer.BlockCopy(data, 0, framedData, sizeof(ulong), data.Length);
-
-            data = framedData;
+            data = ZiskFrame.Wrap(data);
         }
 
         Directory.CreateDirectory(output);
