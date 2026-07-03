@@ -22,7 +22,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -89,7 +91,7 @@ namespace Nethermind.Consensus.AuRa
             AuRaValidator.OnBlockProcessingStart(block, options);
             TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
-            Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
+            Metrics.AuRaStep = block.Header.GetAuRaStepOrZero();
             return receipts;
         }
 
@@ -112,8 +114,22 @@ namespace Nethermind.Consensus.AuRa
         protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             RewriteContracts(block, spec);
-            _balManager.ApplyAuRaPreprocessingChanges(spec, _withdrawalContractAddress);
+            ApplyAuRaPreprocessingChanges(spec);
             return base.ProcessBlock(block, blockTracer, options, spec, token);
+        }
+
+        // BAL-era preprocessing for AuRa+Merge: materialise the system-user and withdrawal-contract
+        // accounts on the raw worldstate so subsequent block processing can see them. Skipped when
+        // BAL is off — pre-EIP-7928 chains continue to rely on the EVM's lazy account creation.
+        // Done BEFORE base.ProcessBlock so the BAL parent-snapshot in parallel mode reflects the
+        // materialised accounts.
+        private void ApplyAuRaPreprocessingChanges(IReleaseSpec spec)
+        {
+            if (!_balManager.Enabled) return;
+
+            _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, 0);
+            _stateProvider.CreateAccount(_withdrawalContractAddress, UInt256.Zero, 0);
+            _stateProvider.Commit(spec.ForSystemTransaction(isGenesis: false), commitRoots: false);
         }
 
         // This validations cannot be run in AuraSealValidator because they are dependent on state.

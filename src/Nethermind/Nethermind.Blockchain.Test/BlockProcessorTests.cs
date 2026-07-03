@@ -1331,10 +1331,6 @@ public class BlockProcessorTests
         public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
         {
         }
-
-        public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
-        {
-        }
     }
 
     private sealed class BalIndexRecordingTransactionProcessorAdapter(

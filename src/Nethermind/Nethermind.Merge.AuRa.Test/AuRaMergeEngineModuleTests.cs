@@ -17,7 +17,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Contracts;
@@ -29,8 +28,10 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
+using Nethermind.AuRa.Test;
 using NSubstitute;
 using NUnit.Framework;
+using Builders = Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -162,11 +163,6 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                         provider.SealEngine = SealEngineType;
                     return specProvider;
                 })
-                .WithGenesisPostProcessor((block, _) =>
-                {
-                    block.Header.AuRaStep = 0;
-                    block.Header.AuRaSignature = new byte[65];
-                })
 
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                 // as normally, test blockchain don't use INethermindApi at all.
@@ -204,6 +200,10 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         protected override ChainSpec CreateChainSpec()
         {
             ChainSpec baseChainSpec = base.CreateChainSpec();
+            baseChainSpec.Genesis = Builders.Build.A.Block
+                .WithDifficulty(0)
+                .WithAura(0, new byte[65])
+                .TestObject;
             AuRaChainSpecEngineParameters.AuRaValidatorJson validatorsJson = new()
             {
                 List = [Address.Zero]

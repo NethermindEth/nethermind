@@ -38,10 +38,10 @@ public class XdcSubnetBlockHeader(
         set { _nextValidatorsAddress = value; }
     }
 
-    public override ValueHash256 CalculateHash()
+    public override ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
         KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, this);
+        _headerDecoder.Encode(ref writer, this, behaviors);
         return writer.GetHash();
     }
 
@@ -83,8 +83,6 @@ public class XdcSubnetBlockHeader(
             Nonce = src.Nonce,
             TxRoot = src.TxRoot,
             TotalDifficulty = src.TotalDifficulty,
-            AuRaStep = src.AuRaStep,
-            AuRaSignature = src.AuRaSignature,
             ReceiptsRoot = src.ReceiptsRoot,
             BaseFeePerGas = src.BaseFeePerGas,
             WithdrawalsRoot = src.WithdrawalsRoot,

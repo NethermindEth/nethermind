@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SubscriptionFactory subscriptionFactory = new();
 
             // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
+            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo, new BlockForRpcFactory());
 
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null, bool shouldReceiveResult = true)
         {
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, options);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, new BlockForRpcFactory(), options);
 
             JsonRpcResult jsonRpcResult = new();
 
@@ -345,7 +345,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider, new BlockForRpcFactory());
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
 
             Block block0 = Build.A.Block.Genesis.WithTotalDifficulty(0L).TestObject;
@@ -397,7 +397,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider, new BlockForRpcFactory());
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
 
             Block block0 = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
@@ -955,7 +955,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                         jsonRpcDuplexClient: client,
                         blockTree: blockTree,
                         specProvider: new TestSpecProvider(new ReleaseSpec()),
-                        logManager: LimboLogs.Instance
+                        logManager: LimboLogs.Instance,
+                        blockForRpcFactory: new BlockForRpcFactory()
                     );
 
                 for (int i = 0; i < messages; i++)

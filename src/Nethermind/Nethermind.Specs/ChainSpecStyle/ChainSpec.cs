@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -82,5 +83,12 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong? OsakaTimestamp { get; set; }
         public ulong? AmsterdamTimestamp { get; set; }
+
+        /// <summary>
+        /// Raw engine-specific genesis seal sections (<c>genesis.seal.*</c>) other than the standard
+        /// <c>ethereum</c> one, keyed by engine name. Applied to <see cref="Genesis"/> by the owning
+        /// consensus plugin — core doesn't act on it.
+        /// </summary>
+        public Dictionary<string, JsonElement>? CustomSeal { get; set; }
     }
 }
