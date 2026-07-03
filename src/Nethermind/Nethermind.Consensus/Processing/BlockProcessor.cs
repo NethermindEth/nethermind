@@ -63,8 +63,6 @@ public partial class BlockProcessor(
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private ISystemContractHandler _systemContractHandler;
 
-    private const int ReceiptsRootParallelThreshold = 16;
-
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
@@ -155,7 +153,7 @@ public partial class BlockProcessor(
 
         // Overlapped readers of `receipts` only touch fields already populated by CalculateBlooms, so no data race.
         Task<Hash256>? receiptsRootTask = null;
-        if (receipts.Length >= ReceiptsRootParallelThreshold)
+        if (ShouldCalculateReceiptsRootInParallel(receipts.Length))
         {
             using (ExecutionContext.SuppressFlow())
             {
@@ -222,6 +220,8 @@ public partial class BlockProcessor(
         }
         header.StateRoot = _stateProvider.StateRoot;
     }
+
+    private static partial bool ShouldCalculateReceiptsRootInParallel(int receiptCount);
 
     private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
     {
