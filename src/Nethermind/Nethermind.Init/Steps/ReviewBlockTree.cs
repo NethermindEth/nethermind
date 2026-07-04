@@ -68,7 +68,7 @@ namespace Nethermind.Init.Steps
 
             foreach (BlockInfo blockInfo in level.BlockInfos)
             {
-                Block? block = blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                Block? block = blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None);
                 if (block?.StateRoot != persistedRoot)
                 {
                     continue;

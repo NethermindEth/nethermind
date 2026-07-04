@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
+using CoreBuild = Nethermind.Core.Test.Builders.Build;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps;
 
@@ -61,23 +62,23 @@ public class ReviewBlockTreeTests
         // Tree head is block 4; gap blocks 5..8 are suggested but unprocessed, mirroring the
         // crash-gap shape where the state backend has persisted state ahead of the head. A null
         // persistedRoot means the persisted state matches the junction block's state root.
-        public RecoverySetup(ulong persistedNumber, Hash256? persistedRoot)
+        public RecoverySetup(ulong persistedNumber, Hash256 persistedRoot)
         {
-            Tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+            Tree = CoreBuild.A.BlockTree().OfChainLength(5).TestObject;
 
-            Block parent = Tree.Head!;
+            Block parent = Tree.Head;
             GapBlocks = new Block[4];
             for (int i = 0; i < GapBlocks.Length; i++)
             {
-                Block block = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).TestObject;
+                Block block = CoreBuild.A.Block.WithNumber(parent.Number + 1).WithParent(parent).TestObject;
                 Tree.SuggestBlock(block);
                 GapBlocks[i] = block;
                 parent = block;
             }
 
-            Hash256 junctionRoot = persistedRoot ?? GapBlocks[^1].StateRoot!;
+            Hash256 junctionRoot = persistedRoot ?? GapBlocks[^1].StateRoot;
             IPersistedStateSource persistedStateSource = Substitute.For<IPersistedStateSource>();
-            persistedStateSource.TryGetPersistedState(out Arg.Any<ulong>(), out Arg.Any<Hash256?>()).Returns(x =>
+            persistedStateSource.TryGetPersistedState(out Arg.Any<ulong>(), out Arg.Any<Hash256>()).Returns(x =>
             {
                 x[0] = persistedNumber;
                 x[1] = junctionRoot;
