@@ -7,7 +7,9 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Services;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -27,11 +29,7 @@ namespace Nethermind.Consensus.Clique
         {
             _nethermindApi = nethermindApi;
 
-            (IApiWithStores _, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
-
             _snapshotManager = nethermindApi.Context.Resolve<ISnapshotManager>();
-
-            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager));
 
             return Task.CompletedTask;
         }
@@ -84,6 +82,7 @@ namespace Nethermind.Consensus.Clique
                 })
 
                 .AddSingleton<ISnapshotManager, SnapshotManager>()
+                .AddLast<IBlockPreprocessorStep, AuthorRecoveryStep>()
                 .AddSingleton<ISealValidator, CliqueSealValidator>()
                 .AddSingleton<ISealer, CliqueSealer>()
 

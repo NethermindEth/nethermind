@@ -6,7 +6,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -33,7 +32,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
 
             // Validators
             .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
-            .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
 
             // Block production related.
             .AddScoped<PostMergeBlockProducerFactory>()

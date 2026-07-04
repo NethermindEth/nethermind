@@ -117,10 +117,10 @@ public class ReorgTests
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
-            new RecoverSignatures(
+            [new RecoverSignatures(
                 ecdsa,
                 specProvider,
-                LimboLogs.Instance),
+                LimboLogs.Instance)],
             stateReader,
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default,

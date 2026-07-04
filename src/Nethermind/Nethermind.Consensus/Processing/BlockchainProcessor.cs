@@ -40,7 +40,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public bool IsMainProcessor { get; init; }
 
     private readonly IBranchProcessor _branchProcessor;
-    private readonly IBlockPreprocessorStep _recoveryStep;
+    private readonly IReadOnlyList<IBlockPreprocessorStep> _recoverySteps;
     private readonly IStateReader _stateReader;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
@@ -88,7 +88,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// </summary>
     /// <param name="blockTree"></param>
     /// <param name="branchProcessor"></param>
-    /// <param name="recoveryStep"></param>
+    /// <param name="recoverySteps"></param>
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
@@ -97,7 +97,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
-        IBlockPreprocessorStep recoveryStep,
+        IReadOnlyList<IBlockPreprocessorStep> recoverySteps,
         IStateReader stateReader,
         ILogManager logManager,
         Options options,
@@ -107,7 +107,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
-        _recoveryStep = recoveryStep;
+        _recoverySteps = recoverySteps;
         _stateReader = stateReader;
         _options = options;
 
@@ -115,6 +115,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
         if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
+    }
+
+    private void RecoverData(Block block)
+    {
+        for (int i = 0; i < _recoverySteps.Count; i++)
+        {
+            _recoverySteps[i].RecoverData(block);
+        }
     }
 
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
@@ -283,7 +291,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             {
                 Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
-                _recoveryStep.RecoverData(blockRef.Block);
+                RecoverData(blockRef.Block);
 
                 try
                 {
@@ -679,7 +687,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         for (int i = 0; i < blocksToProcess.Count; i++)
         {
             /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
-            _recoveryStep.RecoverData(blocksToProcess[i]);
+            RecoverData(blocksToProcess[i]);
         }
 
         // Uncommon logging and throws

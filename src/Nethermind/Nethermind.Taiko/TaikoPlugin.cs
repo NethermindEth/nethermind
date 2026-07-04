@@ -62,8 +62,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
-        _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
-
         InitializeL1Precompiles();
 
         return Task.CompletedTask;

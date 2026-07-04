@@ -64,7 +64,7 @@ public class TestBlockchain : IDisposable
     public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
     public IBlockchainProcessor BlockchainProcessor => _fromContainer.MainProcessingContext.BlockchainProcessor;
     public IBlockProcessingQueue BlockProcessingQueue => _fromContainer.MainProcessingContext.BlockProcessingQueue;
-    public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
+    public IReadOnlyList<IBlockPreprocessorStep> BlockPreprocessorSteps => _fromContainer.BlockPreprocessorSteps;
 
     public IBlockTree BlockTree => _fromContainer.BlockTree;
 
@@ -132,7 +132,7 @@ public class TestBlockchain : IDisposable
         Lazy<IReceiptStorage> receiptStorage,
         Lazy<ITxPool> txPool,
         Lazy<IWorldStateManager> worldStateManager,
-        Lazy<IBlockPreprocessorStep> blockPreprocessorStep,
+        Lazy<IReadOnlyList<IBlockPreprocessorStep>> blockPreprocessorSteps,
         Lazy<IBlockTree> blockTree,
         Lazy<IBlockFinder> blockFinder,
         Lazy<ILogFinder> logFinder,
@@ -162,7 +162,7 @@ public class TestBlockchain : IDisposable
         public IReceiptStorage ReceiptStorage => receiptStorage.Value;
         public ITxPool TxPool => txPool.Value;
         public IWorldStateManager WorldStateManager => worldStateManager.Value;
-        public IBlockPreprocessorStep BlockPreprocessorStep => blockPreprocessorStep.Value;
+        public IReadOnlyList<IBlockPreprocessorStep> BlockPreprocessorSteps => blockPreprocessorSteps.Value;
         public IBlockTree BlockTree => blockTree.Value;
         public IBlockFinder BlockFinder => blockFinder.Value;
         public ILogFinder LogFinder => logFinder.Value;
