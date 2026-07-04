@@ -153,17 +153,15 @@ public class Eip8037BlockGasInclusionCheckTests
             }
 
             ulong stateGasSpill = random.NextUInt64(0, Math.Min(spentRegular, int.MaxValue));
-            ulong stateGasSpillReclassified = random.NextUInt64(0, Math.Min(stateGasSpill, int.MaxValue));
             ulong remainingRegular = initialRegular - spentRegular;
             ulong floorGas = random.NextUInt64(21_000, 200_000);
 
-            ulong executionRegularGasUsed = initialRegular - remainingRegular - stateGasSpill + stateGasSpillReclassified;
+            ulong executionRegularGasUsed = initialRegular - remainingRegular - stateGasSpill;
             ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
                 intrinsicRegular,
                 initialRegular,
                 remainingRegular,
                 stateGasSpill,
-                stateGasSpillReclassified,
                 floorGas);
 
             Assert.That(executionRegularGasUsed, Is.GreaterThanOrEqualTo(0ul));
@@ -180,7 +178,6 @@ public class Eip8037BlockGasInclusionCheckTests
             initialRegularGas: initialRegular,
             remainingRegularGas: remainingRegular,
             stateGasSpill: 200,
-            stateGasSpillReclassified: 0,
             floorGas: 53_000);
 
         Assert.That(blockRegularGas, Is.EqualTo(53_000ul));

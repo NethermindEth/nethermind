@@ -646,6 +646,7 @@ internal static class TestRpcBlockchainExt
                 blockchain.Container.Resolve<ISyncConfig>(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
-                Substitute.For<IHistoryPruner>())
+                Substitute.For<IHistoryPruner>()),
+            new BlockForRpcFactory()
         ));
 }

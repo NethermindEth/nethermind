@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -208,6 +209,72 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That((bool)result.Result, Is.False);
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
         Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.EmptyBlockStateCalls));
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_gap_expansion_exceeding_cap_returns_error()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new() { BlockOverrides = new BlockOverride { Number = checked(chain.Bridge.HeadBlock.Number + 130) }, Calls = [] },
+                new() { BlockOverrides = new BlockOverride { Number = checked(chain.Bridge.HeadBlock.Number + 260) }, Calls = [] }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.False);
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ClientLimitExceededError));
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_block_time_override_crossing_a_fork_uses_the_post_fork_spec()
+    {
+        const ulong shanghaiTimestamp = 2_000_000_000;
+        CustomSpecProvider specProvider = new(
+            ((ForkActivation)0, Paris.Instance),
+            (ForkActivation.TimestampOnly(shanghaiTimestamp), Shanghai.Instance));
+        specProvider.UpdateMergeTransitionInfo(0, 0);
+
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(specProvider);
+        Assert.That(chain.BlockFinder.Head!.Header.Timestamp, Is.LessThan(shanghaiTimestamp));
+
+        Address contract = new("0xc200000000000000000000000000000000000000");
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { Time = shanghaiTimestamp },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contract, new AccountOverride { Code = Bytes.FromHexString("0x5f00") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = contract, Gas = 100_000, GasPrice = 0 }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.ToString());
+        SimulateCallResult callResult = result.Data.First().Calls.First();
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success), callResult.Error?.Message);
+    }
+
+    private sealed class GenesisOnlyRpcBlockchain : TestRpcBlockchain
+    {
+        protected override Task AddBlocksOnStart() => Task.CompletedTask;
     }
 
     /// <summary>

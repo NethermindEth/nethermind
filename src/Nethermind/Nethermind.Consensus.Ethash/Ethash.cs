@@ -191,7 +191,7 @@ namespace Nethermind.Consensus.Ethash
 
         internal static uint Fnv(uint v1, uint v2) => (v1 * FnvPrime) ^ v2;
 
-        private static uint GetUInt(byte[] bytes, uint offset) => BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
+        private static uint GetUInt(byte[] bytes, uint offset) => BitConverter.ToUInt32(bytes, (int)offset * 4);
 
         public void HintRange(Guid guid, ulong start, ulong end) => _hintBasedCache.Hint(guid, start, end);
 

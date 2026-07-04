@@ -37,7 +37,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IForkInfo forkInfo,
         ILogIndexConfig logIndexConfig,
         IReceiptConfig receiptConfig,
-        IEthCapabilitiesProvider capabilitiesProvider)
+        IEthCapabilitiesProvider capabilitiesProvider,
+        IBlockForRpcFactory blockForRpcFactory)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -65,6 +66,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 receiptConfig,
                 _secondsPerSlot,
                 _headBlockSignal,
-                capabilitiesProvider);
+                capabilitiesProvider,
+                blockForRpcFactory);
     }
 }

@@ -69,8 +69,6 @@ public class BlockHeader
     public ulong Nonce { get; set; }
     public Hash256? Hash { get; set; }
     public UInt256? TotalDifficulty { get; set; }
-    public byte[]? AuRaSignature { get; set; }
-    public ulong? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas;
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
@@ -183,5 +181,38 @@ public class BlockHeader
         BlockHeader header = (BlockHeader)MemberwiseClone();
         header.Bloom = Bloom?.Clone() ?? new Bloom();
         return header;
+    }
+
+    /// <summary>
+    /// Copy carrying the consensus inputs needed to re-execute the block; execution outputs
+    /// (state root, gas used, logs bloom) are reset so processing recomputes them. Subclasses
+    /// override to also preserve subclass-specific seal fields (e.g. AuRa step + signature).
+    /// </summary>
+    public virtual BlockHeader CloneForProcessing()
+    {
+        BlockHeader clone = new(ParentHash!, UnclesHash!, Beneficiary!, Difficulty, Number, GasLimit, Timestamp, ExtraData);
+        CopyProcessingFields(clone);
+        return clone;
+    }
+
+    protected void CopyProcessingFields(BlockHeader dst)
+    {
+        dst.Bloom = Core.Bloom.Empty;
+        dst.Author = Author;
+        dst.Hash = Hash;
+        dst.MixHash = MixHash;
+        dst.Nonce = Nonce;
+        dst.TxRoot = TxRoot;
+        dst.TotalDifficulty = TotalDifficulty;
+        dst.ReceiptsRoot = ReceiptsRoot;
+        dst.BaseFeePerGas = BaseFeePerGas;
+        dst.WithdrawalsRoot = WithdrawalsRoot;
+        dst.RequestsHash = RequestsHash;
+        dst.IsPostMerge = IsPostMerge;
+        dst.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        dst.SlotNumber = SlotNumber;
+        dst.BlockAccessListHash = BlockAccessListHash;
+        dst.BlobGasUsed = BlobGasUsed;
+        dst.ExcessBlobGas = ExcessBlobGas;
     }
 }

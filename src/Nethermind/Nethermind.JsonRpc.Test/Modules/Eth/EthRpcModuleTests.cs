@@ -28,7 +28,6 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Json;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -2833,17 +2832,7 @@ public partial class EthRpcModuleTests
                     .Build(wrappedConfigurer).Result,
 
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
-                    .Build(configurer: builder =>
-                    {
-                        builder
-                            .WithGenesisPostProcessor((block, state) =>
-                                {
-                                    block.Header.AuRaStep = 0;
-                                    block.Header.AuRaSignature = new byte[65];
-                                }
-                            );
-                        wrappedConfigurer(builder);
-                    }).Result
+                    .Build(wrappedConfigurer).Result
             });
         }
 
