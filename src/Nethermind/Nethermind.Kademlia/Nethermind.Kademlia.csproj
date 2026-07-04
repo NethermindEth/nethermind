@@ -14,12 +14,13 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/nethermindeth/nethermind</RepositoryUrl>
+    <RepositoryUrl>https://github.com/NethermindEth/nethermind</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Collections.Pooled" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
