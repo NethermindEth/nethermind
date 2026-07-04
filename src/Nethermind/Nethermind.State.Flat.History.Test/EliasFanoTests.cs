@@ -30,6 +30,15 @@ public class EliasFanoTests
     }
 
     [TestCaseSource(nameof(PredecessorSources))]
+    public void DecodeAll_matches_indexer(ulong[] source)
+    {
+        EliasFano.Reader reader = new(Encode(source));
+        ulong[] decoded = new ulong[source.Length];
+        reader.DecodeAll(decoded);
+        Assert.That(decoded, Is.EqualTo(source));
+    }
+
+    [TestCaseSource(nameof(PredecessorSources))]
     public void Predecessor_matches_expected(ulong[] source)
     {
         EliasFano.Reader reader = new(Encode(source));

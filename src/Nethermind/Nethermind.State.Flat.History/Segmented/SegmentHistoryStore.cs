@@ -56,6 +56,7 @@ public sealed class SegmentHistoryStore : IDisposable
         _maxBufferBytes = maxBufferBytes;
         _mergeFanout = Math.Max(2, mergeFanout); // fanout of 1 would merge a single segment into itself forever
         _maxSegmentBlocks = maxSegmentBlocks;
+        _lookupKey = new ThreadLocal<byte[]>(() => new byte[keyLen]);
 
         Directory.CreateDirectory(directory);
         foreach (string path in Directory.EnumerateFiles(directory, "seg_*" + SegmentExtension))
@@ -72,7 +73,9 @@ public sealed class SegmentHistoryStore : IDisposable
 
     public void RecordChange(ulong block, scoped ReadOnlySpan<byte> flatKey, scoped ReadOnlySpan<byte> value)
     {
-        if (_anyDurable && block <= _durableMaxBlock) return; // already sealed; keep resume idempotent
+        // Drops re-delivery of an already-sealed block. Assumes forward-only capture: a block still buffered (sealed
+        // block < block <= last completed) is never re-delivered within a session, so it can't double-append here.
+        if (_anyDurable && block <= _durableMaxBlock) return;
 
         if (!_buffer.TryGetValue(GetKeyForLookup(flatKey), out EntityBuffer? entity))
         {
@@ -328,19 +331,22 @@ public sealed class SegmentHistoryStore : IDisposable
 
     private byte[] GetKeyForLookup(scoped ReadOnlySpan<byte> flatKey)
     {
-        // SortedDictionary lookups need a byte[]; reuse a scratch of the fixed key length to avoid allocating on reads.
-        byte[] scratch = _lookupKey ??= new byte[_keyLen];
+        // SortedDictionary lookups need a byte[]; a per-thread scratch avoids allocating on reads while staying safe
+        // when RPC threads read this instance concurrently with the writer (a shared scratch would tear between the
+        // CopyTo and the lookup). Per-instance so stores with different key lengths don't collide on the same thread.
+        byte[] scratch = _lookupKey.Value!;
         flatKey.CopyTo(scratch);
         return scratch;
     }
 
-    private byte[]? _lookupKey;
+    private readonly ThreadLocal<byte[]> _lookupKey;
 
     public void Dispose()
     {
         Flush(); // seal the last partial step so it survives a restart
         foreach (HistorySegment segment in _segments) segment.Dispose();
         _segments.Clear();
+        _lookupKey.Dispose();
     }
 
     private sealed class EntityBuffer

@@ -30,7 +30,7 @@ namespace Nethermind.State.Flat.History.Segmented;
 /// </remarks>
 public sealed unsafe class HistorySegment : IDisposable
 {
-    private const uint Magic = 0x3153484E; // "NHS1"
+    private const uint Magic = 0x3153484E; // "NHS1" tag (the trailing 1 is part of the magic, not the format version)
     private const ushort Version = 2;
     private const int HeaderBytes = 104;
 
@@ -121,12 +121,10 @@ public sealed unsafe class HistorySegment : IDisposable
         EliasFano.Reader ef = new(EfBlob(ordinal));
         int m = ef.Count;
         ulong[] blocks = new ulong[m];
+        ef.DecodeAll(blocks); // single pass; per-rank ef[i] would be O(m²)
         byte[][] values = new byte[m][];
         for (int i = 0; i < m; i++)
-        {
-            blocks[i] = ef[i];
             values[i] = ValueAt(ordinal, i, m).ToArray();
-        }
         return new HistoryChangeEntry(KeyAt(ordinal).ToArray(), blocks, values);
     }
 

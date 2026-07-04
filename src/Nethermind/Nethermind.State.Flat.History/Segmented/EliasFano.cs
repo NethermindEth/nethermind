@@ -160,6 +160,28 @@ public static class EliasFano
         public ulong this[int i] => ((ulong)(Select1(i) - i) << _l) | ReadLow(i);
 
         /// <summary>
+        /// Writes all <see cref="Count"/> values in order into <paramref name="destination"/> in one forward pass over
+        /// the high bitmap — O(highWords + n), versus O(n²) from calling the indexer per rank (each restarts the
+        /// <c>select</c> scan). <paramref name="destination"/> must have room for <see cref="Count"/> values.
+        /// </summary>
+        public void DecodeAll(Span<ulong> destination)
+        {
+            int wordCount = _highWords.Length / sizeof(ulong);
+            int i = 0;
+            for (int w = 0; w < wordCount && i < _n; w++)
+            {
+                ulong bits = Word(_highWords, w);
+                while (bits != 0)
+                {
+                    int pos = (w << 6) + BitOperations.TrailingZeroCount(bits);
+                    destination[i] = ((ulong)(pos - i) << _l) | ReadLow(i);
+                    i++;
+                    bits &= bits - 1;
+                }
+            }
+        }
+
+        /// <summary>
         /// The largest value ≤ <paramref name="query"/>. Returns its <paramref name="rank"/> (position in the value run)
         /// and <paramref name="value"/>; <c>false</c> when every value is greater (no predecessor).
         /// </summary>
