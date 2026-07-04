@@ -515,6 +515,9 @@ public class DebugRpcModule(
         return ResultWrapper<bool>.Success(true);
     }
 
+    public ResultWrapper<bool> debug_repairMainChainToHead() =>
+        ResultWrapper<bool>.Success(debugBridge.RepairMainChainToHead());
+
     public ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash)
     {
         Transaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);

@@ -20,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
@@ -39,6 +40,7 @@ public class DebugBridge : IDebugBridge
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
     private readonly Dictionary<string, IDb> _dbMappings;
+    private readonly ILogger _logger;
 
     public DebugBridge(
         IConfigProvider configProvider,
@@ -49,7 +51,8 @@ public class DebugBridge : IDebugBridge
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore)
+        IBadBlockStore badBlockStore,
+        ILogManager logManager)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -59,6 +62,7 @@ public class DebugBridge : IDebugBridge
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
+        _logger = logManager?.GetClassLogger<DebugBridge>() ?? throw new ArgumentNullException(nameof(logManager));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -94,6 +98,20 @@ public class DebugBridge : IDebugBridge
     public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
 
     public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
+
+    public bool RepairMainChainToHead()
+    {
+        Block? head = _blockTree.Head;
+        if (head is null)
+        {
+            if (_logger.IsWarn) _logger.Warn("Cannot repair main chain: no head block is set.");
+            return false;
+        }
+
+        bool updated = _blockTree.TryUpdateMainChain(head.Header, wereProcessed: false);
+        if (!updated && _logger.IsWarn) _logger.Warn($"Could not canonicalize head level {head.Number} ({head.Hash}); the head body may be missing.");
+        return updated;
+    }
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);
 

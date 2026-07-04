@@ -34,6 +34,7 @@ public interface IDebugBridge
     ChainLevelInfo GetLevelInfo(ulong number);
     int DeleteChainSlice(ulong startNumber, bool force = false);
     void UpdateHeadBlock(Hash256 blockHash);
+    bool RepairMainChainToHead();
     Task<bool> MigrateReceipts(ulong from, ulong to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
     SyncReportSummary GetCurrentSyncStage();

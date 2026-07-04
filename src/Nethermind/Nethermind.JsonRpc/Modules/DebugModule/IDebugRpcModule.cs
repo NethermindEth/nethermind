@@ -30,6 +30,11 @@ public interface IDebugRpcModule : IRpcModule
         IsSharable = true)]
     ResultWrapper<bool> debug_resetHead(Hash256 blockHash);
 
+    [JsonRpcMethod(
+        Description = "Walks from the current head down to the last block already on the main chain, marking each level canonical (header-only, no re-execution). Useful after restoring a snapshot where the head is set but the canonical number->hash index below it was not fully persisted, so eth_getBlockByNumber and p2p header serving return empty for that range. Returns true when the head level is (re)marked canonical, i.e. the head branch is canonicalized (not necessarily that a gap was found and fixed); returns false when there is no head (Nethermind specific).",
+        IsSharable = true)]
+    ResultWrapper<bool> debug_repairMainChainToHead();
+
     [JsonRpcMethod(Description = "This method will attempt to run the transaction in the exact same manner as it was executed on the network. It will replay any transaction that may have been executed prior to this one before it will finally attempt to execute the transaction that corresponds to the given hash.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions options = null);
 

@@ -469,6 +469,16 @@ public class DebugModuleTests
         _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
 
+    [Test]
+    public async Task DebugRepairMainChainToHead_WhenInvoked_DelegatesToBridge()
+    {
+        _debugBridge.RepairMainChainToHead().Returns(true);
+
+        string response = await SerializedRequest("debug_repairMainChainToHead");
+        _debugBridge.Received().RepairMainChainToHead();
+        Assert.That(response, Does.Contain("\"result\":true"));
+    }
+
     private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundles(CancellationToken token)
     {
         yield return YieldTrace(token);
