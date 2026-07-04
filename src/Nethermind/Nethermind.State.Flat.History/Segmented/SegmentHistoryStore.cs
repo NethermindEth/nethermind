@@ -23,7 +23,8 @@ public sealed class SegmentHistoryStore : IDisposable
     private readonly int _keyLen;
     private readonly int _stepBlocks;
     private readonly long _maxBufferBytes;
-    private readonly int _maxSegmentsBeforeMerge;
+    private readonly int _mergeFanout;
+    private readonly long _maxSegmentBlocks;
 
     // Segments ordered by ascending FromBlock (newest last); ranges are disjoint.
     private readonly List<HistorySegment> _segments = [];
@@ -46,13 +47,15 @@ public sealed class SegmentHistoryStore : IDisposable
         int keyLen,
         int stepBlocks = 4096,
         long maxBufferBytes = 256L * 1024 * 1024,
-        int maxSegmentsBeforeMerge = 16)
+        int mergeFanout = 8,
+        long maxSegmentBlocks = 2_097_152)
     {
         _directory = directory;
         _keyLen = keyLen;
         _stepBlocks = stepBlocks;
         _maxBufferBytes = maxBufferBytes;
-        _maxSegmentsBeforeMerge = maxSegmentsBeforeMerge;
+        _mergeFanout = Math.Max(2, mergeFanout); // fanout of 1 would merge a single segment into itself forever
+        _maxSegmentBlocks = maxSegmentBlocks;
 
         Directory.CreateDirectory(directory);
         foreach (string path in Directory.EnumerateFiles(directory, "seg_*" + SegmentExtension))
@@ -204,47 +207,112 @@ public sealed class SegmentHistoryStore : IDisposable
         _bufferBytes = 0;
         _bufferStarted = false;
 
-        MergeOldestIfNeeded();
+        MergeIfNeeded();
     }
 
-    // TODO!: merging the oldest pair makes segment[0] grow to ~full-archive size and be rewritten on every seal (O(N^2) write amplification) — replace with a tiered/leveled merge.
-    private void MergeOldestIfNeeded()
+    // Size-tiered merge: a segment's tier is derived from its block span (tier t spans [StepBlocks·F^t, StepBlocks·F^(t+1))).
+    // Whenever `F` consecutive segments share a tier, the oldest `F` of them fuse into one segment of the next tier up.
+    // A segment whose span reaches `MaxSegmentBlocks` is frozen and never merged again, so every block is rewritten at
+    // most log_F(MaxSegmentBlocks/StepBlocks) times (bounded write amplification) and the file count stays logarithmic
+    // in chain length plus one frozen file per MaxSegmentBlocks. Older segments are larger, so same-tier runs are always
+    // contiguous and merges preserve the disjoint ascending-range invariant.
+    private void MergeIfNeeded()
     {
-        while (_segments.Count > _maxSegmentsBeforeMerge)
-        {
-            HistorySegment older = _segments[0];
-            HistorySegment newer = _segments[1];
-            List<HistoryChangeEntry> merged = MergeEntries(older, newer);
-
-            string path = SegmentPath(older.FromBlock, newer.ToBlock);
-            HistorySegment.Write(path, _keyLen, older.FromBlock, newer.ToBlock, merged);
-
-            string olderPath = older.Path, newerPath = newer.Path;
-            older.Dispose();
-            newer.Dispose();
-            if (olderPath != path) File.Delete(olderPath);
-            if (newerPath != path) File.Delete(newerPath);
-
-            _segments.RemoveRange(0, 2);
-            _segments.Insert(0, new HistorySegment(path));
-        }
+        while (TryFindMergeableRun(out int start, out int count))
+            MergeRange(start, count);
     }
 
-    // Merge-join two disjoint segments (older.ToBlock < newer.FromBlock) by key; shared keys concatenate their
-    // already-ordered change lists.
-    private static List<HistoryChangeEntry> MergeEntries(HistorySegment older, HistorySegment newer)
+    // Oldest run of exactly `_mergeFanout` consecutive same-tier, non-frozen segments, if any.
+    private bool TryFindMergeableRun(out int start, out int count)
     {
-        List<HistoryChangeEntry> result = new(older.Count + newer.Count);
-        int i = 0, j = 0;
-        while (i < older.Count && j < newer.Count)
+        int i = 0;
+        while (i < _segments.Count)
         {
-            int cmp = older.KeyAt(i).SequenceCompareTo(newer.KeyAt(j));
-            if (cmp < 0) result.Add(older.ReadEntry(i++));
-            else if (cmp > 0) result.Add(newer.ReadEntry(j++));
-            else result.Add(Concat(older.ReadEntry(i++), newer.ReadEntry(j++)));
+            int tier = TierOf(_segments[i]);
+            if (tier == FrozenTier) { i++; continue; }
+
+            int j = i + 1;
+            while (j < _segments.Count && TierOf(_segments[j]) == tier) j++;
+            if (j - i >= _mergeFanout)
+            {
+                start = i;
+                count = _mergeFanout;
+                return true;
+            }
+            i = j;
         }
-        while (i < older.Count) result.Add(older.ReadEntry(i++));
-        while (j < newer.Count) result.Add(newer.ReadEntry(j++));
+
+        start = count = 0;
+        return false;
+    }
+
+    private const int FrozenTier = int.MaxValue;
+
+    private int TierOf(HistorySegment segment)
+    {
+        long span = (long)(segment.ToBlock - segment.FromBlock + 1);
+        if (span >= _maxSegmentBlocks) return FrozenTier;
+
+        int tier = 0;
+        long upper = (long)_stepBlocks * _mergeFanout;
+        while (span >= upper) { upper *= _mergeFanout; tier++; }
+        return tier;
+    }
+
+    private void MergeRange(int start, int count)
+    {
+        HistorySegment[] group = _segments.GetRange(start, count).ToArray();
+        List<HistoryChangeEntry> merged = MergeEntries(group);
+
+        ulong fromBlock = group[0].FromBlock;
+        ulong toBlock = group[^1].ToBlock;
+        string path = SegmentPath(fromBlock, toBlock);
+        HistorySegment.Write(path, _keyLen, fromBlock, toBlock, merged);
+
+        foreach (HistorySegment segment in group)
+        {
+            string segmentPath = segment.Path;
+            segment.Dispose();
+            if (segmentPath != path) File.Delete(segmentPath);
+        }
+
+        _segments.RemoveRange(start, count);
+        _segments.Insert(start, new HistorySegment(path));
+    }
+
+    // K-way merge-join of disjoint segments (ordered by ascending block range) on their sorted key tables; a key present
+    // in several segments concatenates their change lists in segment (== block) order, which stays ascending.
+    private static List<HistoryChangeEntry> MergeEntries(ReadOnlySpan<HistorySegment> group)
+    {
+        int k = group.Length;
+        int[] cursor = new int[k];
+        int capacity = 0;
+        for (int s = 0; s < k; s++) capacity += group[s].Count;
+
+        List<HistoryChangeEntry> result = new(capacity);
+        while (true)
+        {
+            int min = -1;
+            for (int s = 0; s < k; s++)
+            {
+                if (cursor[s] >= group[s].Count) continue;
+                if (min == -1 || group[s].KeyAt(cursor[s]).SequenceCompareTo(group[min].KeyAt(cursor[min])) < 0)
+                    min = s;
+            }
+            if (min == -1) break;
+
+            ReadOnlySpan<byte> key = group[min].KeyAt(cursor[min]);
+            HistoryChangeEntry? entry = null;
+            for (int s = 0; s < k; s++)
+            {
+                if (cursor[s] < group[s].Count && group[s].KeyAt(cursor[s]).SequenceCompareTo(key) == 0)
+                {
+                    HistoryChangeEntry next = group[s].ReadEntry(cursor[s]++);
+                    entry = entry is null ? next : Concat(entry, next);
+                }
+            }
+            result.Add(entry!);
+        }
         return result;
     }
 
