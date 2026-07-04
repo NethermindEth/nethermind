@@ -18,6 +18,7 @@ using Nethermind.Evm.Test;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
@@ -110,7 +111,10 @@ public class XdcOpcodesTests : VirtualMachineTestsBase
             NullLogManager.Instance,
             Substitute.For<IWithdrawalProcessor>(),
             Substitute.For<IExecutionRequestsProcessor>(),
-            Substitute.For<IBlockAccessListManager>())
+            Substitute.For<IBlockAccessListManager>(),
+            Substitute.For<IRewardsStore>(),
+            Substitute.For<IMintedRecordContract>(),
+            Substitute.For<ITransactionProcessor>())
         { }
 
         public new BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)

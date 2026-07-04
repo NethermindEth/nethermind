@@ -7,7 +7,7 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-public interface IRewardMasternodeSelector
+internal interface IRewardMasternodeSelector
 {
     HashSet<Address> GetRewardMasternodes(XdcBlockHeader checkpointHeader, IXdcReleaseSpec spec);
 }

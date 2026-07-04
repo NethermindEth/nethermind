@@ -58,10 +58,8 @@ public class RewardTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockTree>(),
             Substitute.For<IMasternodeVotingContract>(),
-            Substitute.For<IMintedRecordContract>(),
             Substitute.For<ISigningTxCache>(),
             CreateXdcTransactionProcessor(Substitute.For<ISpecProvider>(), Substitute.For<IMasternodeVotingContract>()),
-            Substitute.For<IRewardsStore>(),
             isSubnet ? SubnetRewardMasternodeSelector : MainRewardMasternodeSelector);
 
         HashSet<Address> masternodes = rewardCalculator.GetRewardMasternodes(checkpointHeader, spec);
@@ -98,10 +96,8 @@ public class RewardTests
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
-            Substitute.For<IMintedRecordContract>(),
             signingTxCache,
             CreateXdcTransactionProcessor(chain.SpecProvider, masternodeVotingContract, chain.MainWorldState),
-            Substitute.For<IRewardsStore>(),
             MainRewardMasternodeSelector
         );
 
@@ -236,10 +232,8 @@ public class RewardTests
             chain.SpecProvider,
             chain.BlockTree,
             masternodeVotingContract,
-            Substitute.For<IMintedRecordContract>(),
             signingTxCache,
             CreateXdcTransactionProcessor(chain.SpecProvider, masternodeVotingContract, chain.MainWorldState),
-            Substitute.For<IRewardsStore>(),
             MainRewardMasternodeSelector
         );
 
@@ -419,7 +413,7 @@ public class RewardTests
             .Returns(ci => ci.ArgAt<Address>(1));
 
         SigningTxCache signingTxCache = new(tree, specProvider);
-        XdcRewardCalculator rewardCalculator = new(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, CreateXdcTransactionProcessor(specProvider, votingContract), Substitute.For<IRewardsStore>(), MainRewardMasternodeSelector);
+        XdcRewardCalculator rewardCalculator = new(epochSwitchManager, specProvider, tree, votingContract, signingTxCache, CreateXdcTransactionProcessor(specProvider, votingContract), MainRewardMasternodeSelector);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -565,13 +559,12 @@ public class RewardTests
             specProvider,
             tree,
             votingContract,
-            mintedRecordContract,
             signingTxCache,
             transactionProcessor,
-            Substitute.For<IRewardsStore>(),
             MainRewardMasternodeSelector);
 
-        BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks[(int)checkpointNumber]);
+        XdcEpochRewardResult epochRewards = rewardCalculator.CalculateEpochRewards(blocks[(int)checkpointNumber]);
+        BlockReward[] rewards = epochRewards.Rewards;
 
         using (Assert.EnterMultipleScope())
         {
@@ -586,6 +579,14 @@ public class RewardTests
         }
 
         // Validate minted-record accounting side effects produced by the reward upgrade path.
+        Assert.That(epochRewards.Spec, Is.Not.Null);
+        mintedRecordContract.UpdateAccounting(
+            transactionProcessor,
+            (XdcBlockHeader)blocks[(int)checkpointNumber].Header,
+            epochRewards.Spec!,
+            epochRewards.TotalMintedInEpoch,
+            epochRewards.BurnedInOneEpoch);
+
         UInt256 epochNumber = 3;
         UInt256 mintedRecordPostMintedBase = UInt256.Parse("0x0100000000000000000000000000000000000000000000000000000000000000");
         UInt256 mintedRecordPostBurnedBase = UInt256.Parse("0x0200000000000000000000000000000000000000000000000000000000000000");
@@ -618,10 +619,8 @@ public class RewardTests
             specProvider,
             blockTree,
             masternodeVotingContract,
-            Substitute.For<IMintedRecordContract>(),
             signingTxCache,
             CreateXdcTransactionProcessor(specProvider, masternodeVotingContract),
-            Substitute.For<IRewardsStore>(),
             MainRewardMasternodeSelector
             );
 
@@ -658,10 +657,8 @@ public class RewardTests
             specProvider,
             blockTree,
             masternodeVotingContract,
-            Substitute.For<IMintedRecordContract>(),
             signingTxCache,
             CreateXdcTransactionProcessor(specProvider, masternodeVotingContract),
-            Substitute.For<IRewardsStore>(),
             MainRewardMasternodeSelector);
 
         Address signer = new("0x80b329b66ddfe2180904d6ae737283a3f1860b83");

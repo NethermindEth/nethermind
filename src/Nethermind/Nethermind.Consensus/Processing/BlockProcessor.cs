@@ -48,6 +48,7 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     protected readonly ISpecProvider _specProvider = specProvider;
+    protected readonly IRewardCalculator _rewardCalculator = rewardCalculator;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockAccessListManager _balManager = balManager;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
@@ -339,7 +340,7 @@ public partial class BlockProcessor(
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
-        BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
+        BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
         if (tracer.IsTracingRewards)
         {
             for (int i = 0; i < rewards.Length; i++)
