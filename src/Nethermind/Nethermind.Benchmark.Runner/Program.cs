@@ -48,6 +48,13 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
+            // Manual contention probe (CPU-cost-per-batch and iGPU-vs-saturator interference) runs outside BenchmarkDotNet.
+            if (args.Contains("--contention-probe"))
+            {
+                Benchmarks.Core.ContentionProbe.Run();
+                return;
+            }
+
             bool quickMode = args.Contains("--quick");
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);

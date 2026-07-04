@@ -10,7 +10,6 @@ using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto.Gpu;
 
 namespace Nethermind.Benchmarks.Core;
 
@@ -44,48 +43,13 @@ public class GpuKeccakBatchBenchmarks
             .WithIterationCount(5));
     }
 
-    /// <summary>A named backend: the label BenchmarkDotNet renders and the hasher it dispatches through.</summary>
-    /// <remarks><see cref="ToString"/> is what appears in the results table, so it must fully identify the backend.</remarks>
-    public sealed class Backend(string name, IKeccakBatchHasher hasher)
-    {
-        public string Name { get; } = name;
-        public IKeccakBatchHasher Hasher { get; } = hasher;
-        public override string ToString() => Name;
-    }
-
     // Built once at type load so the same instances back the ParamsSource grid across every case. GPU entries hold
     // native accelerator resources; they are shared across all parameter combinations, so disposal is registered at
     // process exit (not per-case GlobalCleanup, which would free them before later cases run).
-    private static readonly Backend[] _backends = BuildBackends();
+    private static readonly KeccakBatchBackend[] _backends = KeccakBatchBackendCatalog.Discover();
 
     static GpuKeccakBatchBenchmarks() => AppDomain.CurrentDomain.ProcessExit += static (_, _) =>
-    {
-        foreach (Backend backend in _backends) (backend.Hasher as IDisposable)?.Dispose();
-    };
-
-    private static Backend[] BuildBackends()
-    {
-        List<Backend> backends =
-        [
-            new("PerMessage", new PerMessageKeccakBatchHasher()),
-            new("Parallel(6a)", new ParallelKeccakBatchHasher()),
-        ];
-
-        if (MultiBufferKeccakBatchHasher.IsSupported)
-        {
-            backends.Add(new("MultiBuffer(6b)", new MultiBufferKeccakBatchHasher(MultiBufferGroupingStrategy.UniformGroups)));
-        }
-
-        foreach (GpuDeviceInfo device in GpuKeccakBatchHasher.EnumerateDevices())
-        {
-            if (GpuKeccakBatchHasher.TryCreate(out GpuKeccakBatchHasher? gpu, device.Index) && gpu is not null)
-            {
-                backends.Add(new($"Gpu-{device.Type}({device.Name})", gpu));
-            }
-        }
-
-        return [.. backends];
-    }
+        KeccakBatchBackendCatalog.DisposeAll(_backends);
 
     /// <summary>Length distribution across the batch.</summary>
     public enum Profile
@@ -97,10 +61,10 @@ public class GpuKeccakBatchBenchmarks
         TrieMix,
     }
 
-    public IEnumerable<Backend> Backends => _backends;
+    public IEnumerable<KeccakBatchBackend> Backends => _backends;
 
     [ParamsSource(nameof(Backends))]
-    public Backend Hasher { get; set; } = null!;
+    public KeccakBatchBackend Hasher { get; set; } = null!;
 
     [Params(4096, 16384, 65536, 262144)]
     public int N { get; set; }
