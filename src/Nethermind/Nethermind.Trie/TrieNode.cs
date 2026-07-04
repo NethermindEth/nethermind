@@ -617,6 +617,29 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>
+        /// Returns child <paramref name="i"/>'s reference bytes as stored in this node's own retained RLP, or an empty
+        /// span if this node holds no RLP.
+        /// </summary>
+        /// <remarks>
+        /// Used by the batched committer to encode a null (unresolved) child slot on a dirtied-but-RLP-retaining branch:
+        /// the child's ref lives in the parent's stored RLP and must be spliced out verbatim - the same splice
+        /// <see cref="TrieNodeDecoder"/>'s branch encoder performs for a null slot. Reads only; no resolution or mutation.
+        /// </remarks>
+        internal ReadOnlySpan<byte> GetChildRefFromOwnRlp(int i)
+        {
+            CappedArray<byte> rlp = ReadRlp();
+            if (rlp.IsNull)
+            {
+                return ReadOnlySpan<byte>.Empty;
+            }
+
+            RlpReader rlpReader = new(rlp);
+            SeekChild(ref rlpReader, i);
+            int length = rlpReader.PeekNextRlpLength();
+            return rlpReader.Data.Slice(rlpReader.Position, length);
+        }
+
         public bool GetChildHashAsValueKeccak(int i, out ValueHash256 keccak)
         {
             Unsafe.SkipInit(out keccak);
