@@ -540,7 +540,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <summary>
     /// After an unclean shutdown a state backend that cannot roll back can hold persisted state ahead of the
     /// block tree head. The gap blocks must not be re-executed: their post-state is already folded into the
-    /// persisted state and no snapshot exists for their parents.
+    /// persisted state and no snapshot exists for their parents. Blocks below the junction are skipped
+    /// without an ancestry check; the state-root verification at the junction block guards the whole range.
     /// </summary>
     private bool TrySkipBlockBelowPersistedState(Block suggestedBlock)
     {
