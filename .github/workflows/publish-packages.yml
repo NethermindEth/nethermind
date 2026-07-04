@@ -145,7 +145,7 @@ jobs:
           gh pr create -B main -H $head_branch -t "$message" -b "Auto-updated Homebrew formula for Nethermind v${{ github.event.release.tag_name }}"
 
   publish-nuget:
-    name: Publish Nethermind.ReferenceAssemblies
+    name: Publish NuGet packages
     runs-on: ubuntu-latest
     if: ${{ !github.event.release.prerelease }}
     steps:
@@ -169,12 +169,18 @@ jobs:
           echo "asset-name=$name" >> $GITHUB_OUTPUT
 
       - name: Submit package
-        working-directory: src/Nethermind/Nethermind.ReferenceAssemblies
+        working-directory: src/Nethermind
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          dotnet pack -c release
-          dotnet nuget push ../artifacts/**/*.nupkg -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json
+          package_output="$(mktemp -d)"
+          dotnet pack Nethermind.ReferenceAssemblies/Nethermind.ReferenceAssemblies.csproj -c release -p:SaveDiskSpace=true --output "$package_output"
+          dotnet pack Nethermind.Kademlia/Nethermind.Kademlia.csproj -c release -p:SaveDiskSpace=true --output "$package_output"
+          test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.ReferenceAssemblies.*.nupkg' -print -quit)"
+          test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.Kademlia.*.nupkg' -print -quit)"
+          for package in "$package_output"/*.nupkg; do
+            dotnet nuget push "$package" -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
+          done
 
       - name: Create GitHub app token
         id: gh-app
