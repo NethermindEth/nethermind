@@ -151,9 +151,6 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .RegisterSingletonJsonRpcModule<IOptimismEngineRpcModule, OptimismEngineRpcModule>()
             ;
 
-        // Optimism Consensus Layer: the optimism_ RPC namespace and the CL driver graph. Only registered when
-        // enabled, because the L1 API clients are built from config endpoints that are null when CL is disabled
-        // (constructing them eagerly — e.g. on RPC preload — would throw).
         if (optimismConfig.ClEnabled)
         {
             builder
