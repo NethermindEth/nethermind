@@ -16,6 +16,13 @@ public class KeccakBatchHasherTests
     {
         yield return new TestCaseData((Func<IKeccakBatchHasher>)(static () => new PerMessageKeccakBatchHasher()))
             .SetName(nameof(PerMessageKeccakBatchHasher));
+
+        // Threshold 1 forces the multi-core partition path even for the tiny boundary/edge batches.
+        yield return new TestCaseData((Func<IKeccakBatchHasher>)(static () => new ParallelKeccakBatchHasher(parallelThreshold: 1)))
+            .SetName($"{nameof(ParallelKeccakBatchHasher)}_Parallel");
+        // Default-threshold instance covers the inline calling-thread fall-through for small batches.
+        yield return new TestCaseData((Func<IKeccakBatchHasher>)(static () => new ParallelKeccakBatchHasher()))
+            .SetName($"{nameof(ParallelKeccakBatchHasher)}_Inline");
     }
 
     // Keccak256 of the empty input, per Ethereum's canonical constant.
@@ -163,6 +170,19 @@ public class KeccakBatchHasherTests
         ValueHash256[] outputs = new ValueHash256[1];
 
         Assert.Throws<ArgumentException>(() => factory().HashBatch(flat, offsets, outputs));
+    }
+
+    // Regression for the pointer path: malformed offsets that clear the O(1) last-offset guard must still be rejected
+    // by the full validation scan (an interior descent or an out-of-bounds start), not read past the pinned buffer.
+    // Both cases keep the last offset == flat.Length so only the up-front scan can catch them; threshold 1 forces parallel.
+    [TestCase(new byte[] { 1, 2, 3, 4, 5 }, new[] { 3, 2, 5 }, TestName = "Parallel_NonMonotonicInteriorOffsets_Throws")]
+    [TestCase(new byte[] { 1, 2, 3, 4 }, new[] { 5, 4 }, TestName = "Parallel_OffsetExceedsFlatLength_Throws")]
+    public void ParallelPath_MalformedOffsets_ThrowArgumentException(byte[] flat, int[] offsets)
+    {
+        ParallelKeccakBatchHasher hasher = new(parallelThreshold: 1);
+        ValueHash256[] outputs = new ValueHash256[offsets.Length];
+
+        Assert.Throws<ArgumentException>(() => hasher.HashBatch(flat, offsets, outputs));
     }
 
     // Concatenates inputs and builds the exclusive-end offset array the hasher expects.
