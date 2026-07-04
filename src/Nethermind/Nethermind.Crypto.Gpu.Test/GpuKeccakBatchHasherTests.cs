@@ -273,6 +273,88 @@ public class GpuKeccakBatchHasherTests
         }
     }
 
+    // The diagnostics/benchmark overload restricts to a device class: whatever it creates must hash correctly, and its
+    // reported device name must not contradict the requested class. Skips green on hosts lacking that class (e.g. CI).
+    [TestCase(AcceleratorTypePreference.Cuda, TestName = "TryCreate_Cuda_HashesCorrectly")]
+    [TestCase(AcceleratorTypePreference.OpenCL, TestName = "TryCreate_OpenCL_HashesCorrectly")]
+    public void TryCreate_WithPreference_HashesCorrectlyOrSkips(AcceleratorTypePreference preference)
+    {
+        if (!GpuKeccakBatchHasher.TryCreate(out GpuKeccakBatchHasher? hasher, preference) || hasher is null)
+        {
+            Assert.Ignore($"no {preference} accelerator");
+        }
+
+        using (hasher)
+        {
+            TestContext.Out.WriteLine($"{preference} -> {hasher!.AcceleratorName}");
+
+            byte[][] inputs = [[], [0x01], FilledArray(200, 0x7E)];
+            (byte[] flat, int[] offsets) = Flatten(inputs);
+            ValueHash256[] actual = new ValueHash256[inputs.Length];
+
+            hasher.HashBatch(flat, offsets, actual);
+
+            AssertAllMatch(inputs, actual);
+        }
+    }
+
+    // EnumerateDevices + the device-index overload: every enumerated device must create a hasher that hashes correctly.
+    // Skips green on a box with no non-CPU accelerator (e.g. CI).
+    [Test]
+    public void EnumerateDevices_EachDeviceCreatesAndHashesCorrectly()
+    {
+        System.Collections.Generic.IReadOnlyList<GpuDeviceInfo> devices = GpuKeccakBatchHasher.EnumerateDevices();
+        if (devices.Count == 0)
+        {
+            Assert.Ignore("no non-CPU accelerator");
+        }
+
+        byte[][] inputs = [[], [0x01], FilledArray(200, 0x7E)];
+        (byte[] flat, int[] offsets) = Flatten(inputs);
+
+        foreach (GpuDeviceInfo device in devices)
+        {
+            TestContext.Out.WriteLine($"device[{device.Index}] {device.Type} {device.Name} {device.MemoryBytes} bytes");
+            Assert.That(GpuKeccakBatchHasher.TryCreate(out GpuKeccakBatchHasher? hasher, device.Index), Is.True, $"device {device.Index} must create");
+            using (hasher)
+            {
+                ValueHash256[] actual = new ValueHash256[inputs.Length];
+                hasher!.HashBatch(flat, offsets, actual);
+                AssertAllMatch(inputs, actual);
+            }
+        }
+    }
+
+    // Out-of-range device index fails cleanly (false, null) rather than throwing.
+    [Test]
+    public void TryCreate_OutOfRangeDeviceIndex_ReturnsFalse()
+    {
+        bool ok = GpuKeccakBatchHasher.TryCreate(out GpuKeccakBatchHasher? hasher, int.MaxValue);
+        using (hasher)
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(hasher, Is.Null);
+        }
+    }
+
+    // The Any preference is exactly the parameterless overload: same success/failure and, on success, same device.
+    [Test]
+    public void TryCreate_Any_MatchesParameterlessOverload()
+    {
+        bool defaultOk = GpuKeccakBatchHasher.TryCreate(out GpuKeccakBatchHasher? viaDefault);
+        bool anyOk = GpuKeccakBatchHasher.TryCreate(out GpuKeccakBatchHasher? viaAny, AcceleratorTypePreference.Any);
+
+        using (viaDefault)
+        using (viaAny)
+        {
+            Assert.That(anyOk, Is.EqualTo(defaultOk), "Any preference must agree with the parameterless overload on availability");
+            if (defaultOk)
+            {
+                Assert.That(viaAny!.AcceleratorName, Is.EqualTo(viaDefault!.AcceleratorName), "Any preference must pick the same device");
+            }
+        }
+    }
+
     private static byte[] FilledArray(int length, byte value)
     {
         byte[] a = new byte[length];

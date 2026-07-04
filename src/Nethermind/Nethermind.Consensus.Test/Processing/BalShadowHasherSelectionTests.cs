@@ -28,7 +28,7 @@ public class BalShadowHasherSelectionTests
     public void UseGpu_false_keeps_recursive_path_and_reports_disabled()
     {
         BalShadowHasherFactory.Selection selection = BalShadowHasherFactory.Select(
-            useGpu: false, gpuMinBatch: 4096, LimboLogs.Instance,
+            useGpu: false, gpuMinBatch: 65536, LimboLogs.Instance,
             gpuProbe: () => throw new AssertionException("GPU must not be probed when UseGpu is false"));
 
         using (Assert.EnterMultipleScope())
@@ -42,7 +42,7 @@ public class BalShadowHasherSelectionTests
     public void UseGpu_true_but_no_device_keeps_recursive_path_and_reports_unavailable()
     {
         BalShadowHasherFactory.Selection selection = BalShadowHasherFactory.Select(
-            useGpu: true, gpuMinBatch: 4096, LimboLogs.Instance,
+            useGpu: true, gpuMinBatch: 65536, LimboLogs.Instance,
             gpuProbe: () => null); // TryCreate failed / no non-CPU device
 
         using (Assert.EnterMultipleScope())
@@ -57,7 +57,7 @@ public class BalShadowHasherSelectionTests
     {
         const long memBytes = 96L * 1024 * 1024 * 1024; // 96 GiB
         BalShadowHasherFactory.Selection selection = BalShadowHasherFactory.Select(
-            useGpu: true, gpuMinBatch: 4096, LimboLogs.Instance,
+            useGpu: true, gpuMinBatch: 65536, LimboLogs.Instance,
             gpuProbe: () => new BalShadowHasherFactory.GpuProbeResult(new FakeGpuHasher(), "Test GPU", memBytes));
 
         using (Assert.EnterMultipleScope())

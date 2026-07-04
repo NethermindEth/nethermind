@@ -11,6 +11,31 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto.Gpu;
 
+/// <summary>Restricts <see cref="GpuKeccakBatchHasher.TryCreate(out GpuKeccakBatchHasher?, AcceleratorTypePreference)"/> to a device class.</summary>
+/// <remarks>
+/// Intended for diagnostics and benchmarks that must measure a specific accelerator class (e.g. the discrete CUDA card
+/// versus an integrated OpenCL GPU) on a host that has both. Production selection uses <see cref="AcceleratorTypePreference.Any"/>
+/// (the parameterless overload), which never filters by type and always picks the best-ranked device.
+/// </remarks>
+public enum AcceleratorTypePreference
+{
+    /// <summary>No type restriction: rank all non-CPU devices (Cuda &gt; OpenCL, then by memory). Production behavior.</summary>
+    Any,
+
+    /// <summary>Only consider CUDA devices.</summary>
+    Cuda,
+
+    /// <summary>Only consider OpenCL devices.</summary>
+    OpenCL,
+}
+
+/// <summary>Describes one non-CPU accelerator available on the host, as enumerated by <see cref="GpuKeccakBatchHasher.EnumerateDevices"/>.</summary>
+/// <param name="Index">Position in the non-CPU device list; pass to <see cref="GpuKeccakBatchHasher.TryCreate(out GpuKeccakBatchHasher?, int)"/>.</param>
+/// <param name="Name">Device model name reported by the driver (e.g. the GPU model).</param>
+/// <param name="Type">ILGPU accelerator class (Cuda, OpenCL, ...).</param>
+/// <param name="MemoryBytes">Total device memory in bytes.</param>
+public readonly record struct GpuDeviceInfo(int Index, string Name, AcceleratorType Type, long MemoryBytes);
+
 /// <summary>Batch keccak256 hasher that offloads the permutation to a GPU accelerator via ILGPU.</summary>
 /// <remarks>
 /// One GPU thread hashes one message. The context and accelerator are created once at construction (probing failure is
@@ -80,7 +105,19 @@ public sealed class GpuKeccakBatchHasher : IKeccakBatchHasher, IDisposable
     /// card is chosen over an integrated GPU deterministically. Devices are tried in rank order - if the top device fails
     /// to create an accelerator or compile the kernel, the next-ranked device is tried before giving up.
     /// </remarks>
-    public static bool TryCreate(out GpuKeccakBatchHasher? hasher)
+    public static bool TryCreate(out GpuKeccakBatchHasher? hasher) => TryCreate(out hasher, AcceleratorTypePreference.Any);
+
+    /// <summary>Attempts to create a GPU hasher, optionally restricted to a single accelerator class.</summary>
+    /// <param name="hasher">The created hasher on success; otherwise <c>null</c>.</param>
+    /// <param name="preference">Which device class to consider; <see cref="AcceleratorTypePreference.Any"/> matches the parameterless overload exactly.</param>
+    /// <returns><c>true</c> if a matching non-CPU accelerator was found and initialized; <c>false</c> on any probing failure.</returns>
+    /// <remarks>
+    /// Diagnostics/benchmark overload: pass <see cref="AcceleratorTypePreference.Cuda"/> or <see cref="AcceleratorTypePreference.OpenCL"/>
+    /// to force a specific device class on a host that has both (e.g. to compare a discrete CUDA card against an integrated
+    /// OpenCL GPU). The same ranking (by descending device memory) and the same never-throw / try-next-on-failure behavior
+    /// as the parameterless overload apply within the selected class. Production code uses the parameterless overload.
+    /// </remarks>
+    public static bool TryCreate(out GpuKeccakBatchHasher? hasher, AcceleratorTypePreference preference)
     {
         hasher = null;
         Context? context = null;
@@ -91,7 +128,9 @@ public sealed class GpuKeccakBatchHasher : IKeccakBatchHasher, IDisposable
             List<Device> ranked = [];
             foreach (Device device in context.Devices)
             {
-                if (device.AcceleratorType != AcceleratorType.CPU) ranked.Add(device);
+                if (device.AcceleratorType == AcceleratorType.CPU) continue;
+                if (!MatchesPreference(device.AcceleratorType, preference)) continue;
+                ranked.Add(device);
             }
             ranked.Sort(static (a, b) => DeviceScore(b).CompareTo(DeviceScore(a))); // descending
 
@@ -107,6 +146,97 @@ public sealed class GpuKeccakBatchHasher : IKeccakBatchHasher, IDisposable
                 catch
                 {
                     accelerator?.Dispose(); // ctor throw points (buffer alloc / kernel compile) must not leak the accelerator
+                }
+            }
+
+            context.Dispose();
+            return false;
+        }
+        catch
+        {
+            context?.Dispose();
+            hasher = null;
+            return false;
+        }
+    }
+
+    private static bool MatchesPreference(AcceleratorType type, AcceleratorTypePreference preference) => preference switch
+    {
+        AcceleratorTypePreference.Any => true,
+        AcceleratorTypePreference.Cuda => type == AcceleratorType.Cuda,
+        AcceleratorTypePreference.OpenCL => type == AcceleratorType.OpenCL,
+        _ => false,
+    };
+
+    /// <summary>Enumerates the non-CPU accelerators available on this host, each with an index for <see cref="TryCreate(out GpuKeccakBatchHasher?, int)"/>.</summary>
+    /// <returns>One descriptor per non-CPU device, or an empty list if none are present or probing fails.</returns>
+    /// <remarks>
+    /// Diagnostics/benchmark helper: lets a caller build one backend entry per physical device (e.g. a discrete CUDA card
+    /// and an integrated OpenCL GPU) without assuming a fixed device set. The index is the position within the non-CPU
+    /// device list in ILGPU enumeration order and is the value accepted by the index overload of <see cref="TryCreate(out GpuKeccakBatchHasher?, int)"/>.
+    /// The index overload re-enumerates in a fresh context, so an index is only valid while the host device set is
+    /// unchanged; if devices appear or disappear between calls, creation may fail or target a different device.
+    /// Never throws: any probing failure yields an empty list.
+    /// </remarks>
+    public static IReadOnlyList<GpuDeviceInfo> EnumerateDevices()
+    {
+        Context? context = null;
+        try
+        {
+            context = Context.Create(builder => builder.Default().AllAccelerators());
+            List<GpuDeviceInfo> devices = [];
+            int index = 0;
+            foreach (Device device in context.Devices)
+            {
+                if (device.AcceleratorType == AcceleratorType.CPU) continue;
+                devices.Add(new GpuDeviceInfo(index++, device.Name, device.AcceleratorType, device.MemorySize));
+            }
+            return devices;
+        }
+        catch
+        {
+            return [];
+        }
+        finally
+        {
+            context?.Dispose();
+        }
+    }
+
+    /// <summary>Attempts to create a GPU hasher on a specific device identified by its <see cref="GpuDeviceInfo.Index"/>.</summary>
+    /// <param name="hasher">The created hasher on success; otherwise <c>null</c>.</param>
+    /// <param name="deviceIndex">Index into the non-CPU device list as returned by <see cref="EnumerateDevices"/>.</param>
+    /// <returns><c>true</c> if the device exists and its accelerator initialized; <c>false</c> on any probing failure or out-of-range index.</returns>
+    /// <remarks>
+    /// Diagnostics/benchmark overload: creates a hasher on exactly one enumerated device (no ranking, no fallback to
+    /// another device), so a benchmark can measure each accelerator on the box independently. Never throws.
+    /// </remarks>
+    public static bool TryCreate(out GpuKeccakBatchHasher? hasher, int deviceIndex)
+    {
+        hasher = null;
+        Context? context = null;
+        try
+        {
+            context = Context.Create(builder => builder.Default().AllAccelerators());
+
+            int index = 0;
+            foreach (Device device in context.Devices)
+            {
+                if (device.AcceleratorType == AcceleratorType.CPU) continue;
+                if (index++ != deviceIndex) continue;
+
+                Accelerator? accelerator = null;
+                try
+                {
+                    accelerator = device.CreateAccelerator(context);
+                    hasher = new GpuKeccakBatchHasher(context, accelerator); // ownership of context + accelerator transfers here
+                    return true;
+                }
+                catch
+                {
+                    accelerator?.Dispose();
+                    context.Dispose();
+                    return false;
                 }
             }
 

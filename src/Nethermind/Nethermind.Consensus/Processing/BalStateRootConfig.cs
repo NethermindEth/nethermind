@@ -7,5 +7,5 @@ public class BalStateRootConfig : IBalStateRootConfig
 {
     public bool Enabled { get; set; } = false;
     public bool UseGpu { get; set; } = false;
-    public int GpuMinBatch { get; set; } = 4096;
+    public int GpuMinBatch { get; set; } = 65536;
 }

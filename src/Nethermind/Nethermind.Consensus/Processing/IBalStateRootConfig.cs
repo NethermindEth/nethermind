@@ -18,6 +18,6 @@ public interface IBalStateRootConfig : IConfig
     [ConfigItem(Description = "Whether the shadow lane should offload batch hashing to the GPU backend when available.", DefaultValue = "false")]
     bool UseGpu { get; set; }
 
-    [ConfigItem(Description = "Minimum keccak batch size (number of messages) below which the shadow lane stays on the CPU backend instead of the GPU.", DefaultValue = "4096")]
+    [ConfigItem(Description = "Minimum keccak batch size (number of messages) below which the shadow lane stays on the CPU backend instead of the GPU. Default is the measured CUDA-vs-multicore crossover; below it the multi-core CPU backend wins after host-device transfer.", DefaultValue = "65536")]
     int GpuMinBatch { get; set; }
 }
