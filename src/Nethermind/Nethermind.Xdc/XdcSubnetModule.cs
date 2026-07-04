@@ -33,7 +33,7 @@ public class XdcSubnetModule : XdcModule
             .AddSingleton<IPenaltyHandler, SubnetPenaltyHandler>();
 
         builder.RegisterType<SubnetSnapshotManager>().As<ISubnetSnapshotManager>().WithAttributeFiltering().SingleInstance();
-        builder.Bind<IRewardMasternodeSelector, SubnetXdcRewardMasternodeSelector>();
+        builder.AddSingleton<IRewardMasternodeSelector, SubnetXdcRewardMasternodeSelector>();
     }
 
     protected override XdcChainSpecLoader CreateChainSpecLoader() => new XdcSubnetChainSpecLoader();
