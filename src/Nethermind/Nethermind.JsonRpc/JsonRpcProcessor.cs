@@ -63,6 +63,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonRpcProcessingOptions options,
         CancellationToken cancellationToken = default)
     {
+        JsonRpcContext.Current.Value = context;
+
         CancellationTokenSource? timeoutSource = context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
         CancellationToken timeoutToken = timeoutSource?.Token ?? CancellationToken.None;
 
@@ -76,6 +78,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonRpcProcessingOptions options,
         CancellationToken cancellationToken = default)
     {
+        JsonRpcContext.Current.Value = context;
+
         CancellationTokenSource? timeoutSource = context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
         CancellationToken timeoutToken = timeoutSource?.Token ?? CancellationToken.None;
 

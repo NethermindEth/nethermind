@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Optimism.CL;
@@ -18,7 +17,7 @@ public interface IL2Api
     Task<L2Block> GetHeadBlock();
     Task<L2Block?> GetFinalizedBlock();
     Task<L2Block?> GetSafeBlock();
-    Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, ulong blockNumber);
+    Task<AccountProof?> GetProof(Address accountAddress, StorageKeys storageKeys, ulong blockNumber);
 
     Task<ForkchoiceUpdatedV1Result> ForkChoiceUpdatedV3(
         Hash256 headHash, Hash256 finalizedHash, Hash256 safeHash, OptimismPayloadAttributes? payloadAttributes = null);

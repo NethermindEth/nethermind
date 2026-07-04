@@ -12,9 +12,9 @@ using Int256;
 
 public static partial class EvmInstructions
 {
-    public interface IOpMath3Param
+    public interface IOpMath3Param : IGasCost
     {
-        virtual static ulong GasCost => GasCostOf.Mid;
+        static ulong IGasCost.GasCost => GasCostOf.Mid;
         abstract static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result);
     }
 
@@ -24,7 +24,7 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
+        TGasPolicy.Consume<TOpMath>(ref gas);
 
         // Pop a and b, peek the third slot for in-place write; skips the push overflow check.
         ref byte topRef = ref stack.Pop2Peek32Bytes(out UInt256 a, out UInt256 b, out bool ok);

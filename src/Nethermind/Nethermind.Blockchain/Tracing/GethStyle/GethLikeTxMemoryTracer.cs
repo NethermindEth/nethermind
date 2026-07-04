@@ -43,50 +43,32 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         Trace.Gas = gasSpent.SpentGas;
     }
 
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        base.LoadOperationStorage(address, storageIndex, value);
+
+        RecordStorageSnapshot(address, storageIndex, value);
+    }
+
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
         base.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
-        byte[] bigEndian = new byte[32];
+        RecordStorageSnapshot(address, storageIndex, newValue);
+    }
 
-        storageIndex.ToBigEndian(bigEndian);
+    private void RecordStorageSnapshot(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        if (CurrentTraceEntry is null)
+            return;
 
-        CurrentTraceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left)
-            .ToArray()
-            .ToHexString(false);
+        CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
-        GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
-        int previousDepth = CurrentTraceEntry?.Depth ?? 0;
-
         base.StartOperation(pc, opcode, gas, env);
-
-        // Geth's struct logger captures the cumulative gas-refund counter before the opcode
-        // executes and emits it only when non-zero (matching go-ethereum's pre-op GetRefund()).
         CurrentTraceEntry.Refund = _refund != 0 ? _refund : null;
-
-        if (CurrentTraceEntry.Depth > previousDepth)
-        {
-            CurrentTraceEntry.Storage = [];
-
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? [] : previousTraceEntry.Storage);
-        }
-        else if (CurrentTraceEntry.Depth < previousDepth)
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
-        }
-        else
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on continuation.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
-        }
     }
 
     public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
