@@ -122,6 +122,10 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadV6), SszRestPaths.GetV6Payloads, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadV5), SszRestPaths.PostV5Payloads, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), SszRestPaths.PostV4Forkchoice, GateWithWarn(spec.IsEip7843Enabled));
+        // EIP-7805 (FOCIL; JSON-RPC only until an SSZ-REST wire shape is specified)
+        jsonLocal[nameof(IEngineRpcModule.engine_getInclusionListV1)] = GateWithWarn(spec.IsEip7805Enabled);
+        jsonLocal[nameof(IEngineRpcModule.engine_newPayloadV6)] = GateWithWarn(spec.IsEip7805Enabled);
+
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostV2PayloadBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetV2PayloadBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
 

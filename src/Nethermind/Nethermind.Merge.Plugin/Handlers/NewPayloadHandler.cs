@@ -20,7 +20,10 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -49,6 +52,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
+    private readonly ISpecProvider _specProvider;
+    private readonly IEthereumEcdsa _ecdsa;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
@@ -74,6 +79,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
+        ISpecProvider specProvider,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -87,6 +93,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _specProvider = specProvider;
+        _ecdsa = new EthereumEcdsa(specProvider.ChainId);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
@@ -260,8 +268,74 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Syncing;
         }
 
+        // EIP-7805: a valid payload that leaves a satisfiable inclusion list transaction
+        // unincluded is reported as INCLUSION_LIST_UNSATISFIED.
+        if (request.InclusionList is { Length: > 0 } inclusionList && !IsInclusionListSatisfied(block, inclusionList))
+        {
+            if (_logger.IsInfo) _logger.Info($"Inclusion list unsatisfied. Result of {requestStr}.");
+            return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1
+            {
+                Status = PayloadStatus.InclusionListUnsatisfied,
+                LatestValidHash = block.Hash,
+            });
+        }
+
         if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
         return NewPayloadV1Result.Valid(block.Hash);
+    }
+
+    /// <summary>
+    /// EIP-7805: checks that no inclusion list transaction is still satisfiable against the
+    /// processed block's post-state. A transaction is exempt when it is already included, does
+    /// not fit the remaining block gas, cannot pay the base fee, is malformed, or fails the
+    /// nonce/balance checks; any remaining executable transaction makes the list unsatisfied.
+    /// </summary>
+    internal bool IsInclusionListSatisfied(Block block, byte[][] inclusionList)
+    {
+        IRlpDecoder<Transaction>? decoder = Rlp.GetDecoder<Transaction>();
+        if (decoder is null) return true;
+
+        HashSet<Hash256> includedTxs = [];
+        foreach (Transaction includedTx in block.Transactions)
+        {
+            if (includedTx.Hash is not null) includedTxs.Add(includedTx.Hash);
+        }
+
+        ulong gasRemaining = block.GasLimit - block.GasUsed;
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        foreach (byte[] encodedTx in inclusionList)
+        {
+            Transaction tx;
+            try
+            {
+                RlpReader reader = new(encodedTx);
+                tx = decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+            }
+            catch (RlpException)
+            {
+                continue; // a malformed entry can never be satisfiable
+            }
+
+            if (tx.Hash is not null && includedTxs.Contains(tx.Hash)) continue;
+            if ((ulong)tx.GasLimit > gasRemaining) continue;
+            if (tx.MaxFeePerGas < block.BaseFeePerGas) continue;
+
+            EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, (ulong)block.GasLimit);
+            if (intrinsicGas.MinimalGas > gasRemaining) continue;
+
+            Address? sender = tx.SenderAddress ?? _ecdsa.RecoverAddress(tx);
+            if (sender is null) continue;
+            if (!_stateReader.TryGetAccount(block.Header, sender, out AccountStruct account)) continue;
+            if (account.Nonce != tx.Nonce) continue;
+
+            UInt256 maxCost = tx.Value + (UInt256)tx.GasLimit * tx.MaxFeePerGas;
+            if (account.Balance < maxCost) continue;
+
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>Records a block rejected before <c>BranchProcessor</c> ever runs.</summary>

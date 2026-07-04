@@ -243,6 +243,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         _transactions = transactions;
     }
 
+    /// <summary>
+    /// EIP-7805 inclusion list delivered alongside the payload in <c>engine_newPayloadV6</c>;
+    /// carried out-of-band (it is a sibling parameter, not a payload field).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public byte[][]? InclusionList { get; set; }
+
     public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
