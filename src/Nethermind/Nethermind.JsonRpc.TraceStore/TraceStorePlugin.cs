@@ -40,8 +40,12 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
                 .AddSingleton<ITraceSerializer<ParityLikeTxTrace>, ITraceStoreConfig, ILogManager>((config, logManager) =>
                     new ParityLikeTraceSerializer(logManager, config.MaxDepth, config.VerifySerialized))
                 // Serve trace_* from the trace DB by decorating the trace module that the default
-                // factory builds via DI (TraceModuleFactory.Create resolves ITraceRpcModule from a
-                // nested lifetime scope, which inherits this root decorator).
+                // factory builds via DI: TraceModuleFactory.Create resolves ITraceRpcModule from a
+                // nested lifetime scope that inherits this root decorator.
+                // Decorating the module — rather than re-registering the pool as the old
+                // InitRpcModules did via RegisterBoundedByCpuCount — deliberately keeps the base
+                // trace module's concurrency bound (RpcModules.cs); the previous bump to
+                // Environment.ProcessorCount was unintended.
                 .AddDecorator<ITraceRpcModule>((ctx, inner) =>
                     new TraceStoreRpcModule(
                         inner,
