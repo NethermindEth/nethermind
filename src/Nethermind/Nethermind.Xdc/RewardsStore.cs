@@ -31,40 +31,34 @@ internal sealed class RewardsStore(
 
     public void SaveEpochRewards(Hash256 epochBlockHash, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
     {
-        BlockHeader header = _blockTree.FindHeader(epochBlockHash)
+        _ = _blockTree.FindHeader(epochBlockHash)
             ?? throw new InvalidOperationException($"Epoch block header {epochBlockHash} was not found in the block tree.");
 
         using IWriteBatch batch = _rewardsDb.StartWriteBatch();
 
-        batch[BuildEpochRewardsKey(epochBlockHash)] = JsonSerializer.SerializeToUtf8Bytes(rewards);
+        byte[] epochRewardsKey = BuildEpochRewardsKey(epochBlockHash);
+        bool alreadyStored = _rewardsDb.KeyExists(epochRewardsKey);
+        batch[epochRewardsKey] = JsonSerializer.SerializeToUtf8Bytes(rewards);
+
+        if (alreadyStored)
+        {
+            return;
+        }
 
         ulong oldestSequence = TryReadUInt64(OldestSequenceKey, out ulong oldestSequenceValue) ? oldestSequenceValue : 0;
         ulong newestSequence = TryReadUInt64(NewestSequenceKey, out ulong newestSequenceValue) ? newestSequenceValue : 0;
         int retainedCount = TryReadInt32(RetainedCountKey, out int retainedCountValue) ? retainedCountValue : 0;
 
-        ulong epochBlockNumber = (ulong)header.Number;
-        if (TryFindSequenceForBlockNumber(epochBlockNumber, out ulong existingSequence, out Hash256? existingHash))
+        ulong nextSequence = retainedCount == 0 ? 0 : newestSequence + 1;
+
+        batch[BuildSequenceToEpochKey(nextSequence)] = epochBlockHash.Bytes.ToArray();
+        newestSequence = nextSequence;
+        if (retainedCount == 0)
         {
-            if (existingHash is not null && existingHash != epochBlockHash)
-            {
-                batch.Remove(BuildEpochRewardsKey(existingHash));
-            }
-
-            batch[BuildSequenceToEpochKey(existingSequence)] = epochBlockHash.Bytes.ToArray();
+            oldestSequence = nextSequence;
         }
-        else
-        {
-            ulong nextSequence = retainedCount == 0 ? 0 : newestSequence + 1;
 
-            batch[BuildSequenceToEpochKey(nextSequence)] = epochBlockHash.Bytes.ToArray();
-            newestSequence = nextSequence;
-            if (retainedCount == 0)
-            {
-                oldestSequence = nextSequence;
-            }
-
-            retainedCount++;
-        }
+        retainedCount++;
 
         PruneOldEpochs(batch, ref oldestSequence, ref retainedCount);
 
@@ -103,62 +97,6 @@ internal sealed class RewardsStore(
 
         reward = SumAccountReward(breakdown, account);
         return reward > UInt256.Zero;
-    }
-
-    public bool TryGetRetainedRange(out ulong oldestEpochBlockNumber, out ulong newestEpochBlockNumber)
-    {
-        oldestEpochBlockNumber = 0;
-        newestEpochBlockNumber = 0;
-
-        if (!TryReadUInt64(OldestSequenceKey, out ulong oldestSequence) ||
-            !TryReadUInt64(NewestSequenceKey, out ulong newestSequence))
-        {
-            return false;
-        }
-
-        BlockHeader? oldestHeader = TryGetHeaderForSequence(oldestSequence);
-        BlockHeader? newestHeader = TryGetHeaderForSequence(newestSequence);
-        if (oldestHeader is null || newestHeader is null)
-        {
-            return false;
-        }
-
-        oldestEpochBlockNumber = (ulong)oldestHeader.Number;
-        newestEpochBlockNumber = (ulong)newestHeader.Number;
-        return true;
-    }
-
-    private bool TryFindSequenceForBlockNumber(ulong epochBlockNumber, out ulong sequence, out Hash256? existingHash)
-    {
-        sequence = 0;
-        existingHash = null;
-
-        if (!TryReadUInt64(OldestSequenceKey, out ulong oldestSequence) ||
-            !TryReadUInt64(NewestSequenceKey, out ulong newestSequence))
-        {
-            return false;
-        }
-
-        for (ulong candidateSequence = oldestSequence; candidateSequence <= newestSequence; candidateSequence++)
-        {
-            BlockHeader? header = TryGetHeaderForSequence(candidateSequence);
-            if (header is null || (ulong)header.Number != epochBlockNumber)
-            {
-                continue;
-            }
-
-            sequence = candidateSequence;
-            existingHash = header.Hash;
-            return true;
-        }
-
-        return false;
-    }
-
-    private BlockHeader? TryGetHeaderForSequence(ulong sequence)
-    {
-        byte[]? epochHashBytes = _rewardsDb.Get(BuildSequenceToEpochKey(sequence));
-        return epochHashBytes is null ? null : _blockTree.FindHeader(new Hash256(epochHashBytes));
     }
 
     private void PruneOldEpochs(IWriteBatch batch, ref ulong oldestSequence, ref int retainedCount)

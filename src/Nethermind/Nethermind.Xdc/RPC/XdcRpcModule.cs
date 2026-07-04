@@ -309,17 +309,6 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<AccountRewardResponse>.Fail("Failed to get epoch switch info");
         }
 
-        if (epochSwitchInfos.Length != 0 && rewardsStore.TryGetRetainedRange(out ulong oldestRetainedEpochBlockNumber, out _))
-        {
-            ulong requestedOldestEpoch = (ulong)epochSwitchInfos[0].EpochSwitchBlockInfo.BlockNumber;
-            if (requestedOldestEpoch < oldestRetainedEpochBlockNumber)
-            {
-                return ResultWrapper<AccountRewardResponse>.Fail(
-                    $"Cannot return pruned historical reward data before epoch block {oldestRetainedEpochBlockNumber}.",
-                    ErrorCodes.PrunedHistoryUnavailable);
-            }
-        }
-
         List<AccountEpochReward> epochRewards = new(epochSwitchInfos.Length);
         UInt256 totalReward = UInt256.Zero;
 

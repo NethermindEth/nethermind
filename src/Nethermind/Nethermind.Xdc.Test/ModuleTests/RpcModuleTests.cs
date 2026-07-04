@@ -829,13 +829,6 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
-            {
-                callInfo[0] = epoch1;
-                callInfo[1] = epoch2;
-                return true;
-            });
 
         _rewardsStore.HasEpochRewards(TestItem.KeccakA).Returns(true);
         _rewardsStore.HasEpochRewards(TestItem.KeccakB).Returns(true);
@@ -866,45 +859,6 @@ public class RpcModuleTests
     }
 
     [Test]
-    public void GetRewardByAccount_ShouldReturnFail_WhenRequestIsPruned()
-    {
-        // Arrange
-        Address account = TestItem.AddressA;
-        const ulong begin = 100;
-        const ulong end = 200;
-        const ulong requestedEpoch = 120;
-        const ulong oldestRetained = 150;
-        const ulong newestRetained = 300;
-
-        XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().WithNumber(begin).TestObject;
-        XdcBlockHeader endHeader = Build.A.XdcBlockHeader().WithNumber(end).TestObject;
-
-        _blockTree.FindHeader(begin).Returns(beginHeader);
-        _blockTree.FindHeader(end).Returns(endHeader);
-
-        EpochSwitchInfo[] epochSwitchInfos =
-        [
-            new EpochSwitchInfo(Array.Empty<Address>(), Array.Empty<Address>(), Array.Empty<Address>(), new BlockRoundInfo(TestItem.KeccakA, 1, (long)requestedEpoch)),
-        ];
-
-        _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
-            {
-                callInfo[0] = oldestRetained;
-                callInfo[1] = newestRetained;
-                return true;
-            });
-
-        // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
-
-        // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
-    }
-
-    [Test]
     public void GetRewardByAccount_ShouldReturnFail_WhenRewardsMissingForEpoch()
     {
         // Arrange
@@ -925,7 +879,6 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>()).Returns(false);
         _rewardsStore.HasEpochRewards(TestItem.KeccakA).Returns(false);
 
         // Act

@@ -95,45 +95,6 @@ public class RewardsStoreTests
     }
 
     [Test]
-    public void TryGetRetainedRange_WhenEpochRewardsWereSaved_ShouldReturnSavedBounds()
-    {
-        IDb db = new MemDb();
-        Address account = Address.FromNumber(1);
-        Address signer = Address.FromNumber(10);
-        const ulong epoch10 = 120;
-        const ulong epoch20 = 180;
-        Hash256 epoch10Hash = EpochHash(epoch10);
-        Hash256 epoch20Hash = EpochHash(epoch20);
-        IBlockTree blockTree = CreateBlockTree((epoch10, epoch10Hash), (epoch20, epoch20Hash));
-        RewardsStore store = new(db, blockTree);
-
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload10 = new()
-        {
-            [XdcConstants.RpcRewardSectionMasternode] = new()
-            {
-                [signer.ToString()] = new() { [account.ToString()] = "10" },
-            },
-        };
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload20 = new()
-        {
-            [XdcConstants.RpcRewardSectionMasternode] = new()
-            {
-                [signer.ToString()] = new() { [account.ToString()] = "20" },
-            },
-        };
-
-        store.SaveEpochRewards(epoch10Hash, payload10);
-        store.SaveEpochRewards(epoch20Hash, payload20);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
-            Assert.That(oldest, Is.EqualTo(epoch10));
-            Assert.That(newest, Is.EqualTo(epoch20));
-        }
-    }
-
-    [Test]
     public void SaveEpochRewards_ShouldRoundTripNestedRewardPayload()
     {
         IDb db = new MemDb();
@@ -277,30 +238,25 @@ public class RewardsStoreTests
             Assert.That(store.HasEpochRewards(newOldestKeptEpochHash), Is.True);
             Assert.That(store.TryGetAccountReward(account, newOldestKeptEpochHash, out UInt256 keptReward), Is.True);
             Assert.That(keptReward, Is.EqualTo((UInt256)newOldestKeptEpoch));
-            Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
-            Assert.That(oldest, Is.EqualTo(newOldestKeptEpoch));
-            Assert.That(newest, Is.EqualTo(latestEpoch));
         }
     }
 
     [Test]
-    public void SaveEpochRewards_WhenSameNumberHasNewHash_ShouldReplaceOldRewardEntry()
+    public void SaveEpochRewards_WhenSameHashIsSavedAgain_ShouldOverwriteRewardPayload()
     {
         IDb db = new MemDb();
         const ulong epoch = 120;
-        Hash256 oldHash = EpochHash(epoch);
-        Hash256 newHash = Keccak.Compute("reorged-epoch-block");
-        IBlockTree blockTree = CreateBlockTree((epoch, oldHash), (epoch, newHash));
-        RewardsStore store = new(db, blockTree);
+        Hash256 epochHash = EpochHash(epoch);
+        RewardsStore store = new(db, CreateBlockTree((epoch, epochHash)));
 
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> oldPayload = new()
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> initialPayload = new()
         {
             [XdcConstants.RpcRewardSectionMasternode] = new()
             {
                 [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "100" },
             },
         };
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> newPayload = new()
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> updatedPayload = new()
         {
             [XdcConstants.RpcRewardSectionMasternode] = new()
             {
@@ -308,15 +264,10 @@ public class RewardsStoreTests
             },
         };
 
-        store.SaveEpochRewards(oldHash, oldPayload);
-        store.SaveEpochRewards(newHash, newPayload);
+        store.SaveEpochRewards(epochHash, initialPayload);
+        store.SaveEpochRewards(epochHash, updatedPayload);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.HasEpochRewards(oldHash), Is.False);
-            Assert.That(store.TryGetEpochRewards(oldHash, out _), Is.False);
-            Assert.That(store.TryGetEpochRewards(newHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
-            Assert.That(loaded![XdcConstants.RpcRewardSectionMasternode][Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("200"));
-        }
+        Assert.That(store.TryGetEpochRewards(epochHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
+        Assert.That(loaded![XdcConstants.RpcRewardSectionMasternode][Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("200"));
     }
 }

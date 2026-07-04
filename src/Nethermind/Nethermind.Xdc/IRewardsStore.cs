@@ -14,5 +14,4 @@ public interface IRewardsStore
     bool HasEpochRewards(Hash256 epochBlockHash);
     bool TryGetAccountReward(Address account, Hash256 epochBlockHash, out UInt256 reward);
     bool TryGetEpochRewards(Hash256 epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards);
-    bool TryGetRetainedRange(out ulong oldestEpochBlockNumber, out ulong newestEpochBlockNumber);
 }
