@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -54,7 +53,6 @@ public class InitializeNetwork : IStep
     private readonly IStaticNodesManager _staticNodesManager;
     private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly IEnode _enode;
-    private readonly INethermindPlugin[] _plugins;
     private readonly Lazy<IProtocolsManager> _protocolsManager;
 
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
@@ -78,7 +76,6 @@ public class InitializeNetwork : IStep
         IStaticNodesManager staticNodesManager,
         ITrustedNodesManager trustedNodesManager,
         IEnode enode,
-        INethermindPlugin[] plugins,
         Lazy<IProtocolsManager> protocolsManager,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
@@ -98,7 +95,6 @@ public class InitializeNetwork : IStep
         _staticNodesManager = staticNodesManager;
         _trustedNodesManager = trustedNodesManager;
         _enode = enode;
-        _plugins = plugins;
         _protocolsManager = protocolsManager;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
@@ -254,11 +250,6 @@ public class InitializeNetwork : IStep
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
             _ = _enrDiscoveryAppFeeder.Run();
-        }
-
-        foreach (INethermindPlugin plugin in _plugins)
-        {
-            await plugin.InitNetworkProtocol();
         }
 
         // Capabilities must be resolved before the RLPx listener accepts peers. Otherwise

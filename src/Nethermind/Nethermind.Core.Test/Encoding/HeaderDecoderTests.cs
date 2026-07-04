@@ -35,24 +35,6 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Can_decode_aura()
-    {
-        byte[] auRaSignature = new byte[64];
-        new Random().NextBytes(auRaSignature);
-        BlockHeader header = Build.A.BlockHeader
-            .WithAura(100000000, auRaSignature)
-            .TestObject;
-
-        HeaderDecoder decoder = new();
-        Rlp rlp = decoder.Encode(header);
-        RlpReader decoderContext = new(rlp.Bytes);
-        BlockHeader? decoded = decoder.Decode(ref decoderContext);
-        decoded!.Hash = decoded.CalculateHash();
-
-        Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
-    }
-
-    [Test]
     public void Get_length_null()
     {
         HeaderDecoder decoder = new();

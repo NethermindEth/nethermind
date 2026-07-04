@@ -79,7 +79,7 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
-            _decodersSnapshot = null;
+            Volatile.Write(ref _decodersSnapshot, null);
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
@@ -88,7 +88,7 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
-            _decodersSnapshot = null;
+            Volatile.Write(ref _decodersSnapshot, null);
         }
 
         public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false);
@@ -106,6 +106,9 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
+
+        public static IRlpDecoder<T> GetDecoderOrThrow<T>(string key = RlpDecoderKey.Default) =>
+            GetDecoder<T>(key) ?? throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
