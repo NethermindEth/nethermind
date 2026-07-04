@@ -205,10 +205,6 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Concurrent_resleep_and_wake_never_leave_peer_permanently_asleep()
         {
-            // Races PutToSleep refreshing a SleepingSince entry against a wake-up pass removing it.
-            // If a wake-up can delete the refreshed entry while the sleeping bits survive, later passes
-            // have nothing to enumerate and the context can never wake again, so after every race round
-            // a final wake-up pass must leave the peer allocatable.
             PeerInfo peer = NewPeer();
             DateTime sleptAt = DateTime.UtcNow;
             DateTime wakeAt = sleptAt + TimeSpan.FromSeconds(10);
