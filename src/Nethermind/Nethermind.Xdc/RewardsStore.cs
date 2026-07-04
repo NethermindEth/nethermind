@@ -10,56 +10,59 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text.Json;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Xdc;
 
 internal sealed class RewardsStore(
     [KeyFilter(XdcRocksDbConfigFactory.XdcRewardsDbName)] IDb rewardsDb,
+    IBlockTree blockTree,
     int rewardHistoryEpochRetention = XdcConstants.RewardHistoryEpochRetention) : IRewardsStore
 {
     private readonly IDb _rewardsDb = rewardsDb;
+    private readonly IBlockTree _blockTree = blockTree;
     private readonly int _rewardHistoryEpochRetention = rewardHistoryEpochRetention;
 
     private const byte EpochRewardsPrefix = 0x10;
     private const byte SequenceToEpochPrefix = 0x11;
-    private const byte EpochToSequencePrefix = 0x12;
-    private const byte EpochNumberToHashPrefix = 0x13;
     private static readonly byte[] OldestSequenceKey = [0x01];
     private static readonly byte[] NewestSequenceKey = [0x02];
     private static readonly byte[] RetainedCountKey = [0x03];
 
-    public void SaveEpochRewards(Hash256 epochBlockHash, ulong epochBlockNumber, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
+    public void SaveEpochRewards(Hash256 epochBlockHash, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
     {
+        BlockHeader header = _blockTree.FindHeader(epochBlockHash)
+            ?? throw new InvalidOperationException($"Epoch block header {epochBlockHash} was not found in the block tree.");
+
         using IWriteBatch batch = _rewardsDb.StartWriteBatch();
 
-        byte[]? existingHashBytes = _rewardsDb.Get(BuildEpochNumberToHashKey(epochBlockNumber));
-        if (existingHashBytes is not null && !existingHashBytes.AsSpan().SequenceEqual(epochBlockHash.Bytes))
-        {
-            batch.Remove(BuildEpochRewardsKey(new Hash256(existingHashBytes)));
-        }
-
-        byte[] epochRewardsKey = BuildEpochRewardsKey(epochBlockHash);
-        byte[] rewardBytes = JsonSerializer.SerializeToUtf8Bytes(rewards);
-        batch[epochRewardsKey] = rewardBytes;
-        batch[BuildEpochNumberToHashKey(epochBlockNumber)] = epochBlockHash.Bytes.ToArray();
+        batch[BuildEpochRewardsKey(epochBlockHash)] = JsonSerializer.SerializeToUtf8Bytes(rewards);
 
         ulong oldestSequence = TryReadUInt64(OldestSequenceKey, out ulong oldestSequenceValue) ? oldestSequenceValue : 0;
         ulong newestSequence = TryReadUInt64(NewestSequenceKey, out ulong newestSequenceValue) ? newestSequenceValue : 0;
         int retainedCount = TryReadInt32(RetainedCountKey, out int retainedCountValue) ? retainedCountValue : 0;
 
-        byte[] epochToSequenceKey = BuildEpochToSequenceKey(epochBlockNumber);
-        byte[]? existingSequenceBytes = _rewardsDb.Get(epochToSequenceKey);
-        if (existingSequenceBytes is null)
+        ulong epochBlockNumber = (ulong)header.Number;
+        if (TryFindSequenceForBlockNumber(epochBlockNumber, out ulong existingSequence, out Hash256? existingHash))
+        {
+            if (existingHash is not null && existingHash != epochBlockHash)
+            {
+                batch.Remove(BuildEpochRewardsKey(existingHash));
+            }
+
+            batch[BuildSequenceToEpochKey(existingSequence)] = epochBlockHash.Bytes.ToArray();
+        }
+        else
         {
             ulong nextSequence = retainedCount == 0 ? 0 : newestSequence + 1;
 
-            batch[BuildSequenceToEpochKey(nextSequence)] = ToBigEndian(epochBlockNumber);
-            batch[epochToSequenceKey] = ToBigEndian(nextSequence);
+            batch[BuildSequenceToEpochKey(nextSequence)] = epochBlockHash.Bytes.ToArray();
             newestSequence = nextSequence;
             if (retainedCount == 0)
             {
                 oldestSequence = nextSequence;
             }
+
             retainedCount++;
         }
 
@@ -113,16 +116,49 @@ internal sealed class RewardsStore(
             return false;
         }
 
-        byte[]? oldestEpochBytes = _rewardsDb.Get(BuildSequenceToEpochKey(oldestSequence));
-        byte[]? newestEpochBytes = _rewardsDb.Get(BuildSequenceToEpochKey(newestSequence));
-        if (oldestEpochBytes is null || newestEpochBytes is null)
+        BlockHeader? oldestHeader = TryGetHeaderForSequence(oldestSequence);
+        BlockHeader? newestHeader = TryGetHeaderForSequence(newestSequence);
+        if (oldestHeader is null || newestHeader is null)
         {
             return false;
         }
 
-        oldestEpochBlockNumber = BinaryPrimitives.ReadUInt64BigEndian(oldestEpochBytes);
-        newestEpochBlockNumber = BinaryPrimitives.ReadUInt64BigEndian(newestEpochBytes);
+        oldestEpochBlockNumber = (ulong)oldestHeader.Number;
+        newestEpochBlockNumber = (ulong)newestHeader.Number;
         return true;
+    }
+
+    private bool TryFindSequenceForBlockNumber(ulong epochBlockNumber, out ulong sequence, out Hash256? existingHash)
+    {
+        sequence = 0;
+        existingHash = null;
+
+        if (!TryReadUInt64(OldestSequenceKey, out ulong oldestSequence) ||
+            !TryReadUInt64(NewestSequenceKey, out ulong newestSequence))
+        {
+            return false;
+        }
+
+        for (ulong candidateSequence = oldestSequence; candidateSequence <= newestSequence; candidateSequence++)
+        {
+            BlockHeader? header = TryGetHeaderForSequence(candidateSequence);
+            if (header is null || (ulong)header.Number != epochBlockNumber)
+            {
+                continue;
+            }
+
+            sequence = candidateSequence;
+            existingHash = header.Hash;
+            return true;
+        }
+
+        return false;
+    }
+
+    private BlockHeader? TryGetHeaderForSequence(ulong sequence)
+    {
+        byte[]? epochHashBytes = _rewardsDb.Get(BuildSequenceToEpochKey(sequence));
+        return epochHashBytes is null ? null : _blockTree.FindHeader(new Hash256(epochHashBytes));
     }
 
     private void PruneOldEpochs(IWriteBatch batch, ref ulong oldestSequence, ref int retainedCount)
@@ -134,21 +170,13 @@ internal sealed class RewardsStore(
 
         while (retainedCount > _rewardHistoryEpochRetention)
         {
-            byte[]? oldestEpochBytes = _rewardsDb.Get(BuildSequenceToEpochKey(oldestSequence));
-            if (oldestEpochBytes is null)
+            byte[]? oldestEpochHashBytes = _rewardsDb.Get(BuildSequenceToEpochKey(oldestSequence));
+            if (oldestEpochHashBytes is null)
             {
                 return;
             }
-            ulong oldestEpoch = BinaryPrimitives.ReadUInt64BigEndian(oldestEpochBytes);
 
-            byte[]? hashBytes = _rewardsDb.Get(BuildEpochNumberToHashKey(oldestEpoch));
-            if (hashBytes is not null)
-            {
-                batch.Remove(BuildEpochRewardsKey(new Hash256(hashBytes)));
-                batch.Remove(BuildEpochNumberToHashKey(oldestEpoch));
-            }
-
-            batch.Remove(BuildEpochToSequenceKey(oldestEpoch));
+            batch.Remove(BuildEpochRewardsKey(new Hash256(oldestEpochHashBytes)));
             batch.Remove(BuildSequenceToEpochKey(oldestSequence));
 
             oldestSequence++;
@@ -186,27 +214,11 @@ internal sealed class RewardsStore(
         return key;
     }
 
-    private static byte[] BuildEpochNumberToHashKey(ulong epochBlockNumber)
-    {
-        byte[] key = new byte[1 + sizeof(ulong)];
-        key[0] = EpochNumberToHashPrefix;
-        BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(1), epochBlockNumber);
-        return key;
-    }
-
     private static byte[] BuildSequenceToEpochKey(ulong sequence)
     {
         byte[] key = new byte[1 + sizeof(ulong)];
         key[0] = SequenceToEpochPrefix;
         BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(1), sequence);
-        return key;
-    }
-
-    private static byte[] BuildEpochToSequenceKey(ulong epochBlockNumber)
-    {
-        byte[] key = new byte[1 + sizeof(ulong)];
-        key[0] = EpochToSequencePrefix;
-        BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(1), epochBlockNumber);
         return key;
     }
 

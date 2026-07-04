@@ -10,7 +10,7 @@ namespace Nethermind.Xdc;
 
 public interface IRewardsStore
 {
-    void SaveEpochRewards(Hash256 epochBlockHash, ulong epochBlockNumber, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards);
+    void SaveEpochRewards(Hash256 epochBlockHash, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards);
     bool HasEpochRewards(Hash256 epochBlockHash);
     bool TryGetAccountReward(Address account, Hash256 epochBlockHash, out UInt256 reward);
     bool TryGetEpochRewards(Hash256 epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards);
