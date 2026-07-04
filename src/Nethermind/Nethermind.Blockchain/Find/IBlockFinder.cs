@@ -25,11 +25,6 @@ namespace Nethermind.Blockchain.Find
 
         Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options);
 
-        /// <summary>
-        /// Finds the stored block's body as raw RLP without decoding transactions, for direct byte serving.
-        /// </summary>
-        RlpBlockBody? FindBodyRlp(Hash256 blockHash) => null;
-
         bool HasBlock(ulong blockNumber, Hash256 blockHash);
 
         /// Find a header. blockNumber is optional, but specifying it can improve performance.

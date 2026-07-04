@@ -1632,17 +1632,6 @@ namespace Nethermind.Blockchain
             return block;
         }
 
-        public RlpBlockBody? FindBodyRlp(Hash256 blockHash)
-        {
-            if (blockHash is null || blockHash == Keccak.Zero)
-            {
-                return null;
-            }
-
-            ulong? blockNumber = _headerStore.GetBlockNumber(blockHash);
-            return blockNumber is null ? null : _blockStore.GetBodyRlp(blockNumber.Value, blockHash);
-        }
-
         private bool IsTotalDifficultyAlwaysZero() =>
             // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
             // We also checking TTD is zero to ensure that block after genesis have zero difficulty

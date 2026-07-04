@@ -4,6 +4,8 @@
 using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -53,6 +55,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IWorldStateManager>(),
                 Substitute.For<IReadOnlyKeyValueStore>(),
                 blockTree,
+                Substitute.For<IBlockStore>(),
+                Substitute.For<IHeaderStore>(),
                 Substitute.For<IReceiptFinder>(),
                 Substitute.For<IBlockAccessListStore>(),
                 Substitute.For<IBlockValidator>(),
