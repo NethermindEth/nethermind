@@ -16,6 +16,11 @@ public class PreBlockCaches
 {
     private const int InitialCapacity = 4096 * 8;
 
+    // Precompile results are pure functions of their input, so entries stay valid across blocks and the
+    // cache is retained rather than cleared per block. The cap bounds memory (keys retain the input bytes,
+    // which for pairings run to kilobytes): when exceeded, the cache resets and rebuilds from live traffic.
+    private const int PrecompileCacheMaxEntries = 32 * 1024;
+
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private readonly Func<CacheType>[] _clearCaches;
@@ -34,7 +39,7 @@ public class PreBlockCaches
         [
             () => { _storageCache.Clear(); return CacheType.None; },
             () => { _stateCache.Clear(); return CacheType.None; },
-            () => { _precompileCache.NoResizeClear(); return CacheType.None; }
+            () => { if (_precompileCache.Count > PrecompileCacheMaxEntries) _precompileCache.NoResizeClear(); return CacheType.None; }
         ];
     }
 
