@@ -82,14 +82,7 @@ public class SegmentHistoryStoreTests
         const ulong lastBlock = 44; // 11 steps: without merge this would be 11 files
 
         using (SegmentHistoryStore store = NewStore(stepBlocks, fanout, maxSegmentBlocks))
-        {
-            for (ulong block = 1; block <= lastBlock; block++)
-            {
-                store.RecordChange(block, KeyA, [(byte)block]); // KeyA changes every block => full history
-                store.CompleteBlock(block);
-            }
-            store.Flush();
-        }
+            WriteFullHistory(store, lastBlock); // KeyA changes every block => full history
 
         (int from, int to)[] segments = SegmentRanges();
 
@@ -106,6 +99,61 @@ public class SegmentHistoryStoreTests
             Assert.That(segments[i].from, Is.EqualTo(segments[i - 1].to + 1), "segments must be gapless");
 
         using SegmentHistoryStore reopened = NewStore(stepBlocks, fanout, maxSegmentBlocks);
+        for (ulong block = 1; block <= lastBlock; block++)
+            Assert.That(AsOf(reopened, KeyA, block).hex, Is.EqualTo(Convert.ToHexString([(byte)block]).ToLowerInvariant()), $"@{block}");
+    }
+
+    // KeyA changes at every block 1..lastBlock with value == the block number, giving a full per-block history.
+    private static void WriteFullHistory(SegmentHistoryStore store, ulong lastBlock)
+    {
+        for (ulong block = 1; block <= lastBlock; block++)
+        {
+            store.RecordChange(block, KeyA, [(byte)block]);
+            store.CompleteBlock(block);
+        }
+        store.Flush();
+    }
+
+    [Test]
+    public void Reopen_discards_leftover_scratch_file()
+    {
+        using (SegmentHistoryStore store = NewStore())
+            Populate(store);
+
+        // A crash mid-write leaves a scratch file that was never renamed into place; reopen must drop it.
+        File.WriteAllBytes(Path.Combine(_dir, "seg_garbage.hs.tmp"), [0, 1, 2, 3]);
+
+        using SegmentHistoryStore reopened = NewStore();
+        Assert.That(Directory.EnumerateFiles(_dir, "*.tmp"), Is.Empty, "scratch file should be discarded on reopen");
+        Assert.That(AsOf(reopened, KeyA, 5).hex, Is.EqualTo("bbcc"));
+        Assert.That(AsOf(reopened, KeyB, 3).hex, Is.EqualTo("11"));
+    }
+
+    [Test]
+    public void Reopen_reconciles_orphaned_merge_inputs()
+    {
+        const int stepBlocks = 4;
+        const ulong lastBlock = 8;
+
+        // Produce the two adjacent, unmerged inputs [1,4] and [5,8] and capture their bytes.
+        using (SegmentHistoryStore store = NewStore(stepBlocks, mergeFanout: 16))
+            WriteFullHistory(store, lastBlock);
+        Dictionary<string, byte[]> inputs = [];
+        foreach (string path in Directory.EnumerateFiles(_dir, "seg_*"))
+            inputs[Path.GetFileName(path)] = File.ReadAllBytes(path);
+        Assert.That(inputs, Has.Count.EqualTo(2), "precondition: two unmerged input segments");
+
+        // Rebuild the same range with merging on so the inputs fuse into the covering [1,8], then re-introduce the
+        // inputs — the on-disk state a crash leaves when it publishes the merged segment but dies before deleting them.
+        foreach (string path in Directory.EnumerateFiles(_dir)) File.Delete(path);
+        using (SegmentHistoryStore store = NewStore(stepBlocks, mergeFanout: 2))
+            WriteFullHistory(store, lastBlock);
+        foreach ((string name, byte[] bytes) in inputs)
+            File.WriteAllBytes(Path.Combine(_dir, name), bytes);
+        Assert.That(SegmentRanges(), Has.Length.EqualTo(3), "precondition: covering + two contained segments on disk");
+
+        using SegmentHistoryStore reopened = NewStore(stepBlocks, mergeFanout: 2);
+        Assert.That(SegmentRanges(), Is.EqualTo(new[] { (1, 8) }), "orphaned inputs dropped, covering segment kept");
         for (ulong block = 1; block <= lastBlock; block++)
             Assert.That(AsOf(reopened, KeyA, block).hex, Is.EqualTo(Convert.ToHexString([(byte)block]).ToLowerInvariant()), $"@{block}");
     }

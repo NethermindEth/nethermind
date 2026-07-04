@@ -14,6 +14,9 @@ namespace Nethermind.State.Flat.History.Segmented;
 /// No RocksDB: the segment directory is the durable store, and each file self-describes its block range in its
 /// header, so the set of files on disk IS the manifest — the constructor rebuilds state by scanning them.
 /// Re-delivery of a block at or below the last sealed block is dropped, keeping a rescanning writer idempotent.
+/// Crash safety: segments are published by atomic rename after fsync (see <see cref="HistorySegment.Write"/>), and
+/// the constructor discards leftover scratch files and reconciles the covering/contained segments a crash mid-merge
+/// can leave behind (see <see cref="ReconcileOverlaps"/>), so a crash during seal or merge self-heals on reopen.
 /// </remarks>
 public sealed class SegmentHistoryStore : IDisposable
 {
@@ -59,9 +62,17 @@ public sealed class SegmentHistoryStore : IDisposable
         _lookupKey = new ThreadLocal<byte[]>(() => new byte[keyLen]);
 
         Directory.CreateDirectory(directory);
+
+        // Scratch files from a crash mid-write were never published via the atomic rename — discard them.
+        foreach (string tmp in Directory.EnumerateFiles(directory, "seg_*" + SegmentExtension + HistorySegment.TempSuffix))
+            File.Delete(tmp);
+
         foreach (string path in Directory.EnumerateFiles(directory, "seg_*" + SegmentExtension))
+        {
+            if (!path.EndsWith(SegmentExtension, StringComparison.Ordinal)) continue; // guard against 8.3 glob matching *.hs.tmp
             _segments.Add(new HistorySegment(path));
-        _segments.Sort(static (a, b) => a.FromBlock.CompareTo(b.FromBlock));
+        }
+        ReconcileOverlaps();
 
         if (_segments.Count > 0)
         {
@@ -69,6 +80,45 @@ public sealed class SegmentHistoryStore : IDisposable
             _firstCompletedBlock = _segments[0].FromBlock;
             _durableMaxBlock = _lastCompletedBlock = _segments[^1].ToBlock;
         }
+    }
+
+    // A crash between publishing a merged segment and deleting its inputs leaves the covering segment plus the segments
+    // it supersedes on disk, all matching the glob. Drop (and delete) every segment fully contained in a wider one so
+    // the disjoint ascending-range invariant that reads rely on is restored; the covering (merged) segment is the newer,
+    // authoritative copy. Leaves _segments ordered by ascending FromBlock.
+    private void ReconcileOverlaps()
+    {
+        // Covering-first order: for a shared FromBlock the widest range sorts ahead of the ranges nested inside it.
+        _segments.Sort(static (a, b) =>
+        {
+            int cmp = a.FromBlock.CompareTo(b.FromBlock);
+            return cmp != 0 ? cmp : b.ToBlock.CompareTo(a.ToBlock);
+        });
+
+        List<HistorySegment> kept = new(_segments.Count);
+        ulong coveredTo = 0;
+        bool any = false;
+        foreach (HistorySegment segment in _segments)
+        {
+            if (any && segment.ToBlock <= coveredTo)
+            {
+                // Fully contained in an already-kept covering segment — an orphaned merge input.
+                string orphan = segment.Path;
+                segment.Dispose();
+                File.Delete(orphan);
+                continue;
+            }
+            if (any && segment.FromBlock <= coveredTo)
+                throw new InvalidDataException(
+                    $"History segment '{segment.Path}' partially overlaps a kept range up to block {coveredTo}; merges only ever produce nested or disjoint ranges, so this indicates on-disk corruption.");
+
+            kept.Add(segment);
+            coveredTo = segment.ToBlock;
+            any = true;
+        }
+
+        _segments.Clear();
+        _segments.AddRange(kept);
     }
 
     public void RecordChange(ulong block, scoped ReadOnlySpan<byte> flatKey, scoped ReadOnlySpan<byte> value)

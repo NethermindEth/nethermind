@@ -34,6 +34,11 @@ public sealed unsafe class HistorySegment : IDisposable
     private const ushort Version = 2;
     private const int HeaderBytes = 104;
 
+    // Suffix of the scratch file a segment is streamed into before being atomically renamed into place. A crash
+    // mid-write leaves only a <c>*.hs.tmp</c> file, which the store discards on reopen — the final <c>*.hs</c> name
+    // never names a torn file.
+    internal const string TempSuffix = ".tmp";
+
     // Existence-filter tuning: ~10 bits/key over 7 probes ≈ 1% false-positive rate. A false positive only costs a
     // wasted key-table binary search (still correct); there are no false negatives, so a present key is never dropped.
     private const int FilterBitsPerKey = 10;
@@ -259,33 +264,41 @@ public sealed unsafe class HistorySegment : IDisposable
         long filterOffset = valOffset + valTotal;
         long fileLength = filterOffset + filter.Length;
 
-        using FileStream stream = new(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        // Stream into a scratch file, fsync it, then atomically rename into place: readers only ever see a complete,
+        // durable file under the final name, so a crash at any point loses at most the scratch file (dropped on reopen)
+        // rather than exposing a truncated segment.
+        string tmp = path + TempSuffix;
+        using (FileStream stream = new(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            Span<byte> header = stackalloc byte[HeaderBytes];
+            header.Clear();
+            BinaryPrimitives.WriteUInt32LittleEndian(header, Magic);
+            BinaryPrimitives.WriteUInt16LittleEndian(header[4..], Version);
+            header[6] = (byte)keyLen;
+            BinaryPrimitives.WriteUInt64LittleEndian(header[8..], fromBlock);
+            BinaryPrimitives.WriteUInt64LittleEndian(header[16..], toBlock);
+            BinaryPrimitives.WriteUInt32LittleEndian(header[24..], (uint)k);
+            BinaryPrimitives.WriteUInt64LittleEndian(header[32..], (ulong)keysOffset);
+            BinaryPrimitives.WriteUInt64LittleEndian(header[40..], (ulong)efDirOffset);
+            BinaryPrimitives.WriteUInt64LittleEndian(header[48..], (ulong)efOffset);
+            BinaryPrimitives.WriteUInt64LittleEndian(header[56..], (ulong)valDirOffset);
+            BinaryPrimitives.WriteUInt64LittleEndian(header[64..], (ulong)valOffset);
+            BinaryPrimitives.WriteUInt64LittleEndian(header[72..], (ulong)fileLength);
+            BinaryPrimitives.WriteUInt64LittleEndian(header[80..], (ulong)filterOffset);
+            BinaryPrimitives.WriteUInt64LittleEndian(header[88..], filterBits);
+            BinaryPrimitives.WriteUInt32LittleEndian(header[96..], (uint)FilterHashes);
+            stream.Write(header);
 
-        Span<byte> header = stackalloc byte[HeaderBytes];
-        header.Clear();
-        BinaryPrimitives.WriteUInt32LittleEndian(header, Magic);
-        BinaryPrimitives.WriteUInt16LittleEndian(header[4..], Version);
-        header[6] = (byte)keyLen;
-        BinaryPrimitives.WriteUInt64LittleEndian(header[8..], fromBlock);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[16..], toBlock);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[24..], (uint)k);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[32..], (ulong)keysOffset);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[40..], (ulong)efDirOffset);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[48..], (ulong)efOffset);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[56..], (ulong)valDirOffset);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[64..], (ulong)valOffset);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[72..], (ulong)fileLength);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[80..], (ulong)filterOffset);
-        BinaryPrimitives.WriteUInt64LittleEndian(header[88..], filterBits);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[96..], (uint)FilterHashes);
-        stream.Write(header);
+            for (int j = 0; j < k; j++) stream.Write(entries[j].Key);
+            WriteDirectory(stream, efBlobs);
+            for (int j = 0; j < k; j++) stream.Write(efBlobs[j]);
+            WriteDirectory(stream, valRuns);
+            for (int j = 0; j < k; j++) stream.Write(valRuns[j]);
+            stream.Write(filter);
+            stream.Flush(flushToDisk: true);
+        }
 
-        for (int j = 0; j < k; j++) stream.Write(entries[j].Key);
-        WriteDirectory(stream, efBlobs);
-        for (int j = 0; j < k; j++) stream.Write(efBlobs[j]);
-        WriteDirectory(stream, valRuns);
-        for (int j = 0; j < k; j++) stream.Write(valRuns[j]);
-        stream.Write(filter);
+        File.Move(tmp, path, overwrite: true);
     }
 
     private static byte[] BuildFilter(IReadOnlyList<HistoryChangeEntry> entries, ulong filterBits)
