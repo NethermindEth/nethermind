@@ -106,4 +106,24 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
     [Description("Histogram of block processing time")]
     public static IMetricObserver BlockProcessingTimeMicros { get; set; } = new NoopMetricObserver();
+
+    [CounterMetric]
+    [Description("Number of blocks whose BAL-derived shadow state root matched the header state root.")]
+    public static long BalShadowRootMatches;
+
+    [CounterMetric]
+    [Description("Number of blocks whose BAL-derived shadow state root did not match the header state root.")]
+    public static long BalShadowRootMismatches;
+
+    [CounterMetric]
+    [Description("Number of shadow state-root computations that threw and were skipped.")]
+    public static long BalShadowRootErrors;
+
+    [CounterMetric]
+    [Description("Number of blocks skipped by the shadow state-root lane because the in-flight backlog cap was reached.")]
+    public static long BalShadowRootSkipped;
+
+    [GaugeMetric]
+    [Description("Microseconds taken by the last completed shadow state-root computation.")]
+    public static long BalShadowRootLastMicros;
 }

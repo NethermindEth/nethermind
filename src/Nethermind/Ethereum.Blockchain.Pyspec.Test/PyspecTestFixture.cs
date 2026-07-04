@@ -29,6 +29,14 @@ public abstract class PyspecBlockchainFixtureBase(bool parallel, bool batchRead,
         if (heavy) CiRunnerGuard.SkipIfNotLinuxX64();
         else CiRunnerGuard.SkipIfNotLinuxX64Ci();
     }
+
+    // Authoritative shadow-divergence check after all of this fixture's tests (and their stragglers) finish.
+    // Only meaningful when the fixture enabled the shadow; a no-op otherwise.
+    [OneTimeTearDown]
+    public void AssertShadowStateRootClean()
+    {
+        if (BalStateRootShadowOverride == true) AssertNoShadowStateRootDivergenceAtEnd();
+    }
 }
 
 // Standard pre/post-merge blockchain tests. Fixture dir derived from class name (strip "BlockchainTests").
@@ -70,6 +78,9 @@ public abstract class PyspecSyncBlockchainTestFixture<TSelf>() : PyspecLinuxX64B
 // Loads only `for_amsterdam` because parallel-BAL execution is gated on EIP-7928.
 public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool batchRead) : PyspecLinuxX64BlockchainFixture(parallel, batchRead)
 {
+    // Amsterdam blocks carry BALs, so exercise the shadow state-root lane over the whole suite.
+    protected override bool? BalStateRootShadowOverride => true;
+
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
@@ -81,6 +92,9 @@ public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool b
 // Engine-payload variant of the Amsterdam fixture; loads from `for_amsterdam` engine tree.
 public abstract class PyspecAmsterdamEngineBlockchainTestFixture(bool parallel, bool batchRead) : PyspecLinuxX64BlockchainFixture(parallel, batchRead)
 {
+    // Amsterdam blocks carry BALs, so exercise the shadow state-root lane over the whole suite.
+    protected override bool? BalStateRootShadowOverride => true;
+
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 

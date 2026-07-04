@@ -61,6 +61,11 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
+            // Shadow state-root lane: each computation creates and disposes its own read-only trie store
+            // (clones nodes; never mutates Lane A). A per-lane store is required because the flat read-only
+            // store keeps per-BeginScope snapshot state that concurrent lanes must not share.
+            .AddSingleton<BalStateRootShadow, IWorldStateManager, IBalStateRootConfig, ILogManager>(
+                (worldStateManager, config, logManager) => new BalStateRootShadow(worldStateManager.CreateReadOnlyTrieStore, config, logManager))
             .AddScoped<IBranchProcessor, BranchProcessor>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()

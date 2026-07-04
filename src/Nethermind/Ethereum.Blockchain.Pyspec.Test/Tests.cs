@@ -18,7 +18,11 @@ public class ShanghaiBlockchainTests : PyspecBlockchainTestFixture<ShanghaiBlock
 public class CancunBlockchainTests : PyspecBlockchainTestFixture<CancunBlockchainTests>;
 public class PragueBlockchainTests : PyspecBlockchainTestFixture<PragueBlockchainTests>;
 public class OsakaBlockchainTests : PyspecBlockchainTestFixture<OsakaBlockchainTests>;
-public class AmsterdamBlockchainTests : PyspecBlockchainTestFixture<AmsterdamBlockchainTests>;
+public class AmsterdamBlockchainTests : PyspecBlockchainTestFixture<AmsterdamBlockchainTests>
+{
+    // Amsterdam blocks carry BALs, so exercise the shadow state-root lane.
+    protected override bool? BalStateRootShadowOverride => true;
+}
 public class ParisToShanghaiAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ParisToShanghaiAtTime15kBlockchainTests>;
 public class ShanghaiToCancunAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ShanghaiToCancunAtTime15kBlockchainTests>;
 public class CancunToPragueAtTime15kBlockchainTests : PyspecBlockchainTestFixture<CancunToPragueAtTime15kBlockchainTests>;
@@ -33,7 +37,11 @@ public class ShanghaiEngineBlockchainTests : PyspecEngineBlockchainTestFixture<S
 public class CancunEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunEngineBlockchainTests>;
 public class PragueEngineBlockchainTests : PyspecEngineBlockchainTestFixture<PragueEngineBlockchainTests>;
 public class OsakaEngineBlockchainTests : PyspecEngineBlockchainTestFixture<OsakaEngineBlockchainTests>;
-public class AmsterdamEngineBlockchainTests : PyspecEngineBlockchainTestFixture<AmsterdamEngineBlockchainTests>;
+public class AmsterdamEngineBlockchainTests : PyspecEngineBlockchainTestFixture<AmsterdamEngineBlockchainTests>
+{
+    // Amsterdam blocks carry BALs, so exercise the shadow state-root lane.
+    protected override bool? BalStateRootShadowOverride => true;
+}
 public class ParisToShanghaiAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ParisToShanghaiAtTime15kEngineBlockchainTests>;
 public class ShanghaiToCancunAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ShanghaiToCancunAtTime15kEngineBlockchainTests>;
 public class CancunToPragueAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunToPragueAtTime15kEngineBlockchainTests>;
@@ -43,7 +51,11 @@ public class Bpo1ToBpo2AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTe
 public class Bpo2ToAmsterdamAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo2ToAmsterdamAtTime15kEngineBlockchainTests>;
 
 // Sync blockchain tests - exercise sync-mode payload validation alongside the standard engine flow.
-public class AmsterdamSyncBlockchainTests : PyspecSyncBlockchainTestFixture<AmsterdamSyncBlockchainTests>;
+public class AmsterdamSyncBlockchainTests : PyspecSyncBlockchainTestFixture<AmsterdamSyncBlockchainTests>
+{
+    // Amsterdam blocks carry BALs, so exercise the shadow state-root lane.
+    protected override bool? BalStateRootShadowOverride => true;
+}
 public class OsakaSyncBlockchainTests : PyspecSyncBlockchainTestFixture<OsakaSyncBlockchainTests>;
 
 // Amsterdam parallel-execution / batch-read prewarm variants - Linux x64 only.

@@ -61,6 +61,12 @@ public abstract class BlockchainTestBase
     /// </summary>
     protected virtual bool? ParallelExecutionBatchReadOverride => null;
 
+    /// <summary>
+    /// Override to enable the BAL-driven shadow state-root lane in tests.
+    /// Null means use the default config value (disabled).
+    /// </summary>
+    protected virtual bool? BalStateRootShadowOverride => null;
+
     protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
@@ -120,6 +126,11 @@ public abstract class BlockchainTestBase
         if (ParallelExecutionBatchReadOverride.HasValue)
         {
             blocksConfig.ParallelExecutionBatchRead = ParallelExecutionBatchReadOverride.Value;
+        }
+
+        if (BalStateRootShadowOverride.HasValue)
+        {
+            configProvider.GetConfig<IBalStateRootConfig>().Enabled = BalStateRootShadowOverride.Value;
         }
 
         if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
@@ -266,6 +277,12 @@ public abstract class BlockchainTestBase
             }
 
             Assert.That(differences, Is.Empty, "differences");
+
+            if (BalStateRootShadowOverride == true)
+            {
+                AssertNoShadowStateRootDivergence(container.Resolve<BalStateRootShadow>());
+            }
+
             return new EthereumTestResult(test.Name, null, testPassed);
         }
         catch (Exception)
@@ -591,6 +608,33 @@ public abstract class BlockchainTestBase
         }
 
         return correctRlp;
+    }
+
+    // The shadow lane compares only successfully-processed blocks (rejected blocks throw before Compare),
+    // so any mismatch or error is a Phase 1/2 bug, never a negative-fixture artifact. Attribution is
+    // best-effort: the counters are process-global and monotonic while fixtures run Parallelizable(All),
+    // so a divergence in one fixture may surface in another. AssertNoShadowStateRootDivergenceAtEnd
+    // (a one-time teardown) is the authoritative check after every fixture's stragglers have drained.
+    protected static void AssertNoShadowStateRootDivergence(BalStateRootShadow shadow)
+    {
+        // Drain this test's in-flight computations so their comparison continuations have run.
+        shadow.WaitForIdle(TimeSpan.FromSeconds(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Nethermind.Blockchain.Metrics.BalShadowRootMismatches, Is.Zero, "BAL shadow state root mismatches");
+            Assert.That(Nethermind.Blockchain.Metrics.BalShadowRootErrors, Is.Zero, "BAL shadow state root errors");
+        }
+    }
+
+    /// <summary>Fixture-level authoritative check: after all tests, no shadow divergence was recorded process-wide.</summary>
+    protected static void AssertNoShadowStateRootDivergenceAtEnd()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Nethermind.Blockchain.Metrics.BalShadowRootMismatches, Is.Zero, "BAL shadow state root mismatches (run total)");
+            Assert.That(Nethermind.Blockchain.Metrics.BalShadowRootErrors, Is.Zero, "BAL shadow state root errors (run total)");
+        }
     }
 
     private static void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -23,7 +24,8 @@ public class BranchProcessor(
     IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
-    IBlockCachePreWarmer? preWarmer = null)
+    IBlockCachePreWarmer? preWarmer = null,
+    BalStateRootShadow? balStateRootShadow = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
@@ -130,7 +132,18 @@ public class BranchProcessor(
                     }
                 }
 
+                // Shadow state-root lane: recompute the post-block root from the BAL off the processing thread
+                // and compare it to the header. Non-consensus; skipped at genesis (no parent header).
+                Task<Hash256?>? shadowLane = balStateRootShadow is not null && preBlockBaseBlock is not null
+                    ? balStateRootShadow.Start(preBlockBaseBlock, suggestedBlock)
+                    : null;
+
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+
+                if (shadowLane is not null)
+                {
+                    balStateRootShadow!.Compare(shadowLane, processedBlock);
+                }
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
