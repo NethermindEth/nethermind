@@ -146,8 +146,6 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
                 .Bind<IRpcModuleFactory<IOptimismEthRpcModule>, OptimismEthModuleFactory>()
                 .Bind<IRpcModuleFactory<IEthRpcModule>, OptimismEthModuleFactory>()
 
-            // Engine RPC module: Optimism decorator over the base IEngineRpcModule from BaseMergePluginModule.
-            // Registered after BaseMergePluginModule so its [RpcModule(ModuleType.Engine)] methods win (last-wins).
             .AddSingleton<IOptimismSignalSuperchainV1Handler, ILogManager>(logManager =>
                 new LoggingOptimismSignalSuperchainV1Handler(OptimismConstants.CurrentProtocolVersion, logManager))
             .RegisterSingletonJsonRpcModule<IOptimismEngineRpcModule, OptimismEngineRpcModule>()
