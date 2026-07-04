@@ -203,6 +203,69 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        public void Concurrent_resleep_and_wake_never_leave_peer_permanently_asleep()
+        {
+            // Races PutToSleep refreshing a SleepingSince entry against a wake-up pass removing it.
+            // If a wake-up can delete the refreshed entry while the sleeping bits survive, later passes
+            // have nothing to enumerate and the context can never wake again, so after every race round
+            // a final wake-up pass must leave the peer allocatable.
+            PeerInfo peer = NewPeer();
+            DateTime sleptAt = DateTime.UtcNow;
+            DateTime wakeAt = sleptAt + TimeSpan.FromSeconds(10);
+
+            const int iterations = 100_000;
+            using Barrier barrier = new(3);
+            using CancellationTokenSource cts = new();
+
+            void RunRounds(Action action)
+            {
+                try
+                {
+                    for (int i = 0; i < iterations; i++)
+                    {
+                        barrier.SignalAndWait(cts.Token);
+                        action();
+                        barrier.SignalAndWait(cts.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            Thread sleeper = new(() => RunRounds(() => peer.PutToSleep(AllocationContexts.Receipts, sleptAt)));
+            Thread waker = new(() => RunRounds(() => peer.TryToWakeUp(wakeAt, TimeSpan.Zero)));
+            sleeper.Start();
+            waker.Start();
+
+            int stuckAt = -1;
+            try
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    peer.PutToSleep(AllocationContexts.Receipts, sleptAt);
+                    barrier.SignalAndWait(cts.Token);
+                    barrier.SignalAndWait(cts.Token);
+
+                    peer.TryToWakeUp(wakeAt, TimeSpan.Zero);
+                    if (peer.IsAsleep(AllocationContexts.Receipts))
+                    {
+                        stuckAt = i;
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                cts.Cancel();
+                sleeper.Join();
+                waker.Join();
+            }
+
+            Assert.That(stuckAt, Is.EqualTo(-1), $"Peer left permanently asleep for Receipts at iteration {stuckAt}.");
+        }
+
+        [Test]
         public void Concurrent_TryAllocate_does_not_oversubscribe()
         {
             // Many threads racing on a fixed slot count: total successful allocations must equal the allowance,

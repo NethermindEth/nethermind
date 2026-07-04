@@ -5,7 +5,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using NonBlocking;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
@@ -43,7 +43,18 @@ namespace Nethermind.Synchronization.Peers
 
         public AllocationContexts SleepingContexts => (AllocationContexts)Volatile.Read(ref _sleepingContexts);
 
-        private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new();
+        private long _sleepGeneration;
+
+        private ConcurrentDictionary<AllocationContexts, SleepEntry> SleepingSince { get; } = new();
+
+        /// <summary>
+        /// One sleep of a context set: a unique generation plus the time it was put to sleep.
+        /// </summary>
+        /// <remarks>
+        /// The generation makes every sleep distinguishable even when timestamps collide, so
+        /// <see cref="WakeUp"/> can remove exactly the sleep it observed and never a concurrent refresh.
+        /// </remarks>
+        private readonly record struct SleepEntry(long Generation, DateTime Since);
 
         public AllocationContexts AllocatedContexts =>
             AllocationAllowances.AllocatedFrom(ReadSlots(), _maxPacked);
@@ -92,28 +103,41 @@ namespace Nethermind.Synchronization.Peers
         public void PutToSleep(AllocationContexts contexts, DateTime dateTime)
         {
             Interlocked.Or(ref _sleepingContexts, (uint)contexts);
-            SleepingSince[contexts] = dateTime;
+            SleepingSince[contexts] = new SleepEntry(Interlocked.Increment(ref _sleepGeneration), dateTime);
         }
 
         public void TryToWakeUp(DateTime dateTime, TimeSpan wakeUpIfSleepsMoreThanThis)
         {
-            foreach (KeyValuePair<AllocationContexts, DateTime?> keyValuePair in SleepingSince)
+            foreach (KeyValuePair<AllocationContexts, SleepEntry> keyValuePair in SleepingSince)
             {
-                if (IsAsleep(keyValuePair.Key) && dateTime - keyValuePair.Value >= wakeUpIfSleepsMoreThanThis)
+                if (IsAsleep(keyValuePair.Key) && dateTime - keyValuePair.Value.Since >= wakeUpIfSleepsMoreThanThis)
                 {
-                    WakeUp(keyValuePair.Key);
+                    WakeUp(keyValuePair);
                 }
             }
         }
 
-        private void WakeUp(AllocationContexts requested)
+        /// <summary>
+        /// Wakes the contexts of one observed <see cref="SleepingSince"/> entry.
+        /// </summary>
+        /// <remarks>
+        /// The entry is removed first, conditioned on the exact observed generation, so a concurrent
+        /// <see cref="PutToSleep"/> that refreshed the entry wins and the peer stays asleep until a
+        /// later wake-up pass. Removing unconditionally (or clearing the sleeping bits before the
+        /// removal outcome is known) could delete a refreshed entry while its sleeping bits survive,
+        /// leaving the peer asleep with nothing for <see cref="TryToWakeUp"/> to enumerate —
+        /// permanently unallocatable for those contexts. <see cref="PutToSleep"/> writes the entry
+        /// after setting the bits for the same reason: whenever the bits are observable, an entry
+        /// covering them is either already present or about to be written with a fresh generation.
+        /// </remarks>
+        private void WakeUp(KeyValuePair<AllocationContexts, SleepEntry> sleep)
         {
-            Interlocked.And(ref _sleepingContexts, ~(uint)requested);
+            if (!SleepingSince.TryRemove(sleep)) return;
 
-            uint clearMask = WeaknessTracking.ClearMaskFor(requested);
+            Interlocked.And(ref _sleepingContexts, ~(uint)sleep.Key);
+
+            uint clearMask = WeaknessTracking.ClearMaskFor(sleep.Key);
             if (clearMask != 0) Interlocked.And(ref _weaknesses, ~clearMask);
-
-            SleepingSince.TryRemove(requested, out _);
         }
 
         public AllocationContexts IncreaseWeakness(AllocationContexts requested)
