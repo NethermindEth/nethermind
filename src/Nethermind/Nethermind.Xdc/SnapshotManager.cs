@@ -4,6 +4,7 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -33,6 +34,9 @@ internal sealed class SnapshotManager(
         new SnapshotDecoder(),
         cacheName: "XDC Snapshot cache")
 {
+    public override Snapshot CreateInitialSnapshot(ulong number, Hash256 hash, Address[] genesisMasterNodes) =>
+        new(number, hash, genesisMasterNodes);
+
     protected override Snapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         Address[] candidates = header.IsGenesis ? spec.GenesisMasterNodes : VotingContract.GetCandidatesByStake(header);

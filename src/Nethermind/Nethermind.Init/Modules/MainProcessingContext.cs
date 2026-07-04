@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -12,6 +13,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -51,7 +53,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats, IEnumerable<IBlockTracer>>((branchProcessor, processingStats, blockTracers) =>
                     new BlockchainProcessor(
                         blockTree,
                         branchProcessor,
@@ -64,7 +66,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                             DumpOptions = initConfig.AutoDump
                         },
                         processingStats,
-                        persistedStateSource)
+                        persistedStateSource,
+                        blockTracers)
                     {
                         IsMainProcessor = true // Manual construction because of this flag
                     })

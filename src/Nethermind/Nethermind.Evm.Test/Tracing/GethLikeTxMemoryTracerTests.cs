@@ -1,13 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Linq;
+using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Serialization.Json;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -229,14 +236,14 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trace.Entries[0].Stack.Count, Is.EqualTo(0), "BEGIN 1");
-            Assert.That(trace.Entries[8].Stack.Count, Is.EqualTo(8), "CALL FROM 1");
-            Assert.That(trace.Entries[9].Stack.Count, Is.EqualTo(0), "BEGIN 2");
-            Assert.That(trace.Entries[19].Stack.Count, Is.EqualTo(4), "CREATE FROM 2");
-            Assert.That(trace.Entries[20].Stack.Count, Is.EqualTo(0), "BEGIN 3");
-            Assert.That(trace.Entries[25].Stack.Count, Is.EqualTo(2), "END 3");
-            Assert.That(trace.Entries[26].Stack.Count, Is.EqualTo(2), "END 2");
-            Assert.That(trace.Entries[27].Stack.Count, Is.EqualTo(2), "END 1");
+            Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[8].StackWordCount(), Is.EqualTo(8), "CALL FROM 1");
+            Assert.That(trace.Entries[9].StackWordCount(), Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[19].StackWordCount(), Is.EqualTo(4), "CREATE FROM 2");
+            Assert.That(trace.Entries[20].StackWordCount(), Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[25].StackWordCount(), Is.EqualTo(2), "END 3");
+            Assert.That(trace.Entries[26].StackWordCount(), Is.EqualTo(2), "END 2");
+            Assert.That(trace.Entries[27].StackWordCount(), Is.EqualTo(2), "END 1");
         }
     }
 
@@ -276,14 +283,14 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trace.Entries[0].Memory.Count, Is.EqualTo(0), "BEGIN 1");
-            Assert.That(trace.Entries[10].Memory.Count, Is.EqualTo(3), "CALL FROM 1");
-            Assert.That(trace.Entries[11].Memory.Count, Is.EqualTo(0), "BEGIN 2");
-            Assert.That(trace.Entries[23].Memory.Count, Is.EqualTo(2), "CREATE FROM 2");
-            Assert.That(trace.Entries[24].Memory.Count, Is.EqualTo(0), "BEGIN 3");
-            Assert.That(trace.Entries[29].Memory.Count, Is.EqualTo(1), "END 3");
-            Assert.That(trace.Entries[30].Memory.Count, Is.EqualTo(2), "END 2");
-            Assert.That(trace.Entries[31].Memory.Count, Is.EqualTo(3), "END 1");
+            Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[10].MemoryWordCount(), Is.EqualTo(3), "CALL FROM 1");
+            Assert.That(trace.Entries[11].MemoryWordCount(), Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[23].MemoryWordCount(), Is.EqualTo(2), "CREATE FROM 2");
+            Assert.That(trace.Entries[24].MemoryWordCount(), Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[29].MemoryWordCount(), Is.EqualTo(1), "END 3");
+            Assert.That(trace.Entries[30].MemoryWordCount(), Is.EqualTo(2), "END 2");
+            Assert.That(trace.Entries[31].MemoryWordCount(), Is.EqualTo(3), "END 1");
         }
     }
 
@@ -324,14 +331,42 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trace.Entries[0].Storage.Count, Is.EqualTo(0), "BEGIN 1");
-            Assert.That(trace.Entries[13].Storage.Count, Is.EqualTo(0), "CALL FROM 1");
-            Assert.That(trace.Entries[14].Storage.Count, Is.EqualTo(0), "BEGIN 2");
-            Assert.That(trace.Entries[26].Storage.Count, Is.EqualTo(0), "CREATE FROM 2");
-            Assert.That(trace.Entries[27].Storage.Count, Is.EqualTo(0), "BEGIN 3");
-            Assert.That(trace.Entries[32].Storage.Count, Is.EqualTo(0), "END 3");
-            Assert.That(trace.Entries[33].Storage.Count, Is.EqualTo(0), "END 2");
-            Assert.That(trace.Entries[34].Storage.Count, Is.EqualTo(0), "END 1");
+            Assert.That(trace.Entries[0].Storage, Is.Null, "BEGIN 1");
+            Assert.That(trace.Entries[13].Storage, Is.Null, "CALL FROM 1");
+            Assert.That(trace.Entries[14].Storage, Is.Null, "BEGIN 2");
+            Assert.That(trace.Entries[26].Storage, Is.Null, "CREATE FROM 2");
+            Assert.That(trace.Entries[27].Storage, Is.Null, "BEGIN 3");
+            Assert.That(trace.Entries[32].Storage, Is.Null, "END 3");
+            Assert.That(trace.Entries[33].Storage, Is.Null, "END 2");
+            Assert.That(trace.Entries[34].Storage, Is.Null, "END 1");
+
+            Assert.That(trace.Entries[2].Opcode, Is.EqualTo("SSTORE"), "SSTORE 0x2 opcode");
+            Assert.That(trace.Entries[5].Opcode, Is.EqualTo("SSTORE"), "SSTORE 0x3 opcode");
+            Assert.That(trace.Entries[16].Opcode, Is.EqualTo("SSTORE"), "SSTORE 0x1 opcode");
+        }
+
+        // Storage content is built lazily during serialization; verify via JSON.
+        using JsonDocument doc = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        JsonElement[] logs = doc.RootElement.GetProperty("structLogs").EnumerateArray().ToArray();
+        const string slot1 = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        const string slot2 = "0x0000000000000000000000000000000000000000000000000000000000000002";
+        const string slot3 = "0x0000000000000000000000000000000000000000000000000000000000000003";
+        const string zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+        using (Assert.EnterMultipleScope())
+        {
+            JsonElement s2 = logs[2].GetProperty("storage");
+            Assert.That(s2.EnumerateObject().Count(), Is.EqualTo(1), "SSTORE 0x2: one slot");
+            Assert.That(s2.GetProperty(slot2).GetString(), Is.EqualTo(zero), "SSTORE 0x2: slot2=0");
+
+            JsonElement s5 = logs[5].GetProperty("storage");
+            Assert.That(s5.EnumerateObject().Count(), Is.EqualTo(2), "SSTORE 0x3: two slots");
+            Assert.That(s5.GetProperty(slot2).GetString(), Is.EqualTo(zero), "SSTORE 0x3: slot2 still present");
+            Assert.That(s5.GetProperty(slot3).GetString(), Is.EqualTo(zero), "SSTORE 0x3: slot3=0");
+
+            JsonElement s16 = logs[16].GetProperty("storage");
+            Assert.That(s16.EnumerateObject().Count(), Is.EqualTo(1), "SSTORE 0x1: isolated to callee");
+            Assert.That(s16.GetProperty(slot1).GetString(), Is.EqualTo(zero), "SSTORE 0x1: slot1=0");
         }
     }
 
@@ -373,17 +408,19 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-        Assert.That(trace.Entries[0].Stack.Count, Is.EqualTo(0), "entry[0] length");
+        UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[1].Stack.Count, Is.EqualTo(1), "entry[1] length");
-        Assert.That(trace.Entries[1].Stack[0], Is.EqualTo($"0x{SampleHexData1}"), "entry[1][0]");
+        Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[2].Stack.Count, Is.EqualTo(2), "entry[2] length");
-        Assert.That(trace.Entries[2].Stack[0], Is.EqualTo($"0x{SampleHexData1}"), "entry[2][0]");
-        Assert.That(trace.Entries[2].Stack[1], Is.EqualTo("0x0"), "entry[2][1]");
+        Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
+        Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
 
-        Assert.That(trace.Entries[3].Stack.Count, Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].Stack[0], Is.EqualTo($"0x{SampleHexData1}"), "entry[3][0]");
+        Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
+        Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
+        Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
+
+        Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
+        Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
     }
 
     [Test]
@@ -403,20 +440,22 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         /* note the curious Geth trace behaviour where memory grows now but is populated from the next trace entry */
 
-        Assert.That(trace.Entries[0].Memory.Count, Is.EqualTo(0), "entry[0] length");
+        UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[1].Memory.Count, Is.EqualTo(0), "entry[1] length");
+        Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[2].Memory.Count, Is.EqualTo(0), "entry[2] length");
+        Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
 
-        Assert.That(trace.Entries[3].Memory.Count, Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[3][0]");
+        Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
 
-        Assert.That(trace.Entries[4].Memory.Count, Is.EqualTo(1), "entry[4] length");
-        Assert.That(trace.Entries[4].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[4][0]");
+        Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
+        Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
 
-        Assert.That(trace.Entries[5].Memory.Count, Is.EqualTo(1), "entry[5] length");
-        Assert.That(trace.Entries[5].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[5][0]");
+        Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
+        Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
+
+        Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
+        Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
     }
 
     [Test]
@@ -427,22 +466,21 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: "0x866833515b6d086c607f", expectedStackCount: 8);
-        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: "0x0", expectedStackCount: 8);
-        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: "0x1", expectedStackCount: 8);
+        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
+        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
+        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
     }
 
     [Test]
     public void Can_trace_refund_on_storage_clear()
     {
         // Seed a non-zero slot so clearing it to zero grants a storage-clearing refund.
-        // The account must exist before its storage is committed (an empty account has no storage root).
         TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(Spec);
 
         byte[] code = Prepare.EvmCode
-            .PersistData("0x0", HexZero) // SSTORE 0 -> slot 0 (clears it)
+            .PersistData("0x0", HexZero)
             .Op(Instruction.STOP)
             .Done;
 
@@ -455,7 +493,6 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         {
             // The counter is captured before the opcode runs, so SSTORE itself shows no refund yet.
             Assert.That(sstore.Refund, Is.Null, "refund before SSTORE executes");
-            // The next step carries the accumulated, non-zero refund counter.
             Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund after the clearing SSTORE");
         }
     }
@@ -463,9 +500,8 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     [Test]
     public void Refund_is_rolled_back_when_frame_reverts()
     {
-        // Callee clears its own non-zero slot (earning a refund) and then reverts the whole frame.
         byte[] calleeCode = Prepare.EvmCode
-            .PersistData("0x0", HexZero) // SSTORE 0 -> slot 0 (clears it, earns refund)
+            .PersistData("0x0", HexZero)
             .PushData(0)
             .PushData(0)
             .Op(Instruction.REVERT)
@@ -488,9 +524,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            // Inside the doomed frame the refund counter is visible.
             Assert.That(revert.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund visible inside the reverting frame");
-            // Once the frame reverts the refund is discarded, matching geth's journaled counter.
             Assert.That(topLevelStop.Refund, Is.Null, "refund rolled back after the frame reverts");
         }
     }
@@ -551,14 +585,99 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Entries.All(e => e.ReturnData is null), Is.True);
     }
 
-    private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, string expectedStackTop, int expectedStackCount)
+    [Test]
+    public void Storage_snapshot_accumulates_per_address_across_repeated_calls_to_same_contract()
+    {
+        const string val1 = "11";
+        const string val2 = "22";
+
+        byte[] calleeCode = Prepare.EvmCode
+            .PersistData("0x1", val1)
+            .PersistData("0x2", val2)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 70000)
+            .Call(TestItem.AddressC, 70000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        Assert.That(trace.Entries.Count(e => e.Opcode == "SSTORE"), Is.EqualTo(4),
+            "expected four SSTORE entries (two per invocation)");
+
+        AssertStreamingMatchesInMemory(code);
+    }
+
+    [Test]
+    public void Storage_snapshot_is_emitted_on_SLOAD()
+    {
+        const string val = "42";
+
+        byte[] code = Prepare.EvmCode
+            .PersistData("0x1", val)
+            .PushData("0x1")
+            .Op(Instruction.SLOAD)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        Assert.That(trace.Entries.Any(e => e.Opcode == "SLOAD"), Is.True, "expected an SLOAD entry");
+
+        AssertStreamingMatchesInMemory(code);
+    }
+
+    private void AssertStreamingMatchesInMemory(byte[] code)
+    {
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        using JsonDocument inMemoryDoc = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        JsonElement[] inMemory = inMemoryDoc.RootElement.GetProperty("structLogs").EnumerateArray().ToArray();
+        JsonElement[] streamed = ExecuteStreamingTracerEntries(code);
+
+        Assert.That(inMemory.Length, Is.EqualTo(streamed.Length), "entry count");
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < inMemory.Length; i++)
+                Assert.That(JsonElement.DeepEquals(inMemory[i], streamed[i]), Is.True,
+                    $"entry[{i}] differs\n in-memory: {inMemory[i].GetRawText()}\n streaming: {streamed[i].GetRawText()}");
+        }
+    }
+
+    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            GethLikeTxDirectStreamingTracer tracer = new(transaction, GethTraceOptions.Default with { EnableMemory = true }, writer, pipeWriter: null, CancellationToken.None);
+            writer.WriteStartArray();
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+            tracer.BuildResult();
+            writer.WriteEndArray();
+            writer.Flush();
+        }
+
+        using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.EnumerateArray().Select(e => e.Clone()).ToArray();
+    }
+
+    private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, UInt256 expectedStackTop, int expectedStackCount)
     {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(entry.ProgramCounter, Is.EqualTo(expectedPc));
             Assert.That(entry.Opcode, Is.EqualTo(expectedOpcode));
-            Assert.That(entry.Stack[^1], Is.EqualTo(expectedStackTop));
-            Assert.That(entry.Stack.Count, Is.EqualTo(expectedStackCount));
+            Assert.That(entry.GetStackWord(entry.StackWordCount() - 1), Is.EqualTo(expectedStackTop));
+            Assert.That(entry.StackWordCount(), Is.EqualTo(expectedStackCount));
         }
     }
+
+    private static UInt256 Hex(string hex) => new(Bytes.FromHexString(hex), isBigEndian: true);
 }

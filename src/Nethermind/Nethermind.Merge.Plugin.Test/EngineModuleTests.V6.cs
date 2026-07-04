@@ -412,7 +412,8 @@ public partial class EngineModuleTests
 
         if (customWithdrawalContractAddress is not null)
         {
-            expectedBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress))]);
+            // The AuRa withdrawal-contract system tx surfaces SYSTEM_ADDRESS in the BAL.
+            expectedBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress)), new(Address.SystemUser)]);
         }
 
         ReadOnlyBlockAccessList expected = expectedBalBuilder.TestObject;

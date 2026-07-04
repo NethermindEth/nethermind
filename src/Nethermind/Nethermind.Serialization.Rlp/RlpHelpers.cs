@@ -244,23 +244,16 @@ internal static class RlpHelpers
         }
         else if (lengthOfLength == 2)
         {
-            result = BitConverter.IsLittleEndian
-                ? BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref firstElement))
-                : Unsafe.ReadUnaligned<ushort>(ref firstElement);
+            result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref firstElement));
         }
         else if (lengthOfLength == 3)
         {
-            result = BitConverter.IsLittleEndian
-                ? BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1)))
-                    | (result << 16)
-                : Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1))
-                    | (result << 16);
+            result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1)))
+                | (result << 16);
         }
         else
         {
-            result = BitConverter.IsLittleEndian
-                ? BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref firstElement))
-                : Unsafe.ReadUnaligned<int>(ref firstElement);
+            result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref firstElement));
         }
 
         return result;

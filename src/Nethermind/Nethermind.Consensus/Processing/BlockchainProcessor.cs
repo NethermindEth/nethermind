@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -37,8 +38,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public static bool IsMainProcessingThread => IsBlockProcessingThread;
     public bool IsMainProcessor { get; init; }
-
-    public ITracerBag Tracers => _compositeBlockTracer;
 
     private readonly IBranchProcessor _branchProcessor;
     private readonly IBlockPreprocessorStep _recoveryStep;
@@ -95,6 +94,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="logManager"></param>
     /// <param name="options"></param>
     /// <param name="processingStats"></param>
+    /// <param name="blockTracers">Tracers seeded into the processor's composite tracer at construction.</param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
@@ -103,7 +103,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ILogManager logManager,
         Options options,
         IProcessingStats processingStats,
-        IPersistedStateSource? persistedStateSource = null)
+        IPersistedStateSource? persistedStateSource = null,
+        IEnumerable<IBlockTracer>? blockTracers = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
@@ -116,6 +117,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
+        if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
     }
 
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
