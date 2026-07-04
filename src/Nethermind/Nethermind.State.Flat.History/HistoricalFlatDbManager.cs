@@ -25,10 +25,23 @@ public sealed class HistoricalFlatDbManager(
         remove => inner.ReorgBoundaryReached -= value;
     }
 
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
-        IsBelowBarrier(baseBlock)
-            ? new SnapshotBundle(BuildHistoricalBundle(baseBlock), trieNodeCache, resourcePool, usage)
-            : inner.GatherSnapshotBundle(baseBlock, usage);
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    {
+        if (!IsBelowBarrier(baseBlock))
+        {
+            return inner.GatherSnapshotBundle(baseBlock, usage);
+        }
+
+        // A historical bundle reads values at baseBlock but exposes the current trie; executing main-chain
+        // blocks on that mix produces a corrupt state root and cascades into invalid-block deletions.
+        if (usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing)
+        {
+            throw new InvalidOperationException(
+                $"Main block processing requested a writable scope at historical state {baseBlock}; history serves read-only execution.");
+        }
+
+        return new SnapshotBundle(BuildHistoricalBundle(baseBlock), trieNodeCache, resourcePool, usage);
+    }
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
         IsBelowBarrier(baseBlock)
