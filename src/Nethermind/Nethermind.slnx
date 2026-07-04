@@ -58,6 +58,7 @@
     <Project Path="Nethermind.Config.Test/Nethermind.Config.Test.csproj" />
     <Project Path="Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj" />
     <Project Path="Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
+    <Project Path="Nethermind.Crypto.Gpu.Test/Nethermind.Crypto.Gpu.Test.csproj" />
     <Project Path="Nethermind.Db.Test/Nethermind.Db.Test.csproj" />
     <Project Path="Nethermind.Era1.Test/Nethermind.Era1.Test.csproj" />
     <Project Path="Nethermind.EraE.Test/Nethermind.EraE.Test.csproj" />
@@ -106,6 +107,7 @@
   <Project Path="Nethermind.Consensus/Nethermind.Consensus.csproj" />
   <Project Path="Nethermind.Core/Nethermind.Core.csproj" />
   <Project Path="Nethermind.Crypto/Nethermind.Crypto.csproj" />
+  <Project Path="Nethermind.Crypto.Gpu/Nethermind.Crypto.Gpu.csproj" />
   <Project Path="Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
   <Project Path="Nethermind.Db.Rpc/Nethermind.Db.Rpc.csproj" />
   <Project Path="Nethermind.Db/Nethermind.Db.csproj" />
