@@ -180,6 +180,12 @@ public class ChainLevelHelper(
         {
             return (startingPoint, beaconMainChainBlock.BlockHash);
         }
+
+        if (TryAnchorAtForwardFront(startingPoint, out ulong anchorNumber, out Hash256? anchorHash))
+        {
+            return (anchorNumber, anchorHash);
+        }
+
         BlockInfo? parentBlockInfo = null;
         Hash256 currentHash = beaconMainChainBlock.BlockHash;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
@@ -216,6 +222,50 @@ public class ChainLevelHelper(
         } while (shouldContinue);
 
         return (startingPoint, parentBlockInfo.BlockHash);
+    }
+
+    /// <summary>
+    /// The backward walk in <see cref="GetStartingPoint"/> is O(distance between the process destination and the
+    /// download front). After a long offline period the destination sits at the chain tip, millions of levels
+    /// above the front, and re-walking that distance for every header batch stalls forward sync completely.
+    /// The beacon-header backfill inserts hash-linked beacon main-chain infos, so when the beacon block directly
+    /// above the front links to it by parent hash the front is the same anchor the walk would find.
+    /// </summary>
+    private bool TryAnchorAtForwardFront(ulong startingPoint, out ulong anchorNumber, out Hash256? anchorHash)
+    {
+        anchorNumber = 0;
+        anchorHash = null;
+
+        Block? head = _blockTree.Head;
+        Block? bestSuggested = _blockTree.BestSuggestedBody;
+        Block? front = (bestSuggested?.Number ?? 0) >= (head?.Number ?? 0) ? bestSuggested : head;
+        if (front?.Hash is null || front.Number + 1 >= startingPoint)
+        {
+            return false;
+        }
+
+        BlockInfo? frontInfo = _blockTree.GetInfo(front.Number, front.Hash).Info;
+        if (frontInfo is null || frontInfo.IsBeaconInfo)
+        {
+            return false;
+        }
+
+        BlockInfo? successor = _blockTree.FindLevel(front.Number + 1)?.BeaconMainChainBlock;
+        if (successor is null || !successor.IsBeaconInfo)
+        {
+            return false;
+        }
+
+        BlockHeader? successorHeader = _blockTree.FindHeader(successor.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        if (successorHeader is null || successorHeader.ParentHash != front.Hash)
+        {
+            return false;
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Anchoring forward sync at front {front.Number} instead of walking down from {startingPoint}");
+        anchorNumber = front.Number;
+        anchorHash = front.Hash;
+        return true;
     }
 
     private BlockInfo? GetBeaconMainChainBlockInfo(ulong startingPoint)
