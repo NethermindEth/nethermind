@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
@@ -10,11 +13,14 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
@@ -92,6 +98,27 @@ namespace Nethermind.Clique.Test
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducerRunner>(), snapshotManager, blockFinder);
             Assert.That(rpcModule.clique_getBlockSigner(null).Result.ResultType, Is.EqualTo(ResultType.Failure));
+        }
+
+        [Test]
+        public void Registers_clique_rpc_module_via_di_and_resolves_without_block_producer_runner()
+        {
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddModule(new CliqueModule())
+                .AddSingleton<CliqueChainSpecEngineParameters>(new CliqueChainSpecEngineParameters { Epoch = 30000, Period = 15 })
+                // Non-signer node: the runner is not a Clique runner, so the module receives null.
+                .AddSingleton<IBlockProducerRunner>(new NoBlockProducerRunner())
+                .Build();
+
+            // The module is wired into the RPC provider collection through DI, not an imperative InitRpcModules call.
+            Assert.That(
+                container.Resolve<IReadOnlyList<RpcModuleInfo>>().Select(static m => m.ModuleType),
+                Has.Member(typeof(ICliqueRpcModule)));
+
+            // It resolves and tolerates a null runner: producer-only methods are no-ops rather than throwing.
+            ICliqueRpcModule rpcModule = container.Resolve<ICliqueRpcModule>();
+            Assert.That(rpcModule.clique_produceBlock(Keccak.Zero).Data, Is.False);
         }
     }
 }

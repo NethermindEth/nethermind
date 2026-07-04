@@ -13,45 +13,47 @@ using Nethermind.JsonRpc;
 namespace Nethermind.Consensus.Clique
 {
     public class CliqueRpcModule(
-        ICliqueBlockProducerRunner? cliqueBlockProducer,
+        IBlockProducerRunner blockProducerRunner,
         ISnapshotManager snapshotManager,
         IBlockFinder blockTree)
         : ICliqueRpcModule
     {
         private const string CannotVoteOnNonValidatorMessage = "Not a signer node - cannot vote";
 
+        // Producer-only methods require a signer node; on other nodes the runner is not a Clique runner and this is null.
+        private readonly ICliqueBlockProducerRunner? _cliqueBlockProducer = blockProducerRunner as ICliqueBlockProducerRunner;
         private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         private readonly IBlockFinder _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         public bool ProduceBlock(Hash256 parentHash)
         {
-            if (cliqueBlockProducer is null)
+            if (_cliqueBlockProducer is null)
             {
                 return false;
             }
 
-            cliqueBlockProducer?.ProduceOnTopOf(parentHash);
+            _cliqueBlockProducer?.ProduceOnTopOf(parentHash);
             return true;
         }
 
         public void CastVote(Address signer, bool vote)
         {
-            if (cliqueBlockProducer is null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
 
-            cliqueBlockProducer.CastVote(signer, vote);
+            _cliqueBlockProducer.CastVote(signer, vote);
         }
 
         public void UncastVote(Address signer)
         {
-            if (cliqueBlockProducer is null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
 
-            cliqueBlockProducer.UncastVote(signer);
+            _cliqueBlockProducer.UncastVote(signer);
         }
 
         public Snapshot GetSnapshot(ulong? number = null)
@@ -107,7 +109,7 @@ namespace Nethermind.Consensus.Clique
         public ResultWrapper<bool> clique_produceBlock(Hash256 parentHash) => ResultWrapper<bool>.Success(ProduceBlock(parentHash));
 
         public ResultWrapper<IReadOnlyDictionary<Address, bool>> clique_proposals() =>
-            ResultWrapper<IReadOnlyDictionary<Address, bool>>.Success(cliqueBlockProducer?.GetProposals() ?? new Dictionary<Address, bool>());
+            ResultWrapper<IReadOnlyDictionary<Address, bool>>.Success(_cliqueBlockProducer?.GetProposals() ?? new Dictionary<Address, bool>());
 
         public ResultWrapper<Snapshot> clique_getSnapshot(ulong? number) => ResultWrapper<Snapshot>.Success(GetSnapshot(number));
 
