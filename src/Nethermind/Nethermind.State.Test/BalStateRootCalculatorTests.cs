@@ -123,7 +123,21 @@ public class BalStateRootCalculatorTests
         return Build.A.BlockAccessList.WithAccountChanges(changes).TestObject;
     }
 
-    private static void AssertComputesExpectedRoot(params AccountScenario[] scenarios)
+    /// <summary>The two root-hashing paths every scenario is run through (plan T5.6): recursive and batched-per-message.</summary>
+    public enum HashingPath { Recursive, Batched }
+
+    private static readonly IKeccakBatchHasher BatchHasher = new PerMessageKeccakBatchHasher();
+
+    // Every scenario test is a [TestCaseSource(nameof(Paths))] so it runs once per path with no duplicated body.
+    public static IEnumerable<HashingPath> Paths => [HashingPath.Recursive, HashingPath.Batched];
+
+    /// <summary>Runs the calculator via the selected path so both share one scenario body.</summary>
+    private static Hash256 ComputeWith(BalStateRootCalculator calculator, HashingPath path, BlockHeader parent, BalPostStateDelta delta) =>
+        path == HashingPath.Batched
+            ? calculator.ComputeRoot(parent, delta, BatchHasher)
+            : calculator.ComputeRoot(parent, delta);
+
+    private static void AssertComputesExpectedRoot(HashingPath path, params AccountScenario[] scenarios)
     {
         // Expected root and calculator run over separate stores backed by identical committed pre-state,
         // so the calculator's node mutation cannot influence the expected computation.
@@ -134,15 +148,15 @@ public class BalStateRootCalculatorTests
         BuildFixture(calcStore, scenarios); // seed the same committed pre-state into the calculator's store
 
         BalStateRootCalculator calculator = new(calcStore, LimboLogs.Instance);
-        Hash256 actual = calculator.ComputeRoot(parent, BalPostStateDelta.Reduce(Bal(scenarios)));
+        Hash256 actual = ComputeWith(calculator, path, parent, BalPostStateDelta.Reduce(Bal(scenarios)));
 
         Assert.That(actual, Is.EqualTo(expectedRoot));
     }
 
     // ---- tests ---------------------------------------------------------------------------------------------
 
-    [Test]
-    public void T2_1_balance_only_change_on_existing_account()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_1_balance_only_change_on_existing_account(HashingPath path)
     {
         AccountScenario s = new()
         {
@@ -155,11 +169,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_2_nonce_only_change_on_existing_account()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_2_nonce_only_change_on_existing_account(HashingPath path)
     {
         AccountScenario s = new()
         {
@@ -172,11 +186,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_3_new_account_creation()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_3_new_account_creation(HashingPath path)
     {
         AccountScenario s = new()
         {
@@ -189,11 +203,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_4_contract_creation_code_and_storage_on_fresh_account()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_4_contract_creation_code_and_storage_on_fresh_account(HashingPath path)
     {
         ValueHash256 codeHash = ValueKeccak.Compute(SomeCode);
         AccountScenario s = new()
@@ -212,11 +226,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_5_storage_write_on_existing_contract_with_existing_storage()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_5_storage_write_on_existing_contract_with_existing_storage(HashingPath path)
     {
         ValueHash256 codeHash = ValueKeccak.Compute(SomeCode);
         Account contract = new(1, 50, Keccak.EmptyTreeHash, new Hash256(codeHash));
@@ -233,11 +247,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_6_write_to_zero_deleting_only_slot_returns_storage_root_to_empty()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_6_write_to_zero_deleting_only_slot_returns_storage_root_to_empty(HashingPath path)
     {
         ValueHash256 codeHash = ValueKeccak.Compute(SomeCode);
         Account contract = new(1, 50, Keccak.EmptyTreeHash, new Hash256(codeHash));
@@ -254,11 +268,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_7_write_to_zero_of_one_of_several_slots()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_7_write_to_zero_of_one_of_several_slots(HashingPath path)
     {
         ValueHash256 codeHash = ValueKeccak.Compute(SomeCode);
         Account contract = new(1, 50, Keccak.EmptyTreeHash, new Hash256(codeHash));
@@ -275,11 +289,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_8_account_drained_to_empty_no_storage_deletes_leaf()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_8_account_drained_to_empty_no_storage_deletes_leaf(HashingPath path)
     {
         AccountScenario s = new()
         {
@@ -292,11 +306,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_9_multi_account_create_change_and_delete()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_9_multi_account_create_change_and_delete(HashingPath path)
     {
         AccountScenario create = new()
         {
@@ -333,11 +347,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(create, change, delete);
+        AssertComputesExpectedRoot(path, create, change, delete);
     }
 
-    [Test]
-    public void T2_10_compute_root_performs_zero_db_writes()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_10_compute_root_performs_zero_db_writes(HashingPath path)
     {
         // Build committed pre-state, then flip the DB into write-recording mode and assert ComputeRoot writes nothing.
         WriteRecordingMemDb db = new();
@@ -361,13 +375,13 @@ public class BalStateRootCalculatorTests
 
         BalStateRootCalculator calculator = new(store, LimboLogs.Instance);
         db.StartRecording();
-        calculator.ComputeRoot(parent, BalPostStateDelta.Reduce(Bal(s)));
+        ComputeWith(calculator, path, parent, BalPostStateDelta.Reduce(Bal(s)));
 
         Assert.That(db.RecordedWrites, Is.Zero, "ComputeRoot must never persist");
     }
 
-    [Test]
-    public void T2_11_storage_slot_key_above_2_pow_64()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_11_storage_slot_key_above_2_pow_64(HashingPath path)
     {
         UInt256 bigSlot = UInt256.Parse("18446744073709551617"); // 2^64 + 1
         ValueHash256 codeHash = ValueKeccak.Compute(SomeCode);
@@ -384,11 +398,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_12_unchanged_storage_account_keeps_pre_storage_root()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_12_unchanged_storage_account_keeps_pre_storage_root(HashingPath path)
     {
         ValueHash256 codeHash = ValueKeccak.Compute(SomeCode);
         Account contract = new(1, 50, Keccak.EmptyTreeHash, new Hash256(codeHash));
@@ -405,11 +419,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_13_empty_reduced_account_with_residual_storage_is_deleted()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_13_empty_reduced_account_with_residual_storage_is_deleted(HashingPath path)
     {
         // EIP-161: an account reduced to empty (nonce 0, balance 0, no code) is deleted even though it
         // still has on-disk storage; the storage root must NOT block deletion (selfdestruct shape).
@@ -429,11 +443,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_14_eip7702_code_only_change_keeps_storage_and_storage_root()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_14_eip7702_code_only_change_keeps_storage_and_storage_root(HashingPath path)
     {
         // EIP-7702-style delegation update: only the code hash changes on an account with existing storage.
         // Slots must survive and the storage root must be unchanged; only the code hash differs.
@@ -452,11 +466,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_15_account_emptied_by_storage_clear_is_deleted()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_15_account_emptied_by_storage_clear_is_deleted(HashingPath path)
     {
         // Pre-existing account that is ALREADY empty by scalar fields (nonce 0, balance 0, no code) but has
         // residual storage; the BAL's only change zeros its one slot. Account.IsEmpty ignores storage, so the
@@ -474,11 +488,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(s);
+        AssertComputesExpectedRoot(path, s);
     }
 
-    [Test]
-    public void T2_16_empty_parent_state_creates_fresh_accounts()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_16_empty_parent_state_creates_fresh_accounts(HashingPath path)
     {
         // Genesis-parent shape: parentStateRoot == EmptyTreeHash, no fixture pre-commit. Exercises the
         // emptyParent short-circuit in PASS A end to end.
@@ -504,11 +518,11 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(a, b);
+        AssertComputesExpectedRoot(path, a, b);
     }
 
-    [Test]
-    public void T2_17_absent_account_reducing_to_empty_is_a_noop_delete()
+    [TestCaseSource(nameof(Paths))]
+    public void T2_17_absent_account_reducing_to_empty_is_a_noop_delete(HashingPath path)
     {
         // Non-empty parent (anchor account). A second delta account does NOT exist in the parent trie and
         // reduces to empty (a lone zero-value storage write). Deleting a non-existent leaf is a no-op, so the
@@ -534,7 +548,7 @@ public class BalStateRootCalculatorTests
                 .TestObject,
         };
 
-        AssertComputesExpectedRoot(anchor, missing);
+        AssertComputesExpectedRoot(path, anchor, missing);
     }
 
     /// <summary>MemDb that, once <see cref="StartRecording"/> is called, counts every write for T2.10.</summary>

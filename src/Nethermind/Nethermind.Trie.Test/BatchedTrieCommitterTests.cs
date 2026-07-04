@@ -247,6 +247,36 @@ public class BatchedTrieCommitterTests
     }
 
     [Test]
+    public void T5_9_Committed_inline_child_ref_spliced_from_retained_rlp()
+    {
+        // Pins the INLINE-ref splice branch (the keccak-ref splice is already covered by T5.6/T5.8, but 32-byte keys
+        // never produce an inline committed child). Short keys (1 byte -> 2 nibbles) with 1-byte values make each child
+        // leaf's RLP <32 bytes, so it is stored INLINE inside the root branch's RLP. Enough distinct first nibbles keep
+        // the branch itself >=32 bytes, so it persists as a keccak node. Mutating one key leaves the other children's
+        // inline refs as reference-null slots on the re-resolved branch, which must be spliced from its retained RLP.
+        List<(byte[] key, byte[] value)> entries = [];
+        for (int i = 0; i < 12; i++)
+        {
+            entries.Add(([(byte)((i << 4) | i)], [(byte)(0x01 + i)])); // first nibble = i (distinct), tiny value
+        }
+
+        (ITrieStore store, Hash256 root) = CommitToStore(entries);
+
+        byte[] mutateKey = entries[5].key;
+        byte[] newValue = [0x7F];
+
+        PatriciaTree recursiveTree = Reopen(store, root);
+        recursiveTree.Set(mutateKey, newValue);
+        recursiveTree.UpdateRootHash();
+
+        PatriciaTree batchedTree = Reopen(store, root);
+        batchedTree.Set(mutateKey, newValue);
+        BatchedTrieCommitter.UpdateRootHashBatched(batchedTree, Hasher);
+
+        Assert.That(batchedTree.RootHash, Is.EqualTo(recursiveTree.RootHash));
+    }
+
+    [Test]
     public void T5_8_Differential_fuzz_committed_then_mutated_matches_recursive()
     {
         // Second fuzz mode: build, commit, re-resolve, then mutate a random subset (updates + deletes) and add new keys.

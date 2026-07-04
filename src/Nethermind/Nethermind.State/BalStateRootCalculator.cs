@@ -37,7 +37,25 @@ public sealed class BalStateRootCalculator(ITrieStore trieStore, ILogManager log
     /// <see cref="Account.IsEmpty"/> semantics (the storage root is deliberately not consulted); (C) state-tree
     /// writes and a single root computation. Never commits: only <see cref="PatriciaTree.UpdateRootHash(bool)"/>.
     /// </remarks>
-    public Hash256 ComputeRoot(BlockHeader parent, BalPostStateDelta delta)
+    public Hash256 ComputeRoot(BlockHeader parent, BalPostStateDelta delta) => ComputeRootInternal(parent, delta, hasher: null);
+
+    /// <summary>
+    /// Computes the post-block state root, hashing every storage tree and the state tree via
+    /// <see cref="BatchedTrieCommitter.UpdateRootHashBatched"/> with the given batch hasher instead of the recursive
+    /// per-node path.
+    /// </summary>
+    /// <param name="parent">The parent block header; its <see cref="BlockHeader.StateRoot"/> is the pre-state root.</param>
+    /// <param name="delta">The reduced post-block state delta (see <see cref="BalPostStateDelta"/>).</param>
+    /// <param name="hasher">Batch hasher used for the wave merkleization.</param>
+    /// <returns>The computed post-block state root; identical to the recursive overload.</returns>
+    /// <remarks>Same three passes as the recursive overload; only the root-hashing step differs. Sequential (no across-tries parallelism).</remarks>
+    public Hash256 ComputeRoot(BlockHeader parent, BalPostStateDelta delta, IKeccakBatchHasher hasher)
+    {
+        ArgumentNullException.ThrowIfNull(hasher);
+        return ComputeRootInternal(parent, delta, hasher);
+    }
+
+    private Hash256 ComputeRootInternal(BlockHeader parent, BalPostStateDelta delta, IKeccakBatchHasher? hasher)
     {
         using IDisposable _ = _trieStore.BeginScope(parent); // no-op on halfpath; REQUIRED on flat
         Hash256 parentStateRoot = parent.StateRoot!;
@@ -92,7 +110,7 @@ public sealed class BalStateRootCalculator(ITrieStore trieStore, ILogManager log
                         .WithoutLeadingZeros();
                     storageTree.Set(in slotKey, value.ToArray()); // all-zero -> [0] -> IsZero -> leaf delete
                 }
-                storageTree.UpdateRootHash(canBeParallel: false);
+                UpdateRoot(storageTree, hasher);
                 storageRoot = storageTree.RootHash;
             }
 
@@ -108,7 +126,20 @@ public sealed class BalStateRootCalculator(ITrieStore trieStore, ILogManager log
                 setter.Set(accounts[i].Address, composed[i]);
             }
         }
-        stateTree.UpdateRootHash(canBeParallel: false);
+        UpdateRoot(stateTree, hasher);
         return stateTree.RootHash;
+    }
+
+    /// <summary>Finalizes a tree's root hash: recursive when <paramref name="hasher"/> is null, batched otherwise.</summary>
+    private static void UpdateRoot(PatriciaTree tree, IKeccakBatchHasher? hasher)
+    {
+        if (hasher is null)
+        {
+            tree.UpdateRootHash(canBeParallel: false);
+        }
+        else
+        {
+            BatchedTrieCommitter.UpdateRootHashBatched(tree, hasher);
+        }
     }
 }
