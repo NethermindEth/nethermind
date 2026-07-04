@@ -192,6 +192,11 @@ jobs:
             fi
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             flat_write_buffer_floor="${DISPATCH_FLAT_WRITE_BUFFER_FLOOR-67108864}"
+            # "off" disables the floor injection entirely (an empty dispatch input falls back to the default,
+            # so it cannot express "no floor"; needed to benchmark images predating the config key).
+            if [[ "${flat_write_buffer_floor}" == "off" ]]; then
+              flat_write_buffer_floor=""
+            fi
             expb_env="${DISPATCH_EXPB_ENV:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
