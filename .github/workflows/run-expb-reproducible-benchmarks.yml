@@ -1526,13 +1526,11 @@ jobs:
             page_size=100
             remaining="${LAST}"
 
+            # Always request full pages: Docker Hub paginates by page_size x page, so shrinking
+            # page_size on the last page shifts the window (duplicating mid-range tags and
+            # dropping the oldest ones). Trim to LAST after collecting.
             while [[ "${remaining}" -gt 0 ]]; do
-              fetch_size="${page_size}"
-              if [[ "${remaining}" -lt "${page_size}" ]]; then
-                fetch_size="${remaining}"
-              fi
-
-              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${fetch_size}&page=${page}&name=master-"
+              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${page_size}&page=${page}&name=master-"
               response=$(curl -sf "${url}" || echo '{"results":[]}')
 
               mapfile -t page_tags < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .name')
@@ -1552,6 +1550,12 @@ jobs:
               remaining=$(( remaining - page_size ))
               page=$(( page + 1 ))
             done
+
+            if [[ "${#all_tags[@]}" -gt "${LAST}" ]]; then
+              all_tags=("${all_tags[@]:0:LAST}")
+              all_images=("${all_images[@]:0:LAST}")
+              all_dates=("${all_dates[@]:0:LAST}")
+            fi
 
             echo "Found ${#all_tags[@]} master-* images on Docker Hub."
 
