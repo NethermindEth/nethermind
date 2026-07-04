@@ -10,6 +10,9 @@
     <PackageProjectUrl>https://nethermind.io/nethermind-client</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>nethermind;ethereum;kademlia;dht;peer-discovery</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/nethermindeth/nethermind</RepositoryUrl>
   </PropertyGroup>

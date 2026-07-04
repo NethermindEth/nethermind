@@ -178,7 +178,9 @@ jobs:
           dotnet pack Nethermind.Kademlia/Nethermind.Kademlia.csproj -c release -p:SaveDiskSpace=true --output "$package_output"
           test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.ReferenceAssemblies.*.nupkg' -print -quit)"
           test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.Kademlia.*.nupkg' -print -quit)"
-          for package in "$package_output"/*.nupkg; do
+          test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.Kademlia.*.snupkg' -print -quit)"
+          for package in "$package_output"/*.nupkg "$package_output"/*.snupkg; do
+            test -e "$package" || continue
             dotnet nuget push "$package" -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
           done
 

@@ -53,6 +53,8 @@ ILookupAlgo<MyNode, MyKadKey> lookup =
 
 IKademlia<MyKey, MyNode> kademlia =
     new Kademlia<MyKey, MyNode, MyKadKey>(keyOperator, sender, routingTable, lookup, healthTracker, config, loggerFactory);
+IKademliaDiscovery<MyKey, MyNode> discovery =
+    new RandomWalkKademliaDiscovery<MyKey, MyNode, MyKadKey>(kademlia, keyOperator, distance, config, loggerFactory);
 ```
 
 Call `AddOrRefresh` when an authenticated node sends a valid protocol message, and call `Remove` when a node must be dropped from the table. Start periodic bootstrap and bucket refresh with `Run(token)`.
