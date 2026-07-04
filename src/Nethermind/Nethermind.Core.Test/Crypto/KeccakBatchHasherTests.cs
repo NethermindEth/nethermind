@@ -23,6 +23,19 @@ public class KeccakBatchHasherTests
         // Default-threshold instance covers the inline calling-thread fall-through for small batches.
         yield return new TestCaseData((Func<IKeccakBatchHasher>)(static () => new ParallelKeccakBatchHasher()))
             .SetName($"{nameof(ParallelKeccakBatchHasher)}_Inline");
+
+        // Vertical multi-buffer kernel, both grouping strategies; skipped-green where the ISA is unavailable.
+        yield return new TestCaseData((Func<IKeccakBatchHasher>)(static () => MakeMultiBuffer(MultiBufferGroupingStrategy.UniformGroups)))
+            .SetName($"{nameof(MultiBufferKeccakBatchHasher)}_UniformGroups");
+        yield return new TestCaseData((Func<IKeccakBatchHasher>)(static () => MakeMultiBuffer(MultiBufferGroupingStrategy.RunToMaxSnapshots)))
+            .SetName($"{nameof(MultiBufferKeccakBatchHasher)}_RunToMaxSnapshots");
+    }
+
+    // Skips the whole case when the vertical kernel's ISA is unavailable rather than instantiating a backend that cannot run.
+    private static IKeccakBatchHasher MakeMultiBuffer(MultiBufferGroupingStrategy strategy)
+    {
+        if (!MultiBufferKeccakBatchHasher.IsSupported) Assert.Ignore("ISA not supported");
+        return new MultiBufferKeccakBatchHasher(strategy);
     }
 
     // Keccak256 of the empty input, per Ethereum's canonical constant.
@@ -183,6 +196,95 @@ public class KeccakBatchHasherTests
         ValueHash256[] outputs = new ValueHash256[offsets.Length];
 
         Assert.Throws<ArgumentException>(() => hasher.HashBatch(flat, offsets, outputs));
+    }
+
+    // Group-dispatch edges specific to the vertical kernel: how it splits a batch into 8-wide lane groups and remainders.
+    // 9 equal-length -> one full 8-group + a 1-message remainder; a span of 4 distinct block counts; 7 -> all remainder;
+    // a genuinely mixed 8-run that forces the RunToMaxSnapshots active/finished-lane path deterministically.
+    private static IEnumerable<TestCaseData> GroupDispatchScenarios()
+    {
+        foreach (MultiBufferGroupingStrategy strategy in (MultiBufferGroupingStrategy[])[MultiBufferGroupingStrategy.UniformGroups, MultiBufferGroupingStrategy.RunToMaxSnapshots])
+        {
+            int[] nineEqual = new int[9];
+            Array.Fill(nineEqual, 100); // all 1-block
+
+            // 8 of each of 4 block counts. BlockCount = len/136 + 1, so 1-block=100, 2-block=240, 3-block=380, 4-block=520.
+            int[] fourCounts = new int[32];
+            for (int b = 0; b < 4; b++)
+            {
+                for (int k = 0; k < 8; k++) fourCounts[b * 8 + k] = 100 + b * 136 + b * 4;
+            }
+
+            int[] sevenRemainder = new int[7];
+            Array.Fill(sevenRemainder, 50); // fewer than 8 -> whole batch is remainder
+
+            // Exactly 8 messages of two different block counts (4 one-block=100B, 4 two-block=240B). Sorted by block
+            // count they form ONE mixed 8-run, so RunToMaxSnapshots runs to 2 blocks with the four 1-block lanes going
+            // inactive after block 1 - exercising the mid-run snapshot/absorb-nothing path deterministically.
+            int[] mixedRun = [100, 240, 100, 240, 100, 240, 100, 240];
+
+            yield return new TestCaseData(strategy, nineEqual).SetName($"{strategy}_NineEqual_FullGroupPlusRemainder");
+            yield return new TestCaseData(strategy, fourCounts).SetName($"{strategy}_SpanFourBlockCounts");
+            yield return new TestCaseData(strategy, sevenRemainder).SetName($"{strategy}_SevenAllRemainder");
+            yield return new TestCaseData(strategy, mixedRun).SetName($"{strategy}_MixedEightRun");
+        }
+    }
+
+    [TestCaseSource(nameof(GroupDispatchScenarios))]
+    public void GroupDispatch_MatchesPerInputCompute(MultiBufferGroupingStrategy strategy, int[] lengths)
+    {
+        if (!MultiBufferKeccakBatchHasher.IsSupported) Assert.Ignore("ISA not supported");
+
+        Random rng = new(42);
+        byte[][] inputs = new byte[lengths.Length][];
+        for (int i = 0; i < lengths.Length; i++)
+        {
+            inputs[i] = new byte[lengths[i]];
+            rng.NextBytes(inputs[i]);
+        }
+
+        (byte[] flat, int[] offsets) = Flatten(inputs);
+        ValueHash256[] actual = new ValueHash256[lengths.Length];
+
+        new MultiBufferKeccakBatchHasher(strategy).HashBatch(flat, offsets, actual);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < lengths.Length; i++)
+            {
+                Assert.That(actual[i], Is.EqualTo(ValueKeccak.Compute(inputs[i])), $"index={i} length={lengths[i]}");
+            }
+        }
+    }
+
+    // Proves MixedEightRun is not a false positive: the block-count sort must place all 8 messages in a single run that
+    // spans more than one block count, so RunToMaxSnapshots actually exercises its mid-run active/finished-lane path.
+    [Test]
+    public void MixedEightRun_SortsIntoOneRunSpanningTwoBlockCounts()
+    {
+        int[] lengths = [100, 240, 100, 240, 100, 240, 100, 240];
+        int[] offsets = new int[lengths.Length];
+        int total = 0;
+        for (int i = 0; i < lengths.Length; i++) { total += lengths[i]; offsets[i] = total; }
+
+        int[] permutation = new int[lengths.Length];
+        int[] boundaries = new int[KeccakBatchGrouping.MaxGroups(lengths.Length)];
+        int groups = KeccakBatchGrouping.GroupByBlockCount(offsets, permutation, boundaries);
+
+        int[] sortedBlockCounts = new int[lengths.Length];
+        for (int p = 0; p < permutation.Length; p++)
+        {
+            sortedBlockCounts[p] = KeccakBatchGrouping.BlockCount(lengths[permutation[p]]);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            // 8 messages -> a single 8-wide run; that run must contain both block counts (1 and 2), i.e. it is mixed.
+            Assert.That(lengths, Has.Length.EqualTo(8), "run width");
+            Assert.That(sortedBlockCounts[0], Is.EqualTo(1), "run starts at the smallest block count");
+            Assert.That(sortedBlockCounts[^1], Is.EqualTo(2), "run ends at a larger block count");
+            Assert.That(groups, Is.EqualTo(2), "two distinct block counts present");
+        }
     }
 
     // Concatenates inputs and builds the exclusive-end offset array the hasher expects.

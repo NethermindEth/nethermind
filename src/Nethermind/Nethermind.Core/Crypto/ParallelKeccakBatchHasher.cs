@@ -9,14 +9,17 @@ using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
 namespace Nethermind.Core.Crypto;
 
 /// <summary>
-/// Multi-core batch hasher: partitions the batch into contiguous per-worker slices and hashes each message with
+/// Multi-core batch hasher: spreads the batch one message at a time across physical cores and hashes each with
 /// <see cref="KeccakHash.ComputeHash"/> (already vectorized per message on AVX-512 hardware).
 /// </summary>
 /// <remarks>
-/// The guaranteed low-risk production CPU backend. Work is split across physical cores via
-/// <see cref="ParallelUnbalancedWork"/>; each worker writes only its own output slots, so there is no shared mutable
-/// state and <see cref="HashBatch"/> is safe to call concurrently on one instance. Batches below the threshold hash on
-/// the calling thread, avoiding scheduling overhead that would dominate small batches.
+/// The guaranteed low-risk production CPU backend. Work is distributed per-message via
+/// <see cref="ParallelUnbalancedWork"/> over <c>[0, count)</c>, so its work-stealing can rebalance when a few long
+/// messages would otherwise pin a single worker - measured faster than a static contiguous slice on non-uniform
+/// trie-node lengths and no worse on uniform batches. Each message index maps to exactly one output slot, so there is
+/// no shared mutable state and <see cref="HashBatch"/> is safe to call concurrently on one instance. A worker reads its
+/// message's start as <c>offsets[i-1]</c> - a read-only peek at the neighbor's offset, never a write. Batches below the
+/// threshold hash on the calling thread, avoiding scheduling overhead that would dominate small batches.
 /// Both paths reject malformed offsets with <see cref="ArgumentException"/>: the inline path via span slicing, the
 /// parallel path via an explicit up-front scan (the pointer-based worker has no slice bounds check to fall back on).
 /// </remarks>
@@ -58,32 +61,27 @@ public sealed class ParallelKeccakBatchHasher : IKeccakBatchHasher
         // the O(n) int scan is negligible next to hashing. The inline path above gets this for free from span slicing.
         ValidateOffsets(offsets, flat.Length);
 
-        int workers = Math.Min(count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16.MaxDegreeOfParallelism);
-
         // Pin all three buffers so worker threads can address them via pointers across the (synchronous) parallel region.
         fixed (byte* flatPtr = flat)
         fixed (int* offsetsPtr = offsets)
         fixed (ValueHash256* outputsPtr = outputs)
         {
-            BatchView view = new(flatPtr, offsetsPtr, outputsPtr, count, workers);
+            BatchView view = new(flatPtr, offsetsPtr, outputsPtr);
+            // One work item per message over [0, count): ParallelUnbalancedWork steals across the whole batch so a few
+            // long messages cannot pin one worker. Index i owns output slot i exclusively; the offsets[i-1] read is a
+            // read-only peek at the neighbor's end, so no two workers write the same memory.
             ParallelUnbalancedWork.For(
                 0,
-                workers,
+                count,
                 RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
                 view,
-                static (worker, v) =>
+                static (i, v) =>
                 {
-                    // Contiguous, disjoint slice per worker: no two workers touch the same offset or output slot.
-                    int start = (int)((long)worker * v.Count / v.Workers);
-                    int end = (int)((long)(worker + 1) * v.Count / v.Workers);
-                    for (int i = start; i < end; i++)
-                    {
-                        int inStart = i == 0 ? 0 : v.Offsets[i - 1];
-                        int inEnd = v.Offsets[i];
-                        ReadOnlySpan<byte> input = new(v.Flat + inStart, inEnd - inStart);
-                        Span<byte> output = MemoryMarshal.AsBytes(new Span<ValueHash256>(v.Outputs + i, 1));
-                        KeccakHash.ComputeHash(input, output);
-                    }
+                    int inStart = i == 0 ? 0 : v.Offsets[i - 1];
+                    int inEnd = v.Offsets[i];
+                    ReadOnlySpan<byte> input = new(v.Flat + inStart, inEnd - inStart);
+                    Span<byte> output = MemoryMarshal.AsBytes(new Span<ValueHash256>(v.Outputs + i, 1));
+                    KeccakHash.ComputeHash(input, output);
                     return v;
                 },
                 static _ => { });
@@ -105,13 +103,11 @@ public sealed class ParallelKeccakBatchHasher : IKeccakBatchHasher
     }
 
     // Pointer view of the pinned batch buffers, capturable by the worker closure (spans cannot cross the closure boundary).
-    private readonly unsafe struct BatchView(byte* flat, int* offsets, ValueHash256* outputs, int count, int workers)
+    private readonly unsafe struct BatchView(byte* flat, int* offsets, ValueHash256* outputs)
     {
         public byte* Flat { get; } = flat;
         public int* Offsets { get; } = offsets;
         public ValueHash256* Outputs { get; } = outputs;
-        public int Count { get; } = count;
-        public int Workers { get; } = workers;
     }
 
     // Full contract check for the pointer path: 0 <= offsets[i-1] <= offsets[i] <= flatLength for every i.
