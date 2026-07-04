@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     public class Eth66ProtocolHandler : Eth65ProtocolHandler, IStaticProtocolInfo
     {
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
-        private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
+        private readonly MessageDictionary<GetBlockBodiesMessage, (RlpBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, IByteArrayList> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests66;
 
@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
-            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
+            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (RlpBlockBodies, long)>(this);
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, IByteArrayList>(this);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(this);
         }
@@ -189,7 +189,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 token);
         }
 
-        protected override async Task<(OwnedBlockBodies, long)> SendRequest(V62.Messages.GetBlockBodiesMessage message, CancellationToken token)
+        protected override async Task<(RlpBlockBodies, long)> SendRequest(V62.Messages.GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

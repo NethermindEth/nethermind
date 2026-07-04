@@ -96,11 +96,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public override void Disconnect(DisconnectReason reason, string details) =>
             Disconnected?.Invoke(this, EventArgs.Empty);
 
-        public override Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        public override Task<RlpBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             if (_causeTimeoutOnBlocks)
             {
-                return Task.FromException<OwnedBlockBodies>(new TimeoutException());
+                return Task.FromException<RlpBlockBodies>(new TimeoutException());
             }
 
             BlockBody[] result = new BlockBody[blockHashes.Count];
@@ -115,7 +115,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
                 }
             }
 
-            return Task.FromResult(new OwnedBlockBodies(result));
+            return Task.FromResult(RlpBlockBodies.FromBodies(result));
         }
 
         public override Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)

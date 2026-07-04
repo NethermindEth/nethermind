@@ -134,7 +134,7 @@ dotnet_diagnostic.IDE0130.severity = none
 
 # IDE0130: Rlp-side helpers intentionally exposed under Nethermind.Core* namespaces;
 # Eip7702 subfolder follows the project's flat-namespace convention.
-[src/Nethermind/Nethermind.Serialization.Rlp/{NettyBufferMemoryOwner,OwnedBlockBodies,Eip7702/AuthorizationTupleDecoder}.cs]
+[src/Nethermind/Nethermind.Serialization.Rlp/{NettyBufferMemoryOwner,RlpBlockBody,RlpBlockBodies,Eip7702/AuthorizationTupleDecoder}.cs]
 dotnet_diagnostic.IDE0130.severity = none
 
 # IDE0130: Network.Contract config interfaces are exposed under Nethermind.Network.Config

@@ -52,7 +52,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly ITimestamper _timestamper;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
-        protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
+        protected readonly MessageQueue<GetBlockBodiesMessage, (RlpBlockBodies, long)> _bodiesRequests;
 
         protected AssociativeKeyCache<ValueHash256>? _notifiedTransactions;
         protected AssociativeKeyCache<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
@@ -67,7 +67,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _timestamper = Timestamper.Default;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
-            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
+            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (RlpBlockBodies, long)>(this);
         }
 
         public override void RegisterWith(ISession session, IProtocolRegistrar registrar)
@@ -82,20 +82,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<OwnedBlockBodies> ISyncPeer.GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        async Task<RlpBlockBodies> ISyncPeer.GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
-                return new OwnedBlockBodies([]);
+                return RlpBlockBodies.Empty;
             }
 
-            OwnedBlockBodies blocks = await _nodeStats.RunSizeAndLatencyRequestSizer<OwnedBlockBodies, Hash256, BlockBody?>(RequestType.Bodies, blockHashes, async clampedBlockHashes =>
+            RlpBlockBodies blocks = await _nodeStats.RunSizeAndLatencyRequestSizer<RlpBlockBodies, Hash256, BlockBody?>(RequestType.Bodies, blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token));
 
             return blocks;
         }
 
-        protected virtual async Task<(OwnedBlockBodies, long)> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
+        protected virtual async Task<(RlpBlockBodies, long)> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -325,42 +325,72 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<BlockBodiesMessage> FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage, CancellationToken cancellationToken)
         {
             IReadOnlyList<Hash256> hashes = getBlockBodiesMessage.BlockHashes;
-            using ArrayPoolList<Block> blocks = new(hashes.Count);
+            RlpBlockBody?[] bodies = new RlpBlockBody?[hashes.Count];
+            int served = 0;
 
-            ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Count; i++)
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
+                ulong sizeEstimate = 0;
+                for (int i = 0; i < hashes.Count; i++)
                 {
-                    break;
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    // Serve the stored body bytes directly, skipping decode and re-encode.
+                    RlpBlockBody? body = SyncServer.FindBodyRlp(hashes[i]);
+                    ulong bodySize;
+                    if (body is not null)
+                    {
+                        bodySize = (ulong)body.RlpLength;
+                    }
+                    else
+                    {
+                        Block? block = SyncServer.Find(hashes[i]);
+                        if (block is null)
+                        {
+                            // GetBlockBodies responses are sparse: unavailable hashes are omitted from the response.
+                            continue;
+                        }
+
+                        bodySize = MessageSizeEstimator.EstimateSize(block);
+                        body = RlpBlockBody.FromBody(block.Body);
+                    }
+
+                    // Cap the message size; return the prefix (bodies match request hashes positionally).
+                    if (sizeEstimate + bodySize > HardOutgoingBodiesMessageSizeLimit)
+                    {
+                        body.Dispose();
+                        break;
+                    }
+
+                    bodies[served++] = body;
+                    sizeEstimate += bodySize;
+
+                    // Soft limit keeps the common-case response small.
+                    if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                    {
+                        break;
+                    }
                 }
 
-                Block? block = SyncServer.Find(hashes[i]);
-                if (block is null)
+                if (served != bodies.Length)
                 {
-                    // GetBlockBodies responses are sparse: unavailable hashes are omitted from the response.
-                    continue;
+                    Array.Resize(ref bodies, served);
                 }
 
-                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
-
-                // Cap the message size; return the prefix (bodies match request hashes positionally).
-                if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
-                {
-                    break;
-                }
-
-                blocks.Add(block);
-                sizeEstimate += blockSize;
-
-                // Soft limit keeps the common-case response small.
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
-                {
-                    break;
-                }
+                return Task.FromResult(new BlockBodiesMessage { Bodies = new RlpBlockBodies(bodies, null) });
             }
+            catch
+            {
+                for (int i = 0; i < served; i++)
+                {
+                    bodies[i]?.Dispose();
+                }
 
-            return Task.FromResult(new BlockBodiesMessage(blocks));
+                throw;
+            }
         }
 
         protected void Handle(BlockHeadersMessage message, long size) => _headersRequests.Handle(message.BlockHeaders, size);

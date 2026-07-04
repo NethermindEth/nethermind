@@ -62,6 +62,64 @@ public class BlockStoreTests
         Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
     }
 
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(true, true)]
+    [TestCase(false, true)]
+    public void Test_get_body_rlp_serves_stored_body_bytes(bool withWithdrawals, bool legacyHashKey)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        BlockBuilder blockBuilder = Build.A.Block.WithNumber(1).WithTransactions(2, MainnetSpecProvider.Instance);
+        if (withWithdrawals) blockBuilder = blockBuilder.WithWithdrawals(2);
+        Block block = blockBuilder.TestObject;
+
+        if (legacyHashKey)
+        {
+            db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        }
+        else
+        {
+            store.Insert(block);
+        }
+
+        using RlpBlockBody? rawBody = store.GetBodyRlp(block.Number, block.Hash!);
+        Assert.That(rawBody, Is.Not.Null);
+
+        byte[] expected = new byte[BlockBodyDecoder.Instance.GetLength(block.Body, RlpBehaviors.None)];
+        RlpWriter expectedWriter = new(expected);
+        BlockBodyDecoder.Instance.Encode(ref expectedWriter, block.Body);
+
+        byte[] served = new byte[rawBody!.RlpLength];
+        RlpWriter servedWriter = new(served);
+        rawBody.Write(ref servedWriter);
+
+        Assert.That(served, Is.EqualTo(expected));
+        Assert.That(store.GetBodyRlp(block.Number, TestItem.KeccakA), Is.Null);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Test_raw_insert_writes_same_bytes_as_block_insert(bool withWithdrawals)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        BlockBuilder blockBuilder = Build.A.Block.WithNumber(1).WithTransactions(2, MainnetSpecProvider.Instance);
+        if (withWithdrawals) blockBuilder = blockBuilder.WithWithdrawals(2);
+        Block block = blockBuilder.TestObject;
+
+        store.Insert(block);
+        byte[] expected = store.GetRlp(block.Number, block.Hash!)!;
+        store.Delete(block.Number, block.Hash!);
+
+        using RlpBlockBody rawBody = RlpBlockBody.FromBody(block.Body);
+        store.Insert(block.Header, rawBody, WriteFlags.None);
+
+        Assert.That(store.GetRlp(block.Number, block.Hash!), Is.EqualTo(expected));
+    }
+
     [Test]
     public void Test_can_set_and_get_metadata()
     {

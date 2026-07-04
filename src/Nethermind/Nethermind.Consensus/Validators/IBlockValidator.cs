@@ -12,4 +12,9 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
     bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true);
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error);
     bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error);
+
+    /// <summary>
+    /// Validates a raw RLP-backed body against the header roots without decoding transactions.
+    /// </summary>
+    bool ValidateBodyAgainstHeader(BlockHeader header, RlpBlockBody rawBody, [NotNullWhen(false)] out string? error);
 }

@@ -223,33 +223,28 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
+        private bool TryPrepareBlock(BlockInfo blockInfo, RlpBlockBody rawBody, out BlockHeader? header)
         {
-            BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
-            if (_blockValidator.ValidateBodyAgainstHeader(header, blockBody, out _))
+            header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
+            // Raw validation covers malformed bodies too: lazily-surfacing decode errors are
+            // reported as a root mismatch instead of an exception.
+            if (!_blockValidator.ValidateBodyAgainstHeader(header, rawBody, out _))
             {
-                block = new Block(header, blockBody);
-            }
-            else
-            {
-                block = null;
+                header = null;
             }
 
-            return block is not null;
+            return header is not null;
         }
 
         private int InsertBodies(BodiesSyncBatch batch)
         {
             int validResponsesCount = 0;
-            BlockBody[]? responses = batch.Response?.Bodies ?? [];
+            RlpBlockBodies responses = batch.Response ?? RlpBlockBodies.Empty;
             int responseIndex = 0;
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
                 BlockInfo? blockInfo = batch.Infos[i];
-                BlockBody? body = responses.Length <= responseIndex
-                    ? null
-                    : responses[responseIndex];
 
                 // last batch
                 if (blockInfo is null)
@@ -257,9 +252,13 @@ namespace Nethermind.Synchronization.FastBlocks
                     break;
                 }
 
+                RlpBlockBody? body = responseIndex < responses.Count
+                    ? responses.GetRawBody(responseIndex)
+                    : null;
+
                 if (body is null)
                 {
-                    if (responseIndex < responses.Length)
+                    if (responseIndex < responses.Count)
                     {
                         responseIndex++;
                     }
@@ -268,11 +267,11 @@ namespace Nethermind.Synchronization.FastBlocks
                     continue;
                 }
 
-                if (TryPrepareBlock(blockInfo, body, out Block? block))
+                if (TryPrepareBlock(blockInfo, body, out BlockHeader? header))
                 {
                     responseIndex++;
                     validResponsesCount++;
-                    InsertOneBlock(block!);
+                    InsertOneBlock(header!, body);
                 }
                 else
                 {
@@ -281,7 +280,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            if (responseIndex < responses.Length)
+            if (responseIndex < responses.Count)
             {
                 if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
@@ -297,10 +296,10 @@ namespace Nethermind.Synchronization.FastBlocks
             return validResponsesCount;
         }
 
-        private void InsertOneBlock(Block block)
+        private void InsertOneBlock(BlockHeader header, RlpBlockBody rawBody)
         {
-            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
-            _syncStatusList.MarkInserted(block.Number);
+            _blockTree.Insert(header, rawBody, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, WriteFlags.DisableWAL);
+            _syncStatusList.MarkInserted(header.Number);
         }
 
         private void LogPostProcessingBatchInfo(BodiesSyncBatch batch, int validResponsesCount)

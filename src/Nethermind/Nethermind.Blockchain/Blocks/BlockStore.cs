@@ -18,6 +18,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
     public const int CacheSize = 128 + 32;
 
     private readonly IDb _blockDb = blockDb;
+    private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
     private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
     private readonly AssociativeCache<ValueHash256, Block>
@@ -45,6 +46,28 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
         _blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
     }
 
+    public void Insert(BlockHeader header, RlpBlockBody rawBody, WriteFlags writeFlags)
+    {
+        if (header.Hash is null)
+        {
+            throw new InvalidOperationException("An attempt to store a block with a null hash.");
+        }
+
+        int contentLength = _headerDecoder.GetLength(header, RlpBehaviors.None) + rawBody.RlpContentLength;
+        using ArrayPoolSpan<byte> rlp = new(Rlp.LengthOfSequence(contentLength));
+        RlpWriter writer = new(rlp);
+        EncodeBlock(ref writer, header, rawBody, contentLength);
+        _blockDb.Set(header.Number, header.Hash, rlp, writeFlags);
+    }
+
+    private void EncodeBlock<TWriter>(ref TWriter writer, BlockHeader header, RlpBlockBody rawBody, int contentLength)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        writer.StartSequence(contentLength);
+        _headerDecoder.Encode(ref writer, header);
+        writer.Write(rawBody.RlpContentSpan);
+    }
+
     public void Delete(ulong blockNumber, Hash256 blockHash)
     {
         _blockCache.Delete(in blockHash.ValueHash256);
@@ -66,6 +89,26 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
         byte[] b = _blockDb.Get(dbKey);
         if (b is not null) return b;
         return _blockDb.Get(blockHash);
+    }
+
+    public RlpBlockBody? GetBodyRlp(ulong blockNumber, Hash256 blockHash)
+    {
+        Span<byte> keyWithBlockNumber = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
+
+        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
+        memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
+        if (memoryOwner is null) return null;
+
+        try
+        {
+            return RlpBlockBody.FromStoredBlock(memoryOwner, memoryOwner.Memory);
+        }
+        catch
+        {
+            ((IMemoryOwner<byte>)memoryOwner).Dispose();
+            throw;
+        }
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)

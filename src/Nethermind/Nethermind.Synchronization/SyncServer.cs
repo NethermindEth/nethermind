@@ -436,6 +436,8 @@ namespace Nethermind.Synchronization
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
+        public RlpBlockBody? FindBodyRlp(Hash256 hash) => _blockTree.FindBodyRlp(hash);
+
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
         public Hash256? FindHash(ulong number)

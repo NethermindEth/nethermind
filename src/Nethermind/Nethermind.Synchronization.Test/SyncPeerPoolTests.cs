@@ -65,8 +65,8 @@ public class SyncPeerPoolTests
         public void Disconnect(DisconnectReason reason, string details) =>
             DisconnectRequested = true;
 
-        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
-            Task.FromResult(new OwnedBlockBodies([]));
+        public Task<RlpBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
+            Task.FromResult(RlpBlockBodies.FromBodies([]));
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token) =>
             Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());

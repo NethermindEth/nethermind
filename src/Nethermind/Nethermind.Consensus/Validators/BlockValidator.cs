@@ -412,6 +412,40 @@ public class BlockValidator(
         return true;
     }
 
+    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, RlpBlockBody rawBody, out string? error)
+    {
+        try
+        {
+            if (!ValidateTxRootMatchesTxs(header, rawBody, out Hash256? txRoot))
+            {
+                error = BlockErrorMessages.InvalidTxRoot(header.TxRoot, txRoot);
+                return false;
+            }
+
+            if (!ValidateUnclesHashMatches(header, rawBody, out _))
+            {
+                error = BlockErrorMessages.InvalidUnclesHash;
+                return false;
+            }
+
+            if (!ValidateWithdrawalsHashMatches(header, rawBody, out Hash256? withdrawalsRoot))
+            {
+                error = BlockErrorMessages.InvalidWithdrawalsRoot(header.WithdrawalsRoot, withdrawalsRoot);
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+        catch (RlpException e)
+        {
+            // Raw bodies are only structurally validated at the top level, so malformed nested
+            // content surfaces here during root calculation.
+            error = e.Message;
+            return false;
+        }
+    }
+
     public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
         // n.b. block BAL body is a side-channel property only set by engine API or local production.
@@ -525,11 +559,17 @@ public class BlockValidator(
     public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
         (txRoot = TxTrie.CalculateRoot(body.Transactions)) == header.TxRoot;
 
+    public static bool ValidateTxRootMatchesTxs(BlockHeader header, RlpBlockBody rawBody, out Hash256 txRoot) =>
+        (txRoot = TxTrie.CalculateRoot(rawBody.TransactionsSequence.Span, BlockBodyDecoder.TransactionsCountLimit)) == header.TxRoot;
+
     public static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash) =>
         ValidateUnclesHashMatches(block.Header, block.Body, out unclesHash);
 
     public static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
         (unclesHash = UnclesHash.Calculate(body.Uncles)) == header.UnclesHash;
+
+    public static bool ValidateUnclesHashMatches(BlockHeader header, RlpBlockBody rawBody, out Hash256 unclesHash) =>
+        (unclesHash = UnclesHash.Calculate(rawBody.UnclesSequence.Span)) == header.UnclesHash;
 
     public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
         ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
@@ -543,6 +583,17 @@ public class BlockValidator(
         }
 
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+    }
+
+    public static bool ValidateWithdrawalsHashMatches(BlockHeader header, RlpBlockBody rawBody, out Hash256? withdrawalsRoot)
+    {
+        if (rawBody.WithdrawalsSequence is not { } withdrawalsSequence)
+        {
+            withdrawalsRoot = null;
+            return header.WithdrawalsRoot is null;
+        }
+
+        return (withdrawalsRoot = WithdrawalTrie.CalculateRoot(withdrawalsSequence.Span, BlockBodyDecoder.WithdrawalsCountLimit)) == header.WithdrawalsRoot;
     }
 
     public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)

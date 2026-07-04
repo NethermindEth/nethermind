@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             using Network.P2P.Subprotocols.Eth.V62.Messages.BlockBodiesMessage ethMessage = new()
             {
-                Bodies = new(new[] { new BlockBody(new[] { tx1, tx2 }, new[] { header }) })
+                Bodies = RlpBlockBodies.FromBodies([new BlockBody(new[] { tx1, tx2 }, new[] { header })])
             };
 
             using BlockBodiesMessage message = new(1111, ethMessage);

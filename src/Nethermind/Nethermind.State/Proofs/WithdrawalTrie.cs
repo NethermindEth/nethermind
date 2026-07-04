@@ -23,6 +23,29 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
     public static Hash256? CalculateRoot(ReadOnlySpan<Withdrawal> withdrawals) =>
         new WithdrawalTrie(withdrawals).RootHash;
 
+    /// <summary>
+    /// Calculates the root from a block body's raw RLP withdrawals sequence (including its list prefix),
+    /// without decoding the withdrawals; trie values are the raw items verbatim.
+    /// </summary>
+    /// <exception cref="RlpException">The sequence is malformed or exceeds <paramref name="countLimit"/>.</exception>
+    public static Hash256 CalculateRoot(ReadOnlySpan<byte> withdrawalsSequence, RlpLimit countLimit)
+    {
+        RlpReader reader = new(withdrawalsSequence);
+        int end = reader.ReadSequenceLength() + reader.Position;
+        int count = reader.PeekNumberOfItemsRemaining(end, countLimit.Limit + 1);
+        reader.GuardLimit(count, countLimit);
+
+        WithdrawalTrie trie = new(ReadOnlySpan<Withdrawal>.Empty);
+        for (int key = 0; key < count; key++)
+        {
+            trie.Set(Rlp.Encode(key).Bytes, reader.Read(reader.PeekNextRlpLength()).ToArray());
+        }
+
+        reader.Check(end);
+        trie.UpdateRootHash(canBeParallel: false);
+        return trie.RootHash;
+    }
+
     protected override void Initialize(ReadOnlySpan<Withdrawal> withdrawals)
     {
         int key = 0;

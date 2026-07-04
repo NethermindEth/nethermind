@@ -80,4 +80,39 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         txTrie.UpdateRootHash(canBeParallel);
         return txTrie.RootHash;
     }
+
+    /// <summary>
+    /// Calculates the root from a block body's raw RLP transactions sequence (including its list prefix),
+    /// without decoding the transactions.
+    /// </summary>
+    /// <remarks>
+    /// Trie values match the wire form fed by <see cref="Initialize"/> via PreHash: typed transactions
+    /// unwrap the byte string to <c>type || payload</c>, legacy transactions use the whole RLP list item.
+    /// </remarks>
+    /// <exception cref="RlpException">The sequence is malformed or exceeds <paramref name="countLimit"/>.</exception>
+    public static Hash256 CalculateRoot(ReadOnlySpan<byte> transactionsSequence, RlpLimit countLimit)
+    {
+        RlpReader reader = new(transactionsSequence);
+        int end = reader.ReadSequenceLength() + reader.Position;
+        int count = reader.PeekNumberOfItemsRemaining(end, countLimit.Limit + 1);
+        reader.GuardLimit(count, countLimit);
+
+        bool canBeParallel = count > MinItemsForParallelRootHash;
+        using TrackingCappedArrayPool cappedArray = new(count * 4, canBeParallel: canBeParallel);
+        TxTrie txTrie = new(ReadOnlySpan<Transaction>.Empty, canBuildProof: false, bufferPool: cappedArray, canBeParallel: canBeParallel);
+
+        for (int key = 0; key < count; key++)
+        {
+            ReadOnlySpan<byte> value = reader.IsSequenceNext()
+                ? reader.Read(reader.PeekNextRlpLength())
+                : reader.DecodeByteArraySpan();
+            CappedArray<byte> buffer = cappedArray.SafeRent(value.Length);
+            value.CopyTo(buffer.AsSpan());
+            txTrie.Set(Rlp.EncodeToCappedArray(key, cappedArray).AsSpan(), buffer);
+        }
+
+        reader.Check(end);
+        txTrie.UpdateRootHash(canBeParallel);
+        return txTrie.RootHash;
+    }
 }

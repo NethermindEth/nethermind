@@ -389,6 +389,31 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
+        public AddBlockResult Insert(BlockHeader header, RlpBlockBody rawBody, BlockTreeInsertBlockOptions insertBlockOptions, WriteFlags bodiesWriteFlags)
+        {
+            bool skipCanAcceptNewBlocks = (insertBlockOptions & BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks) != 0;
+            if (!CanAcceptNewBlocks)
+            {
+                if (Logger.IsTrace) Logger.Trace($"Block tree in cannot accept new blocks mode. SkipCanAcceptNewBlocks: {skipCanAcceptNewBlocks}, Block {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+            }
+
+            if (!CanAcceptNewBlocks && !skipCanAcceptNewBlocks)
+            {
+                return AddBlockResult.CannotAccept;
+            }
+
+            if (header.Number == _genesisBlockNumber)
+            {
+                throw new InvalidOperationException("Genesis block should not be inserted.");
+            }
+
+            // No BAL insert or header save: raw bodies come from p2p, which never carries either.
+            _blockStore.Insert(header, rawBody, bodiesWriteFlags);
+            _headerStore.InsertBlockNumber(header.Hash, header.Number);
+
+            return AddBlockResult.Added;
+        }
+
         protected virtual AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
             bool shouldProcess = options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);
@@ -1630,6 +1655,17 @@ namespace Nethermind.Blockchain
             }
 
             return block;
+        }
+
+        public RlpBlockBody? FindBodyRlp(Hash256 blockHash)
+        {
+            if (blockHash is null || blockHash == Keccak.Zero)
+            {
+                return null;
+            }
+
+            ulong? blockNumber = _headerStore.GetBlockNumber(blockHash);
+            return blockNumber is null ? null : _blockStore.GetBodyRlp(blockNumber.Value, blockHash);
         }
 
         private bool IsTotalDifficultyAlwaysZero() =>

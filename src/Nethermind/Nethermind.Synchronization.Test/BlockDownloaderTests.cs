@@ -395,13 +395,12 @@ public partial class BlockDownloaderTests
 
                 if (blockHashes.Count == 0)
                 {
-                    return new OwnedBlockBodies([]);
+                    return RlpBlockBodies.FromBodies([]);
                 }
 
-                BlockBody?[] response = ctx.ResponseBuilder
+                BlockBody?[] response = [.. ctx.ResponseBuilder
                     .BuildBlocksResponse(blockHashes, responseOptions)
-                    .Result
-                    .Bodies!;
+                    .Result];
 
                 if (response.Length < minResponseLength)
                 {
@@ -413,7 +412,7 @@ public partial class BlockDownloaderTests
                     response = nullPaddedResponse;
                 }
 
-                return new OwnedBlockBodies(response);
+                return RlpBlockBodies.FromBodies(response);
             });
 
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
@@ -692,7 +691,7 @@ public partial class BlockDownloaderTests
             .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<OwnedBlockBodies>(new TimeoutException()));
+            .Returns(Task.FromException<RlpBlockBodies>(new TimeoutException()));
 
         syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
@@ -1086,7 +1085,7 @@ public partial class BlockDownloaderTests
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
-        public async Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        public async Task<RlpBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             BlockBody[] headers = new BlockBody[blockHashes.Count];
             int i = 0;
@@ -1236,7 +1235,7 @@ public partial class BlockDownloaderTests
         private readonly Dictionary<Hash256, BlockHeader> _headers = [];
         private readonly Dictionary<Hash256, BlockBody> _bodies = [];
 
-        public async Task<OwnedBlockBodies> BuildBlocksResponse(IList<Hash256> blockHashes, Response flags)
+        public async Task<RlpBlockBodies> BuildBlocksResponse(IList<Hash256> blockHashes, Response flags)
         {
             bool consistent = flags.HasFlag(Response.Consistent);
             bool justFirst = flags.HasFlag(Response.JustFirst);

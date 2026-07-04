@@ -103,6 +103,9 @@ public class InvalidBlockInterceptor(
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
         blockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out error);
 
+    public bool ValidateBodyAgainstHeader(BlockHeader header, RlpBlockBody rawBody, [NotNullWhen(false)] out string? error) =>
+        blockValidator.ValidateBodyAgainstHeader(header, rawBody, out error);
+
     private bool ShouldNotTrackInvalidation(Block block) =>
         ShouldNotTrackInvalidation(block.Header) ||
         // Body does not match header, but it does not mean the hash that the header point to is invalid.

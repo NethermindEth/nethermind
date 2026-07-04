@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override int PacketType => Eth62MessageCode.BlockBodies;
         public override string Protocol => "eth";
 
-        public OwnedBlockBodies? Bodies { get; set; }
+        public RlpBlockBodies? Bodies { get; set; }
 
         public BlockBodiesMessage()
         {
@@ -26,10 +26,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 bodies[i] = blocks[i]?.Body;
             }
 
-            Bodies = new OwnedBlockBodies(bodies);
+            Bodies = RlpBlockBodies.FromBodies(bodies);
         }
 
-        public BlockBodiesMessage(BlockBody?[] bodies) => Bodies = new OwnedBlockBodies(bodies);
+        public BlockBodiesMessage(BlockBody?[] bodies) => Bodies = RlpBlockBodies.FromBodies(bodies);
 
         public override void Dispose()
         {
@@ -37,6 +37,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             Bodies?.Dispose();
         }
 
-        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Bodies?.Length ?? 0})";
+        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Count ?? 0})";
     }
 }

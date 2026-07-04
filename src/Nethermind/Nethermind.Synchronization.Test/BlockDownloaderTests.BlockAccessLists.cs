@@ -122,7 +122,7 @@ public partial class BlockDownloaderTests
             DownloaderOptions.Process,
             0,
             CancellationToken.None))!;
-        bodyRequest.OwnedBodies = new OwnedBlockBodies([new BlockBody()]);
+        bodyRequest.OwnedBodies = RlpBlockBodies.FromBodies([new BlockBody()]);
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         PeerInfo peerInfo = new(syncPeer);

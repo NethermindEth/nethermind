@@ -428,8 +428,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             Assert.That(response, Is.Not.Null);
-            BlockBody[]? bodies = response.Bodies.Bodies;
-            Assert.That(bodies, Has.Length.EqualTo(SoftLimitTestHelper.CountBlocksWithinSoftLimit(blocks)));
+            RlpBlockBodies bodies = response.Bodies!;
+            Assert.That(bodies, Has.Count.EqualTo(SoftLimitTestHelper.CountBlocksWithinSoftLimit(blocks)));
             foreach (BlockBody responseBody in bodies)
             {
                 Assert.That(responseBody, Is.Not.Null);
@@ -705,11 +705,29 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Should_serve_bodies_from_raw_rlp_without_decoded_lookup()
+        {
+            Block block = Build.A.Block.WithTransactions(
+                Build.A.Transaction.SignedAndResolved().TestObject,
+                Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject).TestObject;
+            byte[] blockRlp = new BlockDecoder().Encode(block).Bytes;
+            _syncManager.FindBodyRlp(block.Hash!).Returns(
+                RlpBlockBody.FromStoredBlock(System.Buffers.MemoryPool<byte>.Shared.Rent(0), blockRlp));
+
+            BlockBody?[] bodies = RequestBlockBodies(block.Hash!);
+
+            Assert.That(bodies, Has.Length.EqualTo(1));
+            Assert.That(bodies[0]!.Transactions.Select(static t => t.Hash),
+                Is.EqualTo(block.Transactions.Select(static t => t.Hash)));
+            _syncManager.DidNotReceive().Find(Arg.Any<Hash256>());
+        }
+
+        [Test]
         public async Task Get_block_bodies_returns_immediately_when_empty_hash_list()
         {
-            using OwnedBlockBodies bodies = await ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(), CancellationToken.None);
+            using RlpBlockBodies bodies = await ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(), CancellationToken.None);
 
-            Assert.That(bodies.Bodies, Has.Length.EqualTo(0));
+            Assert.That(bodies, Has.Count.EqualTo(0));
         }
 
         [Test]
@@ -876,8 +894,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             Assert.That(response, Is.Not.Null);
             Assert.That(response!.Bodies, Is.Not.Null);
-            Assert.That(response.Bodies!.Bodies, Is.Not.Null);
-            return response.Bodies.Bodies!;
+            return [.. response.Bodies!];
         }
 
         [Test]

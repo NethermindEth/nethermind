@@ -416,14 +416,12 @@ namespace Nethermind.Synchronization.Blocks
         public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer)
         {
             using BlocksRequest _ = response;
-            BlockBody[]? bodies = response.OwnedBodies?.Bodies;
-            response.OwnedBodies?.Disown();
+            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
+            RlpBlockBodies? bodies = response.OwnedBodies;
             IOwnedReadOnlyList<byte[]?>? blockAccessLists = response.BlockAccessLists;
             bool unsupportedBlockAccessListsPeer = response.BlockAccessListsRequests.Count > 0 &&
                                                    peer is not null &&
                                                    !peer.SyncPeer.SupportsBlockAccessLists();
-
-            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
             using ArrayPoolListRef<Block> blocks = new(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
             int blockAccessListsCount = 0;
@@ -437,24 +435,40 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if ((bodies?.Length ?? 0) <= i)
+                if ((bodies?.Count ?? 0) <= i)
                 {
                     entry.RetryBlockRequest();
                     continue;
                 }
 
-                BlockBody? body = bodies[i];
-                if (body is null)
+                RlpBlockBody? rawBody = bodies!.GetRawBody(i);
+                if (rawBody is null)
                 {
                     entry.RetryBlockRequest();
                     continue;
                 }
 
-                if (!_blockValidator.ValidateBodyAgainstHeader(entry.Header, body, out string errorMessage))
+                // Validate the roots on the raw bytes first, so invalid bodies are never decoded.
+                if (!_blockValidator.ValidateBodyAgainstHeader(entry.Header, rawBody, out string errorMessage))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {entry.Header.ToString(BlockHeader.Format.Short)}");
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    entry.RetryBlockRequest();
+                    continue;
+                }
+
+                BlockBody body;
+                try
+                {
+                    // Detach from the network buffer: the block outlives this response.
+                    body = rawBody.DetachDecoded();
+                }
+                catch (RlpException e)
+                {
+                    // Root-valid bytes are canonical, so this indicates a decoder gap rather than a bad peer.
+                    if (_logger.IsError) _logger.Error($"Undecodable block body passed root validation. Block: {entry.Header.ToString(BlockHeader.Format.Short)}", e);
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.RetryBlockRequest();
                     continue;

@@ -14,9 +14,21 @@ namespace Nethermind.Blockchain.Blocks;
 public interface IBlockStore
 {
     void Insert(Block block, WriteFlags writeFlags = WriteFlags.None);
+
+    /// <summary>
+    /// Inserts a block assembled from a decoded header and a raw RLP body, without decoding transactions.
+    /// </summary>
+    void Insert(BlockHeader header, RlpBlockBody rawBody, WriteFlags writeFlags);
+
     void Delete(ulong blockNumber, Hash256 blockHash);
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>
+    /// Returns the stored block's body as raw RLP, sliced past the header without decoding.
+    /// </summary>
+    RlpBlockBody? GetBodyRlp(ulong blockNumber, Hash256 blockHash);
+
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash);
     void Cache(Block block);
     bool HasBlock(ulong blockNumber, Hash256 blockHash);

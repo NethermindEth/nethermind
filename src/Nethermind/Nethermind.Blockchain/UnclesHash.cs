@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -16,5 +17,10 @@ namespace Nethermind.Blockchain
         public static Hash256 Calculate(BlockHeader[] uncles) => uncles.Length == 0
                 ? Keccak.OfAnEmptySequenceRlp
                 : Keccak.Compute(Rlp.Encode(uncles).Bytes);
+
+        /// <summary>Calculates the hash from a block body's raw RLP uncles sequence, including its list prefix.</summary>
+        public static Hash256 Calculate(ReadOnlySpan<byte> unclesSequence) => unclesSequence.Length == 1
+                ? Keccak.OfAnEmptySequenceRlp
+                : Keccak.Compute(unclesSequence);
     }
 }

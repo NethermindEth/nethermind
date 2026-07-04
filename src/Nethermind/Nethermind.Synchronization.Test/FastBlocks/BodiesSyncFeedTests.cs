@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -113,7 +114,7 @@ public class BodiesSyncFeedTests
 
         async Task HandleAndPrepareNextRequest()
         {
-            req.Response = new OwnedBlockBodies(req.Infos.Take(8).Select((info) =>
+            req.Response = RlpBlockBodies.FromBodies(req.Infos.Take(8).Select((info) =>
                 _syncingFromBlockTree.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray());
 
             _feed.HandleResponse(req);
@@ -166,7 +167,7 @@ public class BodiesSyncFeedTests
         Block firstBlock = _syncingFromBlockTree.FindBlock(req.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!;
         Block skippedBlock = _syncingFromBlockTree.FindBlock(req.Infos[1]!.BlockNumber, BlockTreeLookupOptions.None)!;
         Block thirdBlock = _syncingFromBlockTree.FindBlock(req.Infos[2]!.BlockNumber, BlockTreeLookupOptions.None)!;
-        req.Response = new OwnedBlockBodies([firstBlock.Body, thirdBlock.Body]);
+        req.Response = RlpBlockBodies.FromBodies([firstBlock.Body, thirdBlock.Body]);
         req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
 
         SyncResponseHandlingResult result = _feed.HandleResponse(req);
@@ -182,12 +183,42 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
+    public async Task ShouldMarkMalformedBodyPendingAndReportBreach()
+    {
+        _feed.InitializeFeed();
+
+        BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        Block firstBlock = _syncingFromBlockTree.FindBlock(req.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        Block secondBlock = _syncingFromBlockTree.FindBlock(req.Infos[1]!.BlockNumber, BlockTreeLookupOptions.None)!;
+
+        // Structurally-valid body whose single "transaction" has a non-canonical length prefix (0xb8 0x01),
+        // so it fails raw validation without matching any requested header.
+        byte[] corrupt = Bytes.FromHexString("0xc5c3b80100c0");
+
+        req.Response = new RlpBlockBodies(
+            [RlpBlockBody.FromBody(firstBlock.Body), RlpBlockBody.FromBodyItem(MemoryPool<byte>.Shared.Rent(0), corrupt)],
+            null);
+        req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(req);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+        Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
+        Assert.That(_syncingToBlockTree.FindBlock(secondBlock.Hash!, BlockTreeLookupOptions.None, secondBlock.Number), Is.Null);
+        _syncPeerPool.Received().ReportBreachOfProtocol(
+            Arg.Any<PeerInfo>(),
+            DisconnectReason.InvalidTxOrUncle,
+            Arg.Any<string>());
+        req.Dispose();
+    }
+
+    [Test]
     public async Task ShouldRecoverOnInsertFailure()
     {
         _feed.InitializeFeed();
         using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
 
-        req.Response = new OwnedBlockBodies(req.Infos.Take(8).Select((info) =>
+        req.Response = RlpBlockBodies.FromBodies(req.Infos.Take(8).Select((info) =>
             _syncingFromBlockTree.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray());
 
         int writeCount = 0;

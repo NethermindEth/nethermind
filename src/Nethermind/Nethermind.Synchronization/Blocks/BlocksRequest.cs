@@ -11,7 +11,7 @@ namespace Nethermind.Synchronization.Blocks;
 public sealed class BlocksRequest : IDisposable
 {
     public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
-    public OwnedBlockBodies? OwnedBodies { get; set; }
+    public RlpBlockBodies? OwnedBodies { get; set; }
     public IOwnedReadOnlyList<BlockHeader> BlockAccessListsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
     public IOwnedReadOnlyList<byte[]?>? BlockAccessLists { get; set; }
     public IOwnedReadOnlyList<BlockHeader> ReceiptsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;

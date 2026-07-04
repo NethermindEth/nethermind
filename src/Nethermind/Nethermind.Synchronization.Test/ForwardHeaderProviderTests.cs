@@ -352,7 +352,7 @@ public partial class ForwardHeaderProviderTests
         public void Disconnect(DisconnectReason reason, string details) =>
             throw new NotImplementedException();
 
-        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
+        public Task<RlpBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
             throw new NotImplementedException();
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token) =>
@@ -567,7 +567,7 @@ public partial class ForwardHeaderProviderTests
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
-        public async Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        public async Task<RlpBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             BlockBody[] headers = new BlockBody[blockHashes.Count];
             int i = 0;
@@ -707,7 +707,7 @@ public partial class ForwardHeaderProviderTests
         private readonly Dictionary<Hash256, BlockHeader> _headers = [];
         private readonly Dictionary<Hash256, BlockBody> _bodies = [];
 
-        public async Task<OwnedBlockBodies> BuildBlocksResponse(IList<Hash256> blockHashes, Response flags)
+        public async Task<RlpBlockBodies> BuildBlocksResponse(IList<Hash256> blockHashes, Response flags)
         {
             bool consistent = flags.HasFlag(Response.Consistent);
             bool justFirst = flags.HasFlag(Response.JustFirst);

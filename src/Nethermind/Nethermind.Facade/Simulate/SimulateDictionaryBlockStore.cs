@@ -21,6 +21,9 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         _blockNumDict[block.Number] = block;
     }
 
+    public void Insert(BlockHeader header, RlpBlockBody rawBody, WriteFlags writeFlags) =>
+        Insert(new Block(header, rawBody.DetachDecoded()), writeFlags);
+
     public void Delete(ulong blockNumber, Hash256 blockHash)
     {
         _blockDict.Remove(blockHash);
@@ -50,6 +53,11 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         }
         return readonlyBaseBlockStore.GetRlp(blockNumber, blockHash);
     }
+
+    public RlpBlockBody? GetBodyRlp(ulong blockNumber, Hash256 blockHash) =>
+        _blockNumDict.TryGetValue(blockNumber, out Block block)
+            ? RlpBlockBody.FromBody(block.Body)
+            : readonlyBaseBlockStore.GetBodyRlp(blockNumber, blockHash);
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
         _blockNumDict.TryGetValue(blockNumber, out Block block)

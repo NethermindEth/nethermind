@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Ctor_with_nulls()
         {
             using BlockBodiesMessage message = new([Build.A.Block.TestObject, null, Build.A.Block.TestObject]);
-            Assert.That(message.Bodies.Bodies.Length, Is.EqualTo(3));
+            Assert.That(message.Bodies!.Count, Is.EqualTo(3));
         }
 
         [Test]

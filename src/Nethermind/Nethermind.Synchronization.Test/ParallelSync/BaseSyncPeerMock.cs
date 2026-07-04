@@ -41,7 +41,7 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
     {
     }
 
-    public virtual Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
+    public virtual Task<RlpBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
         throw new System.NotImplementedException();
 
     public virtual Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token) =>

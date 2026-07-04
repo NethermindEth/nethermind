@@ -21,6 +21,12 @@ namespace Nethermind.Synchronization
         TxReceipt[]? GetReceipts(Hash256 blockHashes);
         MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         Block? Find(Hash256 hash);
+
+        /// <summary>
+        /// Finds the stored block's body as raw RLP for direct byte serving; null means fall back to <see cref="Find"/>.
+        /// </summary>
+        RlpBlockBody? FindBodyRlp(Hash256 hash) => null;
+
         BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(ulong number);
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);

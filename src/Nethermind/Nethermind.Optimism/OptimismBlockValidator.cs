@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -51,7 +52,7 @@ public class OptimismBlockValidator(
             return false;
         }
 
-        if (!ValidateWithdrawals(header, toBeValidated, out error))
+        if (!ValidateWithdrawals(header, toBeValidated.Withdrawals is { Length: 0 }, out error))
         {
             return false;
         }
@@ -60,19 +61,51 @@ public class OptimismBlockValidator(
         return true;
     }
 
+    public override bool ValidateBodyAgainstHeader(BlockHeader header, RlpBlockBody rawBody, out string? error)
+    {
+        try
+        {
+            if (!ValidateTxRootMatchesTxs(header, rawBody, out Hash256? txRoot))
+            {
+                error = BlockErrorMessages.InvalidTxRoot(header.TxRoot!, txRoot);
+                return false;
+            }
+
+            if (!ValidateUnclesHashMatches(header, rawBody, out _))
+            {
+                error = BlockErrorMessages.InvalidUnclesHash;
+                return false;
+            }
+
+            // An empty withdrawals list is the single-byte sequence 0xc0.
+            if (!ValidateWithdrawals(header, rawBody.WithdrawalsSequence is { Length: 1 }, out error))
+            {
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+        catch (RlpException e)
+        {
+            error = e.Message;
+            return false;
+        }
+    }
+
     protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error) =>
         // Base implementation validates BlobGasUsed, but Blob transactions are disabled in Optimism since Ecotone
         specHelper.IsEcotone(block.Header) || base.ValidateEip4844Fields(block, spec, ref error);
 
     protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error) =>
-        ValidateWithdrawals(block.Header, block.Body, out error);
+        ValidateWithdrawals(block.Header, block.Body.Withdrawals is { Length: 0 }, out error);
 
-    private bool ValidateWithdrawals(BlockHeader header, BlockBody body, out string? error)
+    private bool ValidateWithdrawals(BlockHeader header, bool withdrawalsAreEmptyList, out string? error)
     {
         // From the most recent
         if (specHelper.IsIsthmus(header))
         {
-            if (body.Withdrawals is null || body.Withdrawals.Length != 0)
+            if (!withdrawalsAreEmptyList)
             {
                 error = NonEmptyWithdrawalsList;
                 return false;

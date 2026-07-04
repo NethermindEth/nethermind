@@ -113,6 +113,42 @@ public class BlockValidatorTests
         return _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body);
     }
 
+    [TestCaseSource(nameof(CorruptedBodyFieldCases))]
+    public bool ValidateBodyAgainstHeader_Raw_WithCorruptedField(Action<BlockHeader>? corrupt)
+    {
+        Block block = Build.A.Block
+            .WithTransactions(1, ReleaseSpecSubstitute.Create())
+            .WithWithdrawals(1)
+            .TestObject;
+
+        corrupt?.Invoke(block.Header);
+
+        using RlpBlockBody rawBody = RlpBlockBody.FromBody(block.Body);
+        return _blockValidator.ValidateBodyAgainstHeader(block.Header, rawBody, out _);
+    }
+
+    [Test]
+    public void ValidateBodyAgainstHeader_Raw_WithMalformedTransaction_ReturnsFalse()
+    {
+        Block block = Build.A.Block
+            .WithTransactions(1, ReleaseSpecSubstitute.Create())
+            .TestObject;
+
+        byte[] bodyItem = new byte[BlockBodyDecoder.Instance.GetLength(block.Body, RlpBehaviors.None)];
+        RlpWriter writer = new(bodyItem);
+        BlockBodyDecoder.Instance.Encode(ref writer, block.Body);
+        // Garble the first transaction with a non-canonical length prefix.
+        RlpReader reader = new(bodyItem);
+        reader.ReadSequenceLength();
+        reader.SkipLength();
+        bodyItem[reader.Position] = 0xb8;
+        bodyItem[reader.Position + 1] = 0x01;
+
+        using RlpBlockBody rawBody = RlpBlockBody.FromBodyItem(System.Buffers.MemoryPool<byte>.Shared.Rent(0), bodyItem);
+        Assert.That(_blockValidator.ValidateBodyAgainstHeader(block.Header, rawBody, out string? error), Is.False);
+        Assert.That(error, Is.Not.Null);
+    }
+
     [TestCase(false, ExpectedResult = true, TestName = "ValidateProcessedBlock_HashesAreTheSame_ReturnsTrue")]
     [TestCase(true, ExpectedResult = false, TestName = "ValidateProcessedBlock_StateRootIsWrong_ReturnsFalse")]
     public bool ValidateProcessedBlock_Returns(bool wrongStateRoot)

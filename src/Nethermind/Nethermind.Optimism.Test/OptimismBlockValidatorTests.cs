@@ -113,6 +113,30 @@ public class OptimismBlockValidatorTests(Fork fork)
             () => error!);
     }
 
+    [TestCaseSource(nameof(WithdrawalsListTestCases))]
+    public void ValidateBodyAgainstHeader_RawMatchesDecoded(Withdrawal[]? withdrawals, Valid isValid)
+    {
+        (_, Block block) = BuildBlock(b => b
+            .WithWithdrawals(withdrawals)
+            .WithWithdrawalsRoot(GetWithdrawalsRoot())
+        );
+
+        OptimismBlockValidator validator = new(
+            Always.Valid,
+            Always.Valid,
+            Always.Valid,
+            Spec.BuildFor(block.Header),
+            Spec.Instance,
+            TestLogManager.Instance);
+
+        bool decoded = validator.ValidateBodyAgainstHeader(block.Header, block.Body, out _);
+        using RlpBlockBody rawBody = RlpBlockBody.FromBody(block.Body);
+        bool raw = validator.ValidateBodyAgainstHeader(block.Header, rawBody, out string? error);
+
+        Assert.That(raw, Is.EqualTo(isValid.On(_timestamp)), () => error!);
+        Assert.That(raw, Is.EqualTo(decoded));
+    }
+
     private static IEnumerable<TestCaseData> BlobGasUsedTestCases()
     {
         yield return new TestCaseData(null, Valid.Since(Spec.EcotoneTimestamp))

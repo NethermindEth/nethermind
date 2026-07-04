@@ -73,7 +73,7 @@ namespace Nethermind.Core.Test
         {
         }
 
-        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        public Task<RlpBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             BlockBody[] result = new BlockBody[blockHashes.Count];
             for (int i = 0; i < blockHashes.Count; i++)
@@ -82,7 +82,7 @@ namespace Nethermind.Core.Test
                 result[i] = new BlockBody(block?.Transactions, block?.Uncles);
             }
 
-            return Task.FromResult(new OwnedBlockBodies(result));
+            return Task.FromResult(RlpBlockBodies.FromBodies(result));
         }
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)

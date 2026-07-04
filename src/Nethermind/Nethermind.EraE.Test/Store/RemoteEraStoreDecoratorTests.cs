@@ -149,10 +149,10 @@ public class RemoteEraStoreDecoratorTests
 
         ulong blockNumber = epoch * 16;
         await sut.FindBlockAndReceipts(blockNumber, ensureValidated: false);
-        blockValidator.DidNotReceiveWithAnyArgs().ValidateBodyAgainstHeader(default!, default!, out Arg.Any<string?>());
+        blockValidator.DidNotReceiveWithAnyArgs().ValidateBodyAgainstHeader(default!, default(BlockBody)!, out Arg.Any<string?>());
 
         await sut.FindBlockAndReceipts(blockNumber, ensureValidated: true);
-        blockValidator.ReceivedWithAnyArgs().ValidateBodyAgainstHeader(default!, default!, out Arg.Any<string?>());
+        blockValidator.ReceivedWithAnyArgs().ValidateBodyAgainstHeader(default!, default(BlockBody)!, out Arg.Any<string?>());
     }
 
     private RemoteEraStoreDecorator CreateDecorator(
