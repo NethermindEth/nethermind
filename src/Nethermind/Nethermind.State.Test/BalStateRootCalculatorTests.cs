@@ -551,6 +551,190 @@ public class BalStateRootCalculatorTests
         AssertComputesExpectedRoot(path, anchor, missing);
     }
 
+    /// <summary>
+    /// Builds one storage-writing account whose post-storage differs from its pre-storage by a controllable slot count,
+    /// so a delta can hold many independent storage tries of varied sizes.
+    /// </summary>
+    private static AccountScenario StorageAccount(Address address, int preSlots, int postSlots)
+    {
+        ValueHash256 codeHash = ValueKeccak.Compute(SomeCode);
+        Account contract = new(1, 50, Keccak.EmptyTreeHash, new Hash256(codeHash));
+
+        (UInt256 slot, UInt256 value)[] pre = new (UInt256, UInt256)[preSlots];
+        for (int i = 0; i < preSlots; i++) pre[i] = ((UInt256)(i + 1), (UInt256)(1000 + i));
+
+        // Post writes overwrite the low slots and append new ones; the highest existing slots are left untouched.
+        (UInt256 slot, UInt256 value)[] post = new (UInt256, UInt256)[postSlots];
+        StorageChange[] balChanges = new StorageChange[postSlots];
+        UInt256[] keys = new UInt256[postSlots];
+        for (int i = 0; i < postSlots; i++)
+        {
+            UInt256 slot = (UInt256)(i + 1);
+            UInt256 value = (UInt256)(5000 + i);
+            post[i] = (slot, value);
+            keys[i] = slot;
+            balChanges[i] = new StorageChange(0, value);
+        }
+
+        Nethermind.Core.Test.Builders.AccountChangesBuilder builder = Build.An.AccountChanges.WithAddress(address);
+        for (int i = 0; i < postSlots; i++) builder = builder.WithStorageChanges(keys[i], balChanges[i]);
+
+        return new AccountScenario
+        {
+            Address = address,
+            Pre = contract,
+            PreStorage = pre,
+            Post = contract,
+            PostStorage = post,
+            BalChanges = builder.TestObject,
+        };
+    }
+
+    /// <summary>
+    /// Task 6.9 across-storage-tries parallelism: many storage-writing accounts of varied sizes must produce the same
+    /// root through the batched parallel path as the directly-built expected tree (and as the recursive path).
+    /// A threshold of 2 forces the parallel branch for the batched case; the recursive case stays sequential.
+    /// </summary>
+    [TestCaseSource(nameof(Paths))]
+    public void T6_9_many_varied_storage_tries_match_expected_root(HashingPath path)
+    {
+        AccountScenario[] scenarios = BuildManyStorageScenarios();
+
+        ITrieStore expectedStore = NewStore();
+        (BlockHeader parent, Hash256 expectedRoot) = BuildFixture(expectedStore, scenarios);
+
+        ITrieStore calcStore = NewStore();
+        BuildFixture(calcStore, scenarios);
+
+        // Threshold 2 forces the batched path to take the across-tries parallel branch for this many accounts.
+        BalStateRootCalculator calculator = new(calcStore, LimboLogs.Instance, storageTrieParallelThreshold: 2);
+        Hash256 actual = ComputeWith(calculator, path, parent, BalPostStateDelta.Reduce(Bal(scenarios)));
+
+        Assert.That(actual, Is.EqualTo(expectedRoot));
+    }
+
+    /// <summary>
+    /// Determinism smoke test for the parallel batched path: recomputing the same delta many times must yield an
+    /// identical root every time.
+    /// </summary>
+    /// <remarks>
+    /// Honesty note: because each worker writes only its own isolated storage-root slot, this is a smoke test, not a
+    /// hard race net - a subtle cross-trie race would more likely corrupt a single root than flip determinism. The
+    /// correctness authority is the equal-to-directly-built-root assertion under worker turnover in the other 6.9 tests.
+    /// </remarks>
+    [Test]
+    public void T6_9_parallel_batched_compute_is_deterministic()
+    {
+        AccountScenario[] scenarios = BuildManyStorageScenarios();
+
+        ITrieStore expectedStore = NewStore();
+        (BlockHeader parent, Hash256 expectedRoot) = BuildFixture(expectedStore, scenarios);
+
+        ITrieStore calcStore = NewStore();
+        BuildFixture(calcStore, scenarios);
+
+        BalStateRootCalculator calculator = new(calcStore, LimboLogs.Instance, storageTrieParallelThreshold: 2);
+        BalPostStateDelta delta = BalPostStateDelta.Reduce(Bal(scenarios));
+
+        for (int iteration = 0; iteration < 20; iteration++)
+        {
+            Hash256 actual = calculator.ComputeRoot(parent, delta, new PerMessageKeccakBatchHasher());
+            Assert.That(actual, Is.EqualTo(expectedRoot), $"root diverged on iteration {iteration}");
+        }
+    }
+
+    /// <summary>
+    /// Composition correctness with a PARALLEL caller hasher: after FIX 1 the caller's <see cref="ParallelKeccakBatchHasher"/>
+    /// (threshold 1, so it always parallelizes) is used only for the PASS C state tree while inner storage tries run
+    /// their own shared per-message hasher - so this exercises parallel outer tries, per-message inner tries, and a
+    /// parallel PASS C, all composing to the directly-built root.
+    /// </summary>
+    [Test]
+    public void T6_9_parallel_caller_hasher_composes_to_expected_root()
+    {
+        AccountScenario[] scenarios = BuildManyStorageScenarios();
+
+        ITrieStore expectedStore = NewStore();
+        (BlockHeader parent, Hash256 expectedRoot) = BuildFixture(expectedStore, scenarios);
+
+        ITrieStore calcStore = NewStore();
+        BuildFixture(calcStore, scenarios);
+
+        BalStateRootCalculator calculator = new(calcStore, LimboLogs.Instance, storageTrieParallelThreshold: 2);
+        Hash256 actual = calculator.ComputeRoot(parent, BalPostStateDelta.Reduce(Bal(scenarios)), new ParallelKeccakBatchHasher(parallelThreshold: 1));
+
+        Assert.That(actual, Is.EqualTo(expectedRoot));
+    }
+
+    /// <summary>
+    /// High-turnover probe: 200 small storage-writing accounts (1-3 slots each) with a low parallel threshold, so the
+    /// work-stealing loop churns through many short tries. Batched parallel root must still equal the directly-built root.
+    /// </summary>
+    [Test]
+    public void T6_9_many_small_storage_tries_high_turnover()
+    {
+        const int count = 200;
+        AccountScenario[] scenarios = new AccountScenario[count];
+        for (int i = 0; i < count; i++)
+        {
+            int slots = (i % 3) + 1; // 1..3 slots
+            scenarios[i] = StorageAccount(TestItem.Addresses[i], preSlots: 0, postSlots: slots);
+        }
+
+        ITrieStore expectedStore = NewStore();
+        (BlockHeader parent, Hash256 expectedRoot) = BuildFixture(expectedStore, scenarios);
+
+        ITrieStore calcStore = NewStore();
+        BuildFixture(calcStore, scenarios);
+
+        BalStateRootCalculator calculator = new(calcStore, LimboLogs.Instance, storageTrieParallelThreshold: 2);
+        Hash256 actual = calculator.ComputeRoot(parent, BalPostStateDelta.Reduce(Bal(scenarios)), new PerMessageKeccakBatchHasher());
+
+        Assert.That(actual, Is.EqualTo(expectedRoot));
+    }
+
+    /// <summary>Twelve storage-writing accounts (well above the test threshold) with pre/post storage of varied sizes.</summary>
+    private static AccountScenario[] BuildManyStorageScenarios()
+    {
+        // Varied sizes: small (single-leaf) through wide (multi-level branch) tries, plus a couple of no-op-storage
+        // accounts and a deletion so the parallel storage set is a proper subset of the delta.
+        (int pre, int post)[] sizes =
+        [
+            (0, 1), (1, 2), (0, 5), (3, 3), (2, 8), (0, 16),
+            (5, 20), (1, 40), (0, 64), (10, 10), (0, 3), (4, 7),
+        ];
+
+        AccountScenario[] scenarios = new AccountScenario[sizes.Length + 2];
+        for (int i = 0; i < sizes.Length; i++)
+        {
+            scenarios[i] = StorageAccount(TestItem.Addresses[i], sizes[i].pre, sizes[i].post);
+        }
+
+        // A plain balance change (no storage) and a deletion, to keep the storage-writing set distinct from the delta.
+        scenarios[sizes.Length] = new AccountScenario
+        {
+            Address = TestItem.Addresses[sizes.Length],
+            Pre = new Account(1, 100),
+            Post = new Account(1, 999),
+            BalChanges = Build.An.AccountChanges
+                .WithAddress(TestItem.Addresses[sizes.Length])
+                .WithBalanceChanges(new BalanceChange(0, 999))
+                .TestObject,
+        };
+        scenarios[sizes.Length + 1] = new AccountScenario
+        {
+            Address = TestItem.Addresses[sizes.Length + 1],
+            Pre = new Account(0, 300),
+            Post = null,
+            BalChanges = Build.An.AccountChanges
+                .WithAddress(TestItem.Addresses[sizes.Length + 1])
+                .WithBalanceChanges(new BalanceChange(0, UInt256.Zero))
+                .TestObject,
+        };
+
+        return scenarios;
+    }
+
     /// <summary>MemDb that, once <see cref="StartRecording"/> is called, counts every write for T2.10.</summary>
     private sealed class WriteRecordingMemDb : MemDb
     {

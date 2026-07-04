@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -22,10 +23,38 @@ namespace Nethermind.State;
 /// parent both surface as throws from <see cref="StateTree.Get(Address, Hash256?)"/> or
 /// <see cref="ITrieStore.BeginScope(BlockHeader?)"/>; callers wrap the whole call.
 /// </remarks>
-public sealed class BalStateRootCalculator(ITrieStore trieStore, ILogManager logManager)
+public sealed class BalStateRootCalculator
 {
-    private readonly ITrieStore _trieStore = trieStore;
-    private readonly ILogManager _logManager = logManager;
+    /// <summary>
+    /// Batched path only: minimum number of storage-writing accounts before independent storage tries are hashed on
+    /// several cores instead of sequentially. Below it the calling thread does all storage tries in order.
+    /// </summary>
+    internal const int DefaultStorageTrieParallelThreshold = 8;
+
+    private readonly ITrieStore _trieStore;
+    private readonly ILogManager _logManager;
+    private readonly int _storageTrieParallelThreshold;
+
+    /// <summary>Creates a calculator over the given (read-only) trie store.</summary>
+    /// <param name="trieStore">The read-only trie store the pre-state is resolved through; it must clone nodes.</param>
+    /// <param name="logManager">Log manager.</param>
+    public BalStateRootCalculator(ITrieStore trieStore, ILogManager logManager)
+        : this(trieStore, logManager, DefaultStorageTrieParallelThreshold)
+    {
+    }
+
+    /// <summary>Creates a calculator with an explicit across-storage-tries parallelization threshold (batched path only).</summary>
+    /// <param name="storageTrieParallelThreshold">Minimum storage-writing account count before storage tries are hashed across cores; injectable so tests can exercise the parallel path on small deltas.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="storageTrieParallelThreshold"/> is less than 1.</exception>
+    internal BalStateRootCalculator(ITrieStore trieStore, ILogManager logManager, int storageTrieParallelThreshold)
+    {
+        ArgumentNullException.ThrowIfNull(trieStore);
+        ArgumentNullException.ThrowIfNull(logManager);
+        ArgumentOutOfRangeException.ThrowIfLessThan(storageTrieParallelThreshold, 1);
+        _trieStore = trieStore;
+        _logManager = logManager;
+        _storageTrieParallelThreshold = storageTrieParallelThreshold;
+    }
 
     /// <summary>Computes the state root that a block would produce given its parent header and BAL delta.</summary>
     /// <param name="parent">The parent block header; its <see cref="BlockHeader.StateRoot"/> is the pre-state root.</param>
@@ -75,7 +104,12 @@ public sealed class BalStateRootCalculator(ITrieStore trieStore, ILogManager log
         }
 
         // PASS B: compose accounts; storage roots only for non-empty survivors.
+        // Scalar composition and the EIP-161 deletion decision stay sequential; only the independent
+        // storage-tree hashing (the expensive part) may run across cores on the batched path.
         Account?[] composed = new Account?[n];
+        Hash256[] storageRoots = new Hash256[n]; // storageRoots[i] valid only for survivors with storage writes
+        int[]? withStorageWrites = null; // indices needing a storage-root computation, filled lazily
+        int withStorageCount = 0;
         for (int i = 0; i < n; i++)
         {
             BalPostStateDelta.AccountDelta ad = accounts[i];
@@ -92,29 +126,42 @@ public sealed class BalStateRootCalculator(ITrieStore trieStore, ILogManager log
                 continue;
             }
 
-            Hash256 storageRoot;
             if (ad.Storage.Length == 0)
             {
-                storageRoot = p?.StorageRoot ?? PatriciaTree.EmptyTreeHash;
+                // No storage writes: keep the pre-state storage root; the account is fully composed now.
+                Hash256 storageRoot = p?.StorageRoot ?? PatriciaTree.EmptyTreeHash;
+                composed[i] = new Account(nonce, balance, storageRoot, codeHash);
             }
             else
             {
-                Hash256 preStorageRoot = p?.StorageRoot ?? PatriciaTree.EmptyTreeHash;
-                StorageTree storageTree = new(_trieStore.GetTrieStore(ad.Address), preStorageRoot, _logManager);
-                foreach (BalPostStateDelta.SlotWrite slot in ad.Storage)
+                // Defer the storage-root computation; compose after it is known (below).
+                composed[i] = new Account(nonce, balance, PatriciaTree.EmptyTreeHash, codeHash);
+                (withStorageWrites ??= new int[n])[withStorageCount++] = i;
+            }
+        }
+
+        // Compute deferred storage roots. Each storage trie is independent (its own address-scoped read-only store),
+        // so on the batched path with enough of them we hash them across cores, largest-first so stragglers start early.
+        if (withStorageCount > 0)
+        {
+            if (hasher is not null && withStorageCount >= _storageTrieParallelThreshold)
+            {
+                ComputeStorageRootsParallel(accounts, pre, withStorageWrites!, withStorageCount, storageRoots);
+            }
+            else
+            {
+                for (int k = 0; k < withStorageCount; k++)
                 {
-                    UInt256 slotKey = slot.Slot;
-                    EvmWord wv = slot.Value; // mutable local: ref needs an lvalue
-                    ReadOnlySpan<byte> value = MemoryMarshal
-                        .CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref wv), 32)
-                        .WithoutLeadingZeros();
-                    storageTree.Set(in slotKey, value.ToArray()); // all-zero -> [0] -> IsZero -> leaf delete
+                    int i = withStorageWrites![k];
+                    storageRoots[i] = ComputeStorageRoot(in accounts[i], pre[i], hasher);
                 }
-                UpdateRoot(storageTree, hasher);
-                storageRoot = storageTree.RootHash;
             }
 
-            composed[i] = new Account(nonce, balance, storageRoot, codeHash);
+            for (int k = 0; k < withStorageCount; k++)
+            {
+                int i = withStorageWrites![k];
+                composed[i] = composed[i]!.WithChangedStorageRoot(storageRoots[i]);
+            }
         }
 
         // PASS C: state-tree writes, then one root computation. Never Commit.
@@ -141,5 +188,72 @@ public sealed class BalStateRootCalculator(ITrieStore trieStore, ILogManager log
         {
             BatchedTrieCommitter.UpdateRootHashBatched(tree, hasher);
         }
+    }
+
+    /// <summary>Builds account <paramref name="ad"/>'s storage tree from its post-block slot writes and returns its root.</summary>
+    private Hash256 ComputeStorageRoot(in BalPostStateDelta.AccountDelta ad, Account? pre, IKeccakBatchHasher? hasher)
+    {
+        Hash256 preStorageRoot = pre?.StorageRoot ?? PatriciaTree.EmptyTreeHash;
+        StorageTree storageTree = new(_trieStore.GetTrieStore(ad.Address), preStorageRoot, _logManager);
+        foreach (BalPostStateDelta.SlotWrite slot in ad.Storage)
+        {
+            UInt256 slotKey = slot.Slot;
+            EvmWord wv = slot.Value; // mutable local: ref needs an lvalue
+            ReadOnlySpan<byte> value = MemoryMarshal
+                .CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref wv), 32)
+                .WithoutLeadingZeros();
+            storageTree.Set(in slotKey, value.ToArray()); // all-zero -> [0] -> IsZero -> leaf delete
+        }
+        UpdateRoot(storageTree, hasher);
+        return storageTree.RootHash;
+    }
+
+    /// <summary>
+    /// Computes the deferred storage roots concurrently, one independent storage tree per work item, largest-first.
+    /// </summary>
+    /// <remarks>
+    /// Thread-safety rests on two facts, NOT on per-reader node cloning (which does not hold on every backend):
+    /// <list type="number">
+    /// <item>Each storage tree is an independent <see cref="StorageTree"/> over its own address-scoped read-only store,
+    /// so distinct tries never resolve the same node. <see cref="StorageTree.Set"/> is copy-on-write on sealed nodes
+    /// (<see cref="PatriciaTree"/>), and <c>BatchedTrieCommitter</c> descends only via <c>TryGetDirtyChild</c>, so it
+    /// only ever writes <c>Keccak</c>/<c>FullRlp</c> into freshly created dirty nodes - clean nodes are read-only during
+    /// hashing. The halfpath read-only store still hands each reader an isolated node (cloned when cached, rebuilt from
+    /// disk otherwise); the flat read-only store returns the SHARED snapshot node, which is safe precisely because it is
+    /// clean and never collected for a <c>Keccak</c>/<c>FullRlp</c> write. The flat concurrent-read path is
+    /// verified-by-review, not exercised by this suite (no flat test infrastructure is built here).</item>
+    /// <item>The <c>BeginScope</c> opened before this call is only read through concurrently; each worker writes only
+    /// its own <c>storageRoots[i]</c> slot.</item>
+    /// </list>
+    /// The caller's hasher is deliberately NOT threaded into the inner tries: with a parallel hasher that would nest
+    /// <see cref="ParallelUnbalancedWork"/> inside <see cref="ParallelUnbalancedWork"/> (reentrancy-safe but
+    /// oversubscribing cores). The across-tries dimension already saturates cores, so inner tries use one shared
+    /// stateless per-message hasher. Work items are ordered by slot-write count so the longest tries start first,
+    /// matching <c>PersistentStorageProvider</c>'s parallel commit.
+    /// </remarks>
+    private void ComputeStorageRootsParallel(
+        BalPostStateDelta.AccountDelta[] accounts,
+        Account?[] pre,
+        int[] withStorageWrites,
+        int withStorageCount,
+        Hash256[] storageRoots)
+    {
+        // Largest-first: copy the indices and sort by descending slot-write count so long tries do not straggle.
+        int[] order = new int[withStorageCount];
+        Array.Copy(withStorageWrites, order, withStorageCount);
+        Array.Sort(order, (a, b) => accounts[b].Storage.Length.CompareTo(accounts[a].Storage.Length));
+
+        // Shared stateless inner hasher: avoids nesting a parallel hasher inside this parallel region.
+        IKeccakBatchHasher innerHasher = new PerMessageKeccakBatchHasher();
+
+        ParallelUnbalancedWork.For(
+            0,
+            withStorageCount,
+            Nethermind.Core.Cpu.RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            w =>
+            {
+                int i = order[w];
+                storageRoots[i] = ComputeStorageRoot(in accounts[i], pre[i], innerHasher);
+            });
     }
 }
