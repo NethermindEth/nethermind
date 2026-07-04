@@ -83,13 +83,6 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
 
-        /// <summary>
-        /// Inserts a disconnected block assembled from a decoded header and a raw RLP body,
-        /// writing the body bytes to the store without decoding transactions.
-        /// </summary>
-        AddBlockResult Insert(BlockHeader header, RlpBlockBody rawBody, BlockTreeInsertBlockOptions insertBlockOptions, WriteFlags bodiesWriteFlags) =>
-            Insert(new Block(header, rawBody.DetachDecoded()), insertBlockOptions, bodiesWriteFlags: bodiesWriteFlags);
-
         void UpdateHeadBlock(Hash256 blockHash);
 
         void NewOldestBlock(ulong oldestBlock);

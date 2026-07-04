@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
@@ -80,6 +81,7 @@ public class BodiesSyncFeedTests
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
+            new BlockStore(_blocksDb),
             CreateBlockValidator(),
             _syncPointers,
             _syncPeerPool,

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -44,6 +45,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ulong _flushDbInterval; // About every 10GB on mainnet
 
         private readonly IBlockTree _blockTree;
+        private readonly IBlockStore _blockStore;
         private readonly IBlockValidator _blockValidator;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
@@ -64,6 +66,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
+            IBlockStore blockStore,
             IBlockValidator blockValidator,
             ISyncPointers syncPointers,
             ISyncPeerPool syncPeerPool,
@@ -77,6 +80,7 @@ namespace Nethermind.Synchronization.FastBlocks
             : base(metadataDb, specProvider, logManager.GetClassLogger<BodiesSyncFeed>())
         {
             _blockTree = blockTree;
+            _blockStore = blockStore;
             _blockValidator = blockValidator;
             _syncPointers = syncPointers;
             _syncPeerPool = syncPeerPool;
@@ -298,7 +302,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void InsertOneBlock(BlockHeader header, RlpBlockBody rawBody)
         {
-            _blockTree.Insert(header, rawBody, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, WriteFlags.DisableWAL);
+            // Straight to the block store: the headers phase already indexed hash->number via
+            // HeaderStore.Insert, and raw p2p bodies carry no BAL, so IBlockTree.Insert adds nothing here.
+            _blockStore.Insert(header, rawBody, WriteFlags.DisableWAL);
             _syncStatusList.MarkInserted(header.Number);
         }
 
