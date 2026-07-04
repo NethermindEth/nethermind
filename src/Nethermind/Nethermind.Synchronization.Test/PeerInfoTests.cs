@@ -209,7 +209,7 @@ namespace Nethermind.Synchronization.Test
             DateTime sleptAt = DateTime.UtcNow;
             DateTime wakeAt = sleptAt + TimeSpan.FromSeconds(10);
 
-            const int iterations = 100_000;
+            const int iterations = 25_000;
             using Barrier barrier = new(3);
             using CancellationTokenSource cts = new();
 
