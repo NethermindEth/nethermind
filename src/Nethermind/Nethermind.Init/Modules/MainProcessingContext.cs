@@ -30,7 +30,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
         IProcessExitSource processExitSource,
-        ILogManager logManager)
+        ILogManager logManager,
+        IPersistedStateSource? persistedStateSource = null)
     {
 
         IWorldStateScopeProvider worldState = worldStateManager.GlobalWorldState;
@@ -62,7 +63,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                             StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                             DumpOptions = initConfig.AutoDump
                         },
-                        processingStats)
+                        processingStats,
+                        persistedStateSource)
                     {
                         IsMainProcessor = true // Manual construction because of this flag
                     })

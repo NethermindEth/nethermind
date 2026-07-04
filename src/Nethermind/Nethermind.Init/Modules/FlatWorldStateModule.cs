@@ -17,6 +17,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
+using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
@@ -69,6 +70,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
             .AddSingleton<FlatTreeSyncStore>()
             .AddSingleton<FlatFullStateFinder>()
+            .AddSingleton<IPersistedStateSource, FlatPersistedStateSource>()
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)

@@ -43,6 +43,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBranchProcessor _branchProcessor;
     private readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IStateReader _stateReader;
+    private readonly IPersistedStateSource? _persistedStateSource;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
@@ -101,7 +102,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         IStateReader stateReader,
         ILogManager logManager,
         Options options,
-        IProcessingStats processingStats)
+        IProcessingStats processingStats,
+        IPersistedStateSource? persistedStateSource = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
@@ -109,6 +111,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _recoveryStep = recoveryStep;
         _stateReader = stateReader;
         _options = options;
+        _persistedStateSource = persistedStateSource;
 
         _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
@@ -475,6 +478,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+
+        if (!readonlyChain
+            && !options.ContainsFlag(ProcessingOptions.ForceProcessing)
+            && !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead)
+            && TrySkipBlockBelowPersistedState(suggestedBlock))
+        {
+            return suggestedBlock;
+        }
+
         if (!readonlyChain) _stats.CaptureStartStats();
 
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
@@ -532,6 +544,48 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         return lastProcessed;
+    }
+
+    /// <summary>
+    /// After an unclean shutdown a state backend that cannot roll back (flat) can hold persisted state ahead
+    /// of the block tree head. The gap blocks must not be re-executed: their post-state is already folded into
+    /// the persisted state and no snapshot exists for their parents. Skip them, and once the suggested block
+    /// matches the persisted state id (number and state root), fast-forward the head onto it.
+    /// </summary>
+    private bool TrySkipBlockBelowPersistedState(Block suggestedBlock)
+    {
+        if (_persistedStateSource is null
+            || !_persistedStateSource.TryGetPersistedState(out ulong persistedNumber, out Hash256 persistedRoot))
+        {
+            return false;
+        }
+
+        Block? head = _blockTree.Head;
+        if (head is null || head.Number >= persistedNumber || suggestedBlock.Number > persistedNumber)
+        {
+            return false;
+        }
+
+        if (suggestedBlock.Number < persistedNumber)
+        {
+            if (_logger.IsInfo) _logger.Info($"Skipping re-execution of {suggestedBlock.ToString(Block.Format.Short)}: its post-state is already part of persisted state {persistedNumber}.");
+            return true;
+        }
+
+        if (suggestedBlock.StateRoot != persistedRoot)
+        {
+            if (_logger.IsError) _logger.Error($"Persisted state {persistedNumber} has root {persistedRoot} but suggested block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} expects {suggestedBlock.StateRoot}; persisted state is on a different fork.");
+            return false;
+        }
+
+        if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, suggestedBlock))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not fast-forward head to persisted state block {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing.");
+            return true;
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Fast-forwarded head to {suggestedBlock.ToString(Block.Format.Short)} matching the persisted state.");
+        return true;
     }
 
     public bool IsProcessingBlocks(ulong? maxProcessingInterval) =>
