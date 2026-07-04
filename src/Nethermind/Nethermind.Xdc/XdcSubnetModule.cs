@@ -4,7 +4,6 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -34,10 +33,8 @@ public class XdcSubnetModule : XdcModule
             .AddSingleton<IPenaltyHandler, SubnetPenaltyHandler>();
 
         builder.RegisterType<SubnetSnapshotManager>().As<ISubnetSnapshotManager>().WithAttributeFiltering().SingleInstance();
+        builder.Bind<IRewardMasternodeSelector, SubnetXdcRewardMasternodeSelector>();
     }
 
     protected override XdcChainSpecLoader CreateChainSpecLoader() => new XdcSubnetChainSpecLoader();
-
-    protected override void RegisterRewardCalculatorSource(ContainerBuilder builder) =>
-        builder.AddDecorator<IRewardCalculatorSource, XdcSubnetRewardCalculatorSource>();
 }

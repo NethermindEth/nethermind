@@ -140,6 +140,15 @@ public class XdcModule : Module
 
             .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>();
 
+        builder.AddSingleton<IRewardMasternodeSelector, MainXdcRewardMasternodeSelector>();
+
+        builder
+            .RegisterType<XdcReadOnlyRewardProcessingModule>()
+            .As<IBlockValidationModule>()
+            .SingleInstance();
+
+        builder.AddSingleton<IBlockProducerEnvFactory, XdcBlockProducerEnvFactory>();
+
         RegisterRewardCalculatorSource(builder);
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();

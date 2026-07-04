@@ -31,7 +31,8 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     IMintedRecordContract mintedRecordContract,
     ISigningTxCache signingTxCache,
     ITransactionProcessor transactionProcessor,
-    IRewardsStore rewardsStore) : IRewardCalculator
+    IRewardsStore rewardsStore,
+    IRewardMasternodeSelector rewardMasternodeSelector) : IRewardCalculator
 {
     private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
@@ -42,6 +43,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     private readonly ISigningTxCache _signingTxCache = signingTxCache;
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
     private readonly IRewardsStore _rewardsStore = rewardsStore;
+    private readonly IRewardMasternodeSelector _rewardMasternodeSelector = rewardMasternodeSelector;
 
     /// <summary>
     /// Calculates block rewards according to XDPoS consensus rules.
@@ -96,7 +98,13 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             AddDistributedRewards(foundationWalletAddr, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
             AddDistributedRewards(foundationWalletAddr, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
             AddDistributedRewards(foundationWalletAddr, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+        }
 
+        if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
+
+        BlockReward[] finalRewards = rewards.ToArray();
+        if (spec.IsTipUpgradeRewardEnabled)
+        {
             _mintedRecordContract.UpdateAccounting(
                 _transactionProcessor,
                 xdcHeader,
@@ -105,9 +113,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                 burnedInOneEpoch);
         }
 
-        if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
-
-        BlockReward[] finalRewards = rewards.ToArray();
         _rewardsStore.SaveEpochRewards(xdcHeader.Number, finalRewards);
         return finalRewards;
     }
@@ -216,15 +221,8 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
     }
 
-    protected internal virtual HashSet<Address> GetRewardMasternodes(XdcBlockHeader checkpointHeader, IXdcReleaseSpec spec)
-    {
-        if (checkpointHeader.Number <= spec.SwitchBlock)
-        {
-            return [.. checkpointHeader.ExtraData.ParseV1Masternodes()];
-        }
-
-        return [.. checkpointHeader.ValidatorsAddress!];
-    }
+    protected internal HashSet<Address> GetRewardMasternodes(XdcBlockHeader checkpointHeader, IXdcReleaseSpec spec) =>
+        _rewardMasternodeSelector.GetRewardMasternodes(checkpointHeader, spec);
 
     private Address[] GetCandidatesByStakeForReward(XdcBlockHeader checkpointHeader)
     {
