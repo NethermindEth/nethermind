@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Sync;
@@ -14,51 +13,34 @@ namespace Nethermind.State.Flat.Test.Sync;
 [TestFixture]
 public class FlatFullStateFinderTests
 {
-    [Test]
-    public void Reports_persisted_state_when_at_or_below_best_header()
+    [TestCase(100ul, 150ul, 100ul)]
+    [TestCase(164ul, 100ul, 100ul)]
+    [TestCase(100ul, null, 0ul)]
+    public void FindBestFullState_WhenStatePersisted_ClampsToBestSuggestedHeader(ulong persistedNumber, ulong? bestHeaderNumber, ulong expected)
     {
-        FlatFullStateFinder finder = CreateFinder(persistedBlockNumber: 100, bestHeaderNumber: 150);
+        FlatFullStateFinder finder = CreateFinder(new StateId(persistedNumber, TestItem.KeccakA), bestHeaderNumber);
 
-        Assert.That(finder.FindBestFullState(), Is.EqualTo(100UL));
+        Assert.That(finder.FindBestFullState(), Is.EqualTo(expected));
     }
 
     [Test]
-    public void Clamps_persisted_state_to_best_header_when_ahead()
+    public void FindBestFullState_BeforeGenesisStatePersisted_ReturnsZero()
     {
-        FlatFullStateFinder finder = CreateFinder(persistedBlockNumber: 164, bestHeaderNumber: 100);
-
-        Assert.That(finder.FindBestFullState(), Is.EqualTo(100UL));
-    }
-
-    [Test]
-    public void Reports_zero_before_genesis_state_is_persisted()
-    {
-        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
-        persistenceManager.GetCurrentPersistedStateId().Returns(StateId.PreGenesis);
-
-        FlatFullStateFinder finder = new(persistenceManager, Substitute.For<IBlockTree>(), LimboLogs.Instance);
+        FlatFullStateFinder finder = CreateFinder(StateId.PreGenesis, bestHeaderNumber: 100);
 
         Assert.That(finder.FindBestFullState(), Is.EqualTo(0UL));
     }
 
-    [Test]
-    public void Clamps_to_zero_when_no_header_is_suggested()
+    private static FlatFullStateFinder CreateFinder(StateId persisted, ulong? bestHeaderNumber)
     {
         IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
-        persistenceManager.GetCurrentPersistedStateId().Returns(new StateId(100, TestItem.KeccakA));
-
-        FlatFullStateFinder finder = new(persistenceManager, Substitute.For<IBlockTree>(), LimboLogs.Instance);
-
-        Assert.That(finder.FindBestFullState(), Is.EqualTo(0UL));
-    }
-
-    private static FlatFullStateFinder CreateFinder(ulong persistedBlockNumber, ulong bestHeaderNumber)
-    {
-        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
-        persistenceManager.GetCurrentPersistedStateId().Returns(new StateId(persistedBlockNumber, TestItem.KeccakA));
+        persistenceManager.GetCurrentPersistedStateId().Returns(persisted);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(bestHeaderNumber).TestObject);
+        if (bestHeaderNumber is not null)
+        {
+            blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(bestHeaderNumber.Value).TestObject);
+        }
 
         return new FlatFullStateFinder(persistenceManager, blockTree, LimboLogs.Instance);
     }
