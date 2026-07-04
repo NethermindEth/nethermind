@@ -91,18 +91,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockProducer);
-
-        IEngineRpcModule engineRpcModule = _api.Context.Resolve<IEngineRpcModule>();
-
-        IOptimismSignalSuperchainV1Handler signalHandler = new LoggingOptimismSignalSuperchainV1Handler(
-            OptimismConstants.CurrentProtocolVersion,
-            _api.LogManager);
-
-        IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule, signalHandler);
-
-        _api.RpcModuleProvider.RegisterSingle(opEngine);
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.IpResolver);
@@ -110,6 +98,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         IOptimismConfig config = _api.Config<IOptimismConfig>();
         if (config.ClEnabled)
         {
+            ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
             ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
             ArgumentNullException.ThrowIfNull(config.L1EthApiEndpoint);
 
@@ -131,7 +120,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             IL1ConfigValidator l1ConfigValidator = new L1ConfigValidator(ethApi, _api.LogManager);
 
             ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(clParameters.SystemConfigProxy);
-            IL2Api l2Api = new L2Api(_api.Context.Resolve<IRpcModuleFactory<IOptimismEthRpcModule>>().Create(), opEngine, systemConfigDeriver, _api.LogManager);
+            IL2Api l2Api = new L2Api(_api.Context.Resolve<IRpcModuleFactory<IOptimismEthRpcModule>>().Create(), _api.Context.Resolve<IOptimismEngineRpcModule>(), systemConfigDeriver, _api.LogManager);
             IExecutionEngineManager executionEngineManager = new ExecutionEngineManager(l2Api, _api.LogManager);
 
             _cl = new OptimismCL(
@@ -231,6 +220,12 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<OptimismEthModuleFactory>()
                 .Bind<IRpcModuleFactory<IOptimismEthRpcModule>, OptimismEthModuleFactory>()
                 .Bind<IRpcModuleFactory<IEthRpcModule>, OptimismEthModuleFactory>()
+
+            // Engine RPC module: Optimism decorator over the base IEngineRpcModule from BaseMergePluginModule.
+            // Registered after BaseMergePluginModule so its [RpcModule(ModuleType.Engine)] methods win (last-wins).
+            .AddSingleton<IOptimismSignalSuperchainV1Handler, ILogManager>(logManager =>
+                new LoggingOptimismSignalSuperchainV1Handler(OptimismConstants.CurrentProtocolVersion, logManager))
+            .RegisterSingletonJsonRpcModule<IOptimismEngineRpcModule, OptimismEngineRpcModule>()
             ;
 
     }
