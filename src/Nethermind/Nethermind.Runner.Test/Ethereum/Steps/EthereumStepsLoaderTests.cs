@@ -59,7 +59,6 @@ public class EthereumStepsLoaderTests
     public void DoubleCheck_PluginsSteps()
     {
         CheckPlugin(new AuRaPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters()) }));
-        // ClEnabled so the conditionally-registered StartOptimismCl step is present and matches the assembly scan.
         CheckPlugin(new OptimismPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters()) }, new OptimismConfig() { ClEnabled = true }));
         CheckPlugin(new TaikoPlugin(new ChainSpec()));
         CheckPlugin(new AuRaMergePlugin(new ChainSpec(), new MergeConfig()));
