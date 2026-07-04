@@ -22,7 +22,6 @@ public class FlatDbConfig : IFlatDbConfig
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public int WarmReadConcurrency { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
-    public int CarryForwardCacheEntries { get; set; } = 131072;
     public long CompactionOffset { get; set; } = -1;
     public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
 }

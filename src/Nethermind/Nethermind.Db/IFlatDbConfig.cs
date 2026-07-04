@@ -10,13 +10,6 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
     ulong BlockCacheSizeBudget { get; set; }
 
-    [ConfigItem(
-        Description = "Max entries per kind (accounts, slots) retained by the carry-forward flat read cache, " +
-                      "which serves hot state across heads without a database roundtrip. Roughly 150-200 bytes " +
-                      "per entry.",
-        DefaultValue = "131072")]
-    int CarryForwardCacheEntries { get; set; }
-
     [ConfigItem(Description = "Fixed compaction schedule offset in blocks. When 0 or greater, overrides the per-instance offset in the metadata DB, which is neither read nor updated. Only the value modulo CompactSize matters. -1 to use the stored offset, generating a random one when absent.", DefaultValue = "-1")]
     long CompactionOffset { get; set; }
 
