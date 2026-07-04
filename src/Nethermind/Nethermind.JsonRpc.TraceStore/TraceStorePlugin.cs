@@ -58,7 +58,6 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
                         ctx.Resolve<ITraceStoreConfig>().DeserializationParallelization))
                 .AddSingleton<IMainProcessingModule, TraceStoreMainProcessingModule>();
 
-            // Instantiate the pruner when the block tree comes up so it trims old traces during processing.
             if (traceStoreConfig.BlocksToKeep != 0)
                 builder.ResolveOnServiceActivation<TraceStorePruner, IBlockTree>();
         }
