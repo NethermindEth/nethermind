@@ -172,9 +172,11 @@ public sealed unsafe class HistorySegment : IDisposable
     }
 
     /// <summary>
-    /// Writes an immutable segment for <paramref name="entries"/> (which MUST be sorted ascending by key and share a
-    /// fixed <paramref name="keyLen"/>) covering <c>[fromBlock, toBlock]</c>.
+    /// Writes an immutable segment for <paramref name="entries"/>.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="entries"/> MUST be sorted ascending by key and share a fixed <paramref name="keyLen"/>) covering <c>[fromBlock, toBlock]</c>.
+    /// </remarks>
     public static void Write(string path, int keyLen, ulong fromBlock, ulong toBlock, IReadOnlyList<HistoryChangeEntry> entries)
     {
         int k = entries.Count;

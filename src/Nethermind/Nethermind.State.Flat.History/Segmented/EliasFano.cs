@@ -10,15 +10,12 @@ using System.Runtime.Intrinsics.X86;
 namespace Nethermind.State.Flat.History.Segmented;
 
 /// <summary>
-/// Elias-Fano encoding of a non-decreasing <see cref="ulong"/> sequence, the index half of the Approach-2 split
-/// index/values layout. For an entity that changed at blocks <c>b0 - b1 - … - b(n-1)</c> the blob stores the
-/// list in <c>~n·(⌈log2(u/n)⌉ + 2)</c> bits and answers <see cref="Encode"/> — the largest block ≤ a query and,
-/// crucially, its <b>rank i</b>, which is the position of the matching value in the entity's packed value run.
+/// Elias-Fano encoding of a non-decreasing <see cref="ulong"/> sequence index/values layout.
 /// </summary>
 /// <remarks>
 /// Layout: each value splits into its low <c>L = ⌊log2(u/n)⌋</c> bits (packed contiguously) and its high bits (a
-/// bucket bitmap where element i sets bit <c>(value_i &gt;&gt; L) + i</c>, giving n ones and ≈n zeros). Reads use
-/// broadword <c>select</c> over the bitmap. Blob bytes:
+/// bucket bitmap where an element <c>i</c> sets bit <c>(value_i &gt;&gt; L) + i</c>, giving n ones and ~n zeros). Reads use
+/// broadword <c>select</c> over the bitmap.
 /// <code>
 /// [0]      byte   L
 /// [1]      byte   reserved (0)
@@ -32,15 +29,12 @@ public static class EliasFano
 {
     private const int HeaderBytes = 14;
 
-    /// <summary>Number of bytes <see cref="Encode"/> will write for <paramref name="values"/>.</summary>
     public static int GetEncodedLength(scoped ReadOnlySpan<ulong> values)
     {
         Layout layout = Layout.For(values);
         return HeaderBytes + (layout.LowWords + layout.HighWords) * sizeof(ulong);
     }
 
-    /// <summary>Encodes the non-decreasing <paramref name="values"/> into <paramref name="destination"/>
-    /// (sized via <see cref="GetEncodedLength"/>) and returns the number of bytes written.</summary>
     public static int Encode(scoped ReadOnlySpan<ulong> values, Span<byte> destination)
     {
         Layout layout = Layout.For(values);
@@ -55,7 +49,6 @@ public static class EliasFano
 
         if (n == 0) return total;
 
-        // Word-addressed scratch, rented since sealing is a cold path and sequences can be large.
         ulong[] scratch = ArrayPool<ulong>.Shared.Rent(layout.LowWords + layout.HighWords);
         try
         {
@@ -69,7 +62,7 @@ public static class EliasFano
             for (int i = 0; i < n; i++)
             {
                 ulong v = values[i];
-                if (l != 0) SetBits(lowWords, (long)i * l, l, v & lowMask);
+                if (l != 0) WriteLow(lowWords, i, l, v & lowMask);
                 int highPos = (int)(v >> l) + i;
                 highWords[highPos >> 6] |= 1UL << (highPos & 63);
             }
@@ -90,16 +83,18 @@ public static class EliasFano
         return total;
     }
 
+    // mask with `l` low bits set
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong LowMask(int l) => l == 0 ? 0UL : l >= 64 ? ~0UL : (1UL << l) - 1;
 
-    // OR `value` (occupying `count` bits) into the word-addressed bit array at absolute bit position `bitPos`.
-    private static void SetBits(Span<ulong> words, long bitPos, int count, ulong value)
+    // writes the `l`-bit low field of element `i` into its packed slot
+    private static void WriteLow(Span<ulong> words, int i, int l, ulong value)
     {
-        int w = (int)(bitPos >> 6);
-        int off = (int)(bitPos & 63);
+        long bit = (long)i * l;
+        int w = (int)(bit >> 6);
+        int off = (int)(bit & 63);
         words[w] |= value << off;
-        if (off + count > 64) words[w + 1] |= value >> (64 - off);
+        if (off + l > 64) words[w + 1] |= value >> (64 - off);
     }
 
     private readonly struct Layout
@@ -133,7 +128,7 @@ public static class EliasFano
         }
     }
 
-    /// <summary>Zero-allocation reader over an encoded blob (e.g. a slice of an mmap'd segment).</summary>
+    /// <summary>Zero-allocation reader over an encoded blob.</summary>
     public readonly ref struct Reader
     {
         private readonly ReadOnlySpan<byte> _lowWords;
@@ -165,7 +160,7 @@ public static class EliasFano
         public ulong this[int i] => ((ulong)(Select1(i) - i) << _l) | ReadLow(i);
 
         /// <summary>
-        /// Largest value ≤ <paramref name="query"/>. Returns its <paramref name="rank"/> (position in the value run)
+        /// The largest value ≤ <paramref name="query"/>. Returns its <paramref name="rank"/> (position in the value run)
         /// and <paramref name="value"/>; <c>false</c> when every value is greater (no predecessor).
         /// </summary>
         public bool Predecessor(ulong query, out int rank, out ulong value)
@@ -227,7 +222,7 @@ public static class EliasFano
             return lo & _lowMask;
         }
 
-        // Position of the k-th set bit (0-based) in the high bitmap.
+        // TODO?: consider a sampled select directory (Vigna/Clark superQ-style jump table) so this is O(1) instead of an O(words) scan
         private int Select1(int k)
         {
             int word = 0;
@@ -242,8 +237,6 @@ public static class EliasFano
             }
         }
 
-        // Position of the k-th zero bit (0-based) in the high bitmap. Bits past the logical length never occur here
-        // because callers only request zeros with index <= (max >> L), all of which lie inside the bitmap.
         private int Select0(int k)
         {
             int word = 0;
@@ -258,23 +251,23 @@ public static class EliasFano
             }
         }
 
+        // Index of the r-th set bit (0-based) within a single word; the word must hold more than r set bits.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int SelectInWord(ulong word, int r)
+        {
+            if (Bmi2.X64.IsSupported)
+                return BitOperations.TrailingZeroCount(Bmi2.X64.ParallelBitDeposit(1UL << r, word));
+
+            for (int c = 0; ; c++)
+            {
+                int tz = BitOperations.TrailingZeroCount(word);
+                if (c == r) return tz;
+                word &= word - 1;
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong Word(ReadOnlySpan<byte> words, int index) =>
             BinaryPrimitives.ReadUInt64LittleEndian(words[(index * sizeof(ulong))..]);
-    }
-
-    // Index of the r-th set bit (0-based) within a single word; the word must hold more than r set bits.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int SelectInWord(ulong word, int r)
-    {
-        if (Bmi2.X64.IsSupported)
-            return BitOperations.TrailingZeroCount(Bmi2.X64.ParallelBitDeposit(1UL << r, word));
-
-        for (int c = 0; ; c++)
-        {
-            int tz = BitOperations.TrailingZeroCount(word);
-            if (c == r) return tz;
-            word &= word - 1;
-        }
     }
 }
