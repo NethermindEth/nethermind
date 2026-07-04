@@ -10,27 +10,34 @@ namespace Nethermind.State.Flat.History.Segmented;
 /// <summary>
 /// An immutable, memory-mapped Approach-2 segment for one flat domain over a block range. Holds, for each distinct
 /// flat key seen in the range, the sorted set of change-blocks (Elias-Fano encoded) and the matching values packed
-/// in rank order. A read binary-searches the sorted key table, runs <see cref="EliasFano.Reader.Predecessor"/> to
-/// get the rank of the change at/before the query block, then slices that value out of the key's packed run —
-/// no per-change keys are stored.
+/// in rank order. A read first probes an in-file bloom existence filter (see <see cref="MightContain"/>) to reject
+/// absent keys without faulting the key table, then binary-searches the sorted key table, runs
+/// <see cref="EliasFano.Reader.Predecessor"/> to get the rank of the change at/before the query block, then slices
+/// that value out of the key's packed run — no per-change keys are stored.
 /// </summary>
 /// <remarks>
 /// Single-file layout (all little-endian); region offsets are stored in the header and also derivable from the
 /// fixed region order:
 /// <code>
-/// header    80 bytes (magic, version, keyLen, fromBlock, toBlock, entryCount K, region offsets, fileLength)
+/// header    104 bytes (magic, version, keyLen, fromBlock, toBlock, entryCount K, region offsets, fileLength, filter offset/bits/hashes)
 /// keys      K · keyLen                    sorted ascending
 /// efDir     (K+1) · u64                   entity j's EF blob = efData[efDir[j] .. efDir[j+1])
 /// efData    concatenated EF blobs
 /// valDir    (K+1) · u64                   entity j's value run = valData[valDir[j] .. valDir[j+1])
 /// valData   concatenated runs; a run is [(m+1)·u32 value offsets][value bytes], m = change count
+/// filter    ⌈filterBits / 8⌉ bytes        bloom existence filter over the K keys
 /// </code>
 /// </remarks>
 public sealed unsafe class HistorySegment : IDisposable
 {
     private const uint Magic = 0x3153484E; // "NHS1"
-    private const ushort Version = 1;
-    private const int HeaderBytes = 80;
+    private const ushort Version = 2;
+    private const int HeaderBytes = 104;
+
+    // Existence-filter tuning: ~10 bits/key over 7 probes ≈ 1% false-positive rate. A false positive only costs a
+    // wasted key-table binary search (still correct); there are no false negatives, so a present key is never dropped.
+    private const int FilterBitsPerKey = 10;
+    private const int FilterHashes = 7;
 
     private readonly MemoryMappedFile _file;
     private readonly MemoryMappedViewAccessor _view;
@@ -43,6 +50,9 @@ public sealed unsafe class HistorySegment : IDisposable
     private readonly long _efOffset;
     private readonly long _valDirOffset;
     private readonly long _valOffset;
+    private readonly long _filterOffset;
+    private readonly ulong _filterBits;
+    private readonly int _filterK;
 
     public ulong FromBlock { get; }
     public ulong ToBlock { get; }
@@ -71,6 +81,9 @@ public sealed unsafe class HistorySegment : IDisposable
         _efOffset = (long)BinaryPrimitives.ReadUInt64LittleEndian(header[48..]);
         _valDirOffset = (long)BinaryPrimitives.ReadUInt64LittleEndian(header[56..]);
         _valOffset = (long)BinaryPrimitives.ReadUInt64LittleEndian(header[64..]);
+        _filterOffset = (long)BinaryPrimitives.ReadUInt64LittleEndian(header[80..]);
+        _filterBits = BinaryPrimitives.ReadUInt64LittleEndian(header[88..]);
+        _filterK = (int)BinaryPrimitives.ReadUInt32LittleEndian(header[96..]);
     }
 
     /// <summary>
@@ -117,10 +130,10 @@ public sealed unsafe class HistorySegment : IDisposable
         return new HistoryChangeEntry(KeyAt(ordinal).ToArray(), blocks, values);
     }
 
-    // Binary search of the fixed-width, ascending key table.
+    // Binary search of the fixed-width, ascending key table, gated by the bloom filter so an absent key skips it.
     private bool TryFindOrdinal(scoped ReadOnlySpan<byte> flatKey, out int ordinal)
     {
-        if (flatKey.Length != _keyLen)
+        if (flatKey.Length != _keyLen || !MightContain(flatKey))
         {
             ordinal = -1;
             return false;
@@ -136,6 +149,50 @@ public sealed unsafe class HistorySegment : IDisposable
         }
         ordinal = -1;
         return false;
+    }
+
+    // Bloom probe: false => the key is definitely absent (skip the key table); true => present or a rare false positive
+    // (the binary search then confirms). Index math MUST mirror the filter build in <see cref="Write"/>.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool MightContain(scoped ReadOnlySpan<byte> flatKey)
+    {
+        if (_filterK == 0) return true; // no filter (e.g. empty segment) — never reject
+        (uint a, uint b) = HashPair(flatKey);
+        for (int i = 0; i < _filterK; i++)
+        {
+            uint bit = BitIndex(a, b, i, _filterBits);
+            if ((_base[_filterOffset + (bit >> 3)] & (1 << (int)(bit & 7))) == 0) return false;
+        }
+        return true;
+    }
+
+    // Two independent 32-bit hashes for Kirsch–Mitzenmacher double hashing; `b` is forced odd so the probe sequence
+    // visits distinct bits.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (uint a, uint b) HashPair(scoped ReadOnlySpan<byte> key)
+    {
+        ulong h = Hash64(key);
+        return ((uint)h, (uint)(h >> 32) | 1u);
+    }
+
+    // i-th bit position in a `mBits`-wide filter, via Lemire fastrange (no modulo, exact sizing).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint BitIndex(uint a, uint b, int i, ulong mBits) =>
+        (uint)(((ulong)(a + (uint)i * b) * mBits) >> 32);
+
+    // FNV-1a over the key bytes with a murmur3 finalizer; deterministic across processes (the filter is persisted).
+    private static ulong Hash64(scoped ReadOnlySpan<byte> key)
+    {
+        ulong h = 14695981039346656037UL;
+        for (int i = 0; i < key.Length; i++)
+        {
+            h ^= key[i];
+            h *= 1099511628211UL;
+        }
+        h ^= h >> 33; h *= 0xff51afd7ed558ccdUL;
+        h ^= h >> 33; h *= 0xc4ceb9fe1a85ec53UL;
+        h ^= h >> 33;
+        return h;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -193,12 +250,16 @@ public sealed unsafe class HistorySegment : IDisposable
             valTotal += valRuns[j].Length;
         }
 
+        ulong filterBits = (ulong)Math.Max(64L, (long)k * FilterBitsPerKey);
+        byte[] filter = BuildFilter(entries, filterBits);
+
         long keysOffset = HeaderBytes;
         long efDirOffset = keysOffset + (long)k * keyLen;
         long efOffset = efDirOffset + (long)(k + 1) * sizeof(ulong);
         long valDirOffset = efOffset + efTotal;
         long valOffset = valDirOffset + (long)(k + 1) * sizeof(ulong);
-        long fileLength = valOffset + valTotal;
+        long filterOffset = valOffset + valTotal;
+        long fileLength = filterOffset + filter.Length;
 
         using FileStream stream = new(path, FileMode.Create, FileAccess.Write, FileShare.None);
 
@@ -216,6 +277,9 @@ public sealed unsafe class HistorySegment : IDisposable
         BinaryPrimitives.WriteUInt64LittleEndian(header[56..], (ulong)valDirOffset);
         BinaryPrimitives.WriteUInt64LittleEndian(header[64..], (ulong)valOffset);
         BinaryPrimitives.WriteUInt64LittleEndian(header[72..], (ulong)fileLength);
+        BinaryPrimitives.WriteUInt64LittleEndian(header[80..], (ulong)filterOffset);
+        BinaryPrimitives.WriteUInt64LittleEndian(header[88..], filterBits);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[96..], (uint)FilterHashes);
         stream.Write(header);
 
         for (int j = 0; j < k; j++) stream.Write(entries[j].Key);
@@ -223,6 +287,22 @@ public sealed unsafe class HistorySegment : IDisposable
         for (int j = 0; j < k; j++) stream.Write(efBlobs[j]);
         WriteDirectory(stream, valRuns);
         for (int j = 0; j < k; j++) stream.Write(valRuns[j]);
+        stream.Write(filter);
+    }
+
+    private static byte[] BuildFilter(IReadOnlyList<HistoryChangeEntry> entries, ulong filterBits)
+    {
+        byte[] filter = new byte[(int)((filterBits + 7) / 8)];
+        for (int j = 0; j < entries.Count; j++)
+        {
+            (uint a, uint b) = HashPair(entries[j].Key);
+            for (int i = 0; i < FilterHashes; i++)
+            {
+                uint bit = BitIndex(a, b, i, filterBits);
+                filter[bit >> 3] |= (byte)(1 << (int)(bit & 7));
+            }
+        }
+        return filter;
     }
 
     private static void WriteDirectory(Stream stream, byte[][] blobs)

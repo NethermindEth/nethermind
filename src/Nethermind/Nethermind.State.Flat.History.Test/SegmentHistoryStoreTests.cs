@@ -123,6 +123,40 @@ public class SegmentHistoryStoreTests
     }
 
     [Test]
+    public void Existence_filter_keeps_present_and_absent_key_reads_correct()
+    {
+        const int keyCount = 256;
+        using SegmentHistoryStore store = NewStore(stepBlocks: 8, mergeFanout: 2, maxSegmentBlocks: 64);
+
+        ulong block = 1;
+        for (int id = 0; id < keyCount; id++, block++)
+        {
+            store.RecordChange(block, MakeKey(id), [(byte)id]);
+            store.CompleteBlock(block);
+        }
+        store.Flush();
+
+        Span<byte> buffer = stackalloc byte[64];
+
+        // Every present key must resolve — a broken filter would drop some (false negative).
+        for (int id = 0; id < keyCount; id++)
+        {
+            int written = store.TryGetAt(block, MakeKey(id), buffer, out _);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(written, Is.EqualTo(1), $"present key {id}");
+                Assert.That(buffer[0], Is.EqualTo((byte)id), $"value of key {id}");
+            }
+        }
+
+        // Absent keys: filter false positives are harmless — they fall through to a correct miss.
+        for (int id = keyCount; id < keyCount + 128; id++)
+            Assert.That(store.TryGetAt(block, MakeKey(id), buffer, out _), Is.EqualTo(-1), $"absent key {id}");
+    }
+
+    private static byte[] MakeKey(int id) => [(byte)(id >> 8), (byte)id, 0xAB, 0xCD];
+
+    [Test]
     public void Serves_reads_from_the_unsealed_buffer()
     {
         using SegmentHistoryStore store = NewStore(stepBlocks: 1000); // never seals
