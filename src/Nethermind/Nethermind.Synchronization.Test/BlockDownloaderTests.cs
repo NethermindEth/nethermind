@@ -882,6 +882,8 @@ public partial class BlockDownloaderTests
 
     private record Context
     {
+        private static readonly TimeSpan SyncUntilNoRequestTimeout = TimeSpan.FromMinutes(2);
+
         private readonly ConcurrentDictionary<Hash256, bool> _wasSuggested = new();
         public ActivatedSyncFeed<BlocksRequest> Feed => (ActivatedSyncFeed<BlocksRequest>)FullSyncFeedComponent.Feed;
         public ResponseBuilder ResponseBuilder { get; init; }
@@ -933,8 +935,6 @@ public partial class BlockDownloaderTests
                 .When((p) => p.Free(peerAllocation))
                 .Do((c) => peerSemaphore.Release());
         }
-
-        private static readonly TimeSpan SyncUntilNoRequestTimeout = TimeSpan.FromMinutes(2);
 
         public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)
         {
