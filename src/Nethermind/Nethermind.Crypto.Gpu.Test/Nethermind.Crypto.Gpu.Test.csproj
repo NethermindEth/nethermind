@@ -8,7 +8,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Crypto.Gpu\Nethermind.Crypto.Gpu.csproj" />
+    <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
   </ItemGroup>
 
 </Project>

@@ -17,9 +17,10 @@ namespace Nethermind.Core.Crypto;
 /// repeatedly disrupt hashing, so every subsequent batch (of any size) is served by the CPU backend. The failing batch
 /// itself is transparently re-hashed on the CPU backend, so a fault is never observable to the caller as a wrong result
 /// or a thrown exception. Thread-safe: the disabled flag is a single volatile write; both backends must be thread-safe
-/// for concurrent <see cref="HashBatch"/> calls to be safe.
+/// for concurrent <see cref="HashBatch"/> calls to be safe. Owns its backends: disposing the router disposes any
+/// disposable backend (the GPU backend holds native accelerator resources).
 /// </remarks>
-public sealed class ThresholdKeccakBatchHasher : IKeccakBatchHasher
+public sealed class ThresholdKeccakBatchHasher : IKeccakBatchHasher, IDisposable
 {
     private readonly IKeccakBatchHasher _fastBackend;
     private readonly IKeccakBatchHasher _cpuFallback;
@@ -74,6 +75,13 @@ public sealed class ThresholdKeccakBatchHasher : IKeccakBatchHasher
         }
 
         _cpuFallback.HashBatch(flat, offsets, outputs);
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        (_fastBackend as IDisposable)?.Dispose();
+        (_cpuFallback as IDisposable)?.Dispose();
     }
 
     // Same contract the batch backends enforce: equal output length, last offset == flat length, monotonic in-bounds offsets.

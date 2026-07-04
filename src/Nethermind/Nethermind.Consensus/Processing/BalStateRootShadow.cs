@@ -30,8 +30,10 @@ namespace Nethermind.Consensus.Processing;
 /// consecutive errors self-disables the lane. Each lane creates and disposes its OWN read-only trie store: the
 /// flat read-only store keeps per-<c>BeginScope</c> snapshot state, so a single shared store would let
 /// concurrent lanes race scope setup/teardown (use-after-dispose). It never mutates Lane A's tree.
+/// Owns the injected batch hasher: container teardown disposes the shadow, which disposes a disposable
+/// hasher chain (the GPU backend holds native accelerator resources).
 /// </remarks>
-public sealed class BalStateRootShadow
+public sealed class BalStateRootShadow : IDisposable
 {
     private const int MaxInFlight = 4;
     private const int MaxConsecutiveErrors = 5;
@@ -39,6 +41,8 @@ public sealed class BalStateRootShadow
     private readonly Func<IReadOnlyTrieStore> _trieStoreFactory;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
+    private readonly IKeccakBatchHasher? _batchHasher;
+    private readonly string _gpuCapability;
 
     /// <summary>Shared no-op result returned when the lane does not dispatch, used for reference identity in <see cref="Compare"/>.</summary>
     private static readonly Task<Hash256?> s_noWork = Task.FromResult<Hash256?>(null);
@@ -52,22 +56,41 @@ public sealed class BalStateRootShadow
     /// Factory producing a fresh read-only trie store per computation; typically
     /// <see cref="IWorldStateManager.CreateReadOnlyTrieStore"/>.
     /// </param>
-    public BalStateRootShadow(Func<IReadOnlyTrieStore> trieStoreFactory, IBalStateRootConfig config, ILogManager logManager)
+    /// <param name="config">Shadow-lane configuration (enabled flag, GPU offload settings).</param>
+    /// <param name="logManager">Log manager.</param>
+    /// <param name="batchHasher">
+    /// When non-null, each computation hashes via the batched (wave-merkleization) root path with this hasher; when null,
+    /// the recursive per-node path is used. The recursive path is the production-proven default - a GPU/threshold hasher
+    /// is only wired in when GPU offload is both requested and available.
+    /// </param>
+    /// <param name="gpuCapability">
+    /// Pre-formatted GPU segment of the startup capability line (e.g. <c>GPU disabled</c>, <c>GPU: &lt;name&gt; (N GB)</c>, or
+    /// <c>GPU requested but unavailable</c>). Kept as a string so no GPU type leaks into this assembly. Defaults to
+    /// <c>GPU disabled</c>.
+    /// </param>
+    public BalStateRootShadow(
+        Func<IReadOnlyTrieStore> trieStoreFactory,
+        IBalStateRootConfig config,
+        ILogManager logManager,
+        IKeccakBatchHasher? batchHasher = null,
+        string? gpuCapability = null)
     {
         _trieStoreFactory = trieStoreFactory;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<BalStateRootShadow>();
+        _batchHasher = batchHasher;
+        _gpuCapability = gpuCapability ?? "GPU disabled";
         if (!config.Enabled) _disabled = 1;
 
         if (_logger.IsInfo) _logger.Info(CapabilityLine(config));
     }
 
-    private static string CapabilityLine(IBalStateRootConfig config) =>
+    private string CapabilityLine(IBalStateRootConfig config) =>
         $"BAL shadow state root: {(config.Enabled ? "enabled" : "disabled")}, hashing: " +
         $"AVX-512F {(Avx512F.IsSupported ? "yes" : "no")}, " +
         $"Vector512 {(Vector512.IsHardwareAccelerated ? "accelerated" : "not accelerated")}, " +
         $"Vector256 {(Vector256.IsHardwareAccelerated ? "accelerated" : "not accelerated")}, " +
-        $"physical cores {RuntimeInformation.PhysicalCoreCount}, GPU backend not built";
+        $"physical cores {RuntimeInformation.PhysicalCoreCount}, {_gpuCapability}";
 
     /// <summary>Starts a background computation of the shadow state root for a suggested block.</summary>
     /// <param name="parent">The parent block header, providing the pre-state root.</param>
@@ -97,7 +120,12 @@ public sealed class BalStateRootShadow
                 // Fresh store per lane: the flat read-only store's per-BeginScope snapshot cannot be shared.
                 using IReadOnlyTrieStore trieStore = _trieStoreFactory();
                 BalPostStateDelta delta = BalPostStateDelta.Reduce(bal);
-                Hash256 root = new BalStateRootCalculator(trieStore, _logManager).ComputeRoot(parent, delta);
+                BalStateRootCalculator calculator = new(trieStore, _logManager);
+                // Batched (wave-merkleization) path only when a hasher was wired in (GPU offload requested and available);
+                // otherwise the production-proven recursive path.
+                Hash256 root = _batchHasher is { } hasher
+                    ? calculator.ComputeRoot(parent, delta, hasher)
+                    : calculator.ComputeRoot(parent, delta);
                 Interlocked.Exchange(ref _consecutiveErrors, 0);
                 return root;
             }
@@ -178,5 +206,13 @@ public sealed class BalStateRootShadow
             spin.SpinOnce();
         }
         return true;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Drains in-flight lanes briefly so no computation is using the hasher when it is released.</remarks>
+    public void Dispose()
+    {
+        WaitForIdle(TimeSpan.FromSeconds(2));
+        (_batchHasher as IDisposable)?.Dispose();
     }
 }

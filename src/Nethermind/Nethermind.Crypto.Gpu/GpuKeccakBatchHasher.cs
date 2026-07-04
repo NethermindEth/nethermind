@@ -59,9 +59,17 @@ public sealed class GpuKeccakBatchHasher : IKeccakBatchHasher, IDisposable
     {
         _context = context;
         _accelerator = accelerator;
+        AcceleratorName = accelerator.Name;
+        AcceleratorMemoryBytes = accelerator.MemorySize;
         _roundConstants = accelerator.Allocate1D(RoundConstants);
         _kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>>(Keccak256Kernel);
     }
+
+    /// <summary>Name of the selected accelerator device (e.g. the GPU model).</summary>
+    public string AcceleratorName { get; }
+
+    /// <summary>Total memory of the selected accelerator device, in bytes.</summary>
+    public long AcceleratorMemoryBytes { get; }
 
     /// <summary>Attempts to create a GPU hasher on the best available non-CPU accelerator.</summary>
     /// <param name="hasher">The created hasher on success; otherwise <c>null</c>.</param>

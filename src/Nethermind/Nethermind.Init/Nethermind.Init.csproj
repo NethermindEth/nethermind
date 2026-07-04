@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Crypto.Gpu\Nethermind.Crypto.Gpu.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
     <ProjectReference Include="..\Nethermind.Era1\Nethermind.Era1.csproj" />

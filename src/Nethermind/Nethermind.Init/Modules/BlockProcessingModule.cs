@@ -65,7 +65,13 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             // (clones nodes; never mutates Lane A). A per-lane store is required because the flat read-only
             // store keeps per-BeginScope snapshot state that concurrent lanes must not share.
             .AddSingleton<BalStateRootShadow, IWorldStateManager, IBalStateRootConfig, ILogManager>(
-                (worldStateManager, config, logManager) => new BalStateRootShadow(worldStateManager.CreateReadOnlyTrieStore, config, logManager))
+                (worldStateManager, config, logManager) =>
+                {
+                    // GPU offload is decided once at startup: when requested and available the lane hashes through the
+                    // threshold router; otherwise it keeps the recursive path. GPU types stay inside the factory.
+                    BalShadowHasherFactory.Selection selection = BalShadowHasherFactory.Create(config, logManager);
+                    return new BalStateRootShadow(worldStateManager.CreateReadOnlyTrieStore, config, logManager, selection.Hasher, selection.Capability);
+                })
             .AddScoped<IBranchProcessor, BranchProcessor>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
