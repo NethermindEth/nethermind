@@ -58,4 +58,27 @@ public class EthereumGasPolicyTests
         Assert.That(EthereumGasPolicy.GetRemainingGas(in available), Is.EqualTo(0UL));
         Assert.That(EthereumGasPolicy.GetStateReservoir(in available), Is.EqualTo(0L));
     }
+
+    [Test]
+    public void MinRequiredGasLimit_includes_state_reservoir_unlike_state_blind_minimal_gas()
+    {
+        EthereumGasPolicy standard = new() { Value = 30_000, StateReservoir = 183_600 };
+        EthereumGasPolicy floor = new() { Value = 21_000 };
+        IntrinsicGas<EthereumGasPolicy> intrinsic = new(standard, floor);
+
+        Assert.That(intrinsic.StandardGas, Is.EqualTo(213_600UL));
+        Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(213_600UL));
+        Assert.That(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas), Is.EqualTo(30_000UL));
+    }
+
+    [Test]
+    public void MinRequiredGasLimit_matches_state_blind_minimal_gas_without_state()
+    {
+        EthereumGasPolicy standard = new() { Value = 25_000 };
+        EthereumGasPolicy floor = new() { Value = 30_000 };
+        IntrinsicGas<EthereumGasPolicy> intrinsic = new(standard, floor);
+
+        Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(30_000UL));
+        Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas)));
+    }
 }
