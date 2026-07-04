@@ -51,7 +51,7 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
     // floor seek ("value at-or-before block") lands on progressively older, colder index entries instead of
     // only direct tail hits. Items created after (source - offset) resolve to not-found, exercising the
     // empty-seek path (option a: source once, query old — see benchmark notes).
-    private static readonly long[] QueryOffsets = [0, 16, 256, 4_096, 65_536, 1_048_576];
+    private static readonly long[] QueryOffsets = [32, 512, 1024, 65_536, 1_000_000, 2_000_000, 5_000_000];
 
     private const string CallerAddress = "0x0000000000000000000000000000000000000001";
     private const string DriverAddress = "0x0000000000000000000000000000000000c0ffee";
