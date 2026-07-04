@@ -95,22 +95,39 @@ public class FlatTrieRebuilder(IPersistence persistence, ILogManager logManager)
         Channel<NodeEntry> nodeChannel = Channel.CreateBounded<NodeEntry>(NodeChannelCapacity);
         NodeWriter nodeWriter = new(_persistence, from, nodeChannel, _logger, () => Interlocked.Read(ref _writtenNodes), () => Interlocked.Increment(ref _writtenNodes));
 
-        // Dedicated long-running thread for the writer: producers' CommitNode spin synchronously on the bounded
-        // node channel, so the single writer must always be schedulable independent of ThreadPool pressure.
+        // Linked source so a non-cancellation failure (e.g. a leaf-decode error) still cancels the storage workers
+        // and node writer; otherwise their CommitNode busy-spins on the completed channel until the process dies.
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        CancellationToken token = cts.Token;
+
+        // Start the writer on a dedicated long-running thread. This only holds the thread until Run's first await
+        // (ReadAllAsync); afterwards its continuations are ThreadPool-scheduled. Producers' CommitNode spins on the
+        // bounded channel, but SpinWait.SpinOnce yields, so a saturated pool cannot hard-deadlock the writer.
         Task writerTask = Task.Factory.StartNew(
-            () => nodeWriter.Run(cancellationToken),
-            cancellationToken,
+            () => nodeWriter.Run(token),
+            token,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default).Unwrap();
 
         Hash256 rebuiltRoot;
         try
         {
-            rebuiltRoot = await BuildState(nodeWriter, nodeChannel.Writer, storageWorkerCount, cancellationToken);
+            rebuiltRoot = await BuildState(nodeWriter, nodeChannel.Writer, storageWorkerCount, token);
         }
         catch (Exception)
         {
+            // Cancel so the storage workers unwind out of their CommitNode spin, then drain the writer so its own
+            // fault surfaces in logs (and is observed) rather than being lost behind the rethrown original.
+            cts.Cancel();
             nodeChannel.Writer.TryComplete();
+            try
+            {
+                await writerTask;
+            }
+            catch (Exception writerEx)
+            {
+                if (_logger.IsError) _logger.Error("Flat trie rebuild node-writer faulted during error unwind.", writerEx);
+            }
             throw;
         }
 
@@ -239,8 +256,10 @@ public class FlatTrieRebuilder(IPersistence persistence, ILogManager logManager)
             {
                 ValueHash256 slotKey = storageIterator.CurrentKey;
 
-                // Flat storage leaves hold the raw 32-byte value (with leading zeros). Trim leading zeros and let
-                // StorageTree RLP-encode it, matching how slots are written elsewhere (see StorageTree.Set / Importer).
+                // The storage iterator already returns the stripped slot value (RLP-unwrapped when wrapping is on,
+                // else the on-disk bytes, which were written via WithoutLeadingZeros). WithoutLeadingZeros here is a
+                // defensive no-op; StorageTree then RLP-encodes it, matching how slots are written elsewhere
+                // (see StorageTree.Set / Importer).
                 ReadOnlySpan<byte> rawValue = storageIterator.CurrentValue.WithoutLeadingZeros();
                 byte[] value = rawValue.IsEmpty ? StorageTree.ZeroBytes : rawValue.ToArray();
                 storageTree.Set(slotKey, value);

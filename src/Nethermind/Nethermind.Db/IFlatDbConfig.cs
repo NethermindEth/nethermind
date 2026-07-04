@@ -25,13 +25,13 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 
-    [ConfigItem(Description = "Rebuild the trie nodes of a Flat-layout state db from its already-present flat leaves (recovery for corrupt/stale trie nodes). Leaf columns are never modified.", DefaultValue = "false")]
+    [ConfigItem(Description = "Rebuild the trie nodes of a Flat-layout state db from its already-present flat leaves (recovery for corrupt/stale trie nodes). Leaf columns are never modified. Two-boot recovery: first boot with this true and read the RECOVERED STATE ROOT from the logs, then set RewriteHeadStateRoot to that root and reboot; do not set both in one boot.", DefaultValue = "false")]
     bool RebuildTrieFromLeaves { get; set; }
 
     [ConfigItem(Description = "Target block number to record for the rebuilt state. 0 means use the current head block.", DefaultValue = "0")]
     long RebuildTrieTargetBlockNumber { get; set; }
 
-    [ConfigItem(Description = "When set to a 0x-prefixed state root hash, rewrites the current head block so its StateRoot equals this hash (recompute block hash, re-point canonical chain + head/safe/finalized), then exits. Used after a trie rebuild that produced a new root. Null disables.", DefaultValue = "null")]
+    [ConfigItem(Description = "When set to a 0x-prefixed state root hash, rewrites the current head block so its StateRoot equals this hash (recompute block hash, re-point canonical chain + head/safe/finalized), then exits. Used as the second boot after a RebuildTrieFromLeaves run that produced a new root; do not set both in one boot. Null disables.", DefaultValue = "null")]
     string? RewriteHeadStateRoot { get; set; }
 
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]

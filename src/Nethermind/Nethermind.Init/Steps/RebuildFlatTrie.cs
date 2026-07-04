@@ -32,6 +32,18 @@ public class RebuildFlatTrie(
 
     public async Task Execute(CancellationToken cancellationToken)
     {
+        // Both recovery steps re-point/rewrite the head and exit; running them in one boot has unspecified order.
+        // Fail fast and point to the two-boot workflow (rebuild -> read RECOVERED STATE ROOT from logs -> rewrite).
+        if (flatDbConfig.RebuildTrieFromLeaves && !string.IsNullOrWhiteSpace(flatDbConfig.RewriteHeadStateRoot))
+        {
+            if (_logger.IsError) _logger.Error(
+                "Cannot set both RebuildTrieFromLeaves and RewriteHeadStateRoot in one boot. Use the two-boot workflow: " +
+                "(1) boot with RebuildTrieFromLeaves=true and read the RECOVERED STATE ROOT from the logs, then " +
+                "(2) set RewriteHeadStateRoot to that root and reboot.");
+            exitSource.Exit(1);
+            return;
+        }
+
         if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
         {
             if (_logger.IsError) _logger.Error("Cannot rebuild trie from leaves with FlatLayout.PreimageFlat. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead.");

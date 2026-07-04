@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.Init.Steps;
 
@@ -34,6 +35,7 @@ namespace Nethermind.Init.Steps;
 )]
 public class RewriteHeadStateRoot(
     IBlockTree blockTree,
+    IPersistence persistence,
     IProcessExitSource exitSource,
     IFlatDbConfig flatDbConfig,
     ILogManager logManager
@@ -43,6 +45,18 @@ public class RewriteHeadStateRoot(
 
     public Task Execute(CancellationToken cancellationToken)
     {
+        // Both recovery steps re-point/rewrite the head and exit; running them in one boot has unspecified order.
+        // Fail fast and point to the two-boot workflow (rebuild -> read RECOVERED STATE ROOT from logs -> rewrite).
+        if (flatDbConfig.RebuildTrieFromLeaves && !string.IsNullOrWhiteSpace(flatDbConfig.RewriteHeadStateRoot))
+        {
+            if (_logger.IsError) _logger.Error(
+                "Cannot set both RebuildTrieFromLeaves and RewriteHeadStateRoot in one boot. Use the two-boot workflow: " +
+                "(1) boot with RebuildTrieFromLeaves=true and read the RECOVERED STATE ROOT from the logs, then " +
+                "(2) set RewriteHeadStateRoot to that root and reboot.");
+            exitSource.Exit(1);
+            return Task.CompletedTask;
+        }
+
         string? configured = flatDbConfig.RewriteHeadStateRoot;
         if (string.IsNullOrWhiteSpace(configured))
         {
@@ -79,6 +93,23 @@ public class RewriteHeadStateRoot(
             if (_logger.IsWarn) _logger.Warn(
                 $"RewriteHeadStateRoot: head block {number} already has state root {newStateRoot}. Nothing to do. Head hash: {oldHash}.");
             exitSource.Exit(0);
+            return Task.CompletedTask;
+        }
+
+        // Guard against a typo'd hash producing an unservable head: the flat DB serves exactly the persisted state,
+        // so the new root must equal the current persisted state root before we re-point the chain to it.
+        ValueHash256 persistedStateRoot;
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        {
+            persistedStateRoot = reader.CurrentState.StateRoot;
+        }
+
+        if (persistedStateRoot != newStateRoot.ValueHash256)
+        {
+            if (_logger.IsError) _logger.Error(
+                $"RewriteHeadStateRoot: no flat state at {newStateRoot}; persisted state root is {persistedStateRoot}. " +
+                "Refusing to re-point the head to an unservable state root.");
+            exitSource.Exit(1);
             return Task.CompletedTask;
         }
 
