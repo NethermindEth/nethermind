@@ -18,6 +18,23 @@ namespace Nethermind.Core.Test;
 [TestFixture]
 public class BlockHeaderTests
 {
+    /// <summary>
+    /// Guards the hand-maintained roster in <see cref="BlockHeader.CloneForProcessing"/>: every settable
+    /// member must be carried into the clone except execution outputs the processor recomputes.
+    /// </summary>
+    [Test]
+    public void CloneForProcessing_carries_every_consensus_input()
+    {
+        BlockHeader src = new(
+            Keccak.Compute("parent"), Keccak.Compute("uncles"), Address.Zero, 1, 2, 3, 4, [5]);
+        BlockHeaderMembers.FillWithDistinctValues(src);
+
+        BlockHeader clone = src.CloneForProcessing();
+
+        BlockHeaderMembers.AssertCarriesAllMembers(src, clone,
+            nameof(BlockHeader.StateRoot), nameof(BlockHeader.GasUsed), nameof(BlockHeader.Bloom));
+    }
+
     [Test]
     public void Hash_as_expected()
     {
@@ -111,8 +128,6 @@ public class BlockHeaderTests
             Nonce = 1,
             Hash = TestItem.KeccakB,
             TotalDifficulty = UInt256.One,
-            AuRaSignature = [1],
-            AuRaStep = 1,
             BaseFeePerGas = 2,
             WithdrawalsRoot = TestItem.KeccakB,
             BlockAccessListHash = TestItem.KeccakB,

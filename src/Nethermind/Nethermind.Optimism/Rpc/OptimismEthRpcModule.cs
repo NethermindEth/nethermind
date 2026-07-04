@@ -59,7 +59,8 @@ public class OptimismEthRpcModule(
     IReceiptConfig receiptConfig,
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
-    IEthCapabilitiesProvider capabilitiesProvider)
+    IEthCapabilitiesProvider capabilitiesProvider,
+    IBlockForRpcFactory blockForRpcFactory)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
@@ -80,7 +81,8 @@ public class OptimismEthRpcModule(
         receiptConfig,
         secondsPerSlot,
         headBlockSignal,
-        capabilitiesProvider), IOptimismEthRpcModule
+        capabilitiesProvider,
+        blockForRpcFactory), IOptimismEthRpcModule
 {
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
@@ -257,7 +259,7 @@ public class OptimismEthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc result = new(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
+        BlockForRpc result = _blockForRpcFactory.Create(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
 
         if (returnFullTransactionObjects)
         {

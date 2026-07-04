@@ -14,8 +14,8 @@ namespace Nethermind.Xdc.Spec;
 
 public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string EngineName => SealEngineType;
-    public string SealEngineType => XdcConstants.XDPoS;
+    public virtual string EngineName => SealEngineType;
+    public virtual string SealEngineType => XdcConstants.XDPoS;
     public ulong Epoch { get; set; }
     public ulong Gap { get; set; }
     public ulong Period { get; set; }
@@ -63,9 +63,10 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public UInt256 ObserverReward { get; set; }
     public ulong MergeSignRange { get; set; }
     public Address[] BlackListedAddresses { get; set; }
-    public ulong BlackListHFNumber { get; set; }
-    public ulong TipXDCX { get; set; }
-    public ulong TIPXDCXMinerDisable { get; set; }
+    public ulong? BlackListHFNumber { get; set; }
+    public ulong? TipXDCX { get; set; }
+    public ulong? TIPXDCXMinerDisable { get; set; }
+    public ulong? TIPXDCXReceiverDisable { get; set; }
     public ulong? DynamicGasLimitBlock { get; set; }
 
     private readonly struct V2ConfigBySwitchRoundComparer : IComparer<V2ConfigParams>

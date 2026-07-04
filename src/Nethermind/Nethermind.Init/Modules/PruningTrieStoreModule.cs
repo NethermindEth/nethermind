@@ -5,7 +5,6 @@ using System.IO.Abstractions;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -24,10 +23,9 @@ using Nethermind.Trie;
 
 namespace Nethermind.Init.Modules;
 
-public class PruningTrieStoreModule(IInitConfig initConfig) : Module
+public class PruningTrieStoreModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
+    protected override void Load(ContainerBuilder builder) =>
         builder
 
             // Special case for state db with pruning trie state.
@@ -114,12 +112,6 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
                 logManager
             ))
             ;
-
-        if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
-        {
-            builder.AddStep(typeof(RunVerifyTrie));
-        }
-    }
 
     private static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
 

@@ -30,6 +30,7 @@ using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Consensus.Rewards;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -213,7 +214,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 @this.Container.Resolve<ISyncConfig>(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
-                Substitute.For<IHistoryPruner>()));
+                Substitute.For<IHistoryPruner>()),
+            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory());
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
@@ -222,6 +224,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+                if (SealEngineType == Core.SealEngineType.AuRa) builder.AddModule(new AuRaHeaderModule());
                 builder.AddSingleton<IJsonRpcConfig>(RpcConfig);
                 configurer?.Invoke(builder);
             });

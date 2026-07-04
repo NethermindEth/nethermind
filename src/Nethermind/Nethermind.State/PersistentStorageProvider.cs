@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -235,18 +236,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+        foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
         {
-            if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
+            if (!kvp.Value) continue;
+
+            if (!_storages.TryGetValue(kvp.Key, out PerContractState contractState))
             {
-                // Wasn't updated don't recalculate
+                Debug.Fail($"Storage root marked changed for {kvp.Key} but no contract state is present");
                 continue;
             }
 
-            PerContractState contractState = kvp.Value;
-
             (int writes, int skipped) = contractState.ProcessStorageChanges(
-                writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
+                writeBatch.CreateStorageWriteBatch(kvp.Key, contractState.EstimatedChanges));
 
             ReportMetrics(writes, skipped);
         }
