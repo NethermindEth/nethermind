@@ -29,7 +29,8 @@ public static class EngineApiVersions
         public const int V3 = 3; // Cancun
         public const int V4 = 4; // Prague/Osaka
         public const int V5 = 5; // Amsterdam
-        public const int Latest = V5;
+        public const int V6 = 6; // EIP-8146 (block access list sidecars)
+        public const int Latest = V6;
     }
 
     /// <summary>engine_getPayload method versions.</summary>

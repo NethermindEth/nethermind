@@ -464,6 +464,12 @@ namespace Nethermind.Core.Specs
         public bool IsEip7954Enabled { get; }
 
         /// <summary>
+        /// EIP-8146: Block Access List Sidecars.
+        /// The BAL travels independently of the execution payload envelope.
+        /// </summary>
+        public bool IsEip8146Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.
