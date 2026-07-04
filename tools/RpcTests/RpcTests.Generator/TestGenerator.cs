@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks.Dataflow;
+using Nethermind.RpcTests.Generator.ArchiveIndex;
 using SmartFormat;
 using SmartFormat.Core.Parsing;
 
@@ -106,7 +107,7 @@ public static class TestGenerator
         Uri client, IReadOnlyList<long> blocks, string outDir, CancellationToken ct)
     {
         using RpcClient rpc = new(client);
-        ArchiveIndexTxBuilder builder = new(rpc);
+        ArchiveTxBuilder builder = new(rpc);
 
         List<TestInfo> tests = [];
         int number = 0;

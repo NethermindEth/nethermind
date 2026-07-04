@@ -5,7 +5,7 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Nethermind.Int256;
 
-namespace Nethermind.RpcTests.Generator;
+namespace Nethermind.RpcTests.Generator.ArchiveIndex;
 
 /// <summary>
 /// Drives the archive-index read path end to end: sources the accounts and storage slots touched in a
@@ -24,12 +24,12 @@ namespace Nethermind.RpcTests.Generator;
 /// <c>RETURN</c>s a fixed <see cref="ArchiveProbeReturn"/> (account/storage fingerprints + non-zero counts).
 /// That makes the result meaningful (proves the loop ran, and how much resolved) and turns it into an index
 /// validity oracle: since both nodes execute identical bytecode, a byte-identical struct means their archive
-/// indices agreed on the whole read set; any divergence is an index (or node) bug — see <see cref="RunAsync"/>.
+/// indices agreed on the whole read set; any divergence is an index (or node) bug.
 ///
 /// The driver bytecode is injected as runtime code at a synthetic address (not run as init-code), so it is
 /// subject to neither the EIP-3860 init-code cap nor the EIP-170 deployed-code cap and scales to a full block.
 /// </remarks>
-internal sealed class ArchiveIndexTxBuilder(RpcClient client)
+internal sealed class ArchiveTxBuilder(RpcClient client)
 {
     // How far behind head to probe when no block is given: deep enough that reads resolve through the
     // historical store rather than the live (recent, unpersisted) flat tip.
@@ -56,59 +56,6 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
     private const string CallerAddress = "0x0000000000000000000000000000000000000001";
     private const string DriverAddress = "0x0000000000000000000000000000000000c0ffee";
     private const string FallbackDriverAddress = "0x000000000000000000000000000000000000dead";
-
-    // Driver memory layout. The first four words are RETURNed as the ArchiveProbeReturn struct; the scratch
-    // words hold each STATICCALL's return data (the contract's own fingerprint + count) before it is folded in.
-    private const byte AccountFprOffset = 0x00;   // XOR of every BALANCE read
-    private const byte StorageFprOffset = 0x20;   // XOR of every contract's returned storage fingerprint
-    private const byte AccountCountOffset = 0x40; // count of non-zero balances
-    private const byte SlotCountOffset = 0x60;    // count of non-zero storage slots
-    private const byte RetOffset = 0x80;          // STATICCALL return scratch: contract fingerprint
-    private const byte RetCountOffset = 0xA0;     // STATICCALL return scratch: contract non-zero count
-    private const byte ReturnSize = 0x80;         // the four result words returned to the caller
-
-    // Slot-reader memory layout (its own execution frame), RETURNed to the driver as two words.
-    private const byte SlotFprOffset = 0x00;
-    private const byte SlotCounterOffset = 0x20;
-    private const byte SlotReturnSize = 0x40;
-
-    // EVM opcodes
-    private const byte OpAdd = 0x01;
-    private const byte OpIsZero = 0x15;
-    private const byte OpXor = 0x18;
-    private const byte OpBalance = 0x31;
-    private const byte OpPop = 0x50;
-    private const byte OpMload = 0x51;
-    private const byte OpMstore = 0x52;
-    private const byte OpSload = 0x54;
-    private const byte OpGas = 0x5A;
-    private const byte OpPush1 = 0x60;
-    private const byte OpPush20 = 0x73;
-    private const byte OpPush32 = 0x7F;
-    private const byte OpDup1 = 0x80;
-    private const byte OpStaticCall = 0xFA;
-    private const byte OpReturn = 0xF3;
-
-    /// <summary>
-    /// Builds and sends the ladder against the testee. When <paramref name="reference"/> is given, each request is
-    /// also sent to it and the two returned structs compared (<see cref="ArchiveIndexProbeResult.Matches"/>) to
-    /// validate the archive index, not just time it.
-    /// </summary>
-    public async Task<IReadOnlyList<ArchiveIndexProbeResult>> RunAsync(long? block = null, RpcClient? reference = null, CancellationToken ct = default)
-    {
-        IReadOnlyList<ArchiveIndexRequest> requests = await BuildRequestsAsync(block, ct);
-
-        List<ArchiveIndexProbeResult> results = new(requests.Count);
-        foreach (ArchiveIndexRequest request in requests)
-        {
-            (TimeSpan elapsed, JsonNode response, ArchiveProbeReturn? parsed) = await SendTimedAsync(client, request.Request, ct);
-            ArchiveProbeReturn? referenceReturn = reference is null ? null : (await SendTimedAsync(reference, request.Request, ct)).Return;
-            results.Add(new ArchiveIndexProbeResult(
-                request.QueryBlock, request.Offset, request.AccountCount, request.SlotCount, request.Source, elapsed, response, parsed, referenceReturn));
-        }
-
-        return results;
-    }
 
     /// <summary>
     /// Sources the touched set for <paramref name="block"/> (default: <see cref="SafetyOffset"/> behind head),
@@ -284,9 +231,9 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
     {
         string driverAddress = sweep.ContainsAccount(DriverAddress) ? FallbackDriverAddress : DriverAddress;
 
-        JsonObject overrides = new() { [driverAddress] = new JsonObject { ["code"] = BuildDriverCode(sweep) } };
+        JsonObject overrides = new() { [driverAddress] = new JsonObject { ["code"] = ArchiveCodeGen.BuildDriverCode(sweep) } };
         foreach (Contract contract in sweep.Contracts)
-            overrides[contract.HexAddress] = new JsonObject { ["code"] = BuildSlotReaderCode(contract.Slots) };
+            overrides[contract.HexAddress] = new JsonObject { ["code"] = ArchiveCodeGen.BuildSlotReaderCode(contract.Slots) };
 
         JsonObject call = new()
         {
@@ -297,100 +244,6 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
         };
 
         return Rpc("eth_call", call, Hex(block), overrides);
-    }
-
-    /// <summary>
-    /// Driver runtime code: BALANCE every account (folding each into the account fingerprint/counter) and
-    /// STATICCALL every contract with slots (its overridden code reads the storage and returns its own
-    /// fingerprint/count, which are folded into the storage accumulators). Ends by RETURNing the 4-word struct.
-    /// </summary>
-    private static string BuildDriverCode(Sweep sweep)
-    {
-        List<byte> code = new(sweep.Accounts.Count * 40 + sweep.Contracts.Count * 64 + 8);
-
-        foreach (byte[] account in sweep.Accounts)
-        {
-            code.Add(OpPush20); code.AddRange(account);
-            code.Add(OpBalance);
-            EmitXorFold(code, AccountFprOffset, AccountCountOffset);
-        }
-
-        foreach (Contract contract in sweep.Contracts)
-        {
-            // Clear the return scratch first: memory persists across STATICCALLs, so a failed call (which copies
-            // no return data) would otherwise re-fold the previous contract's values.
-            EmitStoreZero(code, RetOffset);
-            EmitStoreZero(code, RetCountOffset);
-
-            // STATICCALL(gas, to, argsOffset=0, argsLength=0, retOffset=RetOffset, retLength=SlotReturnSize)
-            code.Add(OpPush1); code.Add(SlotReturnSize); // retLength: fingerprint + count
-            code.Add(OpPush1); code.Add(RetOffset);      // retOffset
-            code.Add(OpPush1); code.Add(0x00);           // argsLength
-            code.Add(OpPush1); code.Add(0x00);           // argsOffset
-            code.Add(OpPush20); code.AddRange(contract.Address); // to
-            code.Add(OpGas);                             // forward all remaining gas
-            code.Add(OpStaticCall);
-            code.Add(OpPop); // ignore success; a failed call left the scratch zeroed above
-
-            EmitMemFold(code, OpXor, StorageFprOffset, RetOffset);   // storageFpr ^= contract fingerprint
-            EmitMemFold(code, OpAdd, SlotCountOffset, RetCountOffset); // slotCount += contract non-zero count
-        }
-
-        code.Add(OpPush1); code.Add(ReturnSize); // length
-        code.Add(OpPush1); code.Add(0x00);       // offset
-        code.Add(OpReturn);
-        return ToHex(code);
-    }
-
-    /// <summary>Per-contract override code: SLOAD each slot (folding into a local fingerprint/counter), then
-    /// RETURN those two words to the driver.</summary>
-    private static string BuildSlotReaderCode(IReadOnlyList<byte[]> slots)
-    {
-        List<byte> code = new(slots.Count * 52 + 8);
-        foreach (byte[] slot in slots)
-        {
-            code.Add(OpPush32); code.AddRange(slot);
-            code.Add(OpSload);
-            EmitXorFold(code, SlotFprOffset, SlotCounterOffset);
-        }
-
-        code.Add(OpPush1); code.Add(SlotReturnSize); // length
-        code.Add(OpPush1); code.Add(0x00);           // offset
-        code.Add(OpReturn);
-        return ToHex(code);
-    }
-
-    /// <summary>Consumes the 256-bit value on top of the stack: XORs it into the fingerprint at
-    /// <paramref name="fprOffset"/> and, when it is non-zero, increments the counter at <paramref name="cntOffset"/>.</summary>
-    private static void EmitXorFold(List<byte> code, byte fprOffset, byte cntOffset)
-    {
-        // mem[fpr] ^= value
-        code.Add(OpDup1);
-        code.Add(OpPush1); code.Add(fprOffset); code.Add(OpMload);
-        code.Add(OpXor);
-        code.Add(OpPush1); code.Add(fprOffset); code.Add(OpMstore);
-        // mem[cnt] += (value != 0)
-        code.Add(OpIsZero); code.Add(OpIsZero);
-        code.Add(OpPush1); code.Add(cntOffset); code.Add(OpMload);
-        code.Add(OpAdd);
-        code.Add(OpPush1); code.Add(cntOffset); code.Add(OpMstore);
-    }
-
-    /// <summary>Combines mem[<paramref name="srcOffset"/>] into mem[<paramref name="dstOffset"/>] with the given
-    /// binary op (<see cref="OpXor"/> or <see cref="OpAdd"/>).</summary>
-    private static void EmitMemFold(List<byte> code, byte op, byte dstOffset, byte srcOffset)
-    {
-        code.Add(OpPush1); code.Add(srcOffset); code.Add(OpMload);
-        code.Add(OpPush1); code.Add(dstOffset); code.Add(OpMload);
-        code.Add(op);
-        code.Add(OpPush1); code.Add(dstOffset); code.Add(OpMstore);
-    }
-
-    private static void EmitStoreZero(List<byte> code, byte offset)
-    {
-        code.Add(OpPush1); code.Add(0x00);
-        code.Add(OpPush1); code.Add(offset);
-        code.Add(OpMstore);
     }
 
     #endregion
@@ -418,7 +271,6 @@ internal sealed class ArchiveIndexTxBuilder(RpcClient client)
 
     private static string Hex(long n) => $"0x{n:x}";
     private static string? Str(JsonNode? node) => node?.GetValue<string>();
-    private static string ToHex(List<byte> code) => "0x" + Convert.ToHexString([.. code]).ToLowerInvariant();
 
     #endregion
 }
@@ -431,7 +283,7 @@ internal sealed record Contract(byte[] Address, IReadOnlyList<byte[]> Slots)
 /// <summary>Deduplicated, normalized touched set for a block; addresses/slots kept as raw bytes for bytecode emission.</summary>
 internal sealed record Sweep(IReadOnlyList<byte[]> Accounts, IReadOnlyList<Contract> Contracts, string Source)
 {
-    public int SlotCount => Contracts.Sum(c => c.Slots.Count);
+    public int SlotCount => Contracts.Sum(static c => c.Slots.Count);
 
     public bool ContainsAccount(string address)
     {
@@ -460,7 +312,7 @@ internal sealed class SweepBuilder
     public Sweep Build(string source)
     {
         byte[][] accounts = [.. _accounts.Select(FromHex)];
-        Contract[] contracts = [.. _storage.Select(kv => new Contract(FromHex(kv.Key), [.. kv.Value.Select(FromHex)]))];
+        Contract[] contracts = [.. _storage.Select(static kv => new Contract(FromHex(kv.Key), [.. kv.Value.Select(FromHex)]))];
         return new Sweep(accounts, contracts, source);
     }
 
@@ -482,22 +334,6 @@ internal sealed class SweepBuilder
 /// <summary>One ladder rung's prepared but unsent request: an <c>eth_call</c> replaying the touched set at
 /// <paramref name="QueryBlock"/> (<paramref name="Offset"/> blocks behind the source block).</summary>
 internal sealed record ArchiveIndexRequest(long QueryBlock, long Offset, int AccountCount, int SlotCount, string Source, JsonObject Request);
-
-/// <summary>Result of one ladder rung: the read set replayed at <paramref name="QueryBlock"/> (which is
-/// <paramref name="Offset"/> blocks behind the source block).</summary>
-/// <param name="Return">The parsed 4-word struct the testee returned, or null if the call errored/malformed.</param>
-/// <param name="Reference">The reference node's struct when one was probed, otherwise null.</param>
-internal sealed record ArchiveIndexProbeResult(
-    long QueryBlock, long Offset, int AccountCount, int SlotCount, string Source,
-    TimeSpan Elapsed, JsonNode Response, ArchiveProbeReturn? Return, ArchiveProbeReturn? Reference = null)
-{
-    /// <summary>The call errored or did not return the expected 4-word struct.</summary>
-    public bool Failed => Return is null;
-
-    /// <summary>When a reference node was probed and both succeeded: whether their structs are byte-identical
-    /// (the archive index validity verdict). Null if no reference was probed or either side failed.</summary>
-    public bool? Matches => Reference is { } reference && Return is { } value ? value.Equals(reference) : null;
-}
 
 /// <summary>The fixed 4-word struct the probe bytecode <c>RETURN</c>s: XOR fingerprints and non-zero counters for
 /// accounts and storage. Byte-identical structs from two nodes mean their archive indices resolved the whole read
