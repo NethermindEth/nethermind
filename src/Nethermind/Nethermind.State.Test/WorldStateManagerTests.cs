@@ -26,39 +26,43 @@ namespace Nethermind.Store.Test;
 
 public class WorldStateManagerTests
 {
-    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, WorldStateManager manager) CreateWorldStateManager()
+    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, WorldStateManager manager, StateBoundaryStore boundary) CreateWorldStateManager()
     {
         IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager manager = new(worldState, trieStore, dbProvider, LimboLogs.Instance, new PruningConfig());
-        return (worldState, trieStore, manager);
+        StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
+        WorldStateManager manager = new(worldState, trieStore, dbProvider, LimboLogs.Instance, boundary);
+        return (worldState, trieStore, manager, boundary);
     }
 
     [Test]
     public void ShouldProxyGlobalWorldState()
     {
-        (IWorldStateScopeProvider worldState, _, WorldStateManager manager) = CreateWorldStateManager();
+        (IWorldStateScopeProvider worldState, _, WorldStateManager manager, _) = CreateWorldStateManager();
         Assert.That(manager.GlobalWorldState, Is.EqualTo(worldState));
     }
 
     [Test]
-    public void ShouldProxyReorgBoundaryEvent()
+    public void ShouldPersistBestPersistedStateOnReorgBoundary()
     {
-        (_, IPruningTrieStore trieStore, WorldStateManager manager) = CreateWorldStateManager();
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
+        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
+        _ = new WorldStateManager(Substitute.For<IWorldStateScopeProvider>(), trieStore, dbProvider, LimboLogs.Instance, boundary);
 
-        bool gotEvent = false;
-        manager.ReorgBoundaryReached += (sender, reached) => gotEvent = true;
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
-        Assert.That(gotEvent, Is.True);
+        Assert.That(boundary.BestPersistedState, Is.EqualTo(1UL));
+        // A fresh store over the same BlockInfos DB proves the value is durable, not just cached.
+        Assert.That(new StateBoundaryStore(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null).BestPersistedState, Is.EqualTo(1UL));
     }
 
     [TestCase(INodeStorage.KeyScheme.Hash, true)]
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        (_, IPruningTrieStore trieStore, WorldStateManager manager) = CreateWorldStateManager();
+        (_, IPruningTrieStore trieStore, WorldStateManager manager, _) = CreateWorldStateManager();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);
@@ -80,7 +84,7 @@ public class WorldStateManagerTests
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IConfigProvider configProvider = new ConfigProvider();
-        // Asserts the pruning trie store's BestPersistedState reorg announcement; a patricia-only concept.
+        // Asserts the pruning trie store's best-persisted-state reorg announcement; a patricia-only concept.
         configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         ulong reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
         IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
@@ -88,6 +92,8 @@ public class WorldStateManagerTests
         manualFinalizedStateProvider.GetFinalizedStateRootAt(lastBlock - reorgDepth)
             .Returns(new Hash256("0xec6063a04d48f4b2258f36efaef76a23ba61875f5303fcf8ede2f5d160def35d"));
 
+        IDb stateDb;
+        IDb blockInfosDb;
         {
             using IContainer ctx = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
@@ -95,6 +101,8 @@ public class WorldStateManagerTests
                 .AddSingleton(blockTree)
                 .Build();
 
+            stateDb = ctx.ResolveKeyed<IDb>(DbNames.State);
+            blockInfosDb = ctx.ResolveKeyed<IDb>(DbNames.BlockInfos);
             IWorldState worldState = ctx.Resolve<IMainProcessingContext>().WorldState;
 
             Hash256 stateRoot;
@@ -126,7 +134,10 @@ public class WorldStateManagerTests
             }
         }
 
-        blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
+        // The shutdown persist announces the reorg boundary; the manager must have written it
+        // durably (BlockInfos DB) before the container tore down.
+        Assert.That(new StateBoundaryStore(stateDb, blockInfosDb, retentionWindowBlocks: null).BestPersistedState,
+            Is.EqualTo(lastBlock - reorgDepth));
     }
 
     [Test]

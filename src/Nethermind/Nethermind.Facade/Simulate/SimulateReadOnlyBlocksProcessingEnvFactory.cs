@@ -19,6 +19,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Repositories;
 
@@ -94,6 +95,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
             new SyncConfig(),
+            NullStateBoundary.Instance,
             new BlockTreeLogHider(logManager));
     }
 
