@@ -30,8 +30,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     IMasternodeVotingContract masternodeVotingContract,
     IMintedRecordContract mintedRecordContract,
     ISigningTxCache signingTxCache,
-    ITransactionProcessor transactionProcessor,
-    IRewardsStore rewardsStore) : IRewardCalculator
+    ITransactionProcessor transactionProcessor) : IRewardCalculator
 {
     private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
@@ -41,7 +40,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     private readonly IMintedRecordContract _mintedRecordContract = mintedRecordContract;
     private readonly ISigningTxCache _signingTxCache = signingTxCache;
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
-    private readonly IRewardsStore _rewardsStore = rewardsStore;
 
     /// <summary>
     /// Calculates block rewards according to XDPoS consensus rules.
@@ -107,9 +105,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
         if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
 
-        BlockReward[] finalRewards = rewards.ToArray();
-        _rewardsStore.SaveEpochRewards(xdcHeader.Number, finalRewards);
-        return finalRewards;
+        return rewards.ToArray();
     }
 
     private (

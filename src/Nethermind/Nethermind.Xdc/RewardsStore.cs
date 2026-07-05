@@ -1,22 +1,38 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Db;
-using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
 internal sealed class RewardsStore(
     [KeyFilter(XdcRocksDbConfigFactory.XdcRewardsDbName)] IDb rewardsDb,
-    int rewardHistoryEpochRetention = XdcConstants.RewardHistoryEpochRetention) : IRewardsStore
+    IBlockTree blockTree,
+    IEpochSwitchManager epochSwitchManager,
+    ISpecProvider specProvider,
+    IRewardCalculatorSource rewardCalculatorSource,
+    IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+    int rewardHistoryEpochRetention = XdcConstants.RewardHistoryEpochRetention) : IRewardsStore, IStartable, IDisposable
 {
     private readonly IDb _rewardsDb = rewardsDb;
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource;
+    private readonly IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
     private readonly int _rewardHistoryEpochRetention = rewardHistoryEpochRetention;
 
     private const byte EpochRewardsPrefix = 0x10;
@@ -27,6 +43,43 @@ internal sealed class RewardsStore(
     private static readonly byte[] RetainedCountKey = [0x03];
     private const int AddressByteLength = 20;
     private const int UInt256ByteLength = 32;
+
+    public void Start() => _blockTree.BlockAddedToMain += OnBlockAddedToMain;
+
+    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+    {
+        if (e.Block.Header is not XdcBlockHeader xdcHeader)
+            return;
+
+        if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash))
+            return;
+
+        if (xdcHeader.Number == 0)
+            return;
+
+        if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader))
+            return;
+
+        ulong round = xdcHeader.ExtraConsensusData!.BlockRound;
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, round);
+        if (xdcHeader.Number == spec.SwitchBlock + 1)
+            return;
+
+        Block block = e.Block;
+        Task.Run(() => PersistEpochRewards(block));
+    }
+
+    private void PersistEpochRewards(Block block)
+    {
+        using IReadOnlyTxProcessorSource env = _readOnlyTxProcessingEnvFactory.Create();
+        using IReadOnlyTxProcessingScope scope = env.Build(block.Header);
+        IRewardCalculator rewardCalculator = _rewardCalculatorSource.Get(scope.TransactionProcessor);
+        BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
+        if (rewards.Length == 0)
+            return;
+
+        SaveEpochRewards(block.Number, rewards);
+    }
 
     public void SaveEpochRewards(ulong epochBlockNumber, BlockReward[] rewards)
     {
@@ -112,6 +165,8 @@ internal sealed class RewardsStore(
         newestEpochBlockNumber = BinaryPrimitives.ReadUInt64BigEndian(newestEpochBytes);
         return true;
     }
+
+    public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
 
     private void PruneOldEpochs(IWriteBatch batch, ref ulong oldestSequence, ref int retainedCount)
     {
