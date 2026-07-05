@@ -337,10 +337,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     /// <summary>
-    /// Clear all storage at specified address
-    /// </summary>
-    /// <param name="address">Contract address</param>
-    /// <summary>
     /// Reads are not journaled, so a commit round can have an empty change list while cells were
     /// still read this round: those reads must be reported to storage tracers and the round's
     /// original-value capture must be cleared, which the change-driven commit otherwise does.
@@ -364,6 +360,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.Commit(tracer);
     }
 
+    /// <summary>
+    /// Clear all storage at specified address
+    /// </summary>
+    /// <param name="address">Contract address</param>
     public override void ClearStorage(Address address)
     {
         // Reads are not journaled, so the base registry walk below only zeroes written cells.
