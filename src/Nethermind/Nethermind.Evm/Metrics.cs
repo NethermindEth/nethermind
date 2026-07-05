@@ -80,6 +80,14 @@ public class Metrics
         Interlocked.Add(ref IsBlockProcessingThread ? ref _mainOpCodes.Value : ref _otherOpCodes.Value, count);
     }
 
+    internal static void AddSLoadOpcode(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainSLoadOpcode.Value : ref _otherSLoadOpcode.Value, count);
+    internal static void AddSStoreOpcode(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainSStoreOpcode.Value : ref _otherSStoreOpcode.Value, count);
+    internal static void AddStorageDeleted(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageDeleted.Value : ref _otherStorageDeleted.Value, count);
+    internal static void AddCalls(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCalls.Value : ref _otherCalls.Value, count);
+    internal static void AddEmptyCalls(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainEmptyCalls.Value : ref _otherEmptyCalls.Value, count);
+    internal static void AddCreates(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCreates.Value : ref _otherCreates.Value, count);
+    internal static void AddSelfDestructs(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainSelfDestructs.Value : ref _otherSelfDestructs.Value, count);
+
     [CounterMetric]
     [Description("Number of SELFDESTRUCT calls.")]
     public static long SelfDestructs => _mainSelfDestructs.Value + _otherSelfDestructs.Value;

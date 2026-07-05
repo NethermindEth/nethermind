@@ -116,6 +116,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
+    internal ExecutionMetricsCounters MetricsCounters;
+
+    public void FlushMetricsCounters() => MetricsCounters.Flush();
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
@@ -153,6 +156,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
         OpCodeCount = 0;
+        MetricsCounters = default;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
@@ -1130,10 +1134,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // If no machine code is present, treat the call as empty.
         if (codeSpan.Length == 0)
         {
-            // Increment a metric for empty calls if this is a nested call.
             if (!vmState.IsTopLevel)
             {
-                Metrics.IncrementEmptyCalls();
+                MetricsCounters.IncrementEmptyCalls();
             }
             goto Empty;
         }
