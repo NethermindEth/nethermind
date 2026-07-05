@@ -68,9 +68,6 @@ namespace Nethermind.Consensus.Clique
 
                 .AddSingleton<IHealthHintService, CliqueHealthHintService>()
 
-                // Expose the runner the InitializeBlockProducer step sets on the api as a DI service so the RPC
-                // module can take it by constructor injection. It is a Clique runner only on a signer node.
-                .AddSingleton<IBlockProducerRunner, INethermindApi>(api => api.BlockProducerRunner)
                 .RegisterSingletonJsonRpcModule<ICliqueRpcModule, CliqueRpcModule>()
                 ;
         }
