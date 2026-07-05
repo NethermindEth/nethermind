@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using Nethermind.State.Flat.History.Segmented;
 using NUnit.Framework;
 
@@ -156,6 +157,71 @@ public class SegmentHistoryStoreTests
         Assert.That(SegmentRanges(), Is.EqualTo(new[] { (1, 8) }), "orphaned inputs dropped, covering segment kept");
         for (ulong block = 1; block <= lastBlock; block++)
             Assert.That(AsOf(reopened, KeyA, block).hex, Is.EqualTo(Convert.ToHexString([(byte)block]).ToLowerInvariant()), $"@{block}");
+    }
+
+    [Test]
+    public void Concurrent_reads_during_seal_and_merge_stay_correct()
+    {
+        const int stepBlocks = 4;
+        const int fanout = 2;
+        const long maxSegmentBlocks = 32; // small so writing 400 blocks forces many seals, merges and freezes
+        const ulong lastBlock = 400;
+
+        using SegmentHistoryStore store = NewStore(stepBlocks, fanout, maxSegmentBlocks);
+
+        long completed = 0;   // highest block the writer has durably recorded; readers only query at/below it
+        Exception? failure = null;
+        using CancellationTokenSource cts = new();
+
+        Thread[] readers = new Thread[4];
+        for (int r = 0; r < readers.Length; r++)
+        {
+            readers[r] = new Thread(() =>
+            {
+                Random rng = new(Environment.CurrentManagedThreadId);
+                Span<byte> buffer = stackalloc byte[8];
+                try
+                {
+                    while (!cts.IsCancellationRequested)
+                    {
+                        long hi = Volatile.Read(ref completed);
+                        if (hi == 0) continue;
+                        ulong block = (ulong)rng.NextInt64(1, hi + 1);
+                        int written = store.TryGetAt(block, KeyA, buffer, out _);
+                        // KeyA changes at every block, so any block <= completed must resolve to exactly its own value.
+                        // A miss (lost data) or a wrong byte (torn read / use-after-free) means the snapshot swap raced.
+                        if (written != 1 || buffer[0] != (byte)block)
+                            throw new InvalidOperationException($"bad read @{block}: written={written}, value={(written > 0 ? buffer[0] : -1)}");
+                    }
+                }
+                catch (Exception e)
+                {
+                    Interlocked.CompareExchange(ref failure, e, null);
+                    cts.Cancel();
+                }
+            });
+            readers[r].Start();
+        }
+
+        try
+        {
+            for (ulong block = 1; block <= lastBlock && !cts.IsCancellationRequested; block++)
+            {
+                store.RecordChange(block, KeyA, [(byte)block]);
+                store.CompleteBlock(block);
+                Volatile.Write(ref completed, (long)block);
+            }
+            store.Flush();
+        }
+        finally
+        {
+            cts.Cancel();
+            foreach (Thread reader in readers) reader.Join();
+        }
+
+        Assert.That(failure, Is.Null, failure?.ToString());
+        for (ulong block = 1; block <= lastBlock; block++)
+            Assert.That(AsOf(store, KeyA, block).hex, Is.EqualTo(Convert.ToHexString([(byte)block]).ToLowerInvariant()), $"@{block}");
     }
 
     private (int from, int to)[] SegmentRanges()

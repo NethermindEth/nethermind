@@ -231,6 +231,17 @@ public sealed unsafe class HistorySegment : IDisposable
         _file.Dispose();
     }
 
+    /// <summary>Unmaps this segment and deletes its backing file — used to reclaim a merged-away segment once no reader
+    /// can still reference it.</summary>
+    public void DisposeAndDelete()
+    {
+        Dispose();
+
+        try { File.Delete(Path); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
     /// <summary>
     /// Writes an immutable segment for <paramref name="entries"/>.
     /// </summary>

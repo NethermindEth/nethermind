@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Immutable;
+
 namespace Nethermind.State.Flat.History.Segmented;
 
 /// <summary>
@@ -17,6 +19,11 @@ namespace Nethermind.State.Flat.History.Segmented;
 /// Crash safety: segments are published by atomic rename after fsync (see <see cref="HistorySegment.Write"/>), and
 /// the constructor discards leftover scratch files and reconciles the covering/contained segments a crash mid-merge
 /// can leave behind (see <see cref="ReconcileOverlaps"/>), so a crash during seal or merge self-heals on reopen.
+/// Concurrency: one writer thread (block processing) may run concurrently with many reader threads (RPC). Readers are
+/// lock-free over segment data — the segment set is an immutable snapshot (see <see cref="Generation"/>) captured under
+/// a short lock that guards only in-memory bookkeeping (buffer, snapshot pointer, refcount), never the mmap reads. A
+/// merged-away segment is unmapped and deleted only when the last reader holding the snapshot it belonged to releases
+/// it, so a reader never dereferences an unmapped file.
 /// </remarks>
 public sealed class SegmentHistoryStore : IDisposable
 {
@@ -29,12 +36,19 @@ public sealed class SegmentHistoryStore : IDisposable
     private readonly int _mergeFanout;
     private readonly long _maxSegmentBlocks;
 
-    // Segments ordered by ascending FromBlock (newest last); ranges are disjoint.
-    private readonly List<HistorySegment> _segments = [];
+    // Guards the mutable in-memory bookkeeping shared with readers: _buffer, the _generation pointer + its refcount, and
+    // the completion markers. Held only for O(1)-ish in-memory work — never across a segment mmap read or file I/O.
+    private readonly Lock _lock = new();
 
-    // Current unsealed step, keyed by flat key (sorted for sealing). Per entity: parallel block/value lists in
-    // ascending block order.
-    private readonly SortedDictionary<byte[], EntityBuffer> _buffer = new(ByteArrayComparer.Instance);
+    // The live segment set, ordered by ascending FromBlock (newest last); ranges are disjoint. Published as an immutable
+    // snapshot so readers iterate a stable array; only the writer replaces it, under _lock.
+    private Generation _generation = new(ImmutableArray<HistorySegment>.Empty);
+
+    // Current unsealed step, keyed by flat key. Per entity: parallel block/value lists in ascending block order.
+    // A Dictionary (probed span-first via _bufferLookup) rather than a sorted map: sealing sorts once, which is cheaper
+    // than maintaining tree order on every append and needs no per-read key allocation.
+    private readonly Dictionary<byte[], EntityBuffer> _buffer = new(ByteArrayComparer.Instance);
+    private readonly Dictionary<byte[], EntityBuffer>.AlternateLookup<ReadOnlySpan<byte>> _bufferLookup;
     private long _bufferBytes;
     private ulong _bufferFirstBlock;
     private bool _bufferStarted;
@@ -59,7 +73,7 @@ public sealed class SegmentHistoryStore : IDisposable
         _maxBufferBytes = maxBufferBytes;
         _mergeFanout = Math.Max(2, mergeFanout); // fanout of 1 would merge a single segment into itself forever
         _maxSegmentBlocks = maxSegmentBlocks;
-        _lookupKey = new ThreadLocal<byte[]>(() => new byte[keyLen]);
+        _bufferLookup = _buffer.GetAlternateLookup<ReadOnlySpan<byte>>();
 
         Directory.CreateDirectory(directory);
 
@@ -67,45 +81,55 @@ public sealed class SegmentHistoryStore : IDisposable
         foreach (string tmp in Directory.EnumerateFiles(directory, "seg_*" + SegmentExtension + HistorySegment.TempSuffix))
             File.Delete(tmp);
 
-        foreach (string path in Directory.EnumerateFiles(directory, "seg_*" + SegmentExtension))
+        List<HistorySegment> loaded = [];
+        try
         {
-            if (!path.EndsWith(SegmentExtension, StringComparison.Ordinal)) continue; // guard against 8.3 glob matching *.hs.tmp
-            _segments.Add(new HistorySegment(path));
+            foreach (string path in Directory.EnumerateFiles(directory, "seg_*" + SegmentExtension))
+            {
+                if (!path.EndsWith(SegmentExtension, StringComparison.Ordinal)) continue; // guard against 8.3 glob matching *.hs.tmp
+                loaded.Add(new HistorySegment(path));
+            }
         }
-        ReconcileOverlaps();
+        catch
+        {
+            // A mapping failure part-way through leaves the already-opened segments with no owner (the store instance is
+            // never returned, so its Dispose never runs) — unmap them before propagating. Files are left on disk.
+            foreach (HistorySegment segment in loaded) segment.Dispose();
+            throw;
+        }
+        ReconcileOverlaps(loaded);
+        _generation = new Generation(loaded.ToImmutableArray());
 
-        if (_segments.Count > 0)
+        if (loaded.Count > 0)
         {
             _anyDurable = _anyCompleted = true;
-            _firstCompletedBlock = _segments[0].FromBlock;
-            _durableMaxBlock = _lastCompletedBlock = _segments[^1].ToBlock;
+            _firstCompletedBlock = loaded[0].FromBlock;
+            _durableMaxBlock = _lastCompletedBlock = loaded[^1].ToBlock;
         }
     }
 
     // A crash between publishing a merged segment and deleting its inputs leaves the covering segment plus the segments
     // it supersedes on disk, all matching the glob. Drop (and delete) every segment fully contained in a wider one so
     // the disjoint ascending-range invariant that reads rely on is restored; the covering (merged) segment is the newer,
-    // authoritative copy. Leaves _segments ordered by ascending FromBlock.
-    private void ReconcileOverlaps()
+    // authoritative copy. Runs at construction only (no concurrent readers), so eager dispose/delete is safe. Leaves
+    // <paramref name="segments"/> ordered by ascending FromBlock.
+    private static void ReconcileOverlaps(List<HistorySegment> segments)
     {
         // Covering-first order: for a shared FromBlock the widest range sorts ahead of the ranges nested inside it.
-        _segments.Sort(static (a, b) =>
+        segments.Sort(static (a, b) =>
         {
             int cmp = a.FromBlock.CompareTo(b.FromBlock);
             return cmp != 0 ? cmp : b.ToBlock.CompareTo(a.ToBlock);
         });
 
-        List<HistorySegment> kept = new(_segments.Count);
+        List<HistorySegment> kept = new(segments.Count);
         ulong coveredTo = 0;
         bool any = false;
-        foreach (HistorySegment segment in _segments)
+        foreach (HistorySegment segment in segments)
         {
             if (any && segment.ToBlock <= coveredTo)
             {
-                // Fully contained in an already-kept covering segment — an orphaned merge input.
-                string orphan = segment.Path;
-                segment.Dispose();
-                File.Delete(orphan);
+                segment.DisposeAndDelete(); // fully contained in an already-kept covering segment — an orphaned merge input
                 continue;
             }
             if (any && segment.FromBlock <= coveredTo)
@@ -117,8 +141,8 @@ public sealed class SegmentHistoryStore : IDisposable
             any = true;
         }
 
-        _segments.Clear();
-        _segments.AddRange(kept);
+        segments.Clear();
+        segments.AddRange(kept);
     }
 
     public void RecordChange(ulong block, scoped ReadOnlySpan<byte> flatKey, scoped ReadOnlySpan<byte> value)
@@ -127,14 +151,17 @@ public sealed class SegmentHistoryStore : IDisposable
         // block < block <= last completed) is never re-delivered within a session, so it can't double-append here.
         if (_anyDurable && block <= _durableMaxBlock) return;
 
-        if (!_buffer.TryGetValue(GetKeyForLookup(flatKey), out EntityBuffer? entity))
+        lock (_lock)
         {
-            entity = new EntityBuffer();
-            _buffer.Add(flatKey.ToArray(), entity);
+            if (!_bufferLookup.TryGetValue(flatKey, out EntityBuffer? entity))
+            {
+                entity = new EntityBuffer();
+                _buffer.Add(flatKey.ToArray(), entity);
+            }
+            entity.Blocks.Add(block);
+            entity.Values.Add(value.IsEmpty ? [] : value.ToArray());
         }
 
-        entity.Blocks.Add(block);
-        entity.Values.Add(value.IsEmpty ? [] : value.ToArray());
         _bufferBytes += value.Length + sizeof(ulong) + sizeof(uint);
         StartStepIfNeeded(block);
     }
@@ -143,12 +170,15 @@ public sealed class SegmentHistoryStore : IDisposable
     {
         if (_anyDurable && block <= _durableMaxBlock) return;
 
-        if (!_anyCompleted)
+        if (!_anyCompleted || block > _lastCompletedBlock)
         {
-            _firstCompletedBlock = block;
-            _anyCompleted = true;
+            lock (_lock)
+            {
+                if (!_anyCompleted) _firstCompletedBlock = block;
+                _lastCompletedBlock = block;
+                _anyCompleted = true;
+            }
         }
-        _lastCompletedBlock = block;
         StartStepIfNeeded(block);
 
         bool stepFull = block - _bufferFirstBlock + 1 >= (ulong)_stepBlocks;
@@ -163,44 +193,75 @@ public sealed class SegmentHistoryStore : IDisposable
     public int TryGetAt(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong foundAtBlock)
     {
         // Buffer (current step) is newest; then segments newest-first. First hit is the latest change at/before block.
-        int buffered = TryGetFromBuffer(block, flatKey, outBuffer, out foundAtBlock);
-        if (buffered != -1) return buffered;
-
-        for (int s = _segments.Count - 1; s >= 0; s--)
+        Generation generation;
+        lock (_lock)
         {
-            HistorySegment segment = _segments[s];
-            if (segment.FromBlock > block) continue;
-            int written = segment.TryGetAt(flatKey, block, outBuffer, out foundAtBlock);
-            if (written != -1) return written;
+            int buffered = TryGetFromBuffer(block, flatKey, outBuffer, out foundAtBlock);
+            if (buffered != -1) return buffered;
+            generation = _generation;
+            generation.AddRef();
         }
 
-        foundAtBlock = 0;
-        return -1;
+        try
+        {
+            ImmutableArray<HistorySegment> segments = generation.Segments;
+            for (int s = segments.Length - 1; s >= 0; s--)
+            {
+                HistorySegment segment = segments[s];
+                if (segment.FromBlock > block) continue;
+                int written = segment.TryGetAt(flatKey, block, outBuffer, out foundAtBlock);
+                if (written != -1) return written;
+            }
+
+            foundAtBlock = 0;
+            return -1;
+        }
+        finally
+        {
+            generation.Release();
+        }
     }
 
     public bool HasChangeInRange(scoped ReadOnlySpan<byte> flatKey, ulong afterExclusive, ulong atOrBefore)
     {
         if (afterExclusive >= atOrBefore) return false;
 
-        if (_buffer.TryGetValue(GetKeyForLookup(flatKey), out EntityBuffer? entity)
-            && FloorIndex(entity.Blocks, atOrBefore) is int idx and >= 0
-            && entity.Blocks[idx] > afterExclusive)
+        Generation generation;
+        lock (_lock)
         {
-            return true;
+            if (_bufferLookup.TryGetValue(flatKey, out EntityBuffer? entity)
+                && FloorIndex(entity.Blocks, atOrBefore) is int idx and >= 0
+                && entity.Blocks[idx] > afterExclusive)
+            {
+                return true;
+            }
+            generation = _generation;
+            generation.AddRef();
         }
 
-        for (int s = _segments.Count - 1; s >= 0; s--)
+        try
         {
-            HistorySegment segment = _segments[s];
-            if (segment.FromBlock > atOrBefore) continue;
-            if (segment.ToBlock <= afterExclusive) break; // older segments are entirely at/below the lower bound
-            if (segment.HasChangeInRange(flatKey, afterExclusive, atOrBefore)) return true;
+            ImmutableArray<HistorySegment> segments = generation.Segments;
+            for (int s = segments.Length - 1; s >= 0; s--)
+            {
+                HistorySegment segment = segments[s];
+                if (segment.FromBlock > atOrBefore) continue;
+                if (segment.ToBlock <= afterExclusive) break; // older segments are entirely at/below the lower bound
+                if (segment.HasChangeInRange(flatKey, afterExclusive, atOrBefore)) return true;
+            }
+            return false;
         }
-        return false;
+        finally
+        {
+            generation.Release();
+        }
     }
 
-    public bool CoversBlock(ulong block) =>
-        _anyCompleted && block >= _firstCompletedBlock && block <= _lastCompletedBlock;
+    public bool CoversBlock(ulong block)
+    {
+        lock (_lock)
+            return _anyCompleted && block >= _firstCompletedBlock && block <= _lastCompletedBlock;
+    }
 
     private void StartStepIfNeeded(ulong block)
     {
@@ -209,10 +270,11 @@ public sealed class SegmentHistoryStore : IDisposable
         _bufferStarted = true;
     }
 
+    // Caller holds _lock.
     private int TryGetFromBuffer(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong foundAtBlock)
     {
         foundAtBlock = 0;
-        if (!_buffer.TryGetValue(GetKeyForLookup(flatKey), out EntityBuffer? entity)) return -1;
+        if (!_bufferLookup.TryGetValue(flatKey, out EntityBuffer? entity)) return -1;
 
         int idx = FloorIndex(entity.Blocks, block);
         if (idx < 0) return -1; // key present but all its changes are newer than block
@@ -245,18 +307,46 @@ public sealed class SegmentHistoryStore : IDisposable
             return;
         }
 
+        // Building entries only reads the buffer; the single writer isn't mutating it here and concurrent readers are
+        // read-only, so no lock is needed until the buffer is cleared. Keys are sorted here (the segment file requires
+        // ascending keys) — the one-shot sort the Dictionary defers to seal time.
         ulong fromBlock = _bufferFirstBlock;
-        List<HistoryChangeEntry> entries = new(_buffer.Count);
-        foreach ((byte[] key, EntityBuffer entity) in _buffer)
+        byte[][] keys = [.. _buffer.Keys];
+        Array.Sort(keys, static (a, b) => a.AsSpan().SequenceCompareTo(b));
+        List<HistoryChangeEntry> entries = new(keys.Length);
+        foreach (byte[] key in keys)
+        {
+            EntityBuffer entity = _buffer[key];
             entries.Add(new HistoryChangeEntry(key, [.. entity.Blocks], [.. entity.Values]));
+        }
 
         string path = SegmentPath(fromBlock, toBlock);
         HistorySegment.Write(path, _keyLen, fromBlock, toBlock, entries);
-        _segments.Add(new HistorySegment(path));
+        HistorySegment sealedSegment = new(path);
+
+        // Publish the new segment and clear the buffer atomically so a reader sees the just-sealed step in exactly one
+        // place: the buffer (before) or the segment (after), never neither.
+        Generation outgoing;
+        try
+        {
+            lock (_lock)
+            {
+                outgoing = _generation;
+                _generation = new Generation(outgoing.Segments.Add(sealedSegment));
+                _buffer.Clear();
+            }
+        }
+        catch
+        {
+            // Publish failed (e.g. OOM growing the snapshot) before the buffer was cleared, so the step is still in
+            // memory and re-seals later — unmap and delete the just-written file to match that "seal didn't happen" state.
+            sealedSegment.DisposeAndDelete();
+            throw;
+        }
+        outgoing.Release(); // a seal retires nothing; just drops the outgoing generation's store reference
 
         _durableMaxBlock = toBlock;
         _anyDurable = true;
-        _buffer.Clear();
         _bufferBytes = 0;
         _bufferStarted = false;
 
@@ -268,24 +358,24 @@ public sealed class SegmentHistoryStore : IDisposable
     // A segment whose span reaches `MaxSegmentBlocks` is frozen and never merged again, so every block is rewritten at
     // most log_F(MaxSegmentBlocks/StepBlocks) times (bounded write amplification) and the file count stays logarithmic
     // in chain length plus one frozen file per MaxSegmentBlocks. Older segments are larger, so same-tier runs are always
-    // contiguous and merges preserve the disjoint ascending-range invariant.
+    // contiguous and merges preserve the disjoint ascending-range invariant. Runs on the writer thread only.
     private void MergeIfNeeded()
     {
-        while (TryFindMergeableRun(out int start, out int count))
+        while (TryFindMergeableRun(_generation.Segments, out int start, out int count))
             MergeRange(start, count);
     }
 
     // Oldest run of exactly `_mergeFanout` consecutive same-tier, non-frozen segments, if any.
-    private bool TryFindMergeableRun(out int start, out int count)
+    private bool TryFindMergeableRun(ImmutableArray<HistorySegment> segments, out int start, out int count)
     {
         int i = 0;
-        while (i < _segments.Count)
+        while (i < segments.Length)
         {
-            int tier = TierOf(_segments[i]);
+            int tier = TierOf(segments[i]);
             if (tier == FrozenTier) { i++; continue; }
 
             int j = i + 1;
-            while (j < _segments.Count && TierOf(_segments[j]) == tier) j++;
+            while (j < segments.Length && TierOf(segments[j]) == tier) j++;
             if (j - i >= _mergeFanout)
             {
                 start = i;
@@ -314,23 +404,45 @@ public sealed class SegmentHistoryStore : IDisposable
 
     private void MergeRange(int start, int count)
     {
-        HistorySegment[] group = _segments.GetRange(start, count).ToArray();
+        // Reading the current segment array is safe without the lock: only the writer (this thread) replaces it.
+        ImmutableArray<HistorySegment> segments = _generation.Segments;
+        HistorySegment[] group = new HistorySegment[count];
+        segments.CopyTo(start, group, 0, count);
         List<HistoryChangeEntry> merged = MergeEntries(group);
 
         ulong fromBlock = group[0].FromBlock;
         ulong toBlock = group[^1].ToBlock;
         string path = SegmentPath(fromBlock, toBlock);
         HistorySegment.Write(path, _keyLen, fromBlock, toBlock, merged);
+        HistorySegment mergedSegment = new(path);
 
-        foreach (HistorySegment segment in group)
+        Generation outgoing;
+        try
         {
-            string segmentPath = segment.Path;
-            segment.Dispose();
-            if (segmentPath != path) File.Delete(segmentPath);
-        }
+            // Build the successor before taking the lock so everything that can throw (the snapshot rebuild) happens
+            // first: the in-lock swap then can't fail part-way and mark the still-live inputs retired against a
+            // generation that never gets replaced.
+            ImmutableArray<HistorySegment> next = segments.RemoveRange(start, count).Insert(start, mergedSegment);
+            Generation successor = new(next);
 
-        _segments.RemoveRange(start, count);
-        _segments.Insert(start, new HistorySegment(path));
+            // Publish the merged set and retire the inputs against the outgoing generation: they stay mapped for any
+            // reader still holding it and are unmapped + deleted only once that generation is fully released. The
+            // reclaim runs outside the lock so file deletion never blocks a reader acquiring a snapshot.
+            lock (_lock)
+            {
+                outgoing = _generation;
+                outgoing.SetRetired(group);
+                _generation = successor;
+            }
+        }
+        catch
+        {
+            // Publish failed before the swap: the inputs are still live, so drop only the orphaned merged output.
+            // ReconcileOverlaps would discard it on reopen anyway; deleting here keeps disk in step with memory.
+            mergedSegment.DisposeAndDelete();
+            throw;
+        }
+        outgoing.Release();
     }
 
     // K-way merge-join of disjoint segments (ordered by ascending block range) on their sorted key tables; a key present
@@ -379,24 +491,39 @@ public sealed class SegmentHistoryStore : IDisposable
     private string SegmentPath(ulong fromBlock, ulong toBlock) =>
         System.IO.Path.Combine(_directory, $"seg_{fromBlock:D18}_{toBlock:D18}{SegmentExtension}");
 
-    private byte[] GetKeyForLookup(scoped ReadOnlySpan<byte> flatKey)
-    {
-        // SortedDictionary lookups need a byte[]; a per-thread scratch avoids allocating on reads while staying safe
-        // when RPC threads read this instance concurrently with the writer (a shared scratch would tear between the
-        // CopyTo and the lookup). Per-instance so stores with different key lengths don't collide on the same thread.
-        byte[] scratch = _lookupKey.Value!;
-        flatKey.CopyTo(scratch);
-        return scratch;
-    }
-
-    private readonly ThreadLocal<byte[]> _lookupKey;
-
     public void Dispose()
     {
         Flush(); // seal the last partial step so it survives a restart
-        foreach (HistorySegment segment in _segments) segment.Dispose();
-        _segments.Clear();
-        _lookupKey.Dispose();
+        // No concurrent readers per the IDisposable contract, so unmap the live segments directly (files are durable —
+        // keep them). Merged-away segments were already deleted when their generation was released during operation.
+        foreach (HistorySegment segment in _generation.Segments) segment.Dispose();
+    }
+
+    // An immutable published snapshot of the segment set with a reference count. The store holds one reference; each
+    // in-flight reader holds one for the duration of its scan. Segments removed by a merge are recorded in
+    // <see cref="_retired"/> and reclaimed (unmapped + file deleted) exactly when the count reaches zero — i.e. after
+    // both the store has moved on and the last reader that captured this generation has finished — so a reader never
+    // dereferences an unmapped file.
+    private sealed class Generation(ImmutableArray<HistorySegment> segments)
+    {
+        public ImmutableArray<HistorySegment> Segments { get; } = segments;
+        private HistorySegment[] _retired = [];
+        private int _refCount = 1; // the store's reference
+
+        public void AddRef() => Interlocked.Increment(ref _refCount);
+
+        // Drops one reference; when the last one goes (store has moved on AND every reader that captured this generation
+        // has finished) the segments retired against it are unmapped and their files deleted. Interlocked.Decrement
+        // reaches zero exactly once, so the reclaim runs once and never races an in-flight read.
+        public void Release()
+        {
+            if (Interlocked.Decrement(ref _refCount) != 0) return;
+            foreach (HistorySegment segment in _retired) segment.DisposeAndDelete();
+        }
+
+        // Records the segments removed by the merge that produced the successor generation, to reclaim on last release.
+        // Set under the store lock before this generation is replaced, so it is visible to any later Release.
+        public void SetRetired(HistorySegment[] retired) => _retired = retired;
     }
 
     private sealed class EntityBuffer
@@ -405,9 +532,22 @@ public sealed class SegmentHistoryStore : IDisposable
         public List<byte[]> Values { get; } = [];
     }
 
-    private sealed class ByteArrayComparer : IComparer<byte[]>
+    private sealed class ByteArrayComparer : IEqualityComparer<byte[]>, IAlternateEqualityComparer<ReadOnlySpan<byte>, byte[]>
     {
         public static readonly ByteArrayComparer Instance = new();
-        public int Compare(byte[]? x, byte[]? y) => x.AsSpan().SequenceCompareTo(y);
+
+        public bool Equals(byte[]? x, byte[]? y) => x.AsSpan().SequenceEqual(y);
+        public int GetHashCode(byte[] obj) => HashKey(obj);
+
+        public bool Equals(ReadOnlySpan<byte> alternate, byte[] other) => alternate.SequenceEqual(other);
+        public int GetHashCode(ReadOnlySpan<byte> alternate) => HashKey(alternate);
+        public byte[] Create(ReadOnlySpan<byte> alternate) => alternate.ToArray();
+
+        private static int HashKey(scoped ReadOnlySpan<byte> key)
+        {
+            HashCode hash = new();
+            hash.AddBytes(key);
+            return hash.ToHashCode();
+        }
     }
 }
