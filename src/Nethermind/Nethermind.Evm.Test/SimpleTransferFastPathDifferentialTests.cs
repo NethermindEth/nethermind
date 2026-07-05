@@ -133,7 +133,12 @@ public class SimpleTransferFastPathDifferentialTests
                                || e.StartsWith("Balance(", StringComparison.Ordinal)
                                || e.StartsWith("Nonce(", StringComparison.Ordinal)
                                || e.StartsWith("Code(", StringComparison.Ordinal))
-            .Select(static e => e[(e.IndexOf('(') + 1)..(e.IndexOf('(') + 43)])
+            .Select(static e =>
+            {
+                int start = e.IndexOf('(') + 1;
+                int end = e.IndexOfAny([',', ')'], start);
+                return e[start..end];
+            })
             .Distinct()
             .ToArray();
 

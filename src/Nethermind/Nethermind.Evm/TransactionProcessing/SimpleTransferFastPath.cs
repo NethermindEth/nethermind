@@ -5,5 +5,5 @@ namespace Nethermind.Evm.TransactionProcessing;
 
 internal static class SimpleTransferFastPath
 {
-    public static volatile bool ForceDisabled;
+    public static bool ForceDisabled;
 }
