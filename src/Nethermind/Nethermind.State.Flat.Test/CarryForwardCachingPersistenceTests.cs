@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -18,6 +20,7 @@ public class CarryForwardCachingPersistenceTests
 {
     private static readonly StateId Basis0 = new(0, Keccak.EmptyTreeHash);
     private static readonly StateId Basis1 = new(1, Keccak.EmptyTreeHash);
+    private static readonly StateId PersistedState = new(1, TestItem.KeccakA);
     private static readonly Address Address = TestItem.AddressA;
 
     [TestCaseSource(nameof(SlotReadCases))]
@@ -102,6 +105,36 @@ public class CarryForwardCachingPersistenceTests
             inner.ReaderState = Basis1;
         }), 2)
         { TestName = name };
+
+    [TestCaseSource(nameof(CurrentStateCases))]
+    public void GetCurrentState_AfterScenario_MatchesPersistedPointer(Action<CarryForwardCachingPersistence> scenario, StateId expected)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence inner = new(db, LimboLogs.Instance);
+        CarryForwardCachingPersistence cache = new(inner);
+        using (cache.CreateWriteBatch(StateId.PreGenesis, PersistedState)) { }
+
+        scenario(cache);
+
+        Assert.That(cache.GetCurrentState(), Is.EqualTo(expected));
+        Assert.That(cache.GetCurrentState(), Is.EqualTo(inner.GetCurrentState()));
+    }
+
+    private static IEnumerable<TestCaseData> CurrentStateCases()
+    {
+        yield return new TestCaseData((Action<CarryForwardCachingPersistence>)(static _ => { }), PersistedState)
+        { TestName = "normal_batch_served_from_basis" };
+
+        // A sync batch moves the carry-forward basis to the sentinel without touching the db pointer.
+        yield return new TestCaseData((Action<CarryForwardCachingPersistence>)(static cache =>
+        {
+            using (cache.CreateWriteBatch(StateId.Sync, StateId.Sync)) { }
+        }), PersistedState)
+        { TestName = "sync_batch_falls_through_to_db_pointer" };
+
+        yield return new TestCaseData((Action<CarryForwardCachingPersistence>)(static cache => cache.Clear()), StateId.PreGenesis)
+        { TestName = "clear_resets_to_pre_genesis" };
+    }
 
     private static void ReadSlot(IPersistence persistence, UInt256 slot)
     {
