@@ -62,6 +62,13 @@ namespace Nethermind.Benchmark.Runner
                 return;
             }
 
+            // Device-resident MPT flow evaluation: commit-path root share, offloadable-fraction wave-seam split, transfer budget.
+            if (args.Contains("--mpt-root-probe"))
+            {
+                Benchmarks.Core.MptRootProbe.Run();
+                return;
+            }
+
             bool quickMode = args.Contains("--quick");
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);
