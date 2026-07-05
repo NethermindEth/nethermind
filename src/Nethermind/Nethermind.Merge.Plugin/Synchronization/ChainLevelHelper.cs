@@ -223,13 +223,6 @@ public class ChainLevelHelper(
         return (startingPoint, parentBlockInfo.BlockHash);
     }
 
-    /// <summary>
-    /// The backward walk in <see cref="GetStartingPoint"/> is O(distance between the process destination and
-    /// the download front). After a long offline period the destination sits at the chain tip, millions of
-    /// levels above the front, and re-walking that distance for every header batch stalls forward sync.
-    /// The beacon-header backfill inserts hash-linked infos, so verifying the single link above the front
-    /// proves the same connectivity the walk establishes level by level.
-    /// </summary>
     private bool TryAnchorAtForwardFront(ulong startingPoint, out ulong anchorNumber, out Hash256? anchorHash)
     {
         anchorNumber = 0;
@@ -239,6 +232,12 @@ public class ChainLevelHelper(
         Block? bestSuggested = _blockTree.BestSuggestedBody;
         Block? front = (bestSuggested?.Number ?? 0) >= (head?.Number ?? 0) ? bestSuggested : head;
         if (front?.Hash is null || front.Number + 1 >= startingPoint)
+        {
+            return false;
+        }
+
+        // Parity with the walk's pivot clamp: never anchor below the fast-sync pivot.
+        if (_syncConfig.FastSync && front.Number < _beaconPivot.PivotDestinationNumber)
         {
             return false;
         }
