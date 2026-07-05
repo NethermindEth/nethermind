@@ -24,12 +24,6 @@ public class SystemTransactionProcessor<TGasPolicy>(
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     /// <summary>
-    /// Hacky flag to execution options, to pass information how original validate should behave.
-    /// Needed to decide if we need to subtract transaction value.
-    /// </summary>
-    protected const int OriginalValidate = 2 << 30;
-
-    /// <summary>
     /// Whether to suppress BAL reads of the SYSTEM_ADDRESS account for this transaction.
     /// EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls;
     /// engines that surface the system user (e.g. AuRa) override to return false.
@@ -62,7 +56,7 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
         return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
-            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
+            ? opts | ExecutionOptions.SystemOriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
 
@@ -89,7 +83,7 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {
-        if (opts.HasFlag((ExecutionOptions)OriginalValidate))
+        if (opts.HasFlag(ExecutionOptions.SystemOriginalValidate))
         {
             base.PayValue(tx, spec, opts);
         }
