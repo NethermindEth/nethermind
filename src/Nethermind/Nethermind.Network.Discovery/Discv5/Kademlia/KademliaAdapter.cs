@@ -361,8 +361,9 @@ public sealed class KademliaAdapter(
                         break;
                 }
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            catch (TaskCanceledException e)
             {
+                if (Logger.IsTrace) Logger.Trace($"Error during msg handling. {e}");
             }
             catch (Exception e)
             {
