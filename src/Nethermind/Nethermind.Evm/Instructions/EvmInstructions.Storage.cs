@@ -705,3 +705,5 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 }
+
+// Benchmark trigger: temporary no-op to run the EVM opcode diff job on this PR; reverted after the run.
