@@ -111,7 +111,6 @@ public static class SszRestPaths
             [Payloads] = static spec => spec.EngineApiNewPayloadVersion,
             [Forkchoice] = static spec => spec.EngineApiForkchoiceVersion,
             [PayloadBodiesByHash] = static spec => spec.EngineApiPayloadBodiesByHashVersion,
-            // Witness reuses the newPayload version, but only from the EIP-7928 fork onward.
             [PayloadWithWitness] = static spec => spec.IsEip7928Enabled ? spec.EngineApiNewPayloadVersion : null,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
