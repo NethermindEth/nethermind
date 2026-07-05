@@ -53,6 +53,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 #endif
     }
 
+    public bool IsCodeOverridable => false;
+
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;

@@ -46,6 +46,8 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
+    public bool IsCodeOverridable => _inner.IsCodeOverridable;
+
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress) =>
         _inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
 
