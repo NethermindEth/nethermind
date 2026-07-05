@@ -20,7 +20,6 @@ namespace Nethermind.Consensus.Clique
     {
         private const string CannotVoteOnNonValidatorMessage = "Not a signer node - cannot vote";
 
-        // Producer-only methods require a signer node; on other nodes the runner is not a Clique runner and this is null.
         private readonly ICliqueBlockProducerRunner? _cliqueBlockProducer = blockProducerRunner as ICliqueBlockProducerRunner;
         private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         private readonly IBlockFinder _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
