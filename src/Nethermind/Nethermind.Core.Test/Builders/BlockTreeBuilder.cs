@@ -75,6 +75,7 @@ namespace Nethermind.Core.Test.Builders
                         ChainLevelInfoRepository,
                         _specProvider,
                         SyncConfig,
+                        StateBoundary,
                         LimboLogs.Instance);
                 }
 
@@ -90,6 +91,8 @@ namespace Nethermind.Core.Test.Builders
         }
 
         public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
+
+        public TestStateBoundary StateBoundary { get; set; } = new();
 
         public IDb BlocksDb { get; set; } = new TestMemDb();
         public IDb BadBlocksDb { get; set; } = new TestMemDb();
@@ -459,7 +462,14 @@ namespace Nethermind.Core.Test.Builders
             HeaderStore = otherBuilder.HeaderStore;
             BlockInfoDb = otherBuilder.BlockInfoDb;
             MetadataDb = otherBuilder.MetadataDb;
+            StateBoundary = otherBuilder.StateBoundary;
 
+            return this;
+        }
+
+        public BlockTreeBuilder WithBestPersistedState(ulong? bestPersistedState)
+        {
+            StateBoundary.BestPersistedState = bestPersistedState;
             return this;
         }
 

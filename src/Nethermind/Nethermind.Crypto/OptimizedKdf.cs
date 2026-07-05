@@ -16,7 +16,7 @@ namespace Nethermind.Crypto
 
         private static byte[] BuildDataToHash()
         {
-            byte[] counterData = BitConverter.IsLittleEndian ? Bytes.Reverse(BitConverter.GetBytes(1)) : BitConverter.GetBytes(1);
+            byte[] counterData = Bytes.Reverse(BitConverter.GetBytes(1));
             byte[] dataToHash = new byte[36];
             counterData.AsSpan().CopyTo(dataToHash.AsSpan(0, 4));
             return dataToHash;
