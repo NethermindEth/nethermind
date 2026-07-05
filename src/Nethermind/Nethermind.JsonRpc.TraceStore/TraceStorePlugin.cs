@@ -4,14 +4,15 @@
 using Autofac;
 using Autofac.Core;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Init.Modules;
@@ -22,60 +23,37 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
 {
     public const string DbName = "TraceStore";
 
-    private INethermindApi _api = null!;
-    private IJsonRpcConfig _jsonRpcConfig = null!;
-    private IDb? _db;
-    private ILogManager _logManager = null!;
-    private ITraceSerializer<ParityLikeTxTrace>? _traceSerializer;
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
     public bool Enabled => traceStoreConfig.Enabled;
 
-    public Task Init(INethermindApi nethermindApi)
+    public IModule Module => new TracerStorePluginModule(traceStoreConfig);
+
+    private class TracerStorePluginModule(ITraceStoreConfig traceStoreConfig) : Module
     {
-        _api = nethermindApi;
-        _logManager = _api.LogManager;
-        _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
-
-        // Setup serialization
-        _traceSerializer = new ParityLikeTraceSerializer(_logManager, traceStoreConfig.MaxDepth, traceStoreConfig.VerifySerialized);
-
-        // Setup DB
-        _db = _api.Context.ResolveKeyed<IDb>(DbName);
-
-        //Setup pruning if configured
-        if (traceStoreConfig.BlocksToKeep != 0)
+        protected override void Load(ContainerBuilder builder)
         {
-            _api.Context.Resolve<TraceStorePruner>();
+            builder
+                .AddDatabase(DbName)
+                .AddSingleton<TraceStorePruner>()
+                .AddSingleton<ITraceSerializer<ParityLikeTxTrace>, ITraceStoreConfig, ILogManager>((config, logManager) =>
+                    new ParityLikeTraceSerializer(logManager, config.MaxDepth, config.VerifySerialized))
+                .AddDecorator<ITraceRpcModule>((ctx, inner) =>
+                    new TraceStoreRpcModule(
+                        inner,
+                        ctx.ResolveKeyed<IDb>(DbName),
+                        ctx.Resolve<IBlockFinder>(),
+                        ctx.Resolve<IReceiptFinder>(),
+                        ctx.Resolve<ITraceSerializer<ParityLikeTxTrace>>(),
+                        ctx.Resolve<IJsonRpcConfig>(),
+                        ctx.Resolve<ILogManager>(),
+                        ctx.Resolve<ITraceStoreConfig>().DeserializationParallelization))
+                .AddSingleton<IMainProcessingModule, TraceStoreMainProcessingModule>();
+
+            if (traceStoreConfig.BlocksToKeep != 0)
+                builder.ResolveOnServiceActivation<TraceStorePruner, IBlockTree>();
         }
-
-        return Task.CompletedTask;
-    }
-
-    public Task InitRpcModules()
-    {
-        if (_jsonRpcConfig.Enabled)
-        {
-            IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
-            if (apiRpcModuleProvider.GetPoolForMethod(nameof(ITraceRpcModule.trace_call)) is IRpcModulePool<ITraceRpcModule> traceModulePool)
-            {
-                TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _jsonRpcConfig, _logManager, traceStoreConfig.DeserializationParallelization);
-                apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
-            }
-        }
-
-        return Task.CompletedTask;
-    }
-
-    public IModule Module => new TracerStorePluginModule();
-
-    private class TracerStorePluginModule : Module
-    {
-        protected override void Load(ContainerBuilder builder) => builder
-            .AddDatabase(DbName)
-            .AddSingleton<TraceStorePruner>()
-            .AddSingleton<IMainProcessingModule, TraceStoreMainProcessingModule>();
     }
 
     private class TraceStoreMainProcessingModule : Module, IMainProcessingModule
@@ -87,10 +65,11 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
     private class TraceStoreBlockTracer(
         [KeyFilter(DbName)] IDb db,
         ITraceStoreConfig traceStoreConfig,
+        ITraceSerializer<ParityLikeTxTrace> traceSerializer,
         ILogManager logManager)
         : DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer>(
             new ParityLikeBlockTracer(traceStoreConfig.TraceTypes),
             db,
-            new ParityLikeTraceSerializer(logManager, traceStoreConfig.MaxDepth, traceStoreConfig.VerifySerialized),
+            traceSerializer,
             logManager);
 }

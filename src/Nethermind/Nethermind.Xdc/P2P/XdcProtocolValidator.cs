@@ -13,9 +13,8 @@ internal class XdcProtocolValidator(
     INodeStatsManager nodeStatsManager,
     IBlockTree blockTree,
     IForkInfo forkInfo,
-    IPeerManager peerManager,
     INetworkConfig networkConfig,
-    ILogManager logManager) : ProtocolValidator(nodeStatsManager, blockTree, forkInfo, peerManager, networkConfig, logManager)
+    ILogManager logManager) : ProtocolValidator(nodeStatsManager, blockTree, forkInfo, networkConfig, logManager)
 {
     protected override bool MustValidateForkId { get; set; } = false;
 }
