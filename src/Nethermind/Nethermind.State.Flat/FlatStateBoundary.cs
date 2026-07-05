@@ -18,8 +18,6 @@ namespace Nethermind.State.Flat;
 /// </remarks>
 public class FlatStateBoundary(IPersistence persistence) : IStateBoundary
 {
-    // Cache the materialized root so repeated reads allocate a new Hash256 only when the
-    // persisted state advances (once per compaction batch).
     private CachedRoot? _cached;
 
     public ulong? RetentionWindowBlocks => null;

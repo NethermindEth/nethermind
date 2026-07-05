@@ -92,8 +92,6 @@ public sealed class StateBoundaryStore(
         }
     }
 
-    // The trie boundary tracks only the block number (ReorgBoundaryReached carries no root), and
-    // trie backends recover by re-execution anyway, so the root-verified fast-forward never applies.
     public bool TryGetBestPersistedState(out ulong blockNumber, [NotNullWhen(true)] out Hash256? stateRoot)
     {
         blockNumber = 0;

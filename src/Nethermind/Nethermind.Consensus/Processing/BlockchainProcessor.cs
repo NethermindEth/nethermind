@@ -43,6 +43,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IStateReader _stateReader;
     private readonly IStateBoundary? _stateBoundary;
+    private bool _persistedStateRecoveryDone;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
@@ -537,23 +538,29 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         return lastProcessed;
     }
 
-    /// <summary>
-    /// After an unclean shutdown a state backend that cannot roll back can hold persisted state ahead of the
-    /// block tree head. The gap blocks must not be re-executed: their post-state is already folded into the
-    /// persisted state and no snapshot exists for their parents. Blocks below the junction are skipped
-    /// without an ancestry check; the state-root verification at the junction block guards the whole range.
-    /// </summary>
     private bool TrySkipBlockBelowPersistedState(Block suggestedBlock)
     {
+        // Recovery only applies while the head lags the persisted state, which the head can only leave once
+        // (persisted state never overtakes a caught-up head). Latch it off so the per-block hot path stops
+        // paying for the boundary lookup for the rest of the run.
+        if (_persistedStateRecoveryDone) return false;
+
         if (_stateBoundary is null
             || !_stateBoundary.TryGetBestPersistedState(out ulong persistedNumber, out Hash256? persistedRoot))
         {
+            _persistedStateRecoveryDone = true;
             return false;
         }
 
         Block? head = _blockTree.Head;
-        if (head is null || head.Number >= persistedNumber)
+        if (head is null)
         {
+            return false;
+        }
+
+        if (head.Number >= persistedNumber)
+        {
+            _persistedStateRecoveryDone = true;
             return false;
         }
 

@@ -40,12 +40,6 @@ namespace Nethermind.Init.Steps
                 : Task.CompletedTask;
         }
 
-        /// <summary>
-        /// After an unclean shutdown a state backend that cannot roll back can hold persisted state ahead
-        /// of the block tree head, and no state exists for the parents of the gap blocks. When the block
-        /// matching the persisted state id is already in the tree, move the head onto it before loading DB
-        /// blocks, so processing resumes from a block whose state exists instead of stalling on the gap.
-        /// </summary>
         private void FastForwardHeadToPersistedState()
         {
             if (stateBoundary is null

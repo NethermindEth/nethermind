@@ -33,13 +33,6 @@ public interface IStateBoundary
     /// </summary>
     ulong? BestPersistedState { get; }
 
-    /// <summary>
-    /// <see cref="BestPersistedState"/> together with the state root it was persisted with, for
-    /// backends that track it. After an unclean shutdown a backend that cannot roll back (flat)
-    /// can hold persisted state ahead of the block tree head; recovery fast-forwards the head onto
-    /// the block matching this pair instead of re-executing the gap. Backends that only track the
-    /// number (trie — state exists at every in-window root, so re-execution recovers) return false.
-    /// </summary>
     bool TryGetBestPersistedState(out ulong blockNumber, [NotNullWhen(true)] out Hash256? stateRoot);
 }
 
