@@ -20,8 +20,9 @@ public class PragueBlockchainTests : PyspecBlockchainTestFixture<PragueBlockchai
 public class OsakaBlockchainTests : PyspecBlockchainTestFixture<OsakaBlockchainTests>;
 public class AmsterdamBlockchainTests : PyspecBlockchainTestFixture<AmsterdamBlockchainTests>
 {
-    // Amsterdam blocks carry BALs, so exercise the shadow state-root lane.
+    // Amsterdam blocks carry BALs, so exercise the shadow state-root lane through the GPU-capable backend chain.
     protected override bool? BalStateRootShadowOverride => true;
+    protected override bool? BalStateRootShadowUseGpuOverride => true;
 }
 public class ParisToShanghaiAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ParisToShanghaiAtTime15kBlockchainTests>;
 public class ShanghaiToCancunAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ShanghaiToCancunAtTime15kBlockchainTests>;

@@ -67,6 +67,12 @@ public abstract class BlockchainTestBase
     /// </summary>
     protected virtual bool? BalStateRootShadowOverride => null;
 
+    /// <summary>
+    /// Override to route the shadow lane through the GPU-capable backend chain in tests.
+    /// Only applied when the shadow is enabled; null means use the default config value.
+    /// </summary>
+    protected virtual bool? BalStateRootShadowUseGpuOverride => null;
+
     protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
@@ -130,7 +136,12 @@ public abstract class BlockchainTestBase
 
         if (BalStateRootShadowOverride.HasValue)
         {
-            configProvider.GetConfig<IBalStateRootConfig>().Enabled = BalStateRootShadowOverride.Value;
+            IBalStateRootConfig balConfig = configProvider.GetConfig<IBalStateRootConfig>();
+            balConfig.Enabled = BalStateRootShadowOverride.Value;
+            if (BalStateRootShadowUseGpuOverride.HasValue)
+            {
+                balConfig.UseGpu = BalStateRootShadowUseGpuOverride.Value;
+            }
         }
 
         if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
