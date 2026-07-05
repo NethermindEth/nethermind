@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.State;
 
 /// <summary>
@@ -29,6 +32,15 @@ public interface IStateBoundary
     /// syncing). The ceiling counterpart to the <see cref="OldestStateBlock"/> floor.
     /// </summary>
     ulong? BestPersistedState { get; }
+
+    /// <summary>
+    /// <see cref="BestPersistedState"/> together with the state root it was persisted with, for
+    /// backends that track it. After an unclean shutdown a backend that cannot roll back (flat)
+    /// can hold persisted state ahead of the block tree head; recovery fast-forwards the head onto
+    /// the block matching this pair instead of re-executing the gap. Backends that only track the
+    /// number (trie — state exists at every in-window root, so re-execution recovers) return false.
+    /// </summary>
+    bool TryGetBestPersistedState(out ulong blockNumber, [NotNullWhen(true)] out Hash256? stateRoot);
 }
 
 /// <summary>
@@ -56,4 +68,11 @@ public sealed class NullStateBoundary : IStateBoundary
     public ulong? OldestStateBlock => null;
     public ulong? RetentionWindowBlocks => null;
     public ulong? BestPersistedState => null;
+
+    public bool TryGetBestPersistedState(out ulong blockNumber, [NotNullWhen(true)] out Hash256? stateRoot)
+    {
+        blockNumber = 0;
+        stateRoot = null;
+        return false;
+    }
 }
