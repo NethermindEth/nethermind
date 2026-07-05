@@ -10,7 +10,9 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -22,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using System.Linq;
 using NSubstitute;
@@ -106,6 +109,8 @@ public class SszMiddlewareTests
 
             new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
             new CapabilitiesSszHandler(_specProvider),
+
+            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV1, NewPayloadV5RequestWire>(_engineModule),
         ];
 
         return new SszMiddleware(
@@ -516,13 +521,19 @@ public class SszMiddlewareTests
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
-    [Test]
-    public async Task Malformed_ssz_body_returns_400_without_propagating_exception()
+    private static readonly TestCaseData[] MalformedSszBodyCases =
+    [
+        new TestCaseData("/engine/v2/payloads", "paris").SetName("Malformed_ssz_payloads_returns_400"),
+        new TestCaseData(WitnessPath, WitnessFork).SetName("Malformed_ssz_payloads_witness_returns_400"),
+    ];
+
+    [TestCaseSource(nameof(MalformedSszBodyCases))]
+    public async Task Malformed_ssz_body_returns_400_without_propagating_exception(string path, string fork)
     {
         byte[] garbage = new byte[64];
         new Random(42).NextBytes(garbage);
 
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/payloads", garbage, fork: "paris");
+        DefaultHttpContext ctx = MakePostContext(path, garbage, fork: fork);
 
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
@@ -1069,4 +1080,147 @@ public class SszMiddlewareTests
         Assert.That(root.TryGetProperty("detail", out _), Is.True, "unsupported-fork must include 'detail'");
         Assert.That(root.EnumerateObject().Count(), Is.EqualTo(2), "error body must have exactly two keys: type + detail");
     }
+
+    private const string WitnessPath = "/engine/v2/payloads/witness";
+    private const string WitnessFork = "amsterdam";
+
+    [TestCase(true, TestName = "NewPayloadWithWitness_valid_with_generated_witness_encodes_witness_present")]
+    [TestCase(false, TestName = "NewPayloadWithWitness_valid_without_witness_encodes_witness_absent")]
+    public async Task NewPayloadWithWitness_valid_status_encodes_witness_presence(bool withWitness)
+    {
+        Witness? stubWitness = withWitness
+            ? new Witness
+            {
+                State = new ArrayPoolList<byte[]>(1) { new byte[] { 0xDE, 0xAD, 0xBE, 0xEF } },
+                Codes = new ArrayPoolList<byte[]>(0),
+                Keys = new ArrayPoolList<byte[]>(0),
+                Headers = new ArrayPoolList<byte[]>(0),
+            }
+            : null;
+
+        NewPayloadWithWitnessV1Result witnessResult = NewPayloadWithWitnessV1Result.FromPayloadStatus(
+            new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
+            stubWitness);
+
+        _engineModule.engine_newPayloadWithWitness(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
+
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, body, fork: WitnessFork);
+
+        await _middleware.InvokeAsync(ctx);
+
+        await _engineModule.Received(1).engine_newPayloadWithWitness(
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
+            "a VALID status must return 200 OK whether or not a witness was produced");
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream),
+            "successful SSZ responses must use application/octet-stream");
+
+        byte[] responseBody = ResponseBytes(ctx);
+        Assert.That(responseBody, Is.Not.Empty, "the SSZ body must contain the encoded response");
+
+        (byte decodedStatus, Hash256? decodedLvh, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(responseBody);
+        Assert.That(decodedStatus, Is.EqualTo(0), "decoded status byte must match VALID");
+        Assert.That(decodedLvh, Is.EqualTo(TestItem.KeccakA),
+            "latest_valid_hash Union Some variant must round-trip the hash correctly");
+        Assert.That(witnessPresent, Is.EqualTo(withWitness),
+            "the witness Union must be Some iff a witness was generated");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_wrong_content_type_post_returns_415()
+    {
+        DefaultHttpContext ctx = MakeBaseContext("POST", WitnessPath, AuthenticatedPort);
+        ctx.Request.ContentType = "text/plain";
+        ctx.Request.Body = Stream.Null;
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status415UnsupportedMediaType),
+            "a POST with wrong Content-Type must receive 415, like every other SSZ POST endpoint");
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_non_valid_status_returns_200_with_ssz_body()
+    {
+        NewPayloadWithWitnessV1Result witnessResult = NewPayloadWithWitnessV1Result.FromPayloadStatus(
+            new PayloadStatusV1 { Status = PayloadStatus.Syncing });
+
+        _engineModule.engine_newPayloadWithWitness(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
+
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, body, fork: WitnessFork);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
+            "SYNCING is a normal processing outcome and must return 200, not an HTTP error");
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        Assert.That(ResponseBytes(ctx), Is.Not.Empty, "the SSZ body must contain the status fields");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_non_post_method_returns_404()
+    {
+        DefaultHttpContext ctx = MakeGetContext(WitnessPath, fork: WitnessFork);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound),
+            "the witness resource is POST-only; a GET resolves no handler, like every other POST endpoint");
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_on_pre_Amsterdam_fork_returns_400()
+    {
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, body, fork: "cancun");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest),
+            "the witness endpoint is gated to Amsterdam+; a recognized pre-EIP-7928 fork is 400 unsupported-fork");
+        await _engineModule.DidNotReceive().engine_newPayloadWithWitness(
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
+    }
+
+    private static readonly TestCaseData[] WitnessEngineErrorCases =
+    [
+        new TestCaseData(MergeErrorCodes.UnsupportedFork, "Unsupported fork", StatusCodes.Status400BadRequest, "/engine-api/errors/unsupported-fork")
+            .SetName("NewPayloadWithWitness_unsupported_fork_maps_to_400"),
+        new TestCaseData(ErrorCodes.InternalError, "Something exploded", StatusCodes.Status500InternalServerError, "/engine-api/errors/internal")
+            .SetName("NewPayloadWithWitness_internal_error_maps_to_500"),
+    ];
+
+    [TestCaseSource(nameof(WitnessEngineErrorCases))]
+    public async Task NewPayloadWithWitness_engine_error_maps_to_http_status(
+        int errorCode, string error, int expectedStatus, string expectedTypeUri)
+    {
+        _engineModule.engine_newPayloadWithWitness(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(error, errorCode));
+
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, body, fork: WitnessFork);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        Assert.That(responseBody, Does.Contain(expectedTypeUri));
+    }
+
+    private static byte[] BuildMinimalWitnessRequestBody() =>
+        NewPayloadV5RequestWire.Encode(new NewPayloadV5RequestWire
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 0)),
+            ParentBeaconBlockRoot = TestItem.KeccakA,
+        });
 }

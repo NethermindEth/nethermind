@@ -2209,8 +2209,10 @@ public partial class EngineModuleTests
         SszRestPaths.PostBlobsV4,
     ];
 
-    // Amsterdam adds new method versions (newPayloadV5/getPayloadV6/fcuV4/bodies V2) but no new REST path.
-    private static readonly string[] SszRestPathsAmsterdam = [];
+    private static readonly string[] SszRestPathsAmsterdam =
+    [
+        SszRestPaths.PostPayloadsWitness,
+    ];
 
     public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()
     {

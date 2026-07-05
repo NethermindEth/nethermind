@@ -68,6 +68,8 @@ public static class SszRestPaths
 
     public const string Blobs = "blobs";
 
+    public const string PayloadWithWitness = "payloads/witness";
+
     /// <summary>How a resource's fork and version are determined by <c>SszMiddleware</c>.</summary>
     public enum ResourceScoping
     {
@@ -98,6 +100,7 @@ public static class SszRestPaths
     public const string PostBlobsV2 = "POST /engine/v2/blobs/v2";
     public const string PostBlobsV3 = "POST /engine/v2/blobs/v3";
     public const string PostBlobsV4 = "POST /engine/v2/blobs/v4";
+    public const string PostPayloadsWitness = "POST /engine/v2/payloads/witness";
 
     // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
     // (one table per HTTP method). Presence in the table means the (method, resource) pair is a
@@ -108,6 +111,7 @@ public static class SszRestPaths
             [Payloads] = static spec => spec.EngineApiNewPayloadVersion,
             [Forkchoice] = static spec => spec.EngineApiForkchoiceVersion,
             [PayloadBodiesByHash] = static spec => spec.EngineApiPayloadBodiesByHashVersion,
+            [PayloadWithWitness] = static spec => spec.IsEip7928Enabled ? spec.EngineApiNewPayloadVersion : null,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>> _getVersionByResource =
