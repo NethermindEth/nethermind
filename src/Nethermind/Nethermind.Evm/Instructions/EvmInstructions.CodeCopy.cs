@@ -159,7 +159,7 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
-        Address address = stack.PopAddress();
+        Address address = stack.PopAddress(vm.AddressCache);
         // Pop destination offset, source offset, and length from the stack.
         if (address is null ||
             !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
@@ -240,7 +240,7 @@ public static partial class EvmInstructions
         TGasPolicy.Consume<ExtCodeSizeGasCost>(ref gas, spec);
 
         // Pop the account address from the stack.
-        Address address = stack.PopAddress();
+        Address address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
