@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -89,6 +90,15 @@ public sealed class StateBoundaryStore(
                 _bestPersistedState = value;
             }
         }
+    }
+
+    // The trie boundary tracks only the block number (ReorgBoundaryReached carries no root), and
+    // trie backends recover by re-execution anyway, so the root-verified fast-forward never applies.
+    public bool TryGetBestPersistedState(out ulong blockNumber, [NotNullWhen(true)] out Hash256? stateRoot)
+    {
+        blockNumber = 0;
+        stateRoot = null;
+        return false;
     }
 
     private static ulong? DecodeBlockNumber(byte[]? rlp) =>

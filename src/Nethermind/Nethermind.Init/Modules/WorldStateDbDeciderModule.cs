@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
@@ -75,5 +77,8 @@ internal class WorldStateDbDeciderModule : Module
         public ulong? OldestStateBlock => flat.OldestStateBlock;
         public ulong? RetentionWindowBlocks => flat.RetentionWindowBlocks;
         public ulong? BestPersistedState => flat.BestPersistedState ?? trie.BestPersistedState;
+
+        public bool TryGetBestPersistedState(out ulong blockNumber, [NotNullWhen(true)] out Hash256? stateRoot) =>
+            flat.TryGetBestPersistedState(out blockNumber, out stateRoot);
     }
 }

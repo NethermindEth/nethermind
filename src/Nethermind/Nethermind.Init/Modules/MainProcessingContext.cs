@@ -33,7 +33,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IBlockTree blockTree,
         IProcessExitSource processExitSource,
         ILogManager logManager,
-        IPersistedStateSource? persistedStateSource = null)
+        IStateBoundary? stateBoundary = null)
     {
 
         IWorldStateScopeProvider worldState = worldStateManager.GlobalWorldState;
@@ -67,7 +67,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                         },
                         processingStats,
                         blockTracers,
-                        persistedStateSource)
+                        stateBoundary)
                     {
                         IsMainProcessor = true // Manual construction because of this flag
                     })

@@ -42,7 +42,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBranchProcessor _branchProcessor;
     private readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IStateReader _stateReader;
-    private readonly IPersistedStateSource? _persistedStateSource;
+    private readonly IStateBoundary? _stateBoundary;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
@@ -93,7 +93,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Options options,
         IProcessingStats processingStats,
         IEnumerable<IBlockTracer>? blockTracers = null,
-        IPersistedStateSource? persistedStateSource = null)
+        IStateBoundary? stateBoundary = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
@@ -101,7 +101,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _recoveryStep = recoveryStep;
         _stateReader = stateReader;
         _options = options;
-        _persistedStateSource = persistedStateSource;
+        _stateBoundary = stateBoundary;
 
         _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
@@ -545,8 +545,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// </summary>
     private bool TrySkipBlockBelowPersistedState(Block suggestedBlock)
     {
-        if (_persistedStateSource is null
-            || !_persistedStateSource.TryGetPersistedState(out ulong persistedNumber, out Hash256? persistedRoot))
+        if (_stateBoundary is null
+            || !_stateBoundary.TryGetBestPersistedState(out ulong persistedNumber, out Hash256? persistedRoot))
         {
             return false;
         }

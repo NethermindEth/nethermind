@@ -26,7 +26,7 @@ namespace Nethermind.Init.Steps
         IBlockTree blockTree,
         IBlockTreeHealer blockTreeHealer,
         ILogManager logManager,
-        IPersistedStateSource? persistedStateSource = null
+        IStateBoundary? stateBoundary = null
     ) : IStep
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
@@ -48,8 +48,8 @@ namespace Nethermind.Init.Steps
         /// </summary>
         private void FastForwardHeadToPersistedState()
         {
-            if (persistedStateSource is null
-                || !persistedStateSource.TryGetPersistedState(out ulong persistedNumber, out Hash256? persistedRoot))
+            if (stateBoundary is null
+                || !stateBoundary.TryGetBestPersistedState(out ulong persistedNumber, out Hash256? persistedRoot))
             {
                 return;
             }

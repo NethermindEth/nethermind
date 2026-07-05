@@ -110,8 +110,8 @@ public class BlockchainProcessorTests
             }
 
             Hash256 junctionRoot = persistedRoot ?? GapBlocks[^1].StateRoot!;
-            IPersistedStateSource persistedStateSource = Substitute.For<IPersistedStateSource>();
-            persistedStateSource.TryGetPersistedState(out Arg.Any<ulong>(), out Arg.Any<Hash256?>()).Returns(x =>
+            IStateBoundary stateBoundary = Substitute.For<IStateBoundary>();
+            stateBoundary.TryGetBestPersistedState(out Arg.Any<ulong>(), out Arg.Any<Hash256?>()).Returns(x =>
             {
                 x[0] = persistedNumber;
                 x[1] = junctionRoot;
@@ -126,7 +126,7 @@ public class BlockchainProcessorTests
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.Default,
                 Substitute.For<IProcessingStats>(),
-                persistedStateSource: persistedStateSource);
+                stateBoundary: stateBoundary);
         }
     }
 

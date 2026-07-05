@@ -70,7 +70,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
             .AddSingleton<FlatTreeSyncStore>()
             .AddSingleton<FlatFullStateFinder>()
-            .AddSingleton<IPersistedStateSource, FlatPersistedStateSource>()
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
