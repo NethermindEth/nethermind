@@ -33,6 +33,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
 
     public void Clear() => BasePersistence.ClearAllColumns(db);
 
+    public StateId GetCurrentState() => BasePersistence.ReadCurrentState(db.GetColumnDb(FlatDbColumns.Metadata));
+
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();

@@ -106,6 +106,8 @@ public class FlatTreeSyncStoreTests
     {
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
 
+        public StateId GetCurrentState() => inner.GetCurrentState();
+
         public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
         {
             if (to != StateId.Sync) log.Add("advance-pointer");

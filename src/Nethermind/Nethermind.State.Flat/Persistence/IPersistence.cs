@@ -20,6 +20,13 @@ public interface IPersistence
     IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None);
     IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None);
 
+    /// <summary>
+    /// The current persisted <see cref="StateId"/>, read directly from the metadata column without
+    /// materializing a reader (no snapshot, no caching wrapper) — for high-frequency single-value
+    /// consumers such as <c>IStateBoundary</c>.
+    /// </summary>
+    StateId GetCurrentState();
+
     // Note: RocksdbPersistence already flush WAL on writing batch dispose. You don't need this unless you are skipping WAL.
     void Flush();
     void Clear();

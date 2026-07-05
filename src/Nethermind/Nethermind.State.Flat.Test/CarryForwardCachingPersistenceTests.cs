@@ -124,6 +124,7 @@ public class CarryForwardCachingPersistenceTests
 
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => new Reader(this);
         public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new FakeWriteBatch();
+        public StateId GetCurrentState() => ReaderState;
         public void Flush() { }
         public void Clear() { }
 

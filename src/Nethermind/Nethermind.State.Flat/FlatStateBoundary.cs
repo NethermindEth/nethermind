@@ -24,8 +24,7 @@ public class FlatStateBoundary(IPersistence persistence) : IStateBoundary
 
     private ulong? CurrentPersistedBlock()
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        ulong blockNumber = reader.CurrentState.BlockNumber;
+        ulong blockNumber = persistence.GetCurrentState().BlockNumber;
         return blockNumber != ulong.MaxValue ? blockNumber : null;
     }
 }

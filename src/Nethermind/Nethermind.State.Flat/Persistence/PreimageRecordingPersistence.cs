@@ -24,6 +24,8 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => _inner.CreateReader(flags);
 
+    public StateId GetCurrentState() => _inner.GetCurrentState();
+
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
         IPersistence.IWriteBatch innerBatch = _inner.CreateWriteBatch(from, to, flags);

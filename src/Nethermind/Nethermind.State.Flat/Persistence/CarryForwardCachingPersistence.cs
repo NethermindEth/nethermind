@@ -57,6 +57,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
         => new InvalidatingWriteBatch(this, _inner.CreateWriteBatch(from, to, flags), to);
 
+    public StateId GetCurrentState() => _inner.GetCurrentState();
+
     public void Flush() => _inner.Flush();
 
     public void Clear()
