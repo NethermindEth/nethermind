@@ -67,6 +67,7 @@ public class ProtocolsManagerTests
             rlpxHost,
             Substitute.For<INodeStatsManager>(),
             Substitute.For<IProtocolValidator>(),
+            Substitute.For<IPeerManager>(),
             Substitute.For<INetworkStorage>(),
             [],
             [],
@@ -122,6 +123,7 @@ public class ProtocolsManagerTests
             Substitute.For<IRlpxHost>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<IProtocolValidator>(),
+            Substitute.For<IPeerManager>(),
             Substitute.For<INetworkStorage>(),
             [],
             [new DefaultP2PCapabilityResolver(), .. resolvers],
@@ -203,7 +205,7 @@ public class ProtocolsManagerTests
             _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
             _networkConfig = new NetworkConfig();
-            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
+            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -216,6 +218,7 @@ public class ProtocolsManagerTests
                 _rlpxHost,
                 _nodeStatsManager,
                 _protocolValidator,
+                _peerManager,
                 _peerStorage,
                 BuildProtocolHandlerFactories(),
                 [new DefaultP2PCapabilityResolver()],
