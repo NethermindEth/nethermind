@@ -20,7 +20,7 @@ namespace Nethermind.Benchmarks.Core;
 /// near-zero CPU worker threads - wins on system impact under contention even when it loses the isolated latency race.
 /// </summary>
 /// <remarks>
-/// The isolated matrix (<see cref="GpuKeccakBatchBenchmarks"/>) lets the multi-core backend (6a) commandeer every core;
+/// The isolated matrix (<see cref="GpuKeccakBatchBenchmarks"/>) lets the multi-core work-stealing backend commandeer every core;
 /// in production those cores belong to execution. Here a <see cref="CpuSaturator"/> holds (physical cores - 1) threads
 /// busy in steady state for the whole contended run - started in <see cref="GlobalSetup"/>, stopped in
 /// <see cref="GlobalCleanup"/>, never restarted per iteration - so the reported latency is what the backend achieves

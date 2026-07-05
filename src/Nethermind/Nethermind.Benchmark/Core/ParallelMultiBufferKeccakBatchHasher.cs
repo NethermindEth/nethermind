@@ -13,7 +13,7 @@ using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
 namespace Nethermind.Benchmarks.Core;
 
 /// <summary>
-/// BENCHMARK-LOCAL experiment: composes the committed vertical 8-way SIMD kernel
+/// BENCHMARK-LOCAL experiment: composes the vertical 8-way SIMD kernel
 /// (<see cref="MultiBufferKeccakBatchHasher"/>, single-core 1.3-1.55x over per-message) with multi-core
 /// work-stealing (the shape of <see cref="ParallelKeccakBatchHasher"/>, 7.5-11.7x). Measures whether the two
 /// speedups multiply. Not production code; lives only in the benchmark project.
@@ -23,9 +23,9 @@ namespace Nethermind.Benchmarks.Core;
 /// producing a block-count-ascending permutation and uniform-group boundaries. Work items are then formed: every full
 /// 8-wide slice of a uniform group is one work item; the &lt;8 remainder of each group is one per-message work item.
 /// Work-item indices are distributed across physical cores with <see cref="ParallelUnbalancedWork"/> per-index stealing,
-/// matching 6a's rebalancing shape (so a few long runs cannot pin one worker).
+/// matching the work-stealing hasher's rebalancing shape (so a few long runs cannot pin one worker).
 ///
-/// RE-ENTRY OVERHEAD NOTE: the committed <see cref="MultiBufferKeccakBatchHasher"/> exposes only <see cref="IKeccakBatchHasher.HashBatch"/>;
+/// RE-ENTRY OVERHEAD NOTE: <see cref="MultiBufferKeccakBatchHasher"/> exposes only <see cref="IKeccakBatchHasher.HashBatch"/>;
 /// its kernel entry <c>HashEightUniform</c> is private. So each 8-run work item is hashed by calling
 /// <see cref="MultiBufferKeccakBatchHasher.HashBatch"/> on a per-run sub-batch: the worker gathers its 8 permuted
 /// messages into a thread-local contiguous flat buffer + 8-element offsets, then invokes HashBatch on that slice
@@ -42,7 +42,7 @@ public sealed class ParallelMultiBufferKeccakBatchHasher : IKeccakBatchHasher
     private readonly ParallelOptions _options;
     private readonly MultiBufferKeccakBatchHasher _kernel = new(MultiBufferGroupingStrategy.UniformGroups);
 
-    /// <summary>Full-DOP variant: uses the same core budget as 6a (min(logical, 16)).</summary>
+    /// <summary>Full-DOP variant: uses the same core budget as the work-stealing hasher (min(logical, 16)).</summary>
     public ParallelMultiBufferKeccakBatchHasher()
         : this(RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16.MaxDegreeOfParallelism) { }
 
@@ -62,7 +62,7 @@ public sealed class ParallelMultiBufferKeccakBatchHasher : IKeccakBatchHasher
         int count = offsets.Length;
         if (count == 0) return;
 
-        // Reuse the committed validation contract (same up-front scan as the kernel / 6a pointer path).
+        // Reuse the shared validation contract (same up-front scan as the kernel / work-stealing pointer path).
         ValidateOffsets(offsets, flat.Length);
 
         // If the ISA cannot run the vertical kernel there is nothing to compose; fall back to per-message so the
@@ -85,7 +85,7 @@ public sealed class ParallelMultiBufferKeccakBatchHasher : IKeccakBatchHasher
 
         if (workItemCount == 0) return;
 
-        // Small batches: no scheduling, run inline (matches 6a's below-threshold behavior in spirit).
+        // Small batches: no scheduling, run inline (matches the work-stealing hasher's below-threshold behavior in spirit).
         if (workItemCount == 1 || count < ParallelKeccakBatchHasher.DefaultParallelThreshold)
         {
             for (int w = 0; w < workItemCount; w++)
@@ -95,7 +95,7 @@ public sealed class ParallelMultiBufferKeccakBatchHasher : IKeccakBatchHasher
             return;
         }
 
-        // ---- Distribute work items across cores with per-index stealing (6a's shape). ----
+        // ---- Distribute work items across cores with per-index stealing (the work-stealing hasher's shape). ----
         // Safety: offsets were fully validated (monotonic, in-bounds, last == flat.Length) before pinning;
         // the fixed block encloses the synchronous For (a hard barrier - no worker outlives the pins);
         // flat/offsets/permutation/workItems are read-only in workers; each work item owns a disjoint
@@ -178,7 +178,7 @@ public sealed class ParallelMultiBufferKeccakBatchHasher : IKeccakBatchHasher
             return;
         }
 
-        // Gather the 8 permuted messages into a contiguous sub-batch and invoke the committed kernel via HashBatch.
+        // Gather the 8 permuted messages into a contiguous sub-batch and invoke the vertical kernel via HashBatch.
         Span<int> idxSpan = stackalloc int[Width];
         int subTotal = 0;
         for (int j = 0; j < Width; j++)

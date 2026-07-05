@@ -495,7 +495,7 @@ public class BalStateRootCalculatorTests
     public void T2_16_empty_parent_state_creates_fresh_accounts(HashingPath path)
     {
         // Genesis-parent shape: parentStateRoot == EmptyTreeHash, no fixture pre-commit. Exercises the
-        // emptyParent short-circuit in PASS A end to end.
+        // emptyParent short-circuit in the pre-state read pass end to end.
         AccountScenario a = new()
         {
             Address = TestItem.AddressA,
@@ -591,7 +591,7 @@ public class BalStateRootCalculatorTests
     }
 
     /// <summary>
-    /// Task 6.9 across-storage-tries parallelism: many storage-writing accounts of varied sizes must produce the same
+    /// Across-storage-tries parallelism: many storage-writing accounts of varied sizes must produce the same
     /// root through the batched parallel path as the directly-built expected tree (and as the recursive path).
     /// A threshold of 2 forces the parallel branch for the batched case; the recursive case stays sequential.
     /// </summary>
@@ -620,7 +620,7 @@ public class BalStateRootCalculatorTests
     /// <remarks>
     /// Honesty note: because each worker writes only its own isolated storage-root slot, this is a smoke test, not a
     /// hard race net - a subtle cross-trie race would more likely corrupt a single root than flip determinism. The
-    /// correctness authority is the equal-to-directly-built-root assertion under worker turnover in the other 6.9 tests.
+    /// correctness authority is the equal-to-directly-built-root assertion under worker turnover in the other across-tries tests.
     /// </remarks>
     [Test]
     public void T6_9_parallel_batched_compute_is_deterministic()
@@ -645,9 +645,9 @@ public class BalStateRootCalculatorTests
 
     /// <summary>
     /// Composition correctness with a PARALLEL caller hasher: the caller's <see cref="ParallelKeccakBatchHasher"/>
-    /// (threshold 1, so it always parallelizes) drives BOTH the merged storage-trie wave and the PASS C state tree.
+    /// (threshold 1, so it always parallelizes) drives BOTH the merged storage-trie wave and the state-tree write pass.
     /// The storage tries are built across cores (threshold 2) and then hashed in one merged wave on the calling thread
-    /// after the build join, so this exercises a parallel build, a parallel-hasher merged wave, and a parallel PASS C,
+    /// after the build join, so this exercises a parallel build, a parallel-hasher merged wave, and a parallel state-tree write pass,
     /// all composing to the directly-built root.
     /// </summary>
     [Test]

@@ -17,12 +17,12 @@ namespace Nethermind.Benchmarks.Core;
 
 /// <summary>
 /// Benchmarks the batch keccak256 backends over batch-size and length-mix matrices: the per-message baseline, the
-/// multi-core backend (6a), and the experimental vertical multi-buffer kernel (6b, both grouping strategies).
+/// multi-core work-stealing backend, and the experimental vertical multi-buffer (8-way SIMD) kernel (both grouping strategies).
 /// </summary>
 /// <remarks>
-/// Also compares two 6a partitionings on the non-uniform trie mix: the production per-index work-stealing partition
+/// Also compares two work-stealing partitionings on the non-uniform trie mix: the production per-index work-stealing partition
 /// (<see cref="ParallelKeccakBatchHasher"/>) vs a benchmark-local static contiguous-slice partition, which can leave
-/// one worker holding the long messages. Per-index measured faster and is the adopted production strategy; the
+/// one worker holding the long messages. Per-index measured faster and is the production strategy; the
 /// static-slice variant is kept here only to reproduce the comparison.
 /// </remarks>
 [MemoryDiagnoser]
@@ -96,11 +96,11 @@ public class KeccakBatchBenchmarks
     [Benchmark(Baseline = true)]
     public void PerMessage() => _perMessage.HashBatch(_flat, _offsets, _outputs);
 
-    // Production 6a: per-index work-stealing partition (the adopted strategy).
+    // Production work-stealing hasher: per-index partition.
     [Benchmark]
     public void Parallel_PerIndexStealing() => _parallel.HashBatch(_flat, _offsets, _outputs);
 
-    // Experimental 6a: static contiguous slice per worker (the rejected strategy), kept to reproduce the comparison.
+    // Control: static contiguous slice per worker (measured slower on non-uniform lengths), kept to reproduce the comparison.
     [Benchmark]
     public void Parallel_StaticSlice() => HashStaticSlice(_flat, _offsets, _outputs);
 
@@ -110,7 +110,7 @@ public class KeccakBatchBenchmarks
     [Benchmark]
     public void MultiBuffer_RunToMax() => _multiRunToMax.HashBatch(_flat, _offsets, _outputs);
 
-    // Experimental static contiguous-slice 6a partitioning: one disjoint [start, end) slice per worker. A few long
+    // Static contiguous-slice partitioning: one disjoint [start, end) slice per worker. A few long
     // messages can pin the worker owning their slice; kept only to reproduce the comparison against the production
     // per-index work-stealing partition, which measured faster on non-uniform lengths.
     private static unsafe void HashStaticSlice(ReadOnlySpan<byte> flat, ReadOnlySpan<int> offsets, Span<ValueHash256> outputs)

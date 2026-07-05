@@ -622,7 +622,7 @@ public abstract class BlockchainTestBase
     }
 
     // The shadow lane compares only successfully-processed blocks (rejected blocks throw before Compare),
-    // so any mismatch or error is a Phase 1/2 bug, never a negative-fixture artifact. Attribution is
+    // so any mismatch or error is a real shadow-computation defect, never a negative-fixture artifact. Attribution is
     // best-effort: the counters are process-global and monotonic while fixtures run Parallelizable(All),
     // so a divergence in one fixture may surface in another. AssertNoShadowStateRootDivergenceAtEnd
     // (a one-time teardown) is the authoritative check after every fixture's stragglers have drained.

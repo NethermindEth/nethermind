@@ -23,7 +23,7 @@ namespace Nethermind.Benchmarks.Core;
 /// storage-writing accounts whose slot counts follow a skewed distribution (mostly 1-4 slots, a few 100+).
 /// </summary>
 /// <remarks>
-/// Reproduces the adoption evidence for the merged wave now wired into <c>BalStateRootCalculator</c>: (i) the merged wave
+/// Reproduces the evidence for the merged wave now wired into <c>BalStateRootCalculator</c>: (i) the merged wave
 /// must not be slower than per-trie waves on CPU hashers, and (ii) its first wave step must reach a materially wider
 /// batch than any per-trie wave (the GPU-enablement property). The width distribution is printed once from
 /// <see cref="Setup"/> via the internal wave-step observer seam. Each case rebuilds the tries per invocation because the
@@ -46,14 +46,14 @@ public class MergedWaveBenchmarks
     static MergedWaveBenchmarks() => AppDomain.CurrentDomain.ProcessExit += static (_, _) =>
         KeccakBatchBackendCatalog.DisposeAll(_backends);
 
-    // Per-message, multi-core (6a), and the CUDA-threshold router if a GPU is present. The router models the production
-    // ThresholdKeccakBatchHasher: batches >= GpuMinBatch go to the GPU, smaller to the CPU (6a) fallback.
+    // Per-message, multi-core work-stealing, and the CUDA-threshold router if a GPU is present. The router models the production
+    // ThresholdKeccakBatchHasher: batches >= GpuMinBatch go to the GPU, smaller to the CPU work-stealing fallback.
     private static KeccakBatchBackend[] BuildBackends()
     {
         List<KeccakBatchBackend> backends =
         [
             new("PerMessage", new PerMessageKeccakBatchHasher()),
-            new("Parallel(6a)", new ParallelKeccakBatchHasher()),
+            new("ParallelWorkStealing", new ParallelKeccakBatchHasher()),
         ];
 
         foreach (GpuDeviceInfo device in GpuKeccakBatchHasher.EnumerateDevices())

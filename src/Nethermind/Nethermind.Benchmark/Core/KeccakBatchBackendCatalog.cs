@@ -23,8 +23,8 @@ public sealed class KeccakBatchBackend(string name, IKeccakBatchHasher hasher)
 /// <summary>Discovers the batch-keccak backends present on the host (CPU backends plus one entry per GPU device).</summary>
 /// <remarks>
 /// Shared by the idle matrix, the contended matrix, and the out-of-BenchmarkDotNet contention probe so all three measure
-/// exactly the same backend set. The per-message baseline and multi-core backend (6a) are always present; the vertical
-/// multi-buffer kernel (6b) only when <see cref="MultiBufferKeccakBatchHasher.IsSupported"/>; and one entry per non-CPU
+/// exactly the same backend set. The per-message baseline and the multi-core work-stealing backend are always present; the
+/// vertical multi-buffer (8-way SIMD) kernel only when <see cref="MultiBufferKeccakBatchHasher.IsSupported"/>; and one entry per non-CPU
 /// ILGPU device, each created on that specific device (see <see cref="GpuKeccakBatchHasher.EnumerateDevices"/>). GPU
 /// entries hold native accelerator resources; callers dispose them once at process exit.
 /// </remarks>
@@ -36,15 +36,15 @@ public static class KeccakBatchBackendCatalog
         List<KeccakBatchBackend> backends =
         [
             new("PerMessage", new PerMessageKeccakBatchHasher()),
-            new("Parallel(6a)", new ParallelKeccakBatchHasher()),
+            new("ParallelWorkStealing", new ParallelKeccakBatchHasher()),
         ];
 
         if (MultiBufferKeccakBatchHasher.IsSupported)
         {
-            backends.Add(new("MultiBuffer(6b)", new MultiBufferKeccakBatchHasher(MultiBufferGroupingStrategy.UniformGroups)));
-            // Experiment: does composing the vertical 8-way kernel (6b) with 6a's multi-core work-stealing multiply?
-            backends.Add(new("ParallelMultiBuffer(6c)", new ParallelMultiBufferKeccakBatchHasher()));
-            // DOP-4 reading of the same variant: does 4 cores of vertical-kernel match full 6a throughput?
+            backends.Add(new("MultiBuffer", new MultiBufferKeccakBatchHasher(MultiBufferGroupingStrategy.UniformGroups)));
+            // Experiment: does composing the vertical 8-way SIMD kernel with multi-core work-stealing multiply?
+            backends.Add(new("ParallelMultiBuffer", new ParallelMultiBufferKeccakBatchHasher()));
+            // DOP-4 reading of the same variant: does 4 cores of the vertical kernel match full-DOP work-stealing throughput?
             backends.Add(new("ParallelMultiBuffer-DOP4", new ParallelMultiBufferKeccakBatchHasher(4)));
         }
 

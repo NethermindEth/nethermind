@@ -94,7 +94,7 @@ public sealed class BalStateRootCalculator
         BalPostStateDelta.AccountDelta[] accounts = delta.Accounts;
         int n = accounts.Length;
 
-        // PASS A: all pre-state reads before any mutation. Explicit root ignores RootRef; interleaving
+        // Pass 1 (pre-state reads): all reads before any mutation. Explicit root ignores RootRef; interleaving
         // reads with Sets would observe a partially-updated tree. An explicit-root Get on EmptyTreeHash
         // would THROW (the empty-tree node is never stored), so the guard short-circuits to null instead.
         Account?[] pre = new Account?[n];
@@ -104,7 +104,7 @@ public sealed class BalStateRootCalculator
             pre[i] = emptyParent ? null : stateTree.Get(accounts[i].Address, parentStateRoot); // THROWS on evicted node - caller catches
         }
 
-        // PASS B: compose accounts; storage roots only for non-empty survivors.
+        // Pass 2 (account composition): compose accounts; storage roots only for non-empty survivors.
         // Scalar composition and the EIP-161 deletion decision stay sequential; only the independent
         // storage-tree hashing (the expensive part) may run across cores on the batched path.
         Account?[] composed = new Account?[n];
@@ -167,7 +167,7 @@ public sealed class BalStateRootCalculator
             }
         }
 
-        // PASS C: state-tree writes, then one root computation. Never Commit.
+        // Pass 3 (state-tree writes): apply the composed leaves, then one root computation. Never Commit.
         stateTree.SetRootHash(parentStateRoot, true);
         using (StateTree.StateTreeBulkSetter setter = stateTree.BeginSet(n))
         {

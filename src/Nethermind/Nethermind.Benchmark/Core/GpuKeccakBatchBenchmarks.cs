@@ -20,8 +20,8 @@ namespace Nethermind.Benchmarks.Core;
 /// GPU-less box.
 /// </summary>
 /// <remarks>
-/// Backend discovery (see <see cref="Backends"/>): the per-message baseline and the multi-core backend (6a) are always
-/// present; the vertical multi-buffer kernel (6b) is included only when <see cref="MultiBufferKeccakBatchHasher.IsSupported"/>;
+/// Backend discovery (see <see cref="Backends"/>): the per-message baseline and the multi-core work-stealing backend are always
+/// present; the vertical multi-buffer (8-way SIMD) kernel is included only when <see cref="MultiBufferKeccakBatchHasher.IsSupported"/>;
 /// and one entry is added per non-CPU ILGPU device (<see cref="GpuKeccakBatchHasher.EnumerateDevices"/>), each created on
 /// that specific device and labelled with its driver name. Missing hardware simply omits the entry - no zero rows, no
 /// skips. GPU backends carry a serialized host-device transfer per dispatch (correct for the shadow lane, see the

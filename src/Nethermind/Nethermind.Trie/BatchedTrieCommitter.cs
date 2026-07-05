@@ -81,7 +81,7 @@ public static class BatchedTrieCommitter
     internal delegate void WaveStepObserver(int stepIndex, int batchWidth);
 
     /// <inheritdoc cref="UpdateRootHashesBatched(IReadOnlyList{PatriciaTree}, IKeccakBatchHasher)"/>
-    /// <param name="waveStats">Optional per-wave-step batch-width sink (adoption-evidence seam); null in production.</param>
+    /// <param name="waveStats">Optional per-wave-step batch-width sink (benchmark/test observability seam); null in production.</param>
     internal static void UpdateRootHashesBatched(IReadOnlyList<PatriciaTree> trees, IKeccakBatchHasher hasher, WaveStepObserver? waveStats)
     {
         ArgumentNullException.ThrowIfNull(trees);
