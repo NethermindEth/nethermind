@@ -77,9 +77,22 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 
     private sealed class CodeLruCache
     {
+        private const uint RefreshSampleMask = 63;
+
+        [ThreadStatic] private static uint _refreshSampler;
+
         private readonly AssociativeCache<ValueHash256, CodeInfo> _cache = new(MemoryAllowance.CodeCacheSize);
 
-        public CodeInfo? Get(in ValueHash256 codeHash) => _cache.Get(in codeHash);
+        public CodeInfo? Get(in ValueHash256 codeHash)
+        {
+            if ((_refreshSampler++ & RefreshSampleMask) == 0)
+            {
+                return _cache.Get(in codeHash);
+            }
+
+            _cache.TryGetNoRefresh(in codeHash, out CodeInfo? codeInfo);
+            return codeInfo;
+        }
 
         public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
         {
