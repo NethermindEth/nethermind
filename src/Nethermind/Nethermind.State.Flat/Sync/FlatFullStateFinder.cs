@@ -20,6 +20,6 @@ public class FlatFullStateFinder(IPersistenceManager persistenceManager, IBlockT
         if (stateId.BlockNumber <= bestHeader) return stateId.BlockNumber;
         if (_logger.IsDebug) _logger.Debug($"Clamping best full state {stateId.BlockNumber} to best suggested header {bestHeader}");
         return bestHeader;
-
+    }
     }
 }
