@@ -83,7 +83,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState);
-        writeBatch.DeleteStateTrieNodeRange(TreePath.Empty, TreePath.Empty);
+        writeBatch.DeleteStateSubTree(TreePath.Empty);
     }
 
     /// <summary>

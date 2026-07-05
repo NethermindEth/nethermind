@@ -116,10 +116,10 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             inner.DeleteStorageRange(addressHash, fromPath, toPath);
 
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
-            inner.DeleteStateTrieNodeRange(fromPath, toPath);
+        public void DeleteStateSubTree(in TreePath subtreeRoot) =>
+            inner.DeleteStateSubTree(subtreeRoot);
 
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
-            inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
+        public void DeleteStorageSubTree(in ValueHash256 addressHash, in TreePath subtreeRoot) =>
+            inner.DeleteStorageSubTree(addressHash, subtreeRoot);
     }
 }

@@ -736,37 +736,90 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         }
     }
 
-    // Nodes across all columns (lengths 4/10/32/64), in-range pairs under "ab" and
-    // out-of-range neighbours (aa/ac), to verify the range bounds delete only in-range nodes.
-    private static readonly (string Path, bool Deleted)[] RangeDeleteNodes =
-    [
-        ("ab00",                true),  ("abffff",               true),
-        ("ab00000000",          true),  ("abffffffffffff",        true),
-        ("ab".PadRight(32,'0'), true),  ("ab".PadRight(32, 'f'), true),
-        ("ab".PadRight(64,'0'), true),  ("ab".PadRight(64, 'f'), true),
-        ("aa00",                false), ("ac00",                  false),
-        ("aa00000000",          false), ("ac00000000",            false),
-        ("aa".PadRight(32,'0'), false), ("ac".PadRight(32, '0'), false),
-        ("aa".PadRight(64,'0'), false), ("ac".PadRight(64, '0'), false),
-    ];
-    private static readonly TreePath RangeDeleteFrom = TreePath.FromHexString("ab".PadRight(64, '0'));
-    private static readonly TreePath RangeDeleteTo = TreePath.FromHexString("ab".PadRight(64, 'f'));
+    // Each case: the subtree root to delete, plus nodes tagged with whether DeleteSubTree(root) must remove them.
+    // Nodes are spread across all columns (top 0-5 / shortened 6-15 / fallback 16+) so the per-column depth handling
+    // (skip a column when the root is deeper than it, floor the fallback at the root depth) is exercised.
+    private static IEnumerable<TestCaseData> SubtreeDeleteCases()
+    {
+        // Deep root (depth 20, fallback): ancestors on the zero tail (depths 2/10/16/18) survive across every column;
+        // the root and its descendants (depths 20/24/32/64) go; out-of-prefix neighbours (aa*/ac*) survive.
+        yield return new TestCaseData(
+            TreePath.FromHexString("ab".PadRight(20, '0')),
+            new (string, bool)[]
+            {
+                ("ab",                            false),
+                ("ab".PadRight(10, '0'),          false),
+                ("ab".PadRight(16, '0'),          false),
+                ("ab".PadRight(18, '0'),          false),
+                ("ab".PadRight(20, '0'),          true),
+                ("ab".PadRight(20, '0') + "cccc", true),
+                ("ab".PadRight(32, '0'),          true),
+                ("ab".PadRight(64, '0'),          true),
+                ("aa".PadRight(20, '0'),          false),
+                ("ac".PadRight(20, '0'),          false),
+                ("aa".PadRight(64, '0'),          false),
+                ("ac".PadRight(64, '0'),          false),
+            }).SetName("Deep root (depth 20): ancestors preserved, subtree deleted");
 
-    [Test]
-    public void TestDeleteStateTrieNodeRange()
+        // Shortened root (depth 10): the top column is skipped (depth-2 ancestor kept), the shortened column is
+        // floored at 10 (depths 6/8 kept, 10/12/14 deleted), the fallback is deleted.
+        yield return new TestCaseData(
+            TreePath.FromHexString("ab".PadRight(10, '0')),
+            new (string, bool)[]
+            {
+                ("ab",                            false),
+                ("ab".PadRight(6, '0'),           false),
+                ("ab".PadRight(8, '0'),           false),
+                ("ab".PadRight(10, '0'),          true),
+                ("ab".PadRight(12, '0'),          true),
+                ("ab".PadRight(10, '0') + "cccc", true),
+                ("ab".PadRight(32, '0'),          true),
+                ("ab".PadRight(64, '0'),          true),
+                ("aa".PadRight(64, '0'),          false),
+                ("ac".PadRight(64, '0'),          false),
+            }).SetName("Shortened root (depth 10): top skipped, shortened floored, fallback deleted");
+
+        // Sibling precision: deleting child 3's subtree keeps siblings 2 and 4 and the parent node.
+        yield return new TestCaseData(
+            TreePath.FromHexString("ab3"),
+            new (string, bool)[]
+            {
+                ("ab",                    false),
+                ("ab30",                  true),
+                ("ab3".PadRight(10, '0'), true),
+                ("ab3".PadRight(64, '0'), true),
+                ("ab2".PadRight(10, '0'), false),
+                ("ab2".PadRight(64, '0'), false),
+                ("ab4".PadRight(64, '0'), false),
+            }).SetName("Sibling precision: delete child 3, keep siblings 2/4 and parent");
+
+        // Whole trie: the empty root removes everything.
+        yield return new TestCaseData(
+            TreePath.Empty,
+            new (string, bool)[]
+            {
+                ("ab",                   true),
+                ("ab".PadRight(10, '0'), true),
+                ("ab".PadRight(64, '0'), true),
+                ("cd".PadRight(64, 'f'), true),
+            }).SetName("Empty root: whole trie deleted");
+    }
+
+    [TestCaseSource(nameof(SubtreeDeleteCases))]
+    public void TestDeleteStateSubTree(TreePath root, (string Path, bool Deleted)[] nodes)
     {
         byte[] rlp = [0xc1, 0x11];
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
-            foreach ((string p, _) in RangeDeleteNodes) writer.SetStateTrieNode(TreePath.FromHexString(p), rlp);
+            foreach ((string p, _) in nodes) writer.SetStateTrieNode(TreePath.FromHexString(p), rlp);
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
-            writer.DeleteStateTrieNodeRange(RangeDeleteFrom, RangeDeleteTo);
+            writer.DeleteStateSubTree(root);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         using (Assert.EnterMultipleScope())
         {
-            foreach ((string p, bool del) in RangeDeleteNodes)
+            foreach ((string p, bool del) in nodes)
             {
                 byte[]? node = reader.TryLoadStateRlp(TreePath.FromHexString(p), ReadFlags.None);
                 Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
@@ -774,22 +827,22 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         }
     }
 
-    [Test]
-    public void TestDeleteStorageTrieNodeRange()
+    [TestCaseSource(nameof(SubtreeDeleteCases))]
+    public void TestDeleteStorageSubTree(TreePath root, (string Path, bool Deleted)[] nodes)
     {
         Hash256 account = TestItem.KeccakA;
         byte[] rlp = [0xc1, 0x11];
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
-            foreach ((string p, _) in RangeDeleteNodes) writer.SetStorageTrieNode(account, TreePath.FromHexString(p), rlp);
+            foreach ((string p, _) in nodes) writer.SetStorageTrieNode(account, TreePath.FromHexString(p), rlp);
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
-            writer.DeleteStorageTrieNodeRange(new ValueHash256(account.Bytes), RangeDeleteFrom, RangeDeleteTo);
+            writer.DeleteStorageSubTree(new ValueHash256(account.Bytes), root);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         using (Assert.EnterMultipleScope())
         {
-            foreach ((string p, bool del) in RangeDeleteNodes)
+            foreach ((string p, bool del) in nodes)
             {
                 byte[]? node = reader.TryLoadStorageRlp(account, TreePath.FromHexString(p), ReadFlags.None);
                 Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);

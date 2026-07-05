@@ -78,25 +78,30 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     private void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode newNode, TrieNode? existingNode)
     {
+        // Flat account entries: value ranges (accounts have no depth; merged ranges are the efficient form).
         RefList16<DeletionRange> ranges = new();
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
         foreach (DeletionRange range in ranges.AsSpan())
-        {
             writeBatch.DeleteAccountRange(range.From, range.To);
-            writeBatch.DeleteStateTrieNodeRange(new TreePath(range.From, 64), new TreePath(range.To, 64));
-        }
+
+        // Trie nodes: one subtree per region, so deletion is floored at each subtree's depth (see DeleteStateSubTree).
+        StateSubtreeDeleter deleter = new(writeBatch);
+        ComputeDeletionSubtrees(path, newNode, existingNode, ref deleter);
     }
 
     private void RequestStorageDeletion(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode newNode, TrieNode? existingNode)
     {
         ValueHash256 addressHash = address.ValueHash256;
+
+        // Flat storage entries: value ranges (slots have no depth; merged ranges are the efficient form).
         RefList16<DeletionRange> ranges = new();
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
         foreach (DeletionRange range in ranges.AsSpan())
-        {
             writeBatch.DeleteStorageRange(addressHash, range.From, range.To);
-            writeBatch.DeleteStorageTrieNodeRange(addressHash, new TreePath(range.From, 64), new TreePath(range.To, 64));
-        }
+
+        // Trie nodes: one subtree per region, so deletion is floored at each subtree's depth (see DeleteStorageSubTree).
+        StorageSubtreeDeleter deleter = new(writeBatch, addressHash);
+        ComputeDeletionSubtrees(path, newNode, existingNode, ref deleter);
     }
 
     /// <summary>
@@ -126,39 +131,12 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// </summary>
     private static void ComputeToBranchDeletionRanges(TreePath path, TrieNode newNode, TrieNode? existingNode, ref RefList16<DeletionRange> ranges)
     {
+        (bool existingIsBranch, int childNibble) = BranchDeletionContext(existingNode);
+
         int? nibbleRangeStart = null;
-        bool existingIsBranch = existingNode is { NodeType: NodeType.Branch };
-
-        int childNibble = -1;
-        if (!existingIsBranch && existingNode is not null)
-        {
-            childNibble = existingNode.Key![0];
-        }
-
         for (int i = 0; i < 16; i++)
         {
-            bool needsDelete = false;
-            bool newNodeHasNonInlineChild = newNode.GetChildHashAsValueKeccak(i, out _);
-            bool newNodeIsNullOrInline = !newNodeHasNonInlineChild;
-
-            // Note: for inline node, the child hash is null, hence range will be deleted. But the existingNode child may
-            // also be inline node, in which case, it still need to be deleted instead of just assuming its empty.
-            if (existingIsBranch)
-            {
-                // Branch→Branch: only delete where existing had hash ref but new doesn't
-                bool existingNodeHasChild = !existingNode!.IsChildNull(i);
-                needsDelete = existingNodeHasChild && newNodeIsNullOrInline;
-            }
-            else
-            {
-                if (childNibble == -1 || i == childNibble)
-                {
-                    // Other→Branch: delete all where new has no hash reference
-                    needsDelete = newNodeIsNullOrInline;
-                }
-            }
-
-            if (needsDelete)
+            if (ChildNeedsDeletion(newNode, existingNode, existingIsBranch, childNibble, i))
             {
                 nibbleRangeStart ??= i;
             }
@@ -173,6 +151,25 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         {
             ranges.Add(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, 15));
         }
+    }
+
+    private static (bool ExistingIsBranch, int ChildNibble) BranchDeletionContext(TrieNode? existingNode)
+    {
+        bool existingIsBranch = existingNode is { NodeType: NodeType.Branch };
+        int childNibble = !existingIsBranch && existingNode is not null ? existingNode.Key![0] : -1;
+        return (existingIsBranch, childNibble);
+    }
+
+    private static bool ChildNeedsDeletion(TrieNode newNode, TrieNode? existingNode, bool existingIsBranch, int childNibble, int i)
+    {
+        // For an inline child the hash is null, so the region is deleted; when the existing child was also inline it
+        // still must be deleted rather than assumed empty.
+        bool newNodeIsNullOrInline = !newNode.GetChildHashAsValueKeccak(i, out _);
+        return existingIsBranch
+            // Branch→Branch: only delete where existing had a hash ref but new doesn't
+            ? !existingNode!.IsChildNull(i) && newNodeIsNullOrInline
+            // Other→Branch: delete all where new has no hash reference
+            : (childNibble == -1 || i == childNibble) && newNodeIsNullOrInline;
     }
 
     /// <summary>
@@ -221,6 +218,72 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// </summary>
     private static DeletionRange ComputeSubtreeRangeForNibble(TreePath path, int from, int to) =>
         new(path.Append(from).ToLowerBoundPath(), path.Append(to).ToUpperBoundPath());
+
+    /// <summary>
+    /// Computes the subtree roots to delete when replacing an existing node with a new node — the same regions as
+    /// <see cref="ComputeDeletionRanges"/>, but as one <see cref="TreePath"/> root per subtree so trie-node deletion
+    /// is depth-exact. Each root is streamed to <paramref name="sink"/> (the extension case can emit more roots than
+    /// would fit a fixed-size buffer).
+    /// </summary>
+    internal static void ComputeDeletionSubtrees<TSink>(in TreePath path, TrieNode newNode, TrieNode? existingNode, ref TSink sink)
+        where TSink : ISubtreeSink
+    {
+        switch (newNode.NodeType)
+        {
+            case NodeType.Branch:
+                (bool existingIsBranch, int childNibble) = BranchDeletionContext(existingNode);
+                for (int i = 0; i < 16; i++)
+                {
+                    if (ChildNeedsDeletion(newNode, existingNode, existingIsBranch, childNibble, i))
+                        sink.Add(path.Append(i)); // one subtree per deleted child (depth path.Length + 1)
+                }
+                break;
+            case NodeType.Leaf:
+                if (existingNode is not { NodeType: NodeType.Leaf } || !newNode.Key.SequenceEqual(existingNode.Key))
+                    sink.Add(path);
+                break;
+            case NodeType.Extension:
+                ComputeToExtensionDeletionSubtrees(path, newNode, existingNode, ref sink);
+                break;
+        }
+    }
+
+    private static void ComputeToExtensionDeletionSubtrees<TSink>(in TreePath path, TrieNode newNode, TrieNode? existingNode, ref TSink sink)
+        where TSink : ISubtreeSink
+    {
+        if (existingNode is { NodeType: NodeType.Extension } && newNode.Key.SequenceEqual(existingNode.Key))
+            return;
+
+        // Delete everything under `path` except the new extension's own subtree (path + key): the sibling subtrees at
+        // each level of the key. Extensions are rare, so we just loop rather than merge adjacent siblings into ranges.
+        byte[] key = newNode.Key!;
+        TreePath prefix = path;
+        for (int j = 0; j < key.Length; j++)
+        {
+            int keyNibble = key[j];
+            for (int c = 0; c < 16; c++)
+            {
+                if (c != keyNibble) sink.Add(prefix.Append(c));
+            }
+            prefix = prefix.Append(keyNibble);
+        }
+    }
+
+    /// <summary>Receives the subtree roots produced by <see cref="ComputeDeletionSubtrees"/>.</summary>
+    internal interface ISubtreeSink
+    {
+        void Add(in TreePath subtreeRoot);
+    }
+
+    private readonly struct StateSubtreeDeleter(IPersistence.IWriteBatch writeBatch) : ISubtreeSink
+    {
+        public void Add(in TreePath subtreeRoot) => writeBatch.DeleteStateSubTree(subtreeRoot);
+    }
+
+    private readonly struct StorageSubtreeDeleter(IPersistence.IWriteBatch writeBatch, ValueHash256 addressHash) : ISubtreeSink
+    {
+        public void Add(in TreePath subtreeRoot) => writeBatch.DeleteStorageSubTree(addressHash, subtreeRoot);
+    }
 
     public void EnsureStorageEmpty(Hash256 address)
     {

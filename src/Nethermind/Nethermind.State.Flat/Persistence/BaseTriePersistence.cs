@@ -193,46 +193,64 @@ public static class BaseTriePersistence
             }
         }
 
+        /// <summary>Deletes every state trie node in the subtree rooted at <paramref name="subtreeRoot"/>.</summary>
+        /// <remarks>
+        /// The subtree covers all nodes whose path has <paramref name="subtreeRoot"/> as a prefix, i.e. value in
+        /// <c>[root.ToLowerBoundPath(), root.ToUpperBoundPath()]</c> and depth <c>&gt;= subtreeRoot.Length</c> (call it D).
+        /// A trie column whose maximum node length is below D can only hold ancestors of the subtree, so it is skipped;
+        /// in the fallback column the encoded length byte floors the scan at D so equal-value ancestors sort below the
+        /// lower bound. The deletion is inclusive of the root node itself — the leaf-heal caller relies on the
+        /// immediately following <see cref="SetStateTrieNode"/> re-writing it (the write batch is applied in order,
+        /// last write wins).
+        /// </remarks>
         [SkipLocalsInit]
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath)
+        public void DeleteStateSubTree(in TreePath subtreeRoot)
         {
             // State trie nodes are stored across 3 columns based on path length:
             // - StateNodesTop: path length 0-5 (3 byte keys)
             // - StateNodes: path length 6-15 (8 byte keys)
             // - FallbackNodes: path length 16+ (34 byte keys with 0x00 prefix)
 
+            TreePath toPath = new(subtreeRoot.ToUpperBoundPath(), 2 * FullPathLength);
+
             Span<byte> firstKeyBuf = stackalloc byte[FullStateNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStateNodesKeyLength + 1];
 
-            // Delete from StateNodesTop (path length 0-5)
-            // Truncate toPath to max length for this column to ensure all keys in range are included
-            EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], fromPath);
-            EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], toPath.Truncate(StateNodesTopThreshold));
-            lastKeyBuf[StateNodesTopPathLength] = 0;
-            BasePersistence.DeleteMatchingKeys(stateTopNodesSnap, stateTopNodes,
-                firstKeyBuf[..StateNodesTopPathLength], lastKeyBuf[..(StateNodesTopPathLength + 1)],
-                StateNodesTopPathLength);
+            // StateNodesTop (path length 0-5): skipped when the root is deeper than any node this column can hold
+            if (subtreeRoot.Length <= StateNodesTopThreshold)
+            {
+                EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], subtreeRoot);
+                EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], toPath.Truncate(StateNodesTopThreshold));
+                lastKeyBuf[StateNodesTopPathLength] = 0;
+                BasePersistence.DeleteMatchingKeys(stateTopNodesSnap, stateTopNodes,
+                    firstKeyBuf[..StateNodesTopPathLength], lastKeyBuf[..(StateNodesTopPathLength + 1)],
+                    StateNodesTopPathLength);
+            }
 
-            // Delete from StateNodes (path length 6-15)
-            // Truncate toPath to max length for this column to ensure all keys in range are included
-            EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], fromPath);
-            EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], toPath.Truncate(ShortenedPathThreshold));
-            lastKeyBuf[ShortenedPathLength] = 0;
-            BasePersistence.DeleteMatchingKeys(stateNodesSnap, stateNodes,
-                firstKeyBuf[..ShortenedPathLength], lastKeyBuf[..(ShortenedPathLength + 1)],
-                ShortenedPathLength);
+            // StateNodes (path length 6-15): skipped when the root is deeper than any node this column can hold
+            if (subtreeRoot.Length <= ShortenedPathThreshold)
+            {
+                EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], subtreeRoot);
+                EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], toPath.Truncate(ShortenedPathThreshold));
+                lastKeyBuf[ShortenedPathLength] = 0;
+                BasePersistence.DeleteMatchingKeys(stateNodesSnap, stateNodes,
+                    firstKeyBuf[..ShortenedPathLength], lastKeyBuf[..(ShortenedPathLength + 1)],
+                    ShortenedPathLength);
+            }
 
-            // Delete from FallbackNodes (path length 16+, prefix 0x00)
-            EncodeFullStateNodeKey(firstKeyBuf, fromPath);
-            firstKeyBuf[1 + FullPathLength] = 0;
+            // FallbackNodes (path length 16+, prefix 0x00). EncodeFullStateNodeKey writes the length byte =
+            // subtreeRoot.Length, flooring the scan at the subtree-root depth.
+            EncodeFullStateNodeKey(firstKeyBuf, subtreeRoot);
             EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], toPath);
             lastKeyBuf[FullStateNodesKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
                 firstKeyBuf, lastKeyBuf[..(FullStateNodesKeyLength + 1)], FullStateNodesKeyLength);
         }
 
+        /// <summary>Deletes every storage trie node in the subtree rooted at <paramref name="subtreeRoot"/> for the given account.</summary>
+        /// <remarks>See <see cref="DeleteStateSubTree"/> for the depth/ancestor semantics.</remarks>
         [SkipLocalsInit]
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath)
+        public void DeleteStorageSubTree(in ValueHash256 addressHash, in TreePath subtreeRoot)
         {
             // Storage trie nodes are stored across 2 columns based on path length:
             // - StorageNodes: path length 0-15 (28 byte keys)
@@ -241,21 +259,25 @@ public static class BaseTriePersistence
             Hash256 address = new(addressHash);
             ReadOnlySpan<byte> addressSuffix = addressHash.Bytes[StoragePrefixPortion..StorageHashPrefixLength];
 
+            TreePath toPath = new(subtreeRoot.ToUpperBoundPath(), 2 * FullPathLength);
+
             Span<byte> firstKeyBuf = stackalloc byte[FullStorageNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStorageNodesKeyLength + 1];
 
-            // Delete from StorageNodes (path length 0-15)
-            // Truncate toPath to max length for this column to ensure all keys in range are included
-            EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, fromPath);
-            EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, toPath.Truncate(ShortenedPathThreshold));
-            lastKeyBuf[ShortenedStorageNodesKeyLength] = 0;
-            BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
-                firstKeyBuf[..ShortenedStorageNodesKeyLength], lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)],
-                StoragePrefixPortion + ShortenedPathLength, addressSuffix);
+            // StorageNodes (path length 0-15): skipped when the root is deeper than any node this column can hold
+            if (subtreeRoot.Length <= ShortenedPathThreshold)
+            {
+                EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, subtreeRoot);
+                EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, toPath.Truncate(ShortenedPathThreshold));
+                lastKeyBuf[ShortenedStorageNodesKeyLength] = 0;
+                BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
+                    firstKeyBuf[..ShortenedStorageNodesKeyLength], lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)],
+                    StoragePrefixPortion + ShortenedPathLength, addressSuffix);
+            }
 
-            // Delete from FallbackNodes (path length 16+, prefix 0x01)
-            EncodeFullStorageNodeKey(firstKeyBuf, address, fromPath);
-            firstKeyBuf[1 + StoragePrefixPortion + FullPathLength] = 0;
+            // FallbackNodes (path length 16+, prefix 0x01). EncodeFullStorageNodeKey writes the length byte =
+            // subtreeRoot.Length, flooring the scan at the subtree-root depth.
+            EncodeFullStorageNodeKey(firstKeyBuf, address, subtreeRoot);
             EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, toPath);
             lastKeyBuf[FullStorageNodesKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,

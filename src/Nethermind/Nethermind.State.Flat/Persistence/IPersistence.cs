@@ -64,8 +64,8 @@ public interface IPersistence
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
         void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
-        void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
-        void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
+        void DeleteStateSubTree(in TreePath subtreeRoot);
+        void DeleteStorageSubTree(in ValueHash256 addressHash, in TreePath subtreeRoot);
     }
 
     /// <summary>

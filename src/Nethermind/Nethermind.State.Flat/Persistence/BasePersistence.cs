@@ -329,8 +329,8 @@ public static class BasePersistence
         public void SelfDestruct(in ValueHash256 address);
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
+        public void DeleteStateSubTree(in TreePath subtreeRoot);
+        public void DeleteStorageSubTree(in ValueHash256 addressHash, in TreePath subtreeRoot);
     }
 
     public struct ToHashedWriteBatch<TWriteBatch>(
@@ -515,10 +515,10 @@ public static class BasePersistence
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             _flatWriter.DeleteStorageRange(addressHash, fromPath, toPath);
 
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
-            _trieWriteBatch.DeleteStateTrieNodeRange(fromPath, toPath);
+        public void DeleteStateSubTree(in TreePath subtreeRoot) =>
+            _trieWriteBatch.DeleteStateSubTree(subtreeRoot);
 
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
-            _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
+        public void DeleteStorageSubTree(in ValueHash256 addressHash, in TreePath subtreeRoot) =>
+            _trieWriteBatch.DeleteStorageSubTree(addressHash, subtreeRoot);
     }
 }
