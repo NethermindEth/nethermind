@@ -25,12 +25,6 @@ public partial class BlockTree
         FixLowestInsertedBeaconHeader();
     }
 
-    /// <summary>
-    /// An interrupted beacon-header backfill can leave the persisted pointer above headers that already
-    /// exist: the feed stops inserting at the first known header without moving the pointer. Beacon sync
-    /// then never reports the header sync as finished, because the pointer's parent stays above the best
-    /// suggested header, and the node deadlocks in BeaconHeaders mode with a dormant feed.
-    /// </summary>
     private void FixLowestInsertedBeaconHeader()
     {
         BlockHeader? lowest = _lowestInsertedBeaconHeader;
