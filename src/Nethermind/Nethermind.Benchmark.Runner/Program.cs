@@ -48,6 +48,13 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
+            // Fail-fast correctness gate for every batch-keccak backend; must pass before trusting any timing.
+            if (args.Contains("--verify-keccak-batch"))
+            {
+                Benchmarks.Core.KeccakBatchBackendVerifier.Run();
+                return;
+            }
+
             // Manual contention probe (CPU-cost-per-batch and iGPU-vs-saturator interference) runs outside BenchmarkDotNet.
             if (args.Contains("--contention-probe"))
             {

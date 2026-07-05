@@ -42,6 +42,10 @@ public static class KeccakBatchBackendCatalog
         if (MultiBufferKeccakBatchHasher.IsSupported)
         {
             backends.Add(new("MultiBuffer(6b)", new MultiBufferKeccakBatchHasher(MultiBufferGroupingStrategy.UniformGroups)));
+            // Experiment: does composing the vertical 8-way kernel (6b) with 6a's multi-core work-stealing multiply?
+            backends.Add(new("ParallelMultiBuffer(6c)", new ParallelMultiBufferKeccakBatchHasher()));
+            // DOP-4 reading of the same variant: does 4 cores of vertical-kernel match full 6a throughput?
+            backends.Add(new("ParallelMultiBuffer-DOP4", new ParallelMultiBufferKeccakBatchHasher(4)));
         }
 
         foreach (GpuDeviceInfo device in GpuKeccakBatchHasher.EnumerateDevices())
