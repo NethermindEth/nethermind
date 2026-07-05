@@ -55,10 +55,6 @@ namespace Nethermind.Init.Steps
 
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
-            // Full-sync nodes previously used DbBlocksLoader, which throws on a level whose block bytes are
-            // gone (e.g. after an invalid-block deletion cascade) and leaves the phantom level in place,
-            // where it satisfies IsKnownBlock and deadlocks beacon header sync. The fixer deletes such
-            // corrupt levels instead.
             using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager.GlobalStateReader, logManager);
             await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
             {
