@@ -171,7 +171,7 @@ public class WitnessGeneratingWorldState(
     {
         RecordEmptySlots(address);
         byte[]? code = base.GetCode(address);
-        RecordBytecode(code);
+        RecordBytecode(address, code);
         return code;
     }
 
@@ -317,11 +317,10 @@ public class WitnessGeneratingWorldState(
         return slots;
     }
 
-    private void RecordBytecode(byte[]? code)
+    private void RecordBytecode(Address address, byte[]? code)
     {
-        // Address-keyed paths don't carry the code hash, so compute it here.
         if (code?.Length > 0)
-            RecordBytecode(ValueKeccak.Compute(code), code);
+            RecordBytecode(in base.GetCodeHash(address), code);
     }
 
     private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
