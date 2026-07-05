@@ -26,8 +26,9 @@ namespace Nethermind.State;
 public sealed class BalStateRootCalculator
 {
     /// <summary>
-    /// Batched path only: minimum number of storage-writing accounts before independent storage tries are hashed on
-    /// several cores instead of sequentially. Below it the calling thread does all storage tries in order.
+    /// Batched path only: minimum number of storage-writing accounts before independent storage tries are BUILT on
+    /// several cores instead of sequentially. Below it the calling thread builds all storage tries in order. The merged
+    /// wave that hashes them is a single dispatch either way; this threshold gates only the parallel trie construction.
     /// </summary>
     internal const int DefaultStorageTrieParallelThreshold = 8;
 
@@ -44,7 +45,7 @@ public sealed class BalStateRootCalculator
     }
 
     /// <summary>Creates a calculator with an explicit across-storage-tries parallelization threshold (batched path only).</summary>
-    /// <param name="storageTrieParallelThreshold">Minimum storage-writing account count before storage tries are hashed across cores; injectable so tests can exercise the parallel path on small deltas.</param>
+    /// <param name="storageTrieParallelThreshold">Minimum storage-writing account count before storage tries are BUILT across cores; injectable so tests can exercise the parallel build path on small deltas.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="storageTrieParallelThreshold"/> is less than 1.</exception>
     internal BalStateRootCalculator(ITrieStore trieStore, ILogManager logManager, int storageTrieParallelThreshold)
     {
@@ -77,7 +78,7 @@ public sealed class BalStateRootCalculator
     /// <param name="delta">The reduced post-block state delta (see <see cref="BalPostStateDelta"/>).</param>
     /// <param name="hasher">Batch hasher used for the wave merkleization.</param>
     /// <returns>The computed post-block state root; identical to the recursive overload.</returns>
-    /// <remarks>Same three passes as the recursive overload; only the root-hashing step differs. Sequential (no across-tries parallelism).</remarks>
+    /// <remarks>Same three passes as the recursive overload; only the root-hashing step differs: storage roots are computed as one merged cross-trie wave with <paramref name="hasher"/> (the threshold gates parallel trie CONSTRUCTION only, not the hashing, which is a single dispatch per wave step), and the state tree is hashed with the same hasher.</remarks>
     public Hash256 ComputeRoot(BlockHeader parent, BalPostStateDelta delta, IKeccakBatchHasher hasher)
     {
         ArgumentNullException.ThrowIfNull(hasher);
@@ -140,13 +141,15 @@ public sealed class BalStateRootCalculator
             }
         }
 
-        // Compute deferred storage roots. Each storage trie is independent (its own address-scoped read-only store),
-        // so on the batched path with enough of them we hash them across cores, largest-first so stragglers start early.
+        // Compute deferred storage roots. Each storage trie is independent (its own address-scoped read-only store).
+        // Batched path: build every storage trie (slot writes), then hash them ALL in one merged cross-trie wave with the
+        // caller hasher - the widest possible dispatch (all leaf levels of all tries together), the shape GPU/SIMD need.
+        // Recursive path: hash each trie sequentially in place.
         if (withStorageCount > 0)
         {
-            if (hasher is not null && withStorageCount >= _storageTrieParallelThreshold)
+            if (hasher is not null)
             {
-                ComputeStorageRootsParallel(accounts, pre, withStorageWrites!, withStorageCount, storageRoots);
+                ComputeStorageRootsMergedWave(accounts, pre, withStorageWrites!, withStorageCount, storageRoots, hasher);
             }
             else
             {
@@ -193,6 +196,15 @@ public sealed class BalStateRootCalculator
     /// <summary>Builds account <paramref name="ad"/>'s storage tree from its post-block slot writes and returns its root.</summary>
     private Hash256 ComputeStorageRoot(in BalPostStateDelta.AccountDelta ad, Account? pre, IKeccakBatchHasher? hasher)
     {
+        StorageTree storageTree = BuildStorageTree(in ad, pre);
+        UpdateRoot(storageTree, hasher);
+        return storageTree.RootHash;
+    }
+
+    /// <summary>Builds account <paramref name="ad"/>'s storage tree from its post-block slot writes WITHOUT hashing it.</summary>
+    /// <remarks>Split from <see cref="ComputeStorageRoot"/> so the merged wave can build all tries first, then hash them together.</remarks>
+    private StorageTree BuildStorageTree(in BalPostStateDelta.AccountDelta ad, Account? pre)
+    {
         Hash256 preStorageRoot = pre?.StorageRoot ?? PatriciaTree.EmptyTreeHash;
         StorageTree storageTree = new(_trieStore.GetTrieStore(ad.Address), preStorageRoot, _logManager);
         foreach (BalPostStateDelta.SlotWrite slot in ad.Storage)
@@ -204,56 +216,65 @@ public sealed class BalStateRootCalculator
                 .WithoutLeadingZeros();
             storageTree.Set(in slotKey, value.ToArray()); // all-zero -> [0] -> IsZero -> leaf delete
         }
-        UpdateRoot(storageTree, hasher);
-        return storageTree.RootHash;
+        return storageTree;
     }
 
     /// <summary>
-    /// Computes the deferred storage roots concurrently, one independent storage tree per work item, largest-first.
+    /// Computes all deferred storage roots as ONE merged cross-trie wave: build every storage trie, then hash them all
+    /// together with the caller <paramref name="hasher"/> so each wave step's batch spans every trie's level at once.
     /// </summary>
     /// <remarks>
-    /// Thread-safety rests on two facts, NOT on per-reader node cloning (which does not hold on every backend):
-    /// <list type="number">
-    /// <item>Each storage tree is an independent <see cref="StorageTree"/> over its own address-scoped read-only store,
-    /// so distinct tries never resolve the same node. <see cref="StorageTree.Set"/> is copy-on-write on sealed nodes
-    /// (<see cref="PatriciaTree"/>), and <c>BatchedTrieCommitter</c> descends only via <c>TryGetDirtyChild</c>, so it
-    /// only ever writes <c>Keccak</c>/<c>FullRlp</c> into freshly created dirty nodes - clean nodes are read-only during
-    /// hashing. The halfpath read-only store still hands each reader an isolated node (cloned when cached, rebuilt from
-    /// disk otherwise); the flat read-only store returns the SHARED snapshot node, which is safe precisely because it is
-    /// clean and never collected for a <c>Keccak</c>/<c>FullRlp</c> write. The flat concurrent-read path is
-    /// verified-by-review, not exercised by this suite (no flat test infrastructure is built here).</item>
-    /// <item>The <c>BeginScope</c> opened before this call is only read through concurrently; each worker writes only
-    /// its own <c>storageRoots[i]</c> slot.</item>
-    /// </list>
-    /// The caller's hasher is deliberately NOT threaded into the inner tries: with a parallel hasher that would nest
-    /// <see cref="ParallelUnbalancedWork"/> inside <see cref="ParallelUnbalancedWork"/> (reentrancy-safe but
-    /// oversubscribing cores). The across-tries dimension already saturates cores, so inner tries use one shared
-    /// stateless per-message hasher. Work items are ordered by slot-write count so the longest tries start first,
-    /// matching <c>PersistentStorageProvider</c>'s parallel commit.
+    /// The merged wave (<see cref="BatchedTrieCommitter.UpdateRootHashesBatched(IReadOnlyList{PatriciaTree}, IKeccakBatchHasher)"/>)
+    /// is what produces the tens-of-thousands-wide dispatches the GPU threshold needs - each storage trie is independent,
+    /// so the level barrier is only per-trie and every trie's leaf level joins the first wave steps. It also equals the
+    /// single-trie batched path when only one trie has writes. Trie construction (the slot-write application) is
+    /// independent per trie, so above <see cref="_storageTrieParallelThreshold"/> it runs across cores, largest-first so
+    /// long tries start early; below it, tries are built sequentially. In both cases the wave hashing itself is a single
+    /// call and remains a single batch per step.
+    /// <para>
+    /// Thread-safety of the parallel BUILD rests on trie independence: each <see cref="StorageTree"/> is over its own
+    /// address-scoped read-only store, so distinct tries never resolve the same node, and <see cref="StorageTree.Set"/>
+    /// is copy-on-write on sealed nodes. The <c>BeginScope</c> opened before this call is only read through concurrently.
+    /// The wave runs AFTER the build join, on the calling thread, so the caller hasher's own parallelism is not nested
+    /// inside a build parallel region.
+    /// </para>
     /// </remarks>
-    private void ComputeStorageRootsParallel(
+    private void ComputeStorageRootsMergedWave(
         BalPostStateDelta.AccountDelta[] accounts,
         Account?[] pre,
         int[] withStorageWrites,
         int withStorageCount,
-        Hash256[] storageRoots)
+        Hash256[] storageRoots,
+        IKeccakBatchHasher hasher)
     {
-        // Largest-first: copy the indices and sort by descending slot-write count so long tries do not straggle.
+        // Largest-first: build order by descending slot-write count so long tries do not straggle in the parallel build.
         int[] order = new int[withStorageCount];
         Array.Copy(withStorageWrites, order, withStorageCount);
         Array.Sort(order, (a, b) => accounts[b].Storage.Length.CompareTo(accounts[a].Storage.Length));
 
-        // Shared stateless inner hasher: avoids nesting a parallel hasher inside this parallel region.
-        IKeccakBatchHasher innerHasher = new PerMessageKeccakBatchHasher();
-
-        ParallelUnbalancedWork.For(
-            0,
-            withStorageCount,
-            Nethermind.Core.Cpu.RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-            w =>
+        StorageTree[] trees = new StorageTree[withStorageCount];
+        if (withStorageCount >= _storageTrieParallelThreshold)
+        {
+            ParallelUnbalancedWork.For(
+                0,
+                withStorageCount,
+                Nethermind.Core.Cpu.RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                w => trees[w] = BuildStorageTree(in accounts[order[w]], pre[order[w]]));
+        }
+        else
+        {
+            for (int w = 0; w < withStorageCount; w++)
             {
-                int i = order[w];
-                storageRoots[i] = ComputeStorageRoot(in accounts[i], pre[i], innerHasher);
-            });
+                trees[w] = BuildStorageTree(in accounts[order[w]], pre[order[w]]);
+            }
+        }
+
+        // One merged wave over every built trie with the caller hasher: the widest possible dispatch.
+        BatchedTrieCommitter.UpdateRootHashesBatched(trees, hasher);
+
+        for (int w = 0; w < withStorageCount; w++)
+        {
+            storageRoots[order[w]] = trees[w].RootHash;
+        }
     }
 }

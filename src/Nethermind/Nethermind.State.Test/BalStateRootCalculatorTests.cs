@@ -644,10 +644,11 @@ public class BalStateRootCalculatorTests
     }
 
     /// <summary>
-    /// Composition correctness with a PARALLEL caller hasher: after FIX 1 the caller's <see cref="ParallelKeccakBatchHasher"/>
-    /// (threshold 1, so it always parallelizes) is used only for the PASS C state tree while inner storage tries run
-    /// their own shared per-message hasher - so this exercises parallel outer tries, per-message inner tries, and a
-    /// parallel PASS C, all composing to the directly-built root.
+    /// Composition correctness with a PARALLEL caller hasher: the caller's <see cref="ParallelKeccakBatchHasher"/>
+    /// (threshold 1, so it always parallelizes) drives BOTH the merged storage-trie wave and the PASS C state tree.
+    /// The storage tries are built across cores (threshold 2) and then hashed in one merged wave on the calling thread
+    /// after the build join, so this exercises a parallel build, a parallel-hasher merged wave, and a parallel PASS C,
+    /// all composing to the directly-built root.
     /// </summary>
     [Test]
     public void T6_9_parallel_caller_hasher_composes_to_expected_root()

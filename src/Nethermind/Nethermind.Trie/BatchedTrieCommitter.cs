@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Cpu;
+using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie;
@@ -56,6 +58,116 @@ public static class BatchedTrieCommitter
         tree.SetRootHash(root.Keccak, resetObjects: false);
     }
 
+    /// <summary>
+    /// Computes and publishes the root hash of several MUTUALLY INDEPENDENT tries with a single merged wave: at each
+    /// wave step every tree contributes its own next-deepest unprocessed level, and all those nodes are hashed in ONE
+    /// <see cref="IKeccakBatchHasher.HashBatch"/> call, repeating until every tree is done.
+    /// </summary>
+    /// <param name="trees">The tries to hash; each must be a cloned/read-only tree (see the type remarks). May be empty.</param>
+    /// <param name="hasher">Backend that hashes each wave step's concatenated nodes as one batch.</param>
+    /// <remarks>
+    /// Storage tries are independent, so a level barrier is only needed PER TREE, not across trees. The wave step index
+    /// is per-tree-relative - tree <c>t</c> contributes its <c>s</c>-th-deepest level at wave step <c>s</c> - so a tree's
+    /// shallower level is never encoded before its deeper level completes (bottom-up ordering preserved), while cross-tree
+    /// alignment is arbitrary and safe. The first steps are the widest (all leaf levels together), which is the batch width
+    /// SIMD/GPU backends need. Single tree yields the identical roots to <see cref="UpdateRootHashBatched"/>; empty list is
+    /// a no-op; clean/no-dirty-root trees are hashed by the recursive fallback (no wave work), the root-always-hashed rule
+    /// applies per tree.
+    /// </remarks>
+    public static void UpdateRootHashesBatched(IReadOnlyList<PatriciaTree> trees, IKeccakBatchHasher hasher) =>
+        UpdateRootHashesBatched(trees, hasher, waveStats: null);
+
+    /// <summary>Observability seam for the merged wave: records the batch width (message count) of each wave step in order.</summary>
+    internal delegate void WaveStepObserver(int stepIndex, int batchWidth);
+
+    /// <inheritdoc cref="UpdateRootHashesBatched(IReadOnlyList{PatriciaTree}, IKeccakBatchHasher)"/>
+    /// <param name="waveStats">Optional per-wave-step batch-width sink (adoption-evidence seam); null in production.</param>
+    internal static void UpdateRootHashesBatched(IReadOnlyList<PatriciaTree> trees, IKeccakBatchHasher hasher, WaveStepObserver? waveStats)
+    {
+        ArgumentNullException.ThrowIfNull(trees);
+        ArgumentNullException.ThrowIfNull(hasher);
+
+        int treeCount = trees.Count;
+        if (treeCount == 0) return;
+
+        // Per tree: its dirty nodes bucketed by depth, or null when the tree has no dirty root (recursive fallback below).
+        List<List<TrieNode>>?[] byDepthPerTree = new List<List<TrieNode>>?[treeCount];
+        int maxLevels = 0;
+        for (int t = 0; t < treeCount; t++)
+        {
+            TrieNode? root = trees[t].RootRef;
+            if (root is null || !root.IsDirty)
+            {
+                // Empty tree or a root that already carries its key: no wave work; publish via the recursive path.
+                trees[t].UpdateRootHash();
+                continue;
+            }
+
+            List<List<TrieNode>> byDepth = [];
+            CollectDirtyByDepth(root, byDepth);
+            byDepthPerTree[t] = byDepth;
+            if (byDepth.Count > maxLevels) maxLevels = byDepth.Count;
+        }
+
+        if (maxLevels == 0) return; // every tree was clean/empty
+
+        // Merged wave: step s takes each tree's s-th-deepest level (index Count-1-s). Encode all participating levels
+        // (parallel across trees), then hash their to-hash nodes in ONE batch. A tree's shallower level is only reached
+        // at a later step than its deeper one, so per-tree bottom-up ordering holds; cross-tree alignment is arbitrary.
+        for (int step = 0; step < maxLevels; step++)
+        {
+            HashWaveStep(byDepthPerTree, step, hasher, waveStats);
+        }
+
+        for (int t = 0; t < treeCount; t++)
+        {
+            List<List<TrieNode>>? byDepth = byDepthPerTree[t];
+            if (byDepth is null) continue; // clean/empty tree already published
+            TrieNode root = byDepth[0][0]; // depth-0 node is the root; always hashed
+            trees[t].SetRootHash(root.Keccak, resetObjects: false);
+        }
+    }
+
+    /// <summary>Encodes and hashes one merged wave step: each tree's <paramref name="step"/>-th-deepest level in one batch.</summary>
+    private static void HashWaveStep(
+        List<List<TrieNode>>?[] byDepthPerTree,
+        int step,
+        IKeccakBatchHasher hasher,
+        WaveStepObserver? waveStats)
+    {
+        // Resolve which (tree, level) pairs participate at this step and whether each is that tree's root level (d == 0).
+        int treeCount = byDepthPerTree.Length;
+        List<(List<TrieNode> nodes, bool isRootLevel)> levels = [];
+        for (int t = 0; t < treeCount; t++)
+        {
+            List<List<TrieNode>>? byDepth = byDepthPerTree[t];
+            if (byDepth is null) continue;
+            int levelIndex = byDepth.Count - 1 - step;
+            if (levelIndex < 0) continue; // this tree is shallower than the wave; it finished at an earlier step
+            levels.Add((byDepth[levelIndex], levelIndex == 0));
+        }
+
+        if (levels.Count == 0) return;
+
+        // Pass 1: encode every node's RLP into its FullRlp. Parallel across levels (each level's nodes are an independent
+        // tree slice); worker t touches only its own level, so no cross-worker node is shared. Sequential for a single
+        // level to avoid the parallel-region overhead when the wave has narrowed to one tree.
+        if (levels.Count == 1)
+        {
+            EncodeLevel(levels[0].nodes);
+        }
+        else
+        {
+            ParallelUnbalancedWork.For(
+                0,
+                levels.Count,
+                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                w => EncodeLevel(levels[w].nodes));
+        }
+
+        HashEncodedLevels(levels, hasher, waveStats, step);
+    }
+
     private static void CollectDirtyByDepth(TrieNode root, List<List<TrieNode>> byDepth)
     {
         Stack<(TrieNode node, int depth)> stack = new();
@@ -83,27 +195,48 @@ public static class BatchedTrieCommitter
 
     private static void HashLevel(List<TrieNode> nodes, bool isRootLevel, IKeccakBatchHasher hasher)
     {
-        // Pass 1: encode every node's RLP into its FullRlp. Children below this level are done - dirty ones carry
-        // a Keccak (>=32B) or an inline FullRlp (<32B); non-dirty ones already carried theirs.
+        EncodeLevel(nodes);
+        HashEncodedLevels([(nodes, isRootLevel)], hasher, waveStats: null, stepIndex: 0);
+    }
+
+    /// <summary>Pass 1: encodes every node at a level into its own <c>FullRlp</c> from its (already-processed) children.</summary>
+    /// <remarks>Children below this level are done - dirty ones carry a Keccak (>=32B) or an inline FullRlp (<32B); non-dirty ones already carried theirs.</remarks>
+    private static void EncodeLevel(List<TrieNode> nodes)
+    {
         for (int i = 0; i < nodes.Count; i++)
         {
             nodes[i].WriteRlp(FlatEncode(nodes[i]));
         }
+    }
 
-        // Pass 2: batch-hash the nodes that need a key: RLP >= 32 bytes, or the root (always hashed).
+    /// <summary>
+    /// Pass 2: concatenates the to-hash nodes of one or more already-encoded levels into ONE batch, hashes it, and
+    /// writes each node's <c>Keccak</c> back. A node needs a key when its RLP is >= 32 bytes or it is a tree's root level.
+    /// </summary>
+    private static void HashEncodedLevels(
+        List<(List<TrieNode> nodes, bool isRootLevel)> levels,
+        IKeccakBatchHasher hasher,
+        WaveStepObserver? waveStats,
+        int stepIndex)
+    {
         int toHashCount = 0;
         int flatLength = 0;
-        for (int i = 0; i < nodes.Count; i++)
+        for (int l = 0; l < levels.Count; l++)
         {
-            int rlpLength = nodes[i].FullRlp.Length;
-            if (rlpLength >= 32 || isRootLevel)
+            (List<TrieNode> nodes, bool isRootLevel) = levels[l];
+            for (int i = 0; i < nodes.Count; i++)
             {
-                toHashCount++;
-                flatLength += rlpLength;
+                int rlpLength = nodes[i].FullRlp.Length;
+                if (rlpLength >= 32 || isRootLevel)
+                {
+                    toHashCount++;
+                    flatLength += rlpLength;
+                }
+                // else: FullRlp < 32 and not root -> Keccak stays null; parents splice its FullRlp inline.
             }
-            // else: FullRlp < 32 and not root -> Keccak stays null; parents splice its FullRlp inline.
         }
 
+        waveStats?.Invoke(stepIndex, toHashCount);
         if (toHashCount == 0) return;
 
         // Rents inside the try so a failed later rent still returns the earlier ones via the null-guarded finally.
@@ -121,17 +254,21 @@ public static class BatchedTrieCommitter
             Span<byte> flatSpan = flat.AsSpan(0, flatLength);
             int pos = 0;
             int j = 0;
-            for (int i = 0; i < nodes.Count; i++)
+            for (int l = 0; l < levels.Count; l++)
             {
-                TrieNode node = nodes[i];
-                ReadOnlySpan<byte> rlp = node.FullRlp.AsSpan();
-                if (rlp.Length >= 32 || isRootLevel)
+                (List<TrieNode> nodes, bool isRootLevel) = levels[l];
+                for (int i = 0; i < nodes.Count; i++)
                 {
-                    rlp.CopyTo(flatSpan.Slice(pos, rlp.Length));
-                    pos += rlp.Length;
-                    offsets[j] = pos;
-                    toHash[j] = node;
-                    j++;
+                    TrieNode node = nodes[i];
+                    ReadOnlySpan<byte> rlp = node.FullRlp.AsSpan();
+                    if (rlp.Length >= 32 || isRootLevel)
+                    {
+                        rlp.CopyTo(flatSpan.Slice(pos, rlp.Length));
+                        pos += rlp.Length;
+                        offsets[j] = pos;
+                        toHash[j] = node;
+                        j++;
+                    }
                 }
             }
 

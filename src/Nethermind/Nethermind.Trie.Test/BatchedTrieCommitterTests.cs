@@ -347,4 +347,229 @@ public class BatchedTrieCommitterTests
         value[0] = (byte)firstByte;
         return value;
     }
+
+    // ---- merged cross-trie wave (UpdateRootHashesBatched) ------------------------------------------------------
+
+    [Test]
+    // Empty list must not throw and must do nothing.
+    public void MergedWave_empty_list_is_noop() =>
+        Assert.DoesNotThrow(() => BatchedTrieCommitter.UpdateRootHashesBatched([], Hasher));
+
+    [Test]
+    public void MergedWave_single_tree_equals_single_tree_path()
+    {
+        // A single tree through the merged wave must yield the exact root the single-tree path produces.
+        List<(byte[] key, byte[] value)> entries = GenerateRandomEntries(0x11111111);
+
+        Hash256 singlePath = BatchedRoot(entries);
+
+        PatriciaTree merged = BuildTrie(entries);
+        BatchedTrieCommitter.UpdateRootHashesBatched([merged], Hasher);
+
+        Assert.That(merged.RootHash, Is.EqualTo(singlePath));
+    }
+
+    [Test]
+    public void MergedWave_multiple_fresh_tries_each_match_recursive()
+    {
+        // M random fresh tries of varied sizes hashed in one merged wave; each root must equal its recursive root.
+        const int treeCount = 12;
+        List<(byte[] key, byte[] value)>[] entriesPerTree = new List<(byte[], byte[])>[treeCount];
+        Hash256[] expected = new Hash256[treeCount];
+        PatriciaTree[] trees = new PatriciaTree[treeCount];
+        for (int t = 0; t < treeCount; t++)
+        {
+            entriesPerTree[t] = GenerateRandomEntries(unchecked(0x7A3E_0000 + t));
+            expected[t] = RecursiveRoot(entriesPerTree[t]);
+            trees[t] = BuildTrie(entriesPerTree[t]);
+        }
+
+        BatchedTrieCommitter.UpdateRootHashesBatched(trees, Hasher);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int t = 0; t < treeCount; t++)
+            {
+                Assert.That(trees[t].RootHash, Is.EqualTo(expected[t]), $"tree {t} ({entriesPerTree[t].Count} keys)");
+            }
+        }
+    }
+
+    [Test]
+    public void MergedWave_tries_of_very_different_depths()
+    {
+        // Trees of deliberately different depths (1 key vs deep-extension vs wide-branch) exercise the shrinking wave.
+        List<(byte[] key, byte[] value)> tiny = [(SizedKey(0xAB, 0x01), [0x01])];
+
+        List<(byte[] key, byte[] value)> deep = [];
+        for (int i = 0; i < 4; i++) deep.Add((SizedKey(0x11, (byte)i), MakeValue(0x80 + i, 40)));
+
+        List<(byte[] key, byte[] value)> wide = [];
+        for (int i = 0; i < 30; i++) wide.Add((SizedKey((byte)(i * 8), (byte)i), MakeValue(0x50 + i, 40)));
+
+        AssertMergedMatchesRecursive([tiny, deep, wide]);
+    }
+
+    [Test]
+    public void MergedWave_all_inline_tiny_tries()
+    {
+        // Several all-inline tiny tries in one wave: each root is still hashed (root-always-hashed per tree).
+        List<(byte[] key, byte[] value)> a = [([0x0A], [0x01]), ([0xB0], [0x02])];
+        List<(byte[] key, byte[] value)> b = [([0x1C], [0x03])];
+        List<(byte[] key, byte[] value)> c = [([0x2D], [0x04]), ([0xE5], [0x05])];
+
+        AssertMergedMatchesRecursive([a, b, c]);
+    }
+
+    [Test]
+    public void MergedWave_clean_root_tree_is_skipped_and_others_hashed()
+    {
+        // One tree whose re-resolved root is clean (no mutation) is published untouched; a mutated sibling still hashes.
+        List<(byte[] key, byte[] value)> cleanEntries = [];
+        for (int i = 0; i < 6; i++) cleanEntries.Add((SizedKey((byte)(i * 0x20), (byte)i), MakeValue(0x30 + i, 40)));
+        (ITrieStore cleanStore, Hash256 cleanRoot) = CommitToStore(cleanEntries);
+        PatriciaTree cleanTree = Reopen(cleanStore, cleanRoot); // never mutated -> root stays clean
+
+        List<(byte[] key, byte[] value)> mutatedEntries = GenerateRandomEntries(0x2222_2222);
+        Hash256 mutatedExpected = RecursiveRoot(mutatedEntries);
+        PatriciaTree mutatedTree = BuildTrie(mutatedEntries);
+
+        BatchedTrieCommitter.UpdateRootHashesBatched([cleanTree, mutatedTree], Hasher);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleanTree.RootHash, Is.EqualTo(cleanRoot), "clean tree root must be unchanged");
+            Assert.That(mutatedTree.RootHash, Is.EqualTo(mutatedExpected), "mutated tree root must match recursive");
+        }
+    }
+
+    [Test]
+    public void MergedWave_committed_then_mutated_retained_rlp_across_multiple_trees()
+    {
+        // The retained-RLP null-sibling splice shape, in several trees at once, hashed in one merged wave.
+        const int treeCount = 5;
+        PatriciaTree[] recursiveTrees = new PatriciaTree[treeCount];
+        PatriciaTree[] batchedTrees = new PatriciaTree[treeCount];
+        for (int t = 0; t < treeCount; t++)
+        {
+            List<(byte[] key, byte[] value)> entries = [];
+            for (int i = 0; i < 8; i++)
+            {
+                byte[] key = new byte[32];
+                key[0] = (byte)(i * 0x11);
+                key[31] = (byte)i;
+                entries.Add((key, MakeValue(0x40 + i + t, 40)));
+            }
+
+            (ITrieStore store, Hash256 root) = CommitToStore(entries);
+            byte[] mutateKey = entries[3].key;
+            byte[] newValue = MakeValue(0xEE - t, 40);
+
+            recursiveTrees[t] = Reopen(store, root);
+            recursiveTrees[t].Set(mutateKey, newValue);
+            recursiveTrees[t].UpdateRootHash();
+
+            batchedTrees[t] = Reopen(store, root);
+            batchedTrees[t].Set(mutateKey, newValue);
+        }
+
+        BatchedTrieCommitter.UpdateRootHashesBatched(batchedTrees, Hasher);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int t = 0; t < treeCount; t++)
+            {
+                Assert.That(batchedTrees[t].RootHash, Is.EqualTo(recursiveTrees[t].RootHash), $"tree {t}");
+            }
+        }
+    }
+
+    [Test]
+    public void MergedWave_emptied_tree_interleaved_with_deep_and_wide_tries()
+    {
+        // Real block shape: a storage trie whose every slot is DELETED collapses to EmptyTreeHash (RootRef null), and
+        // must be interleaved safely in the wave bookkeeping alongside a deep and a wide trie. Each root must match its
+        // recursive counterpart, and the emptied trie must equal the empty-tree hash.
+        List<(byte[] key, byte[] value)> emptiedEntries = [];
+        for (int i = 0; i < 6; i++) emptiedEntries.Add((SizedKey((byte)(i * 0x22), (byte)i), MakeValue(0x40 + i, 40)));
+        (ITrieStore emptiedStore, Hash256 emptiedRoot) = CommitToStore(emptiedEntries);
+
+        // Delete every slot on independent re-resolved trees, one per hashing path -> RootRef collapses to null.
+        PatriciaTree recursiveEmptied = Reopen(emptiedStore, emptiedRoot);
+        foreach ((byte[] key, byte[] _) in emptiedEntries) recursiveEmptied.Set(key, []);
+        recursiveEmptied.UpdateRootHash();
+
+        PatriciaTree batchedEmptied = Reopen(emptiedStore, emptiedRoot);
+        foreach ((byte[] key, byte[] _) in emptiedEntries) batchedEmptied.Set(key, []);
+
+        List<(byte[] key, byte[] value)> deepEntries = [];
+        for (int i = 0; i < 4; i++) deepEntries.Add((SizedKey(0x11, (byte)i), MakeValue(0x80 + i, 40)));
+        List<(byte[] key, byte[] value)> wideEntries = [];
+        for (int i = 0; i < 30; i++) wideEntries.Add((SizedKey((byte)(i * 8), (byte)i), MakeValue(0x50 + i, 40)));
+
+        Hash256 deepExpected = RecursiveRoot(deepEntries);
+        Hash256 wideExpected = RecursiveRoot(wideEntries);
+        PatriciaTree deepTree = BuildTrie(deepEntries);
+        PatriciaTree wideTree = BuildTrie(wideEntries);
+
+        BatchedTrieCommitter.UpdateRootHashesBatched([batchedEmptied, deepTree, wideTree], Hasher);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchedEmptied.RootHash, Is.EqualTo(recursiveEmptied.RootHash), "emptied trie");
+            Assert.That(batchedEmptied.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash), "emptied trie must be the empty-tree hash");
+            Assert.That(deepTree.RootHash, Is.EqualTo(deepExpected), "deep trie");
+            Assert.That(wideTree.RootHash, Is.EqualTo(wideExpected), "wide trie");
+        }
+    }
+
+    [Test]
+    public void MergedWave_step0_reaches_full_leaf_width()
+    {
+        // The observability seam: step 0 must batch every tree's leaf level at once (the wide-dispatch property that
+        // makes the merged wave worthwhile). With M single-leaf tries, step 0 must see M messages (each root hashed).
+        const int treeCount = 50;
+        PatriciaTree[] trees = new PatriciaTree[treeCount];
+        for (int t = 0; t < treeCount; t++)
+        {
+            trees[t] = BuildTrie([(SizedKey((byte)t, (byte)(t + 1)), MakeValue(0x60 + (t % 16), 40))]);
+        }
+
+        List<(int step, int width)> steps = [];
+        BatchedTrieCommitter.UpdateRootHashesBatched(trees, Hasher, (step, width) => steps.Add((step, width)));
+
+        Assert.That(steps, Is.Not.Empty);
+        Assert.That(steps[0].step, Is.EqualTo(0));
+        Assert.That(steps[0].width, Is.EqualTo(treeCount), "step 0 must batch every tree's root leaf together");
+    }
+
+    private static byte[] SizedKey(byte first, byte last)
+    {
+        byte[] key = new byte[32];
+        key[0] = first;
+        key[31] = last;
+        return key;
+    }
+
+    /// <summary>Asserts that hashing all trees in one merged wave yields, per tree, the recursive root of the same entries.</summary>
+    private static void AssertMergedMatchesRecursive(IReadOnlyList<List<(byte[] key, byte[] value)>> entriesPerTree)
+    {
+        Hash256[] expected = new Hash256[entriesPerTree.Count];
+        PatriciaTree[] trees = new PatriciaTree[entriesPerTree.Count];
+        for (int t = 0; t < entriesPerTree.Count; t++)
+        {
+            expected[t] = RecursiveRoot(entriesPerTree[t]);
+            trees[t] = BuildTrie(entriesPerTree[t]);
+        }
+
+        BatchedTrieCommitter.UpdateRootHashesBatched(trees, Hasher);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int t = 0; t < trees.Length; t++)
+            {
+                Assert.That(trees[t].RootHash, Is.EqualTo(expected[t]), $"tree {t}");
+            }
+        }
+    }
 }
