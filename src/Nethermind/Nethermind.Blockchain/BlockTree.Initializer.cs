@@ -111,7 +111,7 @@ public partial class BlockTree
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
-            ulong blockNumber = BestPersistedState ?? BestSuggestedHeader.Number;
+            ulong blockNumber = _stateBoundary.BestPersistedState ?? BestSuggestedHeader.Number;
             ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
             if (canonicalBlock is not null && canonicalBlock.WasProcessed)
@@ -346,9 +346,7 @@ public partial class BlockTree
     private void LoadStartBlock()
     {
         Block? startBlock = null;
-        byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-        BestPersistedState = persistedNumberData is null ? null : new RlpReader(persistedNumberData).DecodeULong();
-        ulong? persistedNumber = BestPersistedState;
+        ulong? persistedNumber = _stateBoundary.BestPersistedState;
         if (persistedNumber is not null)
         {
             startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
@@ -374,6 +372,9 @@ public partial class BlockTree
 
             SetHeadBlock(startBlock.Hash);
         }
+
+        // The removed BestPersistedState setter recomputed the sync pivot as a side effect during load; keep it.
+        TryUpdateSyncPivot();
     }
 
     private void SetHeadBlock(Hash256 headHash)

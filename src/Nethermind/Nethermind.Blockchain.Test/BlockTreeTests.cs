@@ -1663,7 +1663,7 @@ public class BlockTreeTests
         // tip short-circuits at the first beacon parent. Move exactly the supplied blocks so the whole
         // pre-state is canonical, then assert the reload caps the head at the best persisted state.
         tree.ForceMainChainForTest(blocks);
-        tree.BestPersistedState = 50ul;
+        builder.StateBoundary.BestPersistedState = 50ul;
 
         BlockTree loadedTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -1672,6 +1672,35 @@ public class BlockTreeTests
             .TestObject;
 
         Assert.That(loadedTree.Head?.Number, Is.EqualTo(50ul));
+    }
+
+    [TestCase(null, 90ul, TestName = "Start block: no persisted state falls back to HEAD")]
+    [TestCase(50ul, 50ul, TestName = "Start block: persisted state is used when present")]
+    [TestCase(95ul, 95ul, TestName = "Start block: persisted state is used even above the HEAD pointer")]
+    public void Loads_start_block_from_persisted_state_else_head(ulong? persistedState, ulong expectedHead)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+        Block block = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(block);
+        List<Block> blocks = [block];
+        for (ulong i = 1ul; i < 100ul; i++)
+        {
+            block = Build.A.Block.WithNumber(i).WithParent(block).WithTotalDifficulty(i).TestObject;
+            blocks.Add(block);
+            tree.SuggestBlock(block);
+        }
+        tree.ForceMainChainForTest(blocks);
+
+        tree.UpdateHeadBlock(blocks[90].Hash!);
+        builder.StateBoundary.BestPersistedState = persistedState;
+
+        BlockTree loadedTree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .WithDatabaseFrom(builder)
+            .TestObject;
+
+        Assert.That(loadedTree.Head?.Number, Is.EqualTo(expectedHead));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -2364,9 +2393,9 @@ public class BlockTreeTests
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
-        BlockTree tree = Build.A.BlockTree()
-            .WithSyncConfig(syncConfig)
-            .TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig);
+        BlockTree tree = builder.TestObject;
 
         Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
 
@@ -2382,8 +2411,8 @@ public class BlockTreeTests
             Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
         }
 
-        tree.BestPersistedState = 5ul;
-        BlockHeader persistedStateHeader = tree.FindHeader(tree.BestPersistedState.Value, BlockTreeLookupOptions.RequireCanonical)!;
+        builder.StateBoundary.BestPersistedState = 5ul;
+        BlockHeader persistedStateHeader = tree.FindHeader(5ul, BlockTreeLookupOptions.RequireCanonical)!;
 
         for (ulong i = 6ul; i < 10ul; i++)
         {
@@ -2407,9 +2436,9 @@ public class BlockTreeTests
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
-        BlockTree tree = Build.A.BlockTree()
-            .WithSyncConfig(syncConfig)
-            .TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig);
+        BlockTree tree = builder.TestObject;
 
         Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
 
@@ -2424,8 +2453,8 @@ public class BlockTreeTests
             Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
         }
 
-        tree.BestPersistedState = 7ul;
-        BlockHeader persistedStateHeader = tree.FindHeader(tree.BestPersistedState.Value, BlockTreeLookupOptions.RequireCanonical)!;
+        builder.StateBoundary.BestPersistedState = 7ul;
+        BlockHeader persistedStateHeader = tree.FindHeader(7ul, BlockTreeLookupOptions.RequireCanonical)!;
 
         for (ulong i = 4ul; i < 10ul; i++)
         {
@@ -2455,9 +2484,9 @@ public class BlockTreeTests
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
-        BlockTree tree = Build.A.BlockTree()
-            .WithSyncConfig(syncConfig)
-            .TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig);
+        BlockTree tree = builder.TestObject;
 
         Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
 
@@ -2484,8 +2513,9 @@ public class BlockTreeTests
                 .WithTotalDifficulty(block.TotalDifficulty + 1ul)
                 .TestObject;
             tree.SuggestBlock(block);
+            // Set before TryUpdateMainChain: the pivot recalculation it triggers reads the provider.
+            builder.StateBoundary.BestPersistedState = block.Number;
             tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
-            tree.BestPersistedState = block.Number;
 
             if (block.Number > pivotNumber + Reorganization.MaxDepth)
             {
