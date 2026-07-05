@@ -69,6 +69,14 @@ namespace Nethermind.Benchmark.Runner
                 return;
             }
 
+            // Per-device GPU transfer/dispatch cost measurement (fixed copy latency, bandwidth curve + breakeven,
+            // many-small-vs-one-large batching, dispatch decomposition) to replace assumed constants.
+            if (args.Contains("--gpu-transfer-probe"))
+            {
+                Benchmarks.Core.GpuTransferProbe.Run();
+                return;
+            }
+
             bool quickMode = args.Contains("--quick");
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);

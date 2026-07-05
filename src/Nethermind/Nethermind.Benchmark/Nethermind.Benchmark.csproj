@@ -6,6 +6,7 @@
   
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="ILGPU" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
