@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#if !ZK_EVM
+using System.Runtime.CompilerServices;
+#endif
+
 namespace Nethermind.Core.Specs;
 
 /// <summary>
@@ -9,6 +13,11 @@ namespace Nethermind.Core.Specs;
 /// </summary>
 public static partial class IReleaseSpecExtensions
 {
+#if !ZK_EVM
+    private static readonly ConditionalWeakTable<IReleaseSpec, IReleaseSpec> _noEip158Specs = [];
+    private static readonly ConditionalWeakTable<IReleaseSpec, IReleaseSpec> _noEip3607Specs = [];
+#endif
+
     extension(IReleaseSpec spec)
     {
         //EIP-3860: Limit and meter initcode
@@ -59,13 +68,27 @@ public static partial class IReleaseSpecExtensions
         /// Used when applying state overrides to preserve EIP-7610 CREATE collision detection.
         /// </summary>
         public IReleaseSpec WithoutEip158() =>
-            spec.IsEip158Enabled ? new NoEip158Spec(spec) : spec;
+            spec.IsEip158Enabled ? GetNoEip158Spec(spec) : spec;
 
         /// <summary>
         /// Returns a spec with EIP-3607 disabled, allowing contract addresses to act as transaction senders.
         /// Used in <c>eth_simulateV1</c> where state-overridden contracts may be the <c>from</c> address.
         /// </summary>
         public IReleaseSpec WithoutEip3607() =>
-            spec.IsEip3607Enabled ? new NoEip3607Spec(spec) : spec;
+            spec.IsEip3607Enabled ? GetNoEip3607Spec(spec) : spec;
     }
+
+    private static IReleaseSpec GetNoEip158Spec(IReleaseSpec spec) =>
+#if ZK_EVM
+        new NoEip158Spec(spec);
+#else
+        _noEip158Specs.GetValue(spec, static s => new NoEip158Spec(s));
+#endif
+
+    private static IReleaseSpec GetNoEip3607Spec(IReleaseSpec spec) =>
+#if ZK_EVM
+        new NoEip3607Spec(spec);
+#else
+        _noEip3607Specs.GetValue(spec, static s => new NoEip3607Spec(s));
+#endif
 }
