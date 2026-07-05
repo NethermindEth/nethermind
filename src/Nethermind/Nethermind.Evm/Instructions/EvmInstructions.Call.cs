@@ -146,9 +146,9 @@ public static partial class EvmInstructions
         IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
+        if (!TGasPolicy.ConsumeCallBaseGas(ref gas, spec) ||
+            !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, ref vm.VmState.Memory) ||
+            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
@@ -185,24 +185,8 @@ public static partial class EvmInstructions
                 : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
         }
 
-        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-        ulong gasLimitUl;
-
-        if (spec.Use63Over64Rule)
-        {
-            // EIP-150: only 63/64 of remaining gas is forwarded.
-            ulong cap = gasAvailable - gasAvailable / 64;
-            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= cap
-                ? gasLimit.u0
-                : cap;
-        }
-        else
-        {
-            if (!gasLimit.IsUint64) goto OutOfGas;
-            gasLimitUl = gasLimit.u0;
-        }
-
-        if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
+        // EIP-150: forward the requested gas to the child frame, capped at 63/64 of remaining.
+        if (!TGasPolicy.TryReserveChildGas(ref gas, in gasLimit, spec, out ulong gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
         if (hasValueTransfer)
@@ -387,7 +371,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState) ||
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;

@@ -16,7 +16,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public class FlatWorldStateManager(
     IFlatDbManager flatDbManager,
     IPersistence persistence,
-    IPersistenceManager persistenceManager,
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
@@ -48,17 +47,6 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public ulong? RetentionWindowBlocks => null;
-
-    public ulong? OldestStateBlock
-    {
-        get
-        {
-            ulong blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
-            return blockNumber != ulong.MaxValue ? blockNumber : null;
-        }
-    }
-
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(
             codeDb,
@@ -68,12 +56,6 @@ public class FlatWorldStateManager(
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             logManager,
             isReadOnly: true);
-
-    event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
-    {
-        add => flatDbManager.ReorgBoundaryReached += value;
-        remove => flatDbManager.ReorgBoundaryReached -= value;
-    }
 
     public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
 
