@@ -238,7 +238,8 @@ public class BaseMergePluginModule : Module
             }))
 
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
-            .AddFirst<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
+            // AddLast (not AddFirst) so RecoverSignatures stays ahead of it, matching the pre-DI ordering.
+            .AddLast<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
