@@ -31,9 +31,6 @@ internal sealed class RewardsStore(
 
     public void SaveEpochRewards(Hash256 epochBlockHash, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
     {
-        _ = _blockTree.FindHeader(epochBlockHash)
-            ?? throw new InvalidOperationException($"Epoch block header {epochBlockHash} was not found in the block tree.");
-
         using IWriteBatch batch = _rewardsDb.StartWriteBatch();
 
         byte[] epochRewardsKey = BuildEpochRewardsKey(epochBlockHash);
