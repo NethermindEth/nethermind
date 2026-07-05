@@ -214,7 +214,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     // When the LowestInsertedHeader is set in blockTree initializer, its TD is not set from block info.
                     // So here we explicitly try to fetch it again.
-                    ulong lowestInsertedNumber = lowestInserted.Number;
+                    long lowestInsertedNumber = lowestInserted.Number;
                     lowestInserted = _blockTree.FindHeader(lowestInsertedNumber, BlockTreeLookupOptions.RequireCanonical);
 
                     // In case of some strange corruption (including a missing chain level, in which case the header
