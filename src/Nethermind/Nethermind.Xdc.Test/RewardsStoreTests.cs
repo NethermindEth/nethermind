@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -129,6 +130,8 @@ public class RewardsStoreTests
         Block block = new(BuildCheckpointHeader(epochBlockNumber));
 
         blockTree.WasProcessed(epochBlockNumber, block.Hash!).Returns(true);
+        blockTree.Head.Returns(block);
+        blockTree.FindBestSuggestedHeader().Returns(block.Header);
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(true);
         envFactory.Create().Returns(processorSource);
         processorSource.Build(block.Header).Returns(processingScope);
@@ -178,6 +181,29 @@ public class RewardsStoreTests
         Assert.That(store.HasEpochRewards(block.Number), Is.False);
     }
 
+    [Test]
+    public async Task OnBlockAddedToMain_WhenSyncing_ShouldNotPersistRewards()
+    {
+        IDb db = new MemDb();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        Block block = new(BuildCheckpointHeader(900));
+
+        blockTree.WasProcessed(block.Number, block.Hash!).Returns(true);
+        blockTree.Head.Returns((Block?)null);
+        blockTree.FindBestSuggestedHeader().Returns((BlockHeader?)null);
+        epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(true);
+
+        using RewardsStore store = CreateStore(db, blockTree: blockTree, epochSwitchManager: epochSwitchManager);
+        store.Start();
+
+        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+
+        await Task.Delay(100);
+
+        Assert.That(store.HasEpochRewards(block.Number), Is.False);
+    }
+
     private static RewardsStore CreateStore(
         IDb db,
         int rewardHistoryEpochRetention = XdcConstants.RewardHistoryEpochRetention,
@@ -185,7 +211,8 @@ public class RewardsStoreTests
         IEpochSwitchManager? epochSwitchManager = null,
         ISpecProvider? specProvider = null,
         IRewardCalculatorSource? rewardCalculatorSource = null,
-        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null) =>
+        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
+        ILogManager? logManager = null) =>
         new(
             db,
             blockTree ?? Substitute.For<IBlockTree>(),
@@ -193,6 +220,7 @@ public class RewardsStoreTests
             specProvider ?? Substitute.For<ISpecProvider>(),
             rewardCalculatorSource ?? Substitute.For<IRewardCalculatorSource>(),
             readOnlyTxProcessingEnvFactory ?? Substitute.For<IReadOnlyTxProcessingEnvFactory>(),
+            logManager ?? LimboLogs.Instance,
             rewardHistoryEpochRetention);
 
     private static XdcBlockHeader BuildCheckpointHeader(ulong number) =>

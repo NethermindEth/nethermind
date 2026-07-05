@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
@@ -25,6 +26,7 @@ internal sealed class RewardsStore(
     ISpecProvider specProvider,
     IRewardCalculatorSource rewardCalculatorSource,
     IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+    ILogManager logManager,
     int rewardHistoryEpochRetention = XdcConstants.RewardHistoryEpochRetention) : IRewardsStore, IStartable, IDisposable
 {
     private readonly IDb _rewardsDb = rewardsDb;
@@ -33,6 +35,7 @@ internal sealed class RewardsStore(
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource;
     private readonly IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
+    private readonly ILogger _logger = logManager.GetClassLogger<RewardsStore>();
     private readonly int _rewardHistoryEpochRetention = rewardHistoryEpochRetention;
 
     private const byte EpochRewardsPrefix = 0x10;
@@ -51,7 +54,7 @@ internal sealed class RewardsStore(
         if (e.Block.Header is not XdcBlockHeader xdcHeader)
             return;
 
-        if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash))
+        if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash) || _blockTree.IsSyncing().isSyncing)
             return;
 
         if (xdcHeader.Number == 0)
@@ -66,7 +69,10 @@ internal sealed class RewardsStore(
             return;
 
         Block block = e.Block;
-        Task.Run(() => PersistEpochRewards(block));
+        _ = Task.Run(() => PersistEpochRewards(block))
+            .ContinueWith(
+                t => _logger.Error($"Failed to persist epoch rewards for block {block.Number}.", t.Exception),
+                TaskContinuationOptions.OnlyOnFaulted);
     }
 
     private void PersistEpochRewards(Block block)
