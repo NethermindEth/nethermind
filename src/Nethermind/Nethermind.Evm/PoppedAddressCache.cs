@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 
 namespace Nethermind.Evm;
@@ -17,6 +18,7 @@ public sealed class PoppedAddressCache
 {
     private Address? _lastAddress;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Address GetOrCreate(ReadOnlySpan<byte> addressBytes)
     {
         Address? last = _lastAddress;
