@@ -57,7 +57,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
         => new InvalidatingWriteBatch(this, _inner.CreateWriteBatch(from, to, flags), to);
 
-    public StateId GetCurrentState() => _inner.GetCurrentState();
+    public StateId GetCurrentState()
+    {
+        using (_lock.EnterScope())
+        {
+            if (_basis != StateId.Sync) return _basis;
+        }
+
+        return _inner.GetCurrentState();
+    }
 
     public void Flush() => _inner.Flush();
 
@@ -66,6 +74,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         using (_lock.EnterScope())
         {
             ClearAllNoLock();
+            _basis = StateId.PreGenesis;
         }
         _inner.Clear();
     }
