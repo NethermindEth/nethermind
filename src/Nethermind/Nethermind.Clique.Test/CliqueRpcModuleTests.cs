@@ -20,7 +20,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
