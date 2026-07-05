@@ -618,8 +618,12 @@ public static class MptRootProbe
         }
         Console.WriteLine("  xfer us = (D2H + H2D) / (PCIe GB/s); netWin ms = movable ms - (xfer + dispatch) ms.");
         Console.WriteLine("  netWin% = netWin ms / commit-path total (from the root-share table). Positive => a single-dispatch device flow could beat CPU on this shape.");
-        Console.WriteLine("  CAVEAT: movable ms is measured with the CPU PerMessage hasher as the encode/hash proxy; a real device kernel");
+        Console.WriteLine("  CAVEAT (movable): movable ms is measured with the CPU PerMessage hasher as the encode/hash proxy; a real device kernel");
         Console.WriteLine("  would replace hash-ms with kernel time (not modeled here) - this bound credits the GPU the FULL movable ms,");
         Console.WriteLine("  so it is an OPTIMISTIC upper bound on the win.");
+        Console.WriteLine("  CAVEAT (transfer model): PCIe cost is piecewise max(fixed latency ~5-20us/copy, size/bandwidth), not linear in bytes;");
+        Console.WriteLine("  the xfer column is the bandwidth term only and is latency-dominated below ~0.5MB. The dispatch floor was measured");
+        Console.WriteLine("  END-TO-END (it already contains small-payload H2D/launch/sync/D2H), so summing xfer + dispatch double-counts small");
+        Console.WriteLine("  transfers, and async streams can overlap D2H with subsequent compute - the overhead column is pessimistic.");
     }
 }
