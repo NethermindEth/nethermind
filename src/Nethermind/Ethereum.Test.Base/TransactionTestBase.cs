@@ -140,4 +140,3 @@ public abstract class TransactionTestBase
         ["TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS"] = ["max fee per blob gas less than block blob gas fee"],
     };
 }
-

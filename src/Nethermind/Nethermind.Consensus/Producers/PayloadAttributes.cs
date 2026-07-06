@@ -236,6 +236,58 @@ public class PayloadAttributes
     }
 }
 
+/// <summary>
+/// Amsterdam payload attributes used by engine_forkchoiceUpdatedV4.
+/// </summary>
+public class PayloadAttributesV4 : PayloadAttributes
+{
+    public ulong? TargetGasLimit { get; set; }
+
+    public override ulong? GetGasLimit() => TargetGasLimit;
+
+    protected override int ComputePayloadIdMembersSize() =>
+        base.ComputePayloadIdMembersSize()
+        + (TargetGasLimit is null ? 0 : sizeof(ulong));
+
+    protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
+    {
+        int position = base.WritePayloadIdMembers(parentHeader, inputSpan);
+        if (TargetGasLimit is not null)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), TargetGasLimit.Value);
+            position += sizeof(ulong);
+        }
+
+        return position;
+    }
+
+    public override PayloadAttributesValidationResult Validate(
+        ISpecProvider specProvider,
+        int fcuVersion,
+        [NotNullWhen(false)] out string? error)
+    {
+        PayloadAttributesValidationResult result = base.Validate(specProvider, fcuVersion, out error);
+        if (result != PayloadAttributesValidationResult.Success)
+        {
+            return result;
+        }
+
+        if (TargetGasLimit is null)
+        {
+            error = $"{nameof(TargetGasLimit)} must be provided";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
+        if (TargetGasLimit <= 0)
+        {
+            error = $"{nameof(TargetGasLimit)} must be greater than zero";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
+        return PayloadAttributesValidationResult.Success;
+    }
+}
+
 public enum PayloadAttributesValidationResult : byte { Success, InvalidPayloadAttributes, UnsupportedFork };
 
 public static class PayloadAttributesExtensions

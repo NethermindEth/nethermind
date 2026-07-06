@@ -19,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.TxPool.Comparison;
 
@@ -149,5 +150,75 @@ public class TxPoolSourceTests
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
         Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }).UsingTransactionComparer());
+    }
+
+    [Test]
+    public void GetTransactions_should_skip_sampled_blob_txs()
+    {
+        Transaction sparseBlobTx = CreateSparseBlobTransaction();
+
+        Transaction[] result = SelectSingleBlobTransaction(sparseBlobTx);
+
+        Assert.That(result, Is.Empty);
+    }
+
+    private static Transaction[] SelectSingleBlobTransaction(Transaction blobTx)
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
+        txPool.GetPendingLightBlobTransactionsBySender()
+            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressA, [blobTx] } });
+        txPool.TryGetPendingBlobTransaction(blobTx.Hash!, out Arg.Any<Transaction?>())
+            .Returns(x =>
+            {
+                x[1] = blobTx;
+                return true;
+            });
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+
+        TxPoolTxSource txSource = new(
+            txPool,
+            specProvider,
+            transactionComparerProvider,
+            LimboLogs.Instance,
+            txFilterPipeline,
+            new BlocksConfig { SecondsPerSlot = 12 });
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        return txSource.GetTransactions(parent, long.MaxValue).ToArray();
+    }
+
+    private static Transaction CreateSparseBlobTransaction()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressA)
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithMaxFeePerGas(1000.GWei)
+            .WithMaxPriorityFeePerGas(500.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4, 9]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        for (int i = 0; i < emptyBlobs.Length; i++)
+        {
+            emptyBlobs[i] = [];
+        }
+
+        tx.NetworkWrapper = wrapper with
+        {
+            Blobs = emptyBlobs,
+            CellMask = cellMask,
+            Cells = cells
+        };
+        tx.ClearLengthCache();
+        return tx;
     }
 }
