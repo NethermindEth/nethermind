@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -1018,7 +1019,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         state.Gas = gas;
 
-        return ExecutePrecompileCall(state, precompile, callData, spec);
+        CallResult callResult = ExecutePrecompileCall(state, precompile, callData, spec);
+
+        // EIP-8151: a successful ecRecover additionally charges (and warms) an account access
+        // on the recovered address and returns zero when the address has permanently disabled
+        // its ECDSA authority (EIP-7851 0xef0101 designator).
+        if (spec.IsEip8151Enabled
+            && callResult.PrecompileSuccess == true
+            && callResult.Output.Length == 32
+            && state.Env.CodeSource == PrecompiledAddresses.ECRecover)
+        {
+            Address recoveredAddress = new(callResult.Output.Span[12..]);
+            gas = state.Gas;
+            if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in state.AccessTracker, _txTracer.IsTracingAccess, recoveredAddress))
+            {
+                return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
+            }
+
+            state.Gas = gas;
+            if (Eip7851Constants.IsEcdsaDisabledDelegatedCode(_worldState.GetCode(recoveredAddress)))
+            {
+                callResult = new(new byte[32], precompileSuccess: true);
+            }
+        }
+
+        return callResult;
     }
 
     /// <summary>

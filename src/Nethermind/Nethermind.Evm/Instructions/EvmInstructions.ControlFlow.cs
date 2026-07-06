@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -275,6 +276,57 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     Stop:
         return EvmExceptionType.Stop;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    StaticCallViolation:
+        return EvmExceptionType.StaticCallViolation;
+    }
+
+    /// <summary>
+    /// Executes the SETSELFDELEGATE opcode (EIP-7851).
+    /// Updates the executing account's delegation designator to the ECDSA-disabled form
+    /// <c>0xef0101 || delegate</c>, permanently disabling its ECDSA authority.
+    /// </summary>
+    /// <remarks>
+    /// Pushes 1 on success. Pushes 0 without any state change when the delegate address is zero
+    /// or the executing account's state code is not a 23-byte EIP-7702/EIP-7851 delegation
+    /// designator (i.e. the code is not running in a delegated EOA's own context).
+    /// </remarks>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSetSelfDelegate<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        VmState<TGasPolicy> vmState = vm.VmState;
+        if (vmState.IsStatic)
+            goto StaticCallViolation;
+
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.SetSelfDelegate))
+            goto OutOfGas;
+
+        Address delegateAddress = stack.PopAddress();
+        if (delegateAddress is null)
+            goto StackUnderflow;
+
+        IWorldState state = vm.WorldState;
+        Address executingAccount = vmState.Env.ExecutingAccount;
+        byte[]? currentCode = state.GetCode(executingAccount);
+        bool isDelegatedContext = currentCode is not null
+            && (Eip7702Constants.IsDelegatedCode(currentCode) || Eip7851Constants.IsEcdsaDisabledDelegatedCode(currentCode));
+
+        if (delegateAddress == Address.Zero || !isDelegatedContext)
+            return stack.PushZero<TTracingInst>();
+
+        byte[] newCode = new byte[Eip7851Constants.DelegationHeader.Length + Address.Size];
+        Eip7851Constants.DelegationHeader.CopyTo(newCode);
+        delegateAddress.Bytes.CopyTo(newCode.AsSpan(Eip7851Constants.DelegationHeader.Length));
+        ValueHash256 codeHash = ValueKeccak.Compute(newCode);
+        state.InsertCode(executingAccount, in codeHash, newCode, vm.Spec);
+
+        return stack.PushOne<TTracingInst>();
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
