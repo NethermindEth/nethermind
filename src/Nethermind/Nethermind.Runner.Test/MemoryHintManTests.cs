@@ -145,17 +145,17 @@ namespace Nethermind.Runner.Test
         public void Adaptive_cache_budget_reclaims_capacity_from_least_utilized_cache()
         {
             using AdaptiveCacheManager manager = new(1000 * AdaptiveMB, LimboLogs.Instance);
-            TestAdaptiveCache underused = new("underused", 400 * AdaptiveMB, 100 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
-            TestAdaptiveCache saturated = new("saturated", 400 * AdaptiveMB, 400 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
+            TestAdaptiveCache underused = new("underused", 200 * AdaptiveMB, 50 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
+            TestAdaptiveCache saturated = new("saturated", 100 * AdaptiveMB, 100 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
             manager.Register(underused);
             manager.Register(saturated);
 
-            manager.Rebalance(800 * AdaptiveMB);
+            manager.Rebalance(650 * AdaptiveMB);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(underused.Capacity, Is.EqualTo(200 * AdaptiveMB));
-                Assert.That(saturated.Capacity, Is.EqualTo(400 * AdaptiveMB));
+                Assert.That(underused.Capacity, Is.EqualTo(150 * AdaptiveMB));
+                Assert.That(saturated.Capacity, Is.EqualTo(100 * AdaptiveMB));
             }
         }
 
@@ -168,11 +168,11 @@ namespace Nethermind.Runner.Test
             manager.Register(saturated);
             manager.Register(idle);
 
-            manager.Rebalance(700 * AdaptiveMB);
+            manager.Rebalance(500 * AdaptiveMB);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(saturated.Capacity, Is.EqualTo(200 * AdaptiveMB));
+                Assert.That(saturated.Capacity, Is.EqualTo(125 * AdaptiveMB));
                 Assert.That(idle.Capacity, Is.EqualTo(100 * AdaptiveMB));
             }
         }

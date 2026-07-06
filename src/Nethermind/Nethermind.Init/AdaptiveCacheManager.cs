@@ -14,11 +14,11 @@ namespace Nethermind.Init;
 
 internal sealed class AdaptiveCacheManager : IAdaptiveCacheManager, IDisposable
 {
-    // Non-cache allocations retain 40% of the detected process limit. The two memory-pressure
+    // Non-cache allocations retain 75% of the detected process limit. The two memory-pressure
     // thresholds provide hysteresis so a cache is not grown immediately after pressure subsides.
-    private const int CacheBudgetPercent = 60;
-    private const int HighMemoryPressurePercent = 90;
-    private const int LowMemoryPressurePercent = 75;
+    private const int CacheBudgetPercent = 25;
+    private const int HighMemoryPressurePercent = 75;
+    private const int LowMemoryPressurePercent = 60;
     private const int PressureShrinkPercent = 75;
     private const int SaturatedPercent = 85;
     private static readonly TimeSpan RebalanceInterval = TimeSpan.FromSeconds(10);
@@ -205,7 +205,7 @@ internal sealed class AdaptiveCacheManager : IAdaptiveCacheManager, IDisposable
 
         if (candidate is null) return;
 
-        long growth = Math.Max(candidate.MinimumCapacity, candidate.Capacity);
+        long growth = Math.Max(candidate.MinimumCapacity, candidate.Capacity / 4);
         long target = Math.Min(candidate.MaximumCapacity, candidate.Capacity + Math.Min(growth, available));
         Resize(candidate, target, "cache demand");
     }
