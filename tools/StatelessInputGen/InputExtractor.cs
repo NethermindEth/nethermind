@@ -62,22 +62,33 @@ internal static class InputExtractor
         int failed = 0;
         HashSet<string> writtenFiles = new(StringComparer.OrdinalIgnoreCase);
 
-        foreach (string fixtureFile in fixtureFiles)
-        {
-            try
+        await AnsiConsole
+            .Status()
+            .Spinner(Spinner.Known.Default)
+            .SpinnerStyle(Style.Parse("blue"))
+            .StartAsync("[orange1]Extracting[/]", async ctx =>
             {
-                (int fileExtracted, int fileFailed) = await ExtractFromFile(
-                    fixtureFile, fullOutputPath, forZisk, maxFileNameLength, writtenFiles, cancellationToken);
+                for (int i = 0; i < fixtureFiles.Length; i++)
+                {
+                    string fixtureFile = fixtureFiles[i];
 
-                extracted += fileExtracted;
-                failed += fileFailed;
-            }
-            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
-            {
-                failed++;
-                AnsiConsole.MarkupLine($"[red]✗[/] {fixtureFile.EscapeMarkup()}: {ex.Message.EscapeMarkup()}");
-            }
-        }
+                    ctx.Status = $"[orange1]Extracting {i + 1}/{fixtureFiles.Length}:[/] {Path.GetFileName(fixtureFile).EscapeMarkup()}";
+
+                    try
+                    {
+                        (int fileExtracted, int fileFailed) = await ExtractFromFile(
+                            fixtureFile, fullOutputPath, forZisk, maxFileNameLength, writtenFiles, cancellationToken);
+
+                        extracted += fileExtracted;
+                        failed += fileFailed;
+                    }
+                    catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+                    {
+                        failed++;
+                        AnsiConsole.MarkupLine($"[red]✗[/] {fixtureFile.EscapeMarkup()}: {ex.Message.EscapeMarkup()}");
+                    }
+                }
+            });
 
         AnsiConsole.MarkupLine(extracted == 0
             ? "[yellow]No stateless input found[/]"
@@ -157,8 +168,6 @@ internal static class InputExtractor
                     }
 
                     writtenFiles.Add(fileName);
-                    AnsiConsole.MarkupLine($"[green]✓[/] Saved [dim]{fileName.EscapeMarkup()}[/]");
-
                     extracted++;
                 }
                 catch (Exception ex) when (ex is IOException or FormatException or UnauthorizedAccessException)
