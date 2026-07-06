@@ -57,9 +57,7 @@ internal static class InputGenerator
         }
 
         if (forZisk)
-        {
             data = ZiskFrame.Wrap(data);
-        }
 
         Directory.CreateDirectory(output);
 

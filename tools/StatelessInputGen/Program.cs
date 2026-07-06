@@ -87,7 +87,7 @@ Command CreateRpcCommand()
 
 Command CreateFixtureCommand()
 {
-    Option<string> pathOption = new("--path", "-p")
+    Option<string> sourceOption = new("--source", "-s")
     {
         Description = "The directory with fixtures or the fixture file.",
         HelpName = "path",
@@ -95,12 +95,12 @@ Command CreateFixtureCommand()
     };
 
     Command command = new("fixture");
-    command.Options.Add(pathOption);
+    command.Options.Add(sourceOption);
     command.Options.Add(noZiskOption);
     command.Options.Add(outputOption);
 
     command.SetAction((parseResult, cancellationToken) => RunCommand(() => InputExtractor.ExtractFromFixtures(
-        parseResult.GetValue(pathOption)!,
+        parseResult.GetValue(sourceOption)!,
         parseResult.GetValue(outputOption)!,
         !parseResult.GetValue(noZiskOption),
         cancellationToken
