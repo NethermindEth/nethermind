@@ -756,10 +756,21 @@ namespace Nethermind.Evm.TransactionProcessing
 
             accessTracker.WarmUp(authorizationTuple.Authority);
 
-            if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
+            if (WorldState.HasCode(authorizationTuple.Authority))
             {
-                error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
-                return AuthorizationTupleResult.InvalidAsCodeDeployed;
+                // EIP-7851: an ECDSA-disabled account (0xef0101 designator) can never authorize
+                // delegation changes again, even though its code parses as a delegation.
+                if (spec.IsEip7851Enabled && Eip7851Constants.IsEcdsaDisabledDelegatedCode(WorldState.GetCode(authorizationTuple.Authority)))
+                {
+                    error = $"Authority ({authorizationTuple.Authority}) has permanently disabled its ECDSA authority.";
+                    return AuthorizationTupleResult.InvalidAsCodeDeployed;
+                }
+
+                if (!_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
+                {
+                    error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
+                    return AuthorizationTupleResult.InvalidAsCodeDeployed;
+                }
             }
 
             ulong authNonce = WorldState.GetNonce(authorizationTuple.Authority);

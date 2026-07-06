@@ -169,6 +169,7 @@ public enum Instruction : byte
     RETURN = 0xf3,
     DELEGATECALL = 0xf4,
     CREATE2 = 0xf5,
+    SETSELFDELEGATE = 0xf6, // EIP-7851 (opcode value TBD in the spec; placeholder)
     STATICCALL = 0xfa,
     REVERT = 0xfd,
     INVALID = 0xfe,
