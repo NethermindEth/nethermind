@@ -52,6 +52,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            NullPersistenceBarrier.Instance,
             LimboLogs.Instance);
     }
 
@@ -150,7 +151,7 @@ public class PersistenceManagerTests
         persistence.CreateReader().Returns(reader);
 
         ICompactionSchedule scheduler = ScheduleHelper.CreateWithOffset(_config, 0);
-        PersistenceManager pm = new(_config, scheduler, _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+        PersistenceManager pm = new(_config, scheduler, _finalizedStateProvider, persistence, _snapshotRepository, NullPersistenceBarrier.Instance, LimboLogs.Instance);
 
         // Depth 101 is past MinReorgDepth + CompactSize (80) but below the MaxReorgDepth force limit (256),
         // so only the finalized branch can produce a snapshot here.
@@ -350,7 +351,7 @@ public class PersistenceManagerTests
         IPersistence persistence = Substitute.For<IPersistence>();
         persistence.CreateReader().Returns(reader);
 
-        PersistenceManager pm = new(_config, ScheduleHelper.CreateWithOffset(_config, 0), _finalizedStateProvider, persistence, _snapshotRepository, LimboLogs.Instance);
+        PersistenceManager pm = new(_config, ScheduleHelper.CreateWithOffset(_config, 0), _finalizedStateProvider, persistence, _snapshotRepository, NullPersistenceBarrier.Instance, LimboLogs.Instance);
 
         // Latest snapshot (50) is below the persisted block (100); finalized far behind so the force-persist
         // branch would be taken on underflow. Stage a head-ancestor snapshot the buggy path would return.
@@ -526,6 +527,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            NullPersistenceBarrier.Instance,
             LimboLogs.Instance);
 
         StateId target = CreateStateId(expectedTargetBlock);

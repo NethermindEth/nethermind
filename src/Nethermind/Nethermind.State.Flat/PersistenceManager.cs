@@ -26,6 +26,7 @@ public class PersistenceManager(
     IFinalizedStateProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
+    IPersistenceBarrier persistenceBarrier,
     ILogManager logManager) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
@@ -257,6 +258,8 @@ public class PersistenceManager(
 
     internal void PersistSnapshot(Snapshot snapshot)
     {
+        persistenceBarrier.BeforePersistedStateAdvance();
+
         ulong compactLength = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
 
         // Usually at the start of the application

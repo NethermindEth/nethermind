@@ -55,6 +55,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
+            .AddSingleton<IPersistenceBarrier, BlockTreeDurabilityBarrier>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
