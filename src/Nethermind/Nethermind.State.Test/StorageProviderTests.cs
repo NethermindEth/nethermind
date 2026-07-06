@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.Evm.Tracing.State;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -657,6 +658,28 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Commit_ReadOnlyRound_ReportsStorageReadsToTracer()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell readCell = new(TestItem.AddressA, 1);
+
+        provider.Get(readCell);
+
+        ReadCollectingStorageTracer tracer = new();
+        provider.Commit(Frontier.Instance, tracer);
+
+        Assert.That(tracer.Reads, Does.Contain(readCell));
+
+        // The round's read capture must be cleared by the read-only commit:
+        // a subsequent commit without new reads reports nothing.
+        ReadCollectingStorageTracer secondRoundTracer = new();
+        provider.Commit(Frontier.Instance, secondRoundTracer);
+
+        Assert.That(secondRoundTracer.Reads, Is.Empty);
+    }
+
+    [Test]
     public void Eip161_empty_account_with_storage_does_not_throw_on_commit()
     {
         using Context ctx = new(useFlat, setInitialState: false);
@@ -912,5 +935,21 @@ public class StorageProviderTests(bool useFlat)
                 writtenData.SelfDestructed[address] = true;
             }
         }
+    }
+
+    private sealed class ReadCollectingStorageTracer : IWorldStateTracer
+    {
+        public System.Collections.Generic.List<StorageCell> Reads { get; } = [];
+
+        public bool IsTracingState => false;
+        public bool IsTracingStorage => true;
+
+        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
+        public void ReportCodeChange(Address address, byte[] before, byte[] after) { }
+        public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
+        public void ReportAccountRead(Address address) { }
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+        public void ReportStorageRead(in StorageCell storageCell) => Reads.Add(storageCell);
     }
 }
