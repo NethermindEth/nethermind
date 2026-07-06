@@ -124,8 +124,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Gas_policy_exposes_state_costs()
-    {
+    public void Gas_policy_exposes_state_costs() =>
         Assert.That(
             (
                 EthereumGasPolicy.GetStorageSetStateCost(),
@@ -140,7 +139,6 @@ public class Eip8037Tests : VirtualMachineTestsBase
                     GasCostOf.NewAccountState,
                     GasCostOf.PerAuthBaseState
                 )));
-    }
 
     [Test]
     public void Generic_code_deposit_cost_uses_fixed_state_pricing()
