@@ -23,7 +23,8 @@ public class StorageStridePrefetcherTests
             () => EmptyStorageTree.Instance,
             new SeqlockCache<StorageCell, byte[]>(),
             TestItem.AddressA,
-            cts.Token);
+            cts.Token,
+            readerConcurrency: 4);
 
         Read(3);
         Read(2);
@@ -56,7 +57,8 @@ public class StorageStridePrefetcherTests
             () => EmptyStorageTree.Instance,
             cache,
             TestItem.AddressA,
-            cts.Token);
+            cts.Token,
+            readerConcurrency: 4);
 
         UInt256 index = 1;
         UInt256 stride = 1;
@@ -80,7 +82,8 @@ public class StorageStridePrefetcherTests
             () => EmptyStorageTree.Instance,
             new SeqlockCache<StorageCell, byte[]>(),
             TestItem.AddressA,
-            cts.Token);
+            cts.Token,
+            readerConcurrency: 4);
 
         UInt256 stride = 10;
         UInt256 start = UInt256.MaxValue - (stride * 7);

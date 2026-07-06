@@ -79,6 +79,15 @@ public class PrewarmerScopeProvider(
         // Per contract per block; bounded so a block touching many contracts cannot accumulate
         // reader threads.
         private const int MaxStridePrefetchers = 4;
+
+        // Reader threads issue blocking, latency-bound storage reads, so we run more than one per
+        // core (2×CPU) to hide individual RocksDB fetch latency, capped at 32. The budget is shared
+        // across the concurrently engaged prefetchers rather than granted per prefetcher, so a block
+        // striding several contracts stays within one bounded thread set instead of 2×CPU threads
+        // per contract.
+        private static readonly int PrefetcherReaderConcurrency =
+            Math.Max(1, Math.Min(2 * Environment.ProcessorCount, 32) / MaxStridePrefetchers);
+
         private readonly ConcurrentDictionary<AddressAsKey, StorageStridePrefetcher> _stridePrefetchers = new();
         private readonly CancellationTokenSource _prefetchCts = new();
         private readonly Lock _prefetchScopeLock = new();
@@ -115,7 +124,16 @@ public class PrewarmerScopeProvider(
 
             AddressAsKey key = address;
             if (_stridePrefetchers.TryGetValue(key, out StorageStridePrefetcher? existing)) return existing;
-            if (_stridePrefetchers.Count >= MaxStridePrefetchers) return null;
+
+            // Only prefetchers still reading count against the cap. A broken one has stopped issuing
+            // reads but stays in the map so its (exited) readers are still joined before the shared
+            // scope is disposed; excluding it here keeps a broken slot from locking out a later
+            // striding contract for the rest of the block. Scanning is bounded (≤ MaxStridePrefetchers
+            // live entries plus a few broken ones) and only runs once the fast Count check trips.
+            if (_stridePrefetchers.Count >= MaxStridePrefetchers && CountActiveStridePrefetchers() >= MaxStridePrefetchers)
+            {
+                return null;
+            }
 
             // The readers must NOT touch this wrapper's base scope: its storage trees are memoized
             // per address, so they would share the live tree the executing thread reads and (at the
@@ -129,7 +147,18 @@ public class PrewarmerScopeProvider(
                     () => GetOrCreatePrefetchScope().CreateStorageTree(k.Value),
                     storageCache,
                     k.Value,
-                    _prefetchCts.Token));
+                    _prefetchCts.Token,
+                    PrefetcherReaderConcurrency));
+        }
+
+        private int CountActiveStridePrefetchers()
+        {
+            int active = 0;
+            foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
+            {
+                if (!kv.Value.IsBroken) active++;
+            }
+            return active;
         }
 
         private IWorldStateScopeProvider.IScope GetOrCreatePrefetchScope()
@@ -185,24 +214,64 @@ public class PrewarmerScopeProvider(
             // processes, and sync batches push many blocks through one scope. Once anything has
             // flushed or committed here, later blocks must not engage against the stale anchor —
             // even when no prefetcher was created yet (a storage-free first block would otherwise
-            // leave the token live).
+            // leave the token live). Cancelling synchronously here is what makes stragglers refuse
+            // to repopulate the cache after the block moves on; only the reader join is deferred.
             _prefetchCts.Cancel();
 
+            List<Task>? readers = null;
             if (!_stridePrefetchers.IsEmpty)
             {
                 foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
                 {
-                    kv.Value.Dispose();
+                    Task[] prefetcherReaders = kv.Value.StopAndGetReaders();
+                    if (prefetcherReaders.Length > 0)
+                    {
+                        (readers ??= []).AddRange(prefetcherReaders);
+                    }
                 }
                 _stridePrefetchers.Clear();
             }
 
-            // After the join above no reader can touch the private scope.
+            IWorldStateScopeProvider.IScope? scope;
             lock (_prefetchScopeLock)
             {
-                _prefetchScope?.Dispose();
+                scope = _prefetchScope;
                 _prefetchScope = null;
             }
+
+            if (scope is null) return; // Nothing engaged: no private scope was ever opened.
+
+            if (readers is null)
+            {
+                // Readers already exited (or none were live); disposing the scope cannot race them.
+                scope.Dispose();
+                return;
+            }
+
+            // Join the readers and release their private scope on a background continuation. A
+            // synchronous join would stall block-end on the tail latency of an in-flight,
+            // uncancellable storage read — exactly on the striding blocks this targets. The token is
+            // already cancelled, so no straggler can publish into the next block's cache; deferring
+            // only delays disposing the readers' isolated scope until they have all returned.
+            IWorldStateScopeProvider.IScope scopeToDispose = scope;
+            Task.WhenAll(readers).ContinueWith(
+                static (_, state) =>
+                {
+                    try
+                    {
+                        ((IWorldStateScopeProvider.IScope)state!).Dispose();
+                    }
+                    catch
+                    {
+                        // Best-effort: the isolated scope is reached here only after all its readers
+                        // returned. A disposal that races provider/harness teardown must not surface
+                        // as a faulted, unobserved task.
+                    }
+                },
+                scopeToDispose,
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
         }
 
         public Hash256 RootHash => baseScope.RootHash;

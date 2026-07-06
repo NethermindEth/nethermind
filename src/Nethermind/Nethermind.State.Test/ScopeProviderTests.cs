@@ -335,7 +335,7 @@ public class ScopeProviderTests(bool useFlat)
     public async Task Test_StridePrefetcher_WarmsAheadOfStridingReads()
     {
         const int slotCount = 256;
-        UInt256 start = (UInt256)1 << 40; // Above the minimum engagement index.
+        UInt256 start = (UInt256)1 << 40; // A high, distinctive base slot for the scan.
         UInt256 stride = 7;
 
         using Context ctx = new(useFlat);
@@ -400,11 +400,12 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public async Task Test_StridePrefetcher_DoesNotCacheInBlockWrittenValues()
     {
-        UInt256 start = (UInt256)1 << 40; // Above the minimum engagement index.
+        UInt256 start = (UInt256)1 << 40; // A high, distinctive base slot for the scan.
         UInt256 stride = 7;
-        // Beyond the readers' lookahead window at engagement, so it cannot be prefetched before
-        // the block's write batch lands.
-        UInt256 farIndex = start + (stride * 4500);
+        // Inside the readers' lookahead window at engagement, so a live reader reaches it and caches
+        // the parent value before the executing block rewrites the slot.
+        UInt256 farIndex = start + (stride * 200);
+        byte[] parentValue = [111];
         byte[] inBlockValue = [222];
 
         using Context ctx = new(useFlat);
@@ -415,6 +416,8 @@ public class ScopeProviderTests(bool useFlat)
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(farIndex, parentValue);
             }
 
             scope.Commit(1);
@@ -423,6 +426,8 @@ public class ScopeProviderTests(bool useFlat)
 
         PreBlockCaches caches = new();
         PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+
+        StorageCell farCell = new(TestItem.AddressA, farIndex);
 
         using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
@@ -435,18 +440,19 @@ public class ScopeProviderTests(bool useFlat)
                 storage.Get(in index);
             }
 
-            // Readers are live once a slot inside the initial lookahead window shows up; on the
-            // trie layout the prefetcher never engages, and the invariant below holds trivially.
+            // A live reader must reach farIndex and cache the parent value; on the trie layout the
+            // prefetcher never engages, so this positive check is flat-only.
             if (useFlat)
             {
-                StorageCell windowCell = new(TestItem.AddressA, start + (stride * 100));
                 await Eventually.AssertAsync<AssertionException>(() =>
                 {
-                    Assert.That(caches.StorageCache.TryGetValue(in windowCell, out _), Is.True);
+                    Assert.That(caches.StorageCache.TryGetValue(in farCell, out byte[] value), Is.True);
+                    Assert.That(value, Is.EqualTo(parentValue));
                 }, attempts: 200, delayMilliseconds: 10);
             }
 
-            // The executing block now writes a slot the readers have not reached yet.
+            // The executing block rewrites the slot the reader already cached; StartWriteBatch stops
+            // the readers, and their private parent-anchored scope never observes the write.
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
@@ -454,16 +460,9 @@ public class ScopeProviderTests(bool useFlat)
                 storageA.Set(farIndex, inBlockValue);
             }
 
-            // Keep striding past the write so any reader still alive would advance into the
-            // written slot and observe the in-block value through a shared live tree.
-            for (int i = 0; i < 600; i++, index += stride)
-            {
-                storage.Get(in index);
-            }
-
-            // The prefetcher must never publish a value written by the executing block as parent
-            // state; bounded poll because the correct outcome is that nothing ever appears.
-            StorageCell farCell = new(TestItem.AddressA, farIndex);
+            // The prefetcher must publish only parent state: the far slot's cache entry must never
+            // flip to the value the executing block wrote. Bounded poll because the correct outcome
+            // is that the entry stays put.
             for (int i = 0; i < 120; i++)
             {
                 if (caches.StorageCache.TryGetValue(in farCell, out byte[] cached) &&
@@ -475,13 +474,19 @@ public class ScopeProviderTests(bool useFlat)
 
                 await Task.Delay(5);
             }
+
+            if (useFlat)
+            {
+                Assert.That(caches.StorageCache.TryGetValue(in farCell, out byte[] finalValue), Is.True);
+                Assert.That(finalValue, Is.EqualTo(parentValue));
+            }
         }
     }
 
     [Test]
     public async Task Test_StridePrefetcher_DoesNotEngageAfterFirstCommit()
     {
-        UInt256 start = (UInt256)1 << 40; // Above the minimum engagement index.
+        UInt256 start = (UInt256)1 << 40; // A high, distinctive base slot for the scan.
         UInt256 stride = 7;
 
         using Context ctx = new(useFlat);

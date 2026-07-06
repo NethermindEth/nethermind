@@ -35,13 +35,11 @@ internal sealed class StorageStridePrefetcher(
     Func<IWorldStateScopeProvider.IStorageTree> treeFactory,
     SeqlockCache<StorageCell, byte[]> cache,
     Address address,
-    CancellationToken token) : IDisposable
+    CancellationToken token,
+    int readerConcurrency) : IDisposable
 {
     /// <summary>On-pattern reads required before readers start.</summary>
     private const int EngageRunLength = 8;
-
-    /// <summary>Minimum slot index for engagement; slot zero is often a loop cursor.</summary>
-    private static readonly UInt256 MinEngageIndex = UInt256.Zero;
 
     /// <summary>Consecutive off-pattern reads before the pattern is declared broken. Tolerates
     /// interleaved unrelated reads (counters, config slots) within a striding scan.</summary>
@@ -55,12 +53,11 @@ internal sealed class StorageStridePrefetcher(
     /// has left the pattern.</summary>
     private const int IdlePollLimit = 250;
 
-    private static readonly int ReaderConcurrency = Math.Min(2 * Environment.ProcessorCount, 32);
-
     private readonly Func<IWorldStateScopeProvider.IStorageTree> _treeFactory = treeFactory;
     private readonly SeqlockCache<StorageCell, byte[]> _cache = cache;
     private readonly Address _address = address;
     private readonly CancellationToken _token = token;
+    private readonly int _readerConcurrency = readerConcurrency;
 
     private IWorldStateScopeProvider.IStorageTree? _tree;
 
@@ -95,7 +92,7 @@ internal sealed class StorageStridePrefetcher(
                 return;
             }
 
-            if (++_runLength >= EngageRunLength && index > MinEngageIndex)
+            if (++_runLength >= EngageRunLength)
             {
                 Engage(index);
             }
@@ -144,8 +141,8 @@ internal sealed class StorageStridePrefetcher(
 
         _engaged = true;
         _engageIndex = index;
-        _readers = new Task[ReaderConcurrency];
-        for (int t = 0; t < ReaderConcurrency; t++)
+        _readers = new Task[_readerConcurrency];
+        for (int t = 0; t < _readerConcurrency; t++)
         {
             _readers[t] = Task.Factory.StartNew(ReadAhead, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
@@ -153,13 +150,17 @@ internal sealed class StorageStridePrefetcher(
 
     private void ReadAhead()
     {
+        // _broken is checked before the token so that once teardown has signalled this reader (the
+        // owner sets _broken synchronously at block-end), it exits without touching the token — the
+        // owning scope disposes the token source once the block is done, while this reader may still
+        // be draining in the background.
         int idlePolls = 0;
-        while (!_token.IsCancellationRequested && !_broken)
+        while (!_broken && !_token.IsCancellationRequested)
         {
             long k = Interlocked.Increment(ref _issued);
             while (k - Volatile.Read(ref _consumed) > MaxLookahead)
             {
-                if (_token.IsCancellationRequested || _broken) return;
+                if (_broken || _token.IsCancellationRequested) return;
                 if (++idlePolls > IdlePollLimit) return;
                 Thread.Sleep(1);
             }
@@ -173,7 +174,7 @@ internal sealed class StorageStridePrefetcher(
                 // The cancelled token marks the end of the block these parent-state values are
                 // valid for; re-check after the read so a straggler cannot repopulate a cache
                 // that is being handed to the next block.
-                if (_token.IsCancellationRequested || _broken) return;
+                if (_broken || _token.IsCancellationRequested) return;
                 StorageCell cell = new(_address, in index);
                 _cache.Set(in cell, value);
             }
@@ -186,13 +187,27 @@ internal sealed class StorageStridePrefetcher(
         }
     }
 
-    /// <summary>Blocks until all readers exited; the caller cancels the token first.</summary>
-    public void Dispose()
+    /// <summary>True once a sustained off-pattern run has disengaged this prefetcher.</summary>
+    /// <remarks>
+    /// A broken prefetcher's readers have stopped issuing reads, so its scope slot can be treated as
+    /// free when deciding whether a new contract may engage. It is still kept in the owner's map so
+    /// its (already exited) readers are joined before their shared scope is disposed.
+    /// </remarks>
+    internal bool IsBroken => _broken;
+
+    /// <summary>Signals the readers to stop and hands their tasks back for the caller to join.</summary>
+    /// <remarks>
+    /// Joining must happen off the block-processing thread: a reader mid-<c>_tree.Get</c> is inside an
+    /// uncancellable storage read, so a synchronous join at block-end (write batch / commit) would
+    /// stall the hot path on that read's tail latency. The caller waits on the returned tasks in the
+    /// background and only then disposes the readers' shared scope.
+    /// </remarks>
+    internal Task[] StopAndGetReaders()
     {
         _broken = true;
-        if (_readers is not null)
-        {
-            Task.WaitAll(_readers);
-        }
+        return _readers ?? [];
     }
+
+    /// <summary>Signals readers to stop and blocks until they exit.</summary>
+    public void Dispose() => Task.WaitAll(StopAndGetReaders());
 }
