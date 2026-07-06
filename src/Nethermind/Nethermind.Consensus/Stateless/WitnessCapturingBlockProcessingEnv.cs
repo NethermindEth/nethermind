@@ -82,10 +82,10 @@ public sealed class WitnessCapturingBlockProcessingEnv(
         // Off the root scope (not the main-processing child) to avoid inheriting the selector decorator; the recorder is
         // registered by instance so the decorator wraps the captured parent rather than re-resolving itself (no cycle).
         return new ProcessingEnvBuilder(rootLifetimeScope)
-            .WithWorldState(recorder, externallyOwned: true) // wraps the shared main-pipeline world state
-            .WithComponent(recorder, externallyOwned: true)  // exposed as WitnessGeneratingWorldState
+            .WithWorldState(recorder)                        // wraps the shared main-pipeline world state
+            .WithComponent(recorder)                         // exposed as WitnessGeneratingWorldState
             .WithComponent(headerRecorder)
-            .WithComponent(trieStore)                         // owned: disposed with the scope
+            .ThatDisposes(trieStore)                         // the env owns the witness-walk trie store
             .WithReplacedComponent<IHeaderFinder>(recordingFinder)
             .WithReplacedComponent<IBlockhashCache, BlockhashCache>()
             .WithReplacedComponent<ICodeInfoRepository, CodeInfoRepository>()

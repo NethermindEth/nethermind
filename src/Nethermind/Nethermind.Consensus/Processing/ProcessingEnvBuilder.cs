@@ -13,13 +13,13 @@ namespace Nethermind.Consensus.Processing;
 /// <remarks>
 /// Every typed shortcut funnels into <see cref="Configure"/>, so <see cref="BuildAs{TWrapper}"/> simply
 /// replays the accumulated actions against a fresh child of <paramref name="parentScope"/>. Instances
-/// registered as owned (the default) are tracked and disposed with the scope, regardless of whether the
-/// wrapper ever resolves them.
+/// passed to the <c>With*</c> methods are registered but never disposed by the builder; ownership is
+/// declared explicitly with <see cref="ThatDisposes"/>.
 /// </remarks>
 public class ProcessingEnvBuilder(ILifetimeScope parentScope) : IProcessingEnvBuilder
 {
     private readonly List<Action<ContainerBuilder>> _configure = [];
-    private readonly List<object> _ownedInstances = [];
+    private readonly List<IDisposable> _disposables = [];
     private bool _worldStateConfigured;
 
     public IProcessingEnvBuilder Configure(Action<ContainerBuilder> configure)
@@ -28,20 +28,26 @@ public class ProcessingEnvBuilder(ILifetimeScope parentScope) : IProcessingEnvBu
         return this;
     }
 
-    public IProcessingEnvBuilder WithWorldState(IWorldStateScopeProvider worldState, bool externallyOwned = false)
+    public IProcessingEnvBuilder ThatDisposes(IDisposable disposable)
     {
-        _worldStateConfigured = true;
-        return AddInstance(worldState, externallyOwned);
+        _disposables.Add(disposable);
+        return this;
     }
 
-    public IProcessingEnvBuilder WithWorldState(IWorldState worldState, bool externallyOwned = false)
+    public IProcessingEnvBuilder WithWorldState(IWorldStateScopeProvider worldState)
     {
         _worldStateConfigured = true;
-        return AddInstance(worldState, externallyOwned);
+        return Configure(builder => builder.AddScoped<IWorldStateScopeProvider>(worldState));
     }
 
-    public IProcessingEnvBuilder WithReplacedComponent<T>(T instance, bool externallyOwned = false) where T : class =>
-        AddInstance(instance, externallyOwned);
+    public IProcessingEnvBuilder WithWorldState(IWorldState worldState)
+    {
+        _worldStateConfigured = true;
+        return Configure(builder => builder.AddScoped<IWorldState>(worldState));
+    }
+
+    public IProcessingEnvBuilder WithReplacedComponent<T>(T instance) where T : class =>
+        Configure(builder => builder.AddScoped<T>(instance));
 
     public IProcessingEnvBuilder WithReplacedComponent<TService, TImpl>() where TImpl : TService where TService : notnull =>
         Configure(builder => builder.AddScoped<TService, TImpl>());
@@ -49,8 +55,8 @@ public class ProcessingEnvBuilder(ILifetimeScope parentScope) : IProcessingEnvBu
     public IProcessingEnvBuilder WithReplacedComponent<T>(Func<IComponentContext, T> factory) where T : class =>
         Configure(builder => builder.AddScoped<T>(factory));
 
-    public IProcessingEnvBuilder WithComponent<T>(T instance, bool externallyOwned = false) where T : class =>
-        AddInstance(instance, externallyOwned);
+    public IProcessingEnvBuilder WithComponent<T>(T instance) where T : class =>
+        Configure(builder => builder.AddScoped<T>(instance));
 
     public TWrapper BuildAs<TWrapper>() where TWrapper : class
     {
@@ -63,28 +69,11 @@ public class ProcessingEnvBuilder(ILifetimeScope parentScope) : IProcessingEnvBu
             foreach (Action<ContainerBuilder> configure in _configure) configure(builder);
         });
 
-        // Registrations for provided instances are externally owned at the Autofac level, so give the
-        // scope ownership of the ones the caller kept by adding them to its disposer directly — this
-        // disposes them even when the wrapper never resolves them.
-        foreach (object owned in _ownedInstances)
-        {
-            switch (owned)
-            {
-                case IAsyncDisposable asyncDisposable:
-                    scope.Disposer.AddInstanceForAsyncDisposal(asyncDisposable);
-                    break;
-                case IDisposable disposable:
-                    scope.Disposer.AddInstanceForDisposal(disposable);
-                    break;
-            }
-        }
+        // Give the scope ownership of the caller-declared resources so they are disposed with it, even
+        // when no scope component ever resolves them.
+        foreach (IDisposable disposable in _disposables)
+            scope.Disposer.AddInstanceForDisposal(disposable);
 
         return ProcessingEnvWrapperFactory.Create<TWrapper>(scope);
-    }
-
-    private IProcessingEnvBuilder AddInstance<T>(T instance, bool externallyOwned) where T : class
-    {
-        if (!externallyOwned) _ownedInstances.Add(instance);
-        return Configure(builder => builder.AddScoped<T>(instance));
     }
 }

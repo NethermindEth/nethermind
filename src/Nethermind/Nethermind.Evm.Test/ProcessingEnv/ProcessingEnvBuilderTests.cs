@@ -96,17 +96,16 @@ public class ProcessingEnvBuilderTests
     }
 
     [Test]
-    public void WithComponent_owns_the_instance_by_default_and_disposes_it()
+    public void ThatDisposes_disposes_the_instance_with_the_scope()
     {
         using IContainer container = BuildContainer();
         TrackingDisposable owned = new();
 
-        using (ITrackerEnv env = container.Resolve<IProcessingEnvBuilder>()
+        using (IEnvWithMethod env = container.Resolve<IProcessingEnvBuilder>()
                    .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
-                   .WithComponent(owned)
-                   .BuildAs<ITrackerEnv>())
+                   .ThatDisposes(owned)
+                   .BuildAs<IEnvWithMethod>())
         {
-            Assert.That(env.Tracker, Is.SameAs(owned));
             Assert.That(owned.Disposed, Is.False);
         }
 
@@ -114,20 +113,20 @@ public class ProcessingEnvBuilderTests
     }
 
     [Test]
-    public void WithComponent_externallyOwned_does_not_dispose_the_instance()
+    public void WithComponent_registers_but_does_not_dispose_the_instance()
     {
         using IContainer container = BuildContainer();
-        TrackingDisposable external = new();
+        TrackingDisposable component = new();
 
         using (ITrackerEnv env = container.Resolve<IProcessingEnvBuilder>()
                    .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
-                   .WithComponent(external, externallyOwned: true)
+                   .WithComponent(component)
                    .BuildAs<ITrackerEnv>())
         {
-            Assert.That(env.Tracker, Is.SameAs(external));
+            Assert.That(env.Tracker, Is.SameAs(component));
         }
 
-        Assert.That(external.Disposed, Is.False);
+        Assert.That(component.Disposed, Is.False);
     }
 
     [Test]

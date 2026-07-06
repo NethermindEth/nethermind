@@ -90,7 +90,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .WithReplacedComponent<WitnessGeneratingWorldState>(witnessWorldState)
             .WithReplacedComponent<IHeaderFinder>(capturingHeaderFinder)
             .WithReplacedComponent<IBlockhashCache, BlockhashCache>()
-            .WithReplacedComponent<IReceiptStorage>(NullReceiptStorage.Instance, externallyOwned: true)
+            .WithReplacedComponent<IReceiptStorage>(NullReceiptStorage.Instance)
             .WithReplacedComponent<ICodeInfoRepository, CodeInfoRepository>()
             .WithReplacedComponent<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),

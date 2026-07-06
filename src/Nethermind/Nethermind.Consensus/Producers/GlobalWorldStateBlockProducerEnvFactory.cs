@@ -50,8 +50,7 @@ namespace Nethermind.Consensus.Producers
 
         private IEnvHandle BeginScope() =>
             new ProcessingEnvBuilder(rootLifetime)
-                // May be the shared GlobalWorldState, which the environment must never dispose.
-                .WithWorldState(CreateWorldState(), externallyOwned: true)
+                .WithWorldState(CreateWorldState())
                 .Configure(builder => ConfigureBuilder(builder))
                 .BuildAs<IEnvHandle>();
 
