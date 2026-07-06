@@ -23,7 +23,7 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
-        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        IBalProcessingEnv preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
     }
 
@@ -31,7 +31,7 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
-        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        IBalProcessingEnv preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
@@ -39,7 +39,7 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
-        TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
+        IBalProcessingEnv postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         IWithdrawalProcessor withdrawalProcessor = withdrawalProcessorFactory.Create(postExecution.WorldState, postExecution.TxProcessor);
         if (_isBuilding)
         {
@@ -52,7 +52,7 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
-        TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
+        IBalProcessingEnv postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

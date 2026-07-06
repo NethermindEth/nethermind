@@ -38,12 +38,24 @@ namespace Nethermind.Consensus.Processing;
 /// </summary>
 public partial class BlockAccessListManager
 {
+    /// <summary>
+    /// The per-worker BAL processing environment the manager hands out: a traced world state
+    /// bundled with the transaction processor (and its adapter) bound to it. The BAL manager
+    /// interacts with rented/shared workers only through this surface, never the concrete pool type.
+    /// </summary>
+    private interface IBalProcessingEnv
+    {
+        TracedAccessWorldState WorldState { get; }
+        ITransactionProcessor TxProcessor { get; }
+        ITransactionProcessorAdapter TxProcessorAdapter { get; }
+    }
+
     private interface ITxProcessorWithWorldStateManager : IDisposable
     {
         void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot);
-        TxProcessorWithWorldState Get(uint? balIndex = null);
-        TxProcessorWithWorldState GetPreExecution() => Get(0u);
-        TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
+        IBalProcessingEnv Get(uint? balIndex = null);
+        IBalProcessingEnv GetPreExecution() => Get(0u);
+        IBalProcessingEnv GetPostExecution() => Get(uint.MaxValue);
         void NextTransaction();
         void Rollback();
         void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null);
@@ -138,7 +150,7 @@ public partial class BlockAccessListManager
         //   strictly after the worker's gasResults[i-1].SetResult, whose pairing with
         //   GetResult() establishes the publication barrier. Plain reads/writes are
         //   therefore sufficient — Volatile/Interlocked would be redundant fencing.
-        public TxProcessorWithWorldState Get(uint? balIndex = null)
+        public IBalProcessingEnv Get(uint? balIndex = null)
         {
             if (_currentBlock is null) ThrowNotInitialized(nameof(_currentBlock));
 
@@ -347,7 +359,7 @@ public partial class BlockAccessListManager
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot)
             => _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null);
 
-        public TxProcessorWithWorldState Get(uint? _)
+        public IBalProcessingEnv Get(uint? _)
             => _txProcessorWithWorldState;
 
         public void NextTransaction()
@@ -368,11 +380,11 @@ public partial class BlockAccessListManager
         }
     }
 
-    private class TxProcessorWithWorldState
+    private class TxProcessorWithWorldState : IBalProcessingEnv
     {
-        public readonly TracedAccessWorldState WorldState;
-        public readonly ITransactionProcessor TxProcessor;
-        public readonly ExecuteTransactionProcessorAdapter TxProcessorAdapter;
+        public TracedAccessWorldState WorldState { get; }
+        public ITransactionProcessor TxProcessor { get; }
+        public ITransactionProcessorAdapter TxProcessorAdapter { get; }
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private readonly bool _parallel;
         private ParentReaderLease? _parentReader;
@@ -398,7 +410,7 @@ public partial class BlockAccessListManager
             WorldState = new TracedAccessWorldState(worldState, parallel);
             ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(WorldState);
             TxProcessor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager);
-            TxProcessorAdapter = new(TxProcessor);
+            TxProcessorAdapter = new ExecuteTransactionProcessorAdapter(TxProcessor);
         }
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
