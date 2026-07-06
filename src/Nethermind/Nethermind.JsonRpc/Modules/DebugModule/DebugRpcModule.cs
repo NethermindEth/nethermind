@@ -30,6 +30,7 @@ using Nethermind.Config;
 using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Simulate;
 using Nethermind.Consensus.Stateless;
 
@@ -42,12 +43,14 @@ public class DebugRpcModule(
     ISpecProvider specProvider,
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
-    IBlockFinder blockFinder)
+    IBlockFinder blockFinder,
+    IBlockForRpcFactory blockForRpcFactory)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
-    private readonly BlockDecoder _blockDecoder = new();
+    // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
+    private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
@@ -642,7 +645,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
     {
-        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder));
+        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
 

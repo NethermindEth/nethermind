@@ -61,13 +61,13 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(entries[0].Memory.Length, Is.EqualTo(0));
-            Assert.That(entries[1].Memory.Length, Is.EqualTo(0));
-            Assert.That(entries[2].Memory.Length, Is.EqualTo(0));
-            Assert.That(entries[3].Memory.Length, Is.EqualTo(1));
-            Assert.That(entries[4].Memory.Length, Is.EqualTo(1));
-            Assert.That(entries[5].Memory.Length, Is.EqualTo(1));
-            Assert.That(entries[6].Memory.Length, Is.EqualTo(2));
+            Assert.That(entries[0].MemoryWordCount(), Is.EqualTo(0));
+            Assert.That(entries[1].MemoryWordCount(), Is.EqualTo(0));
+            Assert.That(entries[2].MemoryWordCount(), Is.EqualTo(0));
+            Assert.That(entries[3].MemoryWordCount(), Is.EqualTo(1));
+            Assert.That(entries[4].MemoryWordCount(), Is.EqualTo(1));
+            Assert.That(entries[5].MemoryWordCount(), Is.EqualTo(1));
+            Assert.That(entries[6].MemoryWordCount(), Is.EqualTo(2));
         }
     }
 
@@ -79,13 +79,13 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(entries[0].Stack.Length, Is.EqualTo(0));
-            Assert.That(entries[1].Stack.Length, Is.EqualTo(1));
-            Assert.That(entries[2].Stack.Length, Is.EqualTo(2));
-            Assert.That(entries[3].Stack.Length, Is.EqualTo(0));
-            Assert.That(entries[4].Stack.Length, Is.EqualTo(1));
-            Assert.That(entries[5].Stack.Length, Is.EqualTo(2));
-            Assert.That(entries[6].Stack.Length, Is.EqualTo(0));
+            Assert.That(entries[0].StackWordCount(), Is.EqualTo(0));
+            Assert.That(entries[1].StackWordCount(), Is.EqualTo(1));
+            Assert.That(entries[2].StackWordCount(), Is.EqualTo(2));
+            Assert.That(entries[3].StackWordCount(), Is.EqualTo(0));
+            Assert.That(entries[4].StackWordCount(), Is.EqualTo(1));
+            Assert.That(entries[5].StackWordCount(), Is.EqualTo(2));
+            Assert.That(entries[6].StackWordCount(), Is.EqualTo(0));
         }
     }
 

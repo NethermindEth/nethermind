@@ -146,12 +146,11 @@ public class VotesManagerTests
     [TestCase(7UL, 0)]
     [TestCase(6UL, 1)]
     [TestCase(5UL, 1)]
-    [TestCase(4UL, 0)]
-    public async Task HandleVote_MsgRoundDifferentValues_ReturnsEarlyIfTooFarFromCurrentRound(ulong currentRound,
+    public async Task HandleVote_VoteRoundOlderThanCurrentRound_RejectsVote(ulong currentRound,
         long expectedCount)
     {
         XdcConsensusContext ctx = new() { CurrentRound = currentRound };
-        VotesManager votesManager = BuildVoteManager(ctx);
+        VotesManager votesManager = new VoteManagerBuilder { Context = ctx }.Build();
 
         // Dummy values, we only care about the round
         BlockRoundInfo blockInfo = new(Hash256.Zero, 6, 0);
@@ -161,18 +160,13 @@ public class VotesManagerTests
         Assert.That(votesManager.GetVotesCount(vote), Is.EqualTo(expectedCount));
     }
 
-    public static IEnumerable<TestCaseData> FilterVoteCases()
+    public static IEnumerable<TestCaseData> VerifyVoteCases()
     {
         PrivateKey[] keys = MakeKeys(21);
         Address[] masternodes = keys.Take(20).Select(k => k.Address).ToArray();
         BlockRoundInfo blockInfo = new(Hash256.Zero, 14, 915);
 
-        // Disqualified as the round does not match
-        Vote vote = new(blockInfo, 450);
-        yield return new TestCaseData(15UL, masternodes, vote, false)
-            .SetName("RoundDoesNotMatch");
-
-        // Invalid signature
+        // Signer not in masternodes
         yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.Last()), false)
             .SetName("InvalidSignature");
 
@@ -180,20 +174,27 @@ public class VotesManagerTests
         yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First()), true)
             .SetName("ValidMessage");
 
+        // High-S malleable signature
+        Vote validVote = XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First());
+        Signature malleableSig = XdcTestHelper.CreateMalleableSignature(validVote.Signature!);
+        Vote malleableVote = new(blockInfo, 450) { Signature = malleableSig, Signer = validVote.Signer };
+        yield return new TestCaseData(14UL, masternodes, malleableVote, false)
+            .SetName("MalleableHighS");
+
         // If snapshot missing should return false
         yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 1350, keys.First()), false)
             .SetName("SnapshotMissing");
-
     }
 
-    [TestCaseSource(nameof(FilterVoteCases))]
-    public void FilterVote(ulong currentRound, Address[] masternodes, Vote vote, bool expected)
+    [TestCaseSource(nameof(VerifyVoteCases))]
+    public async Task VerifyVote_OnReceiveVote_AcceptsOrRejectsVote(ulong currentRound, Address[] masternodes, Vote vote, bool expected)
     {
         XdcConsensusContext context = new();
         context.SetNewRound(currentRound);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithExtraConsensusData(new ExtraFieldsV2(currentRound, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), null, 0)))
+            .WithNumber(vote.ProposedBlockInfo.BlockNumber)
             .TestObject;
         blockTree.Head.Returns(new Block(header));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
@@ -210,7 +211,9 @@ public class VotesManagerTests
         VotesManager voteManager = new(context, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
             specProvider, signer, forensicsProcessor, NullLogManager.Instance);
 
-        Assert.That(voteManager.FilterVote(vote), Is.EqualTo(expected));
+        await voteManager.OnReceiveVote(vote);
+
+        Assert.That(voteManager.GetVotesCount(vote), Is.EqualTo(expected ? 1L : 0L));
     }
 
 
@@ -219,7 +222,7 @@ public class VotesManagerTests
     public void VerifyVotingRules_FirstChecks_ReturnsExpected(ulong currentRound, ulong blockInfoRound, bool expected)
     {
         XdcConsensusContext ctx = new() { CurrentRound = currentRound };
-        VotesManager votesManager = BuildVoteManager(ctx);
+        VotesManager votesManager = new VoteManagerBuilder { Context = ctx }.Build();
 
         BlockRoundInfo blockInfo = new(Hash256.Zero, blockInfoRound, 100);
         QuorumCertificate qc = new(blockInfo, null, 0);
@@ -231,11 +234,13 @@ public class VotesManagerTests
     public async Task VerifyVotingRules_RoundWasVotedOn_ReturnsFalse()
     {
         XdcConsensusContext ctx = new() { CurrentRound = 1 };
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree
             .FindHeader(Arg.Any<Hash256>())
-            .Returns(Build.A.XdcBlockHeader().TestObject);
-        VotesManager votesManager = BuildVoteManager(ctx, blockTree);
+            .Returns(header);
+        blockTree.Head.Returns(new Block(header));
+        VotesManager votesManager = new VoteManagerBuilder { Context = ctx, BlockTree = blockTree }.Build();
 
         BlockRoundInfo blockInfo = new(Hash256.Zero, 1, 100);
         QuorumCertificate qc = new(blockInfo, null, 0);
@@ -249,7 +254,7 @@ public class VotesManagerTests
     {
         QuorumCertificate lockQc = new(new BlockRoundInfo(Hash256.Zero, 4, 99), null, 0);
         XdcConsensusContext ctx = new() { CurrentRound = 5, LockQC = lockQc };
-        VotesManager votesManager = BuildVoteManager(ctx);
+        VotesManager votesManager = new VoteManagerBuilder { Context = ctx }.Build();
 
         BlockRoundInfo blockInfo = new(Hash256.Zero, 5, 100);
         QuorumCertificate qc = new(blockInfo, null, 0);
@@ -288,10 +293,199 @@ public class VotesManagerTests
     public void VerifyVotingRules_CheckExtendingFromAncestor_ReturnsExpected(IBlockTree tree, QuorumCertificate lockQc, BlockRoundInfo blockInfo, bool expected)
     {
         XdcConsensusContext ctx = new() { CurrentRound = 5, LockQC = lockQc };
-        VotesManager votesManager = BuildVoteManager(ctx, tree);
+        VotesManager votesManager = new VoteManagerBuilder { Context = ctx, BlockTree = tree }.Build();
         QuorumCertificate qc = new(new BlockRoundInfo(Hash256.Zero, 3, 99), null, 0);
 
         Assert.That(votesManager.VerifyVotingRules(blockInfo, qc, out _), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task OnNewBlock_VotesArrivedBeforeBlock_BuildsQcWhenBlockArrives()
+    {
+        PrivateKey[] keys = MakeKeys(20);
+        Address[] masternodes = keys.Select(k => k.Address).ToArray();
+        ulong currentRound = 1;
+        XdcConsensusContext context = new();
+        context.SetNewRound(currentRound);
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithExtraConsensusData(new ExtraFieldsV2(currentRound, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), null, 450)))
+            .TestObject;
+        BlockRoundInfo info = new(header.Hash!, currentRound, header.Number);
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong>()).Returns((XdcBlockHeader?)null);
+
+        IEpochSwitchManager esm = Substitute.For<IEpochSwitchManager>();
+        esm.GetEpochSwitchInfo(header).Returns(new EpochSwitchInfo(masternodes, [], [], info));
+
+        IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
+        releaseSpec.CertificateThreshold.Returns(0.667);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        IQuorumCertificateManager qcm = Substitute.For<IQuorumCertificateManager>();
+
+        VotesManager voteManager = new VoteManagerBuilder
+        {
+            Context = context,
+            BlockTree = blockTree,
+            EpochSwitchManager = esm,
+            SpecProvider = specProvider,
+            QuorumCertificateManager = qcm
+        }.Build();
+
+        foreach (PrivateKey key in keys)
+            await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, 450, key));
+
+        qcm.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
+
+        blockTree.NewSuggestedBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+
+        qcm.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
+    }
+
+    [Test]
+    public async Task OnNewBlock_QcAlreadyBuiltByHandleVote_DoesNotBuildAgain()
+    {
+        PrivateKey[] keys = MakeKeys(20);
+        Address[] masternodes = keys.Select(k => k.Address).ToArray();
+        ulong currentRound = 1;
+        XdcConsensusContext context = new();
+        context.SetNewRound(currentRound);
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithExtraConsensusData(new ExtraFieldsV2(currentRound, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), null, 450)))
+            .TestObject;
+        BlockRoundInfo info = new(header.Hash!, currentRound, header.Number);
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong>()).Returns(header);
+
+        IEpochSwitchManager esm = Substitute.For<IEpochSwitchManager>();
+        esm.GetEpochSwitchInfo(header).Returns(new EpochSwitchInfo(masternodes, [], [], info));
+
+        IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
+        releaseSpec.CertificateThreshold.Returns(0.667);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        IQuorumCertificateManager qcm = Substitute.For<IQuorumCertificateManager>();
+
+        VotesManager voteManager = new VoteManagerBuilder
+        {
+            Context = context,
+            BlockTree = blockTree,
+            EpochSwitchManager = esm,
+            SpecProvider = specProvider,
+            QuorumCertificateManager = qcm
+        }.Build();
+
+        foreach (PrivateKey key in keys)
+            await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, 450, key));
+
+        qcm.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
+
+        blockTree.NewSuggestedBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+
+        qcm.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
+    }
+
+    [Test]
+    public void OnNewBlock_NoVotesInPool_DoesNothing()
+    {
+        XdcConsensusContext context = new();
+        context.SetNewRound(1);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithExtraConsensusData(new ExtraFieldsV2(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), null, 0)))
+            .TestObject;
+
+        VotesManager votesManager = new VoteManagerBuilder
+        {
+            Context = context,
+            BlockTree = blockTree,
+            QuorumCertificateManager = quorumCertificateManager
+        }.Build();
+
+        blockTree.NewSuggestedBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+
+        quorumCertificateManager.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
+    }
+
+    // headNumber=100, currentRound=14, _maxBlockDistance=7, _maxRoundDistance=7
+    // Round must be >= currentRound for accepted cases so HandleVote adds to pool
+    [TestCase(107UL, 14UL, 1L, TestName = "BlockDistanceSeven_Accepted")]
+    [TestCase(108UL, 14UL, 0L, TestName = "BlockDistanceEight_Rejected")]
+    [TestCase(100UL, 21UL, 1L, TestName = "RoundDistanceSeven_Accepted")]
+    [TestCase(100UL, 22UL, 0L, TestName = "RoundDistanceEight_Rejected")]
+    public async Task OnReceiveVote_DistanceGuards_AcceptsOrRejectsVote(ulong voteBlockNumber, ulong voteRound, long expectedCount)
+    {
+        const ulong currentRound = 14;
+        const long headNumber = 100;
+
+        PrivateKey[] keys = MakeKeys(1);
+        Address[] masternodes = keys.Select(k => k.Address).ToArray();
+        BlockRoundInfo blockInfo = new(Hash256.Zero, voteRound, voteBlockNumber);
+        Vote vote = XdcTestHelper.BuildSignedVote(blockInfo, 450, keys[0]);
+
+        XdcConsensusContext context = new();
+        context.SetNewRound(currentRound);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(new Block(Build.A.XdcBlockHeader().WithNumber(headNumber).TestObject));
+
+        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+        snapshotManager.GetSnapshotByGapNumber(450).Returns(new Snapshot(0, Hash256.Zero, masternodes));
+
+        VotesManager voteManager = new VoteManagerBuilder
+        {
+            Context = context,
+            BlockTree = blockTree,
+            SnapshotManager = snapshotManager
+        }.Build();
+
+        await voteManager.OnReceiveVote(vote);
+
+        Assert.That(voteManager.GetVotesCount(vote), Is.EqualTo(expectedCount));
+    }
+
+    [Test]
+    public async Task OnReceiveVote_ValidVoteForOldRound_IsValidatedBroadcastAndNotAccumulatedInPool()
+    {
+        const ulong currentRound = 14;
+        const ulong voteRound = 10; // distance=4, within _maxRoundDistance=7
+
+        PrivateKey[] keys = MakeKeys(1);
+        Address[] masternodes = keys.Select(k => k.Address).ToArray();
+        BlockRoundInfo blockInfo = new(Hash256.Zero, voteRound, 100);
+        Vote vote = XdcTestHelper.BuildSignedVote(blockInfo, 450, keys[0]);
+
+        XdcConsensusContext context = new();
+        context.SetNewRound(currentRound);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(new Block(Build.A.XdcBlockHeader().WithNumber(100).TestObject));
+
+        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+        snapshotManager.GetSnapshotByGapNumber(450).Returns(new Snapshot(0, Hash256.Zero, masternodes));
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+
+        VotesManager voteManager = new VoteManagerBuilder
+        {
+            Context = context,
+            BlockTree = blockTree,
+            SnapshotManager = snapshotManager,
+            SyncPeerPool = syncPeerPool
+        }.Build();
+
+        await voteManager.OnReceiveVote(vote);
+
+        // Broadcast happens even for old rounds (helps lagging peers catch up)
+        _ = syncPeerPool.Received(1).AllPeers;
+        // Valid signature and in masternodes, but HandleVote skips pool accumulation for old rounds
+        Assert.That(voteManager.GetVotesCount(vote), Is.EqualTo(0L));
     }
 
     private static PrivateKey[] MakeKeys(int n)
@@ -301,28 +495,44 @@ public class VotesManagerTests
         return keys;
     }
 
-    private static VotesManager BuildVoteManager(IXdcConsensusContext ctx, IBlockTree? blockTree = null)
+    private class VoteManagerBuilder
     {
-        blockTree ??= Substitute.For<IBlockTree>();
-        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        epochSwitchManager
-            .GetEpochSwitchInfo(Arg.Any<Hash256>())
-            .Returns(new EpochSwitchInfo([], [], [], new BlockRoundInfo(Hash256.Zero, 0, 0)));
-        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec()
-        {
-            V2Configs = [new V2ConfigParams()]
-        });
-        ISigner signer = Substitute.For<ISigner>();
-        signer.Address.Returns(TestItem.AddressA);
-        signer.TrySign(in Arg.Any<ValueHash256>(), out Arg.Any<Signature>())
-            .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
-        IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
+        public IXdcConsensusContext Context { get; set; } = new XdcConsensusContext();
+        public IBlockTree BlockTree { get; set; } = Substitute.For<IBlockTree>();
+        public IEpochSwitchManager EpochSwitchManager { get; set; } = DefaultEpochSwitchManager();
+        public ISnapshotManager SnapshotManager { get; set; } = Substitute.For<ISnapshotManager>();
+        public IQuorumCertificateManager QuorumCertificateManager { get; set; } = Substitute.For<IQuorumCertificateManager>();
+        public ISpecProvider SpecProvider { get; set; } = DefaultSpecProvider();
+        public ISigner Signer { get; set; } = DefaultSigner();
+        public IForensicsProcessor ForensicsProcessor { get; set; } = Substitute.For<IForensicsProcessor>();
+        public ISyncPeerPool SyncPeerPool { get; set; } = Substitute.For<ISyncPeerPool>();
 
-        return new VotesManager(ctx, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
-            specProvider, signer, forensicsProcessor, NullLogManager.Instance);
+        public VotesManager Build() => new(Context, SyncPeerPool, BlockTree, EpochSwitchManager,
+            SnapshotManager, QuorumCertificateManager, SpecProvider, Signer, ForensicsProcessor, NullLogManager.Instance);
+
+        private static IEpochSwitchManager DefaultEpochSwitchManager()
+        {
+            IEpochSwitchManager esm = Substitute.For<IEpochSwitchManager>();
+            esm.GetEpochSwitchInfo(Arg.Any<Hash256>())
+                .Returns(new EpochSwitchInfo([], [], [], new BlockRoundInfo(Hash256.Zero, 0, 0)));
+            return esm;
+        }
+
+        private static ISpecProvider DefaultSpecProvider()
+        {
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec { V2Configs = [new V2ConfigParams()] });
+            return specProvider;
+        }
+
+        private static ISigner DefaultSigner()
+        {
+            ISigner signer = Substitute.For<ISigner>();
+            signer.Address.Returns(TestItem.AddressA);
+            signer.TrySign(in Arg.Any<ValueHash256>(), out Arg.Any<Signature>())
+                .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
+            return signer;
+        }
     }
 
     private static XdcBlockHeader[] GenerateBlockHeaders(int n, ulong blockNumber)

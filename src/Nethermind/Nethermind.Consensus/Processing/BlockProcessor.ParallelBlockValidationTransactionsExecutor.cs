@@ -243,7 +243,7 @@ public partial class BlockProcessor
                 }
 
                 incrementalValidation.GetResult();
-                return CombineReceipts(receiptsTracers, len, block);
+                return CombineReceipts(receiptsTracers, len);
             }
             finally
             {
@@ -356,22 +356,17 @@ public partial class BlockProcessor
             }
         }
 
-        private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)
+        private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len)
         {
             TxReceipt[] result = new TxReceipt[len];
             ulong cumulativeGas = 0;
-            Bloom blockBloom = new();
             for (int i = 0; i < len; i++)
             {
                 result[i] = receiptsTracers[i].TxReceipts[0];
                 result[i].Index = i;
                 cumulativeGas += result[i].GasUsed;
                 result[i].GasUsedTotal = cumulativeGas;
-                result[i].CalculateBloom();
-                blockBloom.Accumulate(result[i].Bloom!);
             }
-
-            block.Header.Bloom = blockBloom;
 
             return result;
         }

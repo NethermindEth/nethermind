@@ -11,8 +11,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Test.Runner;
 
@@ -66,7 +68,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
             writer.WritePropertyName("output");
             writer.WriteStringValue(trace.ReturnValue.ToHexString(true));
             writer.WritePropertyName("gasUsed");
-            writer.WriteStringValue($"0x{trace.Gas:x}");
+            HexWriter.WriteUlongHexStringValue(writer, trace.Gas);
             writer.WriteEndObject();
 
             writer.Flush();
@@ -114,7 +116,10 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
             writer.WriteNumber("d", Math.Round(duration.Value.TotalSeconds, 3));
 
         if (_totalGasUsed > 0)
-            writer.WriteString("gasUsed", $"0x{_totalGasUsed:x}");
+        {
+            writer.WritePropertyName("gasUsed");
+            HexWriter.WriteUlongHexStringValue(writer, _totalGasUsed);
+        }
 
         if (_transactionCount > 0)
             writer.WriteNumber("txs", _transactionCount);
@@ -149,27 +154,27 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         writer.WriteNumberValue((byte)entry.OpcodeRaw!);
 
         writer.WritePropertyName("gas");
-        writer.WriteStringValue($"0x{entry.Gas:x}");
+        HexWriter.WriteUlongHexStringValue(writer, entry.Gas);
 
         writer.WritePropertyName("gasCost");
-        writer.WriteStringValue($"0x{entry.GasCost:x}");
+        HexWriter.WriteUlongHexStringValue(writer, entry.GasCost);
 
         writer.WritePropertyName("memSize");
         writer.WriteNumberValue(entry.MemorySize ?? 0UL);
 
-        if ((entry.Memory?.Length ?? 0) != 0)
+        if (entry.Memory is { Length: > 0 } mem)
         {
-            string memory = string.Concat(entry.Memory);
             writer.WritePropertyName("memory");
-            writer.WriteStringValue($"0x{memory}");
+            HexWriter.WriteHexStringValue(writer, mem.Span);
         }
 
-        if (entry.Stack is not null)
+        if (entry.Stack is { Length: > 0 } stack)
         {
             writer.WritePropertyName("stack");
             writer.WriteStartArray();
-            foreach (string s in entry.Stack)
-                writer.WriteStringValue(s);
+            ReadOnlySpan<byte> sp = stack.Span;
+            for (int i = 0; i < sp.Length; i += EvmStack.WordSize)
+                HexWriter.WriteUInt256HexRawValue(writer, new UInt256(sp.Slice(i, EvmStack.WordSize), isBigEndian: true), zeroPadded: false);
             writer.WriteEndArray();
         }
 
