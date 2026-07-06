@@ -233,10 +233,14 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         => enr.HasEntry(EnrContentKey.Eth2) && !enr.HasEntry(EnrContentKey.Eth);
 
     internal static bool ShouldUseDefaultDiscv5Bootnodes(IPAddress externalIp, IDiscoveryConfig discoveryConfig)
-        => discoveryConfig.UseDefaultDiscv5Bootnodes && IsDiscoveryAddressRoutable(externalIp);
+        => discoveryConfig.UseDefaultDiscv5Bootnodes && !IsKnownPrivateDiscoveryAddress(externalIp);
 
     private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
+        => IsKnownPrivateDiscoveryAddress(externalIp);
+
+    private static bool IsKnownPrivateDiscoveryAddress(IPAddress externalIp)
         => !IPAddress.Any.Equals(externalIp)
+            && !IPAddress.IPv6Any.Equals(externalIp)
             && !IPAddress.None.Equals(externalIp)
             && externalIp.IsLoopbackOrPrivateOrLinkLocal;
 

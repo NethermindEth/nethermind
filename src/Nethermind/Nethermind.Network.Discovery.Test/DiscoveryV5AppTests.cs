@@ -371,7 +371,12 @@ public class DiscoveryV5AppTests
     [TestCase("8.8.8.8", true, true)]
     [TestCase("8.8.8.8", false, false)]
     [TestCase("127.0.0.1", true, false)]
-    public void Should_Use_Default_Discv5_Bootnodes_Only_For_Routable_Address(string externalIp, bool configured, bool expected)
+    [TestCase("192.168.0.1", true, false)]
+    [TestCase("169.254.0.1", true, false)]
+    [TestCase("0.0.0.0", true, true)]
+    [TestCase("::", true, true)]
+    [TestCase("255.255.255.255", true, true)]
+    public void Should_Use_Default_Discv5_Bootnodes_Unless_Disabled_Or_Address_Is_Known_Private(string externalIp, bool configured, bool expected)
     {
         DiscoveryConfig discoveryConfig = new()
         {
