@@ -359,6 +359,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             releaseSpec.IsEip2780Enabled = (chainSpec.Parameters.Eip2780TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            if (releaseSpec.IsEip2780Enabled && !releaseSpec.IsEip7708Enabled)
+            {
+                // The EIP-2780 value-transfer cost prices the EIP-7708 transfer log, so activating
+                // it without EIP-7708 would charge for a log that is never emitted.
+                throw new ArgumentException($"{nameof(chainSpec.Parameters.Eip2780TransitionTimestamp)} requires EIP-7708 to be active at the same time.");
+            }
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)

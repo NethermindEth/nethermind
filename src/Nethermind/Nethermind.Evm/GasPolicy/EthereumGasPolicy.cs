@@ -185,7 +185,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // EELS refill_frame_state_gas: the reverting child refills its net spill into gas_left and
         // returns only (used - spill) to the reservoir; crediting spill to the reservoir would leave
         // it inflated, returning gas a later top-level halt should burn.
-        long childNetSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
+        long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasSpill += childGas.StateGasSpill;
@@ -204,7 +204,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // EELS refill_frame_state_gas on halt restores the reservoir by (used - spilled) and refills the
         // spilled portion into gas_left, which the halt then BURNS as regular gas. So only the
         // reservoir-funded portion returns to the parent; the child's net (unrefunded) spill stays burned.
-        long childNetSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
+        long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasSpill += childGas.StateGasSpill;
         parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
@@ -217,7 +217,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Code deposit failure exceptionally halts the child create frame after it merged into the
         // parent: EELS refills spilled state gas into gas_left and then burns it, so only the
         // reservoir-funded portion returns to the parent reservoir.
-        long childNetSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
+        long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
     }

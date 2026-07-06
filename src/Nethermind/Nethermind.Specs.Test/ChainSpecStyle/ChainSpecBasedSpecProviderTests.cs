@@ -968,6 +968,26 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    [Test]
+    public void Eip2780_requires_eip7708_to_be_active()
+    {
+        static ChainSpec BuildChainSpec(ulong? eip7708Timestamp) => new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip2780TransitionTimestamp = 10,
+                Eip7708TransitionTimestamp = eip7708Timestamp
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        Assert.Throws<ArgumentException>(() => new ChainSpecBasedSpecProvider(BuildChainSpec(null)).GetSpec((100, 10)));
+        Assert.Throws<ArgumentException>(() => new ChainSpecBasedSpecProvider(BuildChainSpec(20)).GetSpec((100, 10)));
+
+        IReleaseSpec spec = new ChainSpecBasedSpecProvider(BuildChainSpec(10)).GetSpec((100, 10));
+        Assert.That(spec.IsEip2780Enabled, Is.True);
+    }
+
     [TestCaseSource(nameof(BlockNumbersAndTimestampsNearForkActivations))]
     public void Forks_should_be_selected_properly_for_exact_matches(ForkActivation forkActivation, bool isEip3651Enabled, bool isEip3198Enabled, bool isEip3855Enabled)
     {
