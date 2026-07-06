@@ -376,10 +376,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool removeSelfdestructBurn)
                 {
                     UInt256 balance = worldState.GetBalance(toBeDestroyed);
-                    // Pre-EIP-8246 this is a burn. This post-fee path emits a Burn log (the whole
-                    // balance, including priority fees credited at PayFees, leaves supply), whereas
-                    // the pre-fee path emits a SelfDestruct log. EIP-8246 removes the burn entirely,
-                    // so no log is emitted on either path.
+                    // Post-fee path: the burn covers the whole balance incl. priority fees, hence a
+                    // Burn (not SelfDestruct) log; EIP-8246 removes the burn and its log entirely.
                     if (!balance.IsZero && !removeSelfdestructBurn)
                     {
                         substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
