@@ -21,6 +21,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
@@ -532,8 +533,12 @@ public class RewardTests
             observer1.Address,
             observer2.Address,
         ];
-        votingContract.GetCandidates(Arg.Any<BlockHeader>()).Returns(rewardCandidates);
-        votingContract.GetCandidateStake(Arg.Any<BlockHeader>(), Arg.Any<Address>()).Returns(UInt256.One);
+        votingContract.GetCandidates(Arg.Any<BlockHeader>())
+            .Throws(new InvalidOperationException("Readonly candidates lookup should not be used for block-processing rewards."));
+        votingContract.GetCandidates(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>()).Returns(rewardCandidates);
+        votingContract.GetCandidateStake(Arg.Any<BlockHeader>(), Arg.Any<Address>())
+            .Throws(new InvalidOperationException("Readonly stake lookup should not be used for block-processing rewards."));
+        votingContract.GetCandidateStake(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>()).Returns(UInt256.One);
 
         IWorldState worldState = TestWorldStateFactory.CreateForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);

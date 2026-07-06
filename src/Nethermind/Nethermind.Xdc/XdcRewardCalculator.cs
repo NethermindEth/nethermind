@@ -226,7 +226,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     {
         // We intentionally avoid GetCandidatesByStake here to preserve Go-equivalent ordering:
         // fetch candidates at the checkpoint header and apply a stable stake-descending sort locally.
-        Address[] candidates = _masternodeVotingContract.GetCandidates(checkpointHeader) ?? [];
+        Address[] candidates = _masternodeVotingContract.GetCandidates(_transactionProcessor, checkpointHeader) ?? [];
         if (candidates.Length == 0)
             return [];
 
@@ -239,7 +239,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             candidatesAndStake.Add(new CandidateStake
             {
                 Address = candidate,
-                Stake = _masternodeVotingContract.GetCandidateStake(checkpointHeader, candidate),
+                Stake = _masternodeVotingContract.GetCandidateStake(_transactionProcessor, checkpointHeader, candidate),
             });
         }
 
