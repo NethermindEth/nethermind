@@ -285,15 +285,17 @@ public class ProcessingEnvBuilderTests
     }
 
     [Test]
-    public void Build_resolves_the_component_but_requires_owned_by_parent_lifetime()
+    public void BuildAs_resolves_a_registered_component_but_requires_owned_by_parent_lifetime()
     {
         using IContainer container = BuildContainer();
 
-        // Build<T> returns a bare component that cannot dispose its scope, so it needs OwnedByParentLifetime.
+        // BuildAs<T> of a registered component returns a bare instance that cannot dispose its scope, so it
+        // needs OwnedByParentLifetime.
         Assert.That(
             () => container.Resolve<IProcessingEnvBuilder>()
                 .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
-                .Build<IWorldState>(),
+                .WithComponent<TrackingDisposable>()
+                .BuildAs<TrackingDisposable>(),
             Throws.TypeOf<InvalidOperationException>());
 
         TrackingDisposable tracker;
@@ -303,7 +305,7 @@ public class ProcessingEnvBuilderTests
                 .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
                 .WithComponent<TrackingDisposable>()
                 .OwnedByParentLifetime()
-                .Build<TrackingDisposable>();
+                .BuildAs<TrackingDisposable>();
 
             Assert.That(tracker.Disposed, Is.False);
         }

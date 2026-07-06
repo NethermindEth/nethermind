@@ -97,15 +97,24 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
         return builder;
     }
 
-    public TWrapper BuildAs<TWrapper>() where TWrapper : class =>
-        ProcessingEnvWrapperFactory.Create<TWrapper>(BuildScope(), ownedExternally: _ownedByParent);
-
-    public T Build<T>() where T : notnull
+    public TWrapper BuildAs<TWrapper>() where TWrapper : class
     {
-        if (!_ownedByParent)
-            throw new InvalidOperationException(
-                $"{nameof(Build)}<T> returns a resolved component that cannot dispose its scope; call {nameof(OwnedByParentLifetime)} so the parent lifetime owns it.");
-        return BuildScope().Resolve<T>();
+        ILifetimeScope scope = BuildScope();
+
+        // A type registered in the scope (via With*/Configure) is the caller's real component, so resolve it.
+        // Otherwise TWrapper is a caller-defined interface to surface the scope through, so synthesize it.
+        if (scope.IsRegistered<TWrapper>())
+        {
+            if (!_ownedByParent)
+            {
+                scope.Dispose();
+                throw new InvalidOperationException(
+                    $"A component resolved by {nameof(BuildAs)}<T> cannot dispose its scope; call {nameof(OwnedByParentLifetime)} so the parent lifetime owns it.");
+            }
+            return scope.Resolve<TWrapper>();
+        }
+
+        return ProcessingEnvWrapperFactory.Create<TWrapper>(scope, ownedExternally: _ownedByParent);
     }
 
     private ILifetimeScope BuildScope()

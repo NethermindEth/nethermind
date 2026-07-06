@@ -63,7 +63,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .Configure((builder) => builder.BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>())
             .WithComponent<ISimulateReadOnlyBlocksProcessingEnv, SimulateReadOnlyBlocksProcessingEnv>()
             .OwnedByParentLifetime()
-            .Build<ISimulateReadOnlyBlocksProcessingEnv>();
+            .BuildAs<ISimulateReadOnlyBlocksProcessingEnv>();
     }
 
     private static BlockTree CreateTempBlockTree(

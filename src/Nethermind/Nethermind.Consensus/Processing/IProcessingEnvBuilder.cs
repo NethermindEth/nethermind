@@ -63,11 +63,11 @@ public interface IProcessingEnvBuilder
     /// </remarks>
     IProcessingEnvBuilder OwnedByParentLifetime();
 
-    TWrapper BuildAs<TWrapper>() where TWrapper : class;
-
     /// <summary>
-    /// Builds the environment and resolves <typeparamref name="T"/> from its scope. Requires
-    /// <see cref="OwnedByParentLifetime"/>, since the returned component cannot dispose the scope itself.
+    /// Builds the environment and returns it as <typeparamref name="TWrapper"/>. If <typeparamref name="TWrapper"/>
+    /// is registered in the scope (via a <c>With*</c> call) it is resolved and returned directly, which
+    /// requires <see cref="OwnedByParentLifetime"/> since a plain component cannot dispose its scope;
+    /// otherwise a wrapper implementing it is synthesized.
     /// </summary>
-    T Build<T>() where T : notnull;
+    TWrapper BuildAs<TWrapper>() where TWrapper : class;
 }
