@@ -201,6 +201,7 @@ public static partial class EvmInstructions
         else
         {
             vm.WorldState.AddAccountRead(address);
+            vm.WorldState.RecordBytecodeAccess(address);
         }
 
         return EvmExceptionType.None;

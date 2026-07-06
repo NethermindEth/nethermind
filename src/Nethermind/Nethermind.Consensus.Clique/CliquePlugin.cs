@@ -25,39 +25,9 @@ namespace Nethermind.Consensus.Clique
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-        public Task Init(INethermindApi nethermindApi)
-        {
-            _nethermindApi = nethermindApi;
-
-            _snapshotManager = nethermindApi.Context.Resolve<ISnapshotManager>();
-
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules()
-        {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
-            {
-                return Task.CompletedTask;
-            }
-
-            (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
-            CliqueRpcModule cliqueRpcModule = new(
-                _nethermindApi.BlockProducerRunner as ICliqueBlockProducerRunner,
-                _snapshotManager!,
-                getFromApi.BlockTree!);
-
-            SingletonModulePool<ICliqueRpcModule> modulePool = new(cliqueRpcModule);
-            getFromApi.RpcModuleProvider!.Register(modulePool);
-
-            return Task.CompletedTask;
-        }
+        public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
-
-        private INethermindApi? _nethermindApi;
-
-        private ISnapshotManager? _snapshotManager;
 
         public IModule Module => new CliqueModule();
     }
@@ -91,6 +61,8 @@ namespace Nethermind.Consensus.Clique
                 .Bind<IBlockProducerRunnerFactory, CliqueBlockProducerFactory>()
 
                 .AddSingleton<IHealthHintService, CliqueHealthHintService>()
+
+                .RegisterSingletonJsonRpcModule<ICliqueRpcModule, CliqueRpcModule>()
                 ;
         }
     }

@@ -43,6 +43,7 @@ using Nethermind.Network;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.History;
 using Nethermind.Synchronization.ParallelSync;
@@ -209,7 +210,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             new HeadBlockSignal(@this.BlockTree),
             new EthCapabilitiesProvider(
                 @this.BlockTree.AsReadOnly(),
-                @this.WorldStateManager,
+                @this.Container.Resolve<IStateBoundary>(),
                 @this.Container.Resolve<ISyncConfig>(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
@@ -243,6 +244,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IRlpxHost>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<IProtocolValidator>(),
+                Substitute.For<IPeerManager>(),
                 Substitute.For<INetworkStorage>(),
                 Array.Empty<IProtocolHandlerFactory>(),
                 [new DefaultP2PCapabilityResolver()],

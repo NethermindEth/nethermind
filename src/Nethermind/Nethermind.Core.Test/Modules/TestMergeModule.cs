@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -15,9 +16,17 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
+public class TestMergeModule(ITxPoolConfig txPoolConfig, IModule? mergeModule) : Module
 {
-    public TestMergeModule(IConfigProvider configProvider) : this(configProvider.GetConfig<ITxPoolConfig>())
+    public TestMergeModule(ITxPoolConfig txPoolConfig) : this(txPoolConfig, new MergePluginModule())
+    {
+    }
+
+    public TestMergeModule(IConfigProvider configProvider) : this(configProvider.GetConfig<ITxPoolConfig>(), new MergePluginModule())
+    {
+    }
+
+    public TestMergeModule(IConfigProvider configProvider, IModule? mergeModule) : this(configProvider.GetConfig<ITxPoolConfig>(), mergeModule)
     {
     }
 
@@ -25,9 +34,11 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
     {
         base.Load(builder);
 
-        builder
-            .AddModule(new MergePluginModule())
+        // Optional: AuRa passes null and installs AuRaMergeModule itself (see MergeTestBlockchain.MergeModule).
+        if (mergeModule is not null)
+            builder.AddModule(mergeModule);
 
+        builder
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
             // Validators
